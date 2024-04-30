@@ -74,7 +74,8 @@ namespace scf = ::mlir::scf;
 }  // namespace
 
 bool MlirScatterFusion::IsSupported(const HloFusionAnalysis& analysis) {
-  auto* scatter = Cast<HloScatterInstruction>(analysis.fusion_heroes().front());
+  const auto* scatter =
+      Cast<HloScatterInstruction>(&analysis.fusion_hero(0).instruction());
   if (scatter->scatter_operand_count() != 1) {
     LOG(ERROR) << "Variadic scatter is not supported like in the legacy "
                   "emitter, although it is possible to make it work when the "
@@ -92,8 +93,8 @@ std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToOutputIndexing(
 std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* ctx) const {
-  auto* scatter =
-      DynCast<HloScatterInstruction>(analysis_.fusion_heroes().front());
+  const auto* scatter =
+      DynCast<HloScatterInstruction>(&analysis_.fusion_hero(0).instruction());
   CHECK(ScatterSimplifier::IsSimplifiedScatter(scatter))
       << "Non-simplified HLO Scatter is not supported.";
   int64_t scatter_operand_count = scatter->scatter_operand_count();
@@ -134,9 +135,9 @@ std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToInputIndexing(
 }
 
 LaunchDimensions MlirScatterFusion::launch_dimensions() const {
-  auto* scatter = analysis_.fusion_heroes().front();
+  const auto& scatter = analysis_.fusion_hero(0).instruction();
   // Compute thread id mapping based on the shape of update operand.
-  auto& shape = scatter->operands().back()->shape();
+  auto& shape = scatter.operands().back()->shape();
   return CalculateLaunchDimensions(shape, analysis_.device_info());
 }
 
@@ -146,8 +147,8 @@ MlirScatterFusion::GetEpilogues(const HloFusionInstruction& fusion,
   // We don't actually support epilogues for scatter, but this is how we tell
   // the base class that we don't want it to generate code for the scatter.
   return {mlir_converter::EpilogueSpecification::FromIdentityIndexing(
-      analysis_.fusion_heroes().front(), analysis_.fusion_roots().front(),
-      mlir_context)};
+      &analysis_.fusion_hero(0).instruction(),
+      &analysis_.fusion_root(0).instruction(), mlir_context)};
 }
 
 mlir::Value EmitScatterComputation(
@@ -185,7 +186,7 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
   constexpr int kScatterOperandIndex = 0;
   constexpr int kScatterIndicesIndex = 1;
   constexpr int kScatterUpdateIndex = 2;
-  const auto* scatter = analysis_.fusion_heroes()[0];
+  const auto* scatter = &analysis_.fusion_hero(0).instruction();
   const HloInstruction* scatter_operand =
       scatter->operand(kScatterOperandIndex);
   const HloInstruction* scatter_indices =

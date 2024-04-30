@@ -102,11 +102,11 @@ int GetVectorSize(const HloFusionAnalysis& analysis,
 }
 
 ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis) {
-  const int num_fusion_outputs = analysis.fusion_roots().size();
+  const int num_fusion_outputs = analysis.fusion_root_count();
 
   CHECK_NE(0, num_fusion_outputs);
   if (num_fusion_outputs == 1) {
-    return {{{analysis.fusion_roots()[0]}}, {0}, {true}};
+    return {{{&analysis.fusion_root(0).instruction()}}, {0}, {true}};
   }
 
   absl::node_hash_map<HloInstructionAdaptor,
@@ -326,15 +326,15 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
     AddGroupIdConstraint(map, root_index, ctx);
     return map;
   }
-  auto* hero = analysis_.fusion_heroes()[root_index];
+  const auto& hero = analysis_.fusion_hero(root_index).instruction();
 
   auto block_offsets = GetBlockOffsetsForTiling(tiling_, ctx);
   auto thread_ids = DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx),
                                              tiling_.GetThreadsPerBlock(),
                                              tiling_.GetThreadStrides());
 
-  auto physical_shape = ShapeUtil::DeleteDimensions(hero->dimensions(),
-                                                    hero->operand(0)->shape());
+  auto physical_shape =
+      ShapeUtil::DeleteDimensions(hero.dimensions(), hero.operand(0)->shape());
   std::vector<DimVar> dimension_ranges{
       {{0, tiling_.GetNumThreadsPerBlock() - 1}},
       {},
@@ -408,9 +408,9 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
 std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* ctx) const {
-  auto* hero = analysis_.fusion_heroes()[root_index];
+  const auto& hero = analysis_.fusion_hero(root_index).instruction();
   if (groups_.is_reduction_root[root_index] &&
-      hero_operand_index >= hero->operand_count() / 2) {
+      hero_operand_index >= hero.operand_count() / 2) {
     // We don't have indexing for the init values.
     return std::nullopt;
   }
@@ -426,7 +426,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToInputIndexing(
   auto map = ComposeIndexingMaps(
       GetIndexingMapForTiling(tiling_, ctx),
       GetBitcastMap(tiling_.GetXlaShape(),
-                    hero->operand(hero_operand_index)->shape(), ctx));
+                    hero.operand(hero_operand_index)->shape(), ctx));
   AddGroupIdConstraint(map, root_index, ctx);
   return map;
 }

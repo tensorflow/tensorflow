@@ -72,8 +72,8 @@ std::vector<mlir_converter::EpilogueSpecification>
 MlirConcatenateFusion::GetEpilogues(const HloFusionInstruction& fusion,
                                     mlir::MLIRContext* mlir_context) const {
   return {mlir_converter::EpilogueSpecification::FromIdentityIndexing(
-      analysis_.fusion_heroes().front(), analysis_.fusion_roots().front(),
-      mlir_context)};
+      &analysis_.fusion_hero(0).instruction(),
+      &analysis_.fusion_root(0).instruction(), mlir_context)};
 }
 
 absl::Status MlirConcatenateFusion::EmitEntryFunction(
@@ -83,7 +83,7 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
     const HloFusionInstruction& fusion) const {
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
-  const auto* concat = analysis_.fusion_heroes()[0];
+  const auto* concat = &analysis_.fusion_hero(0).instruction();
   mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
   auto* ctx = entry_function.getContext();
@@ -130,7 +130,7 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
                                          dim_values, symbol_values, builder);
       auto result_scalars = EmitEpilogue(
           /*epilogue_index=*/0, computations, entry_function, hero_value,
-          output_indices, builder)[analysis_.fusion_roots().front()];
+          output_indices, builder)[&analysis_.fusion_root(0).instruction()];
 
       SmallVector<Value> result_tensors;
       result_tensors.reserve(output_tensor_args.size());

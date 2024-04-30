@@ -135,8 +135,11 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
 
-  const auto& opts =
-      analysis.fusion_roots().front()->GetModule()->config().debug_options();
+  const auto& opts = analysis.fusion_root(0)
+                         .instruction()
+                         .GetModule()
+                         ->config()
+                         .debug_options();
   auto check_mlir_emitters = [&](std::function<bool(const HloFusionAnalysis&)>
                                      support_check) {
     if (!opts.xla_gpu_enable_mlir_emitters()) {

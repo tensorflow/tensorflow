@@ -95,7 +95,7 @@ MlirInPlaceDynamicUpdateSliceFusion::GetEpilogues(
   // We don't actually support epilogues for DUS, but this is how we tell
   // the base class that we don't want it to generate code for the DUS.
   return {mlir_converter::EpilogueSpecification::FromIdentityIndexing(
-      dus_ops_.front(), analysis_.fusion_roots().front(), mlir_context)};
+      dus_ops_.front(), &analysis_.fusion_root(0).instruction(), mlir_context)};
 }
 
 absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(

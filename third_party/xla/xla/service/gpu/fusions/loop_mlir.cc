@@ -74,7 +74,8 @@ std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToInputIndexing(
   if (!thread_id_to_output_indexing.has_value()) {
     return std::nullopt;
   }
-  const HloInstruction* fusion_root = analysis_.fusion_roots()[root_index];
+  const HloInstruction* fusion_root =
+      &analysis_.fusion_root(root_index).instruction();
   auto output_to_input_indexing =
       ComputeOutputToInputIndexing(fusion_root, /*output_id=*/0, ctx);
   IndexingMapSet output_to_input_indexing_set =

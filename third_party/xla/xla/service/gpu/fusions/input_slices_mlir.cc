@@ -57,7 +57,7 @@ std::optional<IndexingMap>
 MlirInputSlicesFusion::ComputeThreadIdToOutputIndexing(
     int64_t output_id, mlir::MLIRContext* ctx) const {
   auto launch_dims = launch_dimensions();
-  auto* slice = analysis_.fusion_roots()[output_id];
+  auto* slice = &analysis_.fusion_root(output_id).instruction();
   const auto& shape = slice->operand(0)->shape();
   return GetDefaultThreadIdIndexingMap(launch_dims, unroll_factor_, shape,
                                        ctx) *
@@ -79,8 +79,8 @@ MlirInputSlicesFusion::GetEpilogues(const HloFusionInstruction& fusion,
 LaunchDimensions MlirInputSlicesFusion::launch_dimensions() const {
   // Note: these launch dimensions are not optimal if the input isn't used
   // fully.
-  auto* root = analysis_.fusion_roots().front();
-  const auto& shape = root->operands()[0]->shape();
+  const auto& root = analysis_.fusion_root(0).instruction();
+  const auto& shape = root.operand(0)->shape();
   return CalculateLaunchDimensions(shape, analysis_.device_info(),
                                    {unroll_factor_});
 }
