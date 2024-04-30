@@ -64,7 +64,6 @@ cc_library(
     deps = [
         ":host_buffer",
         ":ifrt_backend",
-        ":ifrt_session_handler",
         ":version",
         "//xla/pjrt/distributed:util",
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
@@ -109,37 +108,6 @@ ifrt_proxy_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
-    ],
-)
-
-cc_library(
-    name = "ifrt_session_handler",
-    srcs = ["ifrt_session_handler.cc"],
-    hdrs = ["ifrt_session_handler.h"],
-    deps = [
-        ":ifrt_backend",
-        "//xla/python/ifrt",
-        "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
-        "//xla/python/ifrt_proxy/common:proto_util",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-ifrt_proxy_cc_test(
-    name = "ifrt_session_handler_test",
-    srcs = ["ifrt_session_handler_test.cc"],
-    deps = [
-        ":ifrt_backend",
-        ":ifrt_session_handler",
-        "//xla/python/ifrt",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
     ],
 )
 
