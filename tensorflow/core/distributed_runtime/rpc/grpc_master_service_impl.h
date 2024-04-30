@@ -127,7 +127,7 @@ class MasterService final {
   class AsyncService : public ::grpc::Service {
    public:
     AsyncService();
-    virtual ~AsyncService();
+    ~AsyncService() override;
     void RequestCreateSession(
         ::grpc::ServerContext* context, CreateSessionRequest* request,
         ::grpc::ServerAsyncResponseWriter<CreateSessionResponse>* response,

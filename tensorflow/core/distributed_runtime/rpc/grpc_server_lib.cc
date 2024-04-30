@@ -598,7 +598,7 @@ ChannelCreationFunction GrpcServer::GetChannelCreationFunction() const {
 }
 
 std::unique_ptr<Master> GrpcServer::CreateMaster(MasterEnv* master_env) {
-  return std::unique_ptr<Master>(new Master(master_env, 0.0));
+  return std::make_unique<Master>(master_env, 0.0);
 }
 
 /* static */
