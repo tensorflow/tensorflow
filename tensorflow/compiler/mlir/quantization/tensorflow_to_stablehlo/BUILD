@@ -37,7 +37,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:saved_model_import",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/tensorflow/transforms:shape_inference_pass",
-        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:core_cpu",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",

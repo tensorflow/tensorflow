@@ -412,8 +412,10 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
     builder.setInsertionPointAfterValue(var_handle_op);
     auto elements_attr = GetTensorValueAsElementsAttr(
         var_handle_op, resource_tensor, mgr, builder);
+    // if (elements_attr)
     ReplaceVarWithConstant(var_handle_op, elements_attr, &arguments_to_erase);
   }
+  // if (arguments_to_erase.empty()) return success();
 
   // All updates to different ops are captured in 'arguments_to_erase'.
   // Now loop on them and based on each item type update accordingly.
