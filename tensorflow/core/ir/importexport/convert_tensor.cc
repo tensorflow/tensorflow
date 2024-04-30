@@ -534,7 +534,7 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
       return Unimplemented(absl::StrCat("Unimplemented data type ",
                                         DataTypeString(output_dtype)));
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertToTensor(const ElementsAttr attr, Tensor* output_tensor) {
@@ -543,7 +543,7 @@ Status ConvertToTensor(const ElementsAttr attr, Tensor* output_tensor) {
   if (!output_tensor->FromProto(tensor_proto)) {
     return InvalidArgument("Couldn't convert tensor proto to tensor.");
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 llvm::SmallVector<int64_t> ConvertMlirShapeToTF(llvm::ArrayRef<int64_t> shape) {

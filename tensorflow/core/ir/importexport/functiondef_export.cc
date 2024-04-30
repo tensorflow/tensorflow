@@ -141,7 +141,7 @@ static Status ExportArgDef(OpDef::ArgDef *arg, DictionaryAttr arg_attrs,
         sig_arg_attrs.getValue(), /*attrs_to_ignore=*/{},
         /*remove_ref_type=*/false, arg_def_attrs->mutable_attr()));
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
