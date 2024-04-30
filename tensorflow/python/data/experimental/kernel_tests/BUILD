@@ -758,12 +758,8 @@ tf_py_strict_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
         "//tensorflow/python/framework:combinations",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/platform:client_testlib",
-        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )
