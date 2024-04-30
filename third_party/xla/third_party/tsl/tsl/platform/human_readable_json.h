@@ -29,16 +29,19 @@ namespace tsl {
 //
 // When ignore_accuracy_loss = true, this function may ignore JavaScript
 // accuracy loss with large integers.
-Status ProtoToHumanReadableJson(const protobuf::Message& proto, string* result,
-                                bool ignore_accuracy_loss);
-Status ProtoToHumanReadableJson(const protobuf::MessageLite& proto,
-                                string* result, bool ignore_accuracy_loss);
+absl::Status ProtoToHumanReadableJson(const protobuf::Message& proto,
+                                      string* result,
+                                      bool ignore_accuracy_loss);
+absl::Status ProtoToHumanReadableJson(const protobuf::MessageLite& proto,
+                                      string* result,
+                                      bool ignore_accuracy_loss);
 
 // Converts a string produced by ProtoToHumanReadableJSON to a protobuf.  Not
 // guaranteed to work for general JSON.
-Status HumanReadableJsonToProto(const string& str, protobuf::Message* proto);
-Status HumanReadableJsonToProto(const string& str,
-                                protobuf::MessageLite* proto);
+absl::Status HumanReadableJsonToProto(const string& str,
+                                      protobuf::Message* proto);
+absl::Status HumanReadableJsonToProto(const string& str,
+                                      protobuf::MessageLite* proto);
 
 }  // namespace tsl
 

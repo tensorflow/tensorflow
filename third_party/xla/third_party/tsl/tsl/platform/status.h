@@ -133,9 +133,9 @@ inline const char* NullTerminatedMessage(const absl::Status& status) {
 // TODO(b/197552541) Move this namespace to errors.h.
 namespace errors {
 
-void SetStackTrace(::tsl::Status& status, std::vector<StackFrame> stack_trace);
+void SetStackTrace(absl::Status& status, std::vector<StackFrame> stack_trace);
 
-std::vector<StackFrame> GetStackTrace(const ::tsl::Status& status);
+std::vector<StackFrame> GetStackTrace(const absl::Status& status);
 }  // namespace errors
 
 // Helper class to manage multiple child status values.
@@ -144,12 +144,12 @@ class StatusGroup {
   StatusGroup();
   // Constructor to form a StatusGroup from any N set of Status arguments.
   // Usage: StatusGroup({status_a, status_b, status_c});
-  StatusGroup(std::initializer_list<Status> statuses);
+  StatusGroup(std::initializer_list<absl::Status> statuses);
 
   // Utility function to mark a Status as derived. By marking derived status,
   // Derived status messages are ignored when reporting errors to end users.
-  static Status MakeDerived(const Status& s);
-  static bool IsDerived(const Status& s);
+  static absl::Status MakeDerived(const absl::Status& s);
+  static bool IsDerived(const absl::Status& s);
 
   // Enable warning and error log collection for appending to the aggregated
   // status. This function may be called more than once.
@@ -163,15 +163,15 @@ class StatusGroup {
   std::unordered_map<std::string, absl::Cord> GetPayloads() const;
 
   // Return a merged status with combined child status messages with a summary.
-  Status as_summary_status() const;
+  absl::Status as_summary_status() const;
   // Return a merged status with combined child status messages with
   // concatenation.
-  Status as_concatenated_status() const;
+  absl::Status as_concatenated_status() const;
 
   bool ok() const { return ok_; }
 
   // Augment this group with the child status `status`.
-  void Update(const Status& status);
+  void Update(const absl::Status& status);
 
   // Attach recent warning and error log messages
   void AttachLogMessages();
@@ -183,25 +183,24 @@ class StatusGroup {
 
   // Maintain a sorted collection of statuses.
   struct CompareStatus {
-    bool operator()(const Status& a, const Status& b) const {
+    bool operator()(const absl::Status& a, const absl::Status& b) const {
       return a.ToString() > b.ToString();
     }
   };
   // Using std::set instead of absl::btree_set to keep size for certain
   // dependent libraries under the limit.
-  std::set<Status, CompareStatus> derived_;
-  std::set<Status, CompareStatus> non_derived_;
+  std::set<absl::Status, CompareStatus> derived_;
+  std::set<absl::Status, CompareStatus> non_derived_;
 
   std::vector<std::string> recent_logs_;  // recent warning and error logs
 };
 
+typedef std::function<void(const absl::Status&)> StatusCallback;
 
-typedef std::function<void(const Status&)> StatusCallback;
-
-extern ::tsl::string* TfCheckOpHelperOutOfLine(const ::tsl::Status& v,
+extern ::tsl::string* TfCheckOpHelperOutOfLine(const absl::Status& v,
                                                const char* msg);
 
-inline ::tsl::string* TfCheckOpHelper(::tsl::Status v, const char* msg) {
+inline ::tsl::string* TfCheckOpHelper(absl::Status v, const char* msg) {
   if (v.ok()) return nullptr;
   return TfCheckOpHelperOutOfLine(v, msg);
 }
