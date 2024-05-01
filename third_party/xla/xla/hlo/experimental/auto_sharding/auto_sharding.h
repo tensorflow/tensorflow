@@ -84,6 +84,7 @@ class AutoShardingImplementation {
   std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
   SaveAndRemoveShardingAnnotation(
       HloModule* module,
+      const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
       const absl::flat_hash_set<std::string>& replicated_small_tensors,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
@@ -281,6 +282,10 @@ std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
     int64_t max_depth, StrategyGroups& strategy_groups,
     AssociativeDotPairs& associative_dot_pairs);
 
+std::unique_ptr<StrategyGroup> HandleManuallyShardedInstruction(
+    const HloInstruction* ins, const Shape& shape, size_t instruction_id,
+    StrategyGroups& strategy_groups, StrategyMap& strategy_map);
+
 // Factory functions for StrategyGroup.
 std::unique_ptr<StrategyGroup> CreateLeafStrategyGroupWithoutInNodes(
     size_t instruction_id, StrategyGroups& strategy_groups);
@@ -371,24 +376,25 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
 
 // Build possible sharding strategies and their costs for all instructions.
 absl::StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
-BuildStrategyAndCost(const HloInstructionSequence& sequence,
-                     const HloModule* module,
-                     const absl::flat_hash_map<const HloInstruction*, int64_t>&
-                         instruction_execution_counts,
-                     const InstructionDepthMap& depth_map,
-                     const InstructionBatchDimMap& batch_dim_map,
-                     const AliasMap& alias_map,
-                     const ClusterEnvironment& cluster_env,
-                     AutoShardingOption& option, const CallGraph& call_graph,
-                     const HloCostAnalysis& hlo_cost_analysis,
-                     bool trying_multiple_mesh_shapes);
+BuildStrategyAndCost(
+    const HloInstructionSequence& sequence, const HloModule* module,
+    const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_execution_counts,
+    const InstructionDepthMap& depth_map,
+    const InstructionBatchDimMap& batch_dim_map, const AliasMap& alias_map,
+    const ClusterEnvironment& cluster_env, AutoShardingOption& option,
+    const CallGraph& call_graph, const HloCostAnalysis& hlo_cost_analysis,
+    bool trying_multiple_mesh_shapes);
 
 // Computes an approximate lower bound on the per-device memory usage of a
 // module once it has been sharded. This quantity is multiplied with
 // memory_budget_ratio to obtain the memory budget using in our ILP formulation.
 int64_t MemoryBudgetLowerBound(
-    const HloModule& module, const LivenessSet& liveness_set,
-    const HloAliasAnalysis& alias_analysis, int64_t num_devices,
+    const HloModule& module,
+    const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
+    const LivenessSet& liveness_set, const HloAliasAnalysis& alias_analysis,
+    int64_t num_devices,
     const absl::flat_hash_map<std::string, std::vector<HloSharding>>&
         preserved_shardings);
 
