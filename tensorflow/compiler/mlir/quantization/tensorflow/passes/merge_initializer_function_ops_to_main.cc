@@ -57,7 +57,6 @@ using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
 using ::mlir::tf_saved_model::SessionInitializerOp;
-using ::tensorflow::kImportModelDefaultGraphFuncName;
 
 // Array of initializer functions' types. The corresponding initializer
 // functions should be merged in this order. This is because:
