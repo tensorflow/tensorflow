@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/flat_map_dataset_op.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
@@ -322,32 +323,63 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         TF_ASSIGN_OR_RETURN(
             dataset_iterators_,
             random_access.MakeInputIterators(ctx, this, prefix()));
+        next_positions_.resize(dataset_iterators_.size(), 0);
+        input_element_counts_.resize(dataset_iterators_.size(), 0);
       }
 
       IteratorContext::Params params(ctx);
-      params.index_mapper = GetFlatMapIndexMapper(parent_index, *dataset_index);
+      params.index_mapper =
+          GetFlatMapIndexMapper(ctx->index_mapper(), *dataset_index);
       IteratorContext global_shuffle_ctx(std::move(params));
       TF_RETURN_IF_ERROR(dataset_iterators_[*dataset_index]->GetNext(
           &global_shuffle_ctx, out_tensors, end_of_sequence));
       ctx->MergeCheckpoint(global_shuffle_ctx.checkpoint());
       ++element_count_;
+      ++input_element_counts_[*dataset_index];
       return absl::OkStatus();
     }
 
-    IndexMapperFn GetFlatMapIndexMapper(size_t parent_index,
-                                        size_t dataset_index)
+    // TODO(b/325112575): Refactor and reuse this code from weighted flat map.
+    IndexMapperFn GetFlatMapIndexMapper(IndexMapperFn parent_index_mapper,
+                                        size_t input_dataset_index)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      return [this, parent_index, dataset_index](
+      absl::StatusOr<int64_t> cardinality =
+          dataset()->random_access_handler_.Cardinality();
+      return [this, parent_index_mapper = std::move(parent_index_mapper),
+              input_dataset_index, cardinality = std::move(cardinality)](
                  size_t element_position) -> absl::StatusOr<size_t> {
-        if (dataset_index == 0) {
-          return parent_index;
+        if (!cardinality.ok() || *cardinality < 0) {
+          return absl::FailedPreconditionError(
+              "Global shuffling requires finite cardinalities.");
         }
+
         FlatMapRandomAccessHandler& random_access =
             dataset()->random_access_handler_;
-        TF_ASSIGN_OR_RETURN(
-            int64_t cumulative_cardinality,
-            random_access.CumulativeCardinality(dataset_index - 1));
-        return parent_index - cumulative_cardinality;
+        while (next_positions_[input_dataset_index] < *cardinality) {
+          // `index` is the shuffled index of this dataset, not any of the
+          // inputs.
+          size_t index = next_positions_[input_dataset_index];
+          if (parent_index_mapper != nullptr) {
+            TF_ASSIGN_OR_RETURN(index, parent_index_mapper(index));
+          }
+          ++next_positions_[input_dataset_index];
+          // Finds the shuffled `index` comes from dataset
+          // `input_dataset_index`, computes the local offset to the input and
+          // return the offset. If not, iterate to continue scanning.
+          TF_ASSIGN_OR_RETURN(int64_t shuffled_dataset_index,
+                              random_access.GetDatasetIndex(index));
+          if (input_dataset_index == shuffled_dataset_index) {
+            // Finds the offset in input `input_dataset_index`.
+            if (input_dataset_index > 0) {
+              TF_ASSIGN_OR_RETURN(
+                  int64_t cumulative_cardinality,
+                  random_access.CumulativeCardinality(input_dataset_index - 1));
+              index -= cumulative_cardinality;
+            }
+            return index;
+          }
+        }
+        return *cardinality;
       };
     }
 
@@ -428,8 +460,10 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
       element_count_ = *ctx->restored_element_count();
+
       FlatMapRandomAccessHandler& random_access =
           dataset()->random_access_handler_;
+      TF_ASSIGN_OR_RETURN(int64_t cardinality, random_access.Cardinality());
       if (dataset_iterators_.empty()) {
         // TODO(b/325112575): Consider moving this to `Initialize()`, which
         // requires passing the `index_mapper` to the `IteratorContext` there.
@@ -437,10 +471,14 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
             dataset_iterators_,
             random_access.MakeInputIterators(ctx, this, prefix()));
       }
+      input_element_counts_.resize(dataset_iterators_.size(), 0);
+      next_positions_.resize(dataset_iterators_.size(), 0);
+      std::fill(input_element_counts_.begin(), input_element_counts_.end(), 0);
+      std::fill(next_positions_.begin(), next_positions_.end(), 0);
 
       // Counts how many elements each input dataset has produced.
-      std::vector<size_t> input_element_counts(dataset_iterators_.size(), 0);
-      for (size_t count = 0; count < element_count_; ++count) {
+      for (size_t count = 0; count < element_count_ && count < cardinality;
+           ++count) {
         TF_ASSIGN_OR_RETURN(size_t parent_index, ctx->index_mapper()(count));
         absl::StatusOr<size_t> dataset_index =
             random_access.GetDatasetIndex(parent_index);
@@ -448,13 +486,14 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           break;
         }
         TF_RETURN_IF_ERROR(dataset_index.status());
-        ++input_element_counts[*dataset_index];
+        ++input_element_counts_[*dataset_index];
+        next_positions_[*dataset_index] = count + 1;
       }
 
       // Passes individual element counts to each dataset to be restored.
       for (size_t i = 0; i < dataset_iterators_.size(); ++i) {
         IteratorContext::Params params(ctx);
-        params.restored_element_count = input_element_counts[i];
+        params.restored_element_count = input_element_counts_[i];
         IteratorContext ctx_copy(std::move(params));
         TF_RETURN_IF_ERROR(
             RestoreInput(&ctx_copy, reader, dataset_iterators_[i]));
@@ -532,17 +571,23 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     // to restore the partially-flat-mapped dataset, we can do so by
     // re-generating the input.
     std::unique_ptr<MemoryCheckpoint> input_ckpt_ TF_GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> current_element_iterator_ TF_GUARDED_BY(mu_);
     std::vector<Tensor> inputs_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     // Number of flattened elements produced by the iterator. Note this differs
     // from `element_index_` which counts the input datasets that have been
     // iterated over.
     size_t element_count_ TF_GUARDED_BY(mu_) = 0;
     // All dataset iterators. Only populated when global shuffling is enabled.
+    // Counts the number of elements each input iterator has produced. Only
+    // populated when global shuffling is enabled.
+    std::vector<int64_t> input_element_counts_ TF_GUARDED_BY(mu_);
+    // Keeps track of the position of this iterator that each input starts to
+    // scan for its next index. Only populated when global shuffling is enabled.
+    std::vector<size_t> next_positions_;
     std::vector<std::unique_ptr<IteratorBase>> dataset_iterators_
         TF_GUARDED_BY(mu_);
-    std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> current_element_iterator_ TF_GUARDED_BY(mu_);
   };
 
   const DatasetBase* const input_;

@@ -483,6 +483,7 @@ class FlatMapGlobalShuffleTest(
       reshuffle_each_iteration: bool):
     dataset = dataset_ops.Dataset.from_tensor_slices(
         [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
     dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
     if repetitions > 1:
       dataset = dataset.repeat(repetitions)
@@ -519,6 +520,7 @@ class FlatMapGlobalShuffleCheckpointTest(
     def _build_dataset() -> dataset_ops.Dataset:
       dataset = dataset_ops.Dataset.from_tensor_slices(
           [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
       dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
       if repetitions > 1:
         dataset = dataset.repeat(repetitions)
