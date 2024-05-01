@@ -639,7 +639,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, NoHoistInflating) {
   EXPECT_FALSE(simplified_loop);
 }
 
-TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistShardingCustomCalls) {
+TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistSPMDFullToShardShape) {
   auto m = CreateNewVerifiedModule();
   auto array_s32 = ShapeUtil::MakeShape(S32, {4});
   Shape while_shape =
@@ -687,6 +687,44 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistShardingCustomCalls) {
   LOG(INFO) << "my_test: " << m->ToString();
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  EXPECT_FALSE(simplified_loop);
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistShardingCustomCalls) {
+  const char* const kHloModule = R"(
+    HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], f32[2], s32[]) parameter(0)
+      gte.0 = f32[2] get-tuple-element(p_body), index=0
+      gte.1 = f32[2] get-tuple-element(p_body), index=1
+      sharding.0 = f32[2] custom-call(gte.0), custom_call_target="Sharding", sharding={devices=[2]<=[2]}
+      sharding.1 = f32[2] custom-call(gte.1), custom_call_target="Sharding", sharding={replicated}
+      add.0 = f32[2] add(sharding.0, sharding.1)
+      gte.2 = s32[] get-tuple-element(p_body), index=2
+      const = s32[] constant(1)
+      add.1 = s32[] add(gte.2, const)
+      ROOT root = (f32[2], f32[2], s32[]) tuple(gte.0, add.0, add.1)
+    }
+
+    condition {
+      p_cond = (f32[2], f32[2], s32[]) parameter(0)
+      gte = s32[] get-tuple-element(p_cond), index=2
+      const = s32[] constant(5)
+      ROOT result = pred[] compare(gte, const), direction=LT
+    }
+
+    ENTRY entry {
+      param.0 = f32[2] parameter(0)
+      param.1 = s32[] parameter(1)
+      while_init = (f32[2], f32[2], s32[]) tuple(param.0, param.0, param.1)
+      ROOT while = (f32[2], f32[2], s32[]) while(while_init), condition=condition, body=body
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopInvariantCodeMotion{}.Run(module.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
