@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tsl/platform/threadpool.h"
 
+#include <cstdlib>
+
 #define EIGEN_USE_THREADS
 
 #include "absl/types/optional.h"
@@ -125,8 +127,40 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
   if (num_threads < 1) num_threads = 1;
 #endif  // TENSORFLOW_THREADSCALING_EXPERIMENTAL
 
+  // If we want low-latency, query environment variables to enable
+  // thread-spinning.
+  int max_spinning_threads = 0;
+  int min_spinning_duration_milliseconds = 0;
+  if (low_latency_hint) {
+    const char* max_spinning_threads_env =
+        getenv("TSL_THREADPOOL_MAX_SPINNING_THREADS");
+    if (max_spinning_threads_env != nullptr) {
+      if (!absl::SimpleAtoi(max_spinning_threads_env, &max_spinning_threads)) {
+        max_spinning_threads = num_threads;
+      }
+      if (max_spinning_threads < 0) {
+        max_spinning_threads = num_threads;
+      }
+    } else {
+      // Default to a single thread.
+      max_spinning_threads = 1;
+    }
+
+    const char* min_spinning_duration_milliseconds_env =
+        getenv("TSL_THREADPOOL_MIN_SPINNING_DURATION_MILLISECONDS");
+    if (min_spinning_duration_milliseconds_env != nullptr) {
+      if (!absl::SimpleAtoi(min_spinning_duration_milliseconds_env,
+                            &min_spinning_duration_milliseconds)) {
+        min_spinning_duration_milliseconds = 0;
+      }
+    } else {
+      // Default to no duration minimum.
+      min_spinning_duration_milliseconds = 0;
+    }
+  }
+
   eigen_threadpool_.reset(new Eigen::ThreadPoolTempl<EigenEnvironment>(
-      num_threads, low_latency_hint,
+      num_threads, max_spinning_threads, min_spinning_duration_milliseconds,
       EigenEnvironment(env, thread_options, "tf_" + name)));
   underlying_threadpool_ = eigen_threadpool_.get();
   threadpool_device_.reset(new Eigen::ThreadPoolDevice(underlying_threadpool_,
