@@ -309,11 +309,13 @@ static mlir::Attribute BuildVhloDictionaryV1Attr(
   return mlir::vhlo::DictionaryV1Attr::get(builder.getContext(), value);
 }
 
-static mlir::Attribute BuildVhloFloatV1Attr(::llvm::APFloat value,
-                                            mlir::Type type,
+static mlir::Attribute BuildVhloFloatV1Attr(float value,
                                             mlir::Builder builder) {
-  return mlir::vhlo::FloatV1Attr::get(builder.getContext(), type,
-                                      std::move(value));
+  mlir::StablehloVhloTypeConverter type_converter;
+  auto vhlo_type =
+      type_converter.convertType(builder.getF32FloatAttr(value).getType());
+  return mlir::vhlo::FloatV1Attr::get(builder.getContext(), vhlo_type,
+                                      ::llvm::APFloat(value));
 }
 
 static mlir::Attribute BuildRankedTensorAttr(std::vector<int64_t> shape,
@@ -446,8 +448,7 @@ static std::vector<mlir::Attribute> BuildAttributeVectorFromFlatbuffer(
     } else if (value.IsInt()) {
       mlir_vector.push_back(BuildVhloIntV1Attr(value.AsInt64(), builder));
     } else if (value.IsFloat()) {
-      mlir_vector.push_back(BuildVhloFloatV1Attr(llvm::APFloat(value.AsFloat()),
-                                                 mlir::Float32Type(), builder));
+      mlir_vector.push_back(BuildVhloFloatV1Attr(value.AsFloat(), builder));
     } else if (value.IsVector()) {
       std::vector<mlir::Attribute> nested_mlir_vector =
           BuildAttributeVectorFromFlatbuffer(value.AsVector(), builder);
@@ -713,8 +714,8 @@ void BuiltinOptions2ToAttributesManual(
             BuildVhloIntV1Attr(value.AsInt64(), builder);
       }
       if (value.IsFloat()) {
-        composite_attribute_pair.second = BuildVhloFloatV1Attr(
-            llvm::APFloat(value.AsFloat()), mlir::Float32Type(), builder);
+        composite_attribute_pair.second =
+            BuildVhloFloatV1Attr(value.AsFloat(), builder);
       }
 
       if (value.IsVector()) {
