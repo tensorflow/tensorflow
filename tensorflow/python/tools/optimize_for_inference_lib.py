@@ -747,14 +747,14 @@ def get_const_dim_count(node_def):
 def fuse_decomposed_batch_norm(input_graph_def):
   """Fuse individual ops in batch normalization to FusedBatchNorm.
 
-  In some models, the batch normalizatin is performed via a group of individual
+  In some models, the batch normalization is performed via a group of individual
   ops instead of using single FusedBatchNorm op. This function identifies a
   pattern of batch normalization subgraph which is made of multiple ops and
-  transforms the graph by replacing those individual ops with FusedBatchNorm op.
+  transforms the graph by replacing those individual ops with a FusedBatchNorm op.
   This will provide the opportunity to further fold the FusedBatchNorm with
   convolution ops to reduce the computation steps during inference.
   This function currently recognizes batch normalization patterns described
-  below, this could be extended if newer patterns are seen. Also, the fusion
+  below, though this could be extended if newer patterns are seen. Also, the fusion
   is only attempted if the input graph is in NHWC format or has no format set.
 
   Computation function:
@@ -804,7 +804,7 @@ def fuse_decomposed_batch_norm(input_graph_def):
   Subgraph pattern when gamma value is 1 and the gamma scaling Mul is skipped
   {"Add"
       {{"Mul"  // mul_0
-          {{"*"},  // input to apply batchnorma
+          {{"*"},  // input to apply batchnorm
            {"Rsqrt"  // same Rsqrt op used in Sub block
               {"Add"
                  {{"Const"},  // Variance
