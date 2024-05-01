@@ -252,14 +252,9 @@ LogicalResult HasValidDeviceAttribute(Block* block) {
   return success();
 }
 
-// Collects and clusters ops either based on `_replication_info` attribute
-// (replicated case) or using one single cluster (non-replicated case). Also
-// sets `device_type` if there is any cluster (note that the device type must be
-// unique, otherwise we emit an error).
-// Returns an error in case of invalid compilation or replication attribute(s).
-LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
-                                        std::string& device_type,
-                                        std::string& device) {
+// Collects and clusters ops based on `_replication_info` attribute. Returns
+// an error in case of invalid compilation or replication attribute(s).
+LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters) {
   bool has_replicated_compiled_op = false;
   bool has_non_replicated_compiled_op = false;
 
@@ -877,24 +872,16 @@ LogicalResult ReplicateCluster(mlir::tf_device::ClusterOp cluster,
   return success();
 }
 
-void SetNoReplicationClusterAttrs(mlir::tf_device::ClusterOp cluster,
-                                  llvm::StringRef device_type,
-                                  llvm::StringRef device) {
+void SetNoReplicationClusterAttrs(mlir::tf_device::ClusterOp cluster) {
   OpBuilder builder(cluster);
-  cluster->setAttr(mlir::TF::kReplicationInfoAttr,
-                   builder.getStringAttr(kNoReplicationCluster));
-  cluster->setAttr(mlir::TF::kCompileDeviceTypeAttr,
-                   builder.getStringAttr(device_type));
-
-  if (!device.empty()) {
-    cluster->setAttr(kDeviceAttr, builder.getStringAttr(device));
-  }
   // TODO(b/229992058) Propagate `allow_soft_placement` (and other attributes?)
   // instead of hard-coding.
   cluster->setAttr("allow_soft_placement", builder.getBoolAttr(true));
   cluster->setAttr("topology", builder.getStringAttr(""));
   cluster->setAttr("num_cores_per_replica",
                    builder.getIntegerAttr(builder.getI32Type(), 1));
+  cluster->setAttr("_replication_info",
+                   builder.getStringAttr(kNoReplicationCluster));
   cluster->setAttr("device_assignment", builder.getArrayAttr({}));
   cluster->setAttr("use_spmd_for_xla_partitioning", builder.getBoolAttr(false));
   cluster->setAttr("step_marker_location", builder.getStringAttr(""));
@@ -943,9 +930,7 @@ LogicalResult FormClustersInBlock(
   }
 
   ClusterMap clusters;
-  std::string device_type;
-  std::string device;
-  result = CollectAndGroupClusterOps(block, &clusters, device_type, device);
+  result = CollectAndGroupClusterOps(block, &clusters);
   if (failed(result)) return result;
 
   for (const auto& cluster_metadata_and_ops : clusters) {
@@ -977,7 +962,7 @@ LogicalResult FormClustersInBlock(
         block, cluster_ops, results, cluster_successor_ops.getArrayRef());
 
     if (!has_replication) {
-      SetNoReplicationClusterAttrs(cluster, device_type, device);
+      SetNoReplicationClusterAttrs(cluster);
       continue;
     }
     // Determine `num_replicas`.
