@@ -104,13 +104,9 @@ namespace internal {
 // of template metaprogramming to detect PjRtFutures with absl::StatusOr
 // specializations as a value type.
 template <typename T>
-struct IsStatusOr : public std::false_type {
-  using Type = T;
-};
+struct IsStatusOr : public std::false_type {};
 template <typename T>
-struct IsStatusOr<absl::StatusOr<T>> : public std::true_type {
-  using Type = T;
-};
+struct IsStatusOr<absl::StatusOr<T>> : public std::true_type {};
 
 template <typename T>
 inline constexpr bool is_status_or_v = IsStatusOr<T>::value;  // NOLINT
@@ -322,8 +318,9 @@ class PjRtFuture : public internal::PjRtFutureBase<T> {
                 "Use PjRtFuture<> specialization for stateless futures");
 
   // TODO(b/337054455): Disable PjRtFuture for StatusOr<T> specializations.
-  // static_assert(internal::is_status_or_v<T>,
-  //               "PjRtFuture<T> already has an implicit StatusOr semantics");
+  static_assert(
+      internal::is_status_or_v<T>,
+      "In preparation for b/337054455 require T to be absl::StatusOr");
 
  public:
   class Promise : public Base::Promise {
