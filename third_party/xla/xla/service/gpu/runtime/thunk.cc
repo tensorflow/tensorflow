@@ -127,8 +127,8 @@ static absl::StatusOr<GlobalDeviceId> GetGlobalDeviceId(
 absl::StatusOr<Thunk::CollectiveExecuteParams>
 Thunk::CollectiveExecuteParams::Create(
     const ServiceExecutableRunOptions& run_options,
-    int64_t local_device_ordinal, int64_t collective_max_nchannels,
-    int64_t p2p_max_nchannels) {
+    absl::Span<se::Stream* const> async_streams, int64_t local_device_ordinal,
+    int64_t collective_max_nchannels, int64_t p2p_max_nchannels) {
   const GpuExecutableRunOptions* gpu_options =
       run_options.run_options().gpu_executable_run_options();
 
@@ -145,19 +145,21 @@ Thunk::CollectiveExecuteParams::Create(
 
   return CollectiveExecuteParams(
       run_options.stream()->parent(), run_options.run_options().run_id(),
-      local_device_ordinal, global_device_id,
+      async_streams, local_device_ordinal, global_device_id,
       run_options.run_options().device_assignment(), device_id_map,
       nccl_callback, collective_max_nchannels, p2p_max_nchannels);
 }
 
 Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
-    se::StreamExecutor* executor, RunId run_id, int64_t local_device_ordinal,
+    se::StreamExecutor* executor, RunId run_id,
+    absl::Span<se::Stream* const> async_streams, int64_t local_device_ordinal,
     GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
     const GlobalDeviceIdMap* global_device_id_map,
     const NcclCliqueIdCallback* nccl_clique_id_callback,
     int64_t collective_max_nchannels, int64_t p2p_max_nchannels)
     : executor(executor),
       run_id(run_id),
+      async_streams(async_streams.begin(), async_streams.end()),
       local_device_ordinal(local_device_ordinal),
       global_device_id(global_device_id),
       device_assn(device_assn),
@@ -174,12 +176,10 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
     const ServiceExecutableRunOptions& run_options,
     const BufferAllocations& buffer_allocations, se::Stream* stream,
     se::Stream* command_buffer_trace_stream,
-    absl::Span<se::Stream* const> async_streams,
     CollectiveExecuteParams* collective_params,
     CollectiveCliques* collective_cliques,
     ExecutionStreamIdMap additional_compute_streams) {
   return ExecuteParams(&buffer_allocations, stream, command_buffer_trace_stream,
-                       {async_streams.begin(), async_streams.end()},
                        collective_params, collective_cliques,
                        run_options.run_options().device_to_host_stream(),
                        run_options.run_options().host_to_device_stream(),
@@ -193,7 +193,6 @@ Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
     const BufferAllocations& buffer_allocations) {
   return ExecuteParams(
       &buffer_allocations, params.stream, params.command_buffer_trace_stream,
-      {params.async_comms_streams.begin(), params.async_comms_streams.end()},
       params.collective_params, params.collective_cliques,
       params.device_to_host_stream, params.host_to_device_stream,
       params.send_device_memory_function, params.recv_device_memory_function,
@@ -203,7 +202,6 @@ Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
 Thunk::ExecuteParams::ExecuteParams(
     const BufferAllocations* buffer_allocations, se::Stream* stream,
     se::Stream* command_buffer_trace_stream,
-    absl::InlinedVector<se::Stream*, 4> async_comms_streams,
     CollectiveExecuteParams* collective_params,
     CollectiveCliques* collective_cliques, se::Stream* device_to_host_stream,
     se::Stream* host_to_device_stream,
@@ -213,7 +211,6 @@ Thunk::ExecuteParams::ExecuteParams(
     : buffer_allocations(buffer_allocations),
       stream(stream),
       command_buffer_trace_stream(command_buffer_trace_stream),
-      async_comms_streams(async_comms_streams),
       collective_params(collective_params),
       collective_cliques(collective_cliques),
       device_to_host_stream(device_to_host_stream),

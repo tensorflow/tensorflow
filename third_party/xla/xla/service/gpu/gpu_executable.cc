@@ -449,7 +449,8 @@ absl::Status ExecuteThunks(
   // Parameters for executing collective operations.
   TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_params,
                       Thunk::CollectiveExecuteParams::Create(
-                          *run_options, main_stream->parent()->device_ordinal(),
+                          *run_options, async_comms_streams,
+                          main_stream->parent()->device_ordinal(),
                           collective_max_nchannels, p2p_max_nchannels));
 
   ResourceRequests resource_requests;
@@ -490,8 +491,8 @@ absl::Status ExecuteThunks(
   // Prepare parameters for thunks execution.
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       *run_options, buffer_allocations, main_stream,
-      command_buffer_trace_stream, async_comms_streams, &collective_params,
-      &collective_cliques, additional_execution_streams);
+      command_buffer_trace_stream, &collective_params, &collective_cliques,
+      std::move(additional_execution_streams));
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started

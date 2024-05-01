@@ -447,7 +447,8 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   if (IsAsync()) {
     // Launch collective operation on an async stream.
-    se::Stream& async_stream = *params.async_comms_streams[async_stream_idx];
+    se::Stream& async_stream =
+        *params.collective_params->async_streams.at(async_stream_idx);
 
     // Wait for main compute stream to make sure all buffers are ready.
     TF_RETURN_IF_ERROR(async_stream.WaitFor(params.stream));
