@@ -198,7 +198,8 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing_SingleOp) {
       entry_computation->GetInstructionWithName("p1");
 
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(exponential);
-  HloInstructionAdaptor parameter_adaptor(*parameter);
+  HloInstructionAdaptor parameter_adaptor =
+      fusion_adaptor->GetRoots()[0].GetOperand(0);
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
       *fusion_adaptor, parameter_adaptor, &mlir_context_);
   EXPECT_THAT(grouped_indexing, UnorderedElementsAre(Pair(

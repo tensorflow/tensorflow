@@ -170,7 +170,8 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
         return std::nullopt;
       }
       // Compute indexing from output to inputs for logical layout.
-      HloInstructionAdaptor hero_operand_adaptor(*hero_operand);
+      HloInstructionAdaptor hero_operand_adaptor(*hero_operand,
+                                                 &fusion_adaptor);
       GroupedByOpIndexingMap instr_indexing_keyed_by_operands =
           ComputeGroupedOutputToInputIndexing(
               fusion_adaptor, hero_operand_adaptor, mlir_context);

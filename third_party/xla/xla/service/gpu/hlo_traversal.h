@@ -37,8 +37,8 @@ class HloFusionAdaptor;
 class HloInstructionAdaptor {
  public:
   HloInstructionAdaptor() = default;
-  explicit HloInstructionAdaptor(const HloInstruction& instruction,
-                                 const HloFusionAdaptor* parent = nullptr)
+  HloInstructionAdaptor(const HloInstruction& instruction,
+                        const HloFusionAdaptor* parent)
       : instruction_(&instruction), parent_(parent) {}
 
   HloOpcode opcode() const { return instruction_->opcode(); }
@@ -61,11 +61,7 @@ class HloInstructionAdaptor {
  private:
   const HloInstruction* instruction_;
 
-  // Pointer to the parent fusion adaptor. Can be null for legacy cases when
-  // HloInstructionAdaptor is used without HloFusionAdaptor.
-  // TODO(shyshkov): Consistently set parent pointer in all cases and check that
-  // it is not null.
-  // TODO(shyshkov): Use parent to determine operands and users correctly.
+  // Pointer to the parent fusion adaptor. Can not be null.
   const HloFusionAdaptor* parent_;
 };
 
@@ -87,7 +83,7 @@ namespace internal {
 class HloFusionInstructionAdaptor {
  public:
   virtual ~HloFusionInstructionAdaptor() = default;
-  virtual bool ContainsInstruction(HloInstructionAdaptor instruction) const = 0;
+  virtual bool ContainsInstruction(const HloInstruction* instruction) const = 0;
   virtual absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const = 0;
   virtual absl::InlinedVector<HloInstructionAdaptor, 2>
   MakeInstructionPostOrder() const = 0;
@@ -99,6 +95,7 @@ class HloFusionInstructionAdaptor {
 class HloFusionAdaptor {
  public:
   bool ContainsInstruction(HloInstructionAdaptor instruction) const;
+  bool ContainsInstruction(const HloInstruction* instruction) const;
   absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const;
   absl::InlinedVector<HloInstructionAdaptor, 2> MakeInstructionPostOrder()
       const;

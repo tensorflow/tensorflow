@@ -652,11 +652,11 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
     // TODO(akuegel): Figure out why we still need this check for transpose
     // fusions.
     int64_t num_users =
-        fusion ? absl::c_count_if(HloInstructionAdaptor{*instr}.GetUsers(),
-                                  [&](auto user) {
-                                    return fusion->ContainsInstruction(user);
-                                  })
-               : instr->user_count();
+        fusion
+            ? absl::c_count_if(
+                  HloInstructionAdaptor{*instr, fusion}.GetUsers(),
+                  [&](auto user) { return fusion->ContainsInstruction(user); })
+            : instr->user_count();
     if (num_users > 1) {
       return false;
     }
@@ -736,7 +736,7 @@ static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
                                          const HloFusionAdaptor& fusion) {
-  HloInstructionAdaptor hero{instr};
+  HloInstructionAdaptor hero{instr, &fusion};
 
   // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Note
   // that no memoization is needed due to number of operands constraints: we

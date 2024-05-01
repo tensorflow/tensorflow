@@ -1938,8 +1938,8 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   const HloInstruction* root = dot_instr->parent()->root_instruction();
   TF_RET_CHECK(!root->shape().IsTuple());
 
-  HloInstructionAdaptor instr_adaptor{*instr};
   auto fusion_adaptor = HloFusionAdaptor::ForComputation(computation);
+  HloInstructionAdaptor instr_adaptor{*instr, fusion_adaptor.get()};
   // TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
   bool is_8_bit_or_less_dot_with_F32 = HloAnyOf(
       instr_adaptor.GetOperands(), *fusion_adaptor,

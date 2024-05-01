@@ -74,12 +74,15 @@ const char kTestModule[] = R"(
 TEST_F(HloTraversalTest, AdaptorOperands) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
 
-  HloInstructionAdaptor instr{
-      *module->entry_computation()->GetInstructionWithName("select")};
+  auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(
+      module->entry_computation()->GetInstructionWithName("fusion2"),
+      module->entry_computation()->GetInstructionWithName("select"));
+
+  HloInstructionAdaptor instr = fusion_adaptor->GetRoots()[0];
 
   EXPECT_THAT(instr.GetOperands(),
               ElementsAre(InstructionAdaptorName("is_positive"),
-                          InstructionAdaptorName("reduce.1"),
+                          InstructionAdaptorName("fusion"),
                           InstructionAdaptorName("p0")));
 }
 
@@ -106,20 +109,37 @@ TEST_F(HloTraversalTest, AdaptorUsers) {
       gte = f32[] get-tuple-element(fusion), index=0
       add.1 = f32[] add(p0, gte)
       fusion2 = f32[] fusion(gte), kind=kLoop, calls=fused_computation_1
-      ROOT res = (f32[], (f32[], f32[]), f32[]) tuple(add.1, fusion, fusion2)
+      exp.1 = f32[] exponential(fusion2)
+      ROOT res = (f32[], (f32[], f32[]), f32[], f32[]) tuple(add.1, fusion, fusion2, exp.1)
     }
   )")
                     .value();
 
+  auto fusion_adaptor1 = HloFusionAdaptor::ForProducerConsumer(
+      module->entry_computation()->GetInstructionWithName("fusion"),
+      module->entry_computation()->GetInstructionWithName("fusion2"));
+
   HloInstructionAdaptor add{*module->GetComputationWithName("fused_computation")
-                                 ->GetInstructionWithName("add")};
+                                 ->GetInstructionWithName("add"),
+                            fusion_adaptor1.get()};
   EXPECT_THAT(add.GetUsers(), ElementsAre(InstructionAdaptorName("add.1"),
                                           InstructionAdaptorName("mul"),
                                           InstructionAdaptorName("res")));
+
+  auto fusion_adaptor2 = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->GetInstructionWithName("fusion2"));
+
   HloInstructionAdaptor mul{
       *module->GetComputationWithName("fused_computation_1")
-           ->GetInstructionWithName("mul")};
+           ->GetInstructionWithName("mul"),
+      fusion_adaptor2.get()};
   EXPECT_THAT(mul.GetUsers(), ElementsAre(InstructionAdaptorName("neg.1")));
+
+  HloInstructionAdaptor neg{
+      *module->GetComputationWithName("fused_computation_1")
+           ->GetInstructionWithName("neg.1"),
+      fusion_adaptor2.get()};
+  EXPECT_THAT(neg.GetUsers(), ElementsAre(InstructionAdaptorName("exp.1")));
 }
 
 TEST_F(HloTraversalTest, TraverseFusionConsumerFirst) {
@@ -268,7 +288,7 @@ const char kTwoFusions[] = R"(
       sum = f32[128] add(p1, p1)
       negate = f32[128] negate(sum)
       fusion.1 = f32[] fusion(p0, negate), kind=kLoop, calls=fused_computation_1
-      fusion.2 = f32[] fusion(fusion.1, negate), kind=kLoop, calls=fused_computation_2
+      fusion.2 = f32[] fusion(fusion.1, negate), kind=kLoop, calls=fused_computation_2 
       ROOT difference = f32[] subtract(fusion.2, p0)
     })";
 
@@ -279,6 +299,14 @@ TEST_F(HloTraversalTest, FuseFusionConsumer) {
   auto consumer =
       module->entry_computation()->GetInstructionWithName("fusion.1");
   auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
+
+  HloInstructionAdaptor reduce_1(
+      *module->GetComputationWithName("fused_computation_1")
+           ->GetInstructionWithName("reduce.1"),
+      fusion.get());
+
+  EXPECT_THAT(reduce_1.GetUsers(),
+              ElementsAre(InstructionAdaptorName("fusion.2")));
 
   std::vector<std::string> nodes;
   std::vector<std::string> params;
@@ -303,6 +331,15 @@ TEST_F(HloTraversalTest, FuseFusionProducer) {
       module->entry_computation()->GetInstructionWithName("difference");
   auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
 
+  HloInstructionAdaptor reduce_2(
+      *module->GetComputationWithName("fused_computation_2")
+           ->GetInstructionWithName("reduce.2"),
+      fusion.get());
+
+  EXPECT_THAT(reduce_2.GetOperands(),
+              ElementsAre(InstructionAdaptorName("negate"),
+                          InstructionAdaptorName("fusion.1")));
+
   std::vector<std::string> nodes;
   std::vector<std::string> params;
   HloBfsConsumersFirstTraversal(
@@ -314,7 +351,7 @@ TEST_F(HloTraversalTest, FuseFusionProducer) {
       [&](HloInstructionAdaptor arg) { params.emplace_back(arg.name()); });
 
   EXPECT_THAT(nodes, ElementsAre("difference", "reduce.2"));
-  EXPECT_THAT(params, ElementsAre("p0", "negate", "reduce.1"));
+  EXPECT_THAT(params, ElementsAre("p0", "negate", "fusion.1"));
 }
 
 TEST_F(HloTraversalTest, FuseFusionConsumerAndProducer) {

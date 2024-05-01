@@ -111,7 +111,8 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
   }
 
   auto slice_adaptor = HloFindIf(
-      {HloInstructionAdaptor(*start)}, adaptor, [](HloInstructionAdaptor node) {
+      {HloInstructionAdaptor(*start, &adaptor)}, adaptor,
+      [](HloInstructionAdaptor node) {
         return IsOpcodeAnyOf<HloOpcode::kDynamicSlice, HloOpcode::kSlice>(
             &node.instruction());
       });
@@ -226,7 +227,7 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
   }
 
   auto slice_adaptor = HloFindIf(
-      {HloInstructionAdaptor(*start)}, adaptor,
+      {HloInstructionAdaptor(*start, &adaptor)}, adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kDynamicUpdateSlice; },
       /*visit_operands=*/false);
   if (slice_adaptor.has_value()) {
