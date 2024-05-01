@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -678,8 +679,13 @@ namespace {
 // CompileOptions::parameter_is_tupled_arguments = false
 // and the HLO module is executed with
 // ExecuteOptions::arguments_are_tupled = false.
-// Additionally, we set ExecuteOptions::untuple_result = false.
 // We will create new on-device buffers for each repeated execution.
+//
+// Irrespective of the above, if the output is a tuple with leaves mixing host
+// and device memory spaces, we set ExecuteOptions::untuple_result = true.
+// Otherwise PJRT cannot correctly represent these tuples, because a PjRtBuffer
+// can only belong to one memory space. By "untupling", PJRT assigns a separate
+// PjRtBuffer to each leaf.
 
 enum class ParameterType {
   kOneTupleOfArrays = 0,
@@ -970,7 +976,20 @@ FunctionalHloRunner::RunInternal(
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   std::vector<std::vector<PjRtBuffer*>> argument_ptrs =
       CreateArgumentPointersFromDeviceBuffers(device_buffers);
-  bool default_untuple_result = execute_options.untuple_result;
+  auto output_has_tuple_leaf_on_host_memory_space = [&module]() {
+    if (!module.result_shape().IsTuple()) {
+      return false;
+    }
+    return absl::c_any_of(
+        module.result_shape().tuple_shapes(), [](const Shape& shape) {
+          return shape.has_layout() &&
+                 shape.layout().memory_space() == Layout::kHostMemorySpace;
+        });
+  };
+  // If any output leaf buffer is in host memory, PJRT requires untuple_result.
+  bool must_untuple_result = output_has_tuple_leaf_on_host_memory_space();
+  bool default_untuple_result =
+      must_untuple_result || execute_options.untuple_result;
   switch (parameter_type) {
     case ParameterType::kOneTupleOfArrays:
       execute_options.arguments_are_tupled = false;
@@ -986,6 +1005,9 @@ FunctionalHloRunner::RunInternal(
       execute_options.arguments_are_tupled = false;
       execute_options.untuple_result = false;
       break;
+  }
+  if (must_untuple_result) {
+    execute_options.untuple_result = true;
   }
   std::optional<std::vector<PjRtFuture<>>> futures;
   futures.emplace();
