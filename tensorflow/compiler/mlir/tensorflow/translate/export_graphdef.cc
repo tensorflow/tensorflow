@@ -130,7 +130,7 @@ class Exporter {
   // function are added to the graph with special op names kArgOp and kRetOp.
   // Later on, this graph can be converted a function definition and added to
   // another graph.
-  static StatusOr<std::unique_ptr<Graph>> Convert(
+  static absl::StatusOr<std::unique_ptr<Graph>> Convert(
       const GraphExportConfig& configs, const Dialect* tf_dialect,
       const SymbolTable& symbol_table, FuncOp function,
       FunctionLibraryDefinition* flib_def,
@@ -156,13 +156,12 @@ class Exporter {
 
   Status AddEdge(Operation* inst);
 
-  StatusOr<std::unique_ptr<NodeDef>> GetArgumentNode(BlockArgument arg,
-                                                     unsigned index,
-                                                     llvm::StringRef name);
-  StatusOr<std::unique_ptr<NodeDef>> GetReturnNode(FuncOp function,
-                                                   Value operand,
-                                                   unsigned index,
-                                                   llvm::StringRef name);
+  absl::StatusOr<std::unique_ptr<NodeDef>> GetArgumentNode(
+      BlockArgument arg, unsigned index, llvm::StringRef name);
+  absl::StatusOr<std::unique_ptr<NodeDef>> GetReturnNode(FuncOp function,
+                                                         Value operand,
+                                                         unsigned index,
+                                                         llvm::StringRef name);
   Status GetControlRetNodes(mlir::tf_executor::FetchOp fetch,
                             absl::flat_hash_set<Node*>* control_ret_nodes);
   // Adds one edge between src_node and dst_node. If it is not a control edge,
@@ -193,7 +192,7 @@ std::string FindFunctionName(const GraphExportConfig& configs, FuncOp func) {
   return func.getName().str();
 }
 
-StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
+absl::StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     BlockArgument arg, unsigned index, llvm::StringRef name) {
   auto func = arg.getParentRegion()->getParentOfType<FuncOp>();
 
@@ -255,7 +254,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
   return node_def;
 }
 
-StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
+absl::StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
     FuncOp function, Value operand, unsigned index, llvm::StringRef name) {
   auto node_def = std::make_unique<NodeDef>();
   if (!name.empty())
@@ -311,7 +310,7 @@ Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
       graph_->AddEdge(node_it->second, input_result.getResultNumber(), dst_node,
                       dst_index);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   auto input_arg = mlir::cast<BlockArgument>(src);
@@ -320,7 +319,7 @@ Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
       << "Use of BlockArgument encounted before def!";
   // For argument, there is only one result output, so the index is always 0.
   graph_->AddEdge(input_node_it->second, 0, dst_node, dst_index);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Exporter::AddEdge(Operation* inst) {
@@ -335,7 +334,7 @@ Status Exporter::AddEdge(Operation* inst) {
       TF_RETURN_IF_ERROR(AddEdgeBetweenNodes(operand, dst_node, 0));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // For tf_executor.NextIteration.Sink, skip its token operand and add data and
@@ -350,14 +349,14 @@ Status Exporter::AddEdge(Operation* inst) {
       TF_RETURN_IF_ERROR(AddEdgeBetweenNodes(control_and_idx.value(), dst_node,
                                              control_and_idx.index() + 1));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // For tf_executor.NextIteration.Source, op can be skipped as it is assumed
   // there are no operands.
   if (llvm::isa<mlir::tf_executor::NextIterationSourceOp>(inst)) {
     assert(inst->getNumOperands() == 0);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Operation* op = GetIslandInnerOpOrSelf(inst);
@@ -379,7 +378,7 @@ Status Exporter::AddEdge(Operation* inst) {
         AddEdgeBetweenNodes(operand_and_idx.value(), dst_node,
                             operand_and_idx.index() + operand_offset));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void Exporter::UseOriginalFunctionNames(NodeDef& node_def) {
@@ -426,7 +425,7 @@ Status Exporter::AddInstructionNode(Operation* inst) {
   TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(std::move(*node_def)));
   DCHECK(node != nullptr);
   nodes_[inst] = node;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool IsEntryFunctionArg(BlockArgument arg) {
@@ -440,7 +439,7 @@ Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
   TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index, name));
   TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(std::move(*node_def)));
   args_[arg] = node;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates return nodes per operand of a FetchOp. If names is supplied, those
@@ -461,7 +460,7 @@ Status Exporter::AddFetchNode(FuncOp function, mlir::tf_executor::FetchOp fetch,
     TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(std::move(*node_def)));
     return_nodes.push_back(node);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Collects control ret Nodes based on tf_executor.graph's associated
@@ -478,7 +477,7 @@ Status Exporter::GetControlRetNodes(
       control_ret_nodes->insert(node_it->second);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // After conversion from MLIR the input names are all blank which causes
@@ -497,7 +496,7 @@ void FixupInputNamesFromEdges(Graph* graph) {
     }
   }
 }
-StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
+absl::StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     const GraphExportConfig& configs, const Dialect* tf_dialect,
     const SymbolTable& symbol_table, FuncOp function,
     FunctionLibraryDefinition* flib_def,
@@ -606,7 +605,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       // library rather than the all the functions exported so far.
       TF_RETURN_IF_ERROR(graph->mutable_flib_def()->AddLibrary(*flib_def));
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   // Adds nodes for operations.
@@ -674,7 +673,7 @@ Status Exporter::ConvertLibFunction(
     llvm::SmallDenseSet<FuncOp>& visited_functions) {
   // Return early if the function has already been exported.
   bool is_new_function = visited_functions.insert(function).second;
-  if (!is_new_function) return OkStatus();
+  if (!is_new_function) return absl::OkStatus();
 
   auto function_name = FindFunctionName(configs, function);
 
@@ -785,7 +784,7 @@ Status Exporter::Convert(mlir::ModuleOp module,
   if (flib_def != nullptr) {
     TF_RETURN_IF_ERROR(flib_def->AddLibrary(temp_flib_def));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -810,7 +809,7 @@ Status ConvertMlirToGraph(mlir::ModuleOp module,
                             &control_ret_nodes);
 }
 
-StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
+absl::StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
     mlir::ModuleOp module, const GraphExportConfig& configs) {
   FunctionLibraryDefinition flib_def(OpRegistry::Global(),
                                      FunctionDefLibrary());
@@ -830,7 +829,7 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
   return graphdef;
 }
 
-tsl::Status ConvertMlirFunctionToFunctionLibraryDef(
+absl::Status ConvertMlirFunctionToFunctionLibraryDef(
     FuncOp func, const GraphExportConfig& configs, FunctionDef* function_def) {
   Dialect* tf_dialect = func.getContext()->getLoadedDialect("tf");
   FunctionLibraryDefinition flib_def(OpRegistry::Global(),
@@ -849,7 +848,7 @@ tsl::Status ConvertMlirFunctionToFunctionLibraryDef(
   const FunctionDef* func_def = flib_def.Find(name);
   if (func_def != nullptr) {
     *function_def = *func_def;
-    return OkStatus();
+    return absl::OkStatus();
   }
   return absl::InvalidArgumentError(
       absl::StrCat("Function '", name,
