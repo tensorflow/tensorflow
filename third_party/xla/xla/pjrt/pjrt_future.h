@@ -99,6 +99,22 @@ struct PjRtFutureHelpers {
 
 namespace internal {
 
+// TODO(b/337054455): We are in the process of migrating PjRtFuture to implicit
+// StatusOr payload type and while we are doing this we introduce a little bit
+// of template metaprogramming to detect PjRtFutures with absl::StatusOr
+// specializations as a value type.
+template <typename T>
+struct IsStatusOr : public std::false_type {
+  using Type = T;
+};
+template <typename T>
+struct IsStatusOr<absl::StatusOr<T>> : public std::true_type {
+  using Type = T;
+};
+
+template <typename T>
+inline constexpr bool is_status_or_v = IsStatusOr<T>::value;  // NOLINT
+
 // A base class to conditionally disable copy constructor and assignment for a
 // PjRtFuture<T> (by default we always disable copy constructor when `T` is not
 // copyable), which makes PjRtFuture<T> an `std::unique_ptr`-like container for
@@ -304,6 +320,10 @@ class PjRtFuture : public internal::PjRtFutureBase<T> {
 
   static_assert(!std::is_same_v<T, absl::Status>,
                 "Use PjRtFuture<> specialization for stateless futures");
+
+  // TODO(b/337054455): Disable PjRtFuture for StatusOr<T> specializations.
+  // static_assert(internal::is_status_or_v<T>,
+  //               "PjRtFuture<T> already has an implicit StatusOr semantics");
 
  public:
   class Promise : public Base::Promise {

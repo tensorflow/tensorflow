@@ -17,14 +17,22 @@ limitations under the License.
 #define XLA_PJRT_HOST_CALLBACK_H_
 
 #include <atomic>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/shape.h"
+#include "tsl/platform/logging.h"
 
 // The following provides an API for implementing host callbacks on top of
 // PjRT's send/recv interface (see xla::SendCallback and xla::RecvCallback).
@@ -57,15 +65,16 @@ class ThreadSafePjRtChunkQueue {
   }
 
   // Pop a PjRtChunk future from the queue.
-  PjRtFuture<PjRtChunk> Pop() {
+  PjRtFuture<absl::StatusOr<PjRtChunk>> Pop() {
     absl::MutexLock lock(&mu_);
     if (queue_.empty()) {
-      auto promise = PjRtFuture<PjRtChunk>::CreatePromise();
+      auto promise = PjRtFuture<absl::StatusOr<PjRtChunk>>::CreatePromise();
       promises_.push_back(promise);
-      return PjRtFuture<PjRtChunk>(std::move(promise));
+      return PjRtFuture<absl::StatusOr<PjRtChunk>>(std::move(promise));
     }
 
-    auto chunk = PjRtFuture<PjRtChunk>(std::move(queue_.front()));
+    auto chunk =
+        PjRtFuture<absl::StatusOr<PjRtChunk>>(std::move(queue_.front()));
     queue_.pop_front();
     return chunk;
   }
@@ -74,13 +83,14 @@ class ThreadSafePjRtChunkQueue {
   absl::Mutex mu_;
   std::deque<PjRtChunk> queue_ ABSL_GUARDED_BY(mu_);
   // Contains unfulfilled pop promises.
-  std::deque<PjRtFuture<PjRtChunk>::Promise> promises_ ABSL_GUARDED_BY(mu_);
+  std::deque<PjRtFuture<absl::StatusOr<PjRtChunk>>::Promise> promises_
+      ABSL_GUARDED_BY(mu_);
 };
 
 struct HostCallbackArgInfo {
   // The channel_id associated with this value in HLO.
   uint16_t channel_id;
-  // The host shape for thie value.
+  // The host shape for this value.
   Shape shape;
 };
 
@@ -95,7 +105,7 @@ struct HostCallback {
   // inputs. The buffers are only guaranteed to be alive during the call. The
   // callback can also return error status to indicate the entire execution
   // should fail.
-  std::function<Status(void**, void**)> callback;
+  std::function<absl::Status(void**, void**)> callback;
 };
 
 // A helper class that maintains the send/recv states for a host callback.
@@ -120,8 +130,8 @@ class HostCallbackContext {
     }
   }
 
-  Status OnSend(int arg_num, const PjRtTransferMetadata& metadata,
-                PjRtChunk data);
+  absl::Status OnSend(int arg_num, const PjRtTransferMetadata& metadata,
+                      PjRtChunk data);
 
   void Receive(int res_num, const PjRtTransferMetadata& metadata,
                std::unique_ptr<CopyToDeviceStream> stream);
