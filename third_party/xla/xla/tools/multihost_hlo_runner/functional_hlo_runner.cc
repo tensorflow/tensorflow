@@ -1236,50 +1236,39 @@ FunctionalHloRunner::CopyArgumentsToDevice(
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> argument_buffers;
   argument_buffers.resize(num_addressable_devices);
 
-  TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
-                      executable->GetCompileOptions());
-  const std::vector<Shape> argument_layouts =
-      compile_options.argument_layouts.value_or(std::vector<Shape>{});
-
   auto argument_memory_space =
-      [&argument_layouts, &flattened_arguments](
-          PjRtDevice* device, int arg_i) -> absl::StatusOr<PjRtMemorySpace*> {
-    auto shape_memory_space =
-        [&device](const Shape& shape) -> absl::StatusOr<PjRtMemorySpace*> {
-      auto shape_memory_space_non_tuple = [&device](const Shape& non_tuple) {
-        if (non_tuple.has_layout() &&
-            non_tuple.layout().memory_space() == Layout::kHostMemorySpace) {
-          return device->memory_space_by_kind(PinnedHostMemorySpace::kKind);
-        }
-        return device->default_memory_space();
-      };
-
-      if (!shape.IsTuple()) {
-        return shape_memory_space_non_tuple(shape);
-      }
-      if (shape.tuple_shapes_size() > 0) {
-        // PJRT only supports tuples whose elements are all in the same memory
-        // space, so we only look at the first element's memory space.
-        const Shape& shape0 = shape.tuple_shapes(0);
-        TF_RET_CHECK(!shape0.IsTuple()) << "Nested tuples are not supported";
-        return shape_memory_space_non_tuple(shape0);
+      [&flattened_arguments](const HloModule* module, PjRtDevice* device,
+                             int arg_i) -> absl::StatusOr<PjRtMemorySpace*> {
+    auto non_tuple_memory_space = [&device](const Shape& shape) {
+      if (shape.has_layout() &&
+          shape.layout().memory_space() == Layout::kHostMemorySpace) {
+        return device->memory_space_by_kind(PinnedHostMemorySpace::kKind);
       }
       return device->default_memory_space();
     };
 
-    TF_RET_CHECK(!argument_layouts.empty());
-    if (argument_layouts[0].IsTuple() && flattened_arguments) {
-      TF_RET_CHECK(argument_layouts.size() == 1)
-          << "argument_layouts.size(): " << argument_layouts.size();
-      TF_RET_CHECK(arg_i < argument_layouts[0].tuple_shapes_size());
-      const Shape& shape = argument_layouts[0].tuple_shapes(arg_i);
+    const ComputationLayout& entry_layout = module->entry_computation_layout();
+    TF_RET_CHECK(entry_layout.parameter_count() > 0);
+    if (entry_layout.parameter_shape(0).IsTuple() && flattened_arguments) {
+      TF_RET_CHECK(entry_layout.parameter_count() == 1)
+          << "entry_layout.parameter_count(): "
+          << entry_layout.parameter_count();
+      TF_RET_CHECK(arg_i < entry_layout.parameter_shape(0).tuple_shapes_size());
+      const Shape& shape = entry_layout.parameter_shape(0).tuple_shapes(arg_i);
       TF_RET_CHECK(!shape.IsTuple()) << "Nested tuples are not supported";
-      return shape_memory_space(shape);
+      return non_tuple_memory_space(shape);
     }
-    TF_RET_CHECK(arg_i < argument_layouts.size());
-    const Shape& shape = argument_layouts[arg_i];
-    return shape_memory_space(shape);
+    TF_RET_CHECK(arg_i < entry_layout.parameter_count());
+    const Shape& shape = entry_layout.parameter_shape(arg_i);
+    TF_RET_CHECK(!shape.IsTuple()) << "Param tuple without flattened_arguments";
+    return non_tuple_memory_space(shape);
   };
+
+  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
+      addressable_device_logical_ids =
+          executable->addressable_device_logical_ids();
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
+                      executable->GetHloModules());
 
   for (int i = 0; i < num_addressable_devices; ++i) {
     PjRtDevice* curr_device = addressable_devices[i];
@@ -1298,6 +1287,11 @@ FunctionalHloRunner::CopyArgumentsToDevice(
     const std::vector<Literal>& curr_device_arguments =
         arguments.at(source_device_id);
 
+    int executable_idx = hlo_modules.size() == 1
+                             ? 0
+                             : addressable_device_logical_ids[i].partition;
+    HloModule* module = hlo_modules[executable_idx].get();
+
     argument_buffers[i].reserve(curr_device_arguments.size());
     for (int arg_i = 0; arg_i < curr_device_arguments.size(); ++arg_i) {
       const Literal& literal = curr_device_arguments[arg_i];
@@ -1306,9 +1300,7 @@ FunctionalHloRunner::CopyArgumentsToDevice(
                   << ", input = " << literal.ToString();
       }
       TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
-                          compile_options.argument_layouts.has_value()
-                              ? argument_memory_space(curr_device, arg_i)
-                              : curr_device->default_memory_space());
+                          argument_memory_space(module, curr_device, arg_i));
       TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> argument_buffer,
                           client.BufferFromHostLiteral(literal, memory_space));
       argument_buffers[i].push_back(std::move(argument_buffer));
