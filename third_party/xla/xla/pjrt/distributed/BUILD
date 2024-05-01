@@ -124,6 +124,7 @@ cc_library(
         "//xla:util",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:utils",
+        "//xla/pjrt/gpu:gpu_topology_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
