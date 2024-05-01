@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -57,9 +58,11 @@ class CallFrameBuilder {
   CallFrameBuilder(CallFrameBuilder&&);
   CallFrameBuilder& operator=(CallFrameBuilder&&);
 
-  using Scalar = std::variant<int32_t, int64_t, float>;
-  using Array = std::variant<std::vector<int32_t>, std::vector<int64_t>,
-                             std::vector<float>>;
+  using Scalar =
+      std::variant<bool, int8_t, int16_t, int32_t, int64_t, float, double>;
+  using Array = std::variant<std::vector<int8_t>, std::vector<int16_t>,
+                             std::vector<int32_t>, std::vector<int64_t>,
+                             std::vector<float>, std::vector<double>>;
 
   // Declare implementation detail structs for call frame builder storage.
   struct Dictionary;
@@ -84,6 +87,10 @@ class CallFrameBuilder {
     AttributesBuilder();
     ~AttributesBuilder();
 
+    // This overload is only necessary to support older GCC versions.
+    void Insert(std::string name, const char* attr) {
+      Insert(std::move(name), std::string(attr));
+    }
     void Insert(std::string name, FlatAttribute attr);
     void Insert(std::string name, FlatAttributesMap attrs);
 
