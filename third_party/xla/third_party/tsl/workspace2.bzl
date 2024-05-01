@@ -297,10 +297,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "nsync",
         patch_file = ["//third_party:nsync.patch"],
-        sha256 = "2be9dbfcce417c7abcc2aa6fee351cd4d292518d692577e74a2c6c05b049e442",
-        strip_prefix = "nsync-1.25.0",
+        sha256 = "e8e552a358f4a28e844207a7c5cb51767e4aeb0b29e22d23ac2a09924130f761",
+        strip_prefix = "nsync-1.27.0",
         system_build_file = "//third_party/systemlibs:nsync.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/nsync/archive/1.25.0.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/nsync/archive/1.27.0.tar.gz"),
     )
 
     tf_http_archive(
