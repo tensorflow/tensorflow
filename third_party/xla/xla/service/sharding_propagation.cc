@@ -1225,6 +1225,49 @@ bool InferUnspecifiedDimsFromUsers(HloInstruction* annotate_op,
   return changed;
 }
 
+bool InferUnspecifiedDimsFromShardGroup(
+    HloInstruction* annotate_op, absl::Span<const int64_t> unspecified_dims,
+    const absl::flat_hash_set<HloInstruction*>& shard_group) {
+  // ProcessShardingInstruction will either keep the "Sharding" custom call as
+  // is or replace it with a copy.
+  CHECK(annotate_op->IsCustomCall("Sharding") ||
+        annotate_op->opcode() == HloOpcode::kCopy);
+
+  // Do not propagate sharding to ShardBarrierTo custom-call.
+  if (annotate_op->IsCustomCall(spmd::kShardBarrierTo)) {
+    return false;
+  }
+
+  bool changed = false;
+  for (const HloInstruction* member : shard_group) {
+    if (member == annotate_op) {
+      continue;
+    }
+    // Do not propagate sharding from ShardBarrierFrom custom-call.
+    if (member->IsCustomCall(spmd::kShardBarrierFrom)) {
+      continue;
+    }
+    if (!IsSpatiallyPartitioned(member)) {
+      continue;
+    }
+    const HloSharding& member_sharding = member->sharding();
+    if (!member_sharding.IsTiled()) {
+      continue;
+    }
+    HloSharding partial_replicated =
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
+            member_sharding, unspecified_dims);
+    HloSharding sharding = annotate_op->sharding();
+    if (!hlo_sharding_util::MergeShardingIfCompatible(
+            partial_replicated, sharding.NumTiles() + 1, &sharding)) {
+      continue;
+    }
+    annotate_op->set_sharding(sharding);
+    changed |= true;
+  }
+  return changed;
+}
+
 // Returns whether an op is a target for CSE prevention.
 bool IsCSEPreventionTarget(const HloInstruction* instruction) {
   // Scalar broadcasts are the most common CSE target that causes cross-layer
@@ -1582,7 +1625,7 @@ absl::StatusOr<bool> ProcessShardingInstruction(
       if (instruction->IsCustomCall("Sharding") && !replaced_with_copy) {
         // Pass shard group to operand sharding custom-call if it's not
         // replaced with a copy, meaning that the shardings are to annotate
-        // shard_group or shard_barrier only.
+        // shard_group.
         HloSharding operand_sharding = instruction->operand(0)->has_sharding()
                                            ? instruction->operand(0)->sharding()
                                            : HloSharding::Unknown();
@@ -2238,7 +2281,8 @@ bool ShardingPropagation::InferShardingFromShardGroup(
   // Propagate manual sharding.
   if (!instruction->has_sharding() || instruction->sharding().IsTileMaximal()) {
     for (const HloInstruction* member : shard_group) {
-      if (!member->has_sharding() || !member->sharding().IsManual()) {
+      if (!member->has_sharding() || !member->sharding().IsManual() ||
+          member == instruction) {
         continue;
       }
       instruction->set_sharding(member->sharding());
@@ -2249,7 +2293,9 @@ bool ShardingPropagation::InferShardingFromShardGroup(
   const bool may_combine_partial_sharding = is_spmd_ && aggressiveness > 0;
   bool changed = false;
   for (const HloInstruction* member : shard_group) {
-    if (member->IsCustomCall(spmd::kShardBarrierFrom)) {
+    // Do not propagate sharding from ShardBarrierFrom custom-call.
+    if (member == instruction ||
+        member->IsCustomCall(spmd::kShardBarrierFrom)) {
       continue;
     }
     changed |= MaybeImproveInstructionSharding(member->sharding(), instruction,
@@ -3309,6 +3355,20 @@ absl::StatusOr<bool> ShardingPropagation::Run(
                     ? shard_group_id_to_shard_as_group.at(shard_group_id)
                     : shard_group_id_to_shard_like_group.at(shard_group_id);
             if (provided_shardings.contains(instruction)) {
+              if (!may_merge_partial) {
+                continue;
+              }
+              auto it = unspecified_dims.find(instruction);
+              if (it != unspecified_dims.end() &&
+                  InferUnspecifiedDimsFromShardGroup(instruction, it->second,
+                                                     shard_group)) {
+                ++inferred_from_shard_group_counter;
+                VLOG(2) << "Refined partial sharding (shard group): "
+                        << instruction->ToString();
+                clear_cache(instruction);
+                already_inferred_from_shard_group.insert(instruction);
+                changed_last_iter = true;
+              }
               continue;
             }
             already_inferred_from_shard_group.insert(instruction);
@@ -3469,9 +3529,23 @@ absl::StatusOr<bool> ShardingPropagation::Run(
     VLOG(2) << "Aligning shard group: " << shard_as_group_id
             << " to sharding:" << common_sharding.ToString();
     for (HloInstruction* member : shard_as_group) {
-      if (!member->IsCustomCall(spmd::kShardBarrierTo)) {
-        member->set_sharding(common_sharding);
+      if (member->IsCustomCall(spmd::kShardBarrierTo)) {
+        continue;
       }
+      if (provided_shardings.contains(member)) {
+        auto it = unspecified_dims.find(member);
+        if (it != unspecified_dims.end()) {
+          HloSharding partial_replicated =
+              hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
+                  common_sharding, it->second);
+          HloSharding sharding = member->sharding();
+          if (hlo_sharding_util::MergeShardingIfCompatible(
+                  partial_replicated, sharding.NumTiles() + 1, &sharding)) {
+            member->set_sharding(sharding);
+          }
+        }
+      }
+      member->set_sharding(common_sharding);
     }
   }
 

@@ -11793,5 +11793,79 @@ ENTRY entry_computation {
   }
 }
 
+TEST_F(ShardingPropagationTest, ShardAsWithShardBarrier) {
+  const char* const hlo_string = R"(
+HloModule pjit_f
+
+ENTRY main.11 {
+  Arg_0.1 = bf16[384,1408]{1,0} parameter(0), sharding={devices=[1,16,512]<=[8,16,64]T(1,0,2) last_tile_dim_replicate}
+  broadcast.4 = bf16[8,384,1408]{2,1,0} broadcast(Arg_0.1), dimensions={1,2}
+  custom-call.5 = bf16[8,384,1408]{2,1,0} custom-call(broadcast.4), custom_call_target="Sharding", custom_call_has_side_effect=true, sharding={unknown shard_as 1}
+  broadcast.2 = bf16[8,384,1408]{2,1,0} broadcast(Arg_0.1), dimensions={1,2}
+  custom-call.3 = bf16[8,384,1408]{2,1,0} custom-call(broadcast.2), custom_call_target="Sharding", sharding={devices=[8,1,1,1024]<=[8192] last_tile_dim_replicate}, backend_config="unspecified_dims=[1,2]"
+  custom-call.6 = bf16[8,384,1408]{2,1,0} custom-call(custom-call.3), custom_call_target="Sharding", custom_call_has_side_effect=true, sharding={unknown shard_as 1}
+  %shard-barrier-to = bf16[8,384,1408]{2,1,0} custom-call(%custom-call.6), custom_call_target="ShardBarrierTo", custom_call_has_side_effect=true
+  slice.7 = bf16[1,384,1408]{2,1,0} slice(shard-barrier-to), slice={[1:2], [0:384], [0:1408]}
+  reshape.8 = bf16[384,1408]{1,0} reshape(slice.7)
+  tuple.9 = (bf16[384,1408]{1,0}) tuple(reshape.8)
+  get-tuple-element.10 = bf16[384,1408]{1,0} get-tuple-element(tuple.9), index=0, sharding={devices=[16,1,512]<=[8,16,64]T(1,0,2) last_tile_dim_replicate}
+  ROOT tuple.13 = (bf16[384,1408]{1,0}, bf16[8,384,1408]{2,1,0}) tuple(get-tuple-element.10, custom-call.5)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* broadcast_4 = FindInstruction(module.get(), "broadcast.4");
+  ASSERT_NE(broadcast_4, nullptr);
+  EXPECT_THAT(
+      broadcast_4,
+      op::Sharding("{devices=[8,1,16,64]<=[8192] last_tile_dim_replicate}"));
+  auto* copy = FindInstruction(module.get(), "copy");
+  ASSERT_NE(copy, nullptr);
+  EXPECT_THAT(
+      copy,
+      op::Sharding("{devices=[8,1,16,64]<=[8192] last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, ShardAsWithShardBarrier2) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %elementwise {
+  %param0 = f32[5,7,11,13]{3,2,1,0} parameter(0)
+  %custom-call.0 = f32[5,7,11,13]{3,2,1,0} custom-call(param0), custom_call_target="Sharding", sharding={devices=[2,1,1,1,4]<=[8] last_tile_dim_replicate}, backend_config="unspecified_dims=[1,2,3]"
+  %shard-barrier-from = f32[5,7,11,13]{3,2,1,0} custom-call(%custom-call.0), custom_call_target="ShardBarrierFrom", custom_call_has_side_effect=true
+  %custom-call.2 = f32[5,7,11,13]{3,2,1,0} custom-call(shard-barrier-from), custom_call_target="Sharding", custom_call_has_side_effect=true, sharding={unknown shard_as 1}
+  %param1 = f32[5,7,11,13]{3,2,1,0} parameter(1)
+  %custom-call.1 = f32[5,7,11,13]{3,2,1,0} custom-call(param1), custom_call_target="Sharding", sharding={devices=[1,2,2,1,2]<=[2,4]T(1,0) last_tile_dim_replicate}, backend_config="unspecified_dims=[0]"
+  %custom-call.3 = f32[5,7,11,13]{3,2,1,0} custom-call(custom-call.1), custom_call_target="Sharding", custom_call_has_side_effect=true, sharding={unknown shard_as 1}
+  ROOT %tuple = (f32[5,7,11,13]{3,2,1,0}, f32[5,7,11,13]{3,2,1,0}) tuple(%custom-call.0, %custom-call.3)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Sharding(
+          "{{devices=[2,2,2,1]<=[8]}, {devices=[1,2,2,1,2]<=[2,4]T(1,0) "
+          "last_tile_dim_replicate}}"));
+}
+
 }  // namespace
 }  // namespace xla
