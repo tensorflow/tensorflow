@@ -1,7 +1,7 @@
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
-@@ -13,153 +13,20 @@
+@@ -13,154 +13,20 @@
  # See the License for the specific language governing permissions and
  # limitations under the License.
  #
@@ -43,6 +43,7 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
  #-------------------------------------------------------------------------------
 -option(STABLEHLO_BUILD_EMBEDDED "Build StableHLO as part of another project" OFF)
 -option(STABLEHLO_ENABLE_BINDINGS_PYTHON "Enables StableHLO Python bindings" OFF)
+-option(STABLEHLO_ENABLE_PYTHON_TF_TESTS "Enables StableHLO to SavedModel tests requiring TF" OFF)
 -option(STABLEHLO_ENABLE_STRICT_BUILD "Build StableHLO with strict warnings and warnings as errors" OFF)
 -option(STABLEHLO_ENABLE_SANITIZER "Enable a sanitizer [OFF, address]" OFF)
 -option(STABLEHLO_ENABLE_SPLIT_DWARF "Enable split DWARF if the platform supports it" OFF)
@@ -2563,16 +2564,4 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
---- stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
-+++ stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
-@@ -735,7 +735,7 @@
-       addToWorkList(retOp.getOperand(resultNo));
-       while (!workList.empty()) {
-         auto definition = workList.pop_back_val();
--        if (auto blockArg = definition.dyn_cast<BlockArgument>()) {
-+        if (auto blockArg = dyn_cast<BlockArgument>(definition)) {
-           // using one argument implies using the whole argument pair
-           const auto pairNo = blockArg.getArgNumber() % numOperandPairs;
-           usedArgs.set(pairNo);
 
