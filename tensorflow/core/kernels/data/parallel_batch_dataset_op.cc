@@ -439,7 +439,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         return status;
       };
 
-      (*ctx->runner())(copy_elements_fn);
+      (*ctx->runner())(std::move(copy_elements_fn));
     }
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
