@@ -75,15 +75,24 @@ void RegisterGpuClientAndDefineGpuAllocatorConfig(nanobind::module_& m_nb) {
           }
           GpuClientOptions options;
           options.allocator_config = allocator_config;
-          options.node_id = node_id;
-          options.num_nodes = num_nodes;
+          options.process_id = node_id;
+          options.num_processes = num_nodes;
           options.allowed_devices = allowed_devices;
           options.platform_name = platform_name;
           options.kv_store = kv_store;
           options.enable_mock_nccl = mock.value_or(false);
           std::unique_ptr<PjRtClient> pjrt_client =
               xla::ValueOrThrow(GetStreamExecutorGpuClient(options));
-          ifrt_client = ifrt::PjRtClient::Create(std::move(pjrt_client));
+          ifrt::PjRtClient::CreateOptions ifrt_options;
+          ifrt_options.pjrt_client =
+              std::shared_ptr<PjRtClient>(std::move(pjrt_client));
+          if (distributed_client != nullptr) {
+            ifrt_options.kv_store = kv_store;
+            ifrt_options.process_id = node_id;
+            ifrt_options.num_processes = num_nodes;
+          }
+          ifrt_client =
+              ValueOrThrow(ifrt::PjRtClient::Create(std::move(ifrt_options)));
         }
         return PyClient::Make(std::move(ifrt_client));
       },

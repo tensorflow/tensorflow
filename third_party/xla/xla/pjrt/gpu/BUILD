@@ -58,6 +58,7 @@ cc_library(
         "//xla/pjrt:local_device_state",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
@@ -89,6 +90,7 @@ cc_library(
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/functional:bind_front",
@@ -180,7 +182,6 @@ cc_library(
     srcs = ["nccl_id_store.cc"],
     hdrs = ["nccl_id_store.h"],
     deps = [
-        "//xla:status_macros",
         "//xla:statusor",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:global_device_id",
@@ -188,6 +189,8 @@ cc_library(
         "//xla/service/gpu/runtime:nccl_clique_key",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:errors",
@@ -224,6 +227,7 @@ cc_library(
     hdrs = ["gpu_topology.h"],
     deps = [
         ":gpu_topology_proto_cc",
+        "//xla/pjrt:pjrt_common",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

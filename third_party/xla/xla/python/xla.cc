@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
-#include "xla/ffi/ffi_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt_proxy/client/py_module.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_program.h"
@@ -302,20 +303,24 @@ NB_MODULE(xla_extension, m_nb) {
         {
           nb::gil_scoped_release gil_release;
           CpuClientOptions options;
-          if (distributed_client != nullptr) {
-            options.kv_store =
-                GetDistributedKeyValueStore(distributed_client,
-                                            /*key_prefix=*/"cpu:");
-            options.node_id = node_id;
-            options.num_nodes = num_nodes;
-
-            options.collectives = std::move(collectives);
-          }
 
           options.asynchronous = asynchronous;
+          options.collectives = std::move(collectives);
+          options.process_id = node_id;
           std::unique_ptr<PjRtClient> client =
               xla::ValueOrThrow(GetTfrtCpuClient(options));
-          ifrt_client = ifrt::PjRtClient::Create(std::move(client));
+          ifrt::PjRtClient::CreateOptions ifrt_options;
+          ifrt_options.pjrt_client =
+              std::shared_ptr<PjRtClient>(std::move(client));
+          if (distributed_client != nullptr) {
+            ifrt_options.kv_store =
+                GetDistributedKeyValueStore(distributed_client,
+                                            /*key_prefix=*/"cpu:");
+            ifrt_options.process_id = node_id;
+            ifrt_options.num_processes = num_nodes;
+          }
+          ifrt_client =
+              ValueOrThrow(ifrt::PjRtClient::Create(std::move(ifrt_options)));
         }
         return PyClient::Make(std::move(ifrt_client));
       },
@@ -404,28 +409,27 @@ NB_MODULE(xla_extension, m_nb) {
             GetCApiTopology(static_cast<const PJRT_Api*>(c_api.data()),
                             topology_name, options));
       });
-  m_nb.def(
-      "get_topology_for_devices",
-      [](const std::vector<nb_class_ptr<PyDevice>>& py_devices) {
-        if (py_devices.empty()) {
-          throw nb::value_error(
-              "get_topology_for_devices requires >= 1 devices.");
-        }
-        auto client = py_devices[0]->client();
-        ifrt::DeviceList::Devices ifrt_devices;
-        ifrt_devices.reserve(py_devices.size());
-        for (const auto& py_device : py_devices) {
-          if (py_device->client().get() != client.get()) {
-            throw nb::value_error(
-                "devices passed to get_topology_for_devices come from "
-                "different clients.");
-          }
-          ifrt_devices.push_back(py_device->device());
-        }
-        ifrt::DeviceList device_list(std::move(ifrt_devices));
-        return xla::ValueOrThrow(
-            client->ifrt_client()->GetTopologyForDevices(device_list));
-      });
+  m_nb.def("get_topology_for_devices",
+           [](const std::vector<nb_class_ptr<PyDevice>>& py_devices) {
+             if (py_devices.empty()) {
+               throw nb::value_error(
+                   "get_topology_for_devices requires >= 1 devices.");
+             }
+             auto client = py_devices[0]->client();
+             ifrt::DeviceList::Devices ifrt_devices;
+             ifrt_devices.reserve(py_devices.size());
+             for (const auto& py_device : py_devices) {
+               if (py_device->client().get() != client.get()) {
+                 throw nb::value_error(
+                     "devices passed to get_topology_for_devices come from "
+                     "different clients.");
+               }
+               ifrt_devices.push_back(py_device->device());
+             }
+             ifrt::DeviceList device_list(std::move(ifrt_devices));
+             return xla::ValueOrThrow(
+                 client->ifrt_client()->GetTopologyForDevices(device_list));
+           });
 
   TF_CHECK_OK(PyArray::RegisterTypes(m_nb));
   jax::RegisterDeviceList(m_nb);

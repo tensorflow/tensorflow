@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/bind_front.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_computation.h"
@@ -54,8 +54,10 @@ limitations under the License.
 #include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
+#include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -897,83 +899,34 @@ GetStreamExecutorGpuDeviceAllocator(
 absl::Status BuildDistributedDevices(
     std::string_view platform_name,
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
-    int node_id, int num_nodes,
+    int process_id, int num_processes,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>* devices,
     gpu::GpuExecutableRunOptions* gpu_executable_run_options,
-    std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
-    absl::Duration get_local_topology_timeout,
-    absl::Duration get_global_topology_timeout) {
-  LocalTopologyProto local_topology;
-  local_topology.set_node_id(node_id);
-  std::string boot_id_str;
-  auto boot_id_str_or_status = GetBootIdString();
-  if (!boot_id_str_or_status.ok()) {
-    LOG(INFO) << boot_id_str_or_status.status();
-  } else {
-    boot_id_str = boot_id_str_or_status.value();
-  }
-  local_topology.set_boot_id(boot_id_str);
-  for (const auto& ordinal_and_device : local_device_states) {
+    std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl) {
+  absl::flat_hash_set<GlobalDeviceId> local_device_ids;
+  std::map<int, GlobalDeviceId> gpu_device_ids;
+  for (auto& ordinal_and_device : local_device_states) {
     const se::Platform* platform =
         ordinal_and_device.second->executor()->GetPlatform();
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::se::DeviceDescription> desc,
         platform->DescriptionForDevice(ordinal_and_device.first));
-    DeviceProto* device_proto = local_topology.add_devices();
-    device_proto->set_local_device_ordinal(ordinal_and_device.first);
-    device_proto->set_name(desc->name());
-    device_proto->set_vendor(desc->device_vendor());
-    device_proto->set_compute_capability(
-        MakeComputeCapabilityString(desc.get()));
-    device_proto->set_core_count(desc->core_count());
-  }
-
-  GlobalTopologyProto global_topology;
-  if (enable_mock_nccl) {
-    std::vector<LocalTopologyProto> local_topologies(num_nodes, local_topology);
-    for (int i = 0; i < num_nodes; ++i) {
-      local_topologies[i].set_node_id(i);
-    }
-    global_topology = BuildGlobalTopology(absl::MakeSpan(local_topologies));
-  } else {
-    TF_RETURN_IF_ERROR(ExchangeTopologies(
-        platform_name, node_id, num_nodes, get_local_topology_timeout,
-        get_global_topology_timeout, kv_store.get(), local_topology,
-        &global_topology));
-  }
-
-  std::map<int, GlobalDeviceId> gpu_device_ids;
-  absl::flat_hash_map<GlobalDeviceId, int> device_to_node;
-  for (const LocalTopologyProto& node : global_topology.nodes()) {
-    for (const DeviceProto& device_proto : node.devices()) {
-      GlobalDeviceId global_device_id(device_proto.global_device_id());
-      device_to_node[global_device_id] = node.node_id();
-      std::unique_ptr<LocalDeviceState> local_device;
-      if (node.node_id() == node_id) {
-        auto it = local_device_states.find(device_proto.local_device_ordinal());
-        TF_RET_CHECK(it != local_device_states.end())
-            << device_proto.local_device_ordinal();
-        TF_RET_CHECK(it->second != nullptr);
-        local_device = std::move(it->second);
-        gpu_device_ids[device_proto.local_device_ordinal()] = global_device_id;
-      }
-      auto device = std::make_unique<StreamExecutorGpuDevice>(
-          device_proto.global_device_id(), std::move(local_device),
-          device_proto.name(), device_proto.vendor(),
-          device_proto.compute_capability(), device_proto.core_count(),
-          node.node_id(), device_proto.slice_index());
-      devices->push_back(std::move(device));
-    }
-  }
-  for (const auto& device : local_device_states) {
-    TF_RET_CHECK(device.second == nullptr);
+    PjRtGlobalDeviceId global_device_id =
+        PackGpuDeviceId(process_id, ordinal_and_device.first);
+    devices->push_back(std::make_unique<StreamExecutorGpuDevice>(
+        global_device_id, std::move(ordinal_and_device.second), desc->name(),
+        desc->device_vendor(), MakeComputeCapabilityString(desc.get()),
+        desc->core_count(), process_id));
+    gpu_device_ids[ordinal_and_device.first] =
+        GlobalDeviceId(global_device_id.value());
+    local_device_ids.insert(GlobalDeviceId(global_device_id.value()));
   }
   gpu_executable_run_options->set_gpu_global_device_ids(
       std::move(gpu_device_ids));
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  if (num_nodes > 1) {
-    auto nccl_id_store = std::make_shared<NcclIdStore>(node_id, device_to_node,
-                                                       std::move(kv_store));
+  if (num_processes > 1) {
+    auto nccl_id_store =
+        std::make_shared<NcclIdStore>(local_device_ids, std::move(kv_store));
     gpu_executable_run_options->set_nccl_clique_id_callback(
         [nccl_id_store](const gpu::NcclCliqueKey& key) {
           return nccl_id_store->GetNcclUniqueId(key);
@@ -1014,14 +967,12 @@ std::string MakeComputeCapabilityString(const se::DeviceDescription* desc) {
 }
 
 StreamExecutorGpuDevice::StreamExecutorGpuDevice(
-    int id, std::unique_ptr<LocalDeviceState> local_device_state,
+    PjRtGlobalDeviceId id, std::unique_ptr<LocalDeviceState> local_device_state,
     std::string device_kind, std::string device_vendor,
-    std::string compute_capability, int core_count, int node_id,
-    int slice_index)
+    std::string compute_capability, int core_count, int process_id)
     : PjRtStreamExecutorDevice(id, std::move(local_device_state),
-                               std::move(device_kind), node_id),
-      device_vendor_(std::move(device_vendor)),
-      slice_index_(slice_index) {
+                               std::move(device_kind), process_id),
+      device_vendor_(std::move(device_vendor)) {
   int64_t core_index = 0;
   description().SetCoreOnChip(core_index);
   std::array<int, 1> coords = {local_device_id().value()};
@@ -1033,19 +984,15 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
       {{"coords", xla::PjRtDeviceAttribute(v_coords)},
        {"core_on_chip", xla::PjRtDeviceAttribute(core_index)},
        {"device_vendor", device_vendor_},
-       {"slice_index", static_cast<int64_t>(slice_index)},
        {"compute_capability", xla::PjRtDeviceAttribute(compute_capability)},
        {"core_count", static_cast<int64_t>(core_count)}});
   description().SetToString(absl::StrFormat(
-      "StreamExecutorGpuDevice(device_kind=%s, id=%i, process_index=%i, "
-      "slice_index=%i))",
-      description().device_kind(), id, process_index(), slice_index));
-  description().SetDebugString(absl::StrFormat("%s_%i(process=%i,(%i))",
-                                               description().device_kind(), id,
-                                               process_index(), v_coords[0]));
+      "StreamExecutorGpuDevice(device_kind=%s, id=%i, process_index=%i)",
+      description().device_kind(), id.value(), process_index()));
+  description().SetDebugString(
+      absl::StrFormat("%s_%i(process=%i,(%i))", description().device_kind(),
+                      id.value(), process_index(), v_coords[0]));
 }
-
-int StreamExecutorGpuDevice::slice_index() const { return slice_index_; }
 
 absl::string_view StreamExecutorGpuDevice::device_vendor() const {
   return device_vendor_;
@@ -1128,16 +1075,16 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   if (options.enable_mock_nccl) {
     kv_store = std::make_shared<InMemoryKeyValueStore>();
   }
-  TF_RET_CHECK(options.num_nodes == 1 || kv_store != nullptr);
+  TF_RET_CHECK(options.num_processes == 1 || kv_store != nullptr);
   TF_RETURN_IF_ERROR(BuildDistributedDevices(
-      pjrt_platform_name, std::move(local_device_states), options.node_id,
-      options.num_nodes, &devices, gpu_run_options.get(), kv_store,
+      pjrt_platform_name, std::move(local_device_states), options.process_id,
+      options.num_processes, &devices, gpu_run_options.get(), kv_store,
       options.enable_mock_nccl));
   auto memory_spaces = BuildMemorySpaces(devices);
 
   return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(
       pjrt_platform_name, xla_client, std::move(devices),
-      std::move(memory_spaces), options.node_id, std::move(allocator),
+      std::move(memory_spaces), options.process_id, std::move(allocator),
       std::move(host_memory_allocator),
       options.should_stage_host_to_device_transfers,
       std::move(gpu_run_options)));
@@ -1160,15 +1107,15 @@ absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
-    int node_id) {
+    int process_id) {
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   for (auto& ordinal_and_device : local_device_states) {
     const se::DeviceDescription& desc =
         ordinal_and_device.second->executor()->GetDeviceDescription();
     auto device = std::make_unique<StreamExecutorGpuDevice>(
-        ordinal_and_device.first, std::move(ordinal_and_device.second),
-        desc.name(), desc.device_vendor(), MakeComputeCapabilityString(&desc),
-        desc.core_count(), node_id);
+        PjRtGlobalDeviceId(ordinal_and_device.first),
+        std::move(ordinal_and_device.second), desc.name(), desc.device_vendor(),
+        MakeComputeCapabilityString(&desc), desc.core_count(), process_id);
     devices.push_back(std::move(device));
   }
   return devices;

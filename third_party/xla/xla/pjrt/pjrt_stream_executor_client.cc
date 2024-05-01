@@ -3349,12 +3349,10 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
     addressable_devices.reserve(num_replicas * num_partitions);
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
-        int64_t device_id = (*device_assignment)(replica, partition);
-        PjRtGlobalDeviceId global_device_id(device_id);
-
-        TF_ASSIGN_OR_RETURN(PjRtDevice * device,
-                            LookupDevice(global_device_id));
-        if (device->process_index() != process_index()) {
+        int device_id = (*device_assignment)(replica, partition);
+        auto it = id_to_device_.find(device_id);
+        if (it == id_to_device_.end() ||
+            it->second->process_index() != process_index()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }
@@ -3362,7 +3360,7 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
         logica_device_ids.replica = replica;
         logica_device_ids.partition = partition;
         addressable_device_logical_ids.push_back(std::move(logica_device_ids));
-        addressable_devices.push_back(device);
+        addressable_devices.push_back(it->second);
       }
     }
     if (addressable_devices.empty()) {

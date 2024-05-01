@@ -75,9 +75,10 @@ namespace xla {
 
 class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
  public:
-  explicit PjRtStreamExecutorDeviceDescription(int id, std::string device_kind,
+  explicit PjRtStreamExecutorDeviceDescription(PjRtGlobalDeviceId id,
+                                               std::string device_kind,
                                                int process_index = 0)
-      : id_(id),
+      : id_(id.value()),
         process_index_(process_index),
         device_kind_(std::move(device_kind)) {}
 
@@ -129,7 +130,8 @@ class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
 class PjRtStreamExecutorDevice : public PjRtDevice {
  public:
   explicit PjRtStreamExecutorDevice(
-      int id, std::unique_ptr<LocalDeviceState> local_device_state,
+      PjRtGlobalDeviceId id,
+      std::unique_ptr<LocalDeviceState> local_device_state,
       std::string device_kind, int process_index = 0)
       : description_(id, std::move(device_kind), process_index),
         local_device_id_(local_device_state

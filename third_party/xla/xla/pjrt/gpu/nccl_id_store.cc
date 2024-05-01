@@ -18,11 +18,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
-#include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -41,8 +41,8 @@ absl::StatusOr<gpu::NcclCliqueId> NcclIdStore::GetNcclUniqueId(
     }
   }
   gpu::NcclCliqueId clique_id;
-  int primary_node_id = device_to_node_.at(key.devices()[0]);
-  if (node_id_ == primary_node_id) {
+  bool is_primary_node = local_devices_.contains(key.devices()[0]);
+  if (is_primary_node) {
     TF_ASSIGN_OR_RETURN(clique_id, gpu::NcclApi::Default()->GetUniqueId());
     TF_RETURN_IF_ERROR(kv_store_->Set(key.ToString(), clique_id.ToString()));
   } else {

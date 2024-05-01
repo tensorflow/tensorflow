@@ -28,26 +28,24 @@ TEST(CpuTopology, FromProto) {
   ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
       R"pb(
         cpu_devices:
-        [ { id: 1, process_index: 2, local_hardware_id: 3 }]
+        [ { process_index: 2, local_hardware_id: 3 }]
         machine_attributes: [ "x86_64", "Intel" ]
       )pb",
       &msg));
 
   std::unique_ptr<const CpuTopology> cpu_topology = CpuTopology::FromProto(msg);
   EXPECT_EQ(cpu_topology->devices().size(), 1);
-  EXPECT_EQ(cpu_topology->devices()[0].id, 1);
-  EXPECT_EQ(cpu_topology->devices()[0].process_index, 2);
-  EXPECT_EQ(cpu_topology->devices()[0].local_hardware_id, 3);
+  EXPECT_EQ(cpu_topology->devices()[0].process_id, 2);
+  EXPECT_EQ(cpu_topology->devices()[0].local_device_id, 3);
   EXPECT_EQ(cpu_topology->machine_attributes().size(), 2);
   EXPECT_EQ(cpu_topology->machine_attributes()[0], "x86_64");
   EXPECT_EQ(cpu_topology->machine_attributes()[1], "Intel");
 }
 
 TEST(CpuTopology, ToProto) {
-  CpuTopology cpu_topology({{1, 2, 3}}, {"ab", "cd"});
+  CpuTopology cpu_topology({{2, 3}}, {"ab", "cd"});
   CpuTopologyProto msg = cpu_topology.ToProto();
   EXPECT_EQ(msg.cpu_devices_size(), 1);
-  EXPECT_EQ(msg.cpu_devices(0).id(), 1);
   EXPECT_EQ(msg.cpu_devices(0).process_index(), 2);
   EXPECT_EQ(msg.cpu_devices(0).local_hardware_id(), 3);
   EXPECT_EQ(msg.machine_attributes_size(), 2);
