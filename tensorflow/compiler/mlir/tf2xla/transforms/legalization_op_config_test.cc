@@ -54,12 +54,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
 class LegalizationOpConfigTest : public ::testing::Test {
  public:
-  tsl::Status CreateMlirModule(std::string module_string = kMlirModuleStr) {
+  absl::Status CreateMlirModule(std::string module_string = kMlirModuleStr) {
     TF_ASSIGN_OR_RETURN(
         module_, test::GetMlirModuleFromString(module_string, &context_));
 
     context_.loadAllAvailableDialects();
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   absl::StatusOr<FuncOp> GetMain() {

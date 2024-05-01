@@ -40,7 +40,7 @@ func.func @QuantizeUnidirectionalLstm(%arg0: tensor<1x2x3xf32>) -> (tensor<1x2x3
   %17 = "quantfork.stats"(%16) {layerStats = dense<[-0.1, 0.1]> : tensor<2xf32>} : (tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
   func.return %17 : tensor<1x2x3xf32>
 
-  // CHECK: %[[NONE:.*]] = "tfl.no_value"() {value} : () -> none
+  // CHECK: %[[NONE:.*]] = "tfl.no_value"() <{value}> : () -> none
   // CHECK: %[[DQ_1:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x1xf16>) -> tensor<1x1xf32>
   // CHECK: %[[DQ_2:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x1xf16>) -> tensor<1x1xf32>
   // CHECK: %[[DQ_3:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x1xf16>) -> tensor<1x1xf32>
@@ -61,11 +61,11 @@ func.func @QuantizeUnidirectionalLstm(%arg0: tensor<1x2x3xf32>) -> (tensor<1x2x3
   // CHECK-SAME: %[[DQ_9]], %[[DQ_10]], %[[DQ_9]], %[[DQ_9]],
   // CHECK-SAME: %[[NONE]], %[[NONE]],
   // CHECK-SAME: %[[DQ_11]], %[[DQ_12]],
-  // CHECK-SAME: %[[NONE]], %[[NONE]], %[[NONE]], %[[NONE]]) {
+  // CHECK-SAME: %[[NONE]], %[[NONE]], %[[NONE]], %[[NONE]]) <{
   // CHECK-SAME: cell_clip = 1.000000e+01 : f32,
   // CHECK-SAME: fused_activation_function = "TANH",
   // CHECK-SAME: proj_clip = 0.000000e+00 : f32,
-  // CHECK-SAME: time_major = false} : (
+  // CHECK-SAME: time_major = false}> : (
   // CHECK-SAME: tensor<1x2x3xf32>,
   // CHECK-SAME: tensor<1x1xf32>, tensor<1x1xf32>, tensor<1x1xf32>, tensor<1x1xf32>,
   // CHECK-SAME: tensor<1x1xf32>, tensor<1x1xf32>, tensor<1x1xf32>, tensor<1x1xf32>,

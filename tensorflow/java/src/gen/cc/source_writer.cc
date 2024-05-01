@@ -13,11 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string>
+#include "tensorflow/java/src/gen/cc/source_writer.h"
+
 #include <algorithm>
 #include <list>
+#include <string>
 
-#include "tensorflow/java/src/gen/cc/source_writer.h"
+#include "absl/log/check.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/java/src/gen/cc/java_defs.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace java {

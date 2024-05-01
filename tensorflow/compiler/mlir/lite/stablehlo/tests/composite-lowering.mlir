@@ -65,7 +65,7 @@ func.func private @XlaCallModule_aten.avg_pool2d.default.impl_0(%arg0: tensor<1x
 // CHECK:           %[[VAL_2:.*]] = "tfl.transpose"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x3x6x6xf32>, tensor<4xi32>) -> tensor<1x6x6x3xf32>
 // CHECK:           %[[VAL_3:.*]] = arith.constant dense<0> : tensor<4x2xi32>
 // CHECK:           %[[VAL_4:.*]] = "tfl.pad"(%[[VAL_2]], %[[VAL_3]]) : (tensor<1x6x6x3xf32>, tensor<4x2xi32>) -> tensor<1x6x6x3xf32>
-// CHECK:           %[[VAL_5:.*]] = "tfl.average_pool_2d"(%[[VAL_4]]) {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x6x6x3xf32>) -> tensor<1x4x4x3xf32>
+// CHECK:           %[[VAL_5:.*]] = "tfl.average_pool_2d"(%[[VAL_4]]) <{filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x6x6x3xf32>) -> tensor<1x4x4x3xf32>
 // CHECK:           %[[VAL_6:.*]] = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>
 // CHECK:           %[[VAL_7:.*]] = "tfl.transpose"(%[[VAL_5]], %[[VAL_6]]) : (tensor<1x4x4x3xf32>, tensor<4xi32>) -> tensor<1x3x4x4xf32>
 // CHECK:           %[[VAL_8:.*]] = "tf.Identity"(%[[VAL_7]]) {device = ""} : (tensor<1x3x4x4xf32>) -> tensor<*xf32>
@@ -102,7 +102,7 @@ func.func private @XlaCallModule_aten.avg_pool2d.default.impl_1(%arg0: tensor<1x
 // CHECK-SAME:                               %[[VAL_0:.*]]: tensor<1x3x6x6xf32>) -> tensor<*xf32> {
 // CHECK:           %[[VAL_1:.*]] = arith.constant dense<[0, 2, 3, 1]> : tensor<4xi32>
 // CHECK:           %[[VAL_2:.*]] = "tfl.transpose"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x3x6x6xf32>, tensor<4xi32>) -> tensor<1x6x6x3xf32>
-// CHECK:           %[[VAL_3:.*]] = "tfl.average_pool_2d"(%[[VAL_2]]) {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x6x6x3xf32>) -> tensor<1x6x6x3xf32>
+// CHECK:           %[[VAL_3:.*]] = "tfl.average_pool_2d"(%[[VAL_2]]) <{filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x6x6x3xf32>) -> tensor<1x6x6x3xf32>
 // CHECK:           %[[VAL_4:.*]] = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>
 // CHECK:           %[[VAL_5:.*]] = "tfl.transpose"(%[[VAL_3]], %[[VAL_4]]) : (tensor<1x6x6x3xf32>, tensor<4xi32>) -> tensor<1x3x6x6xf32>
 // CHECK:           %[[VAL_6:.*]] = "tf.Identity"(%[[VAL_5]]) {device = ""} : (tensor<1x3x6x6xf32>) -> tensor<*xf32>
@@ -172,7 +172,7 @@ func.func private @XlaCallModule_odml.upsample_bilinear2d.impl_21_0(%arg0: tenso
 // CHECK:           %[[VAL_1:.*]] = arith.constant dense<[0, 2, 3, 1]> : tensor<4xi32>
 // CHECK:           %[[VAL_2:.*]] = "tfl.transpose"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x64x16x16xf32>, tensor<4xi32>) -> tensor<1x16x16x64xf32>
 // CHECK:           %[[VAL_3:.*]] = arith.constant dense<32> : tensor<2xi32>
-// CHECK:           %[[VAL_4:.*]] = "tfl.resize_bilinear"(%[[VAL_2]], %[[VAL_3]]) {align_corners = false, half_pixel_centers = true} : (tensor<1x16x16x64xf32>, tensor<2xi32>) -> tensor<1x32x32x64xf32>
+// CHECK:           %[[VAL_4:.*]] = "tfl.resize_bilinear"(%[[VAL_2]], %[[VAL_3]]) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x16x16x64xf32>, tensor<2xi32>) -> tensor<1x32x32x64xf32>
 // CHECK:           %[[VAL_5:.*]] = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>
 // CHECK:           %[[VAL_6:.*]] = "tfl.transpose"(%[[VAL_4]], %[[VAL_5]]) : (tensor<1x32x32x64xf32>, tensor<4xi32>) -> tensor<1x64x32x32xf32>
 // CHECK:           return %[[VAL_6]] : tensor<1x64x32x32xf32>

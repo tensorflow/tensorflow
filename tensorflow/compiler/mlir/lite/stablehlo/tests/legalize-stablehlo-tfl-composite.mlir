@@ -5,14 +5,14 @@ module {
   func.func public @main(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>, %arg2: tensor<1x100x32x4xf32>,
       %arg3: tensor<1x500x4x4xf32>, %arg4: tensor<1x500x4x4xf32>, %arg5: tensor<1x1x100x500xf32>, %arg6: tensor<f32>)
       -> tensor<1x100x32x4xf32> {
-    // CHECK-ROUNDTRIP: %0 = "tfl.custom"(%arg2, %arg3, %arg4, %arg5, %arg6) {custom_code = "odml.scaled_dot_product_attention", custom_option = #tfl<const_bytes : "0x00000100002401">} : (tensor<1x100x32x4xf32>, tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>, tensor<1x1x100x500xf32>, tensor<f32>) -> tensor<1x100x32x4xf32>
+    // CHECK-ROUNDTRIP: %0 = "tfl.custom"(%arg2, %arg3, %arg4, %arg5, %arg6) <{custom_code = "odml.scaled_dot_product_attention", custom_option = #tfl<const_bytes : "0x00000100002401">}> : (tensor<1x100x32x4xf32>, tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>, tensor<1x1x100x500xf32>, tensor<f32>) -> tensor<1x100x32x4xf32>
     %0 = func.call @test_sdpa(%arg2, %arg3, %arg4, %arg5, %arg6) : (tensor<1x100x32x4xf32>,  tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>, tensor<1x1x100x500xf32>, tensor<f32>) -> tensor<1x100x32x4xf32>
     return %0: tensor<1x100x32x4xf32>
   }
 
   // CHECK-LABEL: func.func private @test_sdpa
   func.func private @test_sdpa(%arg0: tensor<1x100x32x4xf32>, %arg1: tensor<1x500x4x4xf32>, %arg2: tensor<1x500x4x4xf32>, %arg3: tensor<1x1x100x500xf32>, %arg4: tensor<f32>) -> tensor<1x100x32x4xf32> {
-    // CHECK:  %0 = "tfl.custom"(%arg0, %arg1, %arg2, %arg3, %arg4) {custom_code = "odml.scaled_dot_product_attention", custom_option = #tfl<const_bytes : "0x00000100002401">} : (tensor<1x100x32x4xf32>, tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>, tensor<1x1x100x500xf32>, tensor<f32>) -> tensor<1x100x32x4xf32>
+    // CHECK:  %0 = "tfl.custom"(%arg0, %arg1, %arg2, %arg3, %arg4) <{custom_code = "odml.scaled_dot_product_attention", custom_option = #tfl<const_bytes : "0x00000100002401">}> : (tensor<1x100x32x4xf32>, tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>, tensor<1x1x100x500xf32>, tensor<f32>) -> tensor<1x100x32x4xf32>
     %0 = stablehlo.composite "odml.scaled_dot_product_attention" %arg0, %arg1, %arg2, %arg3, %arg4 {decomposition = @odml.scaled_dot_product_attention.impl} : (tensor<1x100x32x4xf32>, tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>, tensor<1x1x100x500xf32>, tensor<f32>) -> tensor<1x100x32x4xf32>
     return %0 : tensor<1x100x32x4xf32>
   }
@@ -23,8 +23,8 @@ module {
 
   // CHECK-LABEL: func.func private @test_multiple_kv_caches
   func.func private @test_multiple_kv_caches(%arg0: tensor<1x500x4x4xf32>, %arg1: tensor<1x500x4x4xf32>, %arg2: tensor<100xi64>, %arg3: tensor<1x100x4x4xf32>, %arg4: tensor<1x100x4x4xf32>) -> (tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>) {
-    // CHECK: %0:2 = "tfl.custom"(%arg2, %arg3, %arg4) {custom_code = "odml.update_kv_cache", custom_option = #tfl<const_bytes : "0x6B765F63616368655F6D6178006C617965725F696E646578006E756D5F6C6179657273000325190E030001000300F40100000200050505092501">} : (tensor<100xi64>, tensor<1x100x4x4xf32>, tensor<1x100x4x4xf32>) -> (tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>)
-    // CHECK: %1:2 = "tfl.custom"(%arg2, %arg3, %arg4) {custom_code = "odml.update_kv_cache", custom_option = #tfl<const_bytes : "0x6B765F63616368655F6D6178006C617965725F696E646578006E756D5F6C6179657273000325190E030001000300F40101000200050505092501">} : (tensor<100xi64>, tensor<1x100x4x4xf32>, tensor<1x100x4x4xf32>) -> (tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>)
+    // CHECK: %0:2 = "tfl.custom"(%arg2, %arg3, %arg4) <{custom_code = "odml.update_kv_cache", custom_option = #tfl<const_bytes : "0x6B765F63616368655F6D6178006C617965725F696E646578006E756D5F6C6179657273000325190E030001000300F40100000200050505092501">}> : (tensor<100xi64>, tensor<1x100x4x4xf32>, tensor<1x100x4x4xf32>) -> (tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>)
+    // CHECK: %1:2 = "tfl.custom"(%arg2, %arg3, %arg4) <{custom_code = "odml.update_kv_cache", custom_option = #tfl<const_bytes : "0x6B765F63616368655F6D6178006C617965725F696E646578006E756D5F6C6179657273000325190E030001000300F40101000200050505092501">}> : (tensor<100xi64>, tensor<1x100x4x4xf32>, tensor<1x100x4x4xf32>) -> (tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>)
     %0:2 = stablehlo.composite "odml.update_kv_cache" %arg0, %arg1, %arg2, %arg3, %arg4 {composite_attributes = {kv_cache_max = 500 : i64}, decomposition = @odml.update_kv_cache.impl_0} : (tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>, tensor<100xi64>, tensor<1x100x4x4xf32>, tensor<1x100x4x4xf32>) -> (tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>)
     %1:2 = stablehlo.composite "odml.update_kv_cache" %0#0, %0#1, %arg2, %arg3, %arg4 {composite_attributes = {kv_cache_max = 500 : i64}, decomposition = @odml.update_kv_cache.impl_0} : (tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>, tensor<100xi64>, tensor<1x100x4x4xf32>, tensor<1x100x4x4xf32>) -> (tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>)
     return %1#0, %1#1 : tensor<1x500x4x4xf32>, tensor<1x500x4x4xf32>
