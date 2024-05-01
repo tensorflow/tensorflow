@@ -750,12 +750,12 @@ def fuse_decomposed_batch_norm(input_graph_def):
   In some models, the batch normalization is performed via a group of individual
   ops instead of using single FusedBatchNorm op. This function identifies a
   pattern of batch normalization subgraph which is made of multiple ops and
-  transforms the graph by replacing those individual ops with a FusedBatchNorm op.
-  This will provide the opportunity to further fold the FusedBatchNorm with
+  transforms the graph by replacing those individual ops with a FusedBatchNorm
+  op. This will provide the opportunity to further fold the FusedBatchNorm with
   convolution ops to reduce the computation steps during inference.
   This function currently recognizes batch normalization patterns described
-  below, though this could be extended if newer patterns are seen. Also, the fusion
-  is only attempted if the input graph is in NHWC format or has no format set.
+  below, though this could be extended if newer patterns are seen. Also, the
+  fusion is only attempted if the input graph is in NHWC format.
 
   Computation function:
     (X * multiplier) + (Beta - Mean * multiplier)

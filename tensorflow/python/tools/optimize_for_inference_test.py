@@ -529,8 +529,9 @@ class OptimizeForInferenceTest(test.TestCase):
       "MATCH_SWITCH_ORDER" - Create a graph matching the decomposed batchnorm
                              pattern with a different order of inputs to the
                              root Add node.
-      "MISMATCH_PATTERN" - Create a graph with same set of primitive ops which makes
-                           up the decomposed batchnorm, but not matching the pattern.
+      "MISMATCH_PATTERN" - Create a graph with same set of primitive ops which
+                           makes up the decomposed batchnorm, but not matching
+                           the pattern.
       "MISMATCH_FORMAT" - Create a graph with NCHW format as input.
 
   Returns:
@@ -577,13 +578,17 @@ class OptimizeForInferenceTest(test.TestCase):
             np.array([0.25, 0.5, 0.6, 0.7, 0.8, 0.9]),
             shape=[6], dtype=dtypes.float32)
         const_op_3 = constant_op.constant(
-            np.array([10, 20, 30, 40, 50, 60]), shape=[6], dtype=dtypes.float32)
+            np.array([10, 20, 30, 40, 50, 60]),
+            shape=[6], dtype=dtypes.float32)
         const_op_4 = constant_op.constant(
-            np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6]), shape=[6], dtype=dtypes.float32)
+            np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6]),
+            shape=[6], dtype=dtypes.float32)
         const_op_5 = constant_op.constant(
-            np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]), shape=[6], dtype=dtypes.float32)
+            np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
+            shape=[6], dtype=dtypes.float32)
         const_op_6 = constant_op.constant(
-            np.array([0.2, 0.4, 0.5, 0.6, 0.7, 0.8]), shape=[6], dtype=dtypes.float32)
+            np.array([0.2, 0.4, 0.5, 0.6, 0.7, 0.8]),
+            shape=[6], dtype=dtypes.float32)
 
       add_op_1 = gen_math_ops.add(const_op_1, const_op_2)
       rsqrt_op = math_ops.rsqrt(add_op_1)
