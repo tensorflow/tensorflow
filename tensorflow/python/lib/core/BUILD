@@ -39,6 +39,7 @@ cc_library(
         "//tensorflow/c:tf_datatype_hdrs",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//third_party/py/numpy:multiarray",  # buildcleaner: keep
         "@local_xla//xla/tsl/python/lib/core:ml_dtypes_lib",
         "@local_xla//xla/tsl/python/lib/core:numpy",
     ],
