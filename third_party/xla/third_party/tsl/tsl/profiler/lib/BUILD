@@ -1,6 +1,10 @@
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_xla//xla/tsl:tsl.bzl", "if_not_android", "internal_visibility", "nvtx_headers")
 load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_libtpu",
+)
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl/platform:build_config_root.bzl", "if_static")
 load(
@@ -281,6 +285,13 @@ cc_library(
 )
 
 cc_library(
+    name = "nvtx_utils_libtpu",
+    srcs = ["nvtx_utils_stub.cc"],
+    hdrs = ["nvtx_utils.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "scoped_annotation",
     hdrs = [
         "nvtx_utils.h",
@@ -288,13 +299,16 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":nvtx_utils",
         "//tsl/platform:macros",
         "//tsl/platform:types",
         "@com_google_absl//absl/strings",
     ] + if_not_android([
         "//tsl/profiler/backends/cpu:annotation_stack",
-    ]),
+    ]) + if_libtpu(
+        # Remove this once we clean up all the CUDA specific deps.
+        if_false = [":nvtx_utils"],
+        if_true = [":nvtx_utils"],
+    ),
 )
 
 tsl_cc_test(
