@@ -15,3 +15,14 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+def SHLOSimplifyPass: Pass<"shlo-simplify", "ModuleOp"> {
+  let summary = "Apply internal canonicalizations and foldings.";
+  let description = [{
+    TODO
+  }];
+
+  let options = [
+
+  ];
+  let constructor = "CreateSHLOSimplifyPass()";
+}
