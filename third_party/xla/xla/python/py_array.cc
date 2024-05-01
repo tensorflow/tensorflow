@@ -1456,7 +1456,7 @@ Status PyHostValue::CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
   }
   auto transfer_guard_formatter = [ifrt_array] {
     return absl::StrCat(
-        "shape=()", absl::StrJoin(ifrt_array->shape().dims(), ","),
+        "shape=(", absl::StrJoin(ifrt_array->shape().dims(), ","),
         "), dtype=", ifrt_array->dtype().DebugString(),
         ", device=", ifrt_array->sharding().devices().front()->DebugString());
   };
