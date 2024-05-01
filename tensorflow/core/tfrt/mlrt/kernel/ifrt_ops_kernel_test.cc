@@ -224,11 +224,10 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
   kernels.Def(kernel_names);
 
   mlrt::testing::AttributeTable attributes(
-      executable_ctor.construct_attributes(4));
+      executable_ctor.construct_attributes(5));
 
   // TODO(b/330360798) Redefine the IfrtLoadVariableOp as it doesn't require the
-  // sharding info in the attribute. Consider adding an attribute `used_by_cpu`
-  // and use to for determining if the host tensor can be released.
+  // sharding info in the attribute after confirming multihost do not need it.
   attributes.Add("variable_name", kVariableRuntimeName);
 
   attributes.Add("var_handle_op_node_def",
@@ -256,6 +255,8 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
                      kContainer, kSharedName));
 
   attributes.Add("var_handle_op_key", 0);
+  attributes.Add("used_by_host", false);
+  attributes.Add("sharding_config_proto", "");
 
   auto functions_ctor = executable_ctor.construct_functions(1);
 
@@ -299,8 +300,10 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
       kernel_ctor.construct_results(2).Assign(
           {regs.Use("output_tensor"), regs.Def("dummy_future")});
       kernel_ctor.construct_arguments(1).Assign({regs.Use("variable_handle")});
-      kernel_ctor.construct_attributes(1).Assign(
-          {attributes.GetHandle("variable_name")});
+      kernel_ctor.construct_attributes(3).Assign(
+          {attributes.GetHandle("variable_name"),
+           attributes.GetHandle("sharding_config_proto"),
+           attributes.GetHandle("used_by_host")});
       kernel_ctor.construct_last_uses(1).Assign(
           {redundant_ifrt_load_variable_op ? 0 : 1});
       kernel_index++;
@@ -310,8 +313,10 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
       kernel_ctor.set_code(kernels.Use("tf_mlrt.ifrt_load_variable"));
       kernel_ctor.construct_results(2).Assign(
           {regs.Def("dummy"), regs.Def("dummy_future2")});
-      kernel_ctor.construct_attributes(1).Assign(
-          {attributes.GetHandle("variable_name")});
+      kernel_ctor.construct_attributes(3).Assign(
+          {attributes.GetHandle("variable_name"),
+           attributes.GetHandle("sharding_config_proto"),
+           attributes.GetHandle("used_by_host")});
       kernel_ctor.construct_arguments(1).Assign({regs.Use("variable_handle")});
       kernel_ctor.construct_last_uses(1).Assign({1});
       kernel_index++;

@@ -114,6 +114,15 @@ class IfrtModelContext {
     checkpoint_loader_queue_ = work_queue;
   }
 
+  // Freeze the model: release the resources such as host tensors that are used
+  // by the device only. The caller guarantees all resources released in this
+  // function is no longer in use in regular execution path.
+  // After Freeze() is called, no new model signature will be compiled. Using a
+  // signature or an input shape that wasn't compiled before the freeze will
+  // leads to an error.
+  // TODO(b/337926686): prevent further compilation after freeze.
+  void Freeze();
+
  private:
   std::shared_ptr<xla::ifrt::Client> client_;
   IfrtServingCoreSelector* ifrt_serving_core_selector_;  // May be nullptr

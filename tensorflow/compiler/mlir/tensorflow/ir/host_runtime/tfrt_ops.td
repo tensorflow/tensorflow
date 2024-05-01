@@ -94,7 +94,7 @@ Empty strings indicate that they are non-partitioned tensors.}]>:$shape_and_slic
 
 
 def TF_IfrtLoadVariableOp : TF_Op<"IfrtLoadVariable", [Pure]> {
-  let summary = "Loads a variable tensor as an IFRT array";
+  let summary = "Loads a restored variable tensor as an IFRT array and tensor future";
 
   let description = [{
     This op loads a variable tensor as an IFRT array and binds it with the specified name.
@@ -114,12 +114,12 @@ def TF_IfrtLoadVariableOp : TF_Op<"IfrtLoadVariable", [Pure]> {
   }];
 
   // TODO(b/330360798) Redefine the IfrtLoadVariableOp as it doesn't require the
-  // sharding info in the attribute. Consider adding an attribute `used_by_cpu`
-  // and use to for determining if the host tensor can be released.
+  // sharding info in the attribute if multihost do not need this info. 
   let arguments = (ins
     Arg<TF_Tensor, [{The variable tensor to be loaded}], []>:$variable,
     DefaultValuedStrAttr<StrAttr, "">:$device_sharding_config_proto_text,
-    DefaultValuedAttr<StrAttr, "">:$name
+    DefaultValuedAttr<StrAttr, "">:$name,
+    DefaultValuedAttr<BoolAttr, "false">:$used_by_host
   );
 
   let results = (outs

@@ -350,7 +350,8 @@ class TFIfrtLoadVariableOpConversion
 
     auto new_op = rewriter.create<tf_mlrt::IfrtLoadVariableOp>(
         op.getLoc(), result_types, adaptor.getOperands()[0],
-        op.getDeviceShardingConfigProtoTextAttr(), op.getNameAttr());
+        op.getDeviceShardingConfigProtoTextAttr(), op.getNameAttr(),
+        op.getUsedByHostAttr());
     rewriter.replaceOp(op, new_op);
 
     return mlir::success();

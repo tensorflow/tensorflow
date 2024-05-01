@@ -31,5 +31,7 @@ const tsl::thread::ThreadPool& IfrtModelContext::GetThreadPool() const {
   return thread_pool_;
 }
 
+void IfrtModelContext::Freeze() { restore_tensor_registry_.Freeze(); }
+
 }  // namespace ifrt_serving
 }  // namespace tensorflow

@@ -74,6 +74,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:tstring",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/python/ifrt",

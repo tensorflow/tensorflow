@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel_runner_utils.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/tstring.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
@@ -179,7 +180,8 @@ void MlrtIfrtRestoreVariableKernel::Invoke() {
     std::string runtime_name =
         ifrt_serving::GetRuntimeNameFromVarHandle(var_handle);
     ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
-        restored_tensor_info = {*std::move(dtype_and_shape), std::move(future)};
+        restored_tensor_info = {false, *std::move(dtype_and_shape),
+                                std::move(future)};
     if (auto status = ifrt_restore_tensor_registry.TryRegister(
             runtime_name, restored_tensor_info);
         !status.ok()) {
@@ -233,8 +235,13 @@ class MlrtIfrtLoadVariableKernel : public mlrt::KernelFrame {
   }
 
   absl::string_view sharding_config_proto_text() const {
-    DCHECK_EQ(attributes().size(), 2);
+    DCHECK_EQ(attributes().size(), 3);
     return attributes().GetAs<mlrt::bc::String>(0).Get();
+  }
+
+  bool used_by_host() const {
+    DCHECK_EQ(attributes().size(), 3);
+    return attributes().GetAs<bool>(2);
   }
 
   Context& context() { return execution_context().GetUserContext<Context>(); }
@@ -270,6 +277,11 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
 
   std::string runtime_name = ifrt_serving::GetRuntimeNameFromVarHandle(
       variable_handler_tensor().scalar<ResourceHandle>()());
+
+  if (used_by_host()) {
+    TF_RETURN_IF_ERROR(
+        ifrt_restore_tensor_registry.SetUsedByHost(runtime_name));
+  }
 
   xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_tensor_future =
       ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);

@@ -85,6 +85,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
   auto future = xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(promise);
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
+      false,
       GetDtypeAndShape(variable_handle.scalar<ResourceHandle>()()).value(),
       future};
   TF_ASSERT_OK(restored_tensor_registry.TryRegister("var_x_wrong",
@@ -128,6 +129,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
   auto future = xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(promise);
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
+      false,
       GetDtypeAndShape(variable_handle.scalar<ResourceHandle>()()).value(),
       future};
 

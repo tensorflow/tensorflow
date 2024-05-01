@@ -55,6 +55,31 @@ IfrtRestoreTensorRegistry::GetRestoredTensor(absl::string_view name) const {
   return it->second.tensor_future;
 }
 
+absl::Status IfrtRestoreTensorRegistry::SetUsedByHost(absl::string_view name) {
+  absl::MutexLock lock(&mutex_);
+  auto it = restored_tensors_.find(name);
+  if (it == restored_tensors_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("Variable '", name, "' not found."));
+  }
+
+  it->second.used_by_host = true;
+  return absl::OkStatus();
+}
+
+void IfrtRestoreTensorRegistry::Freeze() {
+  absl::MutexLock lock(&mutex_);
+  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> release_tensor_future(
+      absl::UnavailableError("Tensor is already release."));
+  for (auto& [name, info] : restored_tensors_) {
+    if (!info.used_by_host) {
+      // Release the tensor by replacing the future containing the tensor with
+      // an future containing a status.
+      info.tensor_future = release_tensor_future;
+    }
+  }
+}
+
 absl::StatusOr<DtypeAndShape> IfrtRestoreTensorRegistry::GetDtypeAndShape(
     absl::string_view name) const {
   absl::MutexLock lock(&mutex_);

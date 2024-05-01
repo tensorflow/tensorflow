@@ -36,6 +36,7 @@ namespace ifrt_serving {
 class IfrtRestoreTensorRegistry {
  public:
   struct RestoredTensorInfo {
+    bool used_by_host = false;
     DtypeAndShape dtype_and_shape;
     xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> tensor_future;
   };
@@ -48,8 +49,18 @@ class IfrtRestoreTensorRegistry {
   xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> GetRestoredTensor(
       absl::string_view name) const ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Sets the tensor as used by the host. To ensure a tensor's host memory
+  // is released, this function must be called at least once before the Freeze.
+  absl::Status SetUsedByHost(absl::string_view name)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   absl::StatusOr<DtypeAndShape> GetDtypeAndShape(absl::string_view name) const
       ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Part of freezing the model is to release the host tensors that are used by
+  // the device only. The caller guarantees those tensors are already loaded to
+  // the device.
+  void Freeze() ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
   mutable absl::Mutex mutex_;
