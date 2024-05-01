@@ -200,58 +200,6 @@ LogicalResult HasValidDeviceTypeAttribute(Block* block) {
   return success();
 }
 
-LogicalResult HasValidDeviceAttribute(Block* block) {
-  absl::flat_hash_map<std::string, OpDevice> devices;
-  for (Operation& op : *block) {
-    auto device_attr = op.getAttrOfType<StringAttr>(kDeviceAttr);
-    if (!device_attr || device_attr.str().empty()) continue;
-    tensorflow::DeviceNameUtils::ParsedName parsed;
-    if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(device_attr.str(),
-                                                           &parsed)) {
-      op.emitWarning() << "Invalid device name " << device_attr.str();
-      return mlir::failure();
-    }
-
-    std::string device_local_name =
-        tensorflow::DeviceNameUtils::LocalName(parsed.type, parsed.id);
-
-    if (device_local_name.empty()) continue;
-
-    // It is possible that a device may be same Local Name but
-    // different fullname. Devices with same Local name are identical
-    // so they should only be added once in 'devices'.
-    // and we need the fullname which is longer since longer name has more
-    // information such as task, replica, job etc. An example fullname is
-    // "/job:foo_bar/replica:1/task:2/device:GPU:3"
-    if (devices.count(device_local_name)) {
-      std::string device1 = devices[device_local_name].device;
-      std::string device2 = device_attr.str();
-      // Is either of the two devices just a substring of the other? If
-      // not, we treat them as different devices, and we have a collision.
-      if (device1.find(device2) == std::string::npos &&
-          device2.find(device1) == std::string::npos) {
-        Operation* previous_op = devices[device_local_name].op;
-
-        LOG_FIRST_N(WARNING, 1)
-            << "Found two devices with same local name " << device_local_name
-            << " but conflicting fullname: " << device1 << " and " << device2
-            << ".";
-        LOG_FIRST_N(WARNING, 1)
-            << "Previous assignment came from op: "
-            << tensorflow::OpAsString(*previous_op)
-            << ". Current op is: " << tensorflow::OpAsString(op);
-      }
-      // Always keep the longer name.
-      if (devices[device_local_name].device.size() < device_attr.str().size()) {
-        devices[device_local_name] = {&op, device_attr.str()};
-      }
-    } else {
-      devices.insert({device_local_name, {&op, device_attr.str()}});
-    }
-  }
-  return success();
-}
-
 // Collects and clusters ops based on `_replication_info` attribute. Returns
 // an error in case of invalid compilation or replication attribute(s).
 LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters) {
@@ -259,8 +207,6 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters) {
   bool has_non_replicated_compiled_op = false;
 
   LogicalResult result = HasValidDeviceTypeAttribute(block);
-  if (failed(result)) return result;
-  result = HasValidDeviceAttribute(block);
   if (failed(result)) return result;
 
   for (Operation& op : *block) {
