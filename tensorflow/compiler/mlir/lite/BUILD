@@ -19,6 +19,7 @@ package_group(
         "//third_party/odml/infra/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/lite/python/...",
+        "//waymo/accelerator/alpine/tools/...",
         "//waymo/ml/compiler/mlir/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
