@@ -399,6 +399,12 @@ bool HloAnyOf(absl::Span<const HloInstructionAdaptor> roots,
   return HloFindIf(roots, fusion, visit, visit_operands).has_value();
 }
 
+bool HloAnyOf(absl::Span<const HloInstruction* const> roots,
+              const std::function<bool(const HloInstruction* node)>& visit,
+              bool visit_operands) {
+  return HloFindIf(roots, visit, visit_operands).has_value();
+}
+
 std::optional<HloInstructionAdaptor> HloFindIf(
     absl::Span<const HloInstructionAdaptor> roots,
     const HloFusionAdaptor& fusion,

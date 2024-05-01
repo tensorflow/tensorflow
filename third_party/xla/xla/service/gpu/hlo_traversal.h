@@ -156,6 +156,14 @@ bool HloAnyOf(absl::Span<const HloInstructionAdaptor> roots,
               const std::function<bool(HloInstructionAdaptor node)>& visit,
               bool visit_operands = true);
 
+// Visit the HLO nodes starting from `roots`, returning true if the return value
+// of `visit` for any of nodes is true. If `visit_operands` is true, the
+// search is going towards the operands, otherwise towards the users. Doesn't
+// require instruction and fusion adaptors.
+bool HloAnyOf(absl::Span<const HloInstruction* const> roots,
+              const std::function<bool(const HloInstruction* node)>& visit,
+              bool visit_operands = true);
+
 // Visit the HLO nodes starting from `roots`, returning the first
 // node for which `visit` returns true, or `nullopt` if no node matches. Uses
 // the same order as `HloBfsConsumersFirstTraversal` if `visit_operands` is
