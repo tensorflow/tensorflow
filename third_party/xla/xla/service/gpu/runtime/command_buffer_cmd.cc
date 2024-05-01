@@ -1046,60 +1046,6 @@ CommandBufferCmd::BufferUsageVector WhileCmd::buffers() {
 }
 
 //===----------------------------------------------------------------------===//
-// AllocateCmd
-//===----------------------------------------------------------------------===//
-
-AllocateCmd::AllocateCmd(ExecutionStreamId execution_stream_id,
-                         BufferAllocation allocation)
-    : CommandBufferCmd(execution_stream_id), allocation_(allocation) {}
-
-absl::Status AllocateCmd::Record(const Thunk::ExecuteParams& execute_params,
-                                 const RecordParams& record_params,
-                                 se::CommandBuffer* command_buffer) {
-  // Memory allocation address is returned on graph creation, and there is no
-  // update operation
-  ExecutionScopeId execution_scope_id = GetExecutionScope(record_params);
-  VLOG(2) << "AllocationCmd: index=" << allocation_.index()
-          << "; execution_scope_id=" << execution_scope_id.value();
-
-  TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase buffer,
-      command_buffer->Allocate(execution_scope_id, allocation_.size()));
-  return execute_params.buffer_allocations->AddExternalAllocation(
-      allocation_.index(), buffer);
-}
-
-CommandBufferCmd::BufferUsageVector AllocateCmd::buffers() { return {}; }
-
-//===----------------------------------------------------------------------===//
-// FreeCmd
-//===----------------------------------------------------------------------===//
-
-FreeCmd::FreeCmd(ExecutionStreamId execution_stream_id,
-                 BufferAllocation allocation)
-    : CommandBufferCmd(execution_stream_id), allocation_(allocation) {}
-
-absl::Status FreeCmd::Record(const Thunk::ExecuteParams& execute_params,
-                             const RecordParams& record_params,
-                             se::CommandBuffer* command_buffer) {
-  ExecutionScopeId execution_scope_id = GetExecutionScope(record_params);
-  VLOG(2) << "FreeCmd: index=" << allocation_.index()
-          << "; execution_scope_id=" << execution_scope_id.value();
-
-  se::DeviceMemoryBase address =
-      execute_params.buffer_allocations->GetDeviceAddress(allocation_.index());
-
-  // Free is in the same command buffer
-  TF_RETURN_IF_ERROR(command_buffer->Free(execution_scope_id, address));
-
-  // Remove the buffer from external allocations.
-  return execute_params.buffer_allocations->EraseExternalAllocation(
-      allocation_.index());
-}
-
-CommandBufferCmd::BufferUsageVector FreeCmd::buffers() { return {}; }
-
-//===----------------------------------------------------------------------===//
 // GemmCmd
 //===----------------------------------------------------------------------===//
 

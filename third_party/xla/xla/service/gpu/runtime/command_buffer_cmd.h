@@ -680,47 +680,6 @@ class WhileCmd : public CommandBufferCmd {
 };
 
 //===----------------------------------------------------------------------===//
-// AllocateCmd
-//===----------------------------------------------------------------------===//
-
-class AllocateCmd : public CommandBufferCmd {
- public:
-  AllocateCmd(ExecutionStreamId execution_stream_id,
-              BufferAllocation allocation);
-
-  // After calling this function, the allocated memory is tracked in
-  // CommandBuffer object.
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
-
-  BufferUsageVector buffers() override;
-
- private:
-  BufferAllocation allocation_;
-};
-
-//===----------------------------------------------------------------------===//
-// FreeCmd
-//===----------------------------------------------------------------------===//
-
-class FreeCmd : public CommandBufferCmd {
- public:
-  FreeCmd(ExecutionStreamId execution_stream_id, BufferAllocation allocation);
-
-  // After calling this function, the allocated memory address for dst
-  // BufferAllocation is freed, no update is required.
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
-
-  BufferUsageVector buffers() override;
-
- private:
-  BufferAllocation allocation_;
-};
-
-//===----------------------------------------------------------------------===//
 // GemmCmd
 //===----------------------------------------------------------------------===//
 

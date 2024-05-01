@@ -48,23 +48,6 @@ cc_library(
 #===-------------------------------------------------------------------------------------------===//
 
 cc_library(
-    name = "command_buffer_allocations",
-    srcs = ["command_buffer_allocations.cc"],
-    hdrs = ["command_buffer_allocations.h"],
-    deps = [
-        "//xla:status",
-        "//xla:statusor",
-        "//xla/service:buffer_assignment",
-        "//xla/service/gpu:buffer_allocations",
-        "//xla/stream_executor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "command_buffer_cmd",
     srcs = ["command_buffer_cmd.cc"],
     hdrs = ["command_buffer_cmd.h"],
@@ -428,7 +411,6 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":annotation",
-        ":command_buffer_allocations",
         ":command_buffer_cmd",
         "//xla:status",
         "//xla:statusor",
@@ -465,7 +447,6 @@ xla_test(
     ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
-        ":command_buffer_allocations",
         ":command_buffer_cmd",
         ":command_buffer_thunk",
         "//xla:shape_util",

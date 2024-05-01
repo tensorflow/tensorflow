@@ -104,12 +104,6 @@ class GpuCommandBuffer : public CommandBuffer {
                       DeviceMemoryBase* dst, BitPattern bit_pattern,
                       size_t num_elements) override;
 
-  absl::StatusOr<DeviceMemoryBase> Allocate(ExecutionScopeId execution_scope_id,
-                                            size_t bytes) override;
-
-  absl::Status Free(ExecutionScopeId execution_scope_id,
-                    DeviceMemoryBase dst) override;
-
   absl::Status If(ExecutionScopeId execution_scope_id, StreamExecutor* executor,
                   DeviceMemory<bool> predicate, Builder then_builder) override;
 

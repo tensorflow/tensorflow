@@ -286,28 +286,6 @@ class CommandBuffer {
   }
 
   //--------------------------------------------------------------------------//
-  // Command buffer memory allocation API
-  //--------------------------------------------------------------------------//
-
-  // Adds a device memory allocation command.
-  virtual absl::StatusOr<DeviceMemoryBase> Allocate(
-      ExecutionScopeId execution_scope_id, size_t bytes) = 0;
-
-  // Adds a device memory allocation command to the default execution scope.
-  absl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes) {
-    return Allocate(kDefaulExecutionScope, bytes);
-  }
-
-  // Adds a device memory free command.
-  virtual absl::Status Free(ExecutionScopeId execution_scope_id,
-                            DeviceMemoryBase dst) = 0;
-
-  // Adds a device memory free command to the default execution scope.
-  absl::Status Free(DeviceMemoryBase dst) {
-    return Free(kDefaulExecutionScope, dst);
-  }
-
-  //--------------------------------------------------------------------------//
   // Command buffer condtitional commands API
   //--------------------------------------------------------------------------//
 
