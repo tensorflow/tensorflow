@@ -268,7 +268,7 @@ GpuPerformanceWithCollectiveModel::ComputeAllreduceTime(
                            num_channels * per_channel_ring_ll128_Bw);
   double actual_bandwidth = bus_bandwidth * cost_analysis->ScalingRatio(instr);
 
-  absl::Duration communication_time = absl::Microseconds(
+  absl::Duration communication_time = absl::Milliseconds(
       cost_analysis->bytes_accessed(instr) / (1e6 * actual_bandwidth));
   total_time += communication_time;
   return total_time;
