@@ -2,6 +2,7 @@ tensorflow {
   global:
     *tensorflow*;
     *absl*kSeed*;
+    *absl*LogMessage*;
     *toco*;
     *perftools*gputools*;
     *tf_*;

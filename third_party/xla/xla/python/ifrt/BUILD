@@ -175,6 +175,7 @@ xla_cc_test(
     srcs = ["memory_test.cc"],
     deps = [
         ":ifrt",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
