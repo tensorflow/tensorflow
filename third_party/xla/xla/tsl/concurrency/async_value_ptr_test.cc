@@ -463,6 +463,18 @@ TEST(AsyncValuePtrTest, Isa) {
   typed_indirect->ForwardTo(c_ref.CopyRCRef());
   EXPECT_TRUE(Isa<A>(c_typed_indirect.AsPtr()));
   EXPECT_TRUE(Isa<C>(c_typed_indirect.AsPtr()));
+
+  // Typed indirect async value with error correctly handled by Isa<T>.
+  auto typed_indirect_err = MakeIndirectAsyncValue<C>();
+  AsyncValueRef<A> c_typed_indirect_err(typed_indirect_err);
+  EXPECT_TRUE(Isa<A>(c_typed_indirect.AsPtr()));
+  EXPECT_TRUE(Isa<C>(c_typed_indirect.AsPtr()));
+
+  // After indirect async value is set to error it should still return true
+  // from Isa<T> checks.
+  typed_indirect_err->SetError(absl::InternalError("error"));
+  EXPECT_TRUE(Isa<A>(c_typed_indirect_err.AsPtr()));
+  EXPECT_TRUE(Isa<C>(c_typed_indirect_err.AsPtr()));
 }
 
 TEST(AsyncValuePtrTest, DynCast) {
