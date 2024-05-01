@@ -119,7 +119,6 @@ cc_library(
         ":compilation_pipeline_options",
         ":compiler",
         ":passes",
-        "//xla/mlir/backends/cpu/transforms:passes",
         "//xla/mlir/memref/transforms:passes",
         "//xla/mlir/runtime/ir:rt",
         "//xla/mlir_hlo:transforms_passes",

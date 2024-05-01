@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/mlir/framework/transforms/passes.h"
 #include "xla/mlir_hlo/lhlo/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "xla/service/cpu/hlo_xla_runtime_pipeline.h"
 
 int main(int argc, char **argv) {
   tensorflow::InitMlir y(&argc, &argv);
