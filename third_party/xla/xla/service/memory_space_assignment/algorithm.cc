@@ -3514,10 +3514,17 @@ void MsaAlgorithm::FinalizeAllocations(
       }
     }
   }
+  // The colocation_map is a hash table using a pointer as a key. Process its
+  // values in some sorted order to get deterministic results.
+  std::vector<std::pair<const AliasedOffset*, std::vector<Allocation*>>>
+      sorted_colocations(colocation_map.begin(), colocation_map.end());
+  absl::c_sort(sorted_colocations, [](const auto& a, const auto& b) {
+    return a.first->offset < b.first->offset;
+  });
   // The allocations that have the same AliasedOffset need to be colocated.
   // Export these to repack_allocation_blocks_ so that we can repack them to
   // reduce fragmentation.
-  for (auto& colocation : colocation_map) {
+  for (auto& colocation : sorted_colocations) {
     std::vector<AllocationBlock*> colocations;
     for (Allocation* colocated_allocation : colocation.second) {
       repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
