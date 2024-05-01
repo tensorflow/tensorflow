@@ -68,6 +68,13 @@ cc_library(
 )
 
 cc_library(
+    name = "nvtx_utils_libtpu",
+    srcs = ["nvtx_utils_stub.cc"],
+    hdrs = ["nvtx_utils.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "profiler_factory",
     hdrs = ["profiler_factory.h"],
     visibility = internal_visibility([
