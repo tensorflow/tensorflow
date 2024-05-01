@@ -129,6 +129,15 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "shard_barrier_partitioner",
+    hdrs = ["shard_barrier_partitioner.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service:custom_call_sharding_helper",
+    ],
+)
+
+cc_library(
     name = "canonicalize_all_gather_for_cse",
     srcs = ["canonicalize_all_gather_for_cse.cc"],
     hdrs = ["canonicalize_all_gather_for_cse.h"],

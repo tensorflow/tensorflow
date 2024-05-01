@@ -75,7 +75,9 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
 // Find a reasonable common sharding for a list of shardings. The reasonable
 // sharding should incur little(the least) amount of total resharding cost when
 // resharding all the shardings to this common sharding.
-HloSharding FindCommonSharding(absl::Span<const HloSharding> shardings);
+HloSharding FindCommonSharding(
+    absl::Span<const HloSharding> shardings,
+    std::optional<HloSharding> default_sharding = std::nullopt);
 
 // Given a map<device, occurrence_count>, selects the device with higher
 // occurrence count (if any). If top_count in not nullptr, it will receive the

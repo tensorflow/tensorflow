@@ -582,12 +582,14 @@ std::optional<int64_t> SelectDominantDevice(
   return count > 0 ? std::optional<int64_t>(device) : std::optional<int64_t>();
 }
 
-HloSharding FindCommonSharding(absl::Span<const HloSharding> shardings) {
+HloSharding FindCommonSharding(absl::Span<const HloSharding> shardings,
+                               std::optional<HloSharding> default_sharding) {
   CHECK(!shardings.empty());
   bool all_compatible = true;
   HloSharding common_sharding = shardings[0];
   for (int i = 1; i != shardings.size(); ++i) {
-    if (!MergeShardingIfCompatible(shardings[i], common_sharding.NumTiles(),
+    if (common_sharding != shardings[i] &&
+        !MergeShardingIfCompatible(shardings[i], common_sharding.NumTiles(),
                                    &common_sharding)) {
       all_compatible = false;
       break;
@@ -599,7 +601,7 @@ HloSharding FindCommonSharding(absl::Span<const HloSharding> shardings) {
   // TODO(tongfei): instead of return the first sharding in case not all
   // shardings are compatible, we should find a sharding that's compatible with
   // the most number of shardings instead.
-  return shardings[0];
+  return default_sharding.has_value() ? default_sharding.value() : shardings[0];
 }
 
 void AssignComputationDevice(HloComputation* computation, int64_t device) {
