@@ -41,7 +41,7 @@ func.func @fold_indexing_map_results(%d0: index, %d1: index, %s0: index)
   %0:5 = xla_gpu.apply_indexing #map0 (%d0 in [-10, 10], %d1 in [0, 2])[%s0 in [-1, 1]]
   func.return %0#0, %0#1, %0#2, %0#3, %0#4  : index, index, index, index, index
 }
-// CHECK: #[[$MAP:.*]] = affine_map<(d0, d1)[s0] -> (d0 + s0)>
+// CHECK: #[[$MAP:.*]] = affine_map<(d0)[s0] -> (d0 + s0)>
 
 // CHECK-LABEL: func.func @fold_indexing_map_results
 // CHECK-SAME:  %[[ARG_0:.*]]: index, %[[ARG_1:.*]]: index, %[[ARG_2:.*]]: index)
@@ -51,3 +51,18 @@ func.func @fold_indexing_map_results(%d0: index, %d1: index, %s0: index)
 
 // CHECK:       %[[NEW_RESULT:.*]] = xla_gpu.apply_indexing #[[$MAP]]
 // CHECK:       return %[[NEW_RESULT]], %[[C4]], %[[ARG_1]], %[[C1]], %[[ARG_2]]
+
+// -----
+
+#map0 = affine_map<(d0, d1)[s0] -> (d0 + s0, s0 + 4, d1 mod 2, 1 + d1, s0)>
+func.func @remove_unused_results(%d0: index, %d1: index, %s0: index) -> (index) {
+  %0:5 = xla_gpu.apply_indexing #map0 (%d0 in [-10, 10], %d1 in [0, 2])[%s0 in [-1, 1]]
+  func.return %0#2 : index
+}
+// CHECK: #[[$MAP:.*]] = affine_map<(d0) -> (d0 mod 2)>
+
+// CHECK-LABEL: func.func @remove_unused_results
+// CHECK-SAME:  %[[ARG_0:.*]]: index, %[[ARG_1:.*]]: index, %[[ARG_2:.*]]: index)
+
+// CHECK:       %[[NEW_RESULT:.*]] = xla_gpu.apply_indexing #[[$MAP]](%[[ARG_1]] in [0, 2])
+// CHECK:       return %[[NEW_RESULT]]
