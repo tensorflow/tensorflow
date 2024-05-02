@@ -1527,19 +1527,19 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
 }
 
 IndexingMap ComputeEpilogueInputToOutputIndexing(
-    const HloInstruction* epilogue_root, MLIRContext* mlir_context,
-    std::function<bool(const HloInstruction*)> is_root) {
-  auto* instr = epilogue_root;
-  auto root_indexing = CreateIdentityMap(instr->shape(), mlir_context);
-  while (!is_root(instr)) {
-    // There can be multiple users, but they must have compatible indexing maps.
-    auto* user = instr->users().front();
+    HloInstructionAdaptor epilogue_parent, HloInstructionAdaptor epilogue_root,
+    MLIRContext* mlir_context) {
+  auto chain = HloFindUseChain(epilogue_parent, epilogue_root);
+  CHECK(!chain.empty()) << "There is no use chain from parent to root";
+  auto root_indexing = CreateIdentityMap(epilogue_parent.shape(), mlir_context);
+  for (int i = 1; i < chain.size(); ++i) {
+    const auto& producer = chain[i - 1].instruction();
+    const auto& user = chain[i].instruction();
     auto user_indexing = ComputeInputToOutputIndexing(
-        user, user->operand_index(instr), mlir_context);
+        &user, user.operand_index(&producer), mlir_context);
     root_indexing = root_indexing * *user_indexing.indexing_maps[0].begin();
     root_indexing.Simplify(GetIndexingMapForInstruction);
     root_indexing.RemoveUnusedSymbols();
-    instr = user;
   }
   return root_indexing;
 }

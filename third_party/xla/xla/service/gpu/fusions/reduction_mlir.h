@@ -59,6 +59,7 @@ class MlirReductionFusion : public ReductionFusionBase<MlirFusionEmitterBase> {
   // The roots that have reduction heroes.
   std::vector<const HloInstruction*> reduction_roots_;
   std::vector<const HloInstruction*> side_output_roots_;
+  int first_reduction_root_index_;
 };
 
 }  // namespace gpu

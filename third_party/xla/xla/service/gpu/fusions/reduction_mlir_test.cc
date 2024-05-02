@@ -372,6 +372,31 @@ TEST_F(ReductionTest, SideOutput) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(ReductionTest, BroadcastSideOutput) {
+  constexpr auto kHloString = R"(
+    %add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    %fusion {
+      %p0 = f32[6,6] parameter(0)
+      %c0 = f32[] constant(0)
+      %reduce = f32[] reduce(%p0, %c0), dimensions={0,1}, to_apply=%add
+      %broadcast = f32[6,6] broadcast(%reduce), dimensions={}
+      ROOT %tuple = (f32[6,6], f32[]) tuple(%broadcast, %reduce)
+    }
+    ENTRY main {
+      %p0 = f32[6,6] parameter(0)
+      ROOT %fusion = (f32[6,6], f32[]) fusion(%p0), kind=kInput, calls=%fusion
+    })";
+
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: @fused_computation
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -102,7 +102,8 @@ class PartitionedComputation {
     // The roots (return values of the function).
     std::vector<const HloInstruction*> roots;
 
-    // The ranges of the indices that the subgraph is called with.
+    // The ranges of the indices that the subgraph is called with (dimensions
+    // and symbols).
     std::vector<int64_t> index_ranges;
 
     // Maps from raw indices to root indices.

@@ -83,7 +83,6 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
     const HloFusionInstruction& fusion) const {
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
-  const auto* concat = &analysis_.fusion_hero(0).instruction();
   mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
   auto* ctx = entry_function.getContext();
@@ -101,8 +100,10 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
       ComputeThreadIdToInputIndexing(
           /*root_index=*/0, /*hero_operand_index=*/0, ctx)
           .value();
-  auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(concat, ctx);
+  auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(
+      analysis_.fusion_hero(0), analysis_.fusion_root(0), ctx);
 
+  const auto* concat = &analysis_.fusion_hero(0).instruction();
   for (auto [operand_index, operand] : llvm::enumerate(concat->operands())) {
     auto input_to_output_map =
         *ComputeInputToOutputIndexing(concat, /*input_id=*/operand_index, ctx)

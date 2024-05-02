@@ -104,6 +104,10 @@ struct MlirReductionFusion::EmitterState {
 MlirReductionFusion::MlirReductionFusion(const HloFusionAnalysis& analysis)
     : ReductionFusionBase(analysis) {
   absl::flat_hash_set<const HloInstruction*> seen_heroes;
+  const auto& is_reduction_root =
+      reduction_info().GetGroups().is_reduction_root;
+  first_reduction_root_index_ = std::distance(
+      is_reduction_root.begin(), absl::c_find(is_reduction_root, true));
   for (auto [root, hero, is_reduction] :
        llvm::zip(analysis.fusion_roots(), analysis.fusion_heroes(),
                  reduction_info().GetGroups().is_reduction_root)) {
@@ -116,8 +120,7 @@ MlirReductionFusion::MlirReductionFusion(const HloFusionAnalysis& analysis)
 
 bool MlirReductionFusion::IsSupported(const HloFusionAnalysis& analysis) {
   auto info = ReductionInfo::Create(analysis);
-  return info.GetGroups().grouped_roots.size() == 1 && info.IsRaceFree() &&
-         !absl::c_linear_search(info.GetGroups().is_reduction_root, false);
+  return info.GetGroups().grouped_roots.size() == 1 && info.IsRaceFree();
 }
 
 std::vector<mlir_converter::EpilogueSpecification>
@@ -201,25 +204,24 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
   }
   bool use_shared = !shared_tile_size.empty();
 
-  auto thread_has_output =
-      mlir_converter::CheckConstraints(*ComputeThreadIdToOutputIndexing(0, ctx),
-                                       thread_and_block_indices, {}, builder);
+  auto thread_has_output = mlir_converter::CheckConstraints(
+      *ComputeThreadIdToOutputIndexing(first_reduction_root_index_, ctx),
+      thread_and_block_indices, {}, builder);
 
   HloValueMap inits;
   llvm::SmallVector<Value> outputs =
       mlir::ValueRange(state.entry_function.getArguments().drop_front(
           state.fusion.fused_parameters().size()));
   HloValueMap root_output_indices;
-  llvm::SmallVector<Value> epilogue_input_indices;
+  llvm::SmallVector<Value> epilogue_input_dims;
   const auto& epilogue = state.computations.epilogues().front();
-  epilogue_input_indices = EmitThreadAndBlockIds(builder);
-  int num_symbols = epilogue.root_indexing.front().getNumSymbols();
-  for (int i = 0; i < num_symbols; ++i) {
-    epilogue_input_indices.push_back(zero);
-  }
+  epilogue_input_dims = EmitThreadAndBlockIds(builder);
+  llvm::SmallVector<Value> epilogue_input_symbols(
+      epilogue.root_indexing.front().getNumSymbols(), zero);
   for (auto [index, root] : llvm::enumerate(epilogue.roots)) {
     root_output_indices[root] = mlir_converter::ApplyAffineMap(
-        epilogue.root_indexing[index], epilogue_input_indices, {}, builder);
+        epilogue.root_indexing[index], epilogue_input_dims,
+        epilogue_input_symbols, builder);
   }
 
   for (auto [index, hero] : llvm::enumerate(reduction_heroes_)) {
@@ -233,9 +235,11 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
 
   auto evaluate_epilogue = [&](const HloValueMap& results,
                                llvm::SmallVector<Value> outputs) {
-    auto values = EmitEpilogue(/*epilogue_index=*/0, state.computations,
-                               state.entry_function, results,
-                               epilogue_input_indices, builder);
+    auto epilogue_indices = epilogue_input_dims;
+    epilogue_indices.append(epilogue_input_symbols);
+    auto values =
+        EmitEpilogue(/*epilogue_index=*/0, state.computations,
+                     state.entry_function, results, epilogue_indices, builder);
     const auto& epilogue = state.computations.epilogues().front();
     for (auto root : epilogue.roots) {
       for (auto [result_index, result] : llvm::enumerate(values.at(root))) {
@@ -348,6 +352,13 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
         tile_indexing.GetAffineMap(), dim_values, symbol_values, builder);
 
     llvm::SmallVector<Value> results;
+    struct SideOutput {
+      Value tensor;
+      llvm::SmallVector<Value> indices;
+      Value scalar;
+      int result_index;
+    };
+    llvm::SmallVector<SideOutput> side_outputs;
     int start = 0;
     for (auto [is_reduction, hero] :
          llvm::zip(owner.reduction_info().GetGroups().is_reduction_root,
@@ -374,10 +385,19 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
         Value value = mlir_converter::ProvideParameter(
             computation, root_tuple, root_tuple->operand_index(hero),
             input_indices, call_target, entry_function, builder);
-        results.push_back(builder.create<mlir::tensor::InsertOp>(
-            value, iter_args[start], input_indices));
+        // Tensor insertions turn into writes, so they have to happen in the
+        // end. This could be considered a bug in the lowering, but since we
+        // don't have bufferization, we need to handle it here.
+        side_outputs.push_back(
+            {iter_args[start], std::move(input_indices), value, start});
+        results.push_back(nullptr);
         ++start;
       }
+    }
+    for (auto& side_output : side_outputs) {
+      results[side_output.result_index] =
+          builder.create<mlir::tensor::InsertOp>(
+              side_output.scalar, side_output.tensor, side_output.indices);
     }
     return results;
   };
