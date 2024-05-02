@@ -375,8 +375,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   return executable_bundle;
 }
 
-xla::ifrt::Future<
-    absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>>
+xla::ifrt::Future<IfrtServingExecutable::SharedCachedExecutableBundle>
 IfrtServingExecutable::LookUpOrCreateExecutable(
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
     absl::Span<const DtypeAndShape> dtypes_and_shapes) {
@@ -386,8 +385,8 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
   }
   Key key = {.input_shapes = std::move(input_shapes)};
 
-  xla::ifrt::Promise<absl::StatusOr<SharedCachedExecutableBundle>> promise;
-  xla::ifrt::Future<absl::StatusOr<SharedCachedExecutableBundle>> future;
+  xla::ifrt::Promise<SharedCachedExecutableBundle> promise;
+  xla::ifrt::Future<SharedCachedExecutableBundle> future;
 
   {
     absl::MutexLock lock(&mutex_);
@@ -398,10 +397,8 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
     }
 
     // Only create promise and future when cache missed.
-    promise = xla::ifrt::Future<
-        absl::StatusOr<SharedCachedExecutableBundle>>::CreatePromise();
-    future = xla::ifrt::Future<absl::StatusOr<SharedCachedExecutableBundle>>(
-        promise);
+    promise = xla::ifrt::Future<SharedCachedExecutableBundle>::CreatePromise();
+    future = xla::ifrt::Future<SharedCachedExecutableBundle>(promise);
 
     executable_bundles_.emplace(key, future);
   }

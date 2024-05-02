@@ -1638,7 +1638,7 @@ PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHost(void* dst, int64_t offset,
 }
 
 PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHostFuture(
-    PjRtFuture<StatusOr<void*>> dst, int64_t offset, int64_t transfer_size) {
+    PjRtFuture<void*> dst, int64_t offset, int64_t transfer_size) {
   auto promise = PjRtFuture<>::CreatePromise();
   dst.OnReady([this, promise, offset,
                transfer_size](absl::StatusOr<void*> dst) mutable {
@@ -1870,8 +1870,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
 }
 
 void PjRtStreamExecutorBuffer::CopyToRemoteDevice(
-    PjRtFuture<StatusOr<std::string>> serialized_descriptor,
-    RemoteSendCallback on_done) {
+    PjRtFuture<std::string> serialized_descriptor, RemoteSendCallback on_done) {
   VLOG(1) << "PjRtStreamExecutorBuffer::CopyToRemoteDevice";
   auto desc = serialized_descriptor.Await();
   if (desc.ok()) {
@@ -1882,7 +1881,7 @@ void PjRtStreamExecutorBuffer::CopyToRemoteDevice(
 }
 
 void PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered(
-    PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
+    PjRtFuture<std::vector<std::string>> serialized_descriptors,
     std::vector<RemoteSendCallback> callbacks,
     const ScatterDetails& scatter_details) {
   VLOG(1) << "PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered";

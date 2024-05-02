@@ -109,16 +109,16 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     VLOG(1) << "Found alread registered variable for " << runtime_name;
     return absl::OkStatus();
   }
-  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_tensor_future =
+  xla::ifrt::Future<tensorflow::Tensor> restored_tensor_future =
       ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
   if (!restored_tensor_future.IsValid()) {
     return absl::InternalError(absl::StrCat(
         "LoadVariableOp: failed to fetch variable tensor: ", runtime_name));
   }
-  auto loaded_variable_promise = xla::ifrt::Future<
-      absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>>::CreatePromise();
+  auto loaded_variable_promise =
+      xla::ifrt::Future<tsl::RCReference<xla::ifrt::Array>>::CreatePromise();
   auto loaded_variable_future =
-      xla::ifrt::Future<absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>>(
+      xla::ifrt::Future<tsl::RCReference<xla::ifrt::Array>>(
           loaded_variable_promise);
   TF_ASSIGN_OR_RETURN(
       absl::StatusOr<ifrt_serving::DtypeAndShape> dtype_and_shape,

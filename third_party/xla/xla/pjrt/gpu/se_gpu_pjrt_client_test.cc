@@ -436,8 +436,8 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
 
-  auto dst_promise = xla::PjRtFuture<absl::StatusOr<void*>>::CreatePromise();
-  xla::PjRtFuture<absl::StatusOr<void*>> dst_future(dst_promise);
+  auto dst_promise = xla::PjRtFuture<void*>::CreatePromise();
+  xla::PjRtFuture<void*> dst_future(dst_promise);
 
   TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
   buffer->GetReadyFuture().OnReady([dst_promise = std::move(dst_promise),

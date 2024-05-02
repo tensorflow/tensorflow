@@ -65,16 +65,15 @@ class ThreadSafePjRtChunkQueue {
   }
 
   // Pop a PjRtChunk future from the queue.
-  PjRtFuture<absl::StatusOr<PjRtChunk>> Pop() {
+  PjRtFuture<PjRtChunk> Pop() {
     absl::MutexLock lock(&mu_);
     if (queue_.empty()) {
-      auto promise = PjRtFuture<absl::StatusOr<PjRtChunk>>::CreatePromise();
+      auto promise = PjRtFuture<PjRtChunk>::CreatePromise();
       promises_.push_back(promise);
-      return PjRtFuture<absl::StatusOr<PjRtChunk>>(std::move(promise));
+      return PjRtFuture<PjRtChunk>(std::move(promise));
     }
 
-    auto chunk =
-        PjRtFuture<absl::StatusOr<PjRtChunk>>(std::move(queue_.front()));
+    auto chunk = PjRtFuture<PjRtChunk>(std::move(queue_.front()));
     queue_.pop_front();
     return chunk;
   }
@@ -83,8 +82,7 @@ class ThreadSafePjRtChunkQueue {
   absl::Mutex mu_;
   std::deque<PjRtChunk> queue_ ABSL_GUARDED_BY(mu_);
   // Contains unfulfilled pop promises.
-  std::deque<PjRtFuture<absl::StatusOr<PjRtChunk>>::Promise> promises_
-      ABSL_GUARDED_BY(mu_);
+  std::deque<PjRtFuture<PjRtChunk>::Promise> promises_ ABSL_GUARDED_BY(mu_);
 };
 
 struct HostCallbackArgInfo {

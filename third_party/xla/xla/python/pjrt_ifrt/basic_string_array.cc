@@ -42,8 +42,7 @@ char BasicStringArray::ID = 0;
 
 absl::StatusOr<tsl::RCReference<BasicStringArray>> BasicStringArray::Create(
     Client* client, Shape shape, std::shared_ptr<const Sharding> sharding,
-    Future<absl::StatusOr<Buffers>> buffers,
-    OnDoneWithBuffer on_done_with_buffer) {
+    Future<Buffers> buffers, OnDoneWithBuffer on_done_with_buffer) {
   return tsl::MakeRef<BasicStringArray>(client, std::move(shape),
                                         std::move(sharding), std::move(buffers),
                                         std::move(on_done_with_buffer));
@@ -57,7 +56,7 @@ absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::FullyReplicatedShard(
 
 BasicStringArray::BasicStringArray(Client* client, Shape shape,
                                    std::shared_ptr<const Sharding> sharding,
-                                   Future<absl::StatusOr<Buffers>> buffers,
+                                   Future<Buffers> buffers,
                                    OnDoneWithBuffer on_done_with_buffer)
     : client_(client),
       shape_(std::move(shape)),

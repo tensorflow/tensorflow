@@ -61,8 +61,7 @@ class BasicStringArray final
   // of devices in `sharding`.
   static absl::StatusOr<tsl::RCReference<BasicStringArray>> Create(
       Client* client, Shape shape, std::shared_ptr<const Sharding> sharding,
-      Future<absl::StatusOr<Buffers>> buffers,
-      OnDoneWithBuffer on_done_with_buffer);
+      Future<Buffers> buffers, OnDoneWithBuffer on_done_with_buffer);
 
   absl::StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
       ArrayCopySemantics semantics) override;
@@ -118,7 +117,7 @@ class BasicStringArray final
 
   // Returns a future holding the string buffers underlying this array. Valid
   // only while this Array object is alive.
-  Future<absl::StatusOr<Buffers>> buffers() const {
+  Future<Buffers> buffers() const {
     return buffers_;  // Future copying is not considered expensive.
   }
 
@@ -130,14 +129,14 @@ class BasicStringArray final
 
   BasicStringArray(Client* client, Shape shape,
                    std::shared_ptr<const Sharding> sharding,
-                   Future<absl::StatusOr<Buffers>> buffers,
+                   Future<Buffers> buffers,
                    OnDoneWithBuffer on_done_with_buffer);
 
   Client* client_;
   Shape shape_;
   std::shared_ptr<const Sharding> sharding_;
 
-  Future<absl::StatusOr<Buffers>> buffers_;
+  Future<Buffers> buffers_;
   OnDoneWithBuffer on_done_with_buffer_;
 };
 

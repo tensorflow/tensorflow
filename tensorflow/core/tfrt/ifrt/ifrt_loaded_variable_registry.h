@@ -54,7 +54,7 @@ class IfrtLoadedVariableRegistry {
   };
 
   struct LoadedVariable {
-    xla::ifrt::Future<absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>> array;
+    xla::ifrt::Future<tsl::RCReference<xla::ifrt::Array>> array;
   };
   using LoadedVariableConstructor =
       absl::AnyInvocable<absl::StatusOr<LoadedVariable>() const>;

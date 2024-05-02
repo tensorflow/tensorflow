@@ -43,12 +43,12 @@ absl::Status IfrtRestoreTensorRegistry::TryRegister(
   return absl::OkStatus();
 }
 
-xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>
+xla::ifrt::Future<tensorflow::Tensor>
 IfrtRestoreTensorRegistry::GetRestoredTensor(absl::string_view name) const {
   absl::MutexLock lock(&mutex_);
   auto it = restored_tensors_.find(name);
   if (it == restored_tensors_.end()) {
-    return xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(
+    return xla::ifrt::Future<tensorflow::Tensor>(
         absl::NotFoundError(absl::StrCat("Variable '", name, "' not found.")));
   }
 
@@ -69,7 +69,7 @@ absl::Status IfrtRestoreTensorRegistry::SetUsedByHost(absl::string_view name) {
 
 void IfrtRestoreTensorRegistry::Freeze() {
   absl::MutexLock lock(&mutex_);
-  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> release_tensor_future(
+  xla::ifrt::Future<tensorflow::Tensor> release_tensor_future(
       absl::UnavailableError("Tensor is already release."));
   for (auto& [name, info] : restored_tensors_) {
     if (!info.used_by_host) {

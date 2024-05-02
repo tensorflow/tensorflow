@@ -454,11 +454,10 @@ TEST_P(VariableInputTest, InterleaveVariable) {
   std::vector<int> loaded_variable_indices;
   for (int i = 0; i < GetParam().in_tensors.size(); i++) {
     if (GetParam().is_variable[i]) {
-      auto input_tensor_promise = xla::ifrt::Future<
-          absl::StatusOr<tensorflow::Tensor>>::CreatePromise();
+      auto input_tensor_promise =
+          xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
       auto input_tensor_future =
-          xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(
-              input_tensor_promise);
+          xla::ifrt::Future<tensorflow::Tensor>(input_tensor_promise);
       IfrtRestoreTensorRegistry::RestoredTensorInfo restore_tensor_info = {
           .dtype_and_shape{.dtype = GetParam().in_tensors[i].dtype(),
                            .shape = GetParam().in_tensors[i].shape()},

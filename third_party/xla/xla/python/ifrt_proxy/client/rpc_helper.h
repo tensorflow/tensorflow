@@ -69,7 +69,7 @@ class RpcHelper {
   }
 
   template <typename T>
-  using ResponseFuture = Future<absl::StatusOr<std::shared_ptr<T>>>;
+  using ResponseFuture = Future<std::shared_ptr<T>>;
 
   // Wrapper function for various logical RPCs defined in ifrt_service.proto.
   // Whenever the RPC finishes, `on_done` will be called with the result or the

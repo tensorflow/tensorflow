@@ -80,9 +80,8 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
   VariableDeviceShardingConfigProto sharding_config;
   sharding_config.add_device_ids(0);
 
-  auto promise =
-      xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>::CreatePromise();
-  auto future = xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(promise);
+  auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
+  auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
       false,
@@ -124,9 +123,8 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
   VariableDeviceShardingConfigProto sharding_config;
   sharding_config.add_device_ids(0);
 
-  auto promise =
-      xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>::CreatePromise();
-  auto future = xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(promise);
+  auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
+  auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
       false,

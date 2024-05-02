@@ -408,10 +408,9 @@ TEST_F(KernelTest, IfrtLoadVariableOp) {
   TF_CHECK_OK(tensorflow::Tensor::BuildTensor(DT_INT32, {}, &input_tensor));
   input_tensor.scalar<int32_t>()() = 1234;
   auto input_tensor_promise =
-      xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>::CreatePromise();
+      xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
   auto input_tensor_future =
-      xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(
-          input_tensor_promise);
+      xla::ifrt::Future<tensorflow::Tensor>(input_tensor_promise);
   ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
       restore_tensor_info{.dtype_and_shape = {.dtype = input_tensor.dtype(),
                                               .shape = input_tensor.shape()},
@@ -500,10 +499,9 @@ TEST_F(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
   TF_CHECK_OK(tensorflow::Tensor::BuildTensor(DT_INT32, {}, &input_tensor));
   input_tensor.scalar<int32_t>()() = 1234;
   auto input_tensor_promise =
-      xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>::CreatePromise();
+      xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
   auto input_tensor_future =
-      xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(
-          input_tensor_promise);
+      xla::ifrt::Future<tensorflow::Tensor>(input_tensor_promise);
   ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
       restore_tensor_info{.dtype_and_shape = {.dtype = input_tensor.dtype(),
                                               .shape = input_tensor.shape()},
@@ -589,7 +587,7 @@ TEST_F(KernelTest, IfrtRestoreVariableOp) {
                   "IfrtModelContext");
 
   ASSERT_TRUE(ifrt_model_context.has_value());
-  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> uninitialized_entry =
+  xla::ifrt::Future<tensorflow::Tensor> uninitialized_entry =
       (*ifrt_model_context)
           ->GetRestoreTensorRegistry()
           .GetRestoredTensor(kVariableRuntimeName);
@@ -630,7 +628,7 @@ TEST_F(KernelTest, IfrtRestoreVariableOp) {
 
   TF_ASSERT_OK(execution_context.status());
 
-  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_future =
+  xla::ifrt::Future<tensorflow::Tensor> restored_future =
       (*ifrt_model_context)
           ->GetRestoreTensorRegistry()
           .GetRestoredTensor(kVariableRuntimeName);

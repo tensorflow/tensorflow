@@ -98,17 +98,11 @@ struct PjRtFutureHelpers {
 
 namespace internal {
 
-// TODO(b/337054455): We are in the process of migrating PjRtFuture to implicit
-// StatusOr payload type and while we are doing this we introduce a little bit
-// of template metaprogramming to detect PjRtFutures with absl::StatusOr
-// specializations as a value type.
+// Detects absl::StatusOr<T> specializations to disable them for PjRtFuture<T>.
 template <typename T>
 struct IsStatusOr : public std::false_type {};
 template <typename T>
 struct IsStatusOr<absl::StatusOr<T>> : public std::true_type {};
-
-template <typename T>
-inline constexpr bool is_status_or_v = IsStatusOr<T>::value;  // NOLINT
 
 // A base class to conditionally disable copy constructor and assignment for a
 // PjRtFuture<T> (by default we always disable copy constructor when `T` is not
@@ -382,16 +376,14 @@ class PjRtFutureBase : public PjRtFutureMoveControl<unique> {
 // Third, we want to export different semantics, for example we support
 // integration between blocking and profiling (e.g., TraceMe).
 template <class T>
-class PjRtFuture : public internal::PjRtFutureBase<T> {
-  using Base = internal::PjRtFutureBase<T>;
+class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
+  using Base = internal::PjRtFutureBase<absl::StatusOr<T>>;
 
   static_assert(!std::is_same_v<T, absl::Status>,
                 "Use PjRtFuture<> specialization for stateless futures");
 
-  // TODO(b/337054455): Disable PjRtFuture for StatusOr<T> specializations.
-  static_assert(
-      internal::is_status_or_v<T>,
-      "In preparation for b/337054455 require T to be absl::StatusOr");
+  static_assert(!internal::IsStatusOr<T>::value,
+                "PjRtFuture<T> already has an implicit StatusOr<T> semantics");
 
  public:
   class Promise : public Base::Promise {
@@ -402,7 +394,9 @@ class PjRtFuture : public internal::PjRtFutureBase<T> {
     //
     // After Set is called, value will be delivered to waiters on the PjRtFuture
     // constructed from a promise, via blocking or callbacks.
-    void Set(T value) { Base::Promise::emplace(std::move(value)); }
+    void Set(absl::StatusOr<T> value) {
+      Base::Promise::emplace(std::move(value));
+    }
 
    private:
     friend class PjRtFuture<T>;
@@ -411,7 +405,7 @@ class PjRtFuture : public internal::PjRtFutureBase<T> {
   // Returns a Promise that can be used to construct a PjRtFuture, and then Set
   // later.
   static Promise CreatePromise() {
-    return Promise(tsl::MakeUnconstructedAsyncValueRef<T>());
+    return Promise(tsl::MakeUnconstructedAsyncValueRef<absl::StatusOr<T>>());
   }
 
   // Bring PjRtFutureBase constructors in scope.

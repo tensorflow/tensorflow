@@ -158,8 +158,7 @@ class IfrtServingExecutable {
   IfrtServingCoreSelector* ifrt_serving_core_selector_;
 
   mutable absl::Mutex mutex_;
-  absl::flat_hash_map<
-      Key, xla::ifrt::Future<absl::StatusOr<SharedCachedExecutableBundle>>>
+  absl::flat_hash_map<Key, xla::ifrt::Future<SharedCachedExecutableBundle>>
       executable_bundles_ ABSL_GUARDED_BY(mutex_);
 
   // Asynchronously load the restored variable tensors to Ifrt array.
@@ -174,8 +173,7 @@ class IfrtServingExecutable {
       const xla::ifrt::DeviceList& device_list,
       const xla::OpSharding& sharding);
 
-  xla::ifrt::Future<absl::StatusOr<SharedCachedExecutableBundle>>
-  LookUpOrCreateExecutable(
+  xla::ifrt::Future<SharedCachedExecutableBundle> LookUpOrCreateExecutable(
       const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
       absl::Span<const DtypeAndShape> dtypes_and_shapes);
   absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>

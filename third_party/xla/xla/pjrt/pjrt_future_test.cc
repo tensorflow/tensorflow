@@ -41,11 +41,11 @@ TEST(PjRtFutureTest, StatelessFuture) {
 }
 
 TEST(PjRtFutureTest, CopyableFuture) {
-  auto promise = PjRtFuture<absl::StatusOr<int32_t>>::CreatePromise();
-  PjRtFuture<absl::StatusOr<int32_t>> future(promise);
+  auto promise = PjRtFuture<int32_t>::CreatePromise();
+  PjRtFuture<int32_t> future(promise);
 
-  PjRtFuture<absl::StatusOr<int32_t>> copy_constructed(future);
-  PjRtFuture<absl::StatusOr<int32_t>> copy_assigned = future;
+  PjRtFuture<int32_t> copy_constructed(future);
+  PjRtFuture<int32_t> copy_assigned = future;
 
   EXPECT_FALSE(copy_constructed.IsReady());
   EXPECT_FALSE(copy_assigned.IsReady());
@@ -55,12 +55,10 @@ TEST(PjRtFutureTest, CopyableFuture) {
 }
 
 TEST(PjRtFutureTest, MoveConstructedFuture) {
-  auto promise =
-      PjRtFuture<absl::StatusOr<std::unique_ptr<int32_t>>>::CreatePromise();
-  PjRtFuture<absl::StatusOr<std::unique_ptr<int32_t>>> future(promise);
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
 
-  PjRtFuture<absl::StatusOr<std::unique_ptr<int32_t>>> move_constructed(
-      std::move(future));
+  PjRtFuture<std::unique_ptr<int32_t>> move_constructed(std::move(future));
 
   EXPECT_FALSE(move_constructed.IsReady());
   promise.Set(std::make_unique<int32_t>(42));
@@ -68,12 +66,10 @@ TEST(PjRtFutureTest, MoveConstructedFuture) {
 }
 
 TEST(PjRtFutureTest, MoveAssignedFuture) {
-  auto promise =
-      PjRtFuture<absl::StatusOr<std::unique_ptr<int32_t>>>::CreatePromise();
-  PjRtFuture<absl::StatusOr<std::unique_ptr<int32_t>>> future(promise);
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
 
-  PjRtFuture<absl::StatusOr<std::unique_ptr<int32_t>>> move_assigned =
-      std::move(future);
+  PjRtFuture<std::unique_ptr<int32_t>> move_assigned = std::move(future);
 
   EXPECT_FALSE(move_assigned.IsReady());
   promise.Set(std::make_unique<int32_t>(42));
@@ -81,9 +77,8 @@ TEST(PjRtFutureTest, MoveAssignedFuture) {
 }
 
 TEST(PjRtFutureTest, AwaitMoveOnlyFuture) {
-  auto promise =
-      PjRtFuture<absl::StatusOr<std::unique_ptr<int32_t>>>::CreatePromise();
-  PjRtFuture<absl::StatusOr<std::unique_ptr<int32_t>>> future(promise);
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
 
   promise.Set(std::make_unique<int32_t>(42));
 
@@ -92,8 +87,8 @@ TEST(PjRtFutureTest, AwaitMoveOnlyFuture) {
 }
 
 TEST(PjRtFutureTest, OnReadyRvalueFuture) {
-  auto promise = PjRtFuture<absl::StatusOr<int32_t>>::CreatePromise();
-  PjRtFuture<absl::StatusOr<int32_t>> future(promise);
+  auto promise = PjRtFuture<int32_t>::CreatePromise();
+  PjRtFuture<int32_t> future(promise);
 
   promise.Set(42);
 
@@ -102,9 +97,8 @@ TEST(PjRtFutureTest, OnReadyRvalueFuture) {
 }
 
 TEST(PjRtFutureTest, OnReadyMoveOnlyFuture) {
-  auto promise =
-      PjRtFuture<absl::StatusOr<std::unique_ptr<int32_t>>>::CreatePromise();
-  PjRtFuture<absl::StatusOr<std::unique_ptr<int32_t>>> future(promise);
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
 
   promise.Set(std::make_unique<int32_t>(42));
 
@@ -148,8 +142,8 @@ TEST(PjRtFutureTest, StatelessImmediate) {
 }
 
 TEST(PjRtFutureTest, StatefulFuture) {
-  auto promise = PjRtFuture<absl::StatusOr<int32_t>>::CreatePromise();
-  PjRtFuture<absl::StatusOr<int32_t>> future(promise);
+  auto promise = PjRtFuture<int32_t>::CreatePromise();
+  PjRtFuture<int32_t> future(promise);
 
   EXPECT_FALSE(future.IsReady());
   promise.Set(42);
@@ -171,11 +165,11 @@ TEST(PjRtFutureTest, StatusFuture) {
 }
 
 TEST(PjRtFutureTest, StatusOrFuture) {
-  auto promise = PjRtFuture<absl::StatusOr<int32_t>>::CreatePromise();
-  PjRtFuture<absl::StatusOr<int32_t>> future(promise);
+  auto promise = PjRtFuture<int32_t>::CreatePromise();
+  PjRtFuture<int32_t> future(promise);
 
   EXPECT_FALSE(future.IsReady());
-  promise.Set(absl::StatusOr<int32_t>(42));
+  promise.Set(42);
   EXPECT_TRUE(future.IsReady());
 
   future.OnReady([](absl::StatusOr<int32_t> value) { EXPECT_EQ(*value, 42); });
