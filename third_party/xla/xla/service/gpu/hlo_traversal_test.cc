@@ -426,6 +426,29 @@ TEST_F(HloTraversalTest, SingleInstructionFusionOfInstruction) {
   EXPECT_THAT(nodes, ElementsAre("negate"));
 }
 
+TEST_F(HloTraversalTest, MultiOutputFusionDuplicateRoot) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test
+
+    fused_computation {
+      p0.1 = f32[128] parameter(0)
+      p1.1 = f32[128] parameter(1)
+      mul = f32[128] multiply(p0.1, p1.1)
+      ROOT res = (f32[128], f32[128]) tuple(mul, mul)
+    }
+
+    ENTRY entry {
+      p0 = f32[128] parameter(0)
+      p1 = f32[128] parameter(1)
+      ROOT fusion = (f32[128], f32[128]) fusion(p0, p1), kind=kLoop, calls=fused_computation
+    })")
+                    .value();
+  auto fusion = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->GetInstructionWithName("fusion"));
+  EXPECT_THAT(fusion->GetRoots(), ElementsAre(InstructionAdaptorName("mul"),
+                                              InstructionAdaptorName("mul")));
+}
+
 TEST_F(HloTraversalTest, MakeInstructionsPostOrder_SingleInstruction) {
   auto module = ParseAndReturnVerifiedModule(kTwoFusions).value();
   auto fusion = HloFusionAdaptor::ForInstruction(

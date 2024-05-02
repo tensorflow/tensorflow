@@ -143,7 +143,6 @@ class HloComputationFusion : public internal::HloFusionInstructionAdaptor {
     absl::InlinedVector<HloInstructionAdaptor, 2> roots;
 
     std::function<void(const HloInstruction*)> get_roots;
-    absl::flat_hash_set<HloInstructionAdaptor> roots_set;
     get_roots = [&](const HloInstruction* instr) {
       if (instr->opcode() == HloOpcode::kTuple) {
         for (const auto* operand : instr->operands()) {
@@ -151,9 +150,7 @@ class HloComputationFusion : public internal::HloFusionInstructionAdaptor {
         }
       } else {
         HloInstructionAdaptor wrapped{*instr, parent_};
-        if (roots_set.insert(wrapped).second) {
-          roots.push_back(wrapped);
-        }
+        roots.push_back(wrapped);
       }
     };
     get_roots(computation->root_instruction());

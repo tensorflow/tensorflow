@@ -85,6 +85,9 @@ class HloFusionInstructionAdaptor {
  public:
   virtual ~HloFusionInstructionAdaptor() = default;
   virtual bool ContainsInstruction(const HloInstruction* instruction) const = 0;
+  // If it is a regular multi-output fusion, the order of the returned roots
+  // matches the order of the tuple elements of the tuple root of the fusion
+  // computation. We do not deduplicate fusion roots.
   virtual absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const = 0;
   virtual absl::InlinedVector<HloInstructionAdaptor, 2>
   MakeInstructionPostOrder() const = 0;
