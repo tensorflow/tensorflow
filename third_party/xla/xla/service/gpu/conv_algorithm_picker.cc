@@ -756,7 +756,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     (void)blas->GetVersion(&blas_version);
   }
 
-  absl::Span<const AlgorithmDesc> disabled_algos;
+  std::vector<AlgorithmDesc> disabled_algos;
   TF_ASSIGN_OR_RETURN(
       AutotuneRuntimeArguments runtime_arguments,
       AutotuneRuntimeArguments::FromInstruction(instr, config_, debug_options));
