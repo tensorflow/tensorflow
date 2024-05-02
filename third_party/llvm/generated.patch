@@ -1,1 +1,84 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/lldb/scripts/generate-sbapi-dwarf-enum.py b/lldb/scripts/generate-sbapi-dwarf-enum.py
+--- a/lldb/scripts/generate-sbapi-dwarf-enum.py
++++ b/lldb/scripts/generate-sbapi-dwarf-enum.py
+@@ -27,7 +27,7 @@
+ """
+ 
+ REGEX = re.compile(
+-    r'^ *HANDLE_DW_LNAME *\( *(?P<value>[^,]+), (?P<comment>[^"]+), "(?P<name>.*)",.*\)'
++    r'^ *HANDLE_DW_LNAME *\( *(?P<value>[^,]+), (?P<name>.*), "(?P<comment>[^"]+)",.*\)'
+ )
+ 
+ 
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/lldb/BUILD.bazel b/utils/bazel/llvm-project-overlay/lldb/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/lldb/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/lldb/BUILD.bazel
+@@ -183,18 +183,17 @@
+     ],
+ )
+ 
+-gentbl_cc_library(
++py_binary(
++    name = "generate-sbapi-dwarf-enum",
++    srcs = ["scripts/generate-sbapi-dwarf-enum.py"],
++)
++
++genrule(
+     name = "lldb-sbapi-dwarf-enums",
+-    strip_include_prefix = "include",
+-    tbl_outs = [
+-        (
+-            ["-gen-lldb-sbapi-dwarf-enum"],
+-            "include/lldb/API/SBLanguages.h",
+-        ),
+-    ],
+-    tblgen = ":lldb-tblgen",
+-    td_file = "//llvm:include/llvm/BinaryFormat/Dwarf.def",
+-    deps = [],
++    srcs = ["//llvm:include/llvm/BinaryFormat/Dwarf.def"],
++    outs = ["include/lldb/API/SBLanguages.h"],
++    cmd = "$(location :generate-sbapi-dwarf-enum) $(location //llvm:include/llvm/BinaryFormat/Dwarf.def) --output $@",
++    tools = [":generate-sbapi-dwarf-enum"],
+ )
+ 
+ cc_library(
+@@ -203,10 +202,9 @@
+         "source/API/**/*.cpp",
+         "source/API/**/*.h",
+     ]),
+-    hdrs = glob(["include/lldb/API/**/*.h"]),
++    hdrs = glob(["include/lldb/API/**/*.h"]) + [":lldb-sbapi-dwarf-enums"],
+     strip_include_prefix = "include",
+     deps = [
+-        ":lldb-sbapi-dwarf-enums",
+         ":Breakpoint",
+         ":Commands",
+         ":Core",
+@@ -284,10 +282,9 @@
+ cc_library(
+     name = "Expression",
+     srcs = glob(["source/Expression/**/*.cpp"]),
+-    hdrs = glob(["include/lldb/Expression/**/*.h"]),
++    hdrs = glob(["include/lldb/Expression/**/*.h"]) + [":lldb-sbapi-dwarf-enums"],
+     strip_include_prefix = "include",
+     deps = [
+-        ":lldb-sbapi-dwarf-enums",
+         ":Core",
+         ":Headers",
+         ":Host",
+@@ -361,12 +358,9 @@
+ 
+ cc_library(
+     name = "ExpressionHeaders",
+-    hdrs = glob(["include/lldb/Expression/**/*.h"]),
++    hdrs = glob(["include/lldb/Expression/**/*.h"]) + [":lldb-sbapi-dwarf-enums"],
+     strip_include_prefix = "include",
+-    deps = [
+-        ":lldb-sbapi-dwarf-enums",
+-        "//llvm:ExecutionEngine"
+-    ],
++    deps = ["//llvm:ExecutionEngine"],
+ )
+ 
+ cc_library(

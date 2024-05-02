@@ -25,11 +25,11 @@ func.func @insert_index_vector_and_window_dims(%dst1: tensor<3x3xf32>,
 // CHECK-SAME:      %[[UPD1:.*]]: tensor<2x3xf32>, %[[UPD2:.*]]: tensor<2x3xf32>)
 
 // CHECK:         %[[IND_:.*]] = tensor.expand_shape %[[IND]] [
-// CHECK-SAME:      [0, 1]] : tensor<2xi32> into tensor<2x1xi32>
+// CHECK-SAME:      [0, 1]] output_shape [2, 1] : tensor<2xi32> into tensor<2x1xi32>
 // CHECK:         %[[UPD1_:.*]] = tensor.expand_shape %[[UPD1]] [
-// CHECK-SAME:      [0], [1, 2]] : tensor<2x3xf32> into tensor<2x1x3xf32>
+// CHECK-SAME:      [0], [1, 2]] output_shape [2, 1, 3] : tensor<2x3xf32> into tensor<2x1x3xf32>
 // CHECK:         %[[UPD2_:.*]] = tensor.expand_shape %[[UPD2]] [
-// CHECK-SAME:      [0], [1, 2]] : tensor<2x3xf32> into tensor<2x1x3xf32>
+// CHECK-SAME:      [0], [1, 2]] output_shape [2, 1, 3] : tensor<2x3xf32> into tensor<2x1x3xf32>
 
 // CHECK:         "mhlo.scatter"(%[[DST1]], %[[DST2]], %[[IND_]], %[[UPD1_]], %[[UPD2_]])
 // CHECK:           update_window_dims = [1, 2],
@@ -194,9 +194,9 @@ func.func @zero_dim_scatter_indices(%dst: tensor<4x4xf32>,
 // CHECK-SAME:      %[[UPD:.*]]: tensor<3x3xf32>
 
 // CHECK:         %[[IND_:.*]] = tensor.expand_shape %[[IND]] [
-// CHECK-SAME:      [0, 1]] : tensor<2xi32> into tensor<1x2xi32>
+// CHECK-SAME:      [0, 1]] output_shape [1, 2] : tensor<2xi32> into tensor<1x2xi32>
 // CHECK:         %[[UPD_:.*]] = tensor.expand_shape %[[UPD]] [
-// CHECK-SAME:      [0, 1], [2]] : tensor<3x3xf32> into tensor<1x3x3xf32>
+// CHECK-SAME:      [0, 1], [2]] output_shape [1, 3, 3] : tensor<3x3xf32> into tensor<1x3x3xf32>
 // CHECK:         "mhlo.scatter"(%[[DST]], %[[IND_]], %[[UPD_]])
 // CHECK-SAME:      update_window_dims = [1, 2],
 // CHECK-SAME:      scatter_dims_to_operand_dims = [0, 1]
