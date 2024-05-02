@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "llvm/ADT/STLExtras.h"
@@ -311,13 +312,13 @@ IndexingMap ApplyIndexingOp::getIndexingMap() {
   unsigned num_dimensions = affine_map.getNumDims();
   std::vector<DimVar> dim_vars;
   dim_vars.reserve(num_dimensions);
-  for (int id = 0; id < num_dimensions; ++id) {
+  for (unsigned id = 0; id < num_dimensions; ++id) {
     dim_vars.push_back(DimVar{Interval{lower_bounds[id], upper_bounds[id]}});
   }
   unsigned num_symbols = affine_map.getNumSymbols();
   std::vector<RangeVar> range_vars;
   range_vars.reserve(num_symbols);
-  for (int id = 0; id < num_symbols; ++id) {
+  for (unsigned id = num_dimensions; id < num_symbols + num_dimensions; ++id) {
     range_vars.push_back(
         RangeVar{Interval{lower_bounds[id], upper_bounds[id]}});
   }
@@ -338,7 +339,7 @@ struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
     bool is_simplified = indexing_map.Simplify(GetIndexingMapForInstruction);
 
     // Remove unused symbols.
-    auto unused_symbols_bit_vector = indexing_map.RemoveUnusedSymbols();
+    auto unused_symbols_bit_vector = indexing_map.RemoveUnusedVars();
     bool symbols_removed = !unused_symbols_bit_vector.empty();
 
     if (!is_simplified || !symbols_removed) {
@@ -346,8 +347,8 @@ struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
                                          "IndexingMap stayed unchanged");
     }
     if (!unused_symbols_bit_vector.empty()) {
-      SmallVector<Value, 4> operands = indexing_op.getOperands().take_front(
-          indexing_map.GetDimensionCount());
+      SmallVector<Value, 4> operands;
+      operands.reserve(unused_symbols_bit_vector.count());
       for (int i = 0; i < unused_symbols_bit_vector.size(); ++i) {
         if (!unused_symbols_bit_vector[i]) {
           operands.push_back(indexing_op.getOperand(i));
