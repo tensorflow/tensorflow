@@ -186,6 +186,11 @@ void FindFusionArguments(
     const HloFusionAdaptor& fusion,
     const std::function<void(HloInstructionAdaptor producer)>& visit);
 
+// Find a use chain from `parent` to `root`. Empty if no chain exists.
+// `[parent]` if `parent` is `root`.
+std::vector<HloInstructionAdaptor> HloFindUseChain(HloInstructionAdaptor parent,
+                                                   HloInstructionAdaptor root);
+
 }  // namespace gpu
 }  // namespace xla
 

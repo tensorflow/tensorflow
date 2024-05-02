@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tests/hlo_test_base.h"
@@ -30,6 +31,7 @@ namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::IsEmpty;
 
 MATCHER_P(InstructionAdaptorName, name, "") { return arg.name() == name; }
 
@@ -288,7 +290,7 @@ const char kTwoFusions[] = R"(
       sum = f32[128] add(p1, p1)
       negate = f32[128] negate(sum)
       fusion.1 = f32[] fusion(p0, negate), kind=kLoop, calls=fused_computation_1
-      fusion.2 = f32[] fusion(fusion.1, negate), kind=kLoop, calls=fused_computation_2 
+      fusion.2 = f32[] fusion(fusion.1, negate), kind=kLoop, calls=fused_computation_2
       ROOT difference = f32[] subtract(fusion.2, p0)
     })";
 
@@ -495,6 +497,49 @@ TEST_F(HloTraversalTest, MakeInstructionsPostOrder_TwoMultiOutputFusions) {
                                  InstructionAdaptorName("reduce.1"),
                                  InstructionAdaptorName("neg"),
                                  InstructionAdaptorName("reduce.2")));
+}
+
+TEST_F(HloTraversalTest, HloFindUseChain) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    fusion {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      negate = f32[] negate(p0)
+      log = f32[] log(p0)
+      sum = f32[] add(p0, log)
+      exp = f32[] exponential(p1)
+      ROOT call = f32[] custom-call(negate, exp, sum), custom_call_target="it"
+    }
+
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT fusion = f32[] fusion(p0, p1), kind=kLoop, calls=fusion
+    }
+    )")
+                    .value();
+
+  auto* fusion_computation = module->GetComputationWithName("fusion");
+  auto fusion = HloFusionAdaptor::ForComputation(fusion_computation);
+  auto get = [&](absl::string_view name) {
+    return HloInstructionAdaptor{
+        *fusion_computation->GetInstructionWithName(name), fusion.get()};
+  };
+  auto p0 = get("p0");
+  auto p1 = get("p1");
+  auto log = get("log");
+  auto sum = get("sum");
+  auto negate = get("negate");
+  auto exp = get("exp");
+  auto call = get("call");
+
+  EXPECT_THAT(HloFindUseChain(p0, p0), ElementsAre(p0));
+  EXPECT_THAT(HloFindUseChain(p0, p1), IsEmpty());
+  EXPECT_THAT(HloFindUseChain(p0, call), ElementsAre(p0, negate, call));
+  EXPECT_THAT(HloFindUseChain(p0, sum), ElementsAre(p0, log, sum));
+  EXPECT_THAT(HloFindUseChain(p1, exp), ElementsAre(p1, exp));
+  EXPECT_THAT(HloFindUseChain(negate, exp), IsEmpty());
+  EXPECT_THAT(HloFindUseChain(call, p0), IsEmpty());
 }
 
 }  // namespace
