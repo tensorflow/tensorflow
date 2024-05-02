@@ -983,18 +983,8 @@ class MklMatMulPrimitive : public MklPrimitive {
       context_.a_mem.reset(
           new dnnl::memory(*context_.a_md, cpu_engine_, DummyData));
     }
-#ifdef DNNL_AARCH64_USE_ACL
-    context_.b_mem.reset(new dnnl::memory(
-        context_.prim_desc.get()->weights_desc(), cpu_engine_, DummyData));
-#else
-    context_.b_mem.reset(
-        new dnnl::memory(*context_.b_md, cpu_engine_, DummyData));
-#endif
-    context_.c_mem.reset(
-        new dnnl::memory(*context_.c_md, cpu_engine_, DummyData));
-    context_.net_args.push_back({{DNNL_ARG_SRC, *context_.a_mem},
-                                 {DNNL_ARG_WEIGHTS, *context_.b_mem},
-                                 {DNNL_ARG_DST, *context_.c_mem}});
+    context_.net_args.push_back({{DNNL_ARG_SRC, *context_.a_mem}});
+
     // Create matmul.
 #ifndef ENABLE_ONEDNN_V3
     context_.desc.reset(
@@ -1087,6 +1077,20 @@ class MklMatMulPrimitive : public MklPrimitive {
         new matmul::primitive_desc(cpu_engine_, *context_.a_md, *context_.b_md,
                                    *context_.c_md, post_ops_attr));
 #endif  // !ENABLE_ONEDNN_V3
+
+    // Create memory primitive based on dummy data.
+#ifdef DNNL_AARCH64_USE_ACL
+    context_.b_mem.reset(new dnnl::memory(
+        context_.prim_desc.get()->weights_desc(), cpu_engine_, DummyData));
+#else
+    context_.b_mem.reset(
+        new dnnl::memory(*context_.b_md, cpu_engine_, DummyData));
+#endif
+    context_.c_mem.reset(
+        new dnnl::memory(*context_.c_md, cpu_engine_, DummyData));
+    context_.net_args[0].insert({DNNL_ARG_WEIGHTS, *context_.b_mem});
+    context_.net_args[0].insert({DNNL_ARG_DST, *context_.c_mem});
+
     auto scratchpad_md = context_.prim_desc->scratchpad_desc();
     context_.sp_mem.reset(
         new dnnl::memory(scratchpad_md, cpu_engine_, DummyData));
