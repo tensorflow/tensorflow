@@ -61,15 +61,6 @@ class XlaCompiledCpuFunction {
                                const void** args, void** temps,
                                XlaCustomCallStatus*, int64_t* profile_counters);
 
-  // Signature of the XLA Runtime raw function. Used only by XLA Runtime AOT.
-  using XlaRuntimeRawFunction = void (*)(void**);
-
-  // Signature of an external run function. Used only by XLA Runtime JIT.
-  using ExternalRunFunction =
-      bool (*)(const xla::cpu::CpuExecutable* cpu_executable,
-               const std::vector<xla::cpu::BufferDesc>& descriptor_table,
-               const xla::ExecutableRunOptions* run_options);
-
   // Simple struct to describe a tensor's shape.
   // Note: this is a poor man's substitute for xla::ShapeProto, but we cannot
   // depend on protobuf's in this library.
@@ -89,9 +80,6 @@ class XlaCompiledCpuFunction {
    private:
     // The raw function to call.
     RawFunction raw_function_;
-
-    ExternalRunFunction external_run_function_ = nullptr;
-    const xla::cpu::CpuExecutable* cpu_executable_ = nullptr;
 
     // Contains information about the buffers used by the XLA computation.
     const xla::cpu_function_runtime::BufferInfo* buffer_infos_ = nullptr;
@@ -138,8 +126,6 @@ class XlaCompiledCpuFunction {
     // hlo_profile_printer_data but xla::HloProfilePrinterData is forward
     // declared so we don't have access to that information here.
     int64_t profile_counters_size_ = 0;
-
-    bool use_xla_runtime_ = false;
 
     // Only XlaCompiledCpuFunction is allowed to read and write the above
     // fields.
@@ -333,16 +319,6 @@ class XlaCompiledCpuFunction {
     static_data->raw_function_ = raw_function;
   }
 
-  static void set_static_data_external_run_function(
-      StaticData* static_data, ExternalRunFunction external_run_function) {
-    static_data->external_run_function_ = external_run_function;
-  }
-
-  static void set_static_data_cpu_executable(
-      StaticData* static_data, const xla::cpu::CpuExecutable* cpu_executable) {
-    static_data->cpu_executable_ = cpu_executable;
-  }
-
   static void set_static_data_buffer_infos(
       StaticData* static_data,
       const xla::cpu_function_runtime::BufferInfo* buffer_infos) {
@@ -430,18 +406,12 @@ class XlaCompiledCpuFunction {
     static_data->profile_counters_size_ = profile_counters_size;
   }
 
-  static void set_static_data_use_xla_runtime(StaticData* static_data,
-                                              bool use_xla_runtime) {
-    static_data->use_xla_runtime_ = use_xla_runtime;
-  }
+  // TODO(ezhulenev): This is a no-op after removing xla runtime, however it is
+  // still required for building some targets. Figure out why and delete!
+  static void set_static_data_use_xla_runtime(StaticData* static_data, bool) {}
 
  private:
   const RawFunction raw_function_;
-
-  // [Optional] External Run() function.
-  const ExternalRunFunction external_run_function_;
-  // [Maybe Optional] CpuExecutable to be passed to external_run_function_.
-  const xla::cpu::CpuExecutable* cpu_executable_;
 
   const size_t result_index_;
 
@@ -489,13 +459,6 @@ class XlaCompiledCpuFunction {
   const char** result_names_ = nullptr;
   const xla::ProgramShapeProto* program_shape_ = nullptr;
   const xla::HloProfilePrinterData* hlo_profile_printer_data_ = nullptr;
-
-  const bool use_xla_runtime_ = false;
-
-  // Creates a descriptor table for XLA Runtime.
-  std::vector<xla::cpu::BufferDesc> MakeXlaRuntimeDescriptorTable();
-
-  bool RunXlaRuntime();
 
   // Add `XlaJitCompiledCpuFunction` as a friend so that it can access the
   // `set_static_data_*` static methods above.

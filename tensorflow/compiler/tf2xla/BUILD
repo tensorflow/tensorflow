@@ -218,7 +218,6 @@ filegroup(
         "@local_tsl//tsl/framework/fixedpoint:xla_cpu_runtime_hdrs",
         "@local_tsl//tsl/platform:xla_cpu_runtime_srcs",
         "@local_xla//xla:cpu_runtime_hdrs",
-        "@local_xla//xla/runtime:aot_ffi_execution_context_hdrs",
         "@local_xla//xla/service:custom_call_status_hdrs",
         "@local_xla//xla/service/cpu:runtime_hdrs",
     ],
@@ -391,7 +390,6 @@ cc_library(
         # binary produced by tfcompile.
         "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:executable_run_options",
-        "@local_xla//xla/runtime:aot_ffi_execution_context",
         "@local_xla//xla/service/cpu:buffer_desc",
         "//tensorflow/core/platform:types",
     ],
