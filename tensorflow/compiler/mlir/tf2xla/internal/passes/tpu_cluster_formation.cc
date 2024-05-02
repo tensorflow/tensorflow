@@ -91,7 +91,6 @@ constexpr llvm::StringRef kNumCoresPerReplicaAttr = "num_cores_per_replica";
 constexpr llvm::StringRef kNumReplicasAttr = "num_replicas";
 constexpr llvm::StringRef kMirroredVariableIndicesAttr =
     "_mirrored_variable_indices";
-constexpr llvm::StringRef kNoReplicationCluster = "__no_replication_cluster";
 
 constexpr llvm::StringRef kBadReplicateInfoAttrMsg =
     "requires '_replication_info' string attribute";
@@ -203,9 +202,6 @@ LogicalResult HasValidDeviceTypeAttribute(Block* block) {
 // Collects and clusters ops based on `_replication_info` attribute. Returns
 // an error in case of invalid compilation or replication attribute(s).
 LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters) {
-  bool has_replicated_compiled_op = false;
-  bool has_non_replicated_compiled_op = false;
-
   LogicalResult result = HasValidDeviceTypeAttribute(block);
   if (failed(result)) return result;
 
@@ -228,23 +224,10 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters) {
       // `HasValidCompilationAndReplicationAttributes` above, assert here for
       // documentation and to avoid breakage when that function is changed.
       assert(op.hasAttr(mlir::TF::kCompileDeviceTypeAttr));
-      has_replicated_compiled_op = true;
       auto attr = op.getAttrOfType<StringAttr>(mlir::TF::kReplicationInfoAttr);
       auto it = clusters->try_emplace(attr.getValue());
       it.first->getSecond().insert(&op);
-    } else if (op.hasAttr(mlir::TF::kCompileDeviceTypeAttr)) {
-      // For non-replicated case, assume one cluster per block (in line with
-      // Framework behavior).
-      has_non_replicated_compiled_op = true;
-      auto it = clusters->try_emplace(kNoReplicationCluster);
-      it.first->getSecond().insert(&op);
     }
-  }
-  // Do some checks for unsupported cases.
-  if (has_replicated_compiled_op && has_non_replicated_compiled_op) {
-    return block->getParentOp()->emitError()
-           << "found mixed replicated and non-replicated compiled ops in same "
-              "block which is not supported";
   }
   return success();
 }
@@ -818,31 +801,14 @@ LogicalResult ReplicateCluster(mlir::tf_device::ClusterOp cluster,
   return success();
 }
 
-void SetNoReplicationClusterAttrs(mlir::tf_device::ClusterOp cluster) {
-  OpBuilder builder(cluster);
-  // TODO(b/229992058) Propagate `allow_soft_placement` (and other attributes?)
-  // instead of hard-coding.
-  cluster->setAttr("allow_soft_placement", builder.getBoolAttr(true));
-  cluster->setAttr("topology", builder.getStringAttr(""));
-  cluster->setAttr("num_cores_per_replica",
-                   builder.getIntegerAttr(builder.getI32Type(), 1));
-  cluster->setAttr("_replication_info",
-                   builder.getStringAttr(kNoReplicationCluster));
-  cluster->setAttr("device_assignment", builder.getArrayAttr({}));
-  cluster->setAttr("use_spmd_for_xla_partitioning", builder.getBoolAttr(false));
-  cluster->setAttr("step_marker_location", builder.getStringAttr(""));
-}
-
-// Forms compilation clusters in `block`. If the block contains a
-// `TPUReplicateMetadata` op, then we form clusters according to
-// `_replication_info` values (ops with same value go to same cluster).
-// Otherwise, in the non-replicated case, we build one compilation cluster per
+// Forms clusters with ops of the same `_replication_info` attribute under a
 // block.
 //
-// We do this in following steps:
-//   1. Find `TPUReplicateMetadata` op in `block` (might not exist).
-//   2. Collect and group cluster ops (either based on `_replication_info`
-//      attributes or forming one single cluster).
+// For a given block, clusters are formed via grouping ops by
+// `_replication_info` attributes. For every cluster formed:
+//   1. Find associated TPUReplicateMetadata attributes with the same
+//      `_replication_info` attribute.
+//   2. Find users not in cluster that are interleaved between cluster ops.
 //   3. Find external uses of cluster ops.
 //   4. Create `tf_device.cluster` with results consisting of the external uses
 //      of cluster ops determined at 3.
@@ -873,6 +839,7 @@ LogicalResult FormClustersInBlock(
           return mlir::failure();
       }
     }
+    return success();
   }
 
   ClusterMap clusters;
@@ -882,13 +849,12 @@ LogicalResult FormClustersInBlock(
   for (const auto& cluster_metadata_and_ops : clusters) {
     const auto& cluster_ops = cluster_metadata_and_ops.getSecond();
 
-    bool has_replication =
-        cluster_metadata_and_ops.getFirst() != kNoReplicationCluster;
     auto cluster_metadata =
         metadata_map.find(cluster_metadata_and_ops.getFirst());
 
-    // No TPUReplicateMetadata for a `_replication_info` attribute.
-    if (has_replication && cluster_metadata == metadata_map.end()) {
+    // llvm::errs() << __func__ << "\n";
+    //  No TPUReplicateMetadata for a `_replication_info` attribute.
+    if (cluster_metadata == metadata_map.end()) {
       block->getParentOp()->emitWarning()
           << "TPUReplicateMetadata for associated '"
           << mlir::TF::kReplicationInfoAttr << "' attribute '"
@@ -907,26 +873,19 @@ LogicalResult FormClustersInBlock(
     mlir::tf_device::ClusterOp cluster = CreateClusterOp(
         block, cluster_ops, results, cluster_successor_ops.getArrayRef());
 
-    if (!has_replication) {
-      SetNoReplicationClusterAttrs(cluster);
-      continue;
-    }
-    // Determine `num_replicas`.
-    auto num_replicas_attr =
-        cluster_metadata->getSecond().get(kNumReplicasAttr);
-    if (!num_replicas_attr || !mlir::isa<mlir::IntegerAttr>(num_replicas_attr))
+    auto num_replicas = cluster_metadata->getSecond().get(kNumReplicasAttr);
+    if (!num_replicas || !num_replicas.isa<mlir::IntegerAttr>())
       return cluster.emitError()
              << "requires '" << kNumReplicasAttr << "' int attribute";
-    int num_replicas =
-        mlir::cast<mlir::IntegerAttr>(num_replicas_attr).getInt();
 
-    // Determine `num_cores_per_replica`.
     int num_cores_per_replica = 1;
     auto num_cores_per_replica_attr = mlir::dyn_cast_or_null<mlir::IntegerAttr>(
         cluster_metadata->getSecond().get(kNumCoresPerReplicaAttr));
     if (num_cores_per_replica_attr)
       num_cores_per_replica = num_cores_per_replica_attr.getInt();
-    if (failed(ReplicateCluster(cluster, num_replicas, num_cores_per_replica)))
+    if (failed(ReplicateCluster(cluster,
+                                num_replicas.cast<mlir::IntegerAttr>().getInt(),
+                                num_cores_per_replica)))
       return mlir::failure();
 
     // Copy TPUReplicateMetadata attributes to `tf_device.cluster`.
