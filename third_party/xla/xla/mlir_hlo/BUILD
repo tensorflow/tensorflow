@@ -527,7 +527,6 @@ cc_library(
         "mhlo/transforms/group_reduction_dimensions/group_reduction_dimensions.cc",
         "mhlo/transforms/hlo_legalize_shape_ops_to_standard/hlo_legalize_shape_ops_to_standard.cc",
         "mhlo/transforms/hlo_legalize_to_arithmetic/hlo_legalize_to_arithmetic.cc",
-        "mhlo/transforms/hlo_legalize_to_memref/hlo_legalize_to_memref.cc",
         "mhlo/transforms/hlo_legalize_to_stablehlo/hlo_legalize_to_stablehlo_pass.cc",
         "mhlo/transforms/legalize_broadcast_to_broadcast_in_dim/legalize_broadcast_to_broadcast_in_dim.cc",
         "mhlo/transforms/legalize_control_flow/legalize_control_flow.cc",
@@ -571,7 +570,6 @@ cc_library(
         "mhlo/transforms/unfuse_batch_norm/unfuse_batch_norm_pass.cc",
     ],
     hdrs = [
-        "mhlo/interfaces/bufferizable_op_interface_impl.h",
         "mhlo/transforms/passes.h",
         "mhlo/transforms/rewriters.h",
         "mhlo/utils/legalize_to_linalg_utils.h",

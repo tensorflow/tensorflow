@@ -70,14 +70,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeGatherPass();
 // Rewrites dot operands that contain unit dimension.
 std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeDotPass();
 
-/// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
-/// buffers if necessary.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
-
-/// Lowers from HLO dialect to Memref dialect allocating/deallocating temporary
-/// buffers if necessary.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass();
-
 /// Lowers from HLO dialect to Arithmetic dialect.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToArithmeticPass();
 

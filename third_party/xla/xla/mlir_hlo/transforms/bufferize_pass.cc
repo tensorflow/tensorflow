@@ -25,7 +25,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mhlo/IR/hlo_ops.h"
-#include "mhlo/interfaces/bufferizable_op_interface_impl.h"
 #include "mhlo/transforms/rewriters.h"
 #include "mhlo/utils/type_conversion.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -143,7 +142,6 @@ struct ComputeOpAndFuncBufferizePass
     mlir::bufferization::func_ext::
         registerBufferizableOpInterfaceExternalModels(registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
-    mhlo::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);
     vector::registerBufferizableOpInterfaceExternalModels(registry);
   }
@@ -224,7 +222,6 @@ struct OneShotBufferizePass
     bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
         registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
-    mhlo::registerBufferizableOpInterfaceExternalModels(registry);
     scf::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);
     tensor::registerBufferizableOpInterfaceExternalModels(registry);
