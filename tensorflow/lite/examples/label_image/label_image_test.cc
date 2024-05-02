@@ -20,7 +20,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
-#include "tensorflow/lite/examples/label_image/get_top_n.h"
+#include "tensorflow/lite/examples/label_image/bitmap_helpers_impl.h"
+#include "tensorflow/lite/examples/label_image/get_top_n_impl.h"
 
 namespace tflite {
 namespace label_image {
