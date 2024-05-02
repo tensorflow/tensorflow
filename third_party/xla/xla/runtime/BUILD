@@ -1,12 +1,4 @@
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_platform_deps")
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "if_llvm_aarch32_available",
-    "if_llvm_aarch64_available",
-    "if_llvm_powerpc_available",
-    "if_llvm_system_z_available",
-    "if_llvm_x86_available",
-)
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
@@ -162,91 +154,6 @@ cc_library(
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
-    ],
-)
-
-cc_library(
-    name = "executable",
-    srcs = ["executable.cc"],
-    hdrs = ["executable.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":arguments",
-        ":async_runtime",
-        ":custom_call",
-        ":custom_call_registry",
-        ":diagnostics",
-        ":errors",
-        ":execution_engine",
-        ":logical_result",
-        ":memory_mapper",
-        ":results",
-        ":runtime",
-        ":type_id",
-        ":types",
-        "//xla/mlir/runtime/utils:async_runtime_api",
-        "//xla/mlir/runtime/utils:c_runner_utils",
-        "//xla/mlir/runtime/utils:float_16bits",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:OrcJIT",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_library(
-    name = "execution_engine",
-    srcs = ["execution_engine.cc"],
-    hdrs = ["execution_engine.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":errors",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:ExecutionEngine",
-        "@llvm-project//llvm:OrcJIT",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:Target",
-        "@llvm-project//llvm:TransformUtils",
-    ] + if_llvm_aarch32_available([
-        "@llvm-project//llvm:ARMAsmParser",
-        "@llvm-project//llvm:ARMCodeGen",
-    ]) + if_llvm_aarch64_available([
-        "@llvm-project//llvm:AArch64AsmParser",
-        "@llvm-project//llvm:AArch64CodeGen",
-    ]) + if_llvm_powerpc_available([
-        "@llvm-project//llvm:PowerPCAsmParser",
-        "@llvm-project//llvm:PowerPCCodeGen",
-    ]) + if_llvm_system_z_available([
-        "@llvm-project//llvm:SystemZAsmParser",
-        "@llvm-project//llvm:SystemZCodeGen",
-    ]) + if_llvm_x86_available([
-        "@llvm-project//llvm:X86AsmParser",
-        "@llvm-project//llvm:X86CodeGen",
-    ]),
-)
-
-cc_library(
-    name = "jit_executable",
-    srcs = ["jit_executable.cc"],
-    hdrs = ["jit_executable.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":async_values_cache",
-        ":constraints",
-        ":errors",
-        "//xla/mlir/runtime/transforms:jit_compiler",
-        "//xla/mlir/runtime/utils:constraints",
-        "//xla/tsl/concurrency:async_value",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:Support",
     ],
 )
 
