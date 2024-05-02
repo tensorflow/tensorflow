@@ -181,6 +181,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_triton_gemm_any(false);
   opts.set_xla_gpu_enable_triton_softmax_fusion(false);
   opts.set_xla_gpu_triton_fusion_level(2);
+  opts.set_xla_gpu_verify_triton_fusion_numerics(false);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.
@@ -1401,6 +1402,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_softmax_fusion),
       debug_options->xla_gpu_enable_triton_softmax_fusion(),
       "Use Triton-based Softmax fusion."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_verify_triton_fusion_numerics",
+      bool_setter_for(&DebugOptions::set_xla_gpu_verify_triton_fusion_numerics),
+      debug_options->xla_gpu_verify_triton_fusion_numerics(),
+      "Whether to verify that the numeric results of Triton fusions match the "
+      "results of regular emitters."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_cudnn_int8x32_convolution_reordering",
       bool_setter_for(

@@ -757,7 +757,11 @@ message DebugOptions {
   // If true, large constants will be printed out when dumping HLOs.
   bool xla_dump_large_constants = 290;
 
-  // Next id: 291
+  // If true, will verify that the numerical results of Triton fusions match
+  // the results of regular emitters.
+  bool xla_gpu_verify_triton_fusion_numerics = 291;
+
+  // Next id: 292
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

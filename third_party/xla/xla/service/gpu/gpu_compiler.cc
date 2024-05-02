@@ -173,6 +173,7 @@ limitations under the License.
 #include "xla/service/gpu/topk_specializer.h"
 #include "xla/service/gpu/topk_splitter.h"
 #include "xla/service/gpu/tree_reduction_rewriter.h"
+#include "xla/service/gpu/triton_fusion_numerics_verifier.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_computation_deduplicator.h"
 #include "xla/service/hlo_constant_folding.h"
@@ -1195,6 +1196,26 @@ absl::Status RunPostFusionSimplificationPasses(
   return pipeline.Run(hlo_module).status();
 }
 
+absl::Status RunPostFusionVerificationPasses(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec,
+    const GpuCompiler::CompileOptions& options,
+    const Compiler::TargetConfig& gpu_target_config) {
+  HloPassPipeline pipeline("post-fusion-verification-pipeline optimization");
+
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_verify_triton_fusion_numerics()) {
+    TF_ASSIGN_OR_RETURN(
+        AutotuneConfig autotune_config,
+        GetAutotuneConfig(stream_exec, hlo_module->config().debug_options(),
+                          options, gpu_target_config));
+
+    pipeline.AddPass<TritonFusionNumericsVerifier>(autotune_config);
+  }
+
+  return pipeline.Run(hlo_module).status();
+}
+
 }  // namespace
 
 // Runs optimization passes on the given HLO module.
@@ -1298,6 +1319,9 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunPostFusionCollectiveOptimizationPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunPostFusionSimplificationPasses(
       hlo_module, layout_insensitive_algsimp_opts));
+
+  TF_RETURN_IF_ERROR(RunPostFusionVerificationPasses(
+      hlo_module, stream_exec, options, gpu_target_config));
 
   return absl::OkStatus();
 }  // NOLINT(readability/fn_size)
