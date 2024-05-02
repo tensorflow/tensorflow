@@ -5208,7 +5208,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
   if (!supported) {
     return absl::InternalError("cuDNN graph is not supported.");
   }
-  TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/0));
+  TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, std::nullopt));
 
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "\b flash attention operation graph: " << graph;
@@ -5406,7 +5406,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   if (!supported) {
     return absl::InternalError("cuDNN graph is not supported.");
   }
-  TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/0));
+  TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, std::nullopt));
 
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "\b flash attention operation backward graph: " << graph;
@@ -8362,11 +8362,15 @@ absl::StatusOr<bool> CudnnGraph::Prepare(dnn::DnnSupport& dnn_support) {
 }
 
 absl::Status CudnnGraph::Build(dnn::DnnSupport& dnn_support,
-                               const int64_t plan_id) {
+                               const std::optional<int64_t> plan_id) {
   const CudnnSupport& cudnn_support = static_cast<CudnnSupport&>(dnn_support);
   TF_ASSIGN_OR_RETURN(auto cudnn, cudnn_support.cudnn_->GetLocalHandle());
-  RETURN_IF_CUDNN_FRONTEND_ERROR(
-      graph_.build_plan_at_index(cudnn->handle(), plan_id));
+  if (plan_id.has_value()) {
+    RETURN_IF_CUDNN_FRONTEND_ERROR(
+        graph_.build_plan_at_index(cudnn->handle(), *plan_id));
+  } else {
+    RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.build_plans(cudnn->handle()));
+  }
   return absl::OkStatus();
 }
 
