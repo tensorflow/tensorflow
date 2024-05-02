@@ -66,3 +66,20 @@ func.func @remove_unused_results(%d0: index, %d1: index, %s0: index) -> (index) 
 
 // CHECK:       %[[NEW_RESULT:.*]] = xla_gpu.apply_indexing #[[$MAP]](%[[ARG_1]] in [0, 2])
 // CHECK:       return %[[NEW_RESULT]]
+
+// -----
+
+#map0 = affine_map<(d0, d1)[s0, s1] -> (d0 + d1 + s0 + s1 mod 3)>
+func.func @fold_operands(%d0: index) -> index {
+  %d1 = arith.constant 1 : index
+  %s0 = arith.constant 2 : index
+  %s1 = arith.constant 3 : index
+  %0 = xla_gpu.apply_indexing #map0 (%d0 in [0, 10], %d1 in [0, 5])
+                                    [%s0 in [-10, 10], %s1 in [0, 4]]
+  func.return %0 : index
+}
+// CHECK: #[[$MAP:.*]] = affine_map<(d0) -> (d0 + 3)>
+
+// CHECK-LABEL: func.func @fold_operands
+// CHECK-SAME:      %[[ARG_0:.*]]: index)
+// CHECK:         xla_gpu.apply_indexing #[[$MAP]](%[[ARG_0]] in [0, 10])

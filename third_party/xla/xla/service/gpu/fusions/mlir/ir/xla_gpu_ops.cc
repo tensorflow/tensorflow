@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -49,9 +50,14 @@ using llvm::ArrayRef;
 using mlir::AffineExpr;
 using mlir::AffineMap;
 using mlir::failure;
+using mlir::getAffineConstantExpr;
+using mlir::getAffineDimExpr;
+using mlir::getAffineSymbolExpr;
 using mlir::LogicalResult;
+using mlir::MLIRContext;
 using mlir::OpBuilder;
 using mlir::OperationState;
+using mlir::PatternRewriter;
 using mlir::RankedTensorType;
 using mlir::Region;
 using mlir::SmallVector;
@@ -59,6 +65,8 @@ using mlir::success;
 using mlir::Type;
 using mlir::Value;
 using mlir::ValueRange;
+
+namespace arith = mlir::arith;
 
 struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
@@ -309,7 +317,7 @@ IndexingMap ApplyIndexingOp::getIndexingMap() {
   auto lower_bounds = getLowerBounds();
   auto upper_bounds = getUpperBounds();
 
-  AffineMap affine_map = getMapAttr().getAffineMap();
+  AffineMap affine_map = getAffineMap();
   unsigned num_dimensions = affine_map.getNumDims();
   std::vector<DimVar> dim_vars;
   dim_vars.reserve(num_dimensions);
@@ -333,9 +341,8 @@ namespace {
 struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
   using OpRewritePattern<ApplyIndexingOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(
-      ApplyIndexingOp indexing_op,
-      mlir::PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
+                                PatternRewriter &rewriter) const override {
     IndexingMap indexing_map = indexing_op.getIndexingMap();
     bool is_simplified = indexing_map.Simplify(GetIndexingMapForInstruction);
 
@@ -365,14 +372,64 @@ struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
   }
 };
 
+// Folds constants into the indexing map.
+struct FoldApplyIndexingOperands
+    : public mlir::OpRewritePattern<ApplyIndexingOp> {
+  using OpRewritePattern<ApplyIndexingOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
+                                PatternRewriter &rewriter) const override {
+    AffineMap affine_map = indexing_op.getAffineMap();
+
+    MLIRContext *ctx = affine_map.getContext();
+    unsigned num_operands = indexing_op->getNumOperands();
+    unsigned num_dims = affine_map.getNumDims();
+    llvm::SmallBitVector constant_operands(num_operands, false);
+    mlir::DenseMap<AffineExpr, AffineExpr> replacements;
+    unsigned num_nonconstant_operands = num_operands;
+    for (auto &operand : indexing_op->getOpOperands()) {
+      auto constant = operand.get().getDefiningOp<arith::ConstantIndexOp>();
+      if (!constant) continue;
+
+      unsigned operand_number = operand.getOperandNumber();
+      replacements[operand_number < num_dims
+                       ? getAffineDimExpr(operand_number, ctx)
+                       : getAffineSymbolExpr(operand_number - num_dims, ctx)] =
+          getAffineConstantExpr(constant.value(), ctx);
+      constant_operands.set(operand_number);
+      --num_nonconstant_operands;
+    }
+    if (replacements.empty()) {
+      return rewriter.notifyMatchFailure(indexing_op,
+                                         "No constant operands found");
+    }
+    SmallVector<Value, 4> new_operands;
+    new_operands.reserve(num_nonconstant_operands);
+    ArrayRef<int64_t> lbs = indexing_op.getLowerBounds();
+    ArrayRef<int64_t> ubs = indexing_op.getUpperBounds();
+    SmallVector<int64_t, 4> new_lbs, new_ubs;
+    new_lbs.reserve(num_nonconstant_operands);
+    new_ubs.reserve(num_nonconstant_operands);
+    for (auto [index, operand] : llvm::enumerate(indexing_op.getOperands())) {
+      if (constant_operands[index]) continue;
+      new_operands.push_back(operand);
+      new_lbs.push_back(lbs[index]);
+      new_ubs.push_back(ubs[index]);
+    }
+    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
+        indexing_op, new_operands, affine_map.replace(replacements), new_lbs,
+        new_ubs);
+    return success();
+  }
+};
+
 // Folds constant and dim/symbol expression results.
 struct FoldApplyIndexingResults
     : public mlir::OpRewritePattern<ApplyIndexingOp> {
   using OpRewritePattern<ApplyIndexingOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(
-      ApplyIndexingOp indexing_op,
-      mlir::PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
+                                PatternRewriter &rewriter) const override {
     mlir::Location loc = indexing_op.getLoc();
     IndexingMap indexing_map = indexing_op.getIndexingMap();
     AffineMap *affine_map = &indexing_map.GetMutableAffineMap();
@@ -391,7 +448,7 @@ struct FoldApplyIndexingResults
       AffineExpr result_expr = affine_map->getResult(id);
       if (auto const_expr =
               mlir::dyn_cast<mlir::AffineConstantExpr>(result_expr)) {
-        new_values.push_back(rewriter.create<mlir::arith::ConstantIndexOp>(
+        new_values.push_back(rewriter.create<arith::ConstantIndexOp>(
             loc, const_expr.getValue()));
         continue;
       }
@@ -431,8 +488,9 @@ struct FoldApplyIndexingResults
 }  // namespace
 
 void ApplyIndexingOp::getCanonicalizationPatterns(
-    mlir::RewritePatternSet &results, mlir::MLIRContext *context) {
-  results.add<FoldApplyIndexingResults, SimplifyIndexingMap>(context);
+    mlir::RewritePatternSet &results, MLIRContext *context) {
+  results.add<FoldApplyIndexingOperands, FoldApplyIndexingResults,
+              SimplifyIndexingMap>(context);
 }
 
 //===----------------------------------------------------------------------===//

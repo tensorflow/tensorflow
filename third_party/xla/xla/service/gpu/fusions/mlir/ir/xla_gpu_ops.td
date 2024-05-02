@@ -268,8 +268,10 @@ def ApplyIndexingOp : XLAGPU_Op<"apply_indexing", [Pure]> {
                    "llvm::ArrayRef<int64_t>":$upper_bounds)>,
   ];
   let extraClassDeclaration = [{
-    // Return an indexing map constructed from affine_map and the bounds.
+    // Returns the indexing map constructed from affine_map and the bounds.
     xla::gpu::IndexingMap getIndexingMap();
+    // Extracts the affine map from the attribute.
+    mlir::AffineMap getAffineMap() { return getMapAttr().getAffineMap(); }
   }];
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
