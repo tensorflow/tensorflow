@@ -157,6 +157,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/move_copy_to_users.h"
+#include "xla/service/gpu/pipelined_p2p_rewriter.h"
 #include "xla/service/gpu/prepare_hlo_for_ir_emitting_pipeline.h"
 #include "xla/service/gpu/reduction_degenerate_dim_remover.h"
 #include "xla/service/gpu/reduction_dimension_grouper.h"
@@ -2199,6 +2200,12 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
   {
     HloPassPipeline pipeline("post-scheduling-passes");
 
+    if (module->config()
+            .debug_options()
+            .xla_gpu_enable_pipelined_collectives() ||
+        module->config().debug_options().xla_gpu_enable_pipelined_p2p()) {
+      pipeline.AddPass<PipelinedP2PRewriter>();
+    }
     HloPredicate is_nop =
         HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant,
                          HloOpcode::kBitcast, HloOpcode::kGetTupleElement>;

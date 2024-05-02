@@ -3399,6 +3399,7 @@ cc_library(
     ]),
     deps = if_gpu_is_configured([
         ":gpu_p2p_pipeliner",
+        ":pipelined_p2p_rewriter",
         ":collective_permute_cycle_decomposer",
         ":address_computation_fusion_rewriter",
         ":algorithm_checker",
@@ -3648,6 +3649,7 @@ xla_test(
         "//xla/service:pattern_matcher_gmock",
         "//xla/service:xla_debug_info_manager",
         "//xla/service/gpu:autotuner_util",
+        "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log",
@@ -6140,5 +6142,44 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "pipelined_p2p_rewriter",
+    srcs = ["pipelined_p2p_rewriter.cc"],
+    hdrs = ["pipelined_p2p_rewriter.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "pipelined_p2p_rewriter_test",
+    srcs = ["pipelined_p2p_rewriter_test.cc"],
+    deps = [
+        ":pipelined_p2p_rewriter",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:filecheck",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
