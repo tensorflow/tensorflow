@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -233,6 +234,8 @@ AutoShardingSolverResult Solve(
     const CostGraph& cost_graph, const AliasSet& alias_set,
     const std::vector<std::pair<LivenessIdx, LivenessIdx>>& node_intervals,
     const std::vector<std::pair<LivenessIdx, LivenessIdx>>& edge_intervals,
+    const std::vector<absl::btree_set<int64_t>>& node_groups,
+    const std::vector<absl::btree_set<int64_t>>& edge_groups,
     const AutoShardingOption& option, absl::string_view request_prefix,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution = {});

@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -221,7 +222,7 @@ AutoShardingSolverRequest ScaleRequest(
 
 // Given the live matrix and memory costs (for nodes or edges), reduce terms and
 // create constrained variables for the subsequent groups.
-std::pair<int64_t, int64_t> ReduceMemoryTerms(
+std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
     MPSolver& solver, int64_t num_lives, int64_t num_primitives,
     const std::function<
         tsl::protobuf::RepeatedField<int64_t>(int64_t)>&  // NOLINT
@@ -236,7 +237,7 @@ std::pair<int64_t, int64_t> ReduceMemoryTerms(
     std::vector<std::vector<MPVariable*>>& prim_vars,
     std::vector<std::pair<int64_t, int64_t>>& reduced_intervals,
     std::vector<MPVariable*>& group_vars) {
-  std::pair<int64_t, int64_t> num_terms;
+  std::optional<std::pair<int64_t, int64_t>> num_terms = std::nullopt;
   std::vector<absl::btree_set<int64_t>> reduced_groups;
   if (groups.empty()) {
     // If we've been given primitive intervals instead of a liveness matrix, we
@@ -596,13 +597,15 @@ AutoShardingSolverResult CallORToolsSolver(
         request.memory_edge_costs(), "edge", e, reduced_intervals_edges,
         group_edge_vars);
     const absl::Time term_reduction_end_time = absl::Now();
-    const auto term_reduction_duration =
-        term_reduction_end_time - term_reduction_start_time;
-    LOG(INFO) << "Memory Term Reducer took "
-              << absl::ToInt64Milliseconds(term_reduction_duration)
-              << " ms and reduced the number of terms from "
-              << num_node_terms.first + num_edge_terms.first << " to "
-              << num_node_terms.second + num_edge_terms.second;
+    if (num_node_terms && num_edge_terms) {
+      const auto term_reduction_duration =
+          term_reduction_end_time - term_reduction_start_time;
+      LOG(INFO) << "Memory Term Reducer took "
+                << absl::ToInt64Milliseconds(term_reduction_duration)
+                << " ms and reduced the number of terms from "
+                << num_node_terms->first + num_edge_terms->first << " to "
+                << num_node_terms->second + num_edge_terms->second;
+    }
     absl::flat_hash_map<LivenessIdx, MPConstraint*> constraints;
     AddMemoryTerms(request, *solver, request.num_nodes(),
                    reduced_intervals_nodes, request.memory_costs(),

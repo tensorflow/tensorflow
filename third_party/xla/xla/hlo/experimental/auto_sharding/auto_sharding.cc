@@ -32,6 +32,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_memory.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
@@ -1950,6 +1952,8 @@ AutoShardingSolverResult CallSolver(
     const CostGraph& cost_graph, const AliasSet& alias_set,
     const std::vector<std::pair<LivenessIdx, LivenessIdx>>& node_intervals,
     const std::vector<std::pair<LivenessIdx, LivenessIdx>>& edge_intervals,
+    const std::vector<absl::btree_set<int64_t>>& node_groups,
+    const std::vector<absl::btree_set<int64_t>>& edge_groups,
     const std::vector<NodeStrategyIdx>& s_hint, const bool compute_iis,
     const int64_t solver_timeout_in_seconds, const AutoShardingOption& option,
     std::optional<double> max_cost, absl::string_view request_name,
@@ -2142,6 +2146,17 @@ AutoShardingSolverResult CallSolver(
     pair.set_second(interval.second);
     *request.add_edge_intervals() = std::move(pair);
   }
+  for (const auto& reduced_group : node_groups) {
+    AutoShardingSolverRequest_Group group;
+    group.mutable_prims()->Add(reduced_group.begin(), reduced_group.end());
+    *request.add_node_groups() = std::move(group);
+  }
+  for (const auto& reduced_group : edge_groups) {
+    AutoShardingSolverRequest_Group group;
+    group.mutable_prims()->Add(reduced_group.begin(), reduced_group.end());
+    *request.add_edge_groups() = std::move(group);
+  }
+
   PopulateTemporalValues(cost_graph, request);
 
   return CallORToolsSolver(request);
@@ -3818,6 +3833,30 @@ AutoShardingImplementation::AutoShardingImplementation(
     const AutoShardingOption& option)
     : option_(option) {}
 
+std::pair<int64_t, int64_t> ReduceMemoryTerms(
+    int64_t num_primitives,
+    const std::vector<std::pair<spmd::LivenessIdx, spmd::LivenessIdx>>&
+        intervals,
+    std::vector<std::pair<spmd::LivenessIdx, spmd::LivenessIdx>>&
+        reduced_intervals,
+    std::vector<absl::btree_set<int64_t>>& reduced_groups) {
+  int64_t num_lives = 0;
+  for (const auto& interval : intervals) {
+    if (interval.first > interval.second) continue;  // Interval undefined
+    num_lives = std::max(num_lives, interval.second + 1);
+  }
+  auto Intervals =
+      [intervals](int64_t prim_idx) -> std::pair<int64_t, int64_t> {
+    return intervals.at(prim_idx);
+  };
+  spmd::MemoryTermReducer reducer;
+  auto num_terms =
+      reducer.Reduce(num_lives, num_primitives, std::move(Intervals));
+  reduced_intervals = reducer.GetReducedIntervals();
+  reduced_groups = reducer.GetReducedGroups();
+  return num_terms;
+}
+
 absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     HloModule* module,
     const absl::flat_hash_set<std::string>& replicated_small_tensors,
@@ -4043,7 +4082,7 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     spmd::CostGraph cost_graph(strategy_groups, associative_dot_pairs);
     cost_graph.Simplify(option_.simplify_graph);
 
-    // ----- Build node and edge intervals -----
+    // ----- Build & reduce node and edge intervals -----
     std::vector<absl::flat_hash_set<spmd::EdgeIdx>> node_to_edges(
         strategy_groups.size());
     spmd::EdgeIdx edge_idx = 0;
@@ -4099,14 +4138,34 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
       }
       edge_intervals.push_back(std::move(interval));
     }
+    const absl::Time term_reduction_start_time = absl::Now();
+    std::vector<std::pair<spmd::LivenessIdx, spmd::LivenessIdx>>
+        reduced_node_intervals, reduced_edge_intervals;
+    std::vector<absl::btree_set<int64_t>> reduced_node_groups,
+        reduced_edge_groups;
+    auto num_node_terms =
+        ReduceMemoryTerms(strategy_groups.size(), node_intervals,
+                          reduced_node_intervals, reduced_node_groups);
+    auto num_edge_terms =
+        ReduceMemoryTerms(cost_graph.edge_costs_.size(), edge_intervals,
+                          reduced_edge_intervals, reduced_edge_groups);
+    const absl::Time term_reduction_end_time = absl::Now();
+    const auto term_reduction_duration =
+        term_reduction_end_time - term_reduction_start_time;
+    LOG(INFO) << "Memory Term Reducer took "
+              << absl::ToInt64Milliseconds(term_reduction_duration)
+              << " ms and reduced the number of terms from "
+              << num_node_terms.first + num_edge_terms.first << " to "
+              << num_node_terms.second + num_edge_terms.second;
 
     // ----- Call the ILP Solver -----
     spmd::AutoShardingSolverOutput output;
     std::string request_name = absl::StrCat("mesh_idx_", mesh_idx);
     auto solver_result =
         Solve(*module, *hlo_live_range, strategy_map, strategy_groups,
-              cost_graph, alias_set, node_intervals, edge_intervals, option_,
-              request_name, sharding_propagation_solution);
+              cost_graph, alias_set, reduced_node_intervals,
+              reduced_edge_intervals, reduced_node_groups, reduced_edge_groups,
+              option_, request_name, sharding_propagation_solution);
     if (solver_result.skip_auto_sharding) {
       return AutoShardingResult::kModuleUnchangedNoShardingPerformed;
     } else if (!solver_result.status.ok()) {

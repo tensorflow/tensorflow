@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
@@ -40,14 +42,16 @@ AutoShardingSolverResult Solve(
     const CostGraph& cost_graph, const AliasSet& alias_set,
     const std::vector<std::pair<LivenessIdx, LivenessIdx>>& node_intervals,
     const std::vector<std::pair<LivenessIdx, LivenessIdx>>& edge_intervals,
+    const std::vector<absl::btree_set<int64_t>>& node_groups,
+    const std::vector<absl::btree_set<int64_t>>& edge_groups,
     const AutoShardingOption& option, absl::string_view request_prefix,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution) {
   return CallSolver(hlo_module, hlo_live_range, strategy_map, strategy_groups,
                     cost_graph, alias_set, node_intervals, edge_intervals,
-                    /*s_hint*/ {}, /*compute_iis*/ true,
-                    option.solver_timeout_in_seconds, option,
-                    /*max_cost*/ std::nullopt, request_prefix,
+                    node_groups, edge_groups, /*s_hint*/ {},
+                    /*compute_iis*/ true, option.solver_timeout_in_seconds,
+                    option, /*max_cost*/ std::nullopt, request_prefix,
                     sharding_propagation_solution,
                     /*deterministic mode*/ true);
 }
