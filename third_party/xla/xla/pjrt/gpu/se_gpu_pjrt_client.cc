@@ -494,7 +494,7 @@ StreamExecutorGpuClient::GetDefaultDeviceAssignment(int num_replicas,
   if (num_partitions == 1 && num_replicas <= addressable_devices().size()) {
     xla::DeviceAssignment assignment(num_replicas, 1);
     for (int i = 0; i < num_replicas; ++i) {
-      assignment(i, 0) = addressable_devices().at(i)->id();
+      assignment(i, 0) = addressable_devices().at(i)->id().value();
     }
     return assignment;
   }

@@ -330,10 +330,6 @@ StatusOr<DeviceAssignment> PjRtCApiClient::GetDefaultDeviceAssignment(
                                     param);
 }
 
-StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
-  return LookupDevice(PjRtGlobalDeviceId(device_id));
-}
-
 StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(
     PjRtGlobalDeviceId global_device_id) const {
   PJRT_Client_LookupDevice_Args args;

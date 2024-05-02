@@ -23,8 +23,8 @@ namespace xla {
 std::unique_ptr<const GpuTopology> GpuTopology::FromProto(
     const GpuTopologyProto& gpu_topology_proto) {
   return std::make_unique<GpuTopology>(
-      std::vector<int>{gpu_topology_proto.device_ids().begin(),
-                       gpu_topology_proto.device_ids().end()},
+      std::vector<int64_t>{gpu_topology_proto.device_ids().begin(),
+                           gpu_topology_proto.device_ids().end()},
       gpu_topology_proto.platform_version());
 }
 

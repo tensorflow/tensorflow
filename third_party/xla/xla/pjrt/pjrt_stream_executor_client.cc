@@ -197,7 +197,8 @@ StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
             devices[replica][partition]->client()->platform_name(), replica,
             partition);
       }
-      xla_assignment(replica, partition) = devices[replica][partition]->id();
+      xla_assignment(replica, partition) =
+          devices[replica][partition]->id().value();
     }
   }
   return xla_assignment;
@@ -2789,8 +2790,9 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
     CHECK(device_assignment_ != nullptr);
-    const int device_id = (*device_assignment_)(replica, partition);
-    TF_ASSIGN_OR_RETURN(device, client_->LookupDevice(device_id));
+    const int64_t device_id = (*device_assignment_)(replica, partition);
+    PjRtGlobalDeviceId global_device_id(device_id);
+    TF_ASSIGN_OR_RETURN(device, client_->LookupDevice(global_device_id));
     device_assignment = device_assignment_;
   } else {
     CHECK(device_assignment_ == nullptr);
@@ -2798,7 +2800,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
     CHECK_EQ(partition, 0);
     CHECK(addressable_devices_.empty());
     device_assignment = std::make_shared<DeviceAssignment>(1, 1);
-    (*device_assignment)(0, 0) = device->id();
+    (*device_assignment)(0, 0) = device->id().value();
   }
 
   CHECK_EQ(device->process_index(), client_->process_index());
@@ -3037,7 +3039,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteSharded(
   return InvalidArgument(
       "ExecuteShard attempted to execute on device id %d which is not "
       "addressable by this client",
-      device->id());
+      device->id().value());
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -3153,8 +3155,11 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
     addressable_devices.reserve(num_replicas * num_partitions);
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
-        int device_id = (*device_assignment)(replica, partition);
-        TF_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
+        int64_t device_id = (*device_assignment)(replica, partition);
+        PjRtGlobalDeviceId global_device_id(device_id);
+
+        TF_ASSIGN_OR_RETURN(PjRtDevice * device,
+                            LookupDevice(global_device_id));
         if (device->process_index() != process_index()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;

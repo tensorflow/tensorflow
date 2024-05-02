@@ -84,7 +84,7 @@ PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
   device_map_.reserve(pjrt_client_->devices().size());
   for (xla::PjRtDevice* device : pjrt_client_->devices()) {
     auto ifrt_device = std::make_unique<PjRtDevice>(
-        this, DeviceId(device->global_device_id().value()),
+        this, DeviceId(device->id().value()),
         std::string(device->device_kind()), std::string(device->ToString()),
         std::string(device->DebugString()), device->process_index(),
         device->Attributes(), device->IsAddressable() ? device : nullptr);

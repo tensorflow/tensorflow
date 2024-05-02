@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 
 namespace xla {
 
@@ -144,9 +145,9 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfPjRtClient::WrapExecutable(
       std::make_unique<TfPjRtExecutable>(this, std::move(executable)));
 }
 
-static int GetMutexId(
-    const TfPjRtBuffer* buffer,
-    const absl::flat_hash_map<int, int>& mutex_id_from_device_id) {
+static int GetMutexId(const TfPjRtBuffer* buffer,
+                      const absl::flat_hash_map<PjRtGlobalDeviceId, int>&
+                          mutex_id_from_device_id) {
   auto iters = mutex_id_from_device_id.find(buffer->wrapped()->device()->id());
   CHECK(iters != mutex_id_from_device_id.end())
       << "Mutex id not found for device id: "

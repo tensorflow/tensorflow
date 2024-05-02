@@ -279,7 +279,6 @@ class TfrtCpuClient final : public PjRtClient {
     return addressable_devices_;
   }
 
-  absl::StatusOr<PjRtDevice*> LookupDevice(int device_id) const override;
   absl::StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const override;
 
@@ -422,7 +421,7 @@ class TfrtCpuClient final : public PjRtClient {
   // Pointers to `owned_devices_`.
   std::vector<PjRtDevice*> devices_;
   // Maps Device::id() to the corresponding Device. Includes all devices.
-  absl::flat_hash_map<int, TfrtCpuDevice*> id_to_device_;
+  absl::flat_hash_map<PjRtGlobalDeviceId, TfrtCpuDevice*> id_to_device_;
   // Addressable devices indexed by core_id.
   std::vector<PjRtDevice*> addressable_devices_;
   std::unique_ptr<ComputationPlacer> computation_placer_;

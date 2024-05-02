@@ -168,7 +168,7 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
       xla_client->backend().default_stream_executor();
   const stream_executor::DeviceDescription& description =
       executor->GetDeviceDescription();
-  std::vector<int> device_ids;
+  std::vector<int64_t> device_ids;
   device_ids.reserve(xla_client->backend().stream_executors().size());
   for (stream_executor::StreamExecutor* executor :
        xla_client->backend().stream_executors()) {

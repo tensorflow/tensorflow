@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "tsl/platform/errors.h"
 
@@ -204,12 +205,9 @@ class TfPjRtClient : public PjRtClient {
   absl::Span<PjRtDevice* const> addressable_devices() const override {
     return wrapped_->addressable_devices();
   }
-  StatusOr<PjRtDevice*> LookupDevice(int device_id) const override {
-    return LookupDevice(PjRtGlobalDeviceId(device_id));
-  }
   StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const override {
-    return wrapped_->LookupDevice(global_device_id.value());
+    return wrapped_->LookupDevice(global_device_id);
   }
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override {
@@ -378,7 +376,7 @@ class TfPjRtClient : public PjRtClient {
 
   std::unique_ptr<PjRtClient> wrapped_;
 
-  absl::flat_hash_map<int, int> mutex_id_from_device_id_;
+  absl::flat_hash_map<PjRtGlobalDeviceId, int> mutex_id_from_device_id_;
 
   // Depending on `sizeof(absl::flat_hash_set<TfPjRtBuffer*>)`, might need to
   // add some padding to the struct.

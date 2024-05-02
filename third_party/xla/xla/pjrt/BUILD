@@ -814,6 +814,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_client",
+        ":pjrt_common",
         ":pjrt_future",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

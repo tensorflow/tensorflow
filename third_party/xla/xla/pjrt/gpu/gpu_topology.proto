@@ -11,7 +11,7 @@ enum GpuVersionProto {
 // A proto used to serialize GpuTopology instances.
 message GpuTopologyProto {
   // TODO(b/331224674): Remove this field once all uses are removed.
-  repeated int32 device_ids = 1;
+  repeated int64 device_ids = 1;
 
   GpuVersionProto gpu_version = 2;
 

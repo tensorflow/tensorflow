@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_PJRT_GPU_GPU_TOPOLOGY_H_
 #define XLA_PJRT_GPU_GPU_TOPOLOGY_H_
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -25,12 +27,12 @@ limitations under the License.
 namespace xla {
 class GpuTopology {
  public:
-  explicit GpuTopology(const std::vector<int>& gpu_device_ids,
+  explicit GpuTopology(const std::vector<int64_t>& gpu_device_ids,
                        absl::string_view platform_version)
       : devices_ids_(gpu_device_ids), platform_version_(platform_version) {}
 
   int number_of_devices() const { return devices_ids_.size(); }
-  const std::vector<int>& device_ids() const { return devices_ids_; }
+  const std::vector<int64_t>& device_ids() const { return devices_ids_; }
 
   static std::unique_ptr<const GpuTopology> FromProto(
       const GpuTopologyProto& proto);
@@ -39,7 +41,7 @@ class GpuTopology {
   std::string platform_version() const { return platform_version_; }
 
  private:
-  const std::vector<int> devices_ids_;
+  const std::vector<int64_t> devices_ids_;
   const std::string platform_version_;
 };
 

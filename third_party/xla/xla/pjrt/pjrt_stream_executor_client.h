@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/transpose.h"
@@ -135,8 +136,10 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
     client_ = client;
     // We have to define debug_string_ and to_string_ here, because
     // platform_name() requires client_ to be set.
-    description().SetDebugString(absl::StrCat(platform_name(), ":", id()));
-    description().SetToString(absl::StrCat(platform_name(), "(id=", id(), ")"));
+    description().SetDebugString(
+        absl::StrCat(platform_name(), ":", id().value()));
+    description().SetToString(
+        absl::StrCat(platform_name(), "(id=", id().value(), ")"));
   }
 
   PjRtStreamExecutorDeviceDescription& description() { return description_; }
@@ -224,13 +227,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return addressable_devices_;
   }
 
-  StatusOr<PjRtDevice*> LookupDevice(int device_id) const override {
-    return LookupDevice(PjRtGlobalDeviceId(device_id));
-  }
-
   StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const override {
-    auto it = id_to_device_.find(global_device_id.value());
+    auto it = id_to_device_.find(global_device_id);
     if (it != id_to_device_.end()) {
       return it->second;
     }
@@ -437,7 +436,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   // Pointers to `owned_devices_`.
   std::vector<PjRtDevice*> devices_;
   // Maps Device::id() to the corresponding Device. Includes all devices.
-  std::map<int, PjRtDevice*> id_to_device_;
+  std::map<PjRtGlobalDeviceId, PjRtDevice*> id_to_device_;
   // Local devices indexed by local device ordinal.
   std::vector<PjRtDevice*> addressable_devices_;
   int process_index_;

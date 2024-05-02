@@ -50,10 +50,10 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
       const PjRtPlatformId platform_id, const absl::string_view platform_name,
       const absl::string_view platform_version,
       const std::vector<PjRtDevice*>& devices) {
-    std::vector<int> device_ids;
+    std::vector<int64_t> device_ids;
     device_ids.reserve(devices.size());
     for (PjRtDevice* device : devices) {
-      device_ids.push_back(device->id());
+      device_ids.push_back(device->id().value());
     }
     return StreamExecutorGpuTopologyDescription(platform_id, platform_name,
                                                 platform_version, device_ids);
@@ -63,7 +63,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   StreamExecutorGpuTopologyDescription(
       const PjRtPlatformId platform_id, const absl::string_view platform_name,
       const absl::string_view platform_version,
-      const std::vector<int>& gpu_device_ids,
+      const std::vector<int64_t>& gpu_device_ids,
       const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& attributes =
           {})
       : platform_id_(platform_id),

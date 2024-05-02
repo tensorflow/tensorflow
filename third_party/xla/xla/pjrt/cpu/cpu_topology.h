@@ -28,7 +28,7 @@ namespace xla {
 class CpuTopology {
  public:
   struct CpuDevice {
-    int id;
+    int64_t id;
     int process_index;
     int local_hardware_id;
 

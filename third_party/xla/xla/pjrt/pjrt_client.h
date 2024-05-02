@@ -120,15 +120,9 @@ class PjRtDevice {
                   "PjRtDevice::description).";
   }
 
-  // The ID of this device. IDs are unique among devices of this type
-  // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
-  // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
-  ABSL_DEPRECATED("Use global_device_id() instead")
-  virtual int id() const { return global_device_id().value(); }
-
   // There are several different IDs for a PJRT device.
   //
-  // - global_device_id: The logical global device ID. This is unique among
+  // - id: The logical global device ID. This is unique among
   // devices of this type (e.g. CPUs, GPUs). On multi-host platforms, this will
   // be unique across all hosts' devices.  This is the ID that should be used in
   // a DeviceAssignment.
@@ -141,9 +135,7 @@ class PjRtDevice {
   // these PJRT devices share the same physical device. This is useful for
   // identifying which physical device when interacting with non-JAX code. In
   // general, not guaranteed to be dense, and -1 if undefined.
-
-  // TODO(b/314368788): Remove `id()` and replace it with this function.
-  virtual PjRtGlobalDeviceId global_device_id() const {
+  virtual PjRtGlobalDeviceId id() const {
     return PjRtGlobalDeviceId(description().id());
   }
 
@@ -525,10 +517,6 @@ class PjRtClient {
   virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
 
   // Lookup any PjRtDevice for a given PjRtDevice::id().
-  ABSL_DEPRECATED("Use LookupDevice(PjRtGlobalDeviceId) instead")
-  virtual StatusOr<PjRtDevice*> LookupDevice(int device_id) const {
-    return LookupDevice(PjRtGlobalDeviceId(device_id));
-  }
   virtual StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const = 0;
 

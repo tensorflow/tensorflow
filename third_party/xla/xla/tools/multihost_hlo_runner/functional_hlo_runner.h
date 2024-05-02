@@ -74,9 +74,9 @@ class FunctionalHloRunner {
 
   using LiteralVec = std::vector<Literal>;
   using ShapeVec = std::vector<Shape>;
-  using PerDeviceLiteralVecType = absl::btree_map<int, LiteralVec>;
-  using PerDeviceShapeVecType = absl::btree_map<int, ShapeVec>;
-  using PerDeviceIndexVecType = absl::btree_map<int, std::vector<int>>;
+  using PerDeviceLiteralVecType = absl::btree_map<int64_t, LiteralVec>;
+  using PerDeviceShapeVecType = absl::btree_map<int64_t, ShapeVec>;
+  using PerDeviceIndexVecType = absl::btree_map<int64_t, std::vector<int>>;
 
   enum class LogOutputMode { kLogOutput, kNotLogOutput };
 
