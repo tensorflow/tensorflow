@@ -286,6 +286,11 @@ std::unique_ptr<StrategyGroup> HandleManuallyShardedInstruction(
     const HloInstruction* ins, const Shape& shape, size_t instruction_id,
     StrategyGroups& strategy_groups, StrategyMap& strategy_map);
 
+std::unique_ptr<StrategyGroup> HandlePartialReduce(
+    const HloInstruction* ins, size_t instruction_id, bool have_memory_cost,
+    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
+    StrategyMap& strategy_map, const CallGraph& call_graph);
+
 // Factory functions for StrategyGroup.
 std::unique_ptr<StrategyGroup> CreateLeafStrategyGroupWithoutInNodes(
     size_t instruction_id, StrategyGroups& strategy_groups);
