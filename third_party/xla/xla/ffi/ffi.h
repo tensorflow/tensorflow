@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
-#include "xla/runtime/memref_view.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -58,12 +57,6 @@ struct BufferBase {
   PrimitiveType dtype;
   se::DeviceMemoryBase data;
   absl::Span<const int64_t> dimensions;
-
-  // TODO(ezhulenev): Remove this implicit conversion once we'll migrate to FFI
-  // handlers from runtime custom calls.
-  operator runtime::MemrefView() {  // NOLINT
-    return runtime::MemrefView{dtype, data.opaque(), dimensions};
-  }
 };
 
 namespace internal {

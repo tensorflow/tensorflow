@@ -42,7 +42,6 @@ cc_library(
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:c_api_internal",
         "//xla/hlo/ir:hlo",
-        "//xla/runtime:memref_view",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/types:span",
