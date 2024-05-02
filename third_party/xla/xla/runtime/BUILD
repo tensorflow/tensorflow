@@ -10,7 +10,7 @@ load(
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -92,36 +92,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
-)
-
-filegroup(
-    name = "aot_ffi_execution_context_hdrs",
-    srcs = ["aot_ffi_execution_context.h"],
-)
-
-cc_library(
-    name = "aot_ffi_execution_context",
-    hdrs = ["aot_ffi_execution_context.h"],
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "aot_ffi",
-    srcs = ["aot_ffi.cc"],
-    hdrs = ["aot_ffi.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":aot_ffi_c_symbols",
-        "//xla/runtime/ffi:ffi_api",
-    ],
-)
-
-cc_library(
-    name = "aot_ffi_c_symbols",
-    srcs = ["aot_ffi_c_symbols.cc"],
-    hdrs = ["aot_ffi_c_symbols.h"],
-    visibility = ["//visibility:public"],
-    deps = [":aot_ffi_execution_context"],
 )
 
 cc_library(
