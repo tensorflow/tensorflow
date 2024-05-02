@@ -3010,14 +3010,6 @@ Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
 absl::StatusOr<bool> ShardingPropagation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  // Register custom-call partitioner for SharBarrierFrom and ShardBarrierTo.
-  RegisterCustomCallPartitioner(
-      spmd::kShardBarrierFrom,
-      std::make_unique<spmd::ShardBarrierFromPartitioner>());
-
-  RegisterCustomCallPartitioner(
-      spmd::kShardBarrierTo,
-      std::make_unique<spmd::ShardBarrierToPartitioner>());
   std::optional<absl::flat_hash_map<const HloInstruction*, HloSharding>>
       original_sharding;
   bool any_changed = false;
