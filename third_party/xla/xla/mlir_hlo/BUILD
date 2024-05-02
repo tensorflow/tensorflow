@@ -583,10 +583,8 @@ cc_library(
         ":hlo_legalize_to_stablehlo",
         ":legalize_to_linalg_utils",
         ":legalize_to_standard_inc_gen",
-        ":lhlo",
         ":lower_complex_inc_gen",
         ":map_chlo_to_hlo_op",
-        ":map_hlo_to_lhlo_op",
         ":map_mhlo_to_scalar_op",
         ":mhlo_pass_inc_gen",
         ":mhlo_rng_utils",
@@ -1013,7 +1011,6 @@ cc_library(
     strip_include_prefix = ".",
     deps = [
         ":deallocation_passes",
-        ":lhlo",
         ":mhlo_passes",
         ":mlir_hlo",
         ":shape_component_analysis",
@@ -1095,7 +1092,6 @@ cc_library(
     strip_include_prefix = ".",
     deps = [
         ":gpu_transforms_passes_inc_gen",
-        ":lhlo",
         ":mhlo_passes",
         ":mlir_hlo",
         ":transforms_passes",
