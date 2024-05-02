@@ -1412,11 +1412,6 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                           obj_file.getData().size()));
       };
 
-      std::vector<std::string> xla_runtime_abi_conversions;
-      if (options.use_mlir_hlo_lowering()) {
-        xla_runtime_abi_conversions.push_back(options.entry_point_name());
-      }
-
       CompilerFunctor compiler_functor(
           target_machine.get(), static_cast<int>(opt_level),
           options::OptimizeForSizeRequested(module->config()),
@@ -1425,8 +1420,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           llvm_ir::GetCpuFastMathFlags(module->config()),
           pre_optimization_ir_hook, post_optimization_ir_hook,
           post_codegen_hook, aot_options.sanitize_dataflow(),
-          aot_options.sanitize_abilists_dataflow(),
-          xla_runtime_abi_conversions);
+          aot_options.sanitize_abilists_dataflow());
       std::unique_ptr<llvm::MemoryBuffer> object_file =
           cantFail(compiler_functor(*llvm_module));
       ObjectFileData object_file_data(object_file->getBufferStart(),
