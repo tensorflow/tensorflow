@@ -84,7 +84,8 @@ struct CanonicalDebugOptions {
         dump_compress_protos(opts.xla_dump_compress_protos()),
         dump_hlo_metadata(!opts.xla_dump_disable_metadata()),
         dump_as_long_text(opts.xla_dump_hlo_as_long_text()),
-        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()) {
+        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()),
+        dump_large_constants(opts.xla_dump_large_constants()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -201,6 +202,7 @@ struct CanonicalDebugOptions {
   bool dump_hlo_metadata;
   bool dump_as_long_text;
   bool dump_mlir_pretty_form;
+  bool dump_large_constants;
 };
 
 // Helper class to hold a list of functions that produces data to be written to
@@ -419,7 +421,7 @@ static std::vector<std::string> DumpHloModuleImpl(
     auto print_options = opts.dump_as_long_text
                              ? HloPrintOptions::Default()
                              : HloPrintOptions::ShortParsable();
-    print_options.set_print_large_constants(false);
+    print_options.set_print_large_constants(opts.dump_large_constants);
     print_options.set_print_control_dependencies(true);
     print_options.set_print_operand_index_annotation_interval(5);
     print_options.set_print_backend_config(true);

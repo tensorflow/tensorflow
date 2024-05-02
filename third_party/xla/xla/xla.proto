@@ -754,7 +754,10 @@ message DebugOptions {
   // solutions.
   int64 xla_gpu_autotune_max_solutions = 288;
 
-  // Next id: 290
+  // If true, large constants will be printed out when dumping HLOs.
+  bool xla_dump_large_constants = 290;
+
+  // Next id: 291
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
