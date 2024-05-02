@@ -174,7 +174,7 @@ AutotunerCompileUtil::Create(const AutotuneConfig& config,
   se::DeviceMemoryAllocator* allocator = config.GetAllocator();
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config.GetStream());
   TF_ASSIGN_OR_RETURN(Compiler * compiler,
-                      Compiler::GetForPlatform(stream_exec->platform()));
+                      Compiler::GetForPlatform(stream_exec->GetPlatform()));
   return AutotunerCompileUtil(config, compiler, *stream_exec, *stream,
                               *allocator, opts);
 }

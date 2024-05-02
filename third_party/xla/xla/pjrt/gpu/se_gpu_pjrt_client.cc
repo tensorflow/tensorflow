@@ -916,7 +916,7 @@ Status BuildDistributedDevices(
   local_topology.set_boot_id(boot_id_str);
   for (const auto& ordinal_and_device : local_device_states) {
     const se::Platform* platform =
-        ordinal_and_device.second->executor()->platform();
+        ordinal_and_device.second->executor()->GetPlatform();
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::se::DeviceDescription> desc,
         platform->DescriptionForDevice(ordinal_and_device.first));

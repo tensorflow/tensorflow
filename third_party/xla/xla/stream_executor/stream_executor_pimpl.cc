@@ -121,7 +121,7 @@ absl::StatusOr<std::unique_ptr<Stream>> StreamExecutor::CreateStream(
 
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
     StreamExecutor* executor)
-    : DeviceMemoryAllocator(executor->platform()) {
+    : DeviceMemoryAllocator(executor->GetPlatform()) {
   stream_executors_ = {executor};
 }
 

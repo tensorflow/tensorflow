@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_interface.h"
 
 namespace stream_executor {
@@ -47,6 +48,9 @@ class StreamExecutorInterface {
  public:
   StreamExecutorInterface() = default;
   virtual ~StreamExecutorInterface() = default;
+
+  // Returns a reference to the platform that created this executor.
+  virtual const Platform* GetPlatform() const = 0;
 
   // Initializes the device for use.
   virtual absl::Status Init() = 0;

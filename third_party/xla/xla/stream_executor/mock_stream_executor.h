@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor_interface.h"
 #include "xla/stream_executor/stream_interface.h"
 #include "xla/test.h"
@@ -172,6 +173,7 @@ class MockStreamExecutor : public StreamExecutorInterface {
   MOCK_METHOD(bool, ClearAllocatorStats, (), (override));
   MOCK_METHOD(absl::Status, FlushCompilationCache, (), (override));
   MOCK_METHOD(Stream*, FindAllocatedStream, (void* device_stream), (override));
+  MOCK_METHOD(const Platform*, GetPlatform, (), (const, override));
 };
 
 }  // namespace stream_executor

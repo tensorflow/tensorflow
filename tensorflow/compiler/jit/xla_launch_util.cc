@@ -410,7 +410,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   if (output.on_host_shape().is_dynamic()) {
     const se::Platform* platform = nullptr;
     if (stream != nullptr) {
-      platform = stream->parent()->platform();
+      platform = stream->parent()->GetPlatform();
     } else {
       // Stream is not set for the host platform.
       TF_ASSIGN_OR_RETURN(platform,

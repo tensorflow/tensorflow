@@ -26,7 +26,7 @@ limitations under the License.
 namespace stream_executor {
 
 TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped, Stream *stream)
-    : DeviceMemoryAllocator(stream->parent()->platform()),
+    : DeviceMemoryAllocator(stream->parent()->GetPlatform()),
       wrapped_(wrapped),
       stream_(stream) {}
 

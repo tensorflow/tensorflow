@@ -348,7 +348,7 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
   absl::MutexLock global_lock(&mu);
   auto it = mutexes
                 ->emplace(std::piecewise_construct,
-                          std::make_tuple(stream_exec->platform(),
+                          std::make_tuple(stream_exec->GetPlatform(),
                                           stream_exec->device_ordinal()),
                           std::make_tuple())
                 .first;
