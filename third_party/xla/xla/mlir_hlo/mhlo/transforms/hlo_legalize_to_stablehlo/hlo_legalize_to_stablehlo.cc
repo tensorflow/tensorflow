@@ -439,6 +439,14 @@ LogicalResult rewriteMhloOpAsCustomCall(HloOpTy hloOp,
   // Convert MHLO attributes to StableHLO equivalents.
   SmallVector<NamedAttribute> stablehloConvertedAttrs;
   for (NamedAttribute hloAttr : hloOp->getAttrs()) {
+    if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
+      // custom_call_schedule is private to XLA, but we still want to allow
+      // #mhlo<custom_call_schedule NONE> (by ignoring it).
+      if (hloAttr.getName() == "custom_call_schedule" &&
+          hloOp.getCustomCallSchedule() == mhlo::CustomCallSchedule::NONE)
+        continue;
+    }
+
     // Special case Attrs/Values not in StableHLO
     // precision_config exists in both MHLO and StableHLO, but MHLO's version
     // has additional enum values not supported in StableHLO.
