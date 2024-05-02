@@ -686,6 +686,11 @@ IndexingMap IndexingMap::FromTensorSizes(
                      /*rt_vars=*/{}};
 }
 
+RangeEvaluator IndexingMap::GetRangeEvaluator() const {
+  return RangeEvaluator(GetDimensionBounds(), GetSymbolBounds(),
+                        GetMLIRContext());
+}
+
 const Interval& IndexingMap::GetDimensionBound(int64_t dim_id) const {
   return dim_vars_[dim_id].bounds;
 }

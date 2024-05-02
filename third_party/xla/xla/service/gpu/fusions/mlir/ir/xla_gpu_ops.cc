@@ -190,7 +190,7 @@ mlir::ParseResult parseOperandsWithBoundsList(
     SmallVector<mlir::OpAsmParser::UnresolvedOperand, 4> *operands,
     SmallVector<int64_t, 4> *lower_bounds,
     SmallVector<int64_t, 4> *upper_bounds) {
-  int32_t lower_bound, upper_bound;
+  int64_t lower_bound, upper_bound;
   mlir::OpAsmParser::UnresolvedOperand operand;
   if (parser.parseCommaSeparatedList([&]() {
         if (parser.parseOperand(operand) || parser.parseKeyword("in") ||

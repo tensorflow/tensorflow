@@ -263,6 +263,9 @@ class IndexingMap {
   // Returns the affine map.
   mlir::AffineMap GetAffineMap() const { return affine_map_; }
 
+  // Returns the range evaluator for the indexing map's domain.
+  RangeEvaluator GetRangeEvaluator() const;
+
   // Getters for dimension vars.
   const DimVar& GetDimVars(int64_t id) const { return dim_vars_[id]; }
   const std::vector<DimVar>& GetDimVars() const { return dim_vars_; }
