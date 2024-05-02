@@ -165,14 +165,6 @@ class CommandBuffer {
   // Command buffer constructors
   //===--------------------------------------------------------------------===//
 
-  // TODO(b/323534971): Command buffer constructors should be moved to
-  // StreamExecutor or a dedicated CommandBufferFactory accessible via
-  // StreamExecutor.
-
-  // Creates a new empty command buffer on the given executor.
-  static absl::StatusOr<std::unique_ptr<CommandBuffer>> Create(
-      StreamExecutorInterface* executor, Mode mode = Mode::kPrimary);
-
   // Creates a new command buffer on the given executor by tracing `function`
   // invocation. All StreamExecutor operations on a Stream argument will be
   // recorded into the command buffer. Returned command buffer is finalized, and

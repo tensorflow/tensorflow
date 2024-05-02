@@ -29,11 +29,6 @@ limitations under the License.
 
 namespace stream_executor {
 
-absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Create(
-    StreamExecutorInterface* executor, Mode mode) {
-  return executor->CreateCommandBuffer(mode);
-}
-
 absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Trace(
     StreamExecutorInterface* executor,
     absl::AnyInvocable<absl::Status(Stream*)> function, Mode mode) {
@@ -50,7 +45,7 @@ absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Trace(
 
   // Prepare an empty command buffer instance.
   TF_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> command_buffer,
-                      CommandBuffer::Create(executor, mode));
+                      executor->CreateCommandBuffer(mode));
 
   // Trace and finalize the command buffer.
   TF_RETURN_IF_ERROR(

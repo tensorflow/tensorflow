@@ -214,7 +214,8 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 
   CommandBufferCmd::RecordParams record_params = {state};
 
-  auto command_buffer = se::CommandBuffer::Create(executor).value();
+  auto command_buffer =
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary).value();
   TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
@@ -282,7 +283,8 @@ TEST(CommandBufferCmdTest, BarrierCmd) {
 
   CommandBufferCmd::RecordParams record_params = {state};
 
-  auto command_buffer = se::CommandBuffer::Create(executor).value();
+  auto command_buffer =
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary).value();
   TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
@@ -359,7 +361,8 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
 
   CommandBufferCmd::RecordParams record_params = {state};
 
-  auto command_buffer = se::CommandBuffer::Create(executor).value();
+  auto command_buffer =
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary).value();
   TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
