@@ -566,6 +566,10 @@ tensorflow::quantization::QuantizeStaticRangePtq
 tensorflow::quantization::QuantizeDynamicRangePtq
 tensorflow::quantization::QuantizeWeightOnly
 
+[//tensorflow/compiler/mlir/quantization/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo_lib_impl] # tensorflow_to_stablehlo
+mlir::tensorflow_to_stablehlo::pywrap::PywrapSavedModelToStablehlo
+mlir::tensorflow_to_stablehlo::pywrap::PywrapTfModuleToStablehlo
+
 [//tensorflow/dtensor/cc:dtensor_device_cc] # DTensor
 tensorflow::dtensor::AllocateDTensorDevice
 tensorflow::dtensor::AddMesh

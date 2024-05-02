@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/types.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/hash.h"
 #include "tsl/platform/logging.h"
@@ -113,6 +114,25 @@ Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
                                  get_func_sig, fbody);
 }
 
+namespace {
+bool PrunableStatefulNode(const Node* n) {
+  // This set contains ops that are marked as "stateful" in their op
+  // registration, but can be pruned from a function graph if nothing depends
+  // on them. Typically, these are operations that are "impure" but have no
+  // side effects. For example, "ResourceGather" reads from a resource variable
+  // and can produce different results on each invocation (due to variable
+  // updates) but it does not itself modify the variable.
+  // TODO(b/341721055): Consolidate this set with other side effect modeling.
+  static const absl::flat_hash_set<string>* prunable_stateful_ops =
+      new absl::flat_hash_set<string>{
+          FunctionLibraryDefinition::kArgOp,
+          "ResourceGather",
+          "ResourceGatherNd",
+      };
+  return prunable_stateful_ops->contains(n->type_string());
+}
+}  // namespace
+
 // TODO(ezhulenev, skyewm): Function body should not have special treatment of
 // stateful ops, graph should encode nodes that must execute with `control_ret`
 // and `control_output`.
@@ -141,8 +161,7 @@ void PruneFunctionBody(const FunctionDef& fdef, Graph* g,
     // still needed. It would be preferable to prune entire loops and/or
     // conditionals if they are not used in the graph.
     if (n->IsControlFlow() ||
-        (n->op_def().is_stateful() &&
-         n->type_string() != FunctionLibraryDefinition::kArgOp) ||
+        (n->op_def().is_stateful() && !PrunableStatefulNode(n)) ||
         (control_ret_nodes.find(n->name()) != control_ret_nodes.end())) {
       nodes.insert(n);
     }
