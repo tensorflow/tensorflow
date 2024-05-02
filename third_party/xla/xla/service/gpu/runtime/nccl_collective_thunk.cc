@@ -402,7 +402,7 @@ absl::Status NcclCollectiveThunk::Prepare(const PrepareParams& params,
       xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_per_stream_comms();
   return resource_requests.AddClique(
       NcclCliqueKey(std::move(participants),
-                    enable_per_stream_comms ? GetStreamId() : kNoStreamId,
+                    enable_per_stream_comms ? nccl_stream_id() : kNoStreamId,
                     stream_kind),
       num_local_participants);
 }
@@ -435,7 +435,7 @@ bool operator==(const FirstCallRendezvousKey& a,
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
                                 Thunk::KindToString(kind()));
-  const NcclStreamId stream_id = GetStreamId();
+  const NcclStreamId stream_id = nccl_stream_id();
   AsyncStreamKind stream_kind = GetAsyncStreamKind();
   TF_ASSIGN_OR_RETURN(
       NcclCommHandleWrapper comm_handle,
@@ -515,8 +515,11 @@ std::string NcclCollectiveThunk::GetDeviceString(
 
 NcclCollectiveDoneThunk::NcclCollectiveDoneThunk(
     Thunk::Kind kind, ThunkInfo thunk_info,
-    std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events)
-    : Thunk(kind, std::move(thunk_info)), async_events_(async_events) {}
+    std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events,
+    AsyncStreamKind async_stream_kind)
+    : Thunk(kind, std::move(thunk_info)),
+      async_events_(async_events),
+      async_stream_kind_(async_stream_kind) {}
 
 absl::Status NcclCollectiveDoneThunk::ExecuteOnStream(
     const ExecuteParams& params) {

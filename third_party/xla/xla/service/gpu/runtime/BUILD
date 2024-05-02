@@ -122,6 +122,7 @@ cc_library(
         ":memset_thunk",
         ":nccl_all_gather_thunk",
         ":nccl_all_reduce_thunk",
+        ":nccl_collective_thunk",
         ":replica_id_thunk",
         ":sequential_thunk",
         ":wait_for_streams_thunk",
@@ -289,6 +290,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/lib/gtl:int_type",
     ],
 )
 

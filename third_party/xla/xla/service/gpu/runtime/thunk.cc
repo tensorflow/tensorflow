@@ -349,9 +349,9 @@ Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
   thunk_info.profile_annotation = instr->name();
   auto gpu_backend_config = instr->backend_config<GpuBackendConfig>();
   if (gpu_backend_config.ok()) {
-    thunk_info.execution_stream_id = std::max<uint64_t>(
-        kDefaultExecutionStreamId.value(),
-        static_cast<uint64_t>(gpu_backend_config->operation_queue_id()));
+    thunk_info.execution_stream_id =
+        std::max<uint64_t>(kDefaultExecutionStreamId.value(),
+                           gpu_backend_config->operation_queue_id());
   }
   return thunk_info;
 }

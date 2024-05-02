@@ -312,6 +312,8 @@ absl::Status CommandBufferCmdSequence::Record(
       TF_RETURN_IF_ERROR(command_buffer->Barrier(device, execution_scope_id));
       num_recorded_commands.erase(execution_scope_id);
     }
+    VLOG(5) << " Record command buffer with scope id "
+            << execution_scope_id.value();
 
     TF_RETURN_IF_ERROR(
         command.cmd->Record(execute_params, record_params, command_buffer));
@@ -1353,10 +1355,29 @@ BarrierCmd::BufferUsageVector BarrierCmd::buffers() { return {}; }
 //===----------------------------------------------------------------------===//
 
 CollectiveCmd::CollectiveCmd(ExecutionStreamId execution_stream_id,
+                             ExecutionStreamId async_from_stream_id,
                              NcclApi* nccl_api, NcclCollectiveConfig config)
     : TracedCommandBufferCmd(execution_stream_id),
+      async_from_stream_id_(async_from_stream_id),
       nccl_api_(nccl_api),
       config_(std::move(config)) {}
+
+absl::Status CollectiveCmd::BarrierIfAsync(
+    se::CommandBuffer* command_buffer, se::StreamExecutor* executor,
+    const CommandBufferCmd::RecordParams& record_params) {
+  if (IsAsync()) {
+    TF_RETURN_IF_ERROR(
+        command_buffer->Barrier(executor,
+                                CommandBufferCmd::GetExecutionScope(
+                                    record_params, async_from_stream_id_),
+                                CommandBufferCmd::GetExecutionScope(
+                                    record_params, execution_stream_id())));
+    VLOG(5) << "Insert Async barrier from stream "
+            << async_from_stream_id_.value() << " to stream "
+            << execution_stream_id().value();
+  }
+  return absl::OkStatus();
+}
 
 absl::Status CollectiveCmd::Prepare(
     const Thunk::PrepareParams& params,
@@ -1382,7 +1403,7 @@ absl::Status CollectiveCmd::Prepare(
       collectives->global_device_id_map ? &local_devices : nullptr);
 
   return resource_requests.AddClique(
-      NcclCliqueKey(std::move(participants), /*stream_id=*/NcclStreamId(0),
+      NcclCliqueKey(std::move(participants), nccl_stream_id(),
                     GetAsyncStreamKind()),
       num_local_participants);
 }
@@ -1392,16 +1413,21 @@ absl::Status CollectiveCmd::Prepare(
 //===----------------------------------------------------------------------===//
 
 AllReduceCmd::AllReduceCmd(
-    ExecutionStreamId execution_stream_id, NcclApi* nccl_api,
+    ExecutionStreamId execution_stream_id,
+    ExecutionStreamId async_from_stream_id, NcclApi* nccl_api,
     NcclCollectiveConfig config, ReductionKind reduction_kind,
     absl::Span<const NcclCollectiveThunk::Buffer> buffers)
-    : CollectiveCmd(execution_stream_id, nccl_api, std::move(config)),
+    : CollectiveCmd(execution_stream_id, async_from_stream_id, nccl_api,
+                    std::move(config)),
       reduction_kind_(reduction_kind),
       buffers_(buffers.begin(), buffers.end()) {}
 
 absl::Status AllReduceCmd::Record(const Thunk::ExecuteParams& execute_params,
                                   const RecordParams& record_params,
                                   se::CommandBuffer* command_buffer) {
+  TF_RETURN_IF_ERROR(BarrierIfAsync(
+      command_buffer, execute_params.stream->parent(), record_params));
+
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
@@ -1423,13 +1449,11 @@ absl::Status AllReduceCmd::Record(const Thunk::ExecuteParams& execute_params,
         "AllReduceCmd requires collective parameters and cliques");
   }
 
-  // Today when recording collective operations into command buffers we always
-  // use a sync mode and a stream id `0`.
   TF_ASSIGN_OR_RETURN(
       NcclCommHandleWrapper comm_handle,
       GetNcclComm(*execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
-                  config().group_mode, NcclStreamId(0), GetAsyncStreamKind()));
+                  config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
   NcclApi::NcclCommHandle comm = comm_handle.comm_handle;
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
@@ -1459,16 +1483,21 @@ CommandBufferCmd::BufferUsageVector AllReduceCmd::buffers() {
 //===----------------------------------------------------------------------===//
 
 ReduceScatterCmd::ReduceScatterCmd(
-    ExecutionStreamId execution_stream_id, NcclApi* nccl_api,
+    ExecutionStreamId execution_stream_id,
+    ExecutionStreamId async_from_stream_id, NcclApi* nccl_api,
     NcclCollectiveConfig config, ReductionKind reduction_kind,
     absl::Span<const NcclCollectiveThunk::Buffer> buffers)
-    : CollectiveCmd(execution_stream_id, nccl_api, std::move(config)),
+    : CollectiveCmd(execution_stream_id, async_from_stream_id, nccl_api,
+                    std::move(config)),
       reduction_kind_(reduction_kind),
       buffers_(buffers.begin(), buffers.end()) {}
 
 absl::Status ReduceScatterCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, se::CommandBuffer* command_buffer) {
+  TF_RETURN_IF_ERROR(BarrierIfAsync(
+      command_buffer, execute_params.stream->parent(), record_params));
+
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
@@ -1491,13 +1520,11 @@ absl::Status ReduceScatterCmd::Record(
         "ReduceScatterCmd requires collective parameters and cliques");
   }
 
-  // Today when recording collective operations into command buffers we always
-  // use a sync mode and a stream id `0`.
   TF_ASSIGN_OR_RETURN(
       NcclCommHandleWrapper comm_handle,
       GetNcclComm(*execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
-                  config().group_mode, NcclStreamId(0), GetAsyncStreamKind()));
+                  config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
   NcclApi::NcclCommHandle comm = comm_handle.comm_handle;
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
@@ -1527,15 +1554,20 @@ CommandBufferCmd::BufferUsageVector ReduceScatterCmd::buffers() {
 //===----------------------------------------------------------------------===//
 
 AllGatherCmd::AllGatherCmd(
-    ExecutionStreamId execution_stream_id, NcclApi* nccl_api,
+    ExecutionStreamId execution_stream_id,
+    ExecutionStreamId async_from_stream_id, NcclApi* nccl_api,
     NcclCollectiveConfig config,
     absl::Span<const NcclCollectiveThunk::Buffer> buffers)
-    : CollectiveCmd(execution_stream_id, nccl_api, std::move(config)),
+    : CollectiveCmd(execution_stream_id, async_from_stream_id, nccl_api,
+                    std::move(config)),
       buffers_(buffers.begin(), buffers.end()) {}
 
 absl::Status AllGatherCmd::Record(const Thunk::ExecuteParams& execute_params,
                                   const RecordParams& record_params,
                                   se::CommandBuffer* command_buffer) {
+  TF_RETURN_IF_ERROR(BarrierIfAsync(
+      command_buffer, execute_params.stream->parent(), record_params));
+
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
@@ -1556,13 +1588,11 @@ absl::Status AllGatherCmd::Record(const Thunk::ExecuteParams& execute_params,
         "AllGatherCmd requires collective parameters and cliques");
   }
 
-  // Today when recording collective operations into command buffers we always
-  // use a sync mode and a stream id `0`.
   TF_ASSIGN_OR_RETURN(
       NcclCommHandleWrapper comm_handle,
       GetNcclComm(*execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
-                  config().group_mode, NcclStreamId(0), GetAsyncStreamKind()));
+                  config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
   NcclApi::NcclCommHandle comm = comm_handle.comm_handle;
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
@@ -1591,15 +1621,20 @@ CommandBufferCmd::BufferUsageVector AllGatherCmd::buffers() {
 //===----------------------------------------------------------------------===//
 
 CollectiveBroadcastCmd::CollectiveBroadcastCmd(
-    ExecutionStreamId execution_stream_id, NcclApi* nccl_api,
+    ExecutionStreamId execution_stream_id,
+    ExecutionStreamId async_from_stream_id, NcclApi* nccl_api,
     NcclCollectiveConfig config,
     absl::Span<const NcclCollectiveThunk::Buffer> buffers)
-    : CollectiveCmd(execution_stream_id, nccl_api, std::move(config)),
+    : CollectiveCmd(execution_stream_id, async_from_stream_id, nccl_api,
+                    std::move(config)),
       buffers_(buffers.begin(), buffers.end()) {}
 
 absl::Status CollectiveBroadcastCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, se::CommandBuffer* command_buffer) {
+  TF_RETURN_IF_ERROR(BarrierIfAsync(
+      command_buffer, execute_params.stream->parent(), record_params));
+
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
@@ -1621,13 +1656,11 @@ absl::Status CollectiveBroadcastCmd::Record(
         "CollectiveBroadcastCmd requires collective parameters and cliques");
   }
 
-  // Today when recording collective operations into command buffers we always
-  // use a sync mode and a stream id `0`.
   TF_ASSIGN_OR_RETURN(
       NcclCommHandleWrapper comm_handle,
       GetNcclComm(*execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
-                  config().group_mode, NcclStreamId(0), GetAsyncStreamKind()));
+                  config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
   NcclApi::NcclCommHandle comm = comm_handle.comm_handle;
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(

@@ -129,6 +129,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_collective_broadcast_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_permute_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/runtime/nccl_recv_thunk.h"
 #include "xla/service/gpu/runtime/nccl_send_thunk.h"
 #include "xla/service/gpu/runtime/norm_thunk.h"
@@ -2291,7 +2292,8 @@ absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
       TF_RET_CHECK(it != collectives_async_events.end())
           << "couldn't find async events for channel_id " << channel_id;
       AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
-          kind, Thunk::ThunkInfo::WithProfileAnnotation(inst), it->second));
+          kind, Thunk::ThunkInfo::WithProfileAnnotation(inst), it->second,
+          GetStreamKindForSendRecv(DynCast<HloSendRecvInstruction>(inst))));
       return absl::OkStatus();
     }
   }
@@ -2306,7 +2308,7 @@ absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
   if (async_events.mapped()) {
     AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
         kind, Thunk::ThunkInfo::WithProfileAnnotation(inst),
-        std::move(async_events.mapped())));
+        std::move(async_events.mapped()), AsyncStreamKind::kCollective));
   }
   return absl::OkStatus();
 }

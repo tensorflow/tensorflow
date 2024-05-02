@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/service/global_device_id.h"
+#include "tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
 
@@ -61,11 +62,8 @@ constexpr static int64_t kAsyncStreamTotal =
 // Assigns a unique ID to a stream for asynchronous or synchronous execution.
 // These IDs can be used, for example, to look up the NCCL communicator.
 inline NcclStreamId GetStreamId(
-    uint64_t main_stream_id, bool is_async,
-    AsyncStreamKind stream_kind = AsyncStreamKind::kCollective) {
-  return NcclStreamId(is_async ? (main_stream_id << 3) +
-                                     static_cast<uint64_t>(stream_kind) + 1
-                               : main_stream_id << 3);
+    bool is_async, AsyncStreamKind stream_kind = AsyncStreamKind::kCollective) {
+  return NcclStreamId(is_async ? static_cast<uint64_t>(stream_kind) + 1 : 0);
 }
 
 //===----------------------------------------------------------------------===//
