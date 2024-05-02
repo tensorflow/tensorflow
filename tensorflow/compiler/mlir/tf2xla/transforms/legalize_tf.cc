@@ -6416,6 +6416,30 @@ class ConvertDynamicExpandDimsOp : public OpRewritePattern<TF::ExpandDimsOp> {
   }
 };
 
+Value createDynamicReshape(PatternRewriter &rewriter, Location loc,
+                           OpResult res, Value tensor, Value shape) {
+  auto shapeTy = mlir::cast<ShapedType>(shape.getType());
+  auto resultTy = mlir::cast<ShapedType>(res.getType());
+
+  Value inputShape = rewriter.create<shape::ShapeOfOp>(loc, tensor);
+  Value numEls = rewriter.create<shape::NumElementsOp>(loc, inputShape);
+  Value cstr =
+      rewriter.create<mlir::mhlo::CstrReshapableOp>(loc, numEls, shape);
+
+  return rewriter
+      .create<shape::AssumingOp>(
+          loc, cstr,
+          [&](OpBuilder &b, Location l) {
+            Value computedShape = b.create<mlir::mhlo::ComputeReshapeShapeOp>(
+                l, shapeTy, numEls, shape);
+            SmallVector<Value> result;
+            result.push_back(b.create<mlir::mhlo::DynamicReshapeOp>(
+                l, resultTy, tensor, computedShape));
+            return result;
+          })
+      .getResult(0);
+};
+
 class ConvertDynamicSqueezeOp : public OpRewritePattern<TF::SqueezeOp> {
  public:
   using OpRewritePattern::OpRewritePattern;

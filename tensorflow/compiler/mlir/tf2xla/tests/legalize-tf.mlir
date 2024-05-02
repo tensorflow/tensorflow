@@ -2657,9 +2657,9 @@ func.func @not_lowering_reshape(%arg0: tensor<!tf_type.string>, %arg1: tensor<1x
 
 // CHECK-LABEL: reshape_dynamic
 func.func @reshape_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
-  // CHECK:  "chlo.dynamic_reshape"
-  // CHLO:  mhlo.compute_reshape_shape
-  // CHLO:  mhlo.dynamic_reshape
+  // CHECK: mhlo.cstr_reshapable
+  // CHECK: mhlo.compute_reshape_shape
+  // CHECK: mhlo.dynamic_reshape
   %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
 }
