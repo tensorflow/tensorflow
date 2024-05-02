@@ -94,6 +94,7 @@ cc_library(
     deps = [
         ":byte_order",
         ":stringpiece",
+        ":tstring",
         ":types",
     ],
 )
