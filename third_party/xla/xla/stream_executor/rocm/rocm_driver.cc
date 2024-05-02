@@ -433,10 +433,6 @@ static absl::Status InternalInit() {
   CreatedContexts::Remove(context->context());
 }
 
-/* static */ hipCtx_t GpuDriver::GetContextHandle(GpuContext* context) {
-  return context->context();
-}
-
 /* static */ absl::Status GpuDriver::FuncGetAttribute(
     hipFunction_attribute attribute, hipFunction_t func, int* attribute_value) {
   RETURN_IF_ROCM_ERROR(

@@ -427,10 +427,6 @@ int GetFlagsFromEnv() {
   CreatedContexts::Remove(context->context());
 }
 
-/* static */ CUcontext GpuDriver::GetContextHandle(GpuContext* context) {
-  return context->context();
-}
-
 /* static */ absl::Status GpuDriver::FuncGetAttribute(
     CUfunction_attribute attribute, CUfunction func, int* attribute_value) {
   RETURN_IF_CUDA_RES_ERROR(cuFuncGetAttribute(attribute_value, attribute, func),
