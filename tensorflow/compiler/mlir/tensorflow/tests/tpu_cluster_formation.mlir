@@ -934,16 +934,3 @@ func.func @gather_nd(%arg0: tensor<*x!tf_type.resource<tensor<80xf32>>>,
   } : (tensor<*x!tf_type.resource<tensor<80xf32>>>, tensor<i32>) -> tensor<1x80xf32>
   func.return
 }
-
-// -----
-
-// Check conflicting device names
-// CHECK: "tf_device.cluster"()
-// CHECK:    "tf.opA"()
-// CHECK:    "tf.opB"()
-// CHECK-NOT: device =
-func.func @do_nothing_if_short_names_conflict() {
-  "tf.opA"() { _xla_compile_device_type = "TPU", device = "/replica:1/task:2/device:TPU:1"} : () -> ()
-  "tf.opB"() { _xla_compile_device_type = "TPU", device = "/replica:3/task:4/device:TPU:1"} : () -> ()
-  func.return
-}
