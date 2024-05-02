@@ -25,8 +25,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::xla::runtime::CpuEvent;
-
 TEST(TrackedTfrtCpuDeviceBufferTest, Basic) {
   std::string expected = "tracked_tfrt_cpu_device_buffer_test";
   TF_ASSERT_OK_AND_ASSIGN(

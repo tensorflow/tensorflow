@@ -72,12 +72,12 @@ limitations under the License.
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
-#include "xla/runtime/cpu_event.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/cpu_event.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/cpu/cpu_xfeed.h"
@@ -113,8 +113,6 @@ limitations under the License.
 
 namespace xla {
 namespace {
-
-using ::xla::runtime::CpuEvent;
 
 absl::StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBuffer(
     const Shape& on_device_shape,

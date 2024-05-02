@@ -25,13 +25,11 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/runtime/cpu_event.h"
+#include "xla/service/cpu/cpu_event.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
 namespace {
-
-using ::xla::runtime::CpuEvent;
 
 // Returns an AsyncValueRef<CpuEvent> that will be ready after all the async
 // values in `events` are ready. If errors occurs, one of the errors will be

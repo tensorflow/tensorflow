@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_CPU_EVENT_H_
-#define XLA_RUNTIME_CPU_EVENT_H_
+#ifndef XLA_SERVICE_CPU_CPU_EVENT_H_
+#define XLA_SERVICE_CPU_CPU_EVENT_H_
 
 namespace xla {
-namespace runtime {
 
 // Typical use case: AsyncValueRef<CpuEvent> is used to indicate the
 // completion of a CPU operation, e.g., data transfer or running a program.
@@ -25,7 +24,6 @@ struct CpuEvent {
   CpuEvent() = default;
 };
 
-}  // namespace runtime
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_CPU_EVENT_H_
+#endif  // XLA_SERVICE_CPU_CPU_EVENT_H_
