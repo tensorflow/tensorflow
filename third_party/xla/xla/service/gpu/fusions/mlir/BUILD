@@ -278,8 +278,8 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "convert_xla_gpu_pure_call_ops.cc",
         "expand_float_ops.cc",
-        "lower_func.cc",
         "lower_tensors.cc",
         "lower_to_llvm.cc",
         "lower_xla_gpu_to_scf.cc",

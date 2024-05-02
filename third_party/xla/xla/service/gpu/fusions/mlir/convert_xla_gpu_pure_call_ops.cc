@@ -20,14 +20,10 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-#define GEN_PASS_DEF_LOWERFUNCPASS
-#include "xla/service/gpu/fusions/mlir/passes.h.inc"
-
 namespace {
 
-using mlir::failure;
-using mlir::success;
+#define GEN_PASS_DEF_CONVERTPURECALLOPSPASS
+#include "xla/service/gpu/fusions/mlir/passes.h.inc"
 
 struct RewriteCall : mlir::OpRewritePattern<PureCallOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -36,28 +32,28 @@ struct RewriteCall : mlir::OpRewritePattern<PureCallOp> {
       PureCallOp op, mlir::PatternRewriter& rewriter) const override {
     rewriter.replaceOpWithNewOp<mlir::func::CallOp>(
         op, op.getResultTypes(), op.getOperands(), op->getAttrs());
-    return success();
+    return mlir::success();
   }
 };
 
-class LowerFuncPass : public impl::LowerFuncPassBase<LowerFuncPass> {
+class ConvertPureCallOpsPass
+    : public impl::ConvertPureCallOpsPassBase<ConvertPureCallOpsPass> {
  public:
-  void runOnOperation() override;
-};
-
-void LowerFuncPass::runOnOperation() {
-  mlir::RewritePatternSet patterns(&getContext());
-  patterns.add<RewriteCall>(&getContext());
-  if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
-                                                      std::move(patterns)))) {
-    signalPassFailure();
+  void runOnOperation() override {
+    auto* ctx = &getContext();
+    mlir::RewritePatternSet patterns(ctx);
+    patterns.add<RewriteCall>(ctx);
+    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
+                                                        std::move(patterns)))) {
+      signalPassFailure();
+    }
   }
-}
+};
 
 }  // namespace
 
-std::unique_ptr<::mlir::Pass> CreateLowerFuncPass() {
-  return std::make_unique<LowerFuncPass>();
+std::unique_ptr<::mlir::Pass> CreateConvertPureCallOpsPass() {
+  return std::make_unique<ConvertPureCallOpsPass>();
 }
 
 }  // namespace gpu

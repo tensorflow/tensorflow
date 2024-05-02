@@ -270,7 +270,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
   pm.addPass(CreatePropagateSliceIndicesPass());
-  pm.addPass(CreateLowerFuncPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateConvertPureCallOpsPass());
   pm.addPass(CreateLowerXlaGpuToScfPass());
   pm.addPass(CreateLowerTensorsPass(
       is_amd, is_amd ? device.rocm_compute_capability().gcn_arch_name()
