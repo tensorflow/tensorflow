@@ -293,6 +293,27 @@ cc_library(
     alwayslink = True,
 )
 
+cc_library(
+    name = "basic_string_array",
+    srcs = ["basic_string_array.cc"],
+    hdrs = ["basic_string_array.h"],
+    deps = [
+        ":pjrt_ifrt",
+        "//xla:status",
+        "//xla:xla_data_proto_cc",
+        "//xla/python/ifrt",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 xla_cc_test(
     name = "pjrt_array_impl_test_tfrt_cpu",
     size = "small",
