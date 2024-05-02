@@ -120,6 +120,11 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
                                            const Shape& target_shape,
                                            const HloSharding& sharding);
 
+// Infer the sharding of the operand of a reshape based on the reshape sharding.
+std::optional<HloSharding> InferReshapeOperandSharding(
+    const Shape& source_shape, const Shape& target_shape,
+    const HloSharding& target_sharding);
+
 // Propagates sharding through reshape. It tries to find partial matches on
 // subsets of dimensions that could satisfy ReshapeSharding() constraints, then
 // combine them. It doesn't require all dimensions to satisfy the constraints

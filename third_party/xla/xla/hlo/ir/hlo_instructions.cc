@@ -1555,6 +1555,11 @@ HloReshapeInstruction::HloReshapeInstruction(const Shape& shape,
                                              int64_t inferred_dimension)
     : HloInstruction(HloOpcode::kReshape, shape),
       inferred_dimension_(inferred_dimension) {
+  CHECK(operand->shape().is_unbounded_dynamic() ||
+        ShapeUtil::StaticExtentProduct(shape) ==
+            ShapeUtil::StaticExtentProduct(operand->shape()))
+      << "shape: " << ShapeUtil::HumanString(shape)
+      << " operand: " << ShapeUtil::HumanString(operand->shape());
   AppendOperand(operand);
 }
 

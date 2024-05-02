@@ -3634,6 +3634,31 @@ ENTRY entry {
               AllOf(op::Reshape(input_reshard), op::Shape("f32[38,19,4,81]")));
 }
 
+TEST_P(SpmdPartitioningTest, Reshape_b_338145758) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %reshape {
+  reshape.11524 = bf16[80,64,48,16,48,16,3]{6,5,4,3,2,1,0} parameter(0),
+    sharding={devices=[16,8,1,1,1,1,1]<=[128]}
+  transpose.2142 = bf16[80,64,48,48,16,16,3]{6,5,3,4,2,1,0} transpose(reshape.11524),
+    dimensions={0,1,2,4,3,5,6}, sharding={devices=[16,8,1,1,1,1,1]<=[128]}
+  ROOT reshape.11525 = bf16[5120,2304,768]{2,1,0} reshape(transpose.2142),
+    sharding={devices=[128,1,1]<=[128]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, PartitionComputation(hlo_string, /*num_devices=*/128));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  auto reshape = AllOf(
+      op::Reshape(op::AllReduce(op::DynamicUpdateSlice(
+          _, op::Copy(op::Transpose(op::Parameter(0))), _, _, _, _, _, _, _))),
+      op::Shape("bf16[320,2304,768]"));
+  EXPECT_THAT(root, AllOf(op::DynamicSlice(reshape, _, _, _),
+                          op::Shape("bf16[40,2304,768]")));
+}
+
 TEST_P(SpmdPartitioningTest, ReshapeWithReshard2) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -3649,8 +3674,8 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
-  auto local_reshape =
-      AllOf(op::Reshape(op::Parameter(0)), op::Shape("f32[19,38,2,162]"));
+  auto local_reshape = AllOf(op::Reshape(op::Copy(op::Parameter(0))),
+                             op::Shape("f32[19,38,2,162]"));
   EXPECT_THAT(root, AllOf(op::Shape("f32[38,38,2,81]"),
                           op::Reshape(op::Transpose(
                               op::AllToAll(op::Reshape(local_reshape))))));

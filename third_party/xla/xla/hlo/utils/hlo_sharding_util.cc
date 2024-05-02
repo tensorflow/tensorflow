@@ -878,6 +878,90 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
                                sharding.metadata());
 }
 
+std::optional<HloSharding> InferReshapeOperandSharding(
+    const Shape& source_shape, const Shape& target_shape,
+    const HloSharding& target_sharding) {
+  DimensionVector source_tile_assignment_dimensions;
+  source_tile_assignment_dimensions.reserve(source_shape.rank() + 1);
+  int64_t accumulated_source_dim_size = 1;
+  int64_t accumulated_target_dim_size = 1;
+  int64_t avaible_source_dim_size = source_shape.dimensions(0);
+  int64_t avaible_source_shard_size = target_sharding.tile_assignment().dim(0);
+  int64_t source_idx = 0;
+  int64_t target_idx = 0;
+  auto increment_source_idx = [&]() {
+    accumulated_source_dim_size *= source_shape.dimensions(source_idx);
+    ++source_idx;
+    avaible_source_dim_size = source_shape.dimensions(source_idx);
+  };
+  auto increment_target_idx = [&]() {
+    accumulated_target_dim_size *= target_shape.dimensions(target_idx);
+    ++target_idx;
+    avaible_source_shard_size =
+        target_sharding.tile_assignment().dim(target_idx);
+  };
+  // Iterate over each dimension fo the target sharding to infer the source
+  // sharding.
+  while (source_idx < source_shape.rank()) {
+    int64_t gcd = std::gcd(avaible_source_dim_size, avaible_source_shard_size);
+    if (avaible_source_dim_size == avaible_source_shard_size) {
+      increment_source_idx();
+      increment_target_idx();
+      if (accumulated_source_dim_size != accumulated_target_dim_size &&
+          avaible_source_shard_size != 1) {
+        return std::nullopt;
+      }
+    } else if (gcd == avaible_source_dim_size) {
+      increment_source_idx();
+      avaible_source_shard_size /= gcd;
+    } else if (gcd == avaible_source_shard_size) {
+      increment_target_idx();
+      avaible_source_dim_size /= gcd;
+    } else {
+      return std::nullopt;
+    }
+  }
+
+  // Build subgroup dimensions.
+  if (Product(source_tile_assignment_dimensions) == 1) {
+    return std::nullopt;
+  }
+  while (source_tile_assignment_dimensions.size() < source_shape.rank()) {
+    source_tile_assignment_dimensions.push_back(1);
+  }
+  for (int64_t i = target_sharding.TiledDataRank();
+       i < target_sharding.tile_assignment().num_dimensions(); ++i) {
+    source_tile_assignment_dimensions.push_back(
+        i == target_sharding.SubgroupReplicationDim()
+            ? 1
+            : target_sharding.tile_assignment().dim(i));
+  }
+  auto subgroup_types = target_sharding.subgroup_types();
+  auto partially_replicated =
+      std::div(target_sharding.TotalNumTiles(),
+               Product(source_tile_assignment_dimensions));
+  CHECK_EQ(partially_replicated.rem, 0);
+  if (partially_replicated.quot > 1) {
+    if (target_sharding.ReplicateOnLastTileDim()) {
+      source_tile_assignment_dimensions.back() = partially_replicated.quot;
+      subgroup_types.push_back(OpSharding::REPLICATED);
+    } else if (absl::c_linear_search(subgroup_types, OpSharding::REPLICATED)) {
+      source_tile_assignment_dimensions
+          [target_sharding.SubgroupReplicationDim() -
+           target_sharding.TiledDataRank() + target_shape.rank()] =
+              partially_replicated.quot;
+    } else {
+      source_tile_assignment_dimensions.push_back(partially_replicated.quot);
+      subgroup_types.push_back(OpSharding::REPLICATED);
+    }
+  }
+
+  auto new_tile_assignment = target_sharding.tile_assignment().Reshape(
+      source_tile_assignment_dimensions);
+  return HloSharding::Subgroup(new_tile_assignment, subgroup_types,
+                               target_sharding.metadata());
+}
+
 HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
                                             const Shape& target_shape,
                                             const HloSharding& sharding) {
