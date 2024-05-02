@@ -31,6 +31,10 @@ limitations under the License.
 #include <pthread_np.h>
 #endif
 
+#if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(__Fuchsia__)
+#include <sched.h>
+#endif
+
 #include <map>
 #include <thread>
 #include <vector>
@@ -74,6 +78,38 @@ class PThread : public Thread {
     CHECK_EQ(ret, 0) << "Thread " << name
                      << " creation via pthread_create() failed.";
     pthread_attr_destroy(&attributes);
+
+    // Set pthread CPU affinity.
+#if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(__Fuchsia__)
+    // Loop through the process's CPU set and set the appropriate affinity.
+    cpu_set_t cpuset;
+    if (sched_getaffinity(0, sizeof(cpu_set_t), &cpuset) == 0) {
+      int cpu_count = CPU_COUNT(&cpuset);
+      if (cpu_count > 0) {
+        int cpu_idx = (thread_options.cpu_affinity % cpu_count);
+        // Find absolute CPU index:
+        int cidx = 0;
+        while (cpu_idx >= 0) {
+          if (CPU_ISSET(i, &cpuset)) {
+            --cpu_idx;
+          }
+          ++cidx;
+        }
+
+        CPU_ZERO(&cpuset);
+        CPU_SET(cidx - 1, &cpuset);  // -1 since we went one too far in loop.
+        pthread_setaffinity_np(thread_, sizeof(cpu_set_t), &cpuset);
+      }
+    }
+#else
+    // Assume all CPUs are used by process, since sched_getaffinity is not
+    // implemented.
+    int cidx = thread_options.cpu_affinity % port::NumSchedulableCPUs();
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(cidx, &cpuset);
+    pthread_setaffinity_np(thread_, sizeof(cpu_set_t), &cpuset);
+#endif
   }
 
   ~PThread() override { pthread_join(thread_, nullptr); }

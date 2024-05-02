@@ -96,6 +96,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -378,6 +379,20 @@ static tsl::ThreadOptions GetThreadOptions() {
   return thread_options;
 }
 
+static bool PinThreadsToCpus() {
+  static const bool pin_threads_to_cpus = [] {
+    bool flag;
+    auto status = tsl::ReadBoolFromEnvVar("XLA_CPU_PIN_THREADS_TO_CPUS",
+                                          /*default_val=*/false, &flag);
+    if (!status.ok()) {
+      LOG(ERROR) << "PinThreadsToCpus: " << status.message();
+      return false;
+    }
+    return flag;
+  }();
+  return pin_threads_to_cpus;
+}
+
 TfrtCpuClient::TfrtCpuClient(
     int process_index, std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
     std::shared_ptr<cpu::CollectivesInterface> collectives, size_t num_threads,
@@ -391,7 +406,10 @@ TfrtCpuClient::TfrtCpuClient(
       async_work_runner_(std::make_unique<ThreadPoolAsyncWorkRunner>(
           pjrt_client_thread_pool_.get())),
       eigen_intraop_pool_(new tsl::thread::ThreadPool(
-          tsl::Env::Default(), "XLAEigen", DefaultThreadPoolSize())),
+          tsl::Env::Default(), tsl::ThreadOptions(), "XLAEigen",
+          DefaultThreadPoolSize(),
+          /*low_latency_hint=*/true, /*allocator=*/nullptr,
+          PinThreadsToCpus())),
       eigen_intraop_device_(
           new Eigen::ThreadPoolDevice(eigen_intraop_pool_->AsEigenThreadPool(),
                                       eigen_intraop_pool_->NumThreads())),

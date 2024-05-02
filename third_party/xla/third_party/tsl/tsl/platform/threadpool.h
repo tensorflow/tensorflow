@@ -110,7 +110,8 @@ class ThreadPool {
   // REQUIRES: num_threads > 0
   ThreadPool(Env* env, const ThreadOptions& thread_options,
              const std::string& name, int num_threads, bool low_latency_hint,
-             Eigen::Allocator* allocator = nullptr);
+             Eigen::Allocator* allocator = nullptr,
+             bool pin_threads_to_cpus = false);
 
   // Constructs a pool for low-latency ops that contains "num_threads" threads
   // with specified "name". env->StartThread() is used to create individual

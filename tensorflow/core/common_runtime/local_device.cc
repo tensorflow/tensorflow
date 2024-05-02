@@ -47,6 +47,20 @@ bool OverrideGlobalThreadPoolFromEnvironment() {
   return override_global_threadpool;
 }
 
+bool PinThreadsToCpus() {
+  static const bool pin_threads_to_cpus = [] {
+    bool flag;
+    auto status = ReadBoolFromEnvVar("TF_THREADPOOL_DEVICE_PIN_THREADS_TO_CPUS",
+                                     /*default_val=*/false, &flag);
+    if (!status.ok()) {
+      LOG(ERROR) << "PinThreadsToCpus: " << status.message();
+      return false;
+    }
+    return flag;
+  }();
+  return pin_threads_to_cpus;
+}
+
 }  // namespace
 
 /* static */
@@ -68,7 +82,7 @@ struct LocalDevice::EigenThreadPoolInfo {
   };
 
   explicit EigenThreadPoolInfo(const SessionOptions& options, int numa_node,
-                               Allocator* allocator) {
+                               Allocator* allocator, bool pin_threads_to_cpus) {
     // Use session setting if specified.
     int32_t intra_op_parallelism_threads =
         options.config.intra_op_parallelism_threads();
@@ -88,7 +102,7 @@ struct LocalDevice::EigenThreadPoolInfo {
         options.env, thread_opts, strings::StrCat("numa_", numa_node, "_Eigen"),
         intra_op_parallelism_threads,
         !options.config.experimental().disable_thread_spinning(),
-        /*allocator=*/nullptr);
+        /*allocator=*/nullptr, pin_threads_to_cpus);
     Eigen::ThreadPoolInterface* threadpool =
         eigen_worker_threads_.workers->AsEigenThreadPool();
     if (allocator != nullptr) {
@@ -120,6 +134,7 @@ LocalDevice::LocalDevice(const SessionOptions& options,
     use_global_threadpool_ = false;
   }
 
+  bool pin_threads_to_cpus = PinThreadsToCpus();
   if (use_global_threadpool_) {
     // All ThreadPoolDevices in the process associated with the same
     // NUMA node will share a single fixed sized threadpool for numerical
@@ -140,13 +155,13 @@ LocalDevice::LocalDevice(const SessionOptions& options,
       }
       if (!global_tp_info[numa_node]) {
         global_tp_info[numa_node] = new LocalDevice::EigenThreadPoolInfo(
-            options, numa_node, numa_allocator);
+            options, numa_node, numa_allocator, pin_threads_to_cpus);
       }
       tp_info = global_tp_info[numa_node];
     } else {
       if (global_tp_info.empty()) {
         global_tp_info.push_back(new LocalDevice::EigenThreadPoolInfo(
-            options, port::kNUMANoAffinity, nullptr));
+            options, port::kNUMANoAffinity, nullptr, pin_threads_to_cpus));
       }
       tp_info = global_tp_info[0];
     }
@@ -155,7 +170,7 @@ LocalDevice::LocalDevice(const SessionOptions& options,
     // computations.
     // TODO(tucker): NUMA for these too?
     owned_tp_info_.reset(new LocalDevice::EigenThreadPoolInfo(
-        options, port::kNUMANoAffinity, nullptr));
+        options, port::kNUMANoAffinity, nullptr, pin_threads_to_cpus));
     tp_info = owned_tp_info_.get();
   }
 

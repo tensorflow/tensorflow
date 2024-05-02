@@ -604,6 +604,10 @@ struct ThreadOptions {
   /// Guard area size to use near thread stacks to use (in bytes)
   size_t guard_size = 0;  // 0: use system default value
   int numa_node = port::kNUMANoAffinity;
+  /// Allow setting CPU affinities.
+  /// Pins a thread to the provided CPU index, relative to the process's CPU
+  /// affinities (if applicable).
+  int cpu_affinity = -1;  // -1: no affinity
 };
 
 /// A utility routine: copy contents of `src` in file system `src_fs`

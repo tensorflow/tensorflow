@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tsl/platform/threadpool.h"
 
+#include <cstdlib>
+
 #define EIGEN_USE_THREADS
 
 #include "absl/types/optional.h"
@@ -58,13 +60,25 @@ struct EigenEnvironment {
   Env* const env_;
   const ThreadOptions thread_options_;
   const string name_;
+  const bool pin_threads_to_cpus_;
+
+  uint64_t thread_count_;
 
   EigenEnvironment(Env* env, const ThreadOptions& thread_options,
-                   const string& name)
-      : env_(env), thread_options_(thread_options), name_(name) {}
+                   const string& name, bool pin_threads_to_cpus)
+      : env_(env),
+        thread_options_(thread_options),
+        name_(name),
+        pin_threads_to_cpus_(pin_threads_to_cpus),
+        thread_count_(0) {}
 
   EnvThread* CreateThread(std::function<void()> f) {
-    return env_->StartThread(thread_options_, name_, [=]() {
+    ThreadOptions thread_options = thread_options_;
+    if (pin_threads_to_cpus_) {
+      thread_options.cpu_affinity = thread_count_;
+    }
+
+    EnvThread* thread = env_->StartThread(thread_options, name_, [=]() {
       // Set the processor flag to flush denormals to zero.
       port::ScopedFlushDenormal flush;
       // Set the processor rounding mode to ROUND TO NEAREST.
@@ -74,6 +88,8 @@ struct EigenEnvironment {
       }
       f();
     });
+    ++thread_count_;
+    return thread;
   }
 
   Task CreateTask(std::function<void()> f) {
@@ -108,13 +124,14 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
 
 ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
                        const string& name, int num_threads,
-                       bool low_latency_hint, Eigen::Allocator* allocator) {
+                       bool low_latency_hint, Eigen::Allocator* allocator,
+                       bool pin_threads_to_cpus) {
   CHECK_GE(num_threads, 1);
 
 #ifdef DNNL_AARCH64_USE_ACL
   // To avoid cost of swapping in and out threads from running processes
   // we do not use all available cores to parallelise TF operations.
-  if (num_threads == tsl::port::NumTotalCPUs() && num_threads >= 16) {
+  if (num_threads == tsl::port::NumSchedulableCPUs() && num_threads >= 16) {
     num_threads = num_threads - 1;
   }
 #endif  // DNNL_AARCH64_USE_ACL
@@ -125,9 +142,42 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
   if (num_threads < 1) num_threads = 1;
 #endif  // TENSORFLOW_THREADSCALING_EXPERIMENTAL
 
+  // If we want low-latency, query environment variables to enable
+  // thread-spinning.
+  int max_spinning_threads = 0;
+  int min_spinning_duration_milliseconds = 0;
+  if (low_latency_hint) {
+    const char* max_spinning_threads_env =
+        getenv("TSL_THREADPOOL_MAX_SPINNING_THREADS");
+    if (max_spinning_threads_env != nullptr) {
+      if (!absl::SimpleAtoi(max_spinning_threads_env, &max_spinning_threads)) {
+        max_spinning_threads = num_threads;
+      }
+      if (max_spinning_threads < 0) {
+        max_spinning_threads = num_threads;
+      }
+    } else {
+      // Default to a single thread.
+      max_spinning_threads = 1;
+    }
+
+    const char* min_spinning_duration_milliseconds_env =
+        getenv("TSL_THREADPOOL_MIN_SPINNING_DURATION_MILLISECONDS");
+    if (min_spinning_duration_milliseconds_env != nullptr) {
+      if (!absl::SimpleAtoi(min_spinning_duration_milliseconds_env,
+                            &min_spinning_duration_milliseconds)) {
+        min_spinning_duration_milliseconds = 0;
+      }
+    } else {
+      // Default to no duration minimum.
+      min_spinning_duration_milliseconds = 0;
+    }
+  }
+
   eigen_threadpool_.reset(new Eigen::ThreadPoolTempl<EigenEnvironment>(
-      num_threads, low_latency_hint,
-      EigenEnvironment(env, thread_options, "tf_" + name)));
+      num_threads, max_spinning_threads, min_spinning_duration_milliseconds,
+      EigenEnvironment(env, thread_options, "tf_" + name,
+                       pin_threads_to_cpus)));
   underlying_threadpool_ = eigen_threadpool_.get();
   threadpool_device_.reset(new Eigen::ThreadPoolDevice(underlying_threadpool_,
                                                        num_threads, allocator));
