@@ -226,11 +226,12 @@ cc_library(
     deps = [
         ":c_plugin_op_kernel",
         ":direct_plugin_op_kernel",
+        ":flags",
         ":loose_headers",
         ":plugin_op_kernel",
-        "//tensorflow/c:kernels_hdrs",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/core/common_runtime/next_pluggable_device:flags",
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/flags:flag",
+        "@local_tsl//tsl/platform:macros",
     ],
 )
 
