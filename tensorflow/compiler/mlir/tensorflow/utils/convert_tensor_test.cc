@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "xla/test.h"
@@ -97,8 +98,8 @@ TEST(ConvertTypeToTensorTypeTest, ConvertStringTensor) {
   ASSERT_TRUE(value_or_status.ok());
   auto attr = value_or_status.value();
 
-  EXPECT_TRUE(attr.isa<mlir::DenseStringElementsAttr>());
-  auto string_attr = attr.cast<mlir::DenseStringElementsAttr>();
+  EXPECT_TRUE(mlir::isa<mlir::DenseStringElementsAttr>(attr));
+  auto string_attr = mlir::cast<mlir::DenseStringElementsAttr>(attr);
   auto string_values = string_attr.getRawStringData();
   ASSERT_EQ(string_values.size(), 4);
   EXPECT_EQ(string_values[0], mlir::StringRef("one"));
@@ -191,7 +192,7 @@ TEST_F(ConvertTensorTest, Simple) {
 }
 
 bool IsSplat(mlir::ElementsAttr attr) {
-  return attr.cast<mlir::DenseElementsAttr>().isSplat();
+  return mlir::cast<mlir::DenseElementsAttr>(attr).isSplat();
 }
 
 TEST(ConvertTensorProtoTest, SplatTensor) {

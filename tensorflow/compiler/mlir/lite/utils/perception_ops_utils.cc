@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -45,14 +46,15 @@ inline LogicalResult HasIntegerArrayWithSize(func::FuncOp* func,
                                              const DictionaryAttr& attrs,
                                              const std::string& attr_name,
                                              int N) {
-  ArrayAttr array_attr = attrs.get(attr_name).dyn_cast_or_null<ArrayAttr>();
+  ArrayAttr array_attr =
+      mlir::dyn_cast_or_null<ArrayAttr>(attrs.get(attr_name));
   if (array_attr == nullptr || array_attr.size() != N) {
     return func->emitWarning()
            << "'" << attr_name << "' attribute for " << kMaxUnpooling
            << " must be set and has size of " << N;
   }
   for (Attribute integer_attr : array_attr.getValue()) {
-    IntegerAttr value = integer_attr.dyn_cast<IntegerAttr>();
+    IntegerAttr value = mlir::dyn_cast<IntegerAttr>(integer_attr);
     if (!value) {
       return func->emitWarning()
              << "'" << attr_name << "' attribute for " << kMaxUnpooling
@@ -66,7 +68,8 @@ inline LogicalResult GetIntegerArraySafe(
     func::FuncOp* func, const DictionaryAttr& attrs,
     const std::string& attr_name, llvm::SmallVectorImpl<int32_t>* results,
     int N) {
-  ArrayAttr array_attr = attrs.get(attr_name).dyn_cast_or_null<ArrayAttr>();
+  ArrayAttr array_attr =
+      mlir::dyn_cast_or_null<ArrayAttr>(attrs.get(attr_name));
   if (array_attr == nullptr || array_attr.size() != N) {
     return func->emitError()
            << "'" << attr_name << "' attribute for " << kMaxUnpooling
@@ -75,7 +78,7 @@ inline LogicalResult GetIntegerArraySafe(
   results->reserve(N);
 
   for (Attribute integer_attr : array_attr.getValue()) {
-    IntegerAttr value = integer_attr.dyn_cast<IntegerAttr>();
+    IntegerAttr value = mlir::dyn_cast<IntegerAttr>(integer_attr);
     if (!value) {
       return func->emitError()
              << "'" << attr_name << "' attribute for " << kMaxUnpooling
@@ -132,7 +135,7 @@ LogicalResult ConvertMaxUnpoolingFunc::VerifySignature() {
   }
 
   // Retrieves padding.
-  auto padding = attrs.get("padding").dyn_cast_or_null<StringAttr>();
+  auto padding = mlir::dyn_cast_or_null<StringAttr>(attrs.get("padding"));
   if (!padding) {
     return func_.emitWarning() << "'padding' attribute for " << kMaxUnpooling
                                << " is not set or not a string";
@@ -166,7 +169,7 @@ LogicalResult ConvertMaxUnpoolingFunc::CreateCustomOptions(
   pool_params.stride_width = strides[1];
 
   // Retrieves padding.
-  auto padding = attrs.get("padding").dyn_cast_or_null<StringAttr>();
+  auto padding = mlir::dyn_cast_or_null<StringAttr>(attrs.get("padding"));
   if (!padding) {
     return func_.emitError() << "'padding' attribute for " << kMaxUnpooling
                              << " is not set or not a string";
@@ -224,22 +227,22 @@ LogicalResult ConvertDenseImageWarpFunc::VerifySignature() {
   }
 
   // Check types and shapes.
-  auto image_type =
-      func_.getFunctionType().getInput(0).dyn_cast_or_null<RankedTensorType>();
+  auto image_type = mlir::dyn_cast_or_null<RankedTensorType>(
+      func_.getFunctionType().getInput(0));
   if (!image_type || !image_type.getElementType().isF32() ||
       image_type.getRank() != 4) {
     return func_.emitWarning() << "Image should be a 4D float tensor";
   }
 
-  auto flow_type =
-      func_.getFunctionType().getInput(1).dyn_cast_or_null<RankedTensorType>();
+  auto flow_type = mlir::dyn_cast_or_null<RankedTensorType>(
+      func_.getFunctionType().getInput(1));
   if (!flow_type || !flow_type.getElementType().isF32() ||
       flow_type.getRank() != 4) {
     return func_.emitWarning() << "Flow should be a 4D float tensor";
   }
 
-  auto output_type =
-      func_.getFunctionType().getResult(0).dyn_cast_or_null<RankedTensorType>();
+  auto output_type = mlir::dyn_cast_or_null<RankedTensorType>(
+      func_.getFunctionType().getResult(0));
   if (!output_type || !output_type.getElementType().isF32() ||
       output_type.getRank() != 4) {
     return func_.emitWarning() << "Output should be a 4D float tensor";

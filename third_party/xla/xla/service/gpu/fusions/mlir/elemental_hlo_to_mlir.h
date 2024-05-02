@@ -41,18 +41,22 @@ using OperandProvider =
     std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
         const HloInstruction* instr, int index, mlir::ValueRange indices)>;
 
-// Emits MLIR to produce the value(s) of a parameter. The parameter must be
-// located outside the subgraph.
-llvm::SmallVector<mlir::Value> ProvideParameter(
-    const PartitionedComputation::Subgraph& caller, const HloInstruction* instr,
+// Emits MLIR to produce the value of a parameter. The parameter must be located
+// outside the subgraph. By default, the caller subgraph will be determined by
+// searching in 'computation' for the subgraph that constains 'instr'. If
+// 'instr' does not belong to 'computation', the caller subgraph can be passed
+// directly.
+mlir::Value ProvideParameter(
+    const PartitionedComputation& computation, const HloInstruction* instr,
     int operand_index, mlir::ValueRange indices,
     const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
-    mlir::ImplicitLocOpBuilder& builder);
+    mlir::ImplicitLocOpBuilder& builder,
+    const PartitionedComputation::Subgraph* caller = nullptr);
 
 // Emits MLIR to produce the values of a range of parameters. The parameters
 // must all be scalars. The parameters are all evaluated at the same indices.
 llvm::SmallVector<mlir::Value> ProvideParameterRange(
-    const PartitionedComputation::Subgraph& caller, const HloInstruction* instr,
+    const PartitionedComputation& computation, const HloInstruction* instr,
     int start, int num, mlir::ValueRange indices,
     const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
     mlir::ImplicitLocOpBuilder& builder);

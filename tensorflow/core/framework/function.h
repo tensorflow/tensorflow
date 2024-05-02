@@ -345,12 +345,12 @@ class FunctionCallFrame : public CallFrameInterface {
  private:
   DataTypeVector arg_types_;
   DataTypeVector ret_types_;
-  gtl::InlinedVector<Tensor, 4> args_;
+  absl::InlinedVector<Tensor, 4UL> args_;
   struct Retval {
     bool has_val = false;
     Tensor val;
   };
-  gtl::InlinedVector<Retval, 4> rets_;
+  absl::InlinedVector<Retval, 4UL> rets_;
 
   FunctionCallFrame(const FunctionCallFrame&) = delete;
   void operator=(const FunctionCallFrame&) = delete;

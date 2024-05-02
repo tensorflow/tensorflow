@@ -32,7 +32,6 @@ using ::stablehlo::quantization::CalibrationOptions;
 using ::stablehlo::quantization::DebuggerConfig;
 using ::stablehlo::quantization::PipelineConfig;
 using ::stablehlo::quantization::QuantizationSpecs;
-using ::stablehlo::quantization::StaticRangePtqPreset;
 
 void AddPreCalibrationPasses(OpPassManager& pm,
                              const CalibrationOptions& calibration_options,
@@ -64,7 +63,6 @@ void AddPostCalibrationPasses(OpPassManager& pm,
   options.enable_per_channel_quantized_weight_ = true;
   // For debugging purposes.
   options.mlir_dump_file_name_ = "quantize_composite_functions";
-  options.enable_weight_only_ = false;
   options.merge_fusion_with_dequantize_ =
       pipeline_config.merge_fusion_with_dequantize();
 
@@ -101,7 +99,6 @@ void AddWeightOnlyQuantizationPasses(
   QuantizeCompositeFunctionsPassOptions options;
   // For debugging purposes.
   options.mlir_dump_file_name_ = "quantize_composite_functions";
-  options.enable_weight_only_ = true;
   pm.addPass(createQuantizeCompositeFunctionsPass(options));
 
   // Add an inliner pass to inline quantized StableHLO functions.

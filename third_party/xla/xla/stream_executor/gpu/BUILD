@@ -499,7 +499,7 @@ gpu_only_cc_library(
         ":gpu_asm_opts",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:device_memory_handle",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/log",

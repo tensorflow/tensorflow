@@ -31,7 +31,7 @@ namespace {
 
 tensorflow::Tensor CreateTensor(const tensorflow::DataType type,
                                 const std::vector<int64_t>& dim) {
-  tensorflow::TensorShape shape{tensorflow::gtl::ArraySlice<int64_t>{
+  tensorflow::TensorShape shape{absl::Span<const int64_t>{
       reinterpret_cast<const int64_t*>(dim.data()), dim.size()}};
   return {type, shape};
 }

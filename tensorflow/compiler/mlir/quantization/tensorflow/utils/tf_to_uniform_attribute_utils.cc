@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/uniform_op_quant_spec.h"
@@ -66,9 +67,9 @@ constexpr std::array<absl::string_view, 2> kSuffixes = {"_min_val", "_max_val"};
 
 Attribute GetWindowStridesValue(
     PatternRewriter& rewriter, llvm::StringMap<Attribute>& identifier_to_attr) {
-  ArrayAttr stride = identifier_to_attr["strides"].dyn_cast<ArrayAttr>();
-  const int stride_h = stride[1].cast<IntegerAttr>().getInt();
-  const int stride_w = stride[2].cast<IntegerAttr>().getInt();
+  ArrayAttr stride = mlir::dyn_cast<ArrayAttr>(identifier_to_attr["strides"]);
+  const int stride_h = mlir::cast<IntegerAttr>(stride[1]).getInt();
+  const int stride_w = mlir::cast<IntegerAttr>(stride[2]).getInt();
   return rewriter.getI64ArrayAttr({stride_h, stride_w});
 }
 
@@ -79,23 +80,24 @@ Attribute GetLhsDilationValue(PatternRewriter& rewriter,
 
 Attribute GetRhsDilationValue(PatternRewriter& rewriter,
                               llvm::StringMap<Attribute>& identifier_to_attr) {
-  ArrayAttr dilations = identifier_to_attr["dilations"].dyn_cast<ArrayAttr>();
-  const int dilation_h = dilations[1].cast<IntegerAttr>().getInt();
-  const int dilation_w = dilations[2].cast<IntegerAttr>().getInt();
+  ArrayAttr dilations =
+      mlir::dyn_cast<ArrayAttr>(identifier_to_attr["dilations"]);
+  const int dilation_h = mlir::cast<IntegerAttr>(dilations[1]).getInt();
+  const int dilation_w = mlir::cast<IntegerAttr>(dilations[2]).getInt();
   return rewriter.getI64ArrayAttr({dilation_h, dilation_w});
 }
 
 Attribute GetPaddingValue(PatternRewriter& rewriter,
                           llvm::StringMap<Attribute>& identifier_to_attr) {
   llvm::StringRef padding =
-      identifier_to_attr["padding"].dyn_cast<StringAttr>().getValue();
+      mlir::dyn_cast<StringAttr>(identifier_to_attr["padding"]).getValue();
   return rewriter.getStringAttr(padding);
 }
 
 Attribute GetExplicitPaddingValue(
     PatternRewriter& rewriter, llvm::StringMap<Attribute>& identifier_to_attr) {
   ArrayAttr explicit_padding =
-      identifier_to_attr["explicit_paddings"].dyn_cast<ArrayAttr>();
+      mlir::dyn_cast<ArrayAttr>(identifier_to_attr["explicit_paddings"]);
   return explicit_padding;
 }
 
@@ -167,7 +169,7 @@ LogicalResult CheckIfAttrIs8Bit(const std::string& attr, Operation* op,
     element_type = getElementTypeOrSelf(op->getOpResult(0).getType());
   }
   if (element_type) {
-    is_8_bit = element_type.isa<TF::Qint8Type>();
+    is_8_bit = mlir::isa<TF::Qint8Type>(element_type);
     return success();
   }
   return failure();
@@ -295,7 +297,8 @@ LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
 
   auto feature_group_cnt_attr = llvm::StringRef("feature_group_count");
   int feature_group_cnt = 1;
-  ShapedType input_shape = op->getOperand(0).getType().dyn_cast<ShapedType>();
+  ShapedType input_shape =
+      mlir::dyn_cast<ShapedType>(op->getOperand(0).getType());
   if (!input_shape) {
     return op->emitError(
         "Only input with known shape is supported for Uniform Quantized "
@@ -425,7 +428,8 @@ LogicalResult FillAttributesForUniformRequantizeOp(
     activation_quantization_axis =
         GetQuantizationAxis(rewriter, op, /*operand_index=*/0);
 
-    auto output_scale_type = op->getOperand(3).getType().dyn_cast<ShapedType>();
+    auto output_scale_type =
+        mlir::dyn_cast<ShapedType>(op->getOperand(3).getType());
     if (!output_scale_type) {
       return failure();
     }

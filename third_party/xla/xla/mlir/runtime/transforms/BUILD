@@ -96,6 +96,7 @@ xla_cc_test(
         "//xla/mlir/runtime/ir:rt",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
@@ -118,7 +119,6 @@ cc_library(
         ":compilation_pipeline_options",
         ":compiler",
         ":passes",
-        "//xla/mlir/backends/cpu/transforms:passes",
         "//xla/mlir/memref/transforms:passes",
         "//xla/mlir/runtime/ir:rt",
         "//xla/mlir_hlo:transforms_passes",
@@ -192,6 +192,7 @@ cc_library(
         "//xla/runtime:memref_view",
         "//xla/runtime:tracing",
         "//xla/runtime:type_id",
+        "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
@@ -202,7 +203,6 @@ cc_library(
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/concurrency:async_value",
     ],
 )
 

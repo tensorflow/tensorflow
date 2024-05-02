@@ -171,8 +171,8 @@ cc_library(
         "//xla/pjrt/distributed:client",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:global_device_id",
-        "//xla/service/gpu:nccl_clique_key",
         "//xla/service/gpu/runtime:nccl_api",
+        "//xla/service/gpu/runtime:nccl_clique_key",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -214,6 +214,7 @@ cc_library(
     hdrs = ["gpu_topology.h"],
     deps = [
         ":gpu_topology_proto_cc",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

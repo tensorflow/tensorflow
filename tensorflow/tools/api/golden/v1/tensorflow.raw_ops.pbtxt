@@ -977,6 +977,14 @@ tf_module {
     argspec: "args=[\'indices_or_row_splits\', \'values\', \'weights\', \'sample_count\', \'combiner\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ConvertToListOfSparseCoreCooTensors"
+    argspec: "args=[\'indices_or_row_splits\', \'values\', \'weights\', \'sample_count\', \'num_sc_per_chip\', \'row_offset\', \'col_offset\', \'col_shift\', \'num_sc_shards\', \'stacked_table_sample_count\', \'combiner\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ConvertToSparseCoreCsrWrappedCooTensor"
+    argspec: "args=[\'sorted_row_ids_list\', \'sorted_col_ids_list\', \'sorted_gains_list\', \'id_counts_list\', \'splits\', \'sample_count_per_sc\', \'num_replica\', \'max_minibatches_per_sc\', \'max_ids_per_chip_per_sample\', \'table_vocab_size\', \'feature_width\', \'table_name\', \'allow_id_dropping\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Copy"
     argspec: "args=[\'input\', \'tensor_name\', \'debug_ops_spec\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'[]\', \'None\'], "
   }
@@ -1939,6 +1947,10 @@ tf_module {
   member_method {
     name: "GetSessionTensor"
     argspec: "args=[\'handle\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "GetStatsFromListOfSparseCoreCooTensors"
+    argspec: "args=[\'row_ids_list\', \'col_ids_list\', \'gains_list\', \'sample_count_list\', \'col_offset_list\', \'num_replica\', \'table_vocab_size\', \'feature_width\', \'num_sc_per_chip\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "GlobalIterId"
@@ -4385,6 +4397,10 @@ tf_module {
     argspec: "args=[\'gradients\', \'features\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SortListOfSparseCoreCooTensors"
+    argspec: "args=[\'row_ids_list\', \'col_ids_list\', \'gains_list\', \'sample_count_list\', \'col_offset_list\', \'num_replica\', \'table_vocab_size\', \'feature_width\', \'num_sc_per_chip\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "SpaceToBatch"
     argspec: "args=[\'input\', \'paddings\', \'block_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -5717,24 +5733,48 @@ tf_module {
     argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'num_minibatches_per_physical_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
   }
   member_method {
+    name: "XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSize"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'num_minibatches_per_physical_sparse_core\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+  }
+  member_method {
     name: "XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInput"
     argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'momenta\', \'num_minibatches_per_physical_sparse_core\', \'use_nesterov\', \'exponent\', \'beta1\', \'beta2\', \'epsilon\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulGradWithAdagradMomentumAndStaticBufferSize"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'momenta\', \'num_minibatches_per_physical_sparse_core\', \'use_nesterov\', \'exponent\', \'beta1\', \'beta2\', \'epsilon\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulGradWithAdamAndCsrInput"
     argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'momenta\', \'velocity\', \'num_minibatches_per_physical_sparse_core\', \'use_sum_inside_sqrt\', \'beta1\', \'beta2\', \'epsilon\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
   }
   member_method {
+    name: "XlaSparseDenseMatmulGradWithAdamAndStaticBufferSize"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'momenta\', \'velocity\', \'num_minibatches_per_physical_sparse_core\', \'use_sum_inside_sqrt\', \'beta1\', \'beta2\', \'epsilon\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+  }
+  member_method {
     name: "XlaSparseDenseMatmulGradWithFtrlAndCsrInput"
     argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'linear\', \'num_minibatches_per_physical_sparse_core\', \'multiply_linear_by_learning_rate\', \'beta\', \'learning_rate_power\', \'l1_regularization_strength\', \'l2_regularization_strength\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSize"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'linear\', \'num_minibatches_per_physical_sparse_core\', \'multiply_linear_by_learning_rate\', \'beta\', \'learning_rate_power\', \'l1_regularization_strength\', \'l2_regularization_strength\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulGradWithSgdAndCsrInput"
     argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
   }
   member_method {
+    name: "XlaSparseDenseMatmulGradWithSgdAndStaticBufferSize"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+  }
+  member_method {
     name: "XlaSparseDenseMatmulWithCsrInput"
     argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'input_size\', \'quantization_config_low\', \'quantization_config_high\', \'quantization_config_num_buckets\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulWithStaticBufferSize"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'input_size\', \'quantization_config_low\', \'quantization_config_high\', \'quantization_config_num_buckets\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "XlaSplitND"

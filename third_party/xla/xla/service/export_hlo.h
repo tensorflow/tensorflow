@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/device_description.pb.h"
 
@@ -45,7 +46,7 @@ class SymbolUploader {
       const stream_executor::GpuTargetConfigProto& gpu_target_config) = 0;
 
   virtual std::optional<std::string> MaybeUploadOptimizedHloModule(
-      HloModule* module) = 0;
+      HloModule* module, const AutotuneResults& autotune_results) = 0;
 
   virtual void MaybeUploadSymbolMapping(
       absl::string_view unoptimized_fingerprint,
@@ -88,10 +89,10 @@ inline std::optional<std::string> MaybeUploadUnoptimizedGpuSymbols(
 }
 
 inline std::optional<std::string> MaybeUploadOptimizedGpuSymbols(
-    HloModule* module) {
+    HloModule* module, const AutotuneResults& autotune_results) {
   if (SymbolUploader* uploader = GetGlobalSymbolUploaderRegistry().uploader();
       uploader != nullptr) {
-    return uploader->MaybeUploadOptimizedHloModule(module);
+    return uploader->MaybeUploadOptimizedHloModule(module, autotune_results);
   }
 
   return std::nullopt;

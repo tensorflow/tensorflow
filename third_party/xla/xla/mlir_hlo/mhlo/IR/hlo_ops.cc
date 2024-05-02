@@ -2881,11 +2881,14 @@ LogicalResult DynamicReshapeOp::verify() {
   // Check for unranked dynamism. Unranked dynamism is not supported by
   // StableHLO (hlo::verifyDynamicReshapeOp will fail) and we can't verify
   // anything statically in that case anyway.
-  auto resultType = getResult().getType().cast<ShapedType>();
-  auto outputShapeType = getOutputShape().getType().cast<ShapedType>();
-  if (!resultType.hasRank() || !outputShapeType.hasStaticShape())
+  auto operandType = cast<ShapedType>(getOperand().getType());
+  auto resultType = cast<ShapedType>(getResult().getType());
+  auto outputShapeType = cast<ShapedType>(getOutputShape().getType());
+  if (!operandType.hasRank() || !resultType.hasRank() ||
+      !outputShapeType.hasStaticShape())
     return success();
-  return hlo::verifyDynamicReshapeOp(getLoc(), getOutputShape(), getResult());
+  return hlo::verifyDynamicReshapeOp(getLoc(), getOperand(), getOutputShape(),
+                                     getResult());
 }
 
 LogicalResult DynamicReshapeOp::reifyReturnTypeShapes(
@@ -3347,8 +3350,8 @@ Operation* ReduceWindowOp::getReductionOp(int resultIndex) {
   auto returnOp = cast<ReturnOp>(getBody().front().getTerminator());
   Operation* computeOp = returnOp.getResults()[resultIndex].getDefiningOp();
   if (computeOp->getNumOperands() != 2) return nullptr;
-  auto arg0 = computeOp->getOperand(0).dyn_cast<BlockArgument>();
-  auto arg1 = computeOp->getOperand(1).dyn_cast<BlockArgument>();
+  auto arg0 = dyn_cast<BlockArgument>(computeOp->getOperand(0));
+  auto arg1 = dyn_cast<BlockArgument>(computeOp->getOperand(1));
   if (!arg0 || !arg1) return nullptr;
   int64_t arg0Num = arg0.getArgNumber();
   int64_t arg1Num = arg1.getArgNumber();
@@ -6910,10 +6913,8 @@ LogicalResult verifyCrossProgramPrefetchAttr(CrossProgramPrefetchAttr cpp,
            << "cross_program_prefetch: parameter " << cpp.getParameter()
            << " out of range. main has only " << main.getNumArguments()
            << " arguments";
-  auto type = getTypeFromTupleIndices(main.getArgument(cpp.getParameter())
-                                          .getType()
-                                          .dyn_cast_or_null<TupleType>(),
-                                      cpp.getIndices());
+  auto type = getTypeFromTupleIndices(
+      main.getArgument(cpp.getParameter()).getType(), cpp.getIndices());
   if (!type)
     return module->emitOpError()
            << "cross_program_prefetch: no subshape at given index: "

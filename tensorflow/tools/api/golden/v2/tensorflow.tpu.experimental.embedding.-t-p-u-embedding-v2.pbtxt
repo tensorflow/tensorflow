@@ -30,6 +30,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "compute_sparse_core_stats"
+    argspec: "args=[\'cls\', \'features\', \'feature_config\', \'num_tpu_chips\', \'num_sc_per_chip\', \'optimizer\'], varargs=None, keywords=None, defaults=[\'4\', \'None\'], "
+  }
+  member_method {
     name: "dequeue"
     argspec: "args=[\'self\', \'partitioned_tensors\'], varargs=None, keywords=None, defaults=None"
   }
@@ -40,9 +44,5 @@ tf_class {
   member_method {
     name: "enqueue"
     argspec: "args=[\'self\', \'features\', \'weights\', \'device\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "preprocess_features"
-    argspec: "args=[\'num_replicas_in_sync\', \'max_ids_per_chip_per_sample\', \'max_minibatches_per_sc\', \'num_sc_per_chip\', \'num_sc_shards\', \'stacked_table_to_tables\', \'table_to_stacked_table_offset\', \'table_to_sample_count\', \'feature_to_sample_offset\', \'flat_features\', \'flat_inputs\', \'flat_weights\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

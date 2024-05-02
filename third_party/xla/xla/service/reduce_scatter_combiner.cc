@@ -140,7 +140,7 @@ Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
   TF_RET_CHECK(operands.size() >= 2);
   combined = computation.AddInstruction(HloInstruction::CreateReduceScatter(
       ShapeUtil::MakeTupleShape(output_shapes), operands, reduction,
-      to_combine.front()->replica_groups(),
+      to_combine.front()->device_list(),
       /*constrain_layout=*/false, to_combine.front()->channel_id(),
       Cast<HloReduceScatterInstruction>(to_combine.front())
           ->use_global_device_ids(),

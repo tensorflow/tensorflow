@@ -107,5 +107,6 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:Support",
     ],
 )

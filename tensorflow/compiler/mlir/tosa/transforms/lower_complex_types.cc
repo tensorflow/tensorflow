@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -115,7 +116,7 @@ class GenericTypeConvert : public ConversionPattern {
 
 static bool isIllegalType(Type type) {
   if (auto shapedType = dyn_cast<ShapedType>(type)) {
-    return shapedType.getElementType().isa<ComplexType>();
+    return mlir::isa<ComplexType>(shapedType.getElementType());
   }
   return false;
 }

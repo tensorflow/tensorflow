@@ -93,12 +93,12 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/async_value.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/denormal.h"
@@ -849,6 +849,9 @@ TfrtCpuClient::CreateViewOfDeviceBuffer(
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateErrorBuffer(
     Status error, const Shape& shape, PjRtDevice* device) {
+  if (device->client() != this) {
+    return absl::InvalidArgumentError("Device is not attached to this client");
+  }
   return std::make_unique<TfrtCpuBuffer>(
       shape,
       std::make_unique<TrackedTfrtCpuDeviceBuffer>(
@@ -858,6 +861,11 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateErrorBuffer(
               tsl::AsyncValueRef<CpuEvent>(
                   tsl::MakeErrorAsyncValueRef(std::move(error)))}),
       this, tensorflow::down_cast<TfrtCpuDevice*>(device));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateErrorBuffer(
+    Status error, const Shape& shape, PjRtMemorySpace* memory) {
+  return CreateErrorBuffer(std::move(error), shape, memory->devices()[0]);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>

@@ -43,7 +43,7 @@ StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(PjRtBuffer* buffer) {
   return absl::bit_cast<std::uintptr_t>(ptr);
 }
 
-PjRtFuture<> PjRtBuffer::CopyRawToHostFuture(PjRtFuture<StatusOr<void*>> dst,
+PjRtFuture<> PjRtBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
                                              int64_t offset,
                                              int64_t transfer_size) {
   auto promise = PjRtFuture<>::CreatePromise();

@@ -706,7 +706,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
 
   // Convert all async types to opaque pointers.
   llvm_converter.addConversion([&](Type type) -> std::optional<Type> {
-    if (type.isa<async::TokenType, async::GroupType, async::ValueType>())
+    if (mlir::isa<async::TokenType, async::GroupType, async::ValueType>(type))
       return LLVM::LLVMPointerType::get(ctx);
     return std::nullopt;
   });

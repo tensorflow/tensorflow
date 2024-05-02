@@ -251,7 +251,6 @@ collect_data_files(
         "//tensorflow:tensorflow_py",
         # utils below are not part of tensorflow_py DAG
         "//tensorflow/compiler/mlir/stablehlo:stablehlo_extension",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:pywrap_calibration",
         "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
         "//tensorflow/python/framework:memory_checker",
         "//tensorflow/python/util:pywrap_xla_ops",

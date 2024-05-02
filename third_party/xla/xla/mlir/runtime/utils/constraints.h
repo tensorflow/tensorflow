@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/runtime/constraints.h"
 
 namespace xla {
@@ -39,7 +40,7 @@ absl::StatusOr<ArgumentConstraint> ResolveArgumentConstraint(
 inline bool SupportsValueSpecialization(mlir::Type type) {
   // TODO(ezhulenev): Add support for sinking `memref` values once the value
   // specialization will support it.
-  mlir::TensorType tensor = type.dyn_cast<mlir::TensorType>();
+  mlir::TensorType tensor = mlir::dyn_cast<mlir::TensorType>(type);
   return tensor && (tensor.getRank() == 0 || tensor.getRank() == 1) &&
          (tensor.getElementType().isInteger(32) ||
           tensor.getElementType().isInteger(64));

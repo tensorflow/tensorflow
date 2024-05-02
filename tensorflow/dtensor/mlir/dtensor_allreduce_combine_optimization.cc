@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/TopologicalSortUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
@@ -112,7 +113,7 @@ mlir::LogicalResult MergeAllReduceGroup(
   all_reduce_shapes.reserve(num_all_reduces);
   for (mlir::TF::DTensorAllReduceOp& all_reduce : all_reduce_group) {
     auto all_reduce_ranked_type =
-        all_reduce.getType().dyn_cast<mlir::RankedTensorType>();
+        mlir::dyn_cast<mlir::RankedTensorType>(all_reduce.getType());
     if (!all_reduce_ranked_type || !all_reduce_ranked_type.hasStaticShape()) {
       return all_reduce.emitOpError(llvm::formatv(
           "requires static shape for DTensorAllReduceOp, but got : {0}",
@@ -152,7 +153,7 @@ mlir::LogicalResult MergeAllReduceGroup(
     mlir::TF::DTensorAllReduceOp& all_reduce = all_reduce_group[i];
     mlir::Location loc = all_reduce.getLoc();
     auto all_reduce_ranked_type =
-        all_reduce.getType().dyn_cast<mlir::RankedTensorType>();
+        mlir::dyn_cast<mlir::RankedTensorType>(all_reduce.getType());
     if (!all_reduce_ranked_type || !all_reduce_ranked_type.hasStaticShape()) {
       return all_reduce.emitOpError(llvm::formatv(
           "requires static shape for DTensorAllReduceOp, but got : {0}",
@@ -201,7 +202,7 @@ mlir::LogicalResult MergeAllReduceGroup(
     mlir::TF::DTensorAllReduceOp& all_reduce = all_reduce_group[i];
     mlir::Location loc = all_reduce.getLoc();
     auto all_reduce_ranked_type =
-        all_reduce.getType().dyn_cast<mlir::RankedTensorType>();
+        mlir::dyn_cast<mlir::RankedTensorType>(all_reduce.getType());
     if (!all_reduce_ranked_type || !all_reduce_ranked_type.hasStaticShape()) {
       return all_reduce.emitOpError(llvm::formatv(
           "requires static shape for DTensorAllReduceOp, but got : {0}",
@@ -676,7 +677,7 @@ struct DTensorAllReduceCombineOptimization
         if (!all_reduce.getDeviceType().contains("TPU")) {
           // Only combine all reduces for GPU and CPU
           mlir::RankedTensorType all_reduce_ranked_type =
-              all_reduce.getType().dyn_cast<mlir::RankedTensorType>();
+              mlir::dyn_cast<mlir::RankedTensorType>(all_reduce.getType());
 
           if (all_reduce_ranked_type &&
               all_reduce_ranked_type.hasStaticShape()) {

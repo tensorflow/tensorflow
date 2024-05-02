@@ -898,6 +898,10 @@ class IteratorContext {
 
   void SetModel(std::shared_ptr<model::Model> model) { params_.model = model; }
 
+  void SetIndexMapper(const IndexMapperFn& index_mapper) {
+    params_.index_mapper = index_mapper;
+  };
+
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
     if (params_.thread_pool) {

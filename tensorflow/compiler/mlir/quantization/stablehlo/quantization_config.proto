@@ -131,9 +131,17 @@ message QuantizationResults {
   repeated QuantizationResult results = 1;
 }
 
+// Signals per-channel quantization. When dimension is not specified, StableHLO
+// quantizer determines the quantization dimension to be output feature
+// dimension for convolution and first non-batching, non-contracting dimension
+// for dot_general.
 message QuantizedDimension {
-  int32 dimension = 1;  // Should be less than the rank of the quantized tensor.
+  // Should be less than the rank of the quantized tensor.
+  optional int32 dimension = 1;
 }
+
+// Signals quantization type to be per-tensor.
+message PerTensor {}
 
 // Corresponds to StableHLO's `QuantizedTensorElementType`. Type parameters such
 // as `QuantizationParameters` is omitted because they are determined during
@@ -144,13 +152,17 @@ message QuantizedDimension {
 // Currently only supports specifying quantization granularity (e.g. for
 // per-channel quantization).
 // TODO: b/331144430 - Support specifying storage types.
+// Next ID: 3
 message QuantizedType {
   // Specifies the granularity of quantization parameters for each dimension of
   // a quantized tensor. If specified, per-channel quantization is applied. If
   // not specified, per-tensor quantization is applied.
   // TODO: Make it a `repeated` field to be able to express multi-channel /
   // sub-channel quantization.
-  QuantizedDimension dimension_specs = 1;
+  oneof type {
+    QuantizedDimension dimension_specs = 1;
+    PerTensor per_tensor = 2;
+  }
 }
 
 // A quantization method representing "do not quantize". Mostly used for
@@ -266,7 +278,7 @@ message DebuggerConfig {
 }
 
 // Defines various calibration options.
-// Next ID: 4
+// Next ID: 5
 message CalibrationOptions {
   // Configurations for calibration methods.
   // Next ID: 7
@@ -296,10 +308,8 @@ message CalibrationOptions {
   // Parameters required for calibration.
   // Next ID: 4
   message CalibrationParameters {
-    // The number of bins when histogram is initialized. It can be increased
-    // because histogram is dynamically expanded by sample inputs.
-    // initial_num_bins is 256 by default.
-    int32 initial_num_bins = 1;
+    // The number of histogram bins. Default to 512.
+    int32 num_bins = 1;
     // min_percentile is only used in HISTOGRAM_PERCENTILE.
     // min_percentile is 0.001 by default.
     float min_percentile = 2;
@@ -321,6 +331,9 @@ message CalibrationOptions {
   // Configures representative dataset. Each item corresponds to a
   // representative dataset used to calibrate a function.
   repeated RepresentativeDatasetConfig representative_datasets = 3;
+
+  // The path to save calibration statistics data.
+  string calibration_data_dir = 4;
 }
 
 // Quantization configuration for StableHLO Quantizer. This is the primary

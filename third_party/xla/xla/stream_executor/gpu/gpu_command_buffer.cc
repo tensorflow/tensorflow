@@ -662,74 +662,6 @@ absl::Status GpuCommandBuffer::Memset(ExecutionScopeId execution_scope_id,
   return UnsupportedStateError(state_);
 }
 
-absl::StatusOr<DeviceMemoryBase> GpuCommandBuffer::Allocate(
-    ExecutionScopeId execution_scope_id, size_t bytes) {
-  ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
-
-  TF_RETURN_IF_ERROR(CheckNotFinalized());
-
-  // Adds a new memory allocation node to the graph under construction.
-  if (state_ == State::kCreate) {
-    Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
-
-    GpuDevicePtr ptr;
-    TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemAllocNode(
-        &node_info.handle, graph_, barrier,
-        GpuDriver::MemAccessFlags::kReadWrite,
-        GpuDriver::MemLocationType::kDevice, parent_->device_ordinal(),
-        GpuDriver::MemAllocationType::kPinned, bytes, &ptr));
-    // For CUDA impl, VA range is reserved when adding memory allocation node.
-    CHECK(ptr) << "CUDA graph memory allocation node returned nullptr";
-
-    VLOG(2) << "Setting device memory base with opaque pointer "
-            << reinterpret_cast<void*>(ptr)
-            << " device ordinal: " << parent_->device_ordinal();
-    return DeviceMemoryBase(reinterpret_cast<void*>(ptr), bytes);
-  }
-
-  if (state_ == State::kUpdate) {
-    // Memory allocation node implemented through CUDA graph does not allocate
-    // new memory region on update, just return the memory region allocated
-    // during the create step.
-    GpuGraphNodeHandle node =
-        execution_scope.nodes[execution_scope.update_state.node_idx++].handle;
-    TF_ASSIGN_OR_RETURN(AllocationResult params,
-                        GpuDriver::GraphGetMemAllocNodeParams(node));
-    return DeviceMemoryBase(reinterpret_cast<void*>(params.first),
-                            params.second);
-  }
-
-  return UnsupportedStateError(state_);
-}
-
-absl::Status GpuCommandBuffer::Free(ExecutionScopeId execution_scope_id,
-                                    DeviceMemoryBase dst) {
-  ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
-
-  TF_RETURN_IF_ERROR(CheckNotFinalized());
-
-  // Adds a new memfree node to the graph under construction.
-  if (state_ == State::kCreate) {
-    Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
-    GpuDevicePtr gpu_dptr = AsDevicePtr(dst);
-    TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemFreeNode(&node_info.handle, graph_,
-                                                      barrier, gpu_dptr));
-    return absl::OkStatus();
-  }
-
-  if (state_ == State::kUpdate) {
-    // memfree node implemented through CUDA graph only free buffers that is
-    // allocated through memory alloc node, so buffer address will not change,
-    // no update is required.
-    execution_scope.update_state.node_idx++;
-    return absl::OkStatus();
-  }
-
-  return UnsupportedStateError(state_);
-}
-
 //--------------------------------------------------------------------------//
 // Command buffer condtitional commands API
 //--------------------------------------------------------------------------//
@@ -887,7 +819,7 @@ absl::Status GpuCommandBuffer::If(ExecutionScopeId execution_scope_id,
                                   StreamExecutor* executor,
                                   DeviceMemory<bool> predicate,
                                   Builder then_builder) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   TF_ASSIGN_OR_RETURN(SetIfConditionKernel * set_if_condition,
                       GetSetIfConditionKernel(executor));
@@ -909,7 +841,7 @@ absl::Status GpuCommandBuffer::IfElse(ExecutionScopeId execution_scope_id,
                                       DeviceMemory<bool> predicate,
                                       Builder then_builder,
                                       Builder else_builder) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   TF_ASSIGN_OR_RETURN(SetIfElseConditionKernel * set_if_else_condition,
                       GetSetIfElseConditionKernel(executor));
@@ -931,7 +863,7 @@ absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
                                     StreamExecutor* executor,
                                     DeviceMemory<int32_t> index,
                                     std::vector<Builder> branches) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   // TODO(ezhulenev): Relax this constraint, we can launch multiple back to back
   // kernels to update conditional handles in batches of size 8.
@@ -974,7 +906,7 @@ absl::Status GpuCommandBuffer::For(ExecutionScopeId execution_scope_id,
                                    int32_t num_iteration,
                                    DeviceMemory<int32_t> loop_counter,
                                    Builder body_builder) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   TF_ASSIGN_OR_RETURN(SetForConditionKernel * set_for_condition,
                       GetSetForConditionKernel(executor));
@@ -1009,7 +941,7 @@ absl::Status GpuCommandBuffer::While(ExecutionScopeId execution_scope_id,
                                      DeviceMemory<bool> pred,
                                      ExecutionScopeBuilder cond_builder,
                                      Builder body_builder) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   TF_ASSIGN_OR_RETURN(SetWhileConditionKernel * set_while_condition,
                       GetSetWhileConditionKernel(executor));

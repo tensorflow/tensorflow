@@ -80,9 +80,9 @@ class ElementalHloToMlirTest : public HloTestBase {
                              builder.getContext()));
     builder.setInsertionPointToStart(module->getBody());
     auto* entry_computation = hlo_module->entry_computation();
-    std::optional<EpilogueSpecification> epilogue_spec = std::nullopt;
+    std::vector<EpilogueSpecification> epilogue_spec;
     if (epilogue_spec_fn) {
-      epilogue_spec = epilogue_spec_fn(entry_computation);
+      epilogue_spec.push_back(epilogue_spec_fn(entry_computation));
     }
     PartitionedComputations partitioned_computations(entry_computation,
                                                      &context_, epilogue_spec);
@@ -96,9 +96,10 @@ class ElementalHloToMlirTest : public HloTestBase {
     TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
         entry_pc, entry_pc.GetRootSubgraph(), entry_func, call_targets));
 
-    if (const auto& epilogue = partitioned_computations.epilogue()) {
-      TF_RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, *epilogue,
-                                                fns[&*epilogue], call_targets));
+    if (!partitioned_computations.epilogues().empty()) {
+      const auto& epilogue = partitioned_computations.epilogues().front();
+      TF_RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, epilogue,
+                                                fns[&epilogue], call_targets));
     }
 
     // Canonicalize and CSE for better readability of check tests.
@@ -408,12 +409,12 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK-SAME:     <()[s0] -> (s0 - ((s0 - 1) floordiv 2) * 2 - 1)>
     // CHECK-SAME:     ()[%[[X]]]
     // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
-    // CHECK:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
-    // CHECK:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
+    // CHECK-DAG:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
+    // CHECK-DAG:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
     // CHECK:        %[[X_BOUNDS:.*]] = arith.andi %[[X_L]], %[[X_H]]
     // CHECK:        %[[X_AND_CONSTRAINT:.*]] = arith.andi %[[CONSTRAINT]], %[[X_BOUNDS]]
-    // CHECK:        %[[Y_L:.*]] = arith.cmpi sge, %[[Y]], %[[C4]]
-    // CHECK:        %[[Y_H:.*]] = arith.cmpi sle, %[[Y]], %[[C7]]
+    // CHECK-DAG:        %[[Y_L:.*]] = arith.cmpi sge, %[[Y]], %[[C4]]
+    // CHECK-DAG:        %[[Y_H:.*]] = arith.cmpi sle, %[[Y]], %[[C7]]
     // CHECK:        %[[Y_BOUNDS:.*]] = arith.andi %[[Y_L]], %[[Y_H]]
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
@@ -451,12 +452,12 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK-SAME:     <()[s0] -> (s0 - ((s0 - 1) floordiv 2) * 2 - 1)>
     // CHECK-SAME:     ()[%[[X]]]
     // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
-    // CHECK:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
-    // CHECK:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
+    // CHECK-DAG:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
+    // CHECK-DAG:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
     // CHECK:        %[[X_BOUNDS:.*]] = arith.andi %[[X_L]], %[[X_H]]
     // CHECK:        %[[X_AND_CONSTRAINT:.*]] = arith.andi %[[CONSTRAINT]], %[[X_BOUNDS]]
-    // CHECK:        %[[Y_L:.*]] = arith.cmpi sge, %[[Y]], %[[C4]]
-    // CHECK:        %[[Y_H:.*]] = arith.cmpi sle, %[[Y]], %[[C7]]
+    // CHECK-DAG:        %[[Y_L:.*]] = arith.cmpi sge, %[[Y]], %[[C4]]
+    // CHECK-DAG:        %[[Y_H:.*]] = arith.cmpi sle, %[[Y]], %[[C7]]
     // CHECK:        %[[Y_BOUNDS:.*]] = arith.andi %[[Y_L]], %[[Y_H]]
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
@@ -1213,7 +1214,7 @@ TEST_F(ElementalHloToMlirTest, Epilogue) {
         ROOT %add = f32[2,17,16] add(%transpose, %bc)
       })",
       R"(
-      // CHECK:      @main__epilogue__(
+      // CHECK:      @main__epilogue__add(
       // CHECK-SAME:     %[[ARG0:.*]]: tensor<2x16x17xf32>
       // CHECK-SAME:     %[[ARG1:.*]]: tensor<f32>
       // CHECK-SAME:     %[[X:.*]]: index {xla.range = [0 : index, 1 :
@@ -1226,6 +1227,7 @@ TEST_F(ElementalHloToMlirTest, Epilogue) {
       [this](HloComputation* entry) {
         EpilogueSpecification epilogue;
         epilogue.heroes.push_back(entry->GetInstructionWithName("transpose"));
+        epilogue.roots.push_back(entry->GetInstructionWithName("add"));
         epilogue.index_ranges = {2, 16, 17};
         epilogue.root_indexing.push_back(
             mlir::AffineMap::getMultiDimIdentityMap(3, &context_)
@@ -1488,11 +1490,11 @@ TEST_F(ElementalHloToMlirTest, MixedIndexingTuple) {
     // CHECK-SAME:     %[[P0:.*]]: tensor<10x10xf32>,
     // CHECK-SAME:     %[[P1:.*]]: tensor<100xf32>,
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}}
-    // CHECK:        %[[A:.*]] = tensor.extract %[[P0]][%[[X]], %[[Y]]]
+    // CHECK:        %[[A:.*]] = xla_gpu.pure_call @main_p0(%[[P0]], %[[P1]], %[[X]], %[[Y]])
     // CHECK:        %[[IDX:.*]] = affine.apply
     // CHECK-SAME:       affine_map<()[s0, s1] -> (s0 * 10 + s1)>()
     // CHECK-SAME:       [%[[X]], %[[Y]]]
-    // CHECK:        %[[B:.*]] = tensor.extract %[[P1]][%[[IDX]]]
+    // CHECK:        %[[B:.*]] = xla_gpu.pure_call @main_p1(%[[P0]], %[[P1]], %[[IDX]])
     // CHECK:        return %[[A]], %[[B]]
   )"));
 }

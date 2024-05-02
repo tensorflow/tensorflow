@@ -56,7 +56,7 @@ DeviceAttributes BuildDeviceAttributes(absl::string_view name_prefix,
 
 }  // namespace
 
-StatusOr<std::unique_ptr<FallbackState>> FallbackState::Create(
+absl::StatusOr<std::unique_ptr<FallbackState>> FallbackState::Create(
     const SessionOptions &session_options,
     const tensorflow::FunctionDefLibrary &fdef_lib) {
   // Create devices.
@@ -68,7 +68,8 @@ StatusOr<std::unique_ptr<FallbackState>> FallbackState::Create(
                                          fdef_lib);
 }
 
-StatusOr<std::unique_ptr<FallbackState>> FallbackState::CreateWithCpuDevice(
+absl::StatusOr<std::unique_ptr<FallbackState>>
+FallbackState::CreateWithCpuDevice(
     const SessionOptions &session_options,
     const tensorflow::FunctionDefLibrary &fdef_lib) {
   // Create devices.
@@ -80,7 +81,8 @@ StatusOr<std::unique_ptr<FallbackState>> FallbackState::CreateWithCpuDevice(
                                          fdef_lib);
 }
 
-StatusOr<std::unique_ptr<FallbackState>> FallbackState::CreateWithMockGpuDevice(
+absl::StatusOr<std::unique_ptr<FallbackState>>
+FallbackState::CreateWithMockGpuDevice(
     const SessionOptions &session_options,
     const tensorflow::FunctionDefLibrary &fdef_lib) {
   // Create devices.
@@ -112,7 +114,7 @@ FallbackState::FallbackState(const SessionOptions &session_options,
                                    tsl::core::RefCountPtr<Rendezvous> *r) {
               *r = tsl::core::RefCountPtr<Rendezvous>(
                   new IntraProcessRendezvous(device_mgr));
-              return OkStatus();
+              return absl::OkStatus();
             }}) {
   for (auto *d : device_manager_.ListDevices()) {
     device_set_.AddDevice(d);
@@ -122,7 +124,7 @@ FallbackState::FallbackState(const SessionOptions &session_options,
   device_set_.set_client_device(device_manager_.HostCPU());
 }
 
-StatusOr<std::unique_ptr<GraphExecutionState>>
+absl::StatusOr<std::unique_ptr<GraphExecutionState>>
 FallbackState::CreateGraphExecutionState(GraphDef graph_def,
                                          bool run_placer) const {
   // Create GraphExecutionState which contains the preprocessed graph including

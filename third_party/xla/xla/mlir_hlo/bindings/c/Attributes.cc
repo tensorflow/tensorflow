@@ -17,6 +17,7 @@ limitations under the License.
 #include "mhlo/IR/hlo_ops.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Support.h"
+#include "mlir/Support/LLVM.h"
 
 //
 // ScatterDimensionNumbersAttr.
@@ -35,57 +36,50 @@ MlirAttribute mlirMhloScatterDimensionNumbersGet(
 }
 
 bool mlirMhloAttributeIsAScatterDimensionNumbers(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::ScatterDimensionNumbersAttr>();
+  return mlir::isa<mlir::mhlo::ScatterDimensionNumbersAttr>(unwrap(attr));
 }
 
 intptr_t mlirMhloScatterDimensionNumbersGetUpdateWindowDimsSize(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ScatterDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ScatterDimensionNumbersAttr>(unwrap(attr))
       .getUpdateWindowDims()
       .size();
 }
 
 int64_t mlirMhloScatterDimensionNumbersGetUpdateWindowDimsElem(
     MlirAttribute attr, intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ScatterDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ScatterDimensionNumbersAttr>(unwrap(attr))
       .getUpdateWindowDims()[pos];
 }
 
 intptr_t mlirMhloScatterDimensionNumbersGetInsertedWindowDimsSize(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ScatterDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ScatterDimensionNumbersAttr>(unwrap(attr))
       .getInsertedWindowDims()
       .size();
 }
 
 int64_t mlirMhloScatterDimensionNumbersGetInsertedWindowDimsElem(
     MlirAttribute attr, intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ScatterDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ScatterDimensionNumbersAttr>(unwrap(attr))
       .getInsertedWindowDims()[pos];
 }
 
 intptr_t mlirMhloScatterDimensionNumbersGetScatteredDimsToOperandDimsSize(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ScatterDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ScatterDimensionNumbersAttr>(unwrap(attr))
       .getScatterDimsToOperandDims()
       .size();
 }
 
 int64_t mlirMhloScatterDimensionNumbersGetScatteredDimsToOperandDimsElem(
     MlirAttribute attr, intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ScatterDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ScatterDimensionNumbersAttr>(unwrap(attr))
       .getScatterDimsToOperandDims()[pos];
 }
 
 int64_t mlirMhloDimensionNumbersGetIndexVectorDim(MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ScatterDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ScatterDimensionNumbersAttr>(unwrap(attr))
       .getIndexVectorDim();
 }
 
@@ -105,56 +99,49 @@ MlirAttribute mlirMhloGatherDimensionNumbersGet(
 }
 
 bool mlirMhloAttributeIsAGatherDimensionNumbers(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::GatherDimensionNumbersAttr>();
+  return mlir::isa<mlir::mhlo::GatherDimensionNumbersAttr>(unwrap(attr));
 }
 
 intptr_t mlirMhloGatherDimensionNumbersGetOffsetDimsSize(MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::GatherDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::GatherDimensionNumbersAttr>(unwrap(attr))
       .getOffsetDims()
       .size();
 }
 
 int64_t mlirMhloGatherDimensionNumbersGetOffsetDimsElem(MlirAttribute attr,
                                                         intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::GatherDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::GatherDimensionNumbersAttr>(unwrap(attr))
       .getOffsetDims()[pos];
 }
 
 intptr_t mlirMhloGatherDimensionNumbersGetCollapsedSliceDimsSize(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::GatherDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::GatherDimensionNumbersAttr>(unwrap(attr))
       .getCollapsedSliceDims()
       .size();
 }
 
 int64_t mlirMhloGatherDimensionNumbersGetCollapsedSliceDimsElem(
     MlirAttribute attr, intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::GatherDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::GatherDimensionNumbersAttr>(unwrap(attr))
       .getCollapsedSliceDims()[pos];
 }
 
 intptr_t mlirMhloGatherDimensionNumbersGetStartIndexMapSize(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::GatherDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::GatherDimensionNumbersAttr>(unwrap(attr))
       .getStartIndexMap()
       .size();
 }
 
 int64_t mlirMhloGatherDimensionNumbersGetStartIndexMapElem(MlirAttribute attr,
                                                            intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::GatherDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::GatherDimensionNumbersAttr>(unwrap(attr))
       .getStartIndexMap()[pos];
 }
 
 int64_t mlirMhloGatherDimensionNumbersGetIndexVectorDim(MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::GatherDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::GatherDimensionNumbersAttr>(unwrap(attr))
       .getIndexVectorDim();
 }
 
@@ -177,66 +164,58 @@ MlirAttribute mlirMhloDotDimensionNumbersGet(
 }
 
 bool mlirMhloAttributeIsADotDimensionNumbers(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::DotDimensionNumbersAttr>();
+  return mlir::isa<mlir::mhlo::DotDimensionNumbersAttr>(unwrap(attr));
 }
 
 intptr_t mlirMhloDotDimensionNumbersGetLhsBatchingDimensionsSize(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::DotDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::DotDimensionNumbersAttr>(unwrap(attr))
       .getLhsBatchingDimensions()
       .size();
 }
 
 int64_t mlirMhloDotDimensionNumbersGetLhsBatchingDimensionsElem(
     MlirAttribute attr, intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::DotDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::DotDimensionNumbersAttr>(unwrap(attr))
       .getLhsBatchingDimensions()[pos];
 }
 
 intptr_t mlirMhloDotDimensionNumbersGetRhsBatchingDimensionsSize(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::DotDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::DotDimensionNumbersAttr>(unwrap(attr))
       .getRhsBatchingDimensions()
       .size();
 }
 
 int64_t mlirMhloDotDimensionNumbersGetRhsBatchingDimensionsElem(
     MlirAttribute attr, intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::DotDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::DotDimensionNumbersAttr>(unwrap(attr))
       .getRhsBatchingDimensions()[pos];
 }
 
 intptr_t mlirMhloDotDimensionNumbersGetLhsContractingDimensionsSize(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::DotDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::DotDimensionNumbersAttr>(unwrap(attr))
       .getLhsContractingDimensions()
       .size();
 }
 
 int64_t mlirMhloDotDimensionNumbersGetLhsContractingDimensionsElem(
     MlirAttribute attr, intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::DotDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::DotDimensionNumbersAttr>(unwrap(attr))
       .getLhsContractingDimensions()[pos];
 }
 
 intptr_t mlirMhloDotDimensionNumbersGetRhsContractingDimensionsSize(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::DotDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::DotDimensionNumbersAttr>(unwrap(attr))
       .getRhsContractingDimensions()
       .size();
 }
 
 int64_t mlirMhloDotDimensionNumbersGetRhsContractingDimensionsElem(
     MlirAttribute attr, intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::DotDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::DotDimensionNumbersAttr>(unwrap(attr))
       .getRhsContractingDimensions()[pos];
 }
 
@@ -261,92 +240,80 @@ MlirAttribute mlirMhloConvDimensionNumbersGet(
 }
 
 bool mlirMhloAttributeIsAConvDimensionNumbers(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::ConvDimensionNumbersAttr>();
+  return mlir::isa<mlir::mhlo::ConvDimensionNumbersAttr>(unwrap(attr));
 }
 
 int64_t mlirMhloConvDimensionNumbersGetInputBatchDimension(MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ConvDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ConvDimensionNumbersAttr>(unwrap(attr))
       .getInputBatchDimension();
 }
 
 int64_t mlirMhloConvDimensionNumbersGetInputFeatureDimension(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ConvDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ConvDimensionNumbersAttr>(unwrap(attr))
       .getInputFeatureDimension();
 }
 
 intptr_t mlirMhloConvDimensionNumbersGetInputSpatialDimensionsSize(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ConvDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ConvDimensionNumbersAttr>(unwrap(attr))
       .getInputSpatialDimensions()
       .size();
 }
 
 int64_t mlirMhloConvDimensionNumbersGetInputSpatialDimensionsElem(
     MlirAttribute attr, intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ConvDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ConvDimensionNumbersAttr>(unwrap(attr))
       .getInputSpatialDimensions()[pos];
 }
 
 int64_t mlirMhloConvDimensionNumbersGetKernelInputFeatureDimension(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ConvDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ConvDimensionNumbersAttr>(unwrap(attr))
       .getKernelInputFeatureDimension();
 }
 
 int64_t mlirMhloConvDimensionNumbersGetKernelOutputFeatureDimension(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ConvDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ConvDimensionNumbersAttr>(unwrap(attr))
       .getKernelOutputFeatureDimension();
 }
 
 intptr_t mlirMhloConvDimensionNumbersGetKernelSpatialDimensionsSize(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ConvDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ConvDimensionNumbersAttr>(unwrap(attr))
       .getKernelSpatialDimensions()
       .size();
 }
 
 int64_t mlirMhloConvDimensionNumbersGetKernelSpatialDimensionsElem(
     MlirAttribute attr, intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ConvDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ConvDimensionNumbersAttr>(unwrap(attr))
       .getKernelSpatialDimensions()[pos];
 }
 
 int64_t mlirMhloConvDimensionNumbersGetOutputBatchDimension(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ConvDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ConvDimensionNumbersAttr>(unwrap(attr))
       .getOutputBatchDimension();
 }
 
 int64_t mlirMhloConvDimensionNumbersGetOutputFeatureDimension(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ConvDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ConvDimensionNumbersAttr>(unwrap(attr))
       .getOutputFeatureDimension();
 }
 
 intptr_t mlirMhloConvDimensionNumbersGetOutputSpatialDimensionsSize(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ConvDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ConvDimensionNumbersAttr>(unwrap(attr))
       .getOutputSpatialDimensions()
       .size();
 }
 
 int64_t mlirMhloConvDimensionNumbersGetOutputSpatialDimensionsElem(
     MlirAttribute attr, intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::ConvDimensionNumbersAttr>()
+  return mlir::cast<mlir::mhlo::ConvDimensionNumbersAttr>(unwrap(attr))
       .getOutputSpatialDimensions()[pos];
 }
 
@@ -364,42 +331,37 @@ MLIR_CAPI_EXPORTED MlirAttribute mlirMhloOutputOperandAliasGet(
 }
 
 bool mlirMhloAttributeIsAOutputOperandAlias(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::OutputOperandAliasAttr>();
+  return mlir::isa<mlir::mhlo::OutputOperandAliasAttr>(unwrap(attr));
 }
 
 intptr_t mlirMhloOutputOperandAliasGetOutputTupleIndicesSize(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::OutputOperandAliasAttr>()
+  return mlir::cast<mlir::mhlo::OutputOperandAliasAttr>(unwrap(attr))
       .getOutputTupleIndices()
       .size();
 }
 
 int64_t mlirMhloOutputOperandAliasGetOutputTupleIndicesElem(MlirAttribute attr,
                                                             intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::OutputOperandAliasAttr>()
+  return mlir::cast<mlir::mhlo::OutputOperandAliasAttr>(unwrap(attr))
       .getOutputTupleIndices()[pos];
 }
 
 int64_t mlirMhloOutputOperandAliasGetOperandIndex(MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::OutputOperandAliasAttr>()
+  return mlir::cast<mlir::mhlo::OutputOperandAliasAttr>(unwrap(attr))
       .getOperandIndex();
 }
 
 intptr_t mlirMhloOutputOperandAliasGetOperandTupleIndicesSize(
     MlirAttribute attr) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::OutputOperandAliasAttr>()
+  return mlir::cast<mlir::mhlo::OutputOperandAliasAttr>(unwrap(attr))
       .getOperandTupleIndices()
       .size();
 }
 
 int64_t mlirMhloOutputOperandAliasGetOperandTupleIndicesElem(MlirAttribute attr,
                                                              intptr_t pos) {
-  return unwrap(attr)
-      .cast<mlir::mhlo::OutputOperandAliasAttr>()
+  return mlir::cast<mlir::mhlo::OutputOperandAliasAttr>(unwrap(attr))
       .getOperandTupleIndices()[pos];
 }
 
@@ -416,12 +378,13 @@ MlirAttribute mlirMhloComparisonDirectionAttrGet(MlirContext ctx,
 }
 
 bool mlirMhloAttributeIsAComparisonDirectionAttr(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::ComparisonDirectionAttr>();
+  return mlir::isa<mlir::mhlo::ComparisonDirectionAttr>(unwrap(attr));
 }
 
 MlirStringRef mlirMhloComparisonDirectionAttrGetValue(MlirAttribute attr) {
   return wrap(mlir::mhlo::stringifyComparisonDirection(
-      unwrap(attr).cast<mlir::mhlo::ComparisonDirectionAttr>().getValue()));
+      mlir::cast<mlir::mhlo::ComparisonDirectionAttr>(unwrap(attr))
+          .getValue()));
 }
 
 //
@@ -438,12 +401,12 @@ MlirAttribute mlirMhloComparisonTypeAttrGet(MlirContext ctx,
 }
 
 bool mlirMhloAttributeIsAComparisonTypeAttr(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::ComparisonTypeAttr>();
+  return mlir::isa<mlir::mhlo::ComparisonTypeAttr>(unwrap(attr));
 }
 
 MlirStringRef mlirMhloComparisonTypeAttrGetValue(MlirAttribute attr) {
   return wrap(mlir::mhlo::stringifyComparisonType(
-      unwrap(attr).cast<mlir::mhlo::ComparisonTypeAttr>().getValue()));
+      mlir::cast<mlir::mhlo::ComparisonTypeAttr>(unwrap(attr)).getValue()));
 }
 
 //
@@ -458,12 +421,12 @@ MlirAttribute mlirMhloDomainKindAttrGet(MlirContext ctx, MlirStringRef value) {
 }
 
 bool mlirMhloAttributeIsADomainKindAttr(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::DomainKindAttr>();
+  return mlir::isa<mlir::mhlo::DomainKindAttr>(unwrap(attr));
 }
 
 MlirStringRef mlirMhloDomainKindAttrGetValue(MlirAttribute attr) {
   return wrap(mlir::mhlo::stringifyDomainKind(
-      unwrap(attr).cast<mlir::mhlo::DomainKindAttr>().getValue()));
+      mlir::cast<mlir::mhlo::DomainKindAttr>(unwrap(attr)).getValue()));
 }
 
 //
@@ -478,12 +441,12 @@ MlirAttribute mlirMhloPrecisionAttrGet(MlirContext ctx, MlirStringRef value) {
 }
 
 bool mlirMhloAttributeIsAPrecisionAttr(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::PrecisionAttr>();
+  return mlir::isa<mlir::mhlo::PrecisionAttr>(unwrap(attr));
 }
 
 MlirStringRef mlirMhloPrecisionAttrGetValue(MlirAttribute attr) {
   return wrap(mlir::mhlo::stringifyPrecision(
-      unwrap(attr).cast<mlir::mhlo::PrecisionAttr>().getValue()));
+      mlir::cast<mlir::mhlo::PrecisionAttr>(unwrap(attr)).getValue()));
 }
 
 //
@@ -498,12 +461,12 @@ MlirAttribute mlirMhloFftTypeAttrGet(MlirContext ctx, MlirStringRef value) {
 }
 
 bool mlirMhloAttributeIsAFftTypeAttr(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::FftTypeAttr>();
+  return mlir::isa<mlir::mhlo::FftTypeAttr>(unwrap(attr));
 }
 
 MlirStringRef mlirMhloFftTypeAttrGetValue(MlirAttribute attr) {
   return wrap(mlir::mhlo::stringifyFftType(
-      unwrap(attr).cast<mlir::mhlo::FftTypeAttr>().getValue()));
+      mlir::cast<mlir::mhlo::FftTypeAttr>(unwrap(attr)).getValue()));
 }
 
 //
@@ -520,12 +483,12 @@ MlirAttribute mlirMhloDequantizeModeAttrGet(MlirContext ctx,
 }
 
 bool mlirMhloAttributeIsADequantizeModeAttr(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::DequantizeModeAttr>();
+  return mlir::isa<mlir::mhlo::DequantizeModeAttr>(unwrap(attr));
 }
 
 MlirStringRef mlirMhloDequantizeModeAttrGetValue(MlirAttribute attr) {
   return wrap(mlir::mhlo::stringifyDequantizeMode(
-      unwrap(attr).cast<mlir::mhlo::DequantizeModeAttr>().getValue()));
+      mlir::cast<mlir::mhlo::DequantizeModeAttr>(unwrap(attr)).getValue()));
 }
 
 //
@@ -540,12 +503,12 @@ MlirAttribute mlirMhloTransposeAttrGet(MlirContext ctx, MlirStringRef value) {
 }
 
 bool mlirMhloAttributeIsATransposeAttr(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::TransposeAttr>();
+  return mlir::isa<mlir::mhlo::TransposeAttr>(unwrap(attr));
 }
 
 MlirStringRef mlirMhloTransposeAttrGetValue(MlirAttribute attr) {
   return wrap(mlir::mhlo::stringifyTranspose(
-      unwrap(attr).cast<mlir::mhlo::TransposeAttr>().getValue()));
+      mlir::cast<mlir::mhlo::TransposeAttr>(unwrap(attr)).getValue()));
 }
 
 //
@@ -560,12 +523,12 @@ MlirAttribute mlirMhloFusionKindAttrGet(MlirContext ctx, MlirStringRef value) {
 }
 
 bool mlirMhloAttributeIsAFusionKindAttr(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::FusionKindAttr>();
+  return mlir::isa<mlir::mhlo::FusionKindAttr>(unwrap(attr));
 }
 
 MlirStringRef mlirMhloFusionKindAttrGetValue(MlirAttribute attr) {
   return wrap(mlir::mhlo::stringifyFusionKind(
-      unwrap(attr).cast<mlir::mhlo::FusionKindAttr>().getValue()));
+      mlir::cast<mlir::mhlo::FusionKindAttr>(unwrap(attr)).getValue()));
 }
 
 //
@@ -582,12 +545,12 @@ MlirAttribute mlirMhloRngDistributionAttrGet(MlirContext ctx,
 }
 
 bool mlirMhloAttributeIsARngDistributionAttr(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::RngDistributionAttr>();
+  return mlir::isa<mlir::mhlo::RngDistributionAttr>(unwrap(attr));
 }
 
 MlirStringRef mlirMhloRngDistributionAttrGetValue(MlirAttribute attr) {
   return wrap(mlir::mhlo::stringifyRngDistribution(
-      unwrap(attr).cast<mlir::mhlo::RngDistributionAttr>().getValue()));
+      mlir::cast<mlir::mhlo::RngDistributionAttr>(unwrap(attr)).getValue()));
 }
 
 //
@@ -604,12 +567,12 @@ MlirAttribute mlirMhloRngAlgorithmAttrGet(MlirContext ctx,
 }
 
 bool mlirMhloAttributeIsARngAlgorithmAttr(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::RngAlgorithmAttr>();
+  return mlir::isa<mlir::mhlo::RngAlgorithmAttr>(unwrap(attr));
 }
 
 MlirStringRef mlirMhloRngAlgorithmAttrGetValue(MlirAttribute attr) {
   return wrap(mlir::mhlo::stringifyRngAlgorithm(
-      unwrap(attr).cast<mlir::mhlo::RngAlgorithmAttr>().getValue()));
+      mlir::cast<mlir::mhlo::RngAlgorithmAttr>(unwrap(attr)).getValue()));
 }
 
 //
@@ -622,15 +585,15 @@ MlirAttribute mlirMhloChannelHandleGet(MlirContext ctx, int64_t handle,
 }
 
 bool mlirMhloAttributeIsChannelHandle(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::ChannelHandleAttr>();
+  return mlir::isa<mlir::mhlo::ChannelHandleAttr>(unwrap(attr));
 }
 
 int64_t mlirMhloChannelHandleGetHandle(MlirAttribute attr) {
-  return unwrap(attr).cast<mlir::mhlo::ChannelHandleAttr>().getHandle();
+  return mlir::cast<mlir::mhlo::ChannelHandleAttr>(unwrap(attr)).getHandle();
 }
 
 int64_t mlirMhloChannelHandleGetType(MlirAttribute attr) {
-  return unwrap(attr).cast<mlir::mhlo::ChannelHandleAttr>().getType();
+  return mlir::cast<mlir::mhlo::ChannelHandleAttr>(unwrap(attr)).getType();
 }
 
 //
@@ -644,15 +607,18 @@ MlirAttribute mlirMhloTypeExtensionsGet(MlirContext ctx, intptr_t nBounds,
 }
 
 bool mlirMhloAttributeIsTypeExtensions(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::TypeExtensionsAttr>();
+  return mlir::isa<mlir::mhlo::TypeExtensionsAttr>(unwrap(attr));
 }
 
 intptr_t mlirMhloTypeExtensionsGetBoundsSize(MlirAttribute attr) {
-  return unwrap(attr).cast<mlir::mhlo::TypeExtensionsAttr>().getBounds().size();
+  return mlir::cast<mlir::mhlo::TypeExtensionsAttr>(unwrap(attr))
+      .getBounds()
+      .size();
 }
 
 int64_t mlirMhloTypeExtensionsGetBoundsElem(MlirAttribute attr, intptr_t pos) {
-  return unwrap(attr).cast<mlir::mhlo::TypeExtensionsAttr>().getBounds()[pos];
+  return mlir::cast<mlir::mhlo::TypeExtensionsAttr>(unwrap(attr))
+      .getBounds()[pos];
 }
 
 //
@@ -666,17 +632,18 @@ MlirAttribute mlirMhloSparsityDescriptorGet(MlirContext ctx, int64_t dimension,
 }
 
 bool mlirMhloAttributeIsASparsityDescriptor(MlirAttribute attr) {
-  return unwrap(attr).isa<mlir::mhlo::SparsityDescriptorAttr>();
+  return mlir::isa<mlir::mhlo::SparsityDescriptorAttr>(unwrap(attr));
 }
 
 int64_t mlirMhloSparsityDescriptorGetDimension(MlirAttribute attr) {
-  return unwrap(attr).cast<mlir::mhlo::SparsityDescriptorAttr>().getDimension();
+  return mlir::cast<mlir::mhlo::SparsityDescriptorAttr>(unwrap(attr))
+      .getDimension();
 }
 
 int64_t mlirMhloSparsityDescriptorGetN(MlirAttribute attr) {
-  return unwrap(attr).cast<mlir::mhlo::SparsityDescriptorAttr>().getN();
+  return mlir::cast<mlir::mhlo::SparsityDescriptorAttr>(unwrap(attr)).getN();
 }
 
 int64_t mlirMhloSparsityDescriptorGetM(MlirAttribute attr) {
-  return unwrap(attr).cast<mlir::mhlo::SparsityDescriptorAttr>().getM();
+  return mlir::cast<mlir::mhlo::SparsityDescriptorAttr>(unwrap(attr)).getM();
 }

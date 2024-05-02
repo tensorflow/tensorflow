@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -214,7 +215,12 @@ class HloRunner : public HloRunnerInterface {
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment);
 
+  // Gets or creates the DeviceMemoryAllocator.
+  se::DeviceMemoryAllocator* GetAllocator();
+
   std::unique_ptr<Backend> backend_;
+
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 
   DeviceShapeRepresentationFn device_shape_representation_fn_;
 

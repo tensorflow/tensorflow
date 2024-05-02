@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
@@ -91,7 +92,7 @@ mlir::LogicalResult IfrtDialect::verifyOperationAttribute(
       return op->emitOpError() << "has `" << kIfrtFunctionAttrName
                                << "` attr but is not a function";
     }
-    if (!attr.getValue().isa<mlir::UnitAttr>()) {
+    if (!mlir::isa<mlir::UnitAttr>(attr.getValue())) {
       return op->emitOpError() << "has `" << kIfrtFunctionAttrName
                                << "` attr that is not a UnitAttr";
     }
@@ -107,7 +108,7 @@ mlir::LogicalResult IfrtDialect::verifyRegionArgAttribute(
       return op->emitOpError() << "has `" << kIfrtDonatedArgAttrName
                                << "` arg attr but is not a function";
     }
-    if (!attr.getValue().isa<mlir::UnitAttr>()) {
+    if (!mlir::isa<mlir::UnitAttr>(attr.getValue())) {
       return op->emitOpError() << "has `" << kIfrtDonatedArgAttrName
                                << "` arg attr that is not a UnitAttr";
     }

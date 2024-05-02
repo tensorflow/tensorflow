@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/service/hlo.pb.h"
 #include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
@@ -99,7 +100,7 @@ Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
             ->mutable_instructions(i)
             ->mutable_parameter_replication()
             ->add_replicated_at_leaf_buffers(
-                b.cast<mlir::BoolAttr>().getValue());
+                mlir::cast<mlir::BoolAttr>(b).getValue());
 
   auto hlo_module = computation.proto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);

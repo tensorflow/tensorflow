@@ -42,11 +42,11 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/async_value.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 
@@ -123,16 +123,14 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
 
   bool IsDeleted() override;
 
-  void CopyToRemoteDevice(
-      PjRtFuture<absl::StatusOr<std::string>> serialized_descriptor,
-      RemoteSendCallback on_done) override {
+  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+                          RemoteSendCallback on_done) override {
     on_done(Unimplemented("CopyToRemoteDevice not implemented."),
             /*sends_were_enqueued=*/false);
   }
 
   void CopyToRemoteDeviceScattered(
-      PjRtFuture<absl::StatusOr<std::vector<std::string>>>
-          serialized_descriptors,
+      PjRtFuture<std::vector<std::string>> serialized_descriptors,
       std::vector<RemoteSendCallback> callbacks,
       const xla::PjRtBuffer::ScatterDetails& scatter_details) override {
     for (const auto& on_done : callbacks) {

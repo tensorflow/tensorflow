@@ -1,4 +1,22 @@
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-lower-tensors | FileCheck %s
+// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: -xla-gpu-lower-tensors="is_amd_gpu=false gpu_arch=6.0" \
+// RUN: | FileCheck %s
+
+// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: -xla-gpu-lower-tensors="is_amd_gpu=false gpu_arch=7.0" \
+// RUN: | FileCheck %s --check-prefix=CHECK-VOLTA
+
+// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: -xla-gpu-lower-tensors="is_amd_gpu=false gpu_arch=8.0" \
+// RUN: | FileCheck %s --check-prefix=CHECK-AMPERE
+
+// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: -xla-gpu-lower-tensors="is_amd_gpu=true gpu_arch=gfx908:sramecc+:xnack" \
+// RUN: | FileCheck %s --check-prefix=CHECK-GFX908-MI100
+
+// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: -xla-gpu-lower-tensors="is_amd_gpu=true gpu_arch=gfx90a:sramecc+:xnack" \
+// RUN: | FileCheck %s --check-prefix=CHECK-GFX90A-MI200
 
 module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>} {
   func.func private @add(%arg0: f32, %arg1: f32) -> f32 {
@@ -256,7 +274,7 @@ module {
     %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xf32> {
       ^bb0(%current : f32):
         %c42 = arith.constant 1.0 : f32
-        %add = arith.addf %current, %c42 : f32
+        %add = arith.minimumf %current, %c42 : f32
         xla_gpu.yield %add : f32
     }
     return %ret : tensor<2x4xf32>
@@ -361,3 +379,267 @@ module {
 // CHECK-SAME: -> !llvm.ptr, i8
 // CHECK: llvm.load
 // CHECK: llvm.store
+
+// -----
+
+module {
+  func.func @direct_atomic_rmw_overwrite(%in: tensor<2x4xi32>,
+    %i: index, %j: index) -> (tensor<2x4xi32>) {
+    %c2 = arith.constant 2 : i32
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xi32> {
+      ^bb0(%current : i32):
+        xla_gpu.yield %c2 : i32
+    }
+    return %ret : tensor<2x4xi32>
+  }
+}
+// CHECK: @direct_atomic_rmw_overwrite
+// CHECK: %[[C2:.*]] = arith.constant 2
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK: llvm.store %[[C2]], %[[ADDR]] atomic unordered {alignment = 32 : i64}
+
+// -----
+
+module {
+  func.func @direct_atomic_rmw_addi(%in: tensor<2x4xi32>,
+    %i: index, %j: index) -> (tensor<2x4xi32>) {
+    %c2 = arith.constant 2 : i32
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xi32> {
+      ^bb0(%current : i32):
+        %min = arith.addi %current, %c2 : i32
+        xla_gpu.yield %c2 : i32
+    }
+    return %ret : tensor<2x4xi32>
+  }
+}
+// CHECK: @direct_atomic_rmw_addi
+// CHECK: %[[C2:.*]] = arith.constant 2
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK: llvm.atomicrmw add %[[ADDR]], %[[C2]] seq_cst
+
+// -----
+
+module {
+  func.func @direct_atomic_rmw_maxsi(%in: tensor<2x4xi32>,
+    %i: index, %j: index) -> (tensor<2x4xi32>) {
+    %c2 = arith.constant 2 : i32
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xi32> {
+      ^bb0(%current : i32):
+        %min = arith.maxsi %current, %c2 : i32
+        xla_gpu.yield %c2 : i32
+    }
+    return %ret : tensor<2x4xi32>
+  }
+}
+// CHECK: @direct_atomic_rmw_maxsi
+// CHECK: %[[C2:.*]] = arith.constant 2
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK: llvm.atomicrmw max %[[ADDR]], %[[C2]] seq_cst
+
+// -----
+
+module {
+  func.func @direct_atomic_rmw_maxui(%in: tensor<2x4xi32>,
+    %i: index, %j: index) -> (tensor<2x4xi32>) {
+    %c2 = arith.constant 2 : i32
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xi32> {
+      ^bb0(%current : i32):
+        %min = arith.maxui %current, %c2 : i32
+        xla_gpu.yield %c2 : i32
+    }
+    return %ret : tensor<2x4xi32>
+  }
+}
+// CHECK: @direct_atomic_rmw_maxui
+// CHECK: %[[C2:.*]] = arith.constant 2
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK: llvm.atomicrmw umax %[[ADDR]], %[[C2]] seq_cst
+
+// -----
+
+module {
+  func.func @direct_atomic_rmw_minsi(%in: tensor<2x4xi32>,
+    %i: index, %j: index) -> (tensor<2x4xi32>) {
+    %c2 = arith.constant 2 : i32
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xi32> {
+      ^bb0(%current : i32):
+        %min = arith.minsi %current, %c2 : i32
+        xla_gpu.yield %c2 : i32
+    }
+    return %ret : tensor<2x4xi32>
+  }
+}
+// CHECK: @direct_atomic_rmw_minsi
+// CHECK: %[[C2:.*]] = arith.constant 2
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK: llvm.atomicrmw min %[[ADDR]], %[[C2]] seq_cst
+
+// -----
+
+module {
+  func.func @direct_atomic_rmw_minui(%in: tensor<2x4xi32>,
+    %i: index, %j: index) -> (tensor<2x4xi32>) {
+    %c2 = arith.constant 2 : i32
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xi32> {
+      ^bb0(%current : i32):
+        %min = arith.minui %current, %c2 : i32
+        xla_gpu.yield %c2 : i32
+    }
+    return %ret : tensor<2x4xi32>
+  }
+}
+// CHECK: @direct_atomic_rmw_minui
+// CHECK: %[[C2:.*]] = arith.constant 2
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK: llvm.atomicrmw umin %[[ADDR]], %[[C2]] seq_cst
+
+// -----
+
+module {
+  func.func @direct_atomic_rmw_fadd_f32(%in: tensor<2x4xf32>,
+    %i: index, %j: index) -> (tensor<2x4xf32>) {
+    %c2 = arith.constant 2.0 : f32
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xf32> {
+      ^bb0(%current : f32):
+        %min = arith.addf %current, %c2 : f32
+        xla_gpu.yield %c2 : f32
+    }
+    return %ret : tensor<2x4xf32>
+  }
+}
+// CHECK-LABEL: @direct_atomic_rmw_fadd_f32
+// CHECK: %[[C2:.*]] = arith.constant 2
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+
+// CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f32
+// CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
+// CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+
+// CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f32
+// CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
+// CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+
+// CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f32
+// CHECK-GFX908-MI100: %[[C2:.*]] = arith.constant 2
+// CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-GFX908-MI100: %[[ADDR_CAST:.*]] = llvm.addrspacecast %[[ADDR]] : !llvm.ptr to !llvm.ptr<1>
+// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR_CAST]], %[[C2]] syncscope("agent") seq_cst
+
+// CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f32
+// CHECK-GFX90A-MI200: %[[C2:.*]] = arith.constant 2
+// CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-GFX90A-MI200: %[[ADDR_CAST:.*]] = llvm.addrspacecast %[[ADDR]] : !llvm.ptr to !llvm.ptr<1>
+// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR_CAST]], %[[C2]] syncscope("agent") seq_cst
+
+// -----
+
+module {
+  func.func @direct_atomic_rmw_fadd_f16(%in: tensor<2x4xf16>,
+    %i: index, %j: index) -> (tensor<2x4xf16>) {
+    %c2 = arith.constant 2.0 : f16
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xf16> {
+      ^bb0(%current : f16):
+        %min = arith.addf %current, %c2 : f16
+        xla_gpu.yield %c2 : f16
+    }
+    return %ret : tensor<2x4xf16>
+  }
+}
+// CHECK-LABEL: @direct_atomic_rmw_fadd_f16
+// CHECK-NOT: llvm.atomicrmw fadd
+
+// CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f16
+// CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
+// CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+
+// CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f16
+// CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
+// CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+
+// CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f16
+// CHECK-GFX908-MI100-NOT: llvm.atomicrmw fadd
+
+// CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f16
+// CHECK-GFX90A-MI200: %[[C2:.*]] = arith.constant 2
+// CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-GFX90A-MI200: %[[ADDR_CAST:.*]] = llvm.addrspacecast %[[ADDR]] : !llvm.ptr to !llvm.ptr<1>
+// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR_CAST]], %[[C2]] syncscope("agent") seq_cst
+
+// -----
+
+module {
+  func.func @direct_atomic_rmw_fadd_f64(%in: tensor<2x4xf64>,
+    %i: index, %j: index) -> (tensor<2x4xf64>) {
+    %c2 = arith.constant 2.0 : f64
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xf64> {
+      ^bb0(%current : f64):
+        %min = arith.addf %current, %c2 : f64
+        xla_gpu.yield %c2 : f64
+    }
+    return %ret : tensor<2x4xf64>
+  }
+}
+// CHECK-LABEL: @direct_atomic_rmw_fadd_f64
+// CHECK: %[[C2:.*]] = arith.constant 2
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+
+// CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f64
+// CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
+// CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+
+// CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f64
+// CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
+// CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+
+// CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f64
+// CHECK-GFX908-MI100-NOT: llvm.atomicrmw fadd
+
+// CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f64
+// CHECK-GFX90A-MI200-NOT: llvm.atomicrmw fadd
+
+// -----
+
+module {
+  func.func @direct_atomic_rmw_maximumf(%in: tensor<2x4xf32>,
+    %i: index, %j: index) -> (tensor<2x4xf32>) {
+    %c2 = arith.constant 2.0 : f32
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xf32> {
+      ^bb0(%current : f32):
+        %min = arith.maximumf %current, %c2 : f32
+        xla_gpu.yield %c2 : f32
+    }
+    return %ret : tensor<2x4xf32>
+  }
+}
+// CHECK-LABEL: @direct_atomic_rmw_maximumf
+
+// CHECK: %[[MODIFIER:.*]] = arith.constant 2.000000e+00 : f32
+// CHECK: %[[NAN:.*]] = llvm.mlir.constant(0x7FC00000 : f32) : f32
+// CHECK: %[[C0:.*]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK: %[[CURRENT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> f32
+// CHECK: %[[CURRENT_IS_NAN:.*]] = llvm.fcmp "uno" %[[CURRENT]], %[[CURRENT]] : f32
+// CHECK: scf.if %[[CURRENT_IS_NAN]] {
+// CHECK: } else {
+// CHECK:   %[[MODIFIER_IS_NAN:.*]] = llvm.fcmp "uno" %[[MODIFIER]], %[[MODIFIER]] : f32
+// CHECK:   %[[MODIFIER_OR_NAN:.*]] = llvm.select %[[MODIFIER_IS_NAN]], %[[NAN]], %[[MODIFIER]] : i1, f32
+// CHECK:   %[[VAL_13:.*]] = llvm.fcmp "ult" %[[CURRENT]], %[[MODIFIER_OR_NAN]] : f32
+// CHECK:   scf.if %[[VAL_13]] {
+// CHECK:     %[[INT_MODIFIER_OR_NAN:.*]] = llvm.bitcast %[[MODIFIER_OR_NAN]] : f32 to i32
+// CHECK:     %[[IS_POSITIVE:.*]] = llvm.icmp "sge" %[[INT_MODIFIER_OR_NAN]], %[[C0]] : i32
+// CHECK:     scf.if %[[IS_POSITIVE]] {
+// CHECK:       llvm.atomicrmw max %[[ADDR]], %[[INT_MODIFIER_OR_NAN]] seq_cst
+// CHECK:     } else {
+// CHECK:       llvm.atomicrmw umin %[[ADDR]], %[[INT_MODIFIER_OR_NAN]] seq_cst
+// CHECK:     }
+// CHECK:   }
+// CHECK: }
+// CHECK: return

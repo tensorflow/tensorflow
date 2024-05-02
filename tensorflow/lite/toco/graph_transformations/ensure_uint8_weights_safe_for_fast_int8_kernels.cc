@@ -149,16 +149,16 @@ namespace toco {
       // That's why at the moment we only handle operators that use a GEMM
       // (Conv, fully-connected --- note that LSTM merely wraps a
       // fully-connected operator).
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
   }
 
   const std::string& name = op.inputs[weights_index];
   auto& array = model->GetArray(name);
   if (!array.buffer) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (array.data_type != ArrayDataType::kUint8) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   auto& buffer_data = array.GetMutableBuffer<ArrayDataType::kUint8>().data;
 
@@ -214,7 +214,7 @@ namespace toco {
   }
 
   *modified = changed;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

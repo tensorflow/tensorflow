@@ -124,7 +124,7 @@ cc_library(
         ":future",
         ":value",
         "@com_google_absl//absl/log:check",
-        "@local_tsl//tsl/concurrency:async_value",
+        "@local_xla//xla/tsl/concurrency:async_value",
         "@tf_runtime//:async_value",
     ],
 )
@@ -223,7 +223,7 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/concurrency:async_value",
         "@local_tsl//tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/concurrency:async_value",
     ],
 )

@@ -39,7 +39,7 @@ static_assert(ATOMIC_INT_LOCK_FREE == 2, "Assumed atomic<int> was lock free");
   return g_session_active.load(std::memory_order_relaxed) != 0;
 }
 
-/*static*/ StatusOr<ProfilerLock> ProfilerLock::Acquire() {
+/*static*/ absl::StatusOr<ProfilerLock> ProfilerLock::Acquire() {
   // Use environment variable to permanently lock the profiler.
   // This allows running TensorFlow under an external profiling tool with all
   // built-in profiling disabled.

@@ -62,6 +62,9 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
       config.num_warps, threadsPerWarp, config.num_ctas, ccAsInt));
   pm.addPass(mt::gpu::createCoalescePass());
+  if (ccCuda.IsAtLeastAmpere()) {
+    pm.addPass(mt::gpu::createF32DotTCPass());
+  }
   pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&out_cluster_info));
   pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
   pm.addPass(mt::gpu::createOptimizeThreadLocalityPass());
@@ -95,7 +98,7 @@ absl::Status CreateTritonPipeline(
 
   // Based on make_llir() in
   // @triton//:third_party/nvidia/backend/compiler.py
-  pm.addPass(mt::gpu::createDecomposeUnsupportedConversionsPass());
+  pm.addPass(mt::NVIDIA::createDecomposeUnsupportedConversionsPass());
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
   pm.addPass(mt::gpu::createAllocateSharedMemoryPass());

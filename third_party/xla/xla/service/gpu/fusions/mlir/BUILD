@@ -278,8 +278,8 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "convert_xla_gpu_pure_call_ops.cc",
         "expand_float_ops.cc",
-        "lower_func.cc",
         "lower_tensors.cc",
         "lower_to_llvm.cc",
         "lower_xla_gpu_to_scf.cc",
@@ -300,8 +300,10 @@ cc_library(
         "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
         "//xla/service/gpu/model:indexing_analysis",
         "//xla/service/gpu/model:indexing_map",
+        "//xla/stream_executor:device_description",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",

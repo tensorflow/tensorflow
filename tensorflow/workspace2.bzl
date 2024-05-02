@@ -150,9 +150,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "ba8406e5a885edcf98b1097e853d5b5e960d34844858505143872b0f6f4f03e3",
-        strip_prefix = "XNNPACK-7f3e8aa632ab976b8a195c8d3d17e2f5831dde0e",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/7f3e8aa632ab976b8a195c8d3d17e2f5831dde0e.zip"),
+        sha256 = "256ab4034e93bdeea2e1216cd8361a85bd4ee4884a89bf5e4e142abcdc796805",
+        strip_prefix = "XNNPACK-50037f8072731a2cc30a961b96e199ad691887e4",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/50037f8072731a2cc30a961b96e199ad691887e4.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -389,10 +389,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "nsync",
         patch_file = ["//third_party:nsync.patch"],
-        sha256 = "2be9dbfcce417c7abcc2aa6fee351cd4d292518d692577e74a2c6c05b049e442",
-        strip_prefix = "nsync-1.25.0",
+        sha256 = "e8e552a358f4a28e844207a7c5cb51767e4aeb0b29e22d23ac2a09924130f761",
+        strip_prefix = "nsync-1.27.0",
         system_build_file = "//third_party/systemlibs:nsync.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/nsync/archive/1.25.0.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/nsync/archive/1.27.0.tar.gz"),
     )
 
     tf_http_archive(

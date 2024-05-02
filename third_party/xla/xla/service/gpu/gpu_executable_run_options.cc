@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 
 namespace xla {
 namespace gpu {

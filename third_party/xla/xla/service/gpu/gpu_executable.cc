@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -51,9 +52,9 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_execution_profile.h"
@@ -448,7 +449,8 @@ absl::Status ExecuteThunks(
   // Parameters for executing collective operations.
   TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_params,
                       Thunk::CollectiveExecuteParams::Create(
-                          *run_options, main_stream->parent()->device_ordinal(),
+                          *run_options, async_comms_streams,
+                          main_stream->parent()->device_ordinal(),
                           collective_max_nchannels, p2p_max_nchannels));
 
   ResourceRequests resource_requests;
@@ -489,8 +491,8 @@ absl::Status ExecuteThunks(
   // Prepare parameters for thunks execution.
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       *run_options, buffer_allocations, main_stream,
-      command_buffer_trace_stream, async_comms_streams, &collective_params,
-      &collective_cliques, additional_execution_streams);
+      command_buffer_trace_stream, &collective_params, &collective_cliques,
+      std::move(additional_execution_streams));
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started
@@ -1082,7 +1084,7 @@ absl::Status GpuExecutable::SetUpMlirAllocation(
         }
       }
       allocations->at(i).set_entry_computation_parameter(
-          param_attr.cast<mlir::IntegerAttr>().getInt(), shape_index,
+          mlir::cast<mlir::IntegerAttr>(param_attr).getInt(), shape_index,
           static_cast<bool>(func.getArgAttr(i, "lmhlo.output_index")));
     }
     // TODO(timshen): this information is redundant. This is here only for
@@ -1096,7 +1098,7 @@ absl::Status GpuExecutable::SetUpMlirAllocation(
       // Reconstruct a shape index from output_index.
       ShapeIndex shape_index;
       for (const llvm::APInt& element :
-           output_index_attr.cast<mlir::DenseIntElementsAttr>()) {
+           mlir::cast<mlir::DenseIntElementsAttr>(output_index_attr)) {
         shape_index.push_back(element.getSExtValue());
       }
       auto& o = (*output_info)[shape_index];
@@ -1107,8 +1109,9 @@ absl::Status GpuExecutable::SetUpMlirAllocation(
         if (func.getArgAttr(i, "lmhlo.must_alias")) {
           kind = HloInputOutputAliasConfig::kMustAlias;
         }
-        o.alias_config.emplace(param_attr.cast<mlir::IntegerAttr>().getInt(),
-                               ShapeIndex{}, kind);
+        o.alias_config.emplace(
+            mlir::cast<mlir::IntegerAttr>(param_attr).getInt(), ShapeIndex{},
+            kind);
       }
       if (func.getArgument(i).use_empty()) {
         o.passthrough = true;

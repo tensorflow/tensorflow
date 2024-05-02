@@ -145,7 +145,7 @@ class InsertCustomAggregationOpsPass
             CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE);
         auto calibration_parameters =
             CalibrationOptions::CalibrationParameters();
-        calibration_parameters.set_initial_num_bins(256);
+        calibration_parameters.set_num_bins(512);
         calibration_parameters.set_min_percentile(0.001);
         calibration_parameters.set_max_percentile(99.999);
         calib_opts_.mutable_calibration_parameters()->CopyFrom(
@@ -157,7 +157,7 @@ class InsertCustomAggregationOpsPass
             CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE);
         auto calibration_parameters =
             CalibrationOptions::CalibrationParameters();
-        calibration_parameters.set_initial_num_bins(256);
+        calibration_parameters.set_num_bins(512);
         calib_opts_.mutable_calibration_parameters()->CopyFrom(
             calibration_parameters);
         break;
@@ -167,7 +167,7 @@ class InsertCustomAggregationOpsPass
             CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY);
         auto calibration_parameters =
             CalibrationOptions::CalibrationParameters();
-        calibration_parameters.set_initial_num_bins(256);
+        calibration_parameters.set_num_bins(512);
         calib_opts_.mutable_calibration_parameters()->CopyFrom(
             calibration_parameters);
         break;
@@ -177,7 +177,7 @@ class InsertCustomAggregationOpsPass
             CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC);
         auto calibration_parameters =
             CalibrationOptions::CalibrationParameters();
-        calibration_parameters.set_initial_num_bins(256);
+        calibration_parameters.set_num_bins(512);
         calib_opts_.mutable_calibration_parameters()->CopyFrom(
             calibration_parameters);
         break;
@@ -240,7 +240,7 @@ class AddCustomAggregationOp : public RewritePattern {
         if (auto call_op =
                 dyn_cast_or_null<TF::PartitionedCallOp>(defining_op)) {
           StringRef function_name =
-              call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+              mlir::cast<FlatSymbolRefAttr>(call_op.getFAttr()).getValue();
           if (function_name.contains("gather")) continue;
         }
 
@@ -249,6 +249,7 @@ class AddCustomAggregationOp : public RewritePattern {
     }
     if (quantizable_values.empty()) return failure();
 
+    int32_t effective_num_bins = GetNumBins(calib_opts_);
     for (Value value : quantizable_values) {
       // ID attribute will have empty value for now.
       SmallVector<NamedAttribute, 5> attributes{
@@ -256,10 +257,8 @@ class AddCustomAggregationOp : public RewritePattern {
           rewriter.getNamedAttr(
               "calibration_method",
               rewriter.getI32IntegerAttr(calib_opts_.calibration_method())),
-          rewriter.getNamedAttr(
-              "initial_num_bins",
-              rewriter.getI32IntegerAttr(
-                  calib_opts_.calibration_parameters().initial_num_bins())),
+          rewriter.getNamedAttr("num_bins",
+                                rewriter.getI32IntegerAttr(effective_num_bins)),
           rewriter.getNamedAttr(
               "min_percentile",
               rewriter.getF32FloatAttr(
@@ -270,12 +269,11 @@ class AddCustomAggregationOp : public RewritePattern {
                   calib_opts_.calibration_parameters().max_percentile())),
       };
 
-      int32_t num_bins = GetNumBins(calib_opts_.calibration_method());
       SmallVector<Type, 4> output_types{
           value.getType(),
           RankedTensorType::get({}, rewriter.getF32Type()),
           RankedTensorType::get({}, rewriter.getF32Type()),
-          RankedTensorType::get({num_bins}, rewriter.getI64Type()),
+          RankedTensorType::get({effective_num_bins}, rewriter.getI64Type()),
       };
 
       // Insert custom aggregation op between operand and operator.

@@ -119,7 +119,7 @@ bool AddDequantizeOperatorToInput(const std::string& input_name,
     }
   }
   *modified = change_made;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

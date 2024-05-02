@@ -128,6 +128,8 @@ class Compiler {
              other.ToProto().SerializeAsString();
     }
 
+    std::string ToString() { return ToProto().DebugString(); }
+
     se::DeviceDescription device_description;
     std::string platform_name;
     se::dnn::VersionInfo dnn_version_info;

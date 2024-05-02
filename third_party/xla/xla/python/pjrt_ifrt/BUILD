@@ -169,14 +169,18 @@ cc_library(
     srcs = ["xla_executable_impl_test_lib.cc"],
     deps = [
         ":xla_ifrt",
+        "//xla/client:executable_build_options",
         "//xla/pjrt:mlir_to_hlo",
+        "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
     alwayslink = True,
 )
@@ -254,6 +258,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/service:hlo_proto_cc",
         "//xla/translate/mhlo_to_hlo:type_to_shape",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
@@ -269,7 +274,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
@@ -287,6 +291,27 @@ cc_library(
         "//xla/python/ifrt:test_util",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "basic_string_array",
+    srcs = ["basic_string_array.cc"],
+    hdrs = ["basic_string_array.h"],
+    deps = [
+        ":pjrt_ifrt",
+        "//xla:status",
+        "//xla:xla_data_proto_cc",
+        "//xla/python/ifrt",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+    ],
 )
 
 xla_cc_test(

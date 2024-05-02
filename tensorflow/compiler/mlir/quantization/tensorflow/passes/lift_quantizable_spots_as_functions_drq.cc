@@ -137,7 +137,8 @@ class CheckQuantizableOps
       // This op is guaranteed to be a constant as ODS checks IsConstTensor.
       // Check if the number of elements meets the requirement.
       int current_num_elements =
-          call_op.getOperand(idx).getType().cast<ShapedType>().getNumElements();
+          mlir::cast<ShapedType>(call_op.getOperand(idx).getType())
+              .getNumElements();
       if (current_num_elements < min_num_elements_for_weights_) {
         call_op.emitRemark("Quantization is skipped for ")
             << call_op->getName().getStringRef().str() << " because it has "
@@ -149,7 +150,7 @@ class CheckQuantizableOps
     }
 
     StringRef function_name =
-        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+        mlir::cast<FlatSymbolRefAttr>(call_op.getFAttr()).getValue();
     if ((quantization_method_ == tensorflow::quantization::QuantizationMethod::
                                      METHOD_DYNAMIC_RANGE_INT8) &&
         (function_name.contains("batch_matmul") ||

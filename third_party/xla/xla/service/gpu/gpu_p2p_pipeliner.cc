@@ -41,10 +41,22 @@ bool ShouldPipeline(const HloInstruction* instr) {
   if (!HloPredicateIsOp<HloOpcode::kRecvDone, HloOpcode::kSendDone>(instr)) {
     return false;
   }
-
   // Not annotated for pipelining.
   auto it = instr->frontend_attributes().map().find(kSendRecvPipelineAttr);
   if (it == instr->frontend_attributes().map().end()) {
+    return false;
+  }
+
+  // Allow RecvDone to have a Send as a control predecessor. This control
+  // predecessor will be dropped by the pipeliner, which is what we needed
+  // when we rotate the RecvDone to the beginning of the while-body.
+  auto allowed_predecessor = [&]() {
+    return instr->opcode() == HloOpcode::kRecvDone &&
+           instr->control_predecessors().size() == 1 &&
+           instr->control_predecessors()[0]->opcode() == HloOpcode::kSend;
+  };
+  if (!instr->control_successors().empty() ||
+      (!instr->control_predecessors().empty() && !allowed_predecessor())) {
     return false;
   }
 
@@ -202,7 +214,8 @@ void AddP2PPipeliner(HloPassPipeline& pipeline) {
       CollectivePipeliner::PipeliningDirection::kBackward, ShouldPipeline,
       /*acceptable_formatting=*/HloPredicateTrue,
       /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
-      ShouldAllowLoopVariantParameterInChain, PostprocessPeeledP2P,
+      ShouldAllowLoopVariantParameterInChain,
+      /*should_allow_control_dependencies=*/true, PostprocessPeeledP2P,
       PostprocessRotatedP2P};
   pipeline.AddPass<CollectivePipeliner>(config);
 }

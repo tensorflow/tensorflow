@@ -56,6 +56,20 @@ CUptiResult CuptiWrapper::ActivityRegisterCallbacks(
                                         func_buffer_completed);
 }
 
+CUptiResult CuptiWrapper::ActivityUsePerThreadBuffer() {
+#if CUDA_VERSION >= 12030
+  uint8_t use_per_thread_activity_buffer = 1;
+  size_t value_size = sizeof(use_per_thread_activity_buffer);
+  return cuptiActivitySetAttribute(
+      CUPTI_ACTIVITY_ATTR_PER_THREAD_ACTIVITY_BUFFER, &value_size,
+      &use_per_thread_activity_buffer);
+#else
+  // cuptiActivitySetAttribute returns CUPTI_ERROR_INVALID_PARAMETER if invoked
+  // with an invalid first parameter.
+  return CUPTI_ERROR_INVALID_PARAMETER;
+#endif
+}
+
 CUptiResult CuptiWrapper::GetDeviceId(CUcontext context, uint32_t* deviceId) {
   return cuptiGetDeviceId(context, deviceId);
 }

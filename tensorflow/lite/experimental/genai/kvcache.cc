@@ -54,7 +54,8 @@ struct OpData {
   resource::CacheBuffer* key_cache_buffer;
   resource::CacheBuffer* value_cache_buffer;
   bool is_initialized;
-  bool output_initialized;
+  uint8_t* key_cache_ptr;
+  uint8_t* value_cache_ptr;
 };
 
 void* KVCacheInit(TfLiteContext* context, const char* buffer, size_t length) {
@@ -68,7 +69,8 @@ void* KVCacheInit(TfLiteContext* context, const char* buffer, size_t length) {
   op_data->key_cache_buffer = nullptr;
   op_data->value_cache_buffer = nullptr;
   op_data->is_initialized = false;
-  op_data->output_initialized = false;
+  op_data->key_cache_ptr = nullptr;
+  op_data->value_cache_ptr = nullptr;
   return op_data;
 }
 
@@ -125,9 +127,9 @@ TfLiteStatus KVCachePrepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kFullKeyTensor, &kfull));
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kFullValueTensor, &vfull));
-  // Need this to ensure memory remains persistent across invokes.
-  kfull->allocation_type = kTfLiteArenaRwPersistent;
-  vfull->allocation_type = kTfLiteArenaRwPersistent;
+  // Custom data pointer to the resource cache buffer.
+  kfull->allocation_type = kTfLiteCustom;
+  vfull->allocation_type = kTfLiteCustom;
 
   kfull->type = kTfLiteFloat32;
   vfull->type = kTfLiteFloat32;
@@ -151,11 +153,6 @@ TfLiteStatus KVCachePrepare(TfLiteContext* context, TfLiteNode* node) {
   kcache_buffer_dims->data[4] = input_dims->data[3];
 
   TfLiteIntArray* vcache_buffer_dims = TfLiteIntArrayCopy(kcache_buffer_dims);
-
-  TF_LITE_ENSURE_OK(context,
-                    context->ResizeTensor(context, kfull, kcache_dims));
-  TF_LITE_ENSURE_OK(context,
-                    context->ResizeTensor(context, vfull, vcache_dims));
 
   // Get the pointer to the tensor for our buffer storage.
   Subgraph* subgraph = reinterpret_cast<Subgraph*>(context->impl_);
@@ -183,6 +180,43 @@ TfLiteStatus KVCachePrepare(TfLiteContext* context, TfLiteNode* node) {
     resource::CacheBuffer* cbuffer = (resource::CacheBuffer*)(resourcePtr);
     op_data->value_cache_buffer = cbuffer;
   }
+
+  // Get the pointers to the individual caches for a layer.
+  RuntimeShape shape(GetTensorShape(key));
+  const int elements_in_one_entry = shape.Dims(2) * shape.Dims(3);
+  const int elements_in_one_block =
+      op_data->max_num_entries * elements_in_one_entry;
+  uint8_t* k_ptr =
+      reinterpret_cast<uint8_t*>(op_data->key_cache_buffer->GetBuffer());
+  uint8_t* v_ptr =
+      reinterpret_cast<uint8_t*>(op_data->value_cache_buffer->GetBuffer());
+  k_ptr = k_ptr + sizeof(float) * op_data->layer_index * elements_in_one_block;
+  v_ptr = v_ptr + sizeof(float) * op_data->layer_index * elements_in_one_block;
+
+  size_t kcache_dims_flatsize = kcache_dims->data[0] * kcache_dims->data[1] *
+                                kcache_dims->data[2] * kcache_dims->data[3];
+  size_t vcache_dims_flatsize = vcache_dims->data[0] * vcache_dims->data[1] *
+                                vcache_dims->data[2] * vcache_dims->data[3];
+  RuntimeShape kfull_shape(GetTensorShape(kfull));
+  RuntimeShape vfull_shape(GetTensorShape(vfull));
+  // Some testing utils don't fully set the output tensor shape
+  if (kfull_shape.FlatSize() > 1 && vfull_shape.FlatSize() > 1) {
+    TF_LITE_ENSURE_EQ(context, kfull_shape.FlatSize(), kcache_dims_flatsize);
+    TF_LITE_ENSURE_EQ(context, vfull_shape.FlatSize(), vcache_dims_flatsize);
+  }
+  TF_LITE_ENSURE_EQ(context, elements_in_one_block, kcache_dims_flatsize);
+  TF_LITE_ENSURE_EQ(context, elements_in_one_block, vcache_dims_flatsize);
+
+  kfull->data.data = k_ptr;
+  vfull->data.data = v_ptr;
+  op_data->key_cache_ptr = k_ptr;
+  op_data->value_cache_ptr = v_ptr;
+
+  TF_LITE_ENSURE_OK(context,
+                    context->ResizeTensor(context, kfull, kcache_dims));
+  TF_LITE_ENSURE_OK(context,
+                    context->ResizeTensor(context, vfull, vcache_dims));
+
   TfLiteIntArrayFree(kcache_buffer_dims);
   TfLiteIntArrayFree(vcache_buffer_dims);
   return kTfLiteOk;
@@ -231,14 +265,11 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
   k_ptr = k_ptr + sizeof(float) * op_data->layer_index * elements_in_one_block;
   v_ptr = v_ptr + sizeof(float) * op_data->layer_index * elements_in_one_block;
 
-  // 0. Init the outputs from the cache buffer if needed.
-  if (!op_data->output_initialized) {
-    float* kfull_ptr = GetTensorData<float>(kfull);
-    float* vfull_ptr = GetTensorData<float>(vfull);
-    memcpy(kfull_ptr, k_ptr, kfull->bytes);
-    memcpy(vfull_ptr, v_ptr, kfull->bytes);
-    op_data->output_initialized = true;
-  }
+  // 0. Ensure output ptr is pointing to the cache data
+  TF_LITE_ENSURE_EQ(context, k_ptr, op_data->key_cache_ptr);
+  TF_LITE_ENSURE_EQ(context, v_ptr, op_data->value_cache_ptr);
+  TF_LITE_ENSURE_EQ(context, k_ptr, kfull->data.data);
+  TF_LITE_ENSURE_EQ(context, v_ptr, vfull->data.data);
 
   // 1. Determine which slots the inputs take up, and which slots are in the
   //    existing span of the cache.
@@ -301,14 +332,6 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
   // 4. Put the key and value in their respective caches.
   memcpy(k_ptr + bytes_offset_for_cache, key->data.data, key->bytes);
   memcpy(v_ptr + bytes_offset_for_cache, value->data.data, value->bytes);
-
-  // 5. Set the output tensors with the relevant block's cache.
-  memcpy((uint8_t*)(kfull->data.data) + byte_offset_for_output,
-         k_ptr + byte_offset_for_output,
-         num_slots_for_output * num_bytes_per_tensor);
-  memcpy((uint8_t*)(vfull->data.data) + byte_offset_for_output,
-         v_ptr + byte_offset_for_output,
-         num_slots_for_output * num_bytes_per_tensor);
 
   // Update counts.
   current_num_entries =

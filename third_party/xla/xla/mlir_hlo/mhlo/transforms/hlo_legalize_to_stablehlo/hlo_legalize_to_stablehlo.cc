@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/DebugStringHelper.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/RegionUtils.h"
@@ -81,7 +82,7 @@ bool hasPrivateFeaturesNotInStablehlo(HloOpTy hloOp) {
 bool hasPackedNibble(std::optional<ArrayAttr> precisionConfigAttr) {
   if (!precisionConfigAttr) return false;
   return llvm::any_of(*precisionConfigAttr, [&](Attribute attr) {
-    auto precisionAttr = attr.cast<mhlo::PrecisionAttr>();
+    auto precisionAttr = mlir::cast<mhlo::PrecisionAttr>(attr);
     return precisionAttr.getValue() == mhlo::Precision::PACKED_NIBBLE;
   });
 }
@@ -214,7 +215,7 @@ bool isDenseI64Array(mlir::StringAttr hloName) {
 
 template <typename StablehloOpTy>
 Attribute convertDenseArray(mlir::StringAttr hloName, Attribute hloAttr) {
-  auto denseInts = hloAttr.dyn_cast<DenseIntElementsAttr>();
+  auto denseInts = mlir::dyn_cast<DenseIntElementsAttr>(hloAttr);
   if (!denseInts) return {};
 
   if ((std::is_same<StablehloOpTy, stablehlo::ConvolutionOp>::value ||
@@ -243,17 +244,17 @@ Attribute convertAttr(Attribute hloAttr) {
   // Handle MHLO attributes.
   // The logic that handles attributes from other dialects (e.g. builtin
   // attributes) lives below.
-  if (auto attr = hloAttr.dyn_cast<mhlo::ChannelHandleAttr>()) {
+  if (auto attr = mlir::dyn_cast<mhlo::ChannelHandleAttr>(hloAttr)) {
     return stablehlo::ChannelHandleAttr::get(attr.getContext(),
                                              attr.getHandle(), attr.getType());
   }
-  if (auto attr = hloAttr.dyn_cast<mhlo::ComparisonDirectionAttr>()) {
+  if (auto attr = mlir::dyn_cast<mhlo::ComparisonDirectionAttr>(hloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(ComparisonDirection);
   }
-  if (auto attr = hloAttr.dyn_cast<mhlo::ComparisonTypeAttr>()) {
+  if (auto attr = mlir::dyn_cast<mhlo::ComparisonTypeAttr>(hloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(ComparisonType);
   }
-  if (auto attr = hloAttr.dyn_cast<mhlo::ConvDimensionNumbersAttr>()) {
+  if (auto attr = mlir::dyn_cast<mhlo::ConvDimensionNumbersAttr>(hloAttr)) {
     return stablehlo::ConvDimensionNumbersAttr::get(
         attr.getContext(), attr.getInputBatchDimension(),
         attr.getInputFeatureDimension(), attr.getInputSpatialDimensions(),
@@ -264,44 +265,44 @@ Attribute convertAttr(Attribute hloAttr) {
   }
   // NOTE: We cannot process CustomCallApiVersionAttr here because
   // `dyn_cast<mhlo::CustomCallApiVersionAttr>()` succeeds for IntegerAttr too.
-  if (auto attr = hloAttr.dyn_cast<mhlo::DotDimensionNumbersAttr>()) {
+  if (auto attr = mlir::dyn_cast<mhlo::DotDimensionNumbersAttr>(hloAttr)) {
     return stablehlo::DotDimensionNumbersAttr::get(
         attr.getContext(), attr.getLhsBatchingDimensions(),
         attr.getRhsBatchingDimensions(), attr.getLhsContractingDimensions(),
         attr.getRhsContractingDimensions());
   }
-  if (auto attr = hloAttr.dyn_cast<mhlo::FftTypeAttr>()) {
+  if (auto attr = mlir::dyn_cast<mhlo::FftTypeAttr>(hloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(FftType);
   }
-  if (auto attr = hloAttr.dyn_cast<mhlo::GatherDimensionNumbersAttr>()) {
+  if (auto attr = mlir::dyn_cast<mhlo::GatherDimensionNumbersAttr>(hloAttr)) {
     return stablehlo::GatherDimensionNumbersAttr::get(
         attr.getContext(), attr.getOffsetDims(), attr.getCollapsedSliceDims(),
         attr.getStartIndexMap(), attr.getIndexVectorDim());
   }
-  if (auto attr = hloAttr.dyn_cast<mhlo::OutputOperandAliasAttr>()) {
+  if (auto attr = mlir::dyn_cast<mhlo::OutputOperandAliasAttr>(hloAttr)) {
     return stablehlo::OutputOperandAliasAttr::get(
         attr.getContext(), attr.getOutputTupleIndices(), attr.getOperandIndex(),
         attr.getOperandTupleIndices());
   }
-  if (auto attr = hloAttr.dyn_cast<mhlo::PrecisionAttr>()) {
+  if (auto attr = mlir::dyn_cast<mhlo::PrecisionAttr>(hloAttr)) {
     // StableHLO Precision doesn't support PACKED_NIBBLE yet.
     // Proposal: https://github.com/openxla/stablehlo/issues/742.
     if (attr.getValue() == mhlo::Precision::PACKED_NIBBLE) return {};
     RETURN_CONVERTED_ENUM_ATTR(Precision);
   }
-  if (auto attr = hloAttr.dyn_cast<mhlo::RngAlgorithmAttr>()) {
+  if (auto attr = mlir::dyn_cast<mhlo::RngAlgorithmAttr>(hloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(RngAlgorithm);
   }
-  if (auto attr = hloAttr.dyn_cast<mhlo::RngDistributionAttr>()) {
+  if (auto attr = mlir::dyn_cast<mhlo::RngDistributionAttr>(hloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(RngDistribution);
   }
-  if (auto attr = hloAttr.dyn_cast<mhlo::ScatterDimensionNumbersAttr>()) {
+  if (auto attr = mlir::dyn_cast<mhlo::ScatterDimensionNumbersAttr>(hloAttr)) {
     return stablehlo::ScatterDimensionNumbersAttr::get(
         attr.getContext(), attr.getUpdateWindowDims(),
         attr.getInsertedWindowDims(), attr.getScatterDimsToOperandDims(),
         attr.getIndexVectorDim());
   }
-  if (auto attr = hloAttr.dyn_cast<mhlo::TransposeAttr>()) {
+  if (auto attr = mlir::dyn_cast<mhlo::TransposeAttr>(hloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(Transpose);
   }
   if (hloAttr.getDialect().getNamespace() ==
@@ -316,7 +317,7 @@ Attribute convertAttr(Attribute hloAttr) {
   // Handle non-MHLO attributes.
   // If an attribute is not defined in MHLO, then it is unchanged,
   // with the exception of ArrayAttr which is converted recursively.
-  if (auto hloAttrs = hloAttr.dyn_cast<ArrayAttr>()) {
+  if (auto hloAttrs = mlir::dyn_cast<ArrayAttr>(hloAttr)) {
     SmallVector<Attribute> stablehloAttrs;
     for (auto hloAttr : hloAttrs) {
       auto stablehloAttr = convertAttr(hloAttr);
@@ -338,11 +339,11 @@ Attribute convertAttr(Attribute hloAttr) {
 // we can fork and  modify the code of `stringifyPrecision` as needed for
 // compatibility.
 Attribute encodePrecisionConfig(Attribute hloAttrs) {
-  auto hloArrayAttr = hloAttrs.dyn_cast<ArrayAttr>();
+  auto hloArrayAttr = mlir::dyn_cast<ArrayAttr>(hloAttrs);
   if (!hloArrayAttr) return {};
   SmallVector<Attribute> stablehloAttrs;
   for (auto hloAttr : hloArrayAttr) {
-    auto precisionAttr = hloAttr.dyn_cast<mhlo::PrecisionAttr>();
+    auto precisionAttr = mlir::dyn_cast<mhlo::PrecisionAttr>(hloAttr);
     if (!precisionAttr) return {};
     StringRef precisionStr = mhlo::stringifyPrecision(precisionAttr.getValue());
     if (precisionStr.empty()) return {};

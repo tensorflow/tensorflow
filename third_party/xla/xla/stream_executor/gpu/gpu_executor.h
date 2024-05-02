@@ -445,7 +445,7 @@ class GpuExecutor : public StreamExecutor {
 };
 
 inline GpuExecutor* ExtractGpuExecutor(StreamExecutor* stream_exec) {
-  return static_cast<GpuExecutor*>(stream_exec->implementation());
+  return static_cast<GpuExecutor*>(stream_exec);
 }
 
 }  // namespace gpu

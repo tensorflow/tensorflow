@@ -42,7 +42,7 @@ namespace sparse {
 class SparseTensor {
  public:
   typedef absl::Span<const int64_t> VarDimArray;
-  typedef typename gtl::InlinedVector<int64_t, 8> ShapeArray;
+  typedef absl::InlinedVector<int64_t, 8UL> ShapeArray;
 
   static Status Create(Tensor ix, Tensor vals, const VarDimArray shape,
                        const VarDimArray order, SparseTensor* result);
@@ -392,7 +392,7 @@ inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
     return true;
   } else {
     // General path for N-dimensional sparse tensors.
-    gtl::InlinedVector<int64_t, 4> strides(dims_);
+    absl::InlinedVector<int64_t, 4UL> strides(dims_);
     const auto& out_shape = out->shape().dim_sizes();
     if (dims_ > 0) {
       strides[dims_ - 1] = 1;

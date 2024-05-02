@@ -19,7 +19,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <utility>
 #include <variant>
@@ -59,7 +58,7 @@ limitations under the License.
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/tsl/python/lib/core/numpy.h"  //NOLINT
 #ifdef XLA_PYTHON_ENABLE_GPU
-#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/python/gpu_support.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
 
 #ifdef __linux__
@@ -76,7 +75,6 @@ limitations under the License.
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/exceptions.h"
-#include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -357,56 +355,7 @@ NB_MODULE(xla_extension, m_nb) {
   });
 
 #ifdef XLA_PYTHON_ENABLE_GPU
-  nb::class_<GpuAllocatorConfig> alloc_config(m_nb, "GpuAllocatorConfig");
-  alloc_config.def(nb::init<>())
-      .def_rw("kind", &GpuAllocatorConfig::kind)
-      .def_rw("memory_fraction", &GpuAllocatorConfig::memory_fraction)
-      .def_rw("preallocate", &GpuAllocatorConfig::preallocate)
-      .def_rw("collective_memory_size",
-              &GpuAllocatorConfig::collective_memory_size);
-  nb::enum_<GpuAllocatorConfig::Kind>(alloc_config, "Kind")
-      .value("DEFAULT", GpuAllocatorConfig::Kind::kDefault)
-      .value("PLATFORM", GpuAllocatorConfig::Kind::kPlatform)
-      .value("BFC", GpuAllocatorConfig::Kind::kBFC)
-      .value("CUDA_ASYNC", GpuAllocatorConfig::Kind::kCudaAsync);
-
-  m_nb.def(
-      "get_gpu_client",
-      [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
-         std::shared_ptr<DistributedRuntimeClient> distributed_client,
-         int node_id, int num_nodes,
-         std::optional<std::set<int>> allowed_devices,
-         std::optional<std::string> platform_name,
-         std::optional<bool> mock = false) -> nb_class_ptr<PyClient> {
-        std::unique_ptr<ifrt::PjRtClient> ifrt_client;
-        {
-          nb::gil_scoped_release gil_release;
-          std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
-          if (distributed_client != nullptr) {
-            kv_store = GetDistributedKeyValueStore(distributed_client,
-                                                   /*key_prefix=*/"gpu:");
-          }
-          GpuClientOptions options;
-          options.allocator_config = allocator_config;
-          options.node_id = node_id;
-          options.num_nodes = num_nodes;
-          options.allowed_devices = allowed_devices;
-          options.platform_name = platform_name;
-          options.kv_store = kv_store;
-          options.enable_mock_nccl = mock.value_or(false);
-          std::unique_ptr<PjRtClient> pjrt_client =
-              xla::ValueOrThrow(GetStreamExecutorGpuClient(options));
-          ifrt_client = ifrt::PjRtClient::Create(std::move(pjrt_client));
-        }
-        return PyClient::Make(std::move(ifrt_client));
-      },
-      nb::arg("asynchronous") = true,
-      nb::arg("allocator_config") = GpuAllocatorConfig(),
-      nb::arg("distributed_client") = nullptr, nb::arg("node_id") = 0,
-      nb::arg("num_nodes") = 1,
-      nb::arg("allowed_devices").none() = std::nullopt,
-      nb::arg("platform_name").none() = std::nullopt,
-      nb::arg("mock").none() = std::nullopt);
+  RegisterGpuClientAndDefineGpuAllocatorConfig(m_nb);
 #endif  // XLA_PYTHON_ENABLE_GPU
 
   m_nb.def(
@@ -609,7 +558,9 @@ NB_MODULE(xla_extension, m_nb) {
       nb::arg("dlpack"), nb::arg("cpu_backend").none() = nb::none(),
       nb::arg("gpu_backend").none() = nb::none());
   m_nb.def("cuda_array_interface_to_buffer",
-           xla::ValueOrThrowWrapper(CudaArrayInterfaceToBuffer));
+           xla::ValueOrThrowWrapper(CudaArrayInterfaceToBuffer), nb::arg("cai"),
+           nb::arg("gpu_backend").none() = nb::none(),
+           nb::arg("device_id").none() = nb::none());
 
   BuildIfrtProgramsSubmodule(m_nb);
   BuildProfilerSubmodule(m_nb);

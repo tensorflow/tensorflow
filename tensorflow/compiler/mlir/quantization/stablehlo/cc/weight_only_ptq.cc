@@ -85,20 +85,20 @@ absl::Status QuantizeWeightOnlyPtq(
   }
 
   TF_ASSIGN_OR_RETURN(
-      ModuleOp module_op,
+      auto module,
       ImportSavedModel(src_saved_model_path, signature_keys, tags,
                        quantization_config, WeightOnlyPtqComponent::kName,
                        *function_aliases, *ctx));
 
   WeightOnlyPtqComponent weight_only_ptq_component(ctx.get());
   TF_ASSIGN_OR_RETURN(
-      module_op, weight_only_ptq_component.Run(module_op, quantization_config));
+      *module, weight_only_ptq_component.Run(*module, quantization_config));
 
   TF_ASSIGN_OR_RETURN(
       const ExportedModel post_calibrated_exported_model,
       CreateExportedModel(signature_keys, tags, quantization_config,
                           WeightOnlyPtqComponent::kName, *function_aliases,
-                          *ctx, module_op));
+                          *ctx, *module));
 
   // Remove the `tpu` tag for exporting because the output quantized model is
   // essentially a CPU model.

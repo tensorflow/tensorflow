@@ -26,8 +26,8 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/stream_executor/stream.h"
-#include "tsl/concurrency/async_value.h"
-#include "tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
 namespace gpu {

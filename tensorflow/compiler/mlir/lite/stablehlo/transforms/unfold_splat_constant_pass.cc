@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
@@ -60,7 +61,7 @@ class UnfoldSplatConstantPass
   void UnfoldSplatConstant(mlir::OpBuilder* op_builder,
                            mhlo::ConstantOp const_op) const {
     auto splat_elements_attr =
-        const_op.getValue().dyn_cast<SplatElementsAttr>();
+        mlir::dyn_cast<SplatElementsAttr>(const_op.getValue());
     if (!splat_elements_attr) {
       return;
     }
@@ -68,8 +69,8 @@ class UnfoldSplatConstantPass
       return;
     }
     auto element_type = splat_elements_attr.getType().getElementType();
-    if (element_type.isa<ComplexType>() ||
-        element_type.isa<quant::QuantizedType>()) {
+    if (mlir::isa<ComplexType>(element_type) ||
+        mlir::isa<quant::QuantizedType>(element_type)) {
       return;
     }
     op_builder->setInsertionPoint(const_op);

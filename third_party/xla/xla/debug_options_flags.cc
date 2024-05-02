@@ -125,14 +125,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_all_gather_combine_by_dim(true);
   opts.set_xla_gpu_enable_reduce_scatter_combine_by_dim(true);
 
-  opts.set_xla_gpu_enable_async_collectives(true);
-  opts.set_xla_gpu_enable_async_all_reduce(true);
-  opts.set_xla_gpu_enable_async_all_gather(false);
-  opts.set_xla_gpu_enable_async_collective_broadcast(true);
-  opts.set_xla_gpu_enable_async_collective_permute(false);
-  opts.set_xla_gpu_enable_async_all_to_all(false);
-  opts.set_xla_gpu_enable_async_reduce_scatter(false);
-
   opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
 
   opts.set_xla_cpu_enable_xprof_traceme(false);
@@ -553,6 +545,48 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
     return true;
   };
 
+  auto collective_op_types_to_string =
+      [](tsl::protobuf::RepeatedField<int> collective_ops) -> std::string {
+    struct Formatter {
+      void operator()(std::string* out, int type) const {
+        absl::StrAppend(out, DebugOptions::CollectiveOpType_Name(type));
+      }
+    };
+    return absl::StrJoin(collective_ops, ", ", Formatter());
+  };
+
+  // Custom parser for xla_gpu_disable_async_collectives.
+  auto setter_for_xla_gpu_disable_async_collectives =
+      [debug_options](const absl::string_view& input) {
+        auto is_collective_type = [](absl::string_view value) {
+          DebugOptions::CollectiveOpType op_type;
+          return DebugOptions::CollectiveOpType_Parse(
+              absl::AsciiStrToUpper(value), &op_type);
+        };
+
+        auto parse_collective_type = [](absl::string_view value) {
+          DebugOptions::CollectiveOpType op_type;
+          DebugOptions::CollectiveOpType_Parse(absl::AsciiStrToUpper(value),
+                                               &op_type);
+          return op_type;
+        };
+
+        std::vector<absl::string_view> values = absl::StrSplit(input, ',');
+
+        // Overwrite a set of supported commands with a flag.
+        if (absl::c_all_of(values, is_collective_type)) {
+          debug_options->clear_xla_gpu_disable_async_collectives();
+          for (const absl::string_view value : values) {
+            debug_options->add_xla_gpu_disable_async_collectives(
+                parse_collective_type(value));
+          }
+          return true;
+        }
+
+        // Return an error if flag value was not recognized as one of the
+        // supported modes.
+        return false;
+      };
   // Don't use an initializer list for initializing the vector; this would
   // create a temporary copy, and exceeds the stack space when compiling with
   // certain configurations.
@@ -982,42 +1016,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_deterministic_ops(),
                 "Guarantees run-to-run determinism on GPU."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_async_collectives",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_collectives),
-      debug_options->xla_gpu_enable_async_collectives(),
-      "Converts synchronous collective ops into asynchronous."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_async_all_reduce",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_all_reduce),
-      debug_options->xla_gpu_enable_async_all_reduce(),
-      "Converts synchronous all-reduce ops into asynchronous."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_async_collective_broadcast",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_enable_async_collective_broadcast),
-      debug_options->xla_gpu_enable_async_collective_broadcast(),
-      "Converts synchronous collective-broadcast ops into asynchronous."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_async_collective_permute",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_enable_async_collective_permute),
-      debug_options->xla_gpu_enable_async_collective_permute(),
-      "Converts synchronous collective-permute ops into asynchronous."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_async_all_gather",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_all_gather),
-      debug_options->xla_gpu_enable_async_all_gather(),
-      "Converts synchronous all-gather ops into asynchronous."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_async_reduce_scatter",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_reduce_scatter),
-      debug_options->xla_gpu_enable_async_reduce_scatter(),
-      "Converts synchronous reduce-scatter ops into asynchronous."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_async_all_to_all",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_all_to_all),
-      debug_options->xla_gpu_enable_async_all_to_all(),
-      "Converts synchronous all-to-all ops into asynchronous."));
+      "xla_gpu_disable_async_collectives",
+      setter_for_xla_gpu_disable_async_collectives,
+      collective_op_types_to_string(
+          debug_options->xla_gpu_disable_async_collectives()),
+      "This disables a certain set of async collectives and turn them into"
+      " synchornous ones. By default, this is empty which indicates enabling"
+      " async execution for all collectives. A sample usage is: "
+      " --xla_gpu_disable_async_collectives=ALLREDUCE,REDUCESCATTER"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_all_reduce_combine_threshold_bytes",
       int64_setter_for(
@@ -1480,10 +1486,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_triton_fusion_level(),
       "Triton fusion level, higher levels mean more fused operations."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_dump_autotuned_triton_fusions",
-      bool_setter_for(&DebugOptions::set_xla_gpu_dump_autotuned_triton_fusions),
-      debug_options->xla_gpu_dump_autotuned_triton_fusions(),
-      "Dumps autotuned Triton fusions to the directory specified by "
+      "xla_gpu_dump_autotuned_gemm_fusions",
+      bool_setter_for(&DebugOptions::set_xla_gpu_dump_autotuned_gemm_fusions),
+      debug_options->xla_gpu_dump_autotuned_gemm_fusions(),
+      "Dumps autotuned GEMM fusions to the directory specified by "
       "xla_dump_to or stdout. Each fusion is dumped only once, as an optimized "
       "HLO."));
   flag_list->push_back(tsl::Flag(
@@ -1521,7 +1527,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       tsl::Flag("xla_gpu_cublas_fallback",
                 bool_setter_for(&DebugOptions::set_xla_gpu_cublas_fallback),
                 debug_options->xla_gpu_cublas_fallback(),
-                "Allow Triton GEMM autotuning to fall back to cuBLAS when that "
+                "Allow GEMM fusion autotuning to fall back to cuBLAS when that "
                 "is faster."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_cudnn_gemm_fusion_level",
@@ -1660,7 +1666,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_gemm_rewrite_size_threshold",
       int64_setter_for(&DebugOptions::set_xla_gpu_gemm_rewrite_size_threshold),
       debug_options->xla_gpu_gemm_rewrite_size_threshold(),
-      "Threshold to rewrite matmul to cuBLAS or Triton "
+      "Threshold until which elemental dot emitter is preferred for GEMMs "
       "(minumum combined number of elements of both matrices "
       "in non-batch dimensions to be considered for a rewrite)."));
   flag_list->push_back(tsl::Flag(

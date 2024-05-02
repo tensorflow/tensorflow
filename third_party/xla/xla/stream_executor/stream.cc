@@ -51,7 +51,7 @@ absl::Status Stream::Initialize(
     return absl::InternalError(
         "stream appears to already have been initialized");
   }
-  implementation_ = parent_->implementation()->GetStreamImplementation();
+  implementation_ = parent_->GetStreamImplementation();
   if (priority.has_value()) {
     if (std::holds_alternative<StreamPriority>(*priority)) {
       implementation_->SetPriority(std::get<StreamPriority>(*priority));

@@ -67,6 +67,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Visitors.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/ChloOps.h"
@@ -91,7 +92,7 @@ static constexpr char kFusionFunctionLabel[] = "fusion";
 static Value materializeToTensor(OpBuilder& builder, TensorType type,
                                  ValueRange inputs, Location loc) {
   assert(inputs.size() == 1);
-  assert(inputs[0].getType().isa<BaseMemRefType>());
+  assert(mlir::isa<BaseMemRefType>(inputs[0].getType()));
   return builder.create<bufferization::ToTensorOp>(loc, type, inputs[0]);
 }
 
@@ -120,11 +121,11 @@ class CustomBufferizeTypeConverter
       // a memref with a specified layout, i.e. non-empty affine map.
       // TODO(pifon) : Change how target materialization is invoked in dialect
       // conversion.
-      if (auto memrefType = inputs[0].getType().dyn_cast<MemRefType>()) {
+      if (auto memrefType = mlir::dyn_cast<MemRefType>(inputs[0].getType())) {
         assert(!memrefType.getLayout().isIdentity());
         return inputs[0];
       }
-      assert(inputs[0].getType().isa<TensorType>());
+      assert(mlir::isa<TensorType>(inputs[0].getType()));
       return builder.create<bufferization::ToMemrefOp>(loc, type, inputs[0]);
     });
   }

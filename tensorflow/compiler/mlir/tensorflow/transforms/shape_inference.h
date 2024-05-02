@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -42,8 +44,18 @@ Type GetNewArgType(Type old_arg_type, ArrayRef<int64_t> shape,
 // whose type is in ops_to_skip.
 // Returns a failure() on error, otherwise returns true to indicate that it
 // reached convergence, false otherwise.
+// If input shapes are provided, first refines the `main` function using
+// InferShapeForFunction.
 FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations = 10,
-                                 ArrayRef<TypeID> ops_to_skip = {});
+                                 ArrayRef<TypeID> ops_to_skip = {},
+                                 ArrayRef<ArrayRef<int64_t>> input_shapes = {});
+
+// Given a tensorflow NodeShape string, returns a vector of argument shapes
+// that can be used with InferShapeForFunction.
+// TF NodeShape uses `,` to separate dimensions, and `:` to separate arguments.
+// Ex: 1,2:3,4,5:6,? --> [[1, 2], [3, 4, 5], [6, ?]]
+absl::StatusOr<SmallVector<SmallVector<int64_t>>> ParseArgumentShapes(
+    absl::string_view input_shapes);
 
 // Given a list of refined shapes matching the function arguments of func, runs
 // shape inference over the function to propagate this updated information,

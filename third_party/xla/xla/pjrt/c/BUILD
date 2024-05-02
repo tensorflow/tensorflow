@@ -1,4 +1,8 @@
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
+load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
@@ -37,6 +41,15 @@ cc_library(
 cc_library(
     name = "pjrt_c_api_gpu_extension_hdrs",
     hdrs = ["pjrt_c_api_gpu_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
+    name = "pjrt_c_api_stream_extension_hdrs",
+    hdrs = ["pjrt_c_api_stream_extension.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_hdrs",
@@ -192,6 +205,7 @@ cc_library(
     name = "pjrt_c_api_gpu_internal",
     srcs = ["pjrt_c_api_gpu_internal.cc"],
     hdrs = ["pjrt_c_api_gpu_internal.h"],
+    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_custom_partitioner_extension_hdrs",
@@ -199,6 +213,7 @@ cc_library(
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_profiler_extension_hdrs",
+        ":pjrt_c_api_stream_extension_hdrs",
         ":pjrt_c_api_wrapper_impl",
         "//xla/backends/profiler/gpu:device_tracer",  # To register the GPU Tracers with the GPU Plugin".
         "//xla/backends/profiler/plugin:plugin_tracer_impl",
@@ -263,6 +278,8 @@ xla_cc_binary(
         "//xla/service:gpu_plugin",
     ] + if_cuda_is_configured([
         "//xla/stream_executor:cuda_platform",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor:rocm_platform",
     ]),
 )
 
@@ -284,7 +301,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:status",
     ],
 )
@@ -396,7 +413,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:status",
     ],
 )

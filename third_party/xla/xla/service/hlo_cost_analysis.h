@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_format.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -331,6 +332,28 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       }
     }
 
+    std::string ToString() const {
+      return absl::StrFormat(
+          "HloCostAnalysis::Properties{\n"
+          " flops: %f,\n"
+          " transcendentals: %f\n"
+          " bytes_accessed: %f\n"
+          " optimal_seconds: %f\n"
+          " utilization: %f\n"
+          " operand0_utilization: %f\n"
+          " operand1_utilization: %f\n"
+          " operand0_bytes_accessed: %f\n"
+          " operand1_bytes_accessed: %f\n"
+          " output_root_bytes_accessed: %f\n"
+          " reserved0: %f\n"
+          " reserved1: %f\n"
+          "}",
+          flops_, transcendentals_, bytes_accessed_, optimal_seconds_,
+          utilization_, operand0_utilization_, operand1_utilization_,
+          operand0_bytes_accessed_, operand1_bytes_accessed_,
+          output_root_bytes_accessed_, reserved0_, reserved1_);
+    }
+
    private:
     // These must match GetOperandUtilizationKey(0, {}) etc.
     static inline constexpr absl::string_view kOperand0UtilizationKey =
@@ -401,6 +424,15 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     // Returns the specified per-second rate used by cost analysis.
     float per_second_rate(absl::string_view key) const {
       return per_second_rates[key];
+    }
+
+    std::string ToString() const {
+      return absl::StrFormat(
+          "HloCostAnalysis::Options{\n"
+          " per_second_rates: %s\n"
+          " count_multiple_input_accesses: %d\n"
+          "}",
+          per_second_rates.ToString(), count_multiple_input_accesses);
     }
   };
 

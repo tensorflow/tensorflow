@@ -716,6 +716,7 @@ cc_library(
         "//learning/deepmind/tensorflow/queues:__pkg__",
         "//learning/deepmind/tensorflow/sstable:__pkg__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__pkg__",
+        "//waymo/ml/compiler/frontend/kernels:__pkg__",
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",

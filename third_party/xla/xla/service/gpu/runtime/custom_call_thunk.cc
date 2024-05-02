@@ -172,8 +172,22 @@ absl::StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
   for (auto& kv : dict) {
     std::string_view name = kv.getName().strref();
 
+    auto boolean = [&](mlir::BoolAttr boolean) {
+      attributes[name] = static_cast<bool>(boolean.getValue());
+      return absl::OkStatus();
+    };
+
     auto integer = [&](mlir::IntegerAttr integer) {
       switch (integer.getType().getIntOrFloatBitWidth()) {
+        case 1:
+          attributes[name] = static_cast<bool>(integer.getInt());
+          return absl::OkStatus();
+        case 8:
+          attributes[name] = static_cast<int8_t>(integer.getInt());
+          return absl::OkStatus();
+        case 16:
+          attributes[name] = static_cast<int16_t>(integer.getInt());
+          return absl::OkStatus();
         case 32:
           attributes[name] = static_cast<int32_t>(integer.getInt());
           return absl::OkStatus();
@@ -191,6 +205,10 @@ absl::StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
         case 32:
           attributes[name] = static_cast<float>(fp.getValue().convertToFloat());
           return absl::OkStatus();
+        case 64:
+          attributes[name] =
+              static_cast<double>(fp.getValue().convertToDouble());
+          return absl::OkStatus();
         default:
           return absl::InvalidArgumentError(absl::StrCat(
               "Unsupported float attribute bit width for attribute: ", name));
@@ -198,16 +216,28 @@ absl::StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
     };
 
     auto arr = [&](mlir::DenseArrayAttr arr) {
-      if (auto dense = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(arr)) {
+      if (auto dense = mlir::dyn_cast<mlir::DenseI8ArrayAttr>(arr)) {
+        attributes[name] = dense.asArrayRef().vec();
+        return absl::OkStatus();
+      } else if (auto dense = mlir::dyn_cast<mlir::DenseI16ArrayAttr>(arr)) {
+        attributes[name] = dense.asArrayRef().vec();
+        return absl::OkStatus();
+      } else if (auto dense = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(arr)) {
         attributes[name] = dense.asArrayRef().vec();
         return absl::OkStatus();
       } else if (auto dense = mlir::dyn_cast<mlir::DenseI64ArrayAttr>(arr)) {
         attributes[name] = dense.asArrayRef().vec();
         return absl::OkStatus();
+      } else if (auto dense = mlir::dyn_cast<mlir::DenseF32ArrayAttr>(arr)) {
+        attributes[name] = dense.asArrayRef().vec();
+        return absl::OkStatus();
+      } else if (auto dense = mlir::dyn_cast<mlir::DenseF64ArrayAttr>(arr)) {
+        attributes[name] = dense.asArrayRef().vec();
+        return absl::OkStatus();
+      } else {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Unsupported array element type for attribute: ", name));
       }
-
-      return absl::InvalidArgumentError(
-          absl::StrCat("Unsupported array element type for attribute: ", name));
     };
 
     auto str = [&](mlir::StringAttr str) {
@@ -217,6 +247,7 @@ absl::StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
 
     TF_RETURN_IF_ERROR(
         llvm::TypeSwitch<mlir::Attribute, Status>(kv.getValue())
+            .Case<mlir::BoolAttr>(boolean)
             .Case<mlir::IntegerAttr>(integer)
             .Case<mlir::FloatAttr>(fp)
             .Case<mlir::DenseArrayAttr>(arr)

@@ -275,13 +275,11 @@ class GpuPriorityFusionQueue {
   // Invalidates all cached value related to this instruction. Called before the
   // instruction is fused. The instruction can be either producer or consumer.
   void InvalidateCaches(HloInstruction* instruction) {
-    HloInstructionAdaptor instruction_adaptor(*instruction);
-
-    can_fuse_cache_.erase(instruction_adaptor);
-    for (auto operand : instruction_adaptor.GetOperands()) {
+    can_fuse_cache_.erase(instruction);
+    for (const HloInstruction* operand : instruction->operands()) {
       auto it = can_fuse_cache_.find(operand);
       if (it != can_fuse_cache_.end()) {
-        it->second.erase(instruction_adaptor);
+        it->second.erase(instruction);
       }
     }
 
@@ -533,14 +531,11 @@ class GpuPriorityFusionQueue {
 
   FusionDecision CanFuseCached(HloInstruction* producer,
                                HloInstruction* consumer) {
-    HloInstructionAdaptor producer_adaptor(*producer);
-    HloInstructionAdaptor consumer_adaptor(*consumer);
-
     {
       absl::MutexLock lock(&can_fuse_cache_mutex_);
-      auto& producer_cache = can_fuse_cache_[producer_adaptor];
+      auto& producer_cache = can_fuse_cache_[producer];
 
-      auto it = producer_cache.find(consumer_adaptor);
+      auto it = producer_cache.find(consumer);
       if (it != producer_cache.end()) {
         return it->second;
       }
@@ -554,7 +549,7 @@ class GpuPriorityFusionQueue {
     // override any value.
     {
       absl::MutexLock lock(&can_fuse_cache_mutex_);
-      can_fuse_cache_[producer_adaptor][consumer_adaptor] = fusion_decision;
+      can_fuse_cache_[producer][consumer] = fusion_decision;
     }
 
     return fusion_decision;
@@ -625,8 +620,8 @@ class GpuPriorityFusionQueue {
   // Caches result of can_fuse for a (producer, consumer) pair. A cache entry is
   // invalidated if producer or consumer is modified.
   absl::flat_hash_map<
-      HloInstructionAdaptor,
-      absl::flat_hash_map<HloInstructionAdaptor, FusionDecision>>
+      const HloInstruction*,
+      absl::flat_hash_map<const HloInstruction*, FusionDecision>>
       can_fuse_cache_;
   absl::Mutex can_fuse_cache_mutex_;
 

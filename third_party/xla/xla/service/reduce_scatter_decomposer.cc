@@ -64,7 +64,7 @@ absl::StatusOr<bool> ReduceScatterDecomposer::Run(
       HloInstruction *ar =
           computation->AddInstruction(HloInstruction::CreateAllReduce(
               rs->operand(0)->shape(), rs->operands(), apply_clone,
-              rs->replica_groups(), rs->constrain_layout(), channel_id,
+              rs->device_list(), rs->constrain_layout(), channel_id,
               rs->use_global_device_ids()));
       apply_clone->SetCollectiveCallInstruction(ar);
 

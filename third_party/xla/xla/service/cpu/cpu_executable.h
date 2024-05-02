@@ -92,19 +92,6 @@ class XlaRuntimeCpuExecutable {
     return std::string_view(obj_file->getBuffer());
   }
 
-  absl::StatusOr<std::string_view> GetMlirModule() const {
-    if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
-            executable_)) {
-      return Internal("No JitExecutable");
-    }
-
-    runtime::JitExecutable* jit_executable =
-        std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
-    return jit_executable->mlir_module();
-  }
-
-  XlaFrameworkMapping xla_framework_mapping() { return xla_framework_mapping_; }
-
  private:
   // In JIT compilation mode `JitExecutable` is used. In AOT compilation mode
   // `Executable` is used.
@@ -161,15 +148,6 @@ class CpuExecutable : public Executable {
       absl::Span<MaybeOwningDeviceMemory const> buffers,
       HloExecutionProfile* hlo_execution_profile);
 
-  // Returns an Executable that is loaded from an object file (XLA program
-  // compiled to a native function using the XLA Runtime stack).
-  static absl::StatusOr<std::unique_ptr<Executable>> LoadFromObjFile(
-      std::unique_ptr<HloModule> hlo_module, absl::string_view obj_file,
-      absl::string_view mlir_module,
-      std::unique_ptr<BufferAssignment> buffer_assignment,
-      XlaFrameworkMapping xla_framework_mapping,
-      runtime::JitExecutable::Options opts);
-
   absl::Span<const std::string> obj_files() const { return obj_files_; }
 
   void set_obj_files(std::vector<std::string> obj_files) {
@@ -200,21 +178,6 @@ class CpuExecutable : public Executable {
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
-
-  absl::StatusOr<std::string_view> GetObjFile() const {
-    if (!IsXlaRuntime()) return Unimplemented("Not an XLA Runtime executable");
-    return xla_runtime_executable_->GetObjFile();
-  }
-
-  absl::StatusOr<std::string_view> GetMlirModule() const {
-    if (!IsXlaRuntime()) return Unimplemented("Not an XLA Runtime executable");
-    return xla_runtime_executable_->GetMlirModule();
-  }
-
-  absl::StatusOr<XlaFrameworkMapping> GetXlaFrameworkMapping() const {
-    if (!IsXlaRuntime()) return Unimplemented("Not an XLA Runtime executable");
-    return xla_runtime_executable_->xla_framework_mapping();
-  }
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the

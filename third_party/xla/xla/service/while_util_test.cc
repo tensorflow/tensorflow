@@ -18,10 +18,10 @@ limitations under the License.
 #include <memory>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"

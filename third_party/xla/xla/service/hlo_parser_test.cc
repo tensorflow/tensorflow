@@ -5286,5 +5286,25 @@ TEST_F(HloParserTest, PipelinedSendRecv) {
   EXPECT_EQ(OkStatus(), result.status());
 }
 
+TEST_F(HloParserTest, ReplicaIdWithLayout) {
+  const char* const hlo_string = R"(
+  HloModule ReplicaId
+
+  ENTRY ReplicaId {
+    ROOT replica-id.18600 = u32[]{:T(128)} replica-id()
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_TRUE(
+      module->entry_computation()->root_instruction()->shape().has_layout());
+  EXPECT_FALSE(module->entry_computation()
+                   ->root_instruction()
+                   ->shape()
+                   .layout()
+                   .tiles()
+                   .empty());
+}
+
 }  // namespace
 }  // namespace xla

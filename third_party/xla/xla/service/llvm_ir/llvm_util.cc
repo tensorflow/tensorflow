@@ -76,6 +76,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/logging.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -725,6 +726,10 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   if (!DumpingEnabledForHloModule(hlo_module)) {
     return;
   }
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaDumpLlvmIr:#module=%s,program_id=%d#",
+                           hlo_module.name(), hlo_module.unique_id());
+  });
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.

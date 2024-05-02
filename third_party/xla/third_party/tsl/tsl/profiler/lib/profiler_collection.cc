@@ -29,24 +29,25 @@ ProfilerCollection::ProfilerCollection(
     std::vector<std::unique_ptr<ProfilerInterface>> profilers)
     : profilers_(std::move(profilers)) {}
 
-Status ProfilerCollection::Start() {
-  Status status;
+absl::Status ProfilerCollection::Start() {
+  absl::Status status;
   for (auto& profiler : profilers_) {
     status.Update(profiler->Start());
   }
   return status;
 }
 
-Status ProfilerCollection::Stop() {
-  Status status;
+absl::Status ProfilerCollection::Stop() {
+  absl::Status status;
   for (auto& profiler : profilers_) {
     status.Update(profiler->Stop());
   }
   return status;
 }
 
-Status ProfilerCollection::CollectData(tensorflow::profiler::XSpace* space) {
-  Status status;
+absl::Status ProfilerCollection::CollectData(
+    tensorflow::profiler::XSpace* space) {
+  absl::Status status;
   for (auto& profiler : profilers_) {
     status.Update(profiler->CollectData(space));
   }

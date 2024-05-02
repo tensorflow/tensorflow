@@ -47,7 +47,7 @@ bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
 
 mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
-    bool import_all_computations) {
+    bool import_all_computations, bool flatten_computation_args_result) {
   HloProto hlo_proto;
   std::string content(input.data(), input.size());
   if (!LoadHloProto(content, &hlo_proto)) {
@@ -58,7 +58,8 @@ mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
   mlir::OwningOpRef<mlir::ModuleOp> module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
   auto status = ConvertHloToMlirHlo(
-      module.get(), hlo_proto.mutable_hlo_module(), import_all_computations);
+      module.get(), hlo_proto.mutable_hlo_module(), import_all_computations,
+      flatten_computation_args_result);
   if (!status.ok()) {
     LOG(ERROR) << "Hlo module import failed: " << status;
     return nullptr;
@@ -69,7 +70,7 @@ mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
 
 mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
-    bool import_all_computations) {
+    bool import_all_computations, bool flatten_computation_args_result) {
   std::string content(input.data(), input.size());
 
   auto hlo_module_error = ParseAndReturnUnverifiedModule(content);
@@ -82,7 +83,8 @@ mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
   mlir::OwningOpRef<mlir::ModuleOp> module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
   auto status =
-      ConvertHloToMlirHlo(*module, hlo_module.get(), import_all_computations);
+      ConvertHloToMlirHlo(*module, hlo_module.get(), import_all_computations,
+                          flatten_computation_args_result);
   if (!status.ok()) {
     LOG(ERROR) << "HLO Module import failed: " << status;
     return nullptr;

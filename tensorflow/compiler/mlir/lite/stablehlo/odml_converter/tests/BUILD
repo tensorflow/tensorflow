@@ -21,5 +21,6 @@ filegroup(
     data = [
         "//tensorflow/compiler/mlir/lite/stablehlo/odml_converter:odml-converter",
         "@llvm-project//llvm:FileCheck",
+        "@llvm-project//mlir:run_lit.sh",
     ],
 )

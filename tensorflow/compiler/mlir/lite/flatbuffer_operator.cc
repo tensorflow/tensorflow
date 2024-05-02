@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -176,7 +178,7 @@ ConvertI64ArrayAttrForOptionWriter(mlir::ArrayAttr attrArray,
   std::vector<int32_t> intVec;
   intVec.reserve(attrArray.getValue().size());
   for (auto attr : attrArray.getValue()) {
-    intVec.push_back(attr.cast<mlir::IntegerAttr>().getInt());
+    intVec.push_back(mlir::cast<mlir::IntegerAttr>(attr).getInt());
   }
   return builder->CreateVector(intVec);
 }
@@ -188,7 +190,7 @@ ConvertF32ArrayAttrForOptionWriter(mlir::ArrayAttr attrArray,
   floatVec.reserve(attrArray.getValue().size());
   for (auto attr : attrArray.getValue()) {
     floatVec.push_back(
-        attr.cast<mlir::FloatAttr>().getValue().convertToFloat());
+        mlir::cast<mlir::FloatAttr>(attr).getValue().convertToFloat());
   }
   return builder->CreateVector(floatVec);
 }
@@ -301,6 +303,21 @@ static mlir::Attribute BuildVhloArrayV1Attr(std::vector<mlir::Attribute> value,
   return mlir::vhlo::ArrayV1Attr::get(builder.getContext(), value);
 }
 
+static mlir::Attribute BuildVhloDictionaryV1Attr(
+    std::vector<std::pair<mlir::Attribute, mlir::Attribute>> value,
+    mlir::Builder builder) {
+  return mlir::vhlo::DictionaryV1Attr::get(builder.getContext(), value);
+}
+
+static mlir::Attribute BuildVhloFloatV1Attr(float value,
+                                            mlir::Builder builder) {
+  mlir::StablehloVhloTypeConverter type_converter;
+  auto vhlo_type =
+      type_converter.convertType(builder.getF32FloatAttr(value).getType());
+  return mlir::vhlo::FloatV1Attr::get(builder.getContext(), vhlo_type,
+                                      ::llvm::APFloat(value));
+}
+
 static mlir::Attribute BuildRankedTensorAttr(std::vector<int64_t> shape,
                                              std::vector<bool> value,
                                              mlir::Builder builder) {
@@ -327,8 +344,8 @@ static mlir::Attribute BuildVhloTensorV1Attr(std::vector<int64_t> shape,
                                              std::vector<int64_t> value,
                                              mlir::Builder builder) {
   mlir::StablehloVhloTypeConverter type_converter;
-  auto builtin_attr = BuildRankedTensorAttr(shape, value, builder)
-                          .dyn_cast<mlir::DenseIntElementsAttr>();
+  auto builtin_attr = mlir::dyn_cast<mlir::DenseIntElementsAttr>(
+      BuildRankedTensorAttr(shape, value, builder));
   auto vhlo_type = type_converter.convertType(builtin_attr.getType());
   return mlir::vhlo::TensorV1Attr::get(builder.getContext(), vhlo_type,
                                        builtin_attr.getRawData());
@@ -338,8 +355,8 @@ static mlir::Attribute BuildVhloTensorV1Attr(std::vector<int64_t> shape,
                                              std::vector<bool> value,
                                              mlir::Builder builder) {
   mlir::StablehloVhloTypeConverter type_converter;
-  auto builtin_attr = BuildRankedTensorAttr(shape, value, builder)
-                          .dyn_cast<mlir::DenseIntElementsAttr>();
+  auto builtin_attr = mlir::dyn_cast<mlir::DenseIntElementsAttr>(
+      BuildRankedTensorAttr(shape, value, builder));
   auto vhlo_type = type_converter.convertType(builtin_attr.getType());
   return mlir::vhlo::TensorV1Attr::get(builder.getContext(), vhlo_type,
                                        builtin_attr.getRawData());
@@ -414,6 +431,33 @@ static mlir::Attribute BuildTFL_MirrorPaddingAttr(tflite::MirrorPadMode value,
       break;
   }
   return mlir::TFL::MirrorPaddingTypeAttr::get(builder.getContext(), padding);
+}
+
+static std::vector<mlir::Attribute> BuildAttributeVectorFromFlatbuffer(
+    flexbuffers::Vector flatbuffer_vector, mlir::Builder builder) {
+  std::vector<mlir::Attribute> mlir_vector;
+
+  for (int i = 0; i < flatbuffer_vector.size(); ++i) {
+    auto value = flatbuffer_vector[i];
+
+    if (value.IsBool()) {
+      mlir_vector.push_back(BuildVhloBooleanV1Attr(value.AsBool(), builder));
+    } else if (value.IsString()) {
+      mlir_vector.push_back(
+          BuildVhloStringV1Attr(value.AsString().str(), builder));
+    } else if (value.IsInt()) {
+      mlir_vector.push_back(BuildVhloIntV1Attr(value.AsInt64(), builder));
+    } else if (value.IsFloat()) {
+      mlir_vector.push_back(BuildVhloFloatV1Attr(value.AsFloat(), builder));
+    } else if (value.IsVector()) {
+      std::vector<mlir::Attribute> nested_mlir_vector =
+          BuildAttributeVectorFromFlatbuffer(value.AsVector(), builder);
+      mlir_vector.push_back(
+          BuildVhloArrayV1Attr(std::move(nested_mlir_vector), builder));
+    }
+  }
+
+  return mlir_vector;
 }
 
 static mlir::Attribute BuildTFL_PaddingAttr(tflite::Padding value,
@@ -613,8 +657,6 @@ void BuiltinOptions2ToAttributesManual(
     bool has_side_effect_set = false;
     const flexbuffers::Map& computation_map =
         flexbuffers::GetRoot(op->custom_attributes).AsMap();
-    std::vector<mlir::Attribute> symbol_vec;
-    symbol_vec.reserve(computation_map.size());
     const auto& keys = computation_map.Keys();
     for (size_t i = 0; i < keys.size(); ++i) {
       const auto key = keys[i].AsKey();
@@ -636,6 +678,61 @@ void BuiltinOptions2ToAttributesManual(
     if (!has_side_effect_set)
       attributes.emplace_back(builder.getNamedAttr(
           "has_side_effect", BuildVhloBooleanV1Attr(false, builder)));
+    return;
+  }
+  if (const auto* op = op_union.AsStableHLOCompositeOptions()) {
+    attributes.emplace_back(
+        builder.getNamedAttr("name", BuildVhloStringV1Attr(op->name, builder)));
+
+    attributes.emplace_back(builder.getNamedAttr(
+        "version", BuildVhloIntV1Attr(op->version, builder)));
+
+    auto composite_attribute_pairs =
+        std::vector<std::pair<mlir::Attribute, mlir::Attribute>>();
+
+    auto composite_attributes =
+        flexbuffers::GetRoot(op->composite_attributes).AsMap();
+
+    const auto& keys = composite_attributes.Keys();
+    for (size_t i = 0; i < keys.size(); ++i) {
+      const auto key = keys[i].AsKey();
+      const auto& value = composite_attributes[key];
+
+      std::pair<mlir::Attribute, mlir::Attribute> composite_attribute_pair;
+      composite_attribute_pair.first = BuildVhloStringV1Attr(key, builder);
+
+      if (value.IsBool()) {
+        composite_attribute_pair.second =
+            BuildVhloBooleanV1Attr(value.AsBool(), builder);
+      }
+      if (value.IsString()) {
+        composite_attribute_pair.second =
+            BuildVhloStringV1Attr(value.AsString().str(), builder);
+      }
+      if (value.IsInt()) {
+        composite_attribute_pair.second =
+            BuildVhloIntV1Attr(value.AsInt64(), builder);
+      }
+      if (value.IsFloat()) {
+        composite_attribute_pair.second =
+            BuildVhloFloatV1Attr(value.AsFloat(), builder);
+      }
+
+      if (value.IsVector()) {
+        std::vector<mlir::Attribute> mlir_vector =
+            BuildAttributeVectorFromFlatbuffer(value.AsVector(), builder);
+
+        composite_attribute_pair.second =
+            BuildVhloArrayV1Attr(std::move(mlir_vector), builder);
+      }
+
+      composite_attribute_pairs.emplace_back(composite_attribute_pair);
+    }
+
+    attributes.emplace_back(builder.getNamedAttr(
+        "composite_attributes",
+        BuildVhloDictionaryV1Attr(std::move(composite_attribute_pairs),
+                                  builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloPadOptions()) {

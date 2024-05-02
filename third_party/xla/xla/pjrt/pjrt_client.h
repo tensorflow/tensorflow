@@ -641,10 +641,23 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) = 0;
 
-  // Creates buffer that carries an error future without allocating memory.
+  // Creates buffer in the given memory space that carries an error future
+  // without allocating memory.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      Status error, const Shape& shape, PjRtMemorySpace* memory) {
+    return Unimplemented("CreateErrorBuffer not supported.");
+  }
+
+  // Creates buffer in the given device that carries an error future without
+  // allocating memory.
+  ABSL_DEPRECATED("Use CreateErrorBuffer(Status, Shape, PjRtMemorySpace*)")
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       Status error, const Shape& shape, PjRtDevice* device) {
-    return Unimplemented("CreateErrorBuffer not supported.");
+    auto default_memory_space = device->default_memory_space();
+    if (!default_memory_space.ok()) {
+      return default_memory_space.status();
+    }
+    return CreateErrorBuffer(std::move(error), shape, *default_memory_space);
   }
 
   // Gets the pointer to the topology description held by the client.
@@ -1192,7 +1205,7 @@ class PjRtBuffer {
   // before `dst` is fulfilled.
   //
   // Note that the default implementation will block until `dst` is fulfilled.
-  virtual PjRtFuture<> CopyRawToHostFuture(PjRtFuture<StatusOr<void*>> dst,
+  virtual PjRtFuture<> CopyRawToHostFuture(PjRtFuture<void*> dst,
                                            int64_t offset,
                                            int64_t transfer_size);
 
@@ -1282,9 +1295,8 @@ class PjRtBuffer {
   // comment for PjRtClient.
   using RemoteSendCallback =
       std::function<void(Status status, bool sends_were_enqueued)>;
-  virtual void CopyToRemoteDevice(
-      PjRtFuture<StatusOr<std::string>> serialized_descriptor,
-      RemoteSendCallback on_done) = 0;
+  virtual void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+                                  RemoteSendCallback on_done) = 0;
   struct ScatterDetails {
     // The dimensions of the corresponding buffer that the scatter slices
     // across. These dimensions must be the major dimensions in the on-device
@@ -1308,7 +1320,7 @@ class PjRtBuffer {
   // `calbacks.size()` and (if Ok) `serialized_descriptors.size()` match the
   // product of the major dimensions specified in `scatter_details`.
   virtual void CopyToRemoteDeviceScattered(
-      PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
+      PjRtFuture<std::vector<std::string>> serialized_descriptors,
       std::vector<RemoteSendCallback> callbacks,
       const ScatterDetails& scatter_details) = 0;
 
@@ -1323,15 +1335,6 @@ class PjRtBuffer {
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
       PjRtFuture<> dependency) {
     return Unimplemented("DonateWithControlDependency is not supported.");
-  }
-
-  // TODO(b/333538339): Delete this adaptor once all users migrate from
-  // PjRtFuture<Status> to PjRtFuture<>.
-  StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
-      PjRtFuture<Status> dependency) {
-    PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-    dependency.OnReady([promise](Status s) mutable { promise.Set(s); });
-    return DonateWithControlDependency(PjRtFuture<>(std::move(promise)));
   }
 
   // Helper to allow a caller to indicate that it is going to do some "sends"

@@ -73,7 +73,7 @@ bool IsI8ToF32Cast(stablehlo::ConvertOp convert_op) {
   const bool is_i8_operand =
       convert_op.getOperand().getType().getElementType().isInteger(/*width=*/8);
   const bool is_f32_result =
-      convert_op.getResult().getType().getElementType().isa<Float32Type>();
+      mlir::isa<Float32Type>(convert_op.getResult().getType().getElementType());
   return is_i8_operand && is_f32_result;
 }
 
@@ -92,7 +92,7 @@ bool IsI32ToF32Cast(stablehlo::ConvertOp convert_op) {
       convert_op.getOperand().getType().getElementType().isInteger(
           /*width=*/32);
   const bool is_f32_result =
-      convert_op.getResult().getType().getElementType().isa<Float32Type>();
+      mlir::isa<Float32Type>(convert_op.getResult().getType().getElementType());
   return is_i32_operand && is_f32_result;
 }
 
@@ -104,7 +104,8 @@ LogicalResult MatchZeroPointsOperand(Value zero_points) {
     return failure();
   }
 
-  auto zero_points_type = zero_points.getType().dyn_cast_or_null<TensorType>();
+  auto zero_points_type =
+      mlir::dyn_cast_or_null<TensorType>(zero_points.getType());
   if (!zero_points_type) {
     LLVM_DEBUG(llvm::dbgs() << "Zero point value should be a tensor type. Got: "
                             << zero_points_type << ".\n");
@@ -112,7 +113,7 @@ LogicalResult MatchZeroPointsOperand(Value zero_points) {
   }
 
   if (Type zero_points_element_type = zero_points_type.getElementType();
-      !zero_points_element_type.isa<IntegerType>()) {
+      !mlir::isa<IntegerType>(zero_points_element_type)) {
     LLVM_DEBUG(llvm::dbgs() << "Zero point should be an integer type. Got: "
                             << zero_points_element_type << ".\n");
     return failure();
@@ -146,7 +147,7 @@ LogicalResult MatchInverseScalesOperand(Value inverse_scales) {
   }
 
   auto inverse_scales_type =
-      inverse_scales.getType().dyn_cast_or_null<TensorType>();
+      mlir::dyn_cast_or_null<TensorType>(inverse_scales.getType());
   if (!inverse_scales_type) {
     LLVM_DEBUG(llvm::dbgs() << "Inverse scales should be a tensor type. Got: "
                             << inverse_scales_type << ".\n");
@@ -154,7 +155,7 @@ LogicalResult MatchInverseScalesOperand(Value inverse_scales) {
   }
 
   if (Type inverse_scales_element_type = inverse_scales_type.getElementType();
-      !inverse_scales_element_type.isa<FloatType>()) {
+      !mlir::isa<FloatType>(inverse_scales_element_type)) {
     LLVM_DEBUG(llvm::dbgs()
                << "Inverse scales element should be a float type. Got: "
                << inverse_scales_element_type << ".\n");
@@ -207,7 +208,7 @@ class UniformQuantizeFunctionCallPattern {
     }
 
     auto input_value_type =
-        input_value.getType().dyn_cast_or_null<TensorType>();
+        mlir::dyn_cast_or_null<TensorType>(input_value.getType());
     if (!input_value_type) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to match @uniform_quantize function call pattern. "
@@ -216,7 +217,7 @@ class UniformQuantizeFunctionCallPattern {
     }
 
     if (Type input_element_type = input_value_type.getElementType();
-        !input_element_type.isa<FloatType>()) {
+        !mlir::isa<FloatType>(input_element_type)) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to match @uniform_quantize function call pattern. "
                     "Input value's element type must be a float. Got: "
@@ -299,7 +300,7 @@ class UniformDequantizeFunctionCallPattern {
     }
 
     auto input_value_type =
-        input_value.getType().dyn_cast_or_null<TensorType>();
+        mlir::dyn_cast_or_null<TensorType>(input_value.getType());
     if (!input_value_type) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to match @uniform_dequantize call pattern. Input "
@@ -309,7 +310,7 @@ class UniformDequantizeFunctionCallPattern {
     }
 
     if (Type input_element_type = input_value_type.getElementType();
-        !input_element_type.isa<IntegerType>()) {
+        !mlir::isa<IntegerType>(input_element_type)) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to match @uniform_dequantize call pattern. Input "
                     "value's element type must be integer. Got: "
@@ -433,8 +434,9 @@ class ComposeUniformQuantizedConvolutionOp
   LogicalResult match(stablehlo::ConvolutionOp op) const final {
     // Verify operands' types.
     for (Type operand_type : op.getOperandTypes()) {
-      if (Type element_type = operand_type.cast<TensorType>().getElementType();
-          !element_type.isa<Float32Type>()) {
+      if (Type element_type =
+              mlir::cast<TensorType>(operand_type).getElementType();
+          !mlir::isa<Float32Type>(element_type)) {
         LLVM_DEBUG(llvm::dbgs()
                    << "Failed to match. The operand type must be a float. Got: "
                    << element_type << ".\n");
@@ -477,8 +479,9 @@ class ComposeUniformQuantizedConvolutionOp
     // Match the subgraph that receives the convolution output.
     Value conv_output_value = op.getResult();
     if (auto output_element_type =
-            conv_output_value.getType().cast<TensorType>().getElementType();
-        !output_element_type.isa<FloatType>()) {
+            mlir::cast<TensorType>(conv_output_value.getType())
+                .getElementType();
+        !mlir::isa<FloatType>(output_element_type)) {
       LLVM_DEBUG(
           llvm::dbgs()
           << "Failed to match. Output type is expected to be a float. Got: "
@@ -530,14 +533,12 @@ class ComposeUniformQuantizedConvolutionOp
       return failure();
     }
 
-    if (!(other_zp_i8_to_f32_convert_op.getResult()
-              .getType()
-              .getElementType()
-              .isa<Float32Type>() &&
-          other_zp_i8_to_f32_convert_op.getOperand()
-              .getType()
-              .getElementType()
-              .isa<IntegerType>())) {
+    if (!(mlir::isa<Float32Type>(other_zp_i8_to_f32_convert_op.getResult()
+                                     .getType()
+                                     .getElementType()) &&
+          mlir::isa<IntegerType>(other_zp_i8_to_f32_convert_op.getOperand()
+                                     .getType()
+                                     .getElementType()))) {
       LLVM_DEBUG(
           llvm::dbgs()
           << "Failed to match. The ConvertOp is not an i8->f32 type cast.\n");
@@ -671,8 +672,8 @@ class ComposeUniformQuantizedConvolutionOp
         rewriter.create<stablehlo::UniformQuantizeOp>(
             uniform_quantize_call_op.getLoc(),
             /*result=*/
-            input_value.getType().cast<TensorType>().clone(
-                input_quantized_element_type),
+            mlir::cast<TensorType>(input_value.getType())
+                .clone(input_quantized_element_type),
             /*operand=*/input_value);
 
     rewriter.replaceAllUsesWith(input_i8_to_f32_convert_op.getResult(),
@@ -689,20 +690,21 @@ class ComposeUniformQuantizedConvolutionOp
       // This is i8 values disguised as f32 (due to the upcast trick). Simply
       // cast them to i8.
       ElementsAttr filter_value = filter_constant_op.getValue();
-      filter_i8_value_attr = filter_value.cast<DenseFPElementsAttr>().mapValues(
-          rewriter.getI8Type(), [](const APFloat& val) -> APInt {
-            APSInt convertedInt(/*BitWidth=*/8, /*isUnsigned=*/false);
-            bool ignored;
-            val.convertToInteger(convertedInt, APFloat::rmTowardZero, &ignored);
-            return convertedInt;
-          });
+      filter_i8_value_attr =
+          mlir::cast<DenseFPElementsAttr>(filter_value)
+              .mapValues(rewriter.getI8Type(), [](const APFloat& val) -> APInt {
+                APSInt convertedInt(/*BitWidth=*/8, /*isUnsigned=*/false);
+                bool ignored;
+                val.convertToInteger(convertedInt, APFloat::rmTowardZero,
+                                     &ignored);
+                return convertedInt;
+              });
     } else if (isa<stablehlo::ConvertOp>(filter_op) &&
                isa<stablehlo::ConstantOp>(
                    filter_op->getOperand(0).getDefiningOp())) {
-      filter_i8_value_attr =
+      filter_i8_value_attr = mlir::cast<DenseIntElementsAttr>(
           cast<stablehlo::ConstantOp>(filter_op->getOperand(0).getDefiningOp())
-              .getValue()
-              .cast<DenseIntElementsAttr>();
+              .getValue());
     }
 
     // Create Uniform Quantized constant for the filter.
@@ -719,9 +721,9 @@ class ComposeUniformQuantizedConvolutionOp
         scale_combined_broadcast_in_dim_op.getOperand().getDefiningOp());
 
     SmallVector<double> filter_scale_values;
-    for (const auto combined_scale_value : combined_scale_constant_op.getValue()
-                                               .cast<DenseFPElementsAttr>()
-                                               .getValues<float>()) {
+    for (const auto combined_scale_value :
+         mlir::cast<DenseFPElementsAttr>(combined_scale_constant_op.getValue())
+             .getValues<float>()) {
       // UniformQuantizedPerAxisType requires scales to have double dtype.
       const double filter_scale_value = static_cast<double>(
           combined_scale_value * input_inverse_scales_value);
@@ -780,7 +782,8 @@ class ComposeUniformQuantizedConvolutionOp
     Value conv_output_value = op.getResult();
     auto output_uniform_quantized_tensor_type = RankedTensorType::getChecked(
         rewriter.getUnknownLoc(),
-        /*shape=*/conv_output_value.getType().cast<TensorType>().getShape(),
+        /*shape=*/
+        mlir::cast<TensorType>(conv_output_value.getType()).getShape(),
         output_uniform_quantized_type);
 
     SmallVector<Type> new_conv_output_types = {
@@ -1017,8 +1020,8 @@ class ComposeUniformQuantizedDotGeneralOp
         rewriter.create<stablehlo::UniformQuantizeOp>(
             input_i8_to_f32_convert_op.getLoc(),
             /*result=*/
-            input_value.getType().cast<TensorType>().clone(
-                input_uniform_quantized_type),
+            mlir::cast<TensorType>(input_value.getType())
+                .clone(input_uniform_quantized_type),
             /*operand=*/input_value);
 
     rewriter.replaceAllUsesWith(input_i8_to_f32_convert_op.getResult(),
@@ -1029,13 +1032,13 @@ class ComposeUniformQuantizedDotGeneralOp
     stablehlo::ConstantOp filter_constant_op =
         GetFilterConstantOp(filter_value);
     auto filter_value_attr =
-        filter_constant_op.getValue().cast<DenseElementsAttr>();
+        mlir::cast<DenseElementsAttr>(filter_constant_op.getValue());
     if (filter_value_attr.getElementType().isF32()) {
       // This is i8 values disguised as f32 (due to the upcast trick). Simply
       // cast them to i8.
       filter_value_attr =
-          filter_value_attr.cast<DenseFPElementsAttr>().mapValues(
-              rewriter.getI8Type(), [](const APFloat& val) -> APInt {
+          mlir::cast<DenseFPElementsAttr>(filter_value_attr)
+              .mapValues(rewriter.getI8Type(), [](const APFloat& val) -> APInt {
                 APSInt converted_int(/*BitWidth=*/8, /*isUnsigned=*/false);
                 bool ignored;
                 val.convertToInteger(converted_int, APFloat::rmTowardZero,
@@ -1072,9 +1075,9 @@ class ComposeUniformQuantizedDotGeneralOp
     auto merged_scale_constant_op =
         cast<stablehlo::ConstantOp>(multiply_op_second_operand.getDefiningOp());
     SmallVector<double> filter_scale_values;
-    for (const auto merged_scale : merged_scale_constant_op.getValue()
-                                       .cast<DenseFPElementsAttr>()
-                                       .getValues<float>()) {
+    for (const auto merged_scale :
+         mlir::cast<DenseFPElementsAttr>(merged_scale_constant_op.getValue())
+             .getValues<float>()) {
       // (s1 * s2) * (1 / s1) = s2
       // UniformQuantizedPerAxisType requires scales to have double dtype.
       filter_scale_values.push_back(
@@ -1086,7 +1089,7 @@ class ComposeUniformQuantizedDotGeneralOp
 
     const int quantization_dimension = GetFilterQuantizationDimension(
         op.getDotDimensionNumbers(),
-        filter_value_attr.getType().cast<TensorType>().getRank());
+        mlir::cast<TensorType>(filter_value_attr.getType()).getRank());
     const UniformQuantizedPerAxisType filter_uniform_quantized_type =
         CreateI8F32UniformQuantizedPerAxisType(
             filter_constant_op.getLoc(), *rewriter.getContext(),
@@ -1097,8 +1100,8 @@ class ComposeUniformQuantizedDotGeneralOp
     auto quantized_filter_constant_op = rewriter.create<stablehlo::ConstantOp>(
         filter_constant_op.getLoc(),
         /*output=*/
-        filter_constant_op.getResult().getType().cast<TensorType>().clone(
-            filter_uniform_quantized_type),
+        mlir::cast<TensorType>(filter_constant_op.getResult().getType())
+            .clone(filter_uniform_quantized_type),
         /*value=*/filter_value_attr);
 
     rewriter.replaceAllUsesWith(filter_value,
@@ -1137,8 +1140,8 @@ class ComposeUniformQuantizedDotGeneralOp
 
     auto new_dot_general_op = rewriter.create<stablehlo::DotGeneralOp>(
         op.getLoc(), /*resultType0=*/
-        op.getResult().getType().cast<TensorType>().clone(
-            output_uniform_quantized_type),
+        mlir::cast<TensorType>(op.getResult().getType())
+            .clone(output_uniform_quantized_type),
         /*lhs=*/op.getLhs(), /*rhs=*/op.getRhs(),
         /*dot_dimension_numbers=*/op.getDotDimensionNumbers(),
         /*precision_config=*/op.getPrecisionConfigAttr());
@@ -1395,8 +1398,8 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
         rewriter.create<stablehlo::UniformQuantizeOp>(
             input1_uniform_quantize_call_op.getLoc(),
             /*result=*/
-            input1_value.getType().cast<TensorType>().clone(
-                input1_uniform_quantized_type),
+            mlir::cast<TensorType>(input1_value.getType())
+                .clone(input1_uniform_quantized_type),
             /*operand=*/input1_value);
 
     rewriter.replaceAllUsesWith(input1_zero_point_subtract_op.getResult(),
@@ -1434,8 +1437,8 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
         rewriter.create<stablehlo::UniformQuantizeOp>(
             input2_uniform_quantize_call_op.getLoc(),
             /*result=*/
-            input2_value.getType().cast<TensorType>().clone(
-                input2_uniform_quantized_type),
+            mlir::cast<TensorType>(input2_value.getType())
+                .clone(input2_uniform_quantized_type),
             /*operand=*/input2_value);
 
     rewriter.replaceAllUsesWith(input2_zero_point_subtract_op.getResult(),
@@ -1482,8 +1485,8 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
 
     auto new_dot_general_op = rewriter.create<stablehlo::DotGeneralOp>(
         op.getLoc(), /*resultType0=*/
-        op.getResult().getType().cast<TensorType>().clone(
-            output_uniform_quantized_type),
+        mlir::cast<TensorType>(op.getResult().getType())
+            .clone(output_uniform_quantized_type),
         /*lhs=*/op.getLhs(), /*rhs=*/op.getRhs(),
         /*dot_dimension_numbers=*/op.getDotDimensionNumbers(),
         /*precision_config=*/op.getPrecisionConfigAttr());

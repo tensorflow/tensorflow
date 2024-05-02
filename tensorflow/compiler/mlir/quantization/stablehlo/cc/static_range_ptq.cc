@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/component.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/component.h"
@@ -105,7 +106,7 @@ absl::Status QuantizeStaticRangePtq(
   }
 
   TF_ASSIGN_OR_RETURN(
-      ModuleOp module_op,
+      OwningOpRef<ModuleOp> module,
       ImportSavedModel(src_saved_model_path, signature_keys, tags,
                        quantization_config, PreCalibrationComponent::kName,
                        *function_aliases, *ctx));
@@ -113,14 +114,14 @@ absl::Status QuantizeStaticRangePtq(
   StaticRangePtqComponent static_range_ptq_component(
       ctx.get(), &py_function_library, src_saved_model_path, signature_keys,
       tags, signature_def_map, *function_aliases);
-  TF_ASSIGN_OR_RETURN(module_op, static_range_ptq_component.Run(
-                                     module_op, quantization_config));
+  TF_ASSIGN_OR_RETURN(
+      *module, static_range_ptq_component.Run(*module, quantization_config));
 
   TF_ASSIGN_OR_RETURN(
       const ExportedModel post_calibrated_exported_model,
       CreateExportedModel(signature_keys, tags, quantization_config,
                           PostCalibrationComponent::kName, *function_aliases,
-                          *ctx, module_op));
+                          *ctx, *module));
 
   // Remove the `tpu` tag for exporting because the output quantized model is
   // essentially a CPU model.

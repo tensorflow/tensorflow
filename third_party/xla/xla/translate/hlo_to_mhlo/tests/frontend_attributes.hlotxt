@@ -1,4 +1,5 @@
-// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+// RUN: xla-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
+// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-flatten-computation-args-result %s -o - | FileCheck %s
 
 HloModule frontend_attributes, entry_computation_layout={(f32[])->f32[]}
 

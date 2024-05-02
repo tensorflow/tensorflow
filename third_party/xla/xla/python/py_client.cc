@@ -87,8 +87,8 @@ limitations under the License.
 #include "xla/service/platform_util.h"  // IWYU pragma: keep
 #include "xla/shape.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"

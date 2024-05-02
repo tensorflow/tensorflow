@@ -416,6 +416,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
   absl::flat_hash_set<HloInstruction*> removed;
   std::queue<HloInstruction*> worklist;
   worklist.push(instruction);
+  std::vector<HloInstruction*> parameters_to_be_removed;
   while (!worklist.empty()) {
     HloInstruction* item = worklist.front();
     worklist.pop();
@@ -438,8 +439,37 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
     if (cleanup != std::nullopt) {
       (*cleanup)(item);
     }
-    TF_RETURN_IF_ERROR(RemoveInstruction(item));
+    if (item->opcode() == HloOpcode::kParameter) {
+      // Note that right now, only parameters inside fusion computations are
+      // considered to be safely removable. We cannot remove a parameter
+      // directly, because it may cause a renumbering of other parameters which
+      // may invalidate some of the pointers in the worklist.
+      parameters_to_be_removed.push_back(item);
+    } else {
+      TF_RETURN_IF_ERROR(RemoveInstruction(item));
+    }
     removed.insert(item);
+  }
+  // Sort into decreasing order by parameter number, otherwise the renumbering
+  // of parameters when one parameter is deleted will cause issues.
+  std::sort(parameters_to_be_removed.begin(), parameters_to_be_removed.end(),
+            [](HloInstruction* a, HloInstruction* b) {
+              return a->parameter_number() > b->parameter_number();
+            });
+  for (HloInstruction* param : parameters_to_be_removed) {
+    int64_t parameter_number = param->parameter_number();
+    TF_RETURN_IF_ERROR(RemoveParameter(parameter_number));
+    if (FusionInstruction() != nullptr) {
+      auto operand = FusionInstruction()->mutable_operand(parameter_number);
+      FusionInstruction()->RemoveOperandAt(parameter_number);
+      FusionInstruction()->DetachFrom(operand);
+      if (operand->IsDead() && operand->parent()->IsSafelyRemovable(
+                                   operand, ignore_control_dependencies)) {
+        TF_RETURN_IF_ERROR(
+            operand->parent()->RemoveInstructionAndUnusedOperands(
+                operand, cleanup, ignore_control_dependencies));
+      }
+    }
   }
   return OkStatus();
 }
@@ -1328,14 +1358,15 @@ Status HloComputation::ReplaceWithNewEntryComputationParameter(
 
 absl::StatusOr<bool> HloComputation::ReplaceInstruction(
     HloInstruction* old_instruction, HloInstruction* new_instruction,
-    bool preserve_sharding, bool relay_control_dependency) {
+    bool preserve_sharding, bool relay_control_dependency,
+    bool remove_unused_operands) {
   TF_RET_CHECK(
       ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
       << ShapeUtil::HumanString(old_instruction->shape()) << " vs "
       << ShapeUtil::HumanString(new_instruction->shape());
-  return ReplaceInstructionWithDifferentShape(old_instruction, new_instruction,
-                                              preserve_sharding,
-                                              relay_control_dependency);
+  return ReplaceInstructionWithDifferentShape(
+      old_instruction, new_instruction, preserve_sharding,
+      relay_control_dependency, remove_unused_operands);
 }
 
 Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,

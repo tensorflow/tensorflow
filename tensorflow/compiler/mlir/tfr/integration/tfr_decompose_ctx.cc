@@ -57,7 +57,7 @@ namespace tfr {
 
 const char* const kTFRLibEnv = "TF_MLIR_TFR_LIB_DIR";
 
-StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
+absl::StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
     mlir::MLIRContext* mlir_ctx) {
   Env* env = Env::Default();
   std::string tfr_lib_dir;
@@ -121,8 +121,8 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
   return std::make_unique<TFRDecomposeContext>(module_op);
 }
 
-StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,
-                                                      StringPiece func_name) {
+absl::StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(
+    const NodeDef& node_def, StringPiece func_name) {
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def));
   DataTypeVector input_dtys, output_dtys;
@@ -209,8 +209,8 @@ TFRDecomposeContext::TFRDecomposeContext(mlir::ModuleOp tfr_module)
 
 void TFRDecomposeContext::Destroy() { tfr_module_.erase(); }
 
-StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
-                                 StringPiece func_name) {
+absl::StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
+                                       StringPiece func_name) {
   mlir::MLIRContext mlir_ctx;
   TF_ASSIGN_OR_RETURN(auto ctx, TFRDecomposeContext::Get(&mlir_ctx));
   return ctx->ExpandNode(node_def, func_name);

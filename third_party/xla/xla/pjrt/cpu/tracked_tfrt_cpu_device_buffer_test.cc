@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {

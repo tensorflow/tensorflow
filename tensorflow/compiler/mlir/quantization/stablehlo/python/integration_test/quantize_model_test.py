@@ -931,7 +931,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           'calibration_options': qc.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
               calibration_parameters=qc.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+                  num_bins=10,
               ),
           ),
       },
@@ -939,7 +939,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           'calibration_options': qc.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
               calibration_parameters=qc.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+                  num_bins=10,
               ),
           ),
       },
@@ -947,7 +947,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           'calibration_options': qc.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
               calibration_parameters=qc.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+                  num_bins=10,
               ),
           ),
       },
@@ -955,7 +955,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           'calibration_options': qc.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
               calibration_parameters=qc.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+                  num_bins=10,
               ),
           ),
       },

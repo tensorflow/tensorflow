@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/gpu/xfeed_queue.h"
 #include "xla/shape_tree.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -47,7 +47,7 @@ namespace gpu {
 
 // Client-side class used to enqueue infeed buffers.
 class InfeedManager
-    : public BlockingXfeedQueue<ShapeTree<se::ScopedDeviceMemory<uint8_t>>> {
+    : public BlockingXfeedQueue<ShapeTree<se::DeviceMemoryHandle>> {
  public:
   explicit InfeedManager(se::StreamExecutor* executor);
 

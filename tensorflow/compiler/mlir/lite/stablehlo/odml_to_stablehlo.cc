@@ -156,7 +156,7 @@ opt<std::string> exported_model_signatures(
 namespace mlir {
 namespace odml {
 
-tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
+absl::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
     const std::string& input_path, MLIRContext* context,
     llvm::SourceMgr* source_mgr,
     std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle) {
@@ -215,7 +215,7 @@ tensorflow::Status ExportModule(mlir::ModuleOp module,
   output->os() << result;
   output->keep();
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status ConvertTFToStableHLO(
@@ -261,7 +261,7 @@ tensorflow::Status ConvertTFToStableHLO(
     return tensorflow::errors::Aborted("Lowering to StableHLO failed.");
   }
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {

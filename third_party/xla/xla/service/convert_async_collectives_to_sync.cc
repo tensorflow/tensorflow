@@ -42,7 +42,7 @@ absl::StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
       sync_instruction =
           computation->AddInstruction(HloInstruction::CreateAllReduce(
               async_done->shape(), async_ar->operands(), async_ar->to_apply(),
-              async_ar->replica_groups(), async_ar->constrain_layout(),
+              async_ar->device_list(), async_ar->constrain_layout(),
               async_ar->channel_id(), async_ar->use_global_device_ids()));
       break;
     }
@@ -51,7 +51,7 @@ absl::StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
       sync_instruction =
           computation->AddInstruction(HloInstruction::CreateAllGather(
               async_done->shape(), async_ag->operands(),
-              async_ag->all_gather_dimension(), async_ag->replica_groups(),
+              async_ag->all_gather_dimension(), async_ag->device_list(),
               async_ag->constrain_layout(), async_ag->channel_id(),
               async_ag->use_global_device_ids()));
       break;

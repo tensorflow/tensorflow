@@ -17,13 +17,14 @@ package_group(
 
 tf_cc_binary(
     name = "odml-converter",
+    testonly = True,
     srcs = ["odml_converter_main.cc"],
     visibility = [
         "//tensorflow/compiler/mlir/lite/stablehlo/odml_converter:__subpackages__",
         "//third_party/odml/infra:__subpackages__",
     ],  # Prototype phase.
     deps = [
-        ":all_passes",
+        ":shlo_simplify",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_stablehlo_to_vhlo_pass",
@@ -32,6 +33,35 @@ tf_cc_binary(
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "shlo_simplify",
+    srcs = [
+        "transforms/shlo_simplify.cc",
+    ],
+    hdrs = ["passes.h"],
+    deps = [
+        ":folders",
+        ":passes_inc_gen",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "folders",
+    srcs = ["folders.cc"],
+    hdrs = ["folders.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@stablehlo//:stablehlo_ops",
     ],
@@ -52,13 +82,3 @@ gentbl_cc_library(
     td_file = "passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
 )
-
-cc_library(
-    name = "all_passes",
-    hdrs = ["passes.h"],
-    deps = [":passes_inc_gen"],
-)
-
-exports_files([
-    "run_lit.sh",
-])

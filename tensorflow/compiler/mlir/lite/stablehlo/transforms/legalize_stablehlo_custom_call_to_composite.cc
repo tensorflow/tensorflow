@@ -45,18 +45,19 @@ struct ReplaceCustomCallWithComposite final
   LogicalResult matchAndRewrite(mlir::stablehlo::CustomCallOp op,
                                 PatternRewriter &rewriter) const override {
     auto backendConfig =
-        op->getAttr("composite.backend_config").dyn_cast<DictionaryAttr>();
+        mlir::dyn_cast<DictionaryAttr>(op->getAttr("composite.backend_config"));
     if (!backendConfig)
       return op->emitError(
           "custom_call has no 'composite.backend_config' attribute or the "
           "attribute is not a dictionary");
 
-    auto name = backendConfig.get("name").dyn_cast<StringAttr>();
+    auto name = mlir::dyn_cast<StringAttr>(backendConfig.get("name"));
     if (!name)
       return op->emitError(
           "backend_config has no 'name' key or the name value is not a string");
 
-    auto attrs = backendConfig.get("attributes").dyn_cast<DictionaryAttr>();
+    auto attrs =
+        mlir::dyn_cast<DictionaryAttr>(backendConfig.get("attributes"));
     if (!attrs)
       return op->emitError(
           "backend_config has no 'attributes' key or the attributes value is "
@@ -66,7 +67,7 @@ struct ReplaceCustomCallWithComposite final
     if (!calledComputations || calledComputations.size() != 1)
       return op->emitError("expected exactly one called_computation");
 
-    auto decomposition = calledComputations[0].cast<FlatSymbolRefAttr>();
+    auto decomposition = mlir::cast<FlatSymbolRefAttr>(calledComputations[0]);
 
     auto composite = rewriter.create<mlir::stablehlo::CompositeOp>(
         op.getLoc(), op.getResultTypes(), op.getOperands(), name.str(), attrs,

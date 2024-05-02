@@ -54,6 +54,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/buffer_comparator.h"
@@ -264,6 +265,10 @@ class GemmAutotuner {
     if (!stream_->parent()->SynchronizeAllActivity()) {
       return Internal("Failed to synchronize GPU for autotuning.");
     }
+    tsl::profiler::ScopedAnnotation annotation([&] {
+      return absl::StrFormat("XlaAutotunerMeasurement:#hlo_op=%s#",
+                             gemm->name());
+    });
 
     auto& hlo_module_config = gemm->GetModule()->mutable_config();
     const auto& output_shape = GetOutputShape(gemm);

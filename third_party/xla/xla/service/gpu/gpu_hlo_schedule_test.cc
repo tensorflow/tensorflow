@@ -1257,7 +1257,7 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
   HloInstruction* all_reduce_start =
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
           all_reduce_start_shape, {add0}, reduction_computation,
-          /*replica_groups=*/{}, /*constrain_layout=*/false,
+          /*device_list=*/CollectiveDeviceList(), /*constrain_layout=*/false,
           /*channel_id=*/std::nullopt, /*use_global_device_ids=*/true));
   // In addition, add control_dependency: add1->nonblocking_call.
   TF_CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));

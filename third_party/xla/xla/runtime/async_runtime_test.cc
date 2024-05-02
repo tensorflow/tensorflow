@@ -20,8 +20,8 @@
 #include <cstdint>
 #include <memory>
 
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/concurrency/chain.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

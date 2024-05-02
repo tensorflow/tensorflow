@@ -82,7 +82,7 @@ absl::StatusOr<size_t> GetValue(const Tensor& tensor) {
       return tensor.scalar<int32_t>()();
     default:
       return absl::InvalidArgumentError(absl::StrCat(
-          "The `index_map_fn` for `index_flat_map` is expected to return two "
+          "The `index_map_func` for `index_flat_map` is expected to return two "
           "int32/int64 values representing the element index and an offset "
           "within the element. Got: ",
           tensor.DebugString()));
@@ -92,6 +92,16 @@ absl::StatusOr<size_t> GetValue(const Tensor& tensor) {
 // Returns the `offset`-th element from `tensors`.
 absl::StatusOr<std::vector<Tensor>> GetSlice(const std::vector<Tensor>& tensors,
                                              size_t offset) {
+  if (tensors.size() > 1) {
+    if (offset >= tensors.size()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "`index_flat_map` got invalid `index_map_func` which returns offset ",
+          offset, ", but the input element has ", tensors.size(),
+          " elements: ", ToDebugString(tensors)));
+    }
+    return std::vector<Tensor>{tensors[offset]};
+  }
+
   std::vector<Tensor> result;
   for (size_t i = 0; i < tensors.size(); ++i) {
     if (tensors[i].dims() == 0) {  // Scalar.
@@ -100,7 +110,7 @@ absl::StatusOr<std::vector<Tensor>> GetSlice(const std::vector<Tensor>& tensors,
     }
     if (offset > tensors[i].dim_size(0)) {
       return absl::InvalidArgumentError(absl::StrCat(
-          "`index_flat_map` got invalid `index_map_fn` which returns offset ",
+          "`index_flat_map` got invalid `index_map_func` which returns offset ",
           offset, ", but the input element has ", tensors[i].dim_size(0),
           " elements: ", tensors[i].DebugString()));
     }

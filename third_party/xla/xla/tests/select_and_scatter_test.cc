@@ -259,7 +259,7 @@ XLA_TEST_F(SelectAndScatterTest, R1S32OverlappingWindow) {
 }
 
 // Test for S32 2D array, when windows do not overlap.
-XLA_TEST_F(SelectAndScatterTest, R2S32) {
+XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32)) {
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 10, 2}, {3, 8, 9, 3, 4, 2}});
   const auto source = ConstantR2<int32_t>(&builder_, {{2, 6}});
@@ -272,7 +272,7 @@ XLA_TEST_F(SelectAndScatterTest, R2S32) {
 
 // Test for tie breaking rule in ge_f32_. When a tie is present, the operand
 // that has the lower lexicographical order (smaller index) should be chosen.
-XLA_TEST_F(SelectAndScatterTest, R2F32Tie) {
+XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2F32Tie)) {
   const auto operand = ConstantR2<float>(
       &builder_, {{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}});
   const auto source = ConstantR2<float>(
@@ -286,7 +286,7 @@ XLA_TEST_F(SelectAndScatterTest, R2F32Tie) {
 }
 
 // Similar to SelectAndScatterTest.R2S32 but the input is transposed.
-XLA_TEST_F(SelectAndScatterTest, ReshapeR2S32) {
+XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(ReshapeR2S32)) {
   const auto operand = ConstantR2<int32_t>(
       &builder_, {{7, 3}, {2, 8}, {5, 9}, {3, 3}, {10, 4}, {2, 2}});
   const auto reshape =
@@ -300,7 +300,7 @@ XLA_TEST_F(SelectAndScatterTest, ReshapeR2S32) {
 }
 
 // Test for S32 2D array, when windows overlap with each other.
-XLA_TEST_F(SelectAndScatterTest, R2S32OverlappingWindow) {
+XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32OverlappingWindow)) {
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
   const auto source = ConstantR2<int32_t>(&builder_, {{2, 6, 4}});
@@ -312,7 +312,7 @@ XLA_TEST_F(SelectAndScatterTest, R2S32OverlappingWindow) {
 }
 
 // Test for S32 2D array, when the padding is Padding::kSAME.
-XLA_TEST_F(SelectAndScatterTest, R2S32SamePadding) {
+XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2S32SamePadding)) {
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
   const auto source = ConstantR2<int32_t>(&builder_, {{2, 6, 4}});
@@ -325,7 +325,8 @@ XLA_TEST_F(SelectAndScatterTest, R2S32SamePadding) {
 
 // Test for S32 2D array, when the padding is Padding::kSAME and windows overlap
 // with each other.
-XLA_TEST_F(SelectAndScatterTest, R2S32SamePaddingOverlappingWindow) {
+XLA_TEST_F(SelectAndScatterTest,
+           DISABLED_ON_TPU(R2S32SamePaddingOverlappingWindow)) {
   const auto operand =
       ConstantR2<int32_t>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
   const auto source =
@@ -337,7 +338,7 @@ XLA_TEST_F(SelectAndScatterTest, R2S32SamePaddingOverlappingWindow) {
   ComputeAndCompareR2<int32_t>(&builder_, expected, {});
 }
 
-XLA_TEST_F(SelectAndScatterTest, R2F32OverlappingR2Source) {
+XLA_TEST_F(SelectAndScatterTest, DISABLED_ON_TPU(R2F32OverlappingR2Source)) {
   const auto operand = ConstantR2<float>(
       &builder_, {{1.5f, 2.5f, 1.5f}, {3.5f, 1.5f, 3.5f}, {4.5f, 2.5f, 4.5f}});
   const auto source =

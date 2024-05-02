@@ -29,6 +29,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -43,6 +44,7 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:resource_loader",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuner_compile_util.h"
 
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -259,8 +260,10 @@ absl::Status RedzoneBuffers::CreateOutputs(const HloInstruction& instruction,
   auto end = instruction.shape().tuple_shapes().end();
   end -= buffers_to_create == kAllInputsAllOutputs ? 0 : 1;
 
-  output_shape_ =
-      ShapeUtil::MakeTupleShape(std::vector<Shape>{current_shape_it, end});
+  output_shape_ = std::distance(current_shape_it, end) == 1
+                      ? output_shape_ = *current_shape_it
+                      : ShapeUtil::MakeTupleShape(
+                            std::vector<Shape>{current_shape_it, end});
 
   for (; current_shape_it < end; current_shape_it++) {
     if (current_shape_it->IsTuple()) {

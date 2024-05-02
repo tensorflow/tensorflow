@@ -42,7 +42,6 @@ cc_library(
         "device.cc",
         "dtype.cc",
         "executable.cc",
-        "future.cc",
         "host_callback.cc",
         "index.cc",
         "index_domain.cc",
@@ -95,6 +94,7 @@ cc_library(
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt/ir",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -108,10 +108,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/lib/gtl:int_type",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
@@ -213,10 +211,10 @@ cc_library(
     deps = [
         ":ifrt",
         "//xla:statusor",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -299,8 +297,8 @@ cc_library(
     deps = [
         ":ifrt",
         ":test_util",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -329,6 +327,7 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_layout",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -336,7 +335,6 @@ cc_library(
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/concurrency:ref_count",
     ],
 )
 
@@ -551,5 +549,68 @@ xla_cc_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
         "@local_tsl//tsl/protobuf:status_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "io_callable_program",
+    srcs = ["io_callable_program.cc"],
+    hdrs = ["io_callable_program.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":ifrt",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_proto_library(
+    name = "io_callable_program_proto",
+    srcs = ["io_callable_program.proto"],
+    protodeps = [
+        ":array_spec_proto",
+        ":device_proto",
+    ],
+)
+
+cc_library(
+    name = "io_callable_program_serdes",
+    srcs = ["io_callable_program_serdes.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":array_spec_proto_cc",
+        ":ifrt",
+        ":io_callable_program",
+        ":io_callable_program_proto_cc",
+        ":program_serdes",
+        ":serdes",
+        ":sharding_proto_cc",
+        ":sharding_serdes",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "io_callable_program_serdes_test",
+    srcs = ["io_callable_program_serdes_test.cc"],
+    deps = [
+        ":ifrt",
+        ":io_callable_program",
+        ":io_callable_program_serdes",
+        ":program_serdes",
+        ":serdes",
+        ":sharding_test_util",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )

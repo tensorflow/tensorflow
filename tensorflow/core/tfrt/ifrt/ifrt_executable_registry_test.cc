@@ -47,6 +47,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -60,7 +61,7 @@ const tsl::thread::ThreadPool& GetThreadPool() {
 }
 
 absl::StatusOr<std::unique_ptr<IfrtServingExecutable>>
-CreateIfrtServingExecutable(mlir::MLIRContext& context) {
+CreateIfrtServingExecutable(mlir::MLIRContext& context, int64_t program_id) {
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/core/tfrt/ifrt/testdata";
@@ -81,13 +82,18 @@ CreateIfrtServingExecutable(mlir::MLIRContext& context) {
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
   IfrtRestoreTensorRegistry ifrt_restore_tensor_registry;
+  std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue =
+      tfrt::CreateMultiThreadedWorkQueue(
+          /*num_threads=*/4, /*num_blocking_threads=*/4);
   TF_ASSIGN_OR_RETURN(std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
                       CreateTfStaticDeviceMgr());
 
   return std::make_unique<IfrtServingExecutable>(
-      "test", "main", std::move(mlir_module), client, &GetThreadPool(),
-      &ifrt_loaded_variable_registry, &ifrt_restore_tensor_registry,
-      device_mgr.get(), tensorflow::IdentityShapeRepresentationFn());
+      program_id, "test", "main", std::move(mlir_module), client,
+      &GetThreadPool(), &ifrt_loaded_variable_registry,
+      &ifrt_restore_tensor_registry, work_queue.get(), device_mgr.get(),
+      tensorflow::IdentityShapeRepresentationFn(),
+      /*ifrt_serving_core_selector=*/nullptr);
 }
 
 TEST(IfrtExecutableRegistry, Basic) {
@@ -97,11 +103,11 @@ TEST(IfrtExecutableRegistry, Basic) {
 
   mlir::MLIRContext context(registry);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<IfrtServingExecutable> executable,
-                          CreateIfrtServingExecutable(context));
-  IfrtServingExecutable* raw_ptr = executable.get();
-
   int64_t program_id = 1234;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<IfrtServingExecutable> executable,
+                          CreateIfrtServingExecutable(context, program_id));
+  IfrtServingExecutable* raw_ptr = executable.get();
 
   TF_ASSERT_OK_AND_ASSIGN(auto handle, ServingExecutableRegistry::Register(
                                            program_id, std::move(executable)));

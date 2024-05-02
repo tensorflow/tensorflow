@@ -771,6 +771,7 @@ xla_test(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:platform_util",
+        "//xla/service:symbol_repository",
         "//xla/service:xla_compile_result_proto_cc_impl",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tests:hlo_test_base",

@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -60,10 +60,10 @@ static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
                                           void* kernel_symbol) {
   se::StreamExecutor* executor = stream->parent();
 
-  se::ScopedDeviceMemory<uint64_t> out_param(
-      executor, executor->AllocateScalar<uint64_t>());
+  se::DeviceMemoryHandle out_param(executor,
+                                   executor->AllocateScalar<uint64_t>());
 
-  TF_RETURN_IF_ERROR(stream->MemZero(out_param.ptr(), sizeof(uint64_t)));
+  TF_RETURN_IF_ERROR(stream->MemZero(out_param.memory_ptr(), sizeof(uint64_t)));
   if (current.size() != expected.size()) {
     return Internal("Mismatched buffer size: %d bytes vs. %d bytes",
                     current.size(), expected.size());
@@ -87,14 +87,16 @@ static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
   LaunchDimensions dim =
       CalculateLaunchDimensions(buffer_shape, gpu_device_info);
 
+  se::DeviceMemory<uint64_t> as_uint64(out_param.memory());
   TF_RETURN_IF_ERROR(stream->ThenLaunch(
       dim.thread_counts_per_block(), dim.block_counts(), comparison_kernel,
       current_typed, expected_typed, static_cast<float>(kTolerance),
-      buffer_size, out_param.cref()));
+      buffer_size, as_uint64));
 
   uint64_t result = -1;
-  CHECK_EQ(out_param->size(), sizeof(result));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&result, *out_param, sizeof(result)));
+  CHECK_EQ(out_param.memory().size(), sizeof(result));
+  TF_RETURN_IF_ERROR(
+      stream->Memcpy(&result, out_param.memory(), sizeof(result)));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return result == 0;
 }

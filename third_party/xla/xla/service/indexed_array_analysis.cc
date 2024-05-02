@@ -1146,10 +1146,6 @@ absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForDot(
   return nullptr;
 }
 
-absl::string_view IndexedArrayAnalysisPrinterPass::name() const {
-  return "indexed-array-analysis-printer-pass";
-}
-
 absl::StatusOr<bool> IndexedArrayAnalysisPrinterPass::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {

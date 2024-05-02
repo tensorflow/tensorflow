@@ -23,9 +23,10 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/ChloOps.h"
 #include "transforms/rewriters.h"
@@ -41,21 +42,21 @@ struct BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
       ConversionPatternRewriter &rewriter) const final {
     // We only need to bufferize tensor constants.
     Location loc = op.getLoc();
-    auto resultType = op.getType().dyn_cast<RankedTensorType>();
+    auto resultType = mlir::dyn_cast<RankedTensorType>(op.getType());
     int64_t resultRank = resultType.getRank();
     if (!resultType || !resultType.hasStaticShape() || resultRank > 1)
       return failure();
 
     auto elementType = resultType.getElementType();
     auto memrefType = MemRefType::get(resultType.getShape(), elementType);
-    auto elementsAttr = op.getValue().cast<DenseElementsAttr>();
+    auto elementsAttr = mlir::cast<DenseElementsAttr>(op.getValue());
 
     // arith.constant doesn't handle scalar complex types.
     // TODO(kramerb): Should this use materializeConstant instead?
     auto makeConstant = [&](Attribute attr, Type type) -> Value {
       if (complex::ConstantOp::isBuildableWith(attr, type))
-        return rewriter.create<complex::ConstantOp>(loc, type,
-                                                    attr.cast<ArrayAttr>());
+        return rewriter.create<complex::ConstantOp>(
+            loc, type, mlir::cast<ArrayAttr>(attr));
       return rewriter.create<arith::ConstantOp>(loc, cast<TypedAttr>(attr));
     };
 

@@ -85,14 +85,13 @@ class TfPjRtBuffer : public PjRtBuffer {
       PjRtMemorySpace* dst_memory_space) override {
     return Unimplemented("CopyToMemorySpace not implemented");
   }
-  void CopyToRemoteDevice(
-      PjRtFuture<StatusOr<std::string>> serialized_descriptor,
-      RemoteSendCallback on_done) override {
+  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+                          RemoteSendCallback on_done) override {
     wrapped_->CopyToRemoteDevice(std::move(serialized_descriptor),
                                  std::move(on_done));
   }
   void CopyToRemoteDeviceScattered(
-      PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
+      PjRtFuture<std::vector<std::string>> serialized_descriptors,
       std::vector<RemoteSendCallback> callbacks,
       const ScatterDetails& scatter_details) override {
     return wrapped_->CopyToRemoteDeviceScattered(

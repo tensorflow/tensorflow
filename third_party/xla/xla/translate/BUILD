@@ -52,7 +52,6 @@ xla_cc_binary(
         "//xla/mlir/framework/transforms:passes",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/service:cpu_plugin",
-        "//xla/service/cpu:hlo_xla_runtime_pipeline",  # buildcleaner: keep
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",

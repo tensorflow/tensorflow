@@ -54,6 +54,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Support/LLVM.h"
 
 #define GET_ATTRDEF_CLASSES
 #include "lhlo/IR/lhlo_ops_structs.cc.inc"
@@ -104,7 +105,7 @@ LogicalResult AbsOp::verify() {
   AbsOp op = *this;
   auto operandType = getElementTypeOrSelf(op.getInput().getType());
   auto outputType = getElementTypeOrSelf(op.getOutput().getType());
-  if (auto complexType = operandType.dyn_cast<ComplexType>()) {
+  if (auto complexType = mlir::dyn_cast<ComplexType>(operandType)) {
     if (complexType.getElementType() != outputType) {
       return op.emitOpError(
           "requires output type to be the same as the element type of the "
@@ -225,8 +226,8 @@ LogicalResult CustomCallOp::verify() {
 //     configurations are applied to the operand.
 LogicalResult PadOp::verify() {
   PadOp op = *this;
-  auto operandType = op.getOperand().getType().dyn_cast<ShapedType>();
-  auto outputType = op.getOutput().getType().dyn_cast<ShapedType>();
+  auto operandType = mlir::dyn_cast<ShapedType>(op.getOperand().getType());
+  auto outputType = mlir::dyn_cast<ShapedType>(op.getOutput().getType());
   if (!(operandType && outputType && operandType.hasRank() &&
         outputType.hasRank())) {
     return success();

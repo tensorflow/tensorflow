@@ -42,8 +42,8 @@
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/statusor.h"
 

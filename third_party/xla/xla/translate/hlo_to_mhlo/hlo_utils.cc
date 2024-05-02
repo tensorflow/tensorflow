@@ -43,17 +43,18 @@ using mlir::ShapedType;
 template <typename CppType>
 ::mlir::DenseElementsAttr CreateDenseAttrFromLiteral(
     const ShapedType& type, const LiteralBase& literal) {
-  if constexpr (std::is_same_v<CppType, u4> || std::is_same_v<CppType, s4>) {
+  if constexpr (is_intN_v<CppType>) {
     // DenseElementsAttr::get() does not support being passed an i4 array.
-    // Instead, create buffer of padded i4 values and call
+    // Instead, create buffer of padded, packed values and call
     // DenseElementsAttr::getFromRawBuffer()
     auto data_span = literal.data<CppType>();
-    std::vector<char> int4_padded_data;
-    int4_padded_data.reserve(literal.element_count());
+    std::vector<char> packed_padded_data;
+    packed_padded_data.reserve(literal.element_count());
     for (size_t i = 0; i < literal.element_count(); i++) {
-      int4_padded_data.push_back(static_cast<char>(data_span[i]));
+      packed_padded_data.push_back(static_cast<char>(data_span[i]));
     }
-    return ::mlir::DenseElementsAttr::getFromRawBuffer(type, int4_padded_data);
+    return ::mlir::DenseElementsAttr::getFromRawBuffer(type,
+                                                       packed_padded_data);
   } else {
     auto data_span = literal.data<CppType>();
     return ::mlir::DenseElementsAttr::get(

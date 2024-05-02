@@ -24,7 +24,7 @@ limitations under the License.
 namespace shlo_ref {
 
 struct I4 {
-  int8_t data;
+  int8_t data = 0;
 
   constexpr I4() = default;
   constexpr I4(const I4&) = default;

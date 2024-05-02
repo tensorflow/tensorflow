@@ -1579,22 +1579,16 @@ max_computation {
   arg_1 = $0[] parameter(1)
   ROOT maximum = $0[] maximum(arg_0, arg_1)
 }
-add_computation {
-  arg_0.1 = $0[] parameter(0)
-  arg_1.1 = $0[] parameter(1)
-  ROOT add = $0[] add(arg_0.1, arg_1.1)
-}
 ENTRY main {
   param_0 = $0[127,125]{1,0} parameter(0)
-  constant_neg_inf = $0[] constant(0)
-  reduce = $0[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=add_computation
+  constant_neg_inf = $0[] constant(-inf)
+  reduce = $0[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = $0[127,125]{1,0} broadcast(reduce), dimensions={0}
   subtract = $0[127,125]{1,0} subtract(param_0, broadcast)
-  multiply = $0[127,125]{1,0} multiply(subtract, subtract)
-  constant_zero = $0[] constant(0)
-  second_reduce = $0[127]{0} reduce(multiply, constant_zero), dimensions={1}, to_apply=add_computation
+  add = $0[127,125]{1,0} add(subtract, subtract)
+  second_reduce = $0[127]{0} reduce(add, constant_neg_inf), dimensions={1}, to_apply=max_computation
   second_broadcast = $0[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT multiply_root = $0[127,125]{1,0} multiply(multiply, second_broadcast)
+  ROOT add_root = $0[127,125]{1,0} add(add, second_broadcast)
 }
 )";
   const std::string hlo_text = absl::Substitute(
@@ -1614,22 +1608,29 @@ ENTRY main {
 
   MatchOptimizedHlo(hlo_text, hlo_ref);
 
-  float tolerance;
+  // The precision-changing ops in the kernel above are add & subtract, meaning
+  // a value can be X*2(first add)*2(subtract)*2(second add) larger than it was
+  // originally. In order to fit this into a datatype, we do:
+  // X*2^3 <= 2^(fraction bits of the data type)
+  // 2^(max_bits_of_precision)*2^3 <= 2^(fraction bits of the data type)
+  // max_bits_of_precision = fraction_bits - 3.
+  uint max_bits_of_precision;
   switch (data_type) {
     case F32:
-      tolerance = 1e-6;
+      max_bits_of_precision = 20;
       break;
     case F16:
-      tolerance = 2e-4;
+      max_bits_of_precision = 7;
       break;
     case BF16:
-      tolerance = 2e-2;
+      max_bits_of_precision = 4;
       break;
     default:
       ABSL_UNREACHABLE();
   }
-  EXPECT_TRUE(RunAndCompare(hlo_text,
-                            ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(/*aabs=*/0, /*arel=*/0),
+                            /*reference_preprocessor=*/nullptr,
+                            max_bits_of_precision));
 }
 
 TEST_P(

@@ -1470,5 +1470,173 @@ ENTRY computation {
             HloInstruction::FusionKind::kInput);
 }
 
+TEST_F(GpuFusibleTest, GetFusionRoots1) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    fusion {
+      p0 = s32[] parameter(0)
+      custom-call = (bf16[], s32[]) custom-call(p0), custom_call_target="my_custom_call"
+      get-tuple-element.0 = bf16[] get-tuple-element(custom-call), index=0
+      get-tuple-element.1 = s32[] get-tuple-element(custom-call), index=1
+      ROOT tuple = (bf16[], s32[], s32[]) tuple(get-tuple-element.0, get-tuple-element.1, p0)
+    }
+
+    ENTRY entry{
+      p0 = s32[] parameter(0)
+      ROOT fusion = (bf16[], s32[], s32[]) fusion(p0), kind=kCustom, calls=fusion
+    }
+  )")
+                    .value();
+  auto called_computations =
+      module->entry_computation()->root_instruction()->called_computations();
+  ASSERT_EQ(called_computations.size(), 1);
+  auto fusion = called_computations.front();
+  auto roots = GetFusionRoots(*fusion);
+  auto custom_call = fusion->root_instruction()->operand(0)->operand(0);
+  auto parameter = fusion->root_instruction()->operand(2);
+  std::vector<const HloInstruction*> expected_roots{custom_call, custom_call,
+                                                    parameter};
+  EXPECT_EQ(roots, expected_roots);
+}
+
+TEST_F(GpuFusibleTest, GetFusionRoots2) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    fusion {
+      p0 = s32[] parameter(0)
+      custom-call.1 = bf16[] custom-call(p0), custom_call_target="my_custom_call1"
+      custom-call.2 = bf16[] custom-call(p0), custom_call_target="my_custom_call2"
+      ROOT tuple = (bf16[], bf16[], s32[]) tuple(custom-call.1, custom-call.2, p0)
+    }
+
+    ENTRY entry{
+      p0 = s32[] parameter(0)
+      ROOT fusion = (bf16[], bf16[], s32[]) fusion(p0), kind=kCustom, calls=fusion
+    }
+  )")
+                    .value();
+  auto called_computations =
+      module->entry_computation()->root_instruction()->called_computations();
+  ASSERT_EQ(called_computations.size(), 1);
+  auto fusion = called_computations.front();
+  auto roots = GetFusionRoots(*fusion);
+  auto custom_call1 = fusion->root_instruction()->operand(0);
+  auto custom_call2 = fusion->root_instruction()->operand(1);
+  auto parameter = fusion->root_instruction()->operand(2);
+  std::vector<const HloInstruction*> expected_roots{custom_call1, custom_call2,
+                                                    parameter};
+  EXPECT_EQ(roots, expected_roots);
+}
+
+TEST_F(GpuFusibleTest, GetFusionRoots3) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    fusion {
+      p0 = s32[] parameter(0)
+      custom-call = (bf16[], s32[]) custom-call(p0), custom_call_target="my_custom_call"
+      get-tuple-element.0 = bf16[] get-tuple-element(custom-call), index=0
+      custom-call.2 = bf16[] custom-call(p0), custom_call_target="my_custom_call2"
+      get-tuple-element.1 = s32[] get-tuple-element(custom-call), index=1
+      ROOT tuple = (bf16[], bf16[], s32[], s32[]) tuple(get-tuple-element.0, custom-call.2, get-tuple-element.1, p0)
+    }
+
+    ENTRY entry{
+      p0 = s32[] parameter(0)
+      ROOT fusion = (bf16[], bf16[], s32[], s32[]) fusion(p0), kind=kCustom, calls=fusion
+    }
+  )")
+                    .value();
+  auto called_computations =
+      module->entry_computation()->root_instruction()->called_computations();
+  ASSERT_EQ(called_computations.size(), 1);
+  auto fusion = called_computations.front();
+  auto roots = GetFusionRoots(*fusion);
+  auto custom_call1 = fusion->root_instruction()->operand(0)->operand(0);
+  auto custom_call2 = fusion->root_instruction()->operand(1);
+  auto parameter = fusion->root_instruction()->operand(3);
+  std::vector<const HloInstruction*> expected_roots{custom_call1, custom_call2,
+                                                    custom_call1, parameter};
+  EXPECT_EQ(roots, expected_roots);
+}
+
+TEST_F(GpuFusibleTest, GetFusionRootsWithGTEMakeTupleSequence) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    fusion {
+      p0 = s32[] parameter(0)
+      p1 = s32[32] parameter(1)
+      custom-call = (bf16[], s32[], u32[]) custom-call(p1), custom_call_target="my_custom_call"
+      get-tuple-element.0 = bf16[] get-tuple-element(custom-call), index=0
+      get-tuple-element.1 = s32[] get-tuple-element(custom-call), index=1
+      bitcast = s32[1] bitcast(get-tuple-element.1)
+      dynamic-update-slice = s32[32] dynamic-update-slice(p1, bitcast, p0)
+      get-tuple-element.2 = u32[] get-tuple-element(custom-call), index=2
+      ROOT tuple = (bf16[], s32[32], u32[]) tuple(get-tuple-element.0, dynamic-update-slice, get-tuple-element.2)
+    }
+
+    ENTRY entry{
+      p0 = s32[] parameter(0)
+      bitcast = s32[32] bitcast(p0)
+      ROOT fusion = (bf16[], s32[32], u32[]) fusion(p0, bitcast), kind=kCustom, calls=fusion
+    }
+  )")
+                    .value();
+
+  auto called_computations =
+      module->entry_computation()->root_instruction()->called_computations();
+  ASSERT_EQ(called_computations.size(), 1);
+  auto fusion = called_computations.front();
+  auto roots = GetFusionRoots(*fusion);
+  auto custom_call = fusion->root_instruction()->operand(0)->operand(0);
+  auto dus = fusion->root_instruction()->operand(1);
+  std::vector<const HloInstruction*> expected_result{custom_call, dus,
+                                                     custom_call};
+  EXPECT_EQ(roots, expected_result);
+}
+
+TEST_F(GpuFusibleTest, GetFusionRootsWithMakeTupleGTESequence) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    fusion {
+      p0 = s32[] parameter(0)
+      p1 = s32[32] parameter(1)
+      custom-call = (bf16[], s32[], u32[]) custom-call(p1), custom_call_target="my_custom_call"
+      get-tuple-element.0 = bf16[] get-tuple-element(custom-call), index=0
+      get-tuple-element.1 = s32[] get-tuple-element(custom-call), index=1
+      bitcast = s32[1] bitcast(get-tuple-element.1)
+      dynamic-update-slice = s32[32] dynamic-update-slice(p1, bitcast, p0)
+      get-tuple-element.2 = u32[] get-tuple-element(custom-call), index=2
+      tuple = (bf16[], s32[32], u32[]) tuple(get-tuple-element.0, dynamic-update-slice, get-tuple-element.2)
+      get-tuple-element.3 = bf16[] get-tuple-element(tuple), index=0
+      get-tuple-element.4 = u32[] get-tuple-element(tuple), index=2
+      ROOT tuple2 = (bf16[], s32[32], u32[]) tuple(get-tuple-element.3, dynamic-update-slice, get-tuple-element.4)
+    }
+
+    ENTRY entry{
+      p0 = s32[] parameter(0)
+      bitcast = s32[32] bitcast(p0)
+      ROOT fusion = (bf16[], s32[32], u32[]) fusion(p0, bitcast), kind=kCustom, calls=fusion
+    }
+  )")
+                    .value();
+
+  auto called_computations =
+      module->entry_computation()->root_instruction()->called_computations();
+  ASSERT_EQ(called_computations.size(), 1);
+  auto fusion = called_computations.front();
+  auto roots = GetFusionRoots(*fusion);
+  auto tuple_inst = fusion->root_instruction()->operand(0)->operand(0);
+  auto custom_call = tuple_inst->operand(0)->operand(0);
+  auto dus = fusion->root_instruction()->operand(1);
+  std::vector<const HloInstruction*> expected_result{custom_call, dus,
+                                                     custom_call};
+  EXPECT_EQ(roots, expected_result);
+}
+
 }  // namespace gpu
 }  // namespace xla

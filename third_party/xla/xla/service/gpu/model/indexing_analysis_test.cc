@@ -88,10 +88,10 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
   const HloInstruction* parameter = root->operand(0);
   const HloInstruction* transpose = root->operand(1);
 
-  auto fusion_adaptor = ProducerConsumerFusion(transpose, root);
+  auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(transpose, root);
 
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
-      fusion_adaptor, fusion_adaptor.GetRoots()[0], &mlir_context_);
+      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &mlir_context_);
   EXPECT_THAT(grouped_indexing,
               UnorderedElementsAre(
                   Pair(root, ElementsAre(MatchIndexingMap(R"(
@@ -198,7 +198,8 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing_SingleOp) {
       entry_computation->GetInstructionWithName("p1");
 
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(exponential);
-  HloInstructionAdaptor parameter_adaptor(*parameter);
+  HloInstructionAdaptor parameter_adaptor =
+      fusion_adaptor->GetRoots()[0].GetOperand(0);
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
       *fusion_adaptor, parameter_adaptor, &mlir_context_);
   EXPECT_THAT(grouped_indexing, UnorderedElementsAre(Pair(
@@ -2420,14 +2421,15 @@ TEST_F(IndexingAnalysisTest, ReverseReshape) {
 }
 
 TEST_F(IndexingAnalysisTest, SliceOp) {
-  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+  auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
       p0 = f32[10, 20, 50] parameter(0)
       ROOT slice = f32[5, 3, 25] slice(f32[10, 20, 50] p0),
           slice={[5:10:1], [3:20:7], [0:50:2]}
     }
-  )"));
+  )");
+  auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0 + 5, d1 * 7 + 3, d2 * 2)
@@ -2435,6 +2437,21 @@ TEST_F(IndexingAnalysisTest, SliceOp) {
                             d0 in [0, 4]
                             d1 in [0, 2]
                             d2 in [0, 24]
+                          )"))));
+  auto output_indexing = GetInputToOutputIndexing(root);
+  EXPECT_THAT(output_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1, d2) -> (
+                              d0 - 5,
+                              (d1 - 3) floordiv 7,
+                              d2 floordiv 2
+                            )
+                            domain:
+                            d0 in [5, 9]
+                            d1 in [3, 17]
+                            d2 in [0, 48]
+                            (d1 - 3) mod 7 in [0, 0]
+                            d2 mod 2 in [0, 0]
                           )"))));
 }
 

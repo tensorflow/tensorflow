@@ -105,8 +105,8 @@ void PrintOpStatsPass::runOnOperation() {
           (dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(op))
               ? op->getOperand(1)
               : op->getResult(0);
-      ShapedType value_shaped_type =
-          value_for_deducing_op_type.getType().dyn_cast_or_null<ShapedType>();
+      ShapedType value_shaped_type = mlir::dyn_cast_or_null<ShapedType>(
+          value_for_deducing_op_type.getType());
       if (value_shaped_type != nullptr) {
         auto operand_or_result = value_shaped_type.getElementType();
         std::string dtype;
@@ -122,15 +122,16 @@ void PrintOpStatsPass::runOnOperation() {
             })
             .Case<UniformQuantizedType>([&](Type) {
               auto uniform_quantized_dtype =
-                  operand_or_result.dyn_cast_or_null<UniformQuantizedType>()
+                  mlir::dyn_cast_or_null<UniformQuantizedType>(
+                      operand_or_result)
                       .getStorageType();
               dtype = absl::StrCat(
                   "uq_", uniform_quantized_dtype.getIntOrFloatBitWidth());
             })
             .Case<quant::UniformQuantizedPerAxisType>([&](Type) {
               auto uniform_quantized_dtype =
-                  operand_or_result
-                      .dyn_cast_or_null<quant::UniformQuantizedPerAxisType>()
+                  mlir::dyn_cast_or_null<quant::UniformQuantizedPerAxisType>(
+                      operand_or_result)
                       .getStorageType();
               dtype = absl::StrCat(
                   "uq_", uniform_quantized_dtype.getIntOrFloatBitWidth());

@@ -44,15 +44,15 @@ absl::StatusOr<mlir::Operation*> ImportDynamicBroadcastInDimOp(
     return Internal("backend_config attribute cannot be empty.");
   }
 
-  auto attr = mlir::parseAttribute(backend_config, builder->getContext())
-                  .dyn_cast<mlir::DictionaryAttr>();
+  auto attr = mlir::dyn_cast<mlir::DictionaryAttr>(
+      mlir::parseAttribute(backend_config, builder->getContext()));
   if (!attr) {
     return Internal(
         "Couldn't parse backend config into a dictionary attribute");
   }
 
   auto broadcast_dimensions_attr =
-      attr.get("broadcast_dimensions").dyn_cast_or_null<mlir::ArrayAttr>();
+      mlir::dyn_cast_or_null<mlir::ArrayAttr>(attr.get("broadcast_dimensions"));
   if (!broadcast_dimensions_attr) {
     return Internal("broadcast_dimensions attribute is required.");
   }
@@ -61,7 +61,7 @@ absl::StatusOr<mlir::Operation*> ImportDynamicBroadcastInDimOp(
   for (auto [i, broadcast_dimension] :
        llvm::enumerate(broadcast_dimensions_attr)) {
     broadcast_dimensions[i] =
-        broadcast_dimension.cast<mlir::IntegerAttr>().getInt();
+        mlir::cast<mlir::IntegerAttr>(broadcast_dimension).getInt();
   }
 
   return builder
@@ -103,15 +103,17 @@ mlir::Type getQuantizedType(mlir::DictionaryAttr& backend_config) {
 
   if (const mlir::Attribute scales_attr = backend_config.get("scale");
       scales_attr) {
-    for (auto scale_attr : scales_attr.cast<mlir::ArrayAttr>()) {
-      scales.push_back(scale_attr.cast<mlir::FloatAttr>().getValueAsDouble());
+    for (auto scale_attr : mlir::cast<mlir::ArrayAttr>(scales_attr)) {
+      scales.push_back(
+          mlir::cast<mlir::FloatAttr>(scale_attr).getValueAsDouble());
     }
   }
 
   auto zero_points_attr = backend_config.get("zero_point");
   if (zero_points_attr) {
-    for (auto zero_point_attr : zero_points_attr.cast<mlir::ArrayAttr>()) {
-      zero_points.push_back(zero_point_attr.cast<mlir::IntegerAttr>().getInt());
+    for (auto zero_point_attr : mlir::cast<mlir::ArrayAttr>(zero_points_attr)) {
+      zero_points.push_back(
+          mlir::cast<mlir::IntegerAttr>(zero_point_attr).getInt());
     }
   }
 
@@ -119,30 +121,30 @@ mlir::Type getQuantizedType(mlir::DictionaryAttr& backend_config) {
       backend_config.get("quantization_dimension");
   if (quantization_dimension_attr) {
     quantization_dimension =
-        quantization_dimension_attr.cast<mlir::IntegerAttr>().getInt();
+        mlir::cast<mlir::IntegerAttr>(quantization_dimension_attr).getInt();
   }
 
   auto storage_max_attr = backend_config.get("storage_max");
   if (storage_max_attr) {
-    storage_max = storage_max_attr.cast<mlir::IntegerAttr>().getInt();
+    storage_max = mlir::cast<mlir::IntegerAttr>(storage_max_attr).getInt();
   }
 
   auto storage_min_attr = backend_config.get("storage_min");
   if (storage_min_attr) {
-    storage_min = storage_min_attr.cast<mlir::IntegerAttr>().getInt();
+    storage_min = mlir::cast<mlir::IntegerAttr>(storage_min_attr).getInt();
   }
 
   auto storage_type_attr = backend_config.get("storage_type");
   if (storage_type_attr) {
-    storage_type = storage_type_attr.cast<mlir::TypeAttr>().getValue();
+    storage_type = mlir::cast<mlir::TypeAttr>(storage_type_attr).getValue();
   }
 
   auto expressed_type_attr = backend_config.get("expressed_type");
   if (expressed_type_attr) {
-    expressed_type = expressed_type_attr.cast<mlir::TypeAttr>().getValue();
+    expressed_type = mlir::cast<mlir::TypeAttr>(expressed_type_attr).getValue();
   }
 
-  auto is_signed = storage_type.cast<mlir::IntegerType>().isSignless();
+  auto is_signed = mlir::cast<mlir::IntegerType>(storage_type).isSignless();
 
   if (quantization_dimension != -1) {
     return mlir::quant::UniformQuantizedPerAxisType::get(
@@ -175,9 +177,8 @@ absl::StatusOr<mlir::Operation*> ImportCustomCallAsOp(
                                     operands, builder);
   }
 
-  auto backend_config =
-      mlir::parseAttribute(backend_config_str, builder->getContext())
-          .dyn_cast<mlir::DictionaryAttr>();
+  auto backend_config = mlir::dyn_cast<mlir::DictionaryAttr>(
+      mlir::parseAttribute(backend_config_str, builder->getContext()));
   if (!backend_config) {
     return Internal(
         "Couldn't parse backend config into a dictionary attribute");
@@ -188,7 +189,7 @@ absl::StatusOr<mlir::Operation*> ImportCustomCallAsOp(
         ->create<mlir::mhlo::UniformQuantizeOp>(
             loc,
             mlir::RankedTensorType::get(
-                result_type.cast<mlir::RankedTensorType>().getShape(),
+                mlir::cast<mlir::RankedTensorType>(result_type).getShape(),
                 getQuantizedType(backend_config)),
             operands)
         .getOperation();

@@ -527,7 +527,7 @@ bool HardcodeMinMaxForPack(Model* model, Operator* op) {
     AddMessageF("Hardcoded min-max through %s", LogName(*op));
   }
   *modified = changed;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

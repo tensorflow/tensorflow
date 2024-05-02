@@ -91,6 +91,7 @@ limitations under the License.
 #include "tsl/platform/rocm_rocdl_path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
 #if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
@@ -99,6 +100,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #endif
 
 namespace xla {
@@ -217,6 +219,10 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
 // for the NVPTX target.
 std::string EmitModuleToPTX(llvm::Module* module,
                             llvm::TargetMachine* target_machine) {
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaEmitGpuAsm:#module=%s#",
+                           module->getName().str());
+  });
   std::string ptx;
   llvm::raw_string_ostream stream(ptx);
   llvm::buffer_ostream pstream(stream);
@@ -319,15 +325,32 @@ absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     llvm::Triple target_triple, se::CudaComputeCapability compute_capability,
     const DebugOptions& debug_options) {
-  // Figure out the exact name of the processor as known to the NVPTX backend
-  // from the gpu_architecture flag.
-#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 12010
-  // use ptx81 for CUDA >= 12.1
+#ifdef GOOGLE_CUDA
+#ifdef USE_RUNTIME_PTX_TARGET_VERSION
+  // Use runtime version to define the target.
+  char feature_str[] = "+ptx65";
+  auto version = stream_executor::GetAsmCompilerVersion(
+      debug_options.xla_gpu_cuda_data_dir());
+  if (version.ok() && (*version)[0] >= 11) {
+    feature_str[4] = '7' + (*version)[0] - 11;
+    feature_str[5] = '0' + (*version)[1] % 10;
+  }
+#elif CUDA_VERSION >= 11000
+  // Use compile version to define the target.
+  const char feature_str[] = {'+',
+                              'p',
+                              't',
+                              'x',
+                              '7' + (CUDA_VERSION / 1000) - 11,
+                              '0' + (CUDA_VERSION / 10) % 10};
+#else
+  const char feature_str[] = "+ptx65";
+#endif  // USE_RUNTIME_PTX_TARGET_VERSION
+#else
+  const char feature_str[] = "";
+#endif  // GOOGLE_CUDA
   return GetTargetMachine(target_triple, GetSmName(compute_capability),
-                          debug_options, /*feature_str=*/"+ptx81");
-#endif
-  return GetTargetMachine(target_triple, GetSmName(compute_capability),
-                          debug_options, /*feature_str=*/"+ptx74");
+                          debug_options, feature_str);
 }
 
 using TargetModuleLinker =
@@ -388,6 +411,10 @@ absl::Status LinkAndOptimizeModule(
     const DebugOptions& debug_options, const std::string& device_bitcode_path,
     TargetModuleLinker module_linker, llvm::Triple default_target_triple,
     llvm::TargetMachine* target_machine, int inline_threshold) {
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaOptimizeLlvmIr:#module=%s#",
+                           module->getName().str());
+  });
   TF_RETURN_IF_ERROR(
       module_linker(module, gpu_version, debug_options, device_bitcode_path));
 

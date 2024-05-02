@@ -60,6 +60,17 @@ void AddEdges(proto2::RepeatedPtrField<AutoShardingSolverRequest_Edges>* edges,
   }
 }
 
+void AddIntervals(
+    proto2::RepeatedPtrField<AutoShardingSolverRequest_Pair>* pairs,
+    const std::vector<std::pair<int64_t, int64_t>>& intervals) {
+  for (const auto& interval : intervals) {
+    AutoShardingSolverRequest_Pair pair;
+    pair.set_first(interval.first);
+    pair.set_second(interval.second);
+    pairs->Add(std::move(pair));
+  }
+}
+
 // clang-format off
 
 AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
@@ -375,6 +386,36 @@ TEST(CallORToolsSolverTest, HandlesMemoryEdgeCosts) {
   EXPECT_EQ(result, expected_result);
 }
 
+TEST(CallORToolsSolverTest, HandlesIntervals) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  const std::vector<std::pair<int64_t, int64_t>> node_intervals =
+      {{0, 4}, {0, 4}, {2, 3}, {3, 4}, {100, -1}};
+  const std::vector<std::pair<int64_t, int64_t>> edge_intervals =
+      {{1, 2}, {2, 3}};
+  const CostMatrix memory_edge_costs = {{1000000, 1100, 1200, 1300,
+                                         2000, 2100, 2200, 2300,
+                                         3000, 3100, 3200, 3300,
+                                         4000, 4100, 4200, 4300},
+                                        {5000000, 5100, 5200, 5300,
+                                         6000, 6100, 6200, 6300,
+                                         7000, 7100, 7200, 7300}};
+  request.clear_live();
+  AddIntervals(request.mutable_node_intervals(), node_intervals);
+  AddIntervals(request.mutable_edge_intervals(), edge_intervals);
+  AddCosts(request.mutable_memory_edge_costs(), memory_edge_costs);
+  request.set_enable_memory_edge_costs(true);
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
+  const std::vector<EdgeStrategyIdx> e_val = {1, 1};
+  const double objective_value = 7872.0;
+  const AutoShardingSolverOutput expected_output =
+          {s_val, e_val, objective_value};
+  const AutoShardingSolverResult expected_result = {expected_output, false};
+  EXPECT_EQ(result, expected_result);
+}
+
 TEST(CallORToolsSolverTest, SolvesWithEquivalences) {
   const AutoShardingSolverRequest request =
       AutoShardingSolverRequestWithEquivalences();
@@ -415,6 +456,35 @@ TEST(AutoShardingEvaluatorTest, EvaluatesOverbudget) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   request.set_memory_budget(100000);
   request.mutable_overbudget_coeff()->set_coeff(10.0);
+  const std::vector<NodeStrategyIdx> s_val = {2 /* violates */, 1, 2, 2, 1};
+  const std::vector<EdgeStrategyIdx> e_val = {10, 6};
+  const double objective_value = 11138.0;
+  const AutoShardingSolverOutput output = {s_val, e_val, objective_value};
+  const AutoShardingSolverResult result = {output, false};
+
+  const AutoShardingEvaluation evaluation = Evaluate(request, result);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.total.computation_cost = 158.0;  // 12+21+32+42+51
+  expected_evaluation.total.communication_cost = 1580.0;  // 120+210+320+420+510
+  expected_evaluation.total.resharding_cost = 9400.0;  // 3200+6200
+  expected_evaluation.total.overbudget_cost = 18400000.0;  // 10*1840000
+  expected_evaluation.lower_bound.computation_cost = 150.0;
+  expected_evaluation.lower_bound.communication_cost = 1500.0;
+  expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.lower_bound.overbudget_cost = 9000000.0;
+  expected_evaluation.total_departures = 3.0;
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingEvaluatorTest, EvaluatesOverbudgetWithIntervals) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  const std::vector<std::pair<int64_t, int64_t>> node_intervals =
+      {{0, 4}, {0, 4}, {2, 3}, {3, 4}, {100, -1}};
+  request.set_memory_budget(100000);
+  request.mutable_overbudget_coeff()->set_coeff(10.0);
+  request.clear_live();
+  AddIntervals(request.mutable_node_intervals(), node_intervals);
   const std::vector<NodeStrategyIdx> s_val = {2 /* violates */, 1, 2, 2, 1};
   const std::vector<EdgeStrategyIdx> e_val = {10, 6};
   const double objective_value = 11138.0;

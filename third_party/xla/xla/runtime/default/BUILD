@@ -12,9 +12,9 @@ cc_library(
     hdrs = ["async_values_cache.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/concurrency:async_value",
     ],
 )
 

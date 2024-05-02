@@ -13,15 +13,8 @@ package(
         "//tensorflow/core/lib/gtl:__pkg__",
         # tensorflow/core/lib/io/table_builder.cc uses crc functionality
         "//tensorflow/core/lib/io:__pkg__",
-        # tensorflow/core/lib/strings/proto_serialization.cc hashes proto bytes
-        "//tensorflow/core/lib/strings:__pkg__",
-        # tensorflow/core/platform:tracing depends on hash
-        "//tensorflow/core/platform:__subpackages__",
-        "@local_tsl//tsl/platform:__subpackages__",
         # tensorflow/core/framework:tensor depends on hash
         "//tensorflow/core/framework:__pkg__",
-        # For dependency on hash
-        "//tensorflow/cc/experimental/tf2:__subpackages__",
     ],
     licenses = ["notice"],
 )

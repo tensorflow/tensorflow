@@ -45,7 +45,7 @@ static const int kValueTensor = 2;
 static const int kAttentionMaskTensor = 3;
 static const int kOutputTensor = 0;
 
-static const int kNumTempTensors = 8;
+static const int kNumTempTensors = 10;
 static const int kTransposeQueryTempTensorIndex = 0;
 static const int kTransposeKeyTempTensorIndex = 1;
 static const int kMatMul1TempTensorIndex = 2;
@@ -54,6 +54,8 @@ static const int kTransposeValueTempTensorIndex = 4;
 static const int kMatMul2TempTensorIndex = 5;
 static const int kReshape1TempTensorIndex = 6;
 static const int kReshape2TempTensorIndex = 7;
+static const int kBroadcastKTempTensorIndex = 8;
+static const int kBroadcastVTempTensorIndex = 9;
 
 struct OpData {
   float scale;
@@ -305,6 +307,50 @@ TfLiteStatus SDPAPrepare(TfLiteContext* context, TfLiteNode* node) {
                                                      scratch_buffer_size));
   }
 
+  // Temp tensor for Broadcast K
+  {
+    node->temporaries->data[kBroadcastKTempTensorIndex] =
+        op_data->scratch_tensor_index + kBroadcastKTempTensorIndex;
+    TfLiteTensor* scratch_buffer;
+    TF_LITE_ENSURE_OK(context,
+                      GetTemporarySafe(context, node,
+                                       /*index=*/kBroadcastKTempTensorIndex,
+                                       &scratch_buffer));
+    TfLiteIntArray* scratch_buffer_size = TfLiteIntArrayCreate(4);
+
+    scratch_buffer_size->data[0] = k_tensor->dims->data[0];
+    scratch_buffer_size->data[1] = q_tensor->dims->data[2];  // num_heads
+    scratch_buffer_size->data[2] = k_tensor->dims->data[1];
+    scratch_buffer_size->data[3] = k_tensor->dims->data[3];
+
+    scratch_buffer->type = kTfLiteFloat32;
+    scratch_buffer->allocation_type = kTfLiteArenaRw;
+    TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scratch_buffer,
+                                                     scratch_buffer_size));
+  }
+
+  // Temp tensor for Broadcast V
+  {
+    node->temporaries->data[kBroadcastVTempTensorIndex] =
+        op_data->scratch_tensor_index + kBroadcastVTempTensorIndex;
+    TfLiteTensor* scratch_buffer;
+    TF_LITE_ENSURE_OK(context,
+                      GetTemporarySafe(context, node,
+                                       /*index=*/kBroadcastVTempTensorIndex,
+                                       &scratch_buffer));
+    TfLiteIntArray* scratch_buffer_size = TfLiteIntArrayCreate(4);
+
+    scratch_buffer_size->data[0] = v_tensor->dims->data[0];
+    scratch_buffer_size->data[1] = q_tensor->dims->data[2];  // num_heads
+    scratch_buffer_size->data[2] = v_tensor->dims->data[3];
+    scratch_buffer_size->data[3] = v_tensor->dims->data[1];
+
+    scratch_buffer->type = kTfLiteFloat32;
+    scratch_buffer->allocation_type = kTfLiteArenaRw;
+    TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scratch_buffer,
+                                                     scratch_buffer_size));
+  }
+
   return kTfLiteOk;
 }
 
@@ -407,10 +453,25 @@ TfLiteStatus SDPAEval(TfLiteContext* context, TfLiteNode* node) {
   auto reshape_v_or_add_out_shape = GetTensorShape(reshape_v_or_add_out_tensor);
   auto reshape_v_or_add_out_data =
       GetTensorData<float>(reshape_v_or_add_out_tensor);
+  TfLiteTensor* broadcast_k_out_tensor;
+  TF_LITE_ENSURE_OK(
+      context,
+      GetTemporarySafe(context, node, /*index=*/kBroadcastKTempTensorIndex,
+                       &broadcast_k_out_tensor));
+  auto broadcast_k_out_shape = GetTensorShape(broadcast_k_out_tensor);
+  auto broadcast_k_out_data = GetTensorData<float>(broadcast_k_out_tensor);
+  TfLiteTensor* broadcast_v_out_tensor;
+  TF_LITE_ENSURE_OK(
+      context,
+      GetTemporarySafe(context, node, /*index=*/kBroadcastVTempTensorIndex,
+                       &broadcast_v_out_tensor));
+  auto broadcast_v_out_shape = GetTensorShape(broadcast_v_out_tensor);
+  auto broadcast_v_out_data = GetTensorData<float>(broadcast_v_out_tensor);
 
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   bool mqa = key_tensor->dims->data[2] == 1;
+  bool gqa = !mqa && (key_tensor->dims->data[2] != query_tensor->dims->data[2]);
 
   // scale * q
   float scale = op_data->scale;
@@ -442,6 +503,27 @@ TfLiteStatus SDPAEval(TfLiteContext* context, TfLiteNode* node) {
   reference_ops::Transpose(transpose_k_params, key_shape, key_data,
                            transpose_k_out_shape, transpose_k_out_data);
 
+  // broadcast k to match num_heads
+  // broadcasting similar to torch.repeat_interleave
+  if (gqa) {
+    float* transpose_k_ptr = transpose_k_out_data;
+    float* broadcast_k_ptr = broadcast_k_out_data;
+    int num_elements =
+        transpose_k_out_shape.Dims(2) * transpose_k_out_shape.Dims(3);
+    int num_repeat =
+        broadcast_k_out_shape.Dims(1) / transpose_k_out_shape.Dims(1);
+    for (int i = 0; i < transpose_k_out_shape.Dims(0); ++i) {
+      for (int j = 0; j < transpose_k_out_shape.Dims(1); ++j) {
+        for (int k = 0; k < num_repeat; ++k) {
+          memcpy(broadcast_k_ptr, transpose_k_ptr,
+                 num_elements * sizeof(float));
+          broadcast_k_ptr += num_elements;
+        }
+        transpose_k_ptr += num_elements;
+      }
+    }
+  }
+
   // reshape k for MQA, or transpose q for MHA
   if (mqa) {
     TF_LITE_ENSURE_EQ(context, transpose_k_out_tensor->bytes,
@@ -471,8 +553,12 @@ TfLiteStatus SDPAEval(TfLiteContext* context, TfLiteNode* node) {
         fc_params, transpose_q_out_shape, transpose_q_out_data,
         reshape_k_or_q_out_shape, reshape_k_or_q_out_data, RuntimeShape(),
         nullptr, matmul1_out_shape, matmul1_out_data);
-  } else {
+  } else if (gqa) {
     // pass rhs first (this is why we transpose q above)
+    reference_ops::BatchMatMul(
+        broadcast_k_out_shape, broadcast_k_out_data, reshape_k_or_q_out_shape,
+        reshape_k_or_q_out_data, matmul1_out_shape, matmul1_out_data);
+  } else {
     reference_ops::BatchMatMul(
         transpose_k_out_shape, transpose_k_out_data, reshape_k_or_q_out_shape,
         reshape_k_or_q_out_data, matmul1_out_shape, matmul1_out_data);
@@ -500,6 +586,27 @@ TfLiteStatus SDPAEval(TfLiteContext* context, TfLiteNode* node) {
   transpose_v_params.perm[3] = 1;
   reference_ops::Transpose(transpose_v_params, value_shape, value_data,
                            transpose_v_out_shape, transpose_v_out_data);
+
+  // broadcast v to match num_heads
+  // broadcasting similar to torch.repeat_interleave
+  if (gqa) {
+    float* transpose_v_ptr = transpose_v_out_data;
+    float* broadcast_v_ptr = broadcast_v_out_data;
+    int num_elements =
+        transpose_v_out_shape.Dims(2) * transpose_v_out_shape.Dims(3);
+    int num_repeat =
+        broadcast_v_out_shape.Dims(1) / transpose_v_out_shape.Dims(1);
+    for (int i = 0; i < transpose_v_out_shape.Dims(0); ++i) {
+      for (int j = 0; j < transpose_v_out_shape.Dims(1); ++j) {
+        for (int k = 0; k < num_repeat; ++k) {
+          memcpy(broadcast_v_ptr, transpose_v_ptr,
+                 num_elements * sizeof(float));
+          broadcast_v_ptr += num_elements;
+        }
+        transpose_v_ptr += num_elements;
+      }
+    }
+  }
 
   // reshape v for MQA, or add_out (softmax_out)
   if (mqa) {
@@ -530,8 +637,12 @@ TfLiteStatus SDPAEval(TfLiteContext* context, TfLiteNode* node) {
                                   reshape_v_or_add_out_shape,
                                   reshape_v_or_add_out_data, RuntimeShape(),
                                   nullptr, matmul2_out_shape, matmul2_out_data);
-  } else {
+  } else if (gqa) {
     // pass rhs first (this is why we transpose add_out above)
+    reference_ops::BatchMatMul(
+        broadcast_v_out_shape, broadcast_v_out_data, reshape_v_or_add_out_shape,
+        reshape_v_or_add_out_data, matmul2_out_shape, matmul2_out_data);
+  } else {
     reference_ops::BatchMatMul(
         transpose_v_out_shape, transpose_v_out_data, reshape_v_or_add_out_shape,
         reshape_v_or_add_out_data, matmul2_out_shape, matmul2_out_data);

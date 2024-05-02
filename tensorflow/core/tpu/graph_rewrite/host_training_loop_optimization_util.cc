@@ -141,7 +141,7 @@ Status ExtractExecuteNodeInfo(
   new_metadata->ParsePartialFromString(metadata_string);
   if (new_metadata->num_cores_per_replica() != 1) {
     // We do not support model parallelism yet.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   execute_node_info->clear();
@@ -151,7 +151,7 @@ Status ExtractExecuteNodeInfo(
     }
   }
   if (execute_node_info->empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_RET_CHECK(execute_node_info->size() == new_metadata->num_replicas())
       << "Number of replicas does not equal number of execute nodes: "
@@ -233,7 +233,7 @@ Status ExtractExecuteNodeInfo(
     // We don't need to process anything if no input is added.
     execute_node_info->clear();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool IsTPUCompileOp(const Node& n) { return n.type_string() == "TPUCompile"; }
@@ -335,7 +335,7 @@ Status GetOrCreateBeforeEachIterationNode(const Node& loop_cond_node,
   for (const auto out_edge : loop_switch_node->out_edges()) {
     if (out_edge->src_output() == 1) {
       *node_out = out_edge->dst();
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -356,7 +356,7 @@ Status GetOrCreateBeforeEachIterationNode(const Node& loop_cond_node,
 
   graph->AddEdge(loop_switch_node, 1, at_loop_iteration_node, 0);
   *node_out = at_loop_iteration_node;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Injects a NoOp node in that is executed after the very last iteration
@@ -413,7 +413,7 @@ Status AddNoOpAfterLastIteration(const Node& loop_cond_node, Graph* graph,
   }
 
   *node_out = after_last_iteration_node;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -434,7 +434,7 @@ Status DetectHostTrainingLoop(
                                     associated_functions.end());
   }
 
-  Status ret_status = OkStatus();
+  Status ret_status = absl::OkStatus();
   for (const auto& function : associated_function_list) {
     if (function.type() != AssociatedFunctionInfo::kFunctionAttr) continue;
 
@@ -489,11 +489,11 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
     LOG(ERROR) << "Encountered error when trying to extract execute nodes, "
                   "skipping host loop optimization. Status: "
                << status;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (execute_nodes_info.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Update the TPUCompileMetadata such that sharding config of the
@@ -654,7 +654,7 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
   for (auto exit : FindLoopExitNodes(*loop_condition_node)) {
     graph->AddControlEdge(after_unshard_node, exit);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tpu

@@ -56,11 +56,11 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/async_value.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/connected_traceme.h"
@@ -73,7 +73,7 @@ using ::xla::runtime::CpuEvent;
 
 constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
 
-// Unpacks and copies the int4 data at 'input' into the literal at the given
+// Unpacks and copies the packed data at `input` into the literal at the given
 // ShapeIndex.
 void UnpackIntNToLiteral(PrimitiveType input_element_type,
                          const MaybeOwningCpuMemory& input,
@@ -822,7 +822,7 @@ AbstractAsyncHostToHostMemoryTransferManager::
   // Wait for in-flight transfers to finish.
   absl::Condition transfers_finished(
       +[](int* t) { return *t == 0; }, &transfers_in_flight_);
-  LOG(INFO) << "Waiting for in-flight transfers to finish.";
+  VLOG(2) << "Waiting for in-flight transfers to finish.";
   absl::MutexLock l(&mu_);
   mu_.Await(transfers_finished);
   for (auto& avref : avs_) {
@@ -832,7 +832,7 @@ AbstractAsyncHostToHostMemoryTransferManager::
           "Async transfer object was deleted before transfers completed."));
     }
   }
-  LOG(INFO) << "In-flight transfers finished.";
+  VLOG(2) << "In-flight transfers finished.";
 }
 
 size_t AbstractAsyncHostToHostMemoryTransferManager::buffer_size(

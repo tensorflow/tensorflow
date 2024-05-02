@@ -55,7 +55,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/X86Vector/X86VectorToLLVMIRTranslation.h"  // from @llvm-project
 #endif
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "xla/mlir/backends/cpu/transforms/passes.h"
 #include "xla/mlir/memref/transforms/passes.h"
 #include "xla/mlir/runtime/ir/rt_dialect.h"
 #include "xla/mlir/runtime/transforms/compilation_pipeline_options.h"
@@ -106,7 +105,6 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
 
   // Convert entry function to the XLA entrypoint.
   pm.addPass(CreateExportRuntimeFunctionsPass());
-  pm.addPass(cpu::createConvertXlaCpuToCpuRuntimePass());
   pm.addPass(CreateConvertCustomCallsPass());
   pm.addPass(CreateConvertAssertsPass());
 

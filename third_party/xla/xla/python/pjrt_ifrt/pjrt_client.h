@@ -42,14 +42,16 @@ limitations under the License.
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
 namespace ifrt {
 
 class PjRtCompatibleArray;
+class PjRtCompatibleDevice;
+class PjRtCompatibleMemory;
 class PjRtDevice;
 class PjRtMemory;
 
@@ -69,9 +71,9 @@ class PjRtCompatibleClient
       std::shared_ptr<PjRtBuffer> pjrt_buffer) = 0;
   virtual absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
       Shape shape, PjRtBuffers pjrt_buffers) = 0;
-  virtual absl::StatusOr<PjRtDevice*> LookupPjRtDevice(
+  virtual absl::StatusOr<PjRtCompatibleDevice*> LookupPjRtDevice(
       xla::PjRtDevice* pjrt_device) const = 0;
-  virtual absl::StatusOr<PjRtMemory*> LookupPjRtMemory(
+  virtual absl::StatusOr<PjRtCompatibleMemory*> LookupPjRtMemory(
       xla::PjRtMemorySpace* pjrt_memory) const = 0;
 
   static char ID;  // NOLINT
@@ -175,9 +177,9 @@ class PjRtClient final
       DType dtype, absl::Span<const int64_t> dims,
       Device* device) const override;
 
-  absl::StatusOr<PjRtDevice*> LookupPjRtDevice(
+  absl::StatusOr<PjRtCompatibleDevice*> LookupPjRtDevice(
       xla::PjRtDevice* pjrt_device) const override;
-  absl::StatusOr<PjRtMemory*> LookupPjRtMemory(
+  absl::StatusOr<PjRtCompatibleMemory*> LookupPjRtMemory(
       xla::PjRtMemorySpace* pjrt_memory) const override;
 
   // Transfer the given literal to the infeed queue.
@@ -202,6 +204,7 @@ class PjRtClient final
       device_map_;
   absl::flat_hash_map<xla::PjRtMemorySpace*, std::unique_ptr<PjRtMemory>>
       memory_map_;
+  absl::flat_hash_map<DeviceId, PjRtDevice*> device_id_map_;
 };
 
 }  // namespace ifrt

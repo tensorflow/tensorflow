@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
@@ -142,7 +143,7 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
   bool getQuantizableOps(arith::ConstantOp op,
                          QuantizationUnits& quantizable_ops) const {
     // Non-float tensors do not need quantization.
-    auto type = op.getType().dyn_cast<ShapedType>();
+    auto type = mlir::dyn_cast<ShapedType>(op.getType());
     if (!type || !type.getElementType().isF32()) return false;
 
     Value value = op.getResult();
@@ -183,23 +184,23 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
     if (attr.size() < quant_specs_.minimum_elements_for_weights) {
       op->emitRemark("Quantization is skipped for ")
           << quantized_op->getName().getStringRef().str() << " because it has "
-          << attr.dyn_cast<DenseFPElementsAttr>().size()
+          << mlir::dyn_cast<DenseFPElementsAttr>(attr).size()
           << " elements which is fewer than the threshold("
           << quant_specs_.minimum_elements_for_weights << " elements).";
       return false;
     }
 
     if (is_per_channel_quantization) {
-      quant_type = quant::GetUniformQuantizedPerAxisTypeForWeight(
-                       attr, quant_dim,
-                       /*symmetric=*/true, bit_width, is_signed,
-                       is_narrow_range, is_legacy_float)
-                       .template dyn_cast<quant::QuantizedType>();
+      quant_type = mlir::dyn_cast<quant::QuantizedType>(
+          quant::GetUniformQuantizedPerAxisTypeForWeight(
+              attr, quant_dim,
+              /*symmetric=*/true, bit_width, is_signed, is_narrow_range,
+              is_legacy_float));
     } else {
-      quant_type = quant::GetUniformQuantizedTypeForWeight(
-                       attr, is_narrow_range && is_signed, bit_width, is_signed,
-                       is_narrow_range, is_legacy_float)
-                       .template dyn_cast<quant::QuantizedType>();
+      quant_type = mlir::dyn_cast<quant::QuantizedType>(
+          quant::GetUniformQuantizedTypeForWeight(
+              attr, is_narrow_range && is_signed, bit_width, is_signed,
+              is_narrow_range, is_legacy_float));
     }
     return insertQDQ(rewriter, op, quant_type, quant_op);
   }

@@ -119,8 +119,6 @@ absl::StatusOr<std::unique_ptr<Stream>> StreamExecutor::CreateStream(
   return std::move(stream);
 }
 
-StreamExecutorInterface* StreamExecutor::implementation() { return this; }
-
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
     StreamExecutor* executor)
     : DeviceMemoryAllocator(executor->platform()) {

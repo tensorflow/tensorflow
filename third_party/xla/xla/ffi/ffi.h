@@ -119,9 +119,12 @@ std::optional<Buffer<dtype, rank>> DecodeBuffer(XLA_FFI_Buffer* buf,
     }
   }
 
+  size_t size_bytes = primitive_util::ByteWidth(PrimitiveType(buf->dtype));
+  for (int64_t i = 0; i < buf->rank; ++i) size_bytes *= buf->dims[i];
+
   Buffer<dtype, rank> buffer;
-  buffer.data =
-      se::DeviceMemory<NativeType<dtype>>(se::DeviceMemoryBase(buf->data));
+  buffer.data = se::DeviceMemory<NativeType<dtype>>(
+      se::DeviceMemoryBase(buf->data, size_bytes));
   buffer.dimensions = absl::MakeConstSpan(buf->dims, buf->rank);
   return buffer;
 }
@@ -233,11 +236,14 @@ struct RetDecoding<Buffer<dtype, rank>> {
     }                                                                    \
   }
 
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int8_t, XLA_FFI_DataType_S8);
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int16_t, XLA_FFI_DataType_S16);
 XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int32_t, XLA_FFI_DataType_S32);
 XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int64_t, XLA_FFI_DataType_S64);
 XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(float, XLA_FFI_DataType_F32);
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(double, XLA_FFI_DataType_F64);
 
-#undef XLA_FFI_REGISTER_SCALAR_ATTR_DECODING
+#undef XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING
 
 // A type tag to mark i64 attributes as pointers to `T`.
 template <typename T>

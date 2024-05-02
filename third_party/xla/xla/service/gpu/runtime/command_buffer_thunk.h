@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/service/gpu/runtime/command_buffer_allocations.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -72,14 +71,6 @@ class CommandBufferThunk : public Thunk {
     // A manager for an external state attached by commands in a command
     // sequence to a command buffer.
     CommandBufferCmd::StateManager state ABSL_GUARDED_BY(mutex);
-
-    // TODO(ezhulenev): We need to move command buffer allocations all the way
-    // up to the GpuExecutable as we can have Allocate and Free commands in
-    // different command buffers. Consider making it a part of
-    // BufferAllocations (as std::unique_ptr<ExternalAllocations> member).
-
-    // Memory allocations performed by a `command_buffer`.
-    CommandBufferAllocations allocations ABSL_GUARDED_BY(mutex);
 
     // Mapping from buffer allocation index to the device memory passed at
     // that index to the last call of `commands_.Record(...)` for

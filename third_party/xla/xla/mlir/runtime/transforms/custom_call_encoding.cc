@@ -60,9 +60,9 @@ limitations under the License.
 #include "xla/runtime/memref_view.h"
 #include "xla/runtime/tracing.h"
 #include "xla/runtime/type_id.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/concurrency/chain.h"
 
 namespace Eigen {
 struct half;
@@ -193,7 +193,7 @@ static LLVM::GlobalOp EncodeDenseElementsAttribute(
     Globals &g, ImplicitLocOpBuilder &b, Attribute value,
     std::string_view symbol_base) {
   MLIRContext *ctx = b.getContext();
-  DenseIntOrFPElementsAttr dense = value.cast<DenseIntOrFPElementsAttr>();
+  DenseIntOrFPElementsAttr dense = mlir::cast<DenseIntOrFPElementsAttr>(value);
 
   Type ptr = LLVM::LLVMPointerType::get(ctx);
 
@@ -362,7 +362,7 @@ static LLVM::GlobalOp EncodeDenseArrayAttribute(Globals &g,
                                                 std::string_view symbol_base) {
   MLIRContext *ctx = b.getContext();
 
-  DenseArrayAttr base_array = value.cast<DenseArrayAttr>();
+  DenseArrayAttr base_array = mlir::cast<DenseArrayAttr>(value);
   int64_t size = base_array.size();
 
   Type ptr = LLVM::LLVMPointerType::get(ctx);
@@ -593,20 +593,20 @@ static bool IsAnyOf(unsigned width, ArrayRef<unsigned> supported) {
 }
 
 static bool IsSupportedScalarType(Type type) {
-  if (auto idx = type.dyn_cast<mlir::IndexType>()) return true;
+  if (auto idx = mlir::dyn_cast<mlir::IndexType>(type)) return true;
 
-  if (auto i = type.dyn_cast<mlir::IntegerType>())
+  if (auto i = mlir::dyn_cast<mlir::IntegerType>(type))
     return i.isUnsigned() ? IsAnyOf(i.getWidth(), {8, 16, 32, 64})
                           : IsAnyOf(i.getWidth(), {1, 8, 16, 32, 64});
 
-  if (auto fp = type.dyn_cast<mlir::FloatType>())
+  if (auto fp = mlir::dyn_cast<mlir::FloatType>(type))
     return IsAnyOf(fp.getWidth(), {16, 32, 64});
 
   return false;
 }
 
 static bool IsSupportedScalarAttribute(Attribute attr) {
-  if (auto typed = attr.dyn_cast<TypedAttr>())
+  if (auto typed = mlir::dyn_cast<TypedAttr>(attr))
     return IsSupportedScalarType(typed.getType());
   return false;
 }
@@ -637,7 +637,7 @@ static TypeID ScalarRuntimeTypeId(Type type) {
 static PrimitiveType ScalarPrimitiveType(Type type) {
   // Integer types.
   if (type.isInteger(1)) return PrimitiveType::PRED;
-  if (auto int_type = type.dyn_cast<mlir::IntegerType>()) {
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
     unsigned int width = int_type.getWidth();
     if (auto primitive_type =
             int_type.isUnsigned()
@@ -662,7 +662,7 @@ static PrimitiveType ScalarPrimitiveType(Type type) {
   if (type.isBF16()) return PrimitiveType::BF16;
 
   // Complex types.
-  if (auto complex = type.dyn_cast<ComplexType>()) {
+  if (auto complex = mlir::dyn_cast<ComplexType>(type)) {
     return primitive_util::ComplexType(
         ScalarPrimitiveType(complex.getElementType()));
   }
@@ -703,7 +703,7 @@ static TypeID AsyncValueRuntimeTypeId(Type elem_type) {
     return TypeID::get<Tagged<tsl::AsyncValueRef<float>>>();
   if (elem_type.isF64())
     return TypeID::get<Tagged<tsl::AsyncValueRef<double>>>();
-  if (elem_type.isa<MemRefType>())
+  if (mlir::isa<MemRefType>(elem_type))
     return TypeID::get<Tagged<tsl::AsyncValueRef<MemrefView>>>();
 
   assert(false && "unsupported type id");
@@ -731,7 +731,7 @@ static TypeID DenseElementsRuntimeTypeId(Type elem_type) {
 LogicalResult StringAttrEncoding::Match(mlir::SymbolTable &,
                                         std::string_view name,
                                         Attribute attr) const {
-  return success(attr.isa<StringAttr>());
+  return success(mlir::isa<StringAttr>(attr));
 }
 
 FailureOr<EncodedAttr> StringAttrEncoding::Encode(mlir::SymbolTable &,
@@ -739,7 +739,7 @@ FailureOr<EncodedAttr> StringAttrEncoding::Encode(mlir::SymbolTable &,
                                                   ImplicitLocOpBuilder &b,
                                                   std::string_view name,
                                                   Attribute attr) const {
-  auto str = attr.cast<StringAttr>();
+  auto str = mlir::cast<StringAttr>(attr);
 
   Encoded encoded;
   encoded.name = EncodeString(g, b, name, kAttrName);
@@ -761,7 +761,7 @@ FailureOr<EncodedAttr> ScalarAttrEncoding::Encode(mlir::SymbolTable &,
                                                   ImplicitLocOpBuilder &b,
                                                   std::string_view name,
                                                   Attribute attr) const {
-  Type type = attr.cast<TypedAttr>().getType();
+  Type type = mlir::cast<TypedAttr>(attr).getType();
 
   Encoded encoded;
   encoded.name = EncodeString(g, b, name, kAttrName);
@@ -776,7 +776,7 @@ FailureOr<EncodedAttr> ScalarAttrEncoding::Encode(mlir::SymbolTable &,
 LogicalResult DenseElementsAttrEncoding::Match(mlir::SymbolTable &,
                                                std::string_view name,
                                                Attribute attr) const {
-  if (auto dense = attr.dyn_cast<DenseIntOrFPElementsAttr>())
+  if (auto dense = mlir::dyn_cast<DenseIntOrFPElementsAttr>(attr))
     return success(IsSupportedScalarType(dense.getElementType()));
   return failure();
 }
@@ -784,7 +784,7 @@ LogicalResult DenseElementsAttrEncoding::Match(mlir::SymbolTable &,
 FailureOr<EncodedAttr> DenseElementsAttrEncoding::Encode(
     mlir::SymbolTable &, Globals &g, ImplicitLocOpBuilder &b,
     std::string_view name, Attribute attr) const {
-  auto dense = attr.cast<DenseIntOrFPElementsAttr>();
+  auto dense = mlir::cast<DenseIntOrFPElementsAttr>(attr);
   Type elem_type = dense.getType().getElementType();
 
   Encoded encoded;
@@ -800,8 +800,8 @@ FailureOr<EncodedAttr> DenseElementsAttrEncoding::Encode(
 LogicalResult ArrayAttrEncoding::Match(mlir::SymbolTable &,
                                        std::string_view name,
                                        Attribute attr) const {
-  if (auto array = attr.dyn_cast<ArrayAttr>();
-      array && !array.empty() && array[0].isa<TypedAttr>()) {
+  if (auto array = mlir::dyn_cast<ArrayAttr>(attr);
+      array && !array.empty() && mlir::isa<TypedAttr>(array[0])) {
     return success(IsSupportedScalarAttribute(array[0]));
   }
   return failure();
@@ -812,12 +812,12 @@ FailureOr<EncodedAttr> ArrayAttrEncoding::Encode(mlir::SymbolTable &,
                                                  ImplicitLocOpBuilder &b,
                                                  std::string_view name,
                                                  Attribute attr) const {
-  ArrayAttr array = attr.dyn_cast<ArrayAttr>();
-  Type elem_type = array[0].cast<TypedAttr>().getType();
+  ArrayAttr array = mlir::dyn_cast<ArrayAttr>(attr);
+  Type elem_type = mlir::cast<TypedAttr>(array[0]).getType();
 
   // We only support array attributes with elements of same type.
   bool all_of_same_type = llvm::all_of(array, [&](Attribute attr) {
-    auto typed = attr.dyn_cast<TypedAttr>();
+    auto typed = mlir::dyn_cast<TypedAttr>(attr);
     return typed && typed.getType() == elem_type;
   });
   if (!all_of_same_type) return failure();
@@ -835,7 +835,7 @@ FailureOr<EncodedAttr> ArrayAttrEncoding::Encode(mlir::SymbolTable &,
 LogicalResult DenseArrayAttrEncoding::Match(mlir::SymbolTable &,
                                             std::string_view name,
                                             Attribute attr) const {
-  if (auto array = attr.dyn_cast<DenseArrayAttr>()) {
+  if (auto array = mlir::dyn_cast<DenseArrayAttr>(attr)) {
     return success();
   }
   return failure();
@@ -846,7 +846,7 @@ FailureOr<EncodedAttr> DenseArrayAttrEncoding::Encode(mlir::SymbolTable &,
                                                       ImplicitLocOpBuilder &b,
                                                       std::string_view name,
                                                       Attribute attr) const {
-  Type elem_type = attr.cast<DenseArrayAttr>().getElementType();
+  Type elem_type = mlir::cast<DenseArrayAttr>(attr).getElementType();
 
   Encoded encoded;
   encoded.name = EncodeString(g, b, name, kAttrName);
@@ -861,7 +861,7 @@ FailureOr<EncodedAttr> DenseArrayAttrEncoding::Encode(mlir::SymbolTable &,
 LogicalResult EmptyArrayAttrEncoding::Match(mlir::SymbolTable &,
                                             std::string_view name,
                                             Attribute attr) const {
-  if (auto array = attr.dyn_cast<ArrayAttr>(); array && array.empty()) {
+  if (auto array = mlir::dyn_cast<ArrayAttr>(attr); array && array.empty()) {
     return success();
   }
   return failure();
@@ -885,7 +885,7 @@ FailureOr<EncodedAttr> EmptyArrayAttrEncoding::Encode(mlir::SymbolTable &,
 LogicalResult SymbolRefAttrEncoding::Match(mlir::SymbolTable &sym_table,
                                            std::string_view name,
                                            Attribute attr) const {
-  if (auto ref = attr.dyn_cast<FlatSymbolRefAttr>()) {
+  if (auto ref = mlir::dyn_cast<FlatSymbolRefAttr>(attr)) {
     auto exported = sym_table.lookup<func::FuncOp>(ref.getValue());
     return success(exported && exported->hasAttr(kExportedAttrName));
   }
@@ -896,7 +896,7 @@ FailureOr<EncodedAttr> SymbolRefAttrEncoding::Encode(
     mlir::SymbolTable &sym_table, Globals &g, ImplicitLocOpBuilder &b,
     std::string_view name, Attribute attr) const {
   // Get the exported function ordinal.
-  auto ref = attr.cast<FlatSymbolRefAttr>();
+  auto ref = mlir::cast<FlatSymbolRefAttr>(attr);
   auto func = sym_table.lookup<func::FuncOp>(ref.getValue());
   auto ordinal = func->getAttrOfType<IntegerAttr>(kExportedAttrName);
   assert(ordinal.getType().isSignlessInteger(32));
@@ -917,7 +917,7 @@ FailureOr<EncodedAttr> SymbolRefAttrEncoding::Encode(
 
 LogicalResult UnitAttrEncoding::Match(mlir::SymbolTable &, std::string_view,
                                       Attribute attr) const {
-  return success(attr.isa<UnitAttr>());
+  return success(mlir::isa<UnitAttr>(attr));
 }
 
 FailureOr<EncodedAttr> UnitAttrEncoding::Encode(mlir::SymbolTable &, Globals &g,
@@ -937,7 +937,7 @@ FailureOr<EncodedAttr> UnitAttrEncoding::Encode(mlir::SymbolTable &, Globals &g,
 LogicalResult DictionaryAttrEncoding::Match(mlir::SymbolTable &,
                                             std::string_view,
                                             Attribute attr) const {
-  return success(attr.isa<DictionaryAttr>());
+  return success(mlir::isa<DictionaryAttr>(attr));
 }
 
 FailureOr<EncodedAttr> DictionaryAttrEncoding::Encode(
@@ -1068,7 +1068,7 @@ FailureOr<EncodedArg> ScalarArgEncoding::Encode(Globals &g, Allocas &a,
 //===----------------------------------------------------------------------===//
 
 static bool IsOpaqueValue(Value value) {
-  return value.getType().isa<OpaqueType>();
+  return mlir::isa<OpaqueType>(value.getType());
 }
 
 OpaqueArgEncoding::OpaqueArgEncoding()
@@ -1079,7 +1079,7 @@ OpaqueArgEncoding::OpaqueArgEncoding(std::function<bool(Value)> match,
     : match_(std::move(match)), type_id_(type_id) {}
 
 LogicalResult OpaqueArgEncoding::Match(Value value, Value converted) const {
-  if (auto ptr = converted.getType().dyn_cast<LLVM::LLVMPointerType>())
+  if (auto ptr = mlir::dyn_cast<LLVM::LLVMPointerType>(converted.getType()))
     return success(match_(value));
   return failure();
 }
@@ -1190,14 +1190,14 @@ static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
 }
 
 LogicalResult MemrefArgEncoding::Match(Value value, Value converted) const {
-  return success(value.getType().isa<MemRefType>());
+  return success(mlir::isa<MemRefType>(value.getType()));
 }
 
 FailureOr<EncodedArg> MemrefArgEncoding::Encode(Globals &g, Allocas &a,
                                                 ImplicitLocOpBuilder &b,
                                                 Value value,
                                                 Value converted) const {
-  auto memref_type = value.getType().cast<MemRefType>();
+  auto memref_type = mlir::cast<MemRefType>(value.getType());
 
   // If memref has non-identity layout we use `StridedMemrefView` to
   // distinguish it from the default row-major memref.
@@ -1242,7 +1242,7 @@ FailureOr<Value> ScalarRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
 
 //===----------------------------------------------------------------------===//
 
-static bool IsOpaqueType(Type type) { return type.isa<OpaqueType>(); }
+static bool IsOpaqueType(Type type) { return mlir::isa<OpaqueType>(type); }
 
 OpaqueRetEncoding::OpaqueRetEncoding()
     : OpaqueRetEncoding(IsOpaqueType, TypeID::get<Tagged<void *>>()) {}
@@ -1252,7 +1252,7 @@ OpaqueRetEncoding::OpaqueRetEncoding(std::function<bool(Type)> match,
     : match_(std::move(match)), type_id_(type_id) {}
 
 LogicalResult OpaqueRetEncoding::Match(Type type, Type converted) const {
-  if (auto ptr = converted.dyn_cast<LLVM::LLVMPointerType>())
+  if (auto ptr = mlir::dyn_cast<LLVM::LLVMPointerType>(converted))
     return success(match_(type));
   return failure();
 }
@@ -1280,15 +1280,15 @@ FailureOr<Value> OpaqueRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
 //===----------------------------------------------------------------------===//
 
 LogicalResult MemrefRetEncoding::Match(Type type, Type converted) const {
-  return success(type.isa<MemRefType>() &&
-                 converted.isa<LLVM::LLVMStructType>());
+  return success(mlir::isa<MemRefType>(type) &&
+                 mlir::isa<LLVM::LLVMStructType>(converted));
 }
 
 FailureOr<EncodedRet> MemrefRetEncoding::Encode(Globals &g, Allocas &a,
                                                 ImplicitLocOpBuilder &b,
                                                 Type type,
                                                 Type converted) const {
-  auto memref_ty = type.cast<MemRefType>();
+  auto memref_ty = mlir::cast<MemRefType>(type);
 
   // We assume custom calls can only return row-major memrefs, may need to add
   // PermutedMemref support in the future.
@@ -1353,9 +1353,9 @@ FailureOr<Value> MemrefRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
 //===----------------------------------------------------------------------===//
 
 LogicalResult AsyncValueRetEncoding::Match(Type type, Type converted) const {
-  return success(
-      (type.isa<async::ValueType>() || type.isa<async::TokenType>()) &&
-      converted.isa<LLVM::LLVMPointerType>());
+  return success((mlir::isa<async::ValueType>(type) ||
+                  mlir::isa<async::TokenType>(type)) &&
+                 mlir::isa<LLVM::LLVMPointerType>(converted));
 }
 
 FailureOr<EncodedRet> AsyncValueRetEncoding::Encode(Globals &g, Allocas &a,
@@ -1365,9 +1365,9 @@ FailureOr<EncodedRet> AsyncValueRetEncoding::Encode(Globals &g, Allocas &a,
   Type ptr = LLVM::LLVMPointerType::get(b.getContext());
   Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
 
-  auto type_id = type.isa<async::ValueType>()
+  auto type_id = mlir::isa<async::ValueType>(type)
                      ? AsyncValueRuntimeTypeId(
-                           type.cast<async::ValueType>().getValueType())
+                           mlir::cast<async::ValueType>(type).getValueType())
                      : TypeID::get<Tagged<tsl::AsyncValueRef<tsl::Chain>>>();
 
   Encoded encoded;
@@ -1375,8 +1375,8 @@ FailureOr<EncodedRet> AsyncValueRetEncoding::Encode(Globals &g, Allocas &a,
 
   // for !async.value<memref> encoding its dtype, rank and dims with
   // EncodedMemRef struct; we use its data field to store async value ptr.
-  if (auto value_ty = type.dyn_cast<async::ValueType>()) {
-    if (auto memref_ty = value_ty.getValueType().dyn_cast<MemRefType>()) {
+  if (auto value_ty = mlir::dyn_cast<async::ValueType>(type)) {
+    if (auto memref_ty = mlir::dyn_cast<MemRefType>(value_ty.getValueType())) {
       encoded.value =
           PackValue(b, a, EncodeMemRef(b, memref_ty, /*descriptor=*/nullptr));
       return encoded;
@@ -1391,8 +1391,8 @@ FailureOr<EncodedRet> AsyncValueRetEncoding::Encode(Globals &g, Allocas &a,
 FailureOr<Value> AsyncValueRetEncoding::Decode(ImplicitLocOpBuilder &b,
                                                Type type, Type converted,
                                                LLVM::AllocaOp alloca) const {
-  if (auto value_ty = type.dyn_cast<async::ValueType>()) {
-    if (auto memref_ty = value_ty.getValueType().dyn_cast<MemRefType>()) {
+  if (auto value_ty = mlir::dyn_cast<async::ValueType>(type)) {
+    if (auto memref_ty = mlir::dyn_cast<MemRefType>(value_ty.getValueType())) {
       // TODO(ezhulenev): Add support for returning dynamically shaped memref.
       if (!memref_ty.hasStaticShape()) return failure();
 

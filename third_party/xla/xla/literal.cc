@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
@@ -367,6 +368,22 @@ std::optional<int64_t> LiteralBase::GetFirstInteger() const {
         return first_element;
       },
       shape().element_type());
+}
+
+void LiteralBase::BuildPieceSubtree(const Shape& shape, Piece* piece) {
+  CHECK(shape.IsTuple());
+  for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    const Shape& subshape = shape.tuple_shapes(i);
+
+    Piece child_piece;
+    child_piece.set_subshape(&subshape);
+
+    if (subshape.IsTuple()) {
+      BuildPieceSubtree(subshape, &child_piece);
+    }
+
+    piece->emplace_back(std::move(child_piece));
+  }
 }
 
 absl::Status LiteralBase::SerializeToString(std::string* output) const {
@@ -2242,7 +2259,7 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       break;
     case F8E4M3B11FNUZ:
       *proto->mutable_f8e4m3b11fnuzs() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3b11>().data()),
+          reinterpret_cast<const char*>(data<tsl::float8_e4m3b11fnuz>().data()),
           size_bytes_dense());
       break;
     case F8E5M2FNUZ:
@@ -2423,8 +2440,8 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     }
     case F8E4M3B11FNUZ: {
       const std::string& s(proto.f8e4m3b11fnuzs());
-      TF_RET_CHECK(data<tsl::float8_e4m3b11>().size() *
-                       sizeof(tsl::float8_e4m3b11) ==
+      TF_RET_CHECK(data<tsl::float8_e4m3b11fnuz>().size() *
+                       sizeof(tsl::float8_e4m3b11fnuz) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
       break;
@@ -2683,6 +2700,25 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs,
   }
 }
 
+MutableBorrowingLiteral::MutableBorrowingLiteral(ShapeTree<char*> src_buf_ptrs)
+    : MutableLiteralBase() {
+  shape_ = std::make_unique<Shape>(src_buf_ptrs.shape());
+
+  root_piece_ = new Piece();
+  root_piece_->set_subshape(shape_.get());
+  BuildPieceSubtree(*shape_, root_piece_);
+
+  root_piece_->ForEachMutableSubpiece(
+      [&](const ShapeIndex& index, Piece* piece) {
+        if (ShapeUtil::GetSubshape(*shape_, index).IsTuple()) {
+          DCHECK_EQ(src_buf_ptrs.element(index), nullptr)
+              << "Tuples should not have buffer pointers";
+          return;
+        }
+        piece->set_buffer(const_cast<char*>(src_buf_ptrs.element(index)));
+      });
+}
+
 MutableBorrowingLiteral::~MutableBorrowingLiteral() {
   if (root_piece_ != nullptr) {
     delete root_piece_;
@@ -2695,22 +2731,6 @@ LiteralSlice::LiteralSlice(const LiteralBase& literal)
 LiteralSlice::LiteralSlice(const LiteralBase& literal,
                            const ShapeIndex& view_root)
     : LiteralBase(), root_piece_(&literal.piece(view_root)) {}
-
-void BorrowingLiteral::BuildPieceSubtree(const Shape& shape, Piece* piece) {
-  CHECK(shape.IsTuple());
-  for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-    const Shape& subshape = shape.tuple_shapes(i);
-
-    Piece child_piece;
-    child_piece.set_subshape(&subshape);
-
-    if (subshape.IsTuple()) {
-      BuildPieceSubtree(subshape, &child_piece);
-    }
-
-    piece->emplace_back(std::move(child_piece));
-  }
-}
 
 BorrowingLiteral::BorrowingLiteral(const char* src_buf_ptr, const Shape& shape)
     : LiteralBase(), shape_(std::make_unique<Shape>(shape)) {
@@ -2737,6 +2757,23 @@ BorrowingLiteral::BorrowingLiteral(absl::Span<const char* const> src_buf_ptrs,
     CHECK(src_shape.IsArray());
     root_piece_.child(i).set_buffer(const_cast<char*>(src_buf_ptrs[i]));
   }
+}
+
+BorrowingLiteral::BorrowingLiteral(ShapeTree<const char*> src_buf_ptrs)
+    : LiteralBase(), shape_(std::make_unique<Shape>(src_buf_ptrs.shape())) {
+  root_piece_ = Piece();
+  root_piece_.set_subshape(shape_.get());
+  BuildPieceSubtree(*shape_, &root_piece_);
+
+  root_piece_.ForEachMutableSubpiece(
+      [&](const ShapeIndex& index, Piece* piece) {
+        if (ShapeUtil::GetSubshape(*shape_, index).IsTuple()) {
+          DCHECK_EQ(src_buf_ptrs.element(index), nullptr)
+              << "Tuples should not have buffer pointers";
+          return;
+        }
+        piece->set_buffer(const_cast<char*>(src_buf_ptrs.element(index)));
+      });
 }
 
 }  // namespace xla

@@ -142,6 +142,11 @@ class BufferSequencingEvent {
     return defined_status_.get();
   }
 
+  bool IsPredeterminedError() {
+    absl::MutexLock lock(&mu_);
+    return defined_status_.IsConcrete() && !defined_status_.get().ok();
+  }
+
  private:
   bool EventHasBeenRecorded() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   uint64_t sequence_number() const;

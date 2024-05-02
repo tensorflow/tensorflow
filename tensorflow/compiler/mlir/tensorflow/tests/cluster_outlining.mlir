@@ -105,20 +105,18 @@ func.func @cluster_operands(%arg0: tensor<?xi32>) -> tensor<?xi32> {
 // -----
 
 // Tests cluster attributes are copied over to cluster_func.
-// Includes device info propagation.
 
 // CHECK-LABEL: func @cluster_attrs
 func.func @cluster_attrs() -> tensor<?xi32> {
   %0 = "tf_device.cluster"() ({
     %1 = "tf.A"() : () -> tensor<?xi32>
     tf_device.return %1 : tensor<?xi32>
-  }) {cluster_attr = "cluster_attr", device = "device"} : () -> tensor<?xi32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<?xi32>
   func.return %0 : tensor<?xi32>
 }
 
 // CHECK: "tf_device.cluster_func"
 // CHECK-SAME: cluster_attr = "cluster_attr"
-// CHECK-SAME: device = "device"
 
 // -----
 

@@ -51,6 +51,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

@@ -45,9 +45,8 @@ Status ConvertToMlirShape(const TensorShapeProto& input_shape,
                           llvm::SmallVectorImpl<int64_t>* shape);
 
 // Given a tensor shape and dtype, get the corresponding MLIR tensor type.
-StatusOr<mlir::Type> ConvertToMlirTensorType(const TensorShapeProto& shape,
-                                             DataType dtype,
-                                             mlir::Builder* builder);
+absl::StatusOr<mlir::Type> ConvertToMlirTensorType(
+    const TensorShapeProto& shape, DataType dtype, mlir::Builder* builder);
 
 }  // namespace tensorflow
 

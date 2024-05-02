@@ -141,7 +141,6 @@ bool IsAlignedSlice(const Shape& src_shape, const Shape& dst_shape,
 UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr) {
   UseDefDataflowPaths sliced_operand_paths;
 
-  auto fusion = HloFusionAdaptor::ForComputation(instr->parent());
   // This set is used to avoid duplicates in the matched results. It contains
   // the matched instructions that we have seen so far.
   InstructionSet processed_instrs;
@@ -153,7 +152,7 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr) {
     aliased_operands.insert(pair.second.first);
   }
 
-  for (auto* operand : instr->operands()) {
+  for (const auto* operand : instr->operands()) {
     // output_to_operand_aliasing means the operand is to be materialized, which
     // is against the whole idea of address computation fusion. Skip this
     // operand.
@@ -165,17 +164,14 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr) {
     // flows through unary op). We might want to keep finding until the queue is
     // empty: if the operand is a tuple, it might have different data flows
     // (i.e. 1 for each element).
-    auto maybe_slice_adaptor =
-        HloFindIf({HloInstructionAdaptor(*operand)}, *fusion, [&](auto node) {
-          const HloInstruction* cur = &node.instruction();
-
+    auto maybe_slice_instr =
+        HloFindIf({operand}, [&](const HloInstruction* cur) {
           // If the node is a match that has been processed, stop the traversal.
           if (processed_instrs.contains(cur)) return true;
 
           maybe_sliced_operand_path.push_back(const_cast<HloInstruction*>(cur));
 
-          if (IsOpcodeAnyOf<HloOpcode::kDynamicSlice, HloOpcode::kSlice>(
-                  node)) {
+          if (IsOpcodeAnyOf<HloOpcode::kDynamicSlice, HloOpcode::kSlice>(cur)) {
             if (IsAlignedSlice(cur->operand(0)->shape(), cur->shape(),
                                DynCast<HloSliceInstruction>(cur))) {
               slice_found = true;
@@ -189,11 +185,9 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr) {
           return cur->user_count() > 1 || !IsNoOp(cur);
         });
 
-    if (maybe_slice_adaptor == std::nullopt) continue;
+    if (maybe_slice_instr == std::nullopt) continue;
 
-    const auto& maybe_slice_instr = maybe_slice_adaptor->instruction();
-
-    if (slice_found || processed_instrs.contains(&maybe_slice_instr)) {
+    if (slice_found || processed_instrs.contains(maybe_slice_instr.value())) {
       // Even in the case of stopping at a match that has been processed, we
       // still need to add instructions encountered in the sliced operand path
       // during the latest traversal.
@@ -215,7 +209,6 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr) {
 // following the dataflow from the user itself to the DUS (included).
 DefUseDataflowPaths GetSlicedUserPaths(const HloInstruction* instr) {
   DefUseDataflowPaths sliced_user_paths;
-  auto fusion = HloFusionAdaptor::ForComputation(instr->parent());
   // This set is used to avoid duplicates in the matched results. It contains
   // the matched instructions that we have seen so far.
   InstructionSet processed_instrs;
@@ -223,10 +216,9 @@ DefUseDataflowPaths GetSlicedUserPaths(const HloInstruction* instr) {
   auto traverse_hlo_and_collect = [&](HloInstruction* start) {
     DefUseDataflowPath maybe_sliced_user_path;
     bool dus_found = false;
-    auto maybe_dus_adaptor = HloFindIf(
-        {HloInstructionAdaptor(*start)}, *fusion,
-        [&](auto node) {
-          const HloInstruction* cur = &node.instruction();
+    auto maybe_dus_instr = HloFindIf(
+        {start},
+        [&](const HloInstruction* cur) {
           // If the node is a match that has been processed, stop the
           // traversal.
           if (processed_instrs.contains(cur)) return true;
@@ -242,9 +234,8 @@ DefUseDataflowPaths GetSlicedUserPaths(const HloInstruction* instr) {
           return cur->user_count() > 1 || !IsNoOp(cur);
         },
         /*visit_operands=*/false);
-    if (maybe_dus_adaptor == std::nullopt) return;
-    const auto& maybe_dus_instr = maybe_dus_adaptor->instruction();
-    if (dus_found || processed_instrs.contains(&maybe_dus_instr)) {
+    if (maybe_dus_instr == std::nullopt) return;
+    if (dus_found || processed_instrs.contains(maybe_dus_instr.value())) {
       // Even in the case of stopping at a match that has been processed, we
       // still need to add instructions encountered in the sliced user path
       // during the latest traversal.

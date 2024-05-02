@@ -79,6 +79,7 @@ tool_names = [
     'mlir-translate',
     'odml-to-stablehlo-opt',
     'odml_to_stablehlo',
+    'odml-converter',
     'stable-quant-opt',
     'tac-opt-all-backends',
     'tac-translate',

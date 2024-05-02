@@ -64,12 +64,13 @@ void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
   // Arbitrarily chosen "small" number. This could be chosen based on the proto
   // size too.
   if (attr.getNumElements() < 32) return;
-  ShapedType returnType = op->getResultTypes().front().cast<ShapedType>();
+  ShapedType returnType = mlir::cast<ShapedType>(op->getResultTypes().front());
   ImplicitLocOpBuilder b(op->getLoc(), op);
   ConstantOp cst;
-  if (auto complexTy = returnType.getElementType().dyn_cast<ComplexType>()) {
+  if (auto complexTy =
+          mlir::dyn_cast<ComplexType>(returnType.getElementType())) {
     auto tensorType = RankedTensorType::get({}, returnType.getElementType());
-    assert(complexTy.getElementType().isa<FloatType>() &&
+    assert(mlir::isa<FloatType>(complexTy.getElementType()) &&
            "unexpected int complex in MHLO");
     auto complexVal = attr.getSplatValue<std::complex<APFloat>>();
     cst = b.create<ConstantOp>(DenseElementsAttr::get(tensorType, complexVal));

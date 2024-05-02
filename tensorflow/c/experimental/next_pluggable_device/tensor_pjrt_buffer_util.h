@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-StatusOr<PJRT_Buffer*> GetPjRtCBufferFromTensor(const Tensor* tensor);
+absl::StatusOr<PJRT_Buffer*> GetPjRtCBufferFromTensor(const Tensor* tensor);
 
 absl::Status SetPjRtCBufferToTensor(PJRT_Buffer* c_buffer,
                                     xla::PjRtCApiClient* c_api_client,

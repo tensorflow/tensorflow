@@ -2028,6 +2028,7 @@ AdjustShardingWithPartialMeshShapePerElement(
 
 absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
+    const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
     const std::vector<int64_t>& mesh_shape, int64_t total_num_devices,
     bool crash_on_error) {
   bool changed = false;
@@ -2038,7 +2039,7 @@ absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     }
   }
   for (HloInstruction* inst : instructions) {
-    if (!inst->has_sharding()) {
+    if (!inst->has_sharding() || !instructions_to_shard.contains(inst)) {
       continue;
     }
     if (inst->shape().IsTuple()) {
@@ -2225,7 +2226,8 @@ std::vector<std::vector<int64_t>> InferMeshShapesToTry(
       for (const HloSharding& child : sharding.tuple_elements()) {
         process_sharding(child);
       }
-    } else if (!sharding.IsReplicated() && !sharding.IsTileMaximal()) {
+    } else if (!sharding.IsReplicated() && !sharding.IsTileMaximal() &&
+               !sharding.IsManual()) {
       absl::Span<const int64_t> dims = sharding.tile_assignment().dimensions();
       std::vector<int64_t> dims_greater_than_one;
       for (const int64_t dim : dims) {

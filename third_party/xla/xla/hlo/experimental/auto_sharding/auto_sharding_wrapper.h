@@ -41,11 +41,9 @@ namespace spmd {
 // combinatorial optimization problem & solves it.
 AutoShardingSolverResult CallSolver(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
-    const LivenessNodeSet& liveness_node_set,
-    const LivenessEdgeSet& liveness_edge_set, const StrategyMap& strategy_map,
-    const StrategyGroups& strategy_groups, const CostGraph& cost_graph,
-    const AliasSet& alias_set, const std::vector<NodeStrategyIdx>& s_hint,
-    const absl::flat_hash_set<LivenessIdx>& peak_times, bool compute_iis,
+    const StrategyMap& strategy_map, const StrategyGroups& strategy_groups,
+    const CostGraph& cost_graph, const AliasSet& alias_set,
+    const std::vector<NodeStrategyIdx>& s_hint, bool compute_iis,
     int64_t solver_timeout_in_seconds, const AutoShardingOption& option,
     std::optional<double> max_cost, absl::string_view request_name,
     const absl::flat_hash_map<std::string, const HloInstruction*>&

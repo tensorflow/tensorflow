@@ -82,13 +82,13 @@ bool ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
   switch (op->type) {
     case OperatorType::kConv:
       *modified = ProcessConvOperator(model, static_cast<ConvOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     case OperatorType::kTransposeConv:
       *modified = ProcessTransposeConvOperator(
           model, static_cast<TransposeConvOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     default:
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
   }
 }
 

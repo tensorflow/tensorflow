@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -865,6 +866,22 @@ StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
     result.peak_pool_bytes = args.peak_pool_bytes;
   }
   return result;
+}
+
+absl::StatusOr<std::intptr_t> PjRtCApiDevice::GetStreamForExternalReadyEvents()
+    const {
+  const PJRT_Api* c_api = client_->pjrt_c_api();
+  PJRT_Stream_Extension* extension = pjrt::FindExtension<PJRT_Stream_Extension>(
+      c_api, PJRT_Extension_Type::PJRT_Extension_Type_Stream);
+  if (extension == nullptr) {
+    return absl::UnimplementedError(
+        "Stream extension not implemented in this PJRT plugin.");
+  }
+  PJRT_Get_Stream_For_External_Ready_Events_Args args;
+  args.struct_size = PJRT_Get_Stream_For_External_Ready_Events_Args_STRUCT_SIZE;
+  args.device = device_;
+  RETURN_STATUS_IF_PJRT_ERROR(extension->get_stream(&args), c_api);
+  return args.stream;
 }
 
 // ------------------------------- Memory --------------------------------------
@@ -2092,6 +2109,23 @@ PjRtCApiExternalReference::~PjRtCApiExternalReference() {
   pjrt::LogFatalIfPjrtError(
       client_->pjrt_c_api()->PJRT_Buffer_DecreaseExternalReferenceCount(&args),
       client_->pjrt_c_api());
+}
+
+Status PjRtCApiExternalReference::WaitUntilBufferReadyOnStream(
+    std::intptr_t stream) {
+  const PJRT_Api* c_api = buffer_->pjrt_c_api();
+  PJRT_Stream_Extension* extension = pjrt::FindExtension<PJRT_Stream_Extension>(
+      c_api, PJRT_Extension_Type::PJRT_Extension_Type_Stream);
+  if (extension == nullptr) {
+    return absl::UnimplementedError(
+        "Stream extension not implemented in this PJRT plugin.");
+  }
+  PJRT_Wait_Until_Buffer_Ready_On_Stream_Args args;
+  args.struct_size = PJRT_Wait_Until_Buffer_Ready_On_Stream_Args_STRUCT_SIZE;
+  args.stream = stream;
+  args.buffer = buffer_->c_buffer();
+  RETURN_STATUS_IF_PJRT_ERROR(extension->wait_stream(&args), c_api);
+  return absl::OkStatus();
 }
 
 // ------------------------------ Device Topology ------------------------------

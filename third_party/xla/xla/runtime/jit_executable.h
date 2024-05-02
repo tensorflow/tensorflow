@@ -28,8 +28,8 @@ limitations under the License.
 #include "xla/mlir/runtime/transforms/jit_compiler.h"
 #include "xla/runtime/async_values_cache.h"  // IWYU pragma: keep
 #include "xla/runtime/constraints.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/concurrency/chain.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 
 namespace xla {
 namespace runtime {

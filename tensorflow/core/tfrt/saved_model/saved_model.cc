@@ -563,12 +563,17 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
                                     resource_context.get());
 
   {
-    model_context.set_meta_graph_def(&meta_graph_def);
+    CallableOptions callable_options =
+        CombineSignatureDefs(meta_graph_def.signature_def());
+    model_context.set_graph_def(&meta_graph_def.graph_def());
+    model_context.set_callable_options(&callable_options);
     TF_RETURN_IF_ERROR(
         options.graph_execution_options.runtime->CreateRuntimeResources(
             model_context));
-
-    model_context.set_meta_graph_def(nullptr);
+    // These are only needed for `CreateRuntimeResources`, and also safer
+    // since meta_graph_def will be moved.
+    model_context.set_graph_def(nullptr);
+    model_context.set_callable_options(nullptr);
   }
 
   GetDefaultInputValue(meta_graph_def.signature_def(), model_context,
@@ -707,14 +712,17 @@ SavedModelImpl::SavedModelImpl(
       meta_graph_def_(std::move(meta_graph_def)),
       bef_(std::move(bef)),
       bef_file_(std::move(bef_file)),
-      bytecode_(std::move(bytecode)),
-      loaded_executable_(std::move(loaded_executable)),
       req_deadline_tracker_(
           options_.graph_execution_options.runtime->core_runtime()
               ->GetHostContext()),
       signatures_(std::move(signatures)),
       runner_table_(std::move(runner_table)),
-      resource_array_(std::move(resource_array)) {}
+      resource_array_(std::move(resource_array)) {
+  if (!options_.enable_lazy_loading) {
+    bytecode_ = std::move(bytecode);
+    loaded_executable_ = std::move(loaded_executable);
+  }
+}
 
 std::vector<std::string> SavedModelImpl::GetFunctionNames() const {
   std::vector<std::string> result;

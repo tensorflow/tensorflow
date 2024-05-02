@@ -73,14 +73,14 @@ struct DeviceName<Eigen::GpuDevice> {
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
+typedef absl::InlinedVector<MemoryType, 4UL> MemoryTypeVector;
 typedef absl::Span<const MemoryType> MemoryTypeSlice;
 
-typedef gtl::InlinedVector<DataType, 4> DataTypeVector;
+typedef absl::InlinedVector<DataType, 4UL> DataTypeVector;
 typedef absl::Span<const DataType> DataTypeSlice;
 
-typedef gtl::InlinedVector<DeviceType, 4> DeviceTypeVector;
-typedef gtl::InlinedVector<std::pair<DeviceType, int32>, 4>
+typedef absl::InlinedVector<DeviceType, 4UL> DeviceTypeVector;
+typedef absl::InlinedVector<std::pair<DeviceType, int32>, 4UL>
     PrioritizedDeviceTypeVector;
 
 // Convert the enums to strings for errors:

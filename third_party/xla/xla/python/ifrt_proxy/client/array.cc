@@ -46,7 +46,7 @@
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
 #include "xla/status_macros.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -120,13 +120,7 @@ Future<> Array::GetReadyFuture() const {
   rpc_helper_->CheckArrayReady(std::move(req))
       .OnReady(
           [promise](absl::StatusOr<std::shared_ptr<CheckArrayReadyResponse>>
-                        resp) mutable -> void {
-            if (resp.status().ok()) {
-              promise.Set();
-            } else {
-              promise.SetError(resp.status());
-            }
-          });
+                        resp) mutable { promise.Set(resp.status()); });
   return Future<>(std::move(promise));
 }
 
@@ -144,8 +138,7 @@ Future<> Array::Delete() {
   // replies with the deletion's response, from within
   // `Future(status_handle_promise).OnReady()`, schedule `CheckFuture()` on a
   // separate thread.
-  return Future<>::FromStatusFuture(
-      rpc_helper_->CheckFuture((*response)->deletion_future_handle()));
+  return rpc_helper_->CheckFuture((*response)->deletion_future_handle());
 }
 
 bool Array::IsDeleted() const {
@@ -295,7 +288,7 @@ Future<> Array::CopyToHostBuffer(
                       absl::StatusOr<std::shared_ptr<CopyToHostBufferResponse>>
                           resp) mutable {
     if (!resp.ok()) {
-      promise.SetError(resp.status());
+      promise.Set(resp.status());
       return;
     }
 
@@ -314,7 +307,7 @@ Future<> Array::CopyToHostBuffer(
           };
 
           if (!data.ok()) {
-            promise.SetError(data.status());
+            promise.Set(data.status());
             return;
           }
           if (data->size() != mem_region.size()) {
@@ -323,7 +316,7 @@ Future<> Array::CopyToHostBuffer(
                              "response from proxy: ",
                              mem_region.size(), " vs ", data->size()));
             LOG(ERROR) << status;
-            promise.SetError(status);
+            promise.Set(status);
             return;
           }
 #if defined(PLATFORM_GOOGLE)

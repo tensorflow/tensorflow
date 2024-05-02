@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
@@ -75,8 +76,8 @@ class ConvertCustomAggregationOpToQuantStats
 
   LogicalResult matchAndRewrite(TF::CustomAggregatorOp op,
                                 PatternRewriter &rewriter) const override {
-    FloatAttr min = op->getAttr("min").dyn_cast_or_null<FloatAttr>();
-    FloatAttr max = op->getAttr("max").dyn_cast_or_null<FloatAttr>();
+    FloatAttr min = mlir::dyn_cast_or_null<FloatAttr>(op->getAttr("min"));
+    FloatAttr max = mlir::dyn_cast_or_null<FloatAttr>(op->getAttr("max"));
 
     // When there are no min and max attributes, remove op.
     if (min == nullptr || max == nullptr) {

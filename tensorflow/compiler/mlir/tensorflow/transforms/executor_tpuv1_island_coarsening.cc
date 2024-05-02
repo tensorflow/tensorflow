@@ -624,7 +624,7 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
     assert(!funcs_for_cluster->second.empty());
     if (funcs_for_cluster->second.size() == 1) return false;
     for (NamedAttribute attr : op->getAttrs()) {
-      auto symbol_ref = attr.getValue().dyn_cast<FlatSymbolRefAttr>();
+      auto symbol_ref = mlir::dyn_cast<FlatSymbolRefAttr>(attr.getValue());
       if (!symbol_ref) continue;
       func::FuncOp callee =
           symbol_table.lookup<func::FuncOp>(symbol_ref.getValue());

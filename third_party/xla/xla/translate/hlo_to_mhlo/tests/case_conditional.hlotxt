@@ -1,4 +1,5 @@
-// RUN: xla-translate -hlo-text-to-mlir-hlo  -hlo-import-all-computations %s -o - | FileCheck %s
+// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations -hlo-flatten-computation-args-result %s -o - | FileCheck %s -check-prefix=FLATTEN-CHECK
 
 HloModule Indexed_Conditional
 
@@ -112,3 +113,7 @@ ENTRY %indexed_conditional () -> f32[] {
 // CHECK-NEXT:    }) : (tensor<i32>) -> (tensor<f32>, tensor<f32>)
 // CHECK-NEXT:    %[[TUPLE:.*]] = mhlo.tuple %[[CASE]]#0, %[[CASE]]#1
 // CHECK-NEXT:    return %[[TUPLE]] : tuple<tensor<f32>, tensor<f32>>
+
+// FLATTEN-CHECK-LABEL: func private @conditional_with_tuple_args() -> (tensor<f32>, tensor<f32>)
+// FLATTEN-CHECK: %[[CASE:.*]]:2 = "mhlo.case"
+// FLATTEN-CHECK: return  %[[CASE]]#0, %[[CASE]]#1

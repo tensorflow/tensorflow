@@ -436,8 +436,8 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
 
-  auto dst_promise = xla::PjRtFuture<absl::StatusOr<void*>>::CreatePromise();
-  xla::PjRtFuture<absl::StatusOr<void*>> dst_future(dst_promise);
+  auto dst_promise = xla::PjRtFuture<void*>::CreatePromise();
+  xla::PjRtFuture<void*> dst_future(dst_promise);
 
   TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
   buffer->GetReadyFuture().OnReady([dst_promise = std::move(dst_promise),
@@ -544,17 +544,21 @@ TEST(GpuTopology, FromProto) {
   ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
       R"pb(
         device_ids: [ 3, 2, 1 ]
+        platform_version: "platform_version"
       )pb",
       &msg));
 
   std::unique_ptr<const GpuTopology> gpu_topology = GpuTopology::FromProto(msg);
   EXPECT_THAT(gpu_topology->device_ids(), ElementsAre(3, 2, 1));
+  EXPECT_THAT(gpu_topology->platform_version(), "platform_version");
 }
 
 TEST(GpuTopology, ToProto) {
-  GpuTopology gpu_topology({3, 2, 1});
+  GpuTopology gpu_topology(/*gpu_device_ids=*/{3, 2, 1},
+                           /*platform_version=*/"platform_version");
   GpuTopologyProto msg = gpu_topology.ToProto();
   EXPECT_THAT(msg.device_ids(), ElementsAre(3, 2, 1));
+  EXPECT_THAT(msg.platform_version(), "platform_version");
 }
 
 TEST(StreamExecutorGpuClientTest, DistributedInit) {
