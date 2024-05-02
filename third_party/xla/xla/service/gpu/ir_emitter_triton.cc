@@ -1755,7 +1755,7 @@ absl::StatusOr<Value> Emit6xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
   auto bf16_dot = [&](Value lhs_bf16, Value rhs_bf16,
                       Value accumulator) -> Value {
     return b.create<mt::DotOp>(lhs_bf16, rhs_bf16, accumulator,
-                               /*allowTF32=*/false,
+                               /*inputPrecision=*/mt::InputPrecision::IEEE,
                                /*maxNumImpreciseAcc=*/0);
   };
 
@@ -1797,7 +1797,7 @@ absl::StatusOr<Value> Emit3xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
   auto bf16_dot = [&](Value lhs_bf16, Value rhs_bf16,
                       Value accumulator) -> Value {
     return b.create<mt::DotOp>(lhs_bf16, rhs_bf16, accumulator,
-                               /*allowTF32=*/false,
+                               /*inputPrecision=*/mt::InputPrecision::IEEE,
                                /*maxNumImpreciseAcc=*/0);
   };
 
@@ -2163,10 +2163,13 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
       // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
       // lower precision than the output type. The change was introduced here:
       // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
+      auto input_precision =
+          IsTf32Allowed(dot_instr) && !is_8_bit_or_less_dot_with_F32
+              ? mt::InputPrecision::TF32
+              : mt::InputPrecision::IEEE;
       accumulator_next =
           b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs, iter_args.back(),
-                              /*allowTF32=*/IsTf32Allowed(dot_instr) &&
-                                  !is_8_bit_or_less_dot_with_F32,
+                              /*inputPrecision=*/input_precision,
                               /*maxNumImpreciseAcc=*/0);
     }
     iter_args_next.push_back(accumulator_next);
