@@ -152,8 +152,7 @@ TEST_F(IrEmissionUtilsTest, FindReduceHeroEpilogueFusion) {
 
   HloInstruction* r = module->entry_computation()->root_instruction();
   auto fusion = HloFusionAdaptor::ForInstruction(r);
-  const auto& result =
-      FindNonTrivialHero(fusion->GetRoots()[0].instruction(), *fusion);
+  const auto& result = FindNonTrivialHero(fusion->GetRoots()[0]);
   EXPECT_EQ(result.name(), "reduce.0");
 }
 
@@ -187,11 +186,9 @@ TEST_F(IrEmissionUtilsTest, FindReduceHeroEpilogueFusionTwoRootUsers) {
 
   HloInstruction* r = module->entry_computation()->root_instruction();
   auto fusion = HloFusionAdaptor::ForInstruction(r);
-  const auto& result =
-      FindNonTrivialHero(fusion->GetRoots()[1].instruction(), *fusion);
+  const auto& result = FindNonTrivialHero(fusion->GetRoots()[1]);
   EXPECT_EQ(result.name(), "reduce.1");
-  const auto& result2 =
-      FindNonTrivialHero(fusion->GetRoots()[2].instruction(), *fusion);
+  const auto& result2 = FindNonTrivialHero(fusion->GetRoots()[2]);
   EXPECT_EQ(result2.name(), "reduce.1");
 }
 
@@ -225,13 +222,11 @@ TEST_F(IrEmissionUtilsTest, FindReduceHeroEpilogueFusionHeroAlsoUsedAsNonHero) {
 
   HloInstruction* r = module->entry_computation()->root_instruction();
   auto fusion = HloFusionAdaptor::ForInstruction(r);
-  const auto& result =
-      FindNonTrivialHero(fusion->GetRoots()[1].instruction(), *fusion);
+  const auto& result = FindNonTrivialHero(fusion->GetRoots()[1]);
   // reduce.0 is also an operand of broadcast, but it is not a hero for that
   // root.
   EXPECT_EQ(result.name(), "broadcast");
-  const auto& result2 =
-      FindNonTrivialHero(fusion->GetRoots()[2].instruction(), *fusion);
+  const auto& result2 = FindNonTrivialHero(fusion->GetRoots()[2]);
   EXPECT_EQ(result2.name(), "reduce.0");
 }
 
@@ -258,11 +253,9 @@ TEST_F(IrEmissionUtilsTest, DoNotFindTransposeHeroEpilogueFusionTwoRootUsers) {
 
   HloInstruction* r = module->entry_computation()->root_instruction();
   auto fusion = HloFusionAdaptor::ForInstruction(r);
-  const auto& result =
-      FindNonTrivialHero(fusion->GetRoots()[0].instruction(), *fusion);
+  const auto& result = FindNonTrivialHero(fusion->GetRoots()[0]);
   EXPECT_EQ(result.name(), "bitcast.1");
-  const auto& result2 =
-      FindNonTrivialHero(fusion->GetRoots()[1].instruction(), *fusion);
+  const auto& result2 = FindNonTrivialHero(fusion->GetRoots()[1]);
   EXPECT_EQ(result2.name(), "sign.1");
 }
 
@@ -370,14 +363,16 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
 
-  HloInstruction* r = module->GetComputationWithName("f")->root_instruction();
   HloInstruction* transpose =
       module->entry_computation()->GetInstructionWithName("t");
   HloInstruction* fusion =
       module->entry_computation()->GetInstructionWithName("fusion");
   auto fusion_adaptor =
       HloFusionAdaptor::ForProducerConsumer(transpose, fusion);
-  EXPECT_EQ(&FindNonTrivialHero(*r, *fusion_adaptor), transpose);
+  HloInstructionAdaptor r(
+      *module->GetComputationWithName("f")->root_instruction(),
+      fusion_adaptor.get());
+  EXPECT_EQ(&FindNonTrivialHero(r).instruction(), transpose);
 }
 
 TEST_F(IrEmissionUtilsTest, FindNonTrivialHeroInsideFusion) {
@@ -409,7 +404,9 @@ ENTRY entry {
   HloInstruction* fusion =
       module->entry_computation()->GetInstructionWithName("fusion");
   auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(fusion, r);
-  EXPECT_EQ(&FindNonTrivialHero(*r, *fusion_adaptor), transpose);
+  EXPECT_EQ(&FindNonTrivialHero(HloInstructionAdaptor(*r, fusion_adaptor.get()))
+                 .instruction(),
+            transpose);
 }
 
 TEST_F(IrEmissionUtilsTest, TransposeReachableViaTrivialAndNontrivialOps) {

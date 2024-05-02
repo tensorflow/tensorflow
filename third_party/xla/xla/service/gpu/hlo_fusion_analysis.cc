@@ -139,7 +139,7 @@ HloFusionAnalysis HloFusionAnalysis::Create(
   std::vector<const HloInstruction*> heroes;
   for (auto root : fusion->GetRoots()) {
     roots.push_back(&root.instruction());
-    heroes.push_back(&FindNonTrivialHero(*roots.back(), *fusion));
+    heroes.push_back(&FindNonTrivialHero(root).instruction());
   }
 
   std::vector<const HloInstruction*> fusion_arguments;
