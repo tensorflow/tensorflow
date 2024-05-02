@@ -335,6 +335,11 @@ class IndexingMap {
   // were removed, returns {}.
   llvm::SmallBitVector RemoveUnusedSymbols();
 
+  // Removes unused dimensions and symbols from the `affine_map_` and
+  // constraints. Returns a bit vector of all variables [dimensions, symbols]
+  // that were removed. If none of the symbols were removed, returns {}.
+  llvm::SmallBitVector RemoveUnusedVars();
+
   // Rescales all symbols that are sufficiently constrained through `s? mod x =
   // [N, N]` constraints. Returns true if a rescale took place, otherwise false.
   bool RescaleSymbols();
@@ -362,6 +367,12 @@ class IndexingMap {
   // Replace RTVars that yield constants by indexing expressions.
   // Returns true if a replacement was performed, otherwise false.
   bool ReplaceConstantRTVars(IndexingMapProvider indexing_map_provider);
+
+  // Removes DimVars, RangeVars, RTVars that correspond to the unused dimensions
+  // and symbols. If unused_dims is empty, then dims won't be removed. The same
+  // applies to unused_symbols. Returns true, if anything was removed.
+  bool CompressVars(const llvm::SmallBitVector& unused_dims,
+                    const llvm::SmallBitVector& unused_symbols);
 
   mlir::AffineMap affine_map_;
   std::vector<DimVar> dim_vars_;
