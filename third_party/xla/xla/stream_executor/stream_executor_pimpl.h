@@ -16,9 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_PIMPL_H_
 #define XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_PIMPL_H_
 
-#include <cstddef>
 #include <cstdint>
-#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
@@ -36,7 +34,6 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
@@ -117,10 +114,6 @@ class StreamExecutor : public StreamExecutorInterface {
   // The value is cached on first use.
   const DeviceDescription& GetDeviceDescription() const;
 
-  // Return an allocator which delegates to this stream executor for memory
-  // allocation.
-  StreamExecutorMemoryAllocator* GetAllocator() { return &allocator_; }
-
   // Creates and initializes a Stream.
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
@@ -148,8 +141,6 @@ class StreamExecutor : public StreamExecutorInterface {
   // limit.
   int64_t memory_limit_bytes_;
 
-  StreamExecutorMemoryAllocator allocator_;
-
   StreamExecutor(const StreamExecutor&) = delete;
   void operator=(const StreamExecutor&) = delete;
 };
@@ -171,13 +162,6 @@ inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64_t element_count,
   }
   return DeviceMemory<T>(Allocate(bytes, memory_space));
 }
-
-template <typename ElemT>
-ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(StreamExecutor* parent,
-                                              DeviceMemoryBase value)
-    : wrapped_(value),
-      device_ordinal_(parent->device_ordinal()),
-      allocator_(parent->GetAllocator()) {}
 
 }  // namespace stream_executor
 
