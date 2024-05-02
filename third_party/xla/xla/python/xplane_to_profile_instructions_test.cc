@@ -19,7 +19,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape_util.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/test.h"
 #include "tsl/profiler/convert/xla_op_utils.h"

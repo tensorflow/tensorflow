@@ -248,6 +248,7 @@ cc_library(
         # placeholder for index annotation deps
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "//third_party/nanobind",
@@ -1012,7 +1013,9 @@ cc_library(
     visibility = [":friends"],
     deps = [
         # placeholder for index annotation deps
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "//third_party/nanobind",
         "//xla:util",
@@ -1032,10 +1035,7 @@ cc_library(
     deps = [
         "//xla:status",
         "//xla:util",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:pjrt_future",
         "//xla/python/ifrt",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -1081,6 +1081,8 @@ cc_library(
         ":py_client",
         ":types",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -1104,6 +1106,7 @@ cc_library(
         "//xla/ffi/api:c_api",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
+        "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:status_casters",
@@ -1120,7 +1123,10 @@ cc_library(
         "//xla/service:name_uniquer",
         "//xla/service:tuple_simplifier",
         "@local_tsl//tsl/lib/strings:proto_serialization",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -1265,6 +1271,7 @@ tsl_pybind_extension(
     deps = [
         ":custom_call_sharding",
         ":dlpack",
+        ":gpu_support",
         ":jax_jit",
         ":logging",
         ":mlir",
@@ -1307,6 +1314,7 @@ tsl_pybind_extension(
         "//xla:statusor",
         "//xla:types",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/ffi:ffi_api",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:mlir_to_hlo",
@@ -1386,7 +1394,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:types",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/profiler/convert:xla_op_utils",
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
@@ -1403,6 +1412,9 @@ xla_cc_test(
     srcs = ["xplane_to_profile_instructions_test.cc"],
     deps = [
         ":xplane_to_profile_instructions",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/tests:verified_hlo_module",
         "@local_tsl//tsl/platform:test",

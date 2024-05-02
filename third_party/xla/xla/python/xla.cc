@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
-#include "xla/ffi/ffi_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
@@ -52,11 +52,13 @@ limitations under the License.
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt_proxy/client/py_module.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_program.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/tsl/python/lib/core/numpy.h"  //NOLINT
+#include "xla/xla_data.pb.h"
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/python/gpu_support.h"
 #endif  // XLA_PYTHON_ENABLE_GPU

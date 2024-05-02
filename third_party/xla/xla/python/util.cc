@@ -20,8 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/status.h"
