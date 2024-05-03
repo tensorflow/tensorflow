@@ -921,9 +921,8 @@ absl::Status RunCollectiveOptimizationPasses(
         /*pipelining_direction=*/
         CollectivePipeliner::PipeliningDirection::kForward,
         /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>,
-        /*acceptable_formatting=*/[](const HloInstruction*) { return true; },
-        /*reuse_pipelined_op_buffer=*/
-        [](const HloInstruction*) { return false; }};
+        /*acceptable_formatting=*/HloPredicateTrue,
+        /*reuse_pipelined_op_buffer=*/HloPredicateFalse};
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
@@ -937,9 +936,8 @@ absl::Status RunCollectiveOptimizationPasses(
         /*pipelining_direction=*/
         CollectivePipeliner::PipeliningDirection::kBackward,
         /*should_process=*/HloPredicateIsOp<HloOpcode::kAllGather>,
-        /*acceptable_formatting=*/[](const HloInstruction*) { return true; },
-        /*reuse_pipelined_op_buffer=*/
-        [](const HloInstruction*) { return false; }};
+        /*acceptable_formatting=*/HloPredicateTrue,
+        /*reuse_pipelined_op_buffer=*/HloPredicateFalse};
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
@@ -953,9 +951,8 @@ absl::Status RunCollectiveOptimizationPasses(
         /*pipelining_direction=*/
         CollectivePipeliner::PipeliningDirection::kForward,
         /*should_process=*/HloPredicateIsOp<HloOpcode::kReduceScatter>,
-        /*acceptable_formatting=*/[](const HloInstruction*) { return true; },
-        /*reuse_pipelined_op_buffer=*/
-        [](const HloInstruction*) { return false; }};
+        /*acceptable_formatting=*/HloPredicateTrue,
+        /*reuse_pipelined_op_buffer=*/HloPredicateFalse};
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
 

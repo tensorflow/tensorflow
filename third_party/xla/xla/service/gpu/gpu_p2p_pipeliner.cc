@@ -211,12 +211,15 @@ void AddP2PPipeliner(HloPassPipeline& pipeline) {
       /*pipeline_use_tree=*/false,
       /*process_different_sized_ops=*/true,
       /*pipelining_direction=*/
-      CollectivePipeliner::PipeliningDirection::kBackward, ShouldPipeline,
+      CollectivePipeliner::PipeliningDirection::kBackward,
+      /*should_process=*/ShouldPipeline,
       /*acceptable_formatting=*/HloPredicateTrue,
       /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
+      /*should_allow_loop_variant_parameter_in_chain=*/
       ShouldAllowLoopVariantParameterInChain,
-      /*should_allow_control_dependencies=*/true, PostprocessPeeledP2P,
-      PostprocessRotatedP2P};
+      /*should_allow_control_dependencies=*/true,
+      /*=postprocess_backward_peeled_op*/ PostprocessPeeledP2P,
+      /*=postprocess_backward_rorated_op*/ PostprocessRotatedP2P};
   pipeline.AddPass<CollectivePipeliner>(config);
 }
 
