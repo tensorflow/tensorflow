@@ -7253,7 +7253,12 @@ cc_library(
     name = "custom_call_sharding_helper",
     srcs = ["custom_call_sharding_helper.cc"],
     hdrs = ["custom_call_sharding_helper.h"],
-    deps = ["//xla/hlo/ir:hlo"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:logging",
+    ],
 )
 
 tf_proto_library(
