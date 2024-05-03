@@ -58,7 +58,7 @@ class ShardingMetadata : public DomainMetadata {
 
   static absl::string_view KindName() { return "sharding"; }
 
-  static StatusOr<const ShardingMetadata*> ToShardingMetadata(
+  static absl::StatusOr<const ShardingMetadata*> ToShardingMetadata(
       const DomainMetadata* metadata);
 
   // Apply the specified domain metadata onto the specified domain. If no

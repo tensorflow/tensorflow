@@ -13,15 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/llvm_ir/alias_analysis.h"
-
-#include <memory>
-#include <utility>
-
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
-#include "xla/tests/filecheck.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

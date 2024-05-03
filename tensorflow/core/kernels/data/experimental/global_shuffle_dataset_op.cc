@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/random_seed_ops.h"
 #include "tensorflow/core/kernels/random_index_shuffle.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -155,6 +157,10 @@ class GlobalShuffleDatasetOp::Dataset : public DatasetBase {
         output);
   }
 
+  absl::Status RandomIndexingCompatible() const override {
+    return absl::OkStatus();
+  }
+
  private:
   class Iterator;
 
@@ -211,9 +217,10 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     uint64_t max_index =
         cardinality_ > 0 ? static_cast<uint64_t>(cardinality_ - 1) : 0;
     return [parent_index_mapper, seed, seed2, seed3,
-            max_index](size_t element_position) -> size_t {
+            max_index](size_t element_position) -> absl::StatusOr<size_t> {
       if (parent_index_mapper != nullptr) {
-        element_position = parent_index_mapper(element_position);
+        TF_ASSIGN_OR_RETURN(element_position,
+                            parent_index_mapper(element_position));
       }
       // This could happen if the source dataset generates more elements than
       // needed by the intermediate transformations. For example, when shuffling
@@ -253,6 +260,7 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     }
     IteratorContext::Params params(ctx);
     params.restored_element_count = element_count_;
+    params.index_mapper = GetIndexMapper(ctx->index_mapper());
     IteratorContext ctx_copy(params);
     TF_RETURN_IF_ERROR(RestoreInput(&ctx_copy, reader, input_impl_));
     ctx->MergeCheckpoint(ctx_copy.checkpoint());

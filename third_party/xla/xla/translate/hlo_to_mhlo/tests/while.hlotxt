@@ -143,7 +143,7 @@ ENTRY %foo (arg0.1: s64[]) -> s64[] {
 // CHECK:           %[[CMP_7:.*]] = mhlo.compare LT, %[[RED_5]], %[[RED_6]] : (tensor<i32>, tensor<i32>) -> tensor<i1>
 // CHECK:           mhlo.return %[[CMP_7]] : tensor<i1>
 
-// CHECK:           %[[BDCAST_4:.*]] = "mhlo.broadcast_in_dim"(%[[ARG_3]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>
+// CHECK:           %[[BDCAST_4:.*]] = "mhlo.broadcast_in_dim"(%[[ARG_3]]) <{broadcast_dimensions = dense<0> : tensor<1xi64>}> : (tensor<1xf32>) -> tensor<3xf32>
 // CHECK-NEXT:      %[[ADD_5:.*]] = mhlo.add %[[ARG_4]], %[[BDCAST_4]] : tensor<3xf32>
 // CHECK-NEXT:      mhlo.return %[[ARG_1]], %[[ARG_2]], %[[ARG_3]], %[[ADD_5]] : tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>
 
@@ -214,7 +214,7 @@ ENTRY %foo (arg0.1: s64[]) -> s64[] {
 // CHECK:           %[[CMP_7:.*]] = mhlo.compare LT, %[[RED_5]], %[[RED_6]] : (tensor<i32>, tensor<i32>) -> tensor<i1>
 // CHECK:           mhlo.return %[[CMP_7]] : tensor<i1>
 
-// CHECK:           %[[BDCAST_4:.*]] = "mhlo.broadcast_in_dim"(%[[ARG_3]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>
+// CHECK:           %[[BDCAST_4:.*]] = "mhlo.broadcast_in_dim"(%[[ARG_3]]) <{broadcast_dimensions = dense<0> : tensor<1xi64>}> : (tensor<1xf32>) -> tensor<3xf32>
 // CHECK:           %[[ADD_5:.*]] = mhlo.add %[[ARG_4]], %[[BDCAST_4]] : tensor<3xf32>
 // CHECK:           mhlo.return %[[ARG_1]], %[[ARG_2]], %[[ARG_3]], %[[ADD_5]] : tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>
 // CHECK:    return %[[WHILE]]#3 : tensor<3xf32>
@@ -334,7 +334,7 @@ region_cond5 {
 // CHECK-NEXT:    } do {
 // CHECK-NEXT:      %[[CST_2:.*]] = mhlo.constant dense<false> : tensor<i1>
 // CHECK-NEXT:      %[[CST_3:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
-// CHECK-NEXT:      %[[BDCAST:.*]] = "mhlo.broadcast_in_dim"(%[[CST_3]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<3x3xf32>
+// CHECK-NEXT:      %[[BDCAST:.*]] = "mhlo.broadcast_in_dim"(%[[CST_3]]) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<3x3xf32>
 // CHECK-NEXT:      %[[ADD:.*]] = mhlo.add %[[ITER_ARG]], %[[BDCAST]] : tensor<3x3xf32>
 // CHECK-NEXT:      mhlo.return %[[ADD]] : tensor<3x3xf32>
 // CHECK:    return %[[WHILE]] : tensor<3x3xf32>

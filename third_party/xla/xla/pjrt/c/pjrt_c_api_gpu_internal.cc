@@ -255,7 +255,8 @@ const PJRT_Api* GetGpuPjrtApi() {
       pjrt::CreatePjrtApi(pjrt::gpu_plugin::PJRT_Client_Create,
                           pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
                           pjrt::PJRT_Plugin_Initialize_NoOp,
-                          reinterpret_cast<PJRT_Extension_Base*>(&custom_call));
+                          reinterpret_cast<PJRT_Extension_Base*>(&custom_call),
+                          pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;
 }

@@ -426,7 +426,7 @@ static void MergeDevNamesHelperAllowSoftPlacement(
 static void MergeDevNamesError(const string& name_a, const string& name_b,
                                const string& expected_error_substr) {
   DeviceNameUtils::ParsedName target_a = Name(name_a);
-  Status s = DeviceNameUtils::MergeDevNames(&target_a, Name(name_b));
+  absl::Status s = DeviceNameUtils::MergeDevNames(&target_a, Name(name_b));
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
   EXPECT_TRUE(absl::StrContains(s.message(), expected_error_substr)) << s;
 }
@@ -607,7 +607,7 @@ TEST(DeviceNameUtilsTest, CanonicalizeDeviceName) {
     TF_EXPECT_OK(DeviceNameUtils::CanonicalizeDeviceName("CPU:0", basename,
                                                          &canonical_name));
     EXPECT_EQ("/job:foo/replica:10/task:0/device:CPU:0", canonical_name);
-    Status s = DeviceNameUtils::CanonicalizeDeviceName(
+    absl::Status s = DeviceNameUtils::CanonicalizeDeviceName(
         "/job:foo/task:0/replica/cpu:1", basename, &canonical_name);
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
     EXPECT_EQ("", canonical_name);
@@ -617,7 +617,7 @@ TEST(DeviceNameUtilsTest, CanonicalizeDeviceName) {
     // Try out malformed basenames.
     string fullname = "/device:CPU:0";
 
-    Status s = DeviceNameUtils::CanonicalizeDeviceName(
+    absl::Status s = DeviceNameUtils::CanonicalizeDeviceName(
         fullname, "/device:CPU:0", &canonical_name);
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
     EXPECT_EQ("", canonical_name);

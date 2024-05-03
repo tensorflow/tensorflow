@@ -468,7 +468,7 @@ T GetTensorDim(const std::vector<T>& attributes, TensorFormat format,
 // according to 'tensor_format'.
 inline int64_t GetTensorDim(const TensorShape& tensor_shape,
                             TensorFormat tensor_format, char dimension) {
-  return GetTensorDim(gtl::ArraySlice<int64_t>(tensor_shape.dim_sizes()),
+  return GetTensorDim(absl::Span<const int64_t>(tensor_shape.dim_sizes()),
                       tensor_format, dimension);
 }
 
@@ -477,7 +477,7 @@ inline int64_t GetTensorDim(const TensorShape& tensor_shape,
 inline int64_t GetFilterDim(const TensorShape& tensor_shape,
                             FilterTensorFormat tensor_filter_format,
                             char dimension) {
-  return GetFilterDim(gtl::ArraySlice<int64_t>(tensor_shape.dim_sizes()),
+  return GetFilterDim(absl::Span<const int64_t>(tensor_shape.dim_sizes()),
                       tensor_filter_format, dimension);
 }
 
@@ -521,7 +521,7 @@ std::string GetConvnetDataFormat2D3DAttrString();
 // FORMAT_NCHW_VECT_C: (N, C, spatial, InnerC); rank = spatial.size() + 3
 // FORMAT_NHWC_VECT_W: (N, spatial, C, InnerW); rank = spatial.size() + 3
 inline Status ShapeFromFormatWithStatus(TensorFormat format, int64_t N,
-                                        gtl::ArraySlice<int64_t> spatial,
+                                        absl::Span<const int64_t> spatial,
                                         int64_t C, TensorShape* shape) {
   const int dims = GetTensorDimsFromSpatialDims(spatial.size(), format);
   gtl::InlinedVector<int64_t, 6> dim_sizes(dims);
@@ -551,7 +551,7 @@ inline Status ShapeFromFormatWithStatus(TensorFormat format, int64_t N,
 }
 
 inline TensorShape ShapeFromFormat(TensorFormat format, int64_t N,
-                                   gtl::ArraySlice<int64_t> spatial,
+                                   absl::Span<const int64_t> spatial,
                                    int64_t C) {
   TensorShape shape;
   TF_CHECK_OK(ShapeFromFormatWithStatus(format, N, spatial, C, &shape));
@@ -562,9 +562,9 @@ inline TensorShape ShapeFromFormat(TensorFormat format, int64_t N,
 // Works for both 2D and 3D operations. If 'format' is OIHW_VECT_I,
 // the output TensorShape has spatial.size() + 3 dimensions, otherwise
 // it has spatial.size() + 2 dimensions.
-inline TensorShape ShapeFromFilterTensorFormat(FilterTensorFormat format,
-                                               gtl::ArraySlice<int64_t> spatial,
-                                               int64_t I, int64_t O) {
+inline TensorShape ShapeFromFilterTensorFormat(
+    FilterTensorFormat format, absl::Span<const int64_t> spatial, int64_t I,
+    int64_t O) {
   const int dims = GetFilterTensorDimsFromSpatialDims(spatial.size(), format);
   gtl::InlinedVector<int64_t, 6> dim_sizes(dims);
   dim_sizes[GetFilterTensorOutputChannelsDimIndex(dims, format)] = O;
@@ -622,7 +622,7 @@ inline Status ShapeFromFormatWithStatus(TensorFormat dst_format,
       GetTensorSpatialDims(src_shape.dims(), src_format);
   std::vector<int64_t> spatial_dims(num_src_spatial_dims);
   for (int spatial_dim = 0; spatial_dim < num_src_spatial_dims; ++spatial_dim) {
-    spatial_dims[spatial_dim] = gtl::ArraySlice<int64_t>(
+    spatial_dims[spatial_dim] = absl::Span<const int64_t>(
         src_shape.dim_sizes())[GetTensorSpatialDimIndex(
         src_shape.dims(), src_format, spatial_dim)];
   }

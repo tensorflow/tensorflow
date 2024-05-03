@@ -94,12 +94,7 @@ void AddTPULowerClusterToRuntimeOpsPassPipeline(OpPassManager& pm,
 void AddNonTPULowerClusterToRuntimeOpsPassPipeline(
     OpPassManager& pm, llvm::StringRef module_name) {
   // Rewrite cluster functions into XLA launch ops.
-  if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_generic_outside_compilation) {
-    pm.addPass(mlir::TFDevice::CreateXlaRewriteV2Pass());
-  } else {
-    pm.addPass(mlir::TFDevice::CreateXlaRewritePass());
-  }
+  pm.addPass(mlir::TFDevice::CreateXlaRewritePass());
   // Re-run the canonicalizer pass as some cleanup during resource op lifting
   // pass opens up some opportunities for canonicalization of cluster ops.
   // Specifically, we want to eliminate pass through results from the cluster

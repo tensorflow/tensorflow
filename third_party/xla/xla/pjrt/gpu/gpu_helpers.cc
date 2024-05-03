@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/gpu_helpers.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
@@ -72,7 +73,8 @@ void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors) {
 
 // Builds a BFCAllocator for all local GPUs.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
-    se::StreamExecutor* executor, double memory_fraction, bool preallocate) {
+    se::StreamExecutor* executor, double memory_fraction, bool preallocate,
+    std::optional<int64_t> gpu_system_memory_size) {
   bool enable_unified_memory;
   Status status = tsl::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY", false,
                                           &enable_unified_memory);
@@ -103,6 +105,11 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   size_t allocator_memory = enable_unified_memory
                                 ? total_memory * fmax(1.0, memory_fraction)
                                 : total_memory * memory_fraction;
+  // If gpu_system_memory_size is set, use it instead of default value.
+  if (gpu_system_memory_size.has_value()) {
+    allocator_memory = gpu_system_memory_size.value();
+  }
+
   if (preallocate) {
     LOG(INFO) << "XLA backend allocating " << allocator_memory
               << " bytes on device " << device_ordinal << " for BFCAllocator.";

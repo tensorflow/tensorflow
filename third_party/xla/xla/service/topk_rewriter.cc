@@ -42,7 +42,7 @@ namespace xla {
 namespace m = match;
 
 // TODO(cheshire): Avoid duplication w/ cudnn_vectorize_convolutions.
-static StatusOr<HloComputation*> BuilderToHloComputation(
+static absl::StatusOr<HloComputation*> BuilderToHloComputation(
     XlaComputation& comp, HloComputation* sibling_computation) {
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape, comp.GetProgramShape());
   HloModuleConfig config(program_shape);
@@ -374,7 +374,7 @@ TopKCustomCall CreateTopKCustomCall(HloInstruction* input,
   return {topk, value_gte, index_gte};
 }
 
-StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
+absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
     HloInstruction* inst) {
   // Check if sort is in TopK.
   std::optional<int64_t> k = SortIsInTopK(inst);
@@ -428,7 +428,7 @@ StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
   return topkcc.topk;
 }
 
-StatusOr<bool> TopkRewriter::TransformToCustomCall(
+absl::StatusOr<bool> TopkRewriter::TransformToCustomCall(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -445,7 +445,7 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(
   return changed;
 }
 
-StatusOr<bool> TopkRewriter::Run(
+absl::StatusOr<bool> TopkRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -486,7 +486,8 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     return inst->user_count() == 1 && inst->users().front()->tuple_index() == 0;
   }
 
-  StatusOr<HloComputation*> CreateVariadicComparator(HloInstruction* inst) {
+  absl::StatusOr<HloComputation*> CreateVariadicComparator(
+      HloInstruction* inst) {
     HloTopKInstruction* topk = DynCast<HloTopKInstruction>(inst);
     XlaBuilder b(absl::StrCat("comparator_", topk->name()));
     std::vector<PrimitiveType> ptypes = {
@@ -554,7 +555,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
   HloPredicate should_decompose_;
 };
 
-StatusOr<bool> TopkDecomposer::Run(
+absl::StatusOr<bool> TopkDecomposer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return TopkDecomposerVisitor(should_decompose_)

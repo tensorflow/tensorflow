@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/config/flag_defs.h"
+#include "tensorflow/core/config/flags.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -44,8 +46,42 @@ Node* GetNode(const Graph& graph, const std::string& name) {
   return nullptr;
 }
 
+// Test the pass is skipped by default because flag enable_tf2min_ici_weight is
+// false by default.
+TEST(ColocatePredecessorTreesPassTest, ICIFlagFalse) {
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
+  GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+  Node* const_0 = ops::SourceOp("Const", builder.opts()
+                                             .WithName("const_0")
+                                             .WithAttr("dtype", DT_INT32)
+                                             .WithAttr("value", Tensor(1.0)));
+  Node* const_1 = ops::SourceOp("Const", builder.opts()
+                                             .WithName("const_1")
+                                             .WithAttr("dtype", DT_INT32)
+                                             .WithAttr("value", Tensor(2.0)));
+  Node* fill =
+      ops::BinaryOp("Fill", const_0, const_1, builder.opts().WithName("fill"));
+  ops::UnaryOp("Identity", fill, builder.opts().WithName("identity"));
+
+  TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
+  GetNode(*graph, "identity")->set_requested_device(kCpu0);
+
+  GraphDef before;
+  graph->ToGraphDef(&before);
+  GraphOptimizationPassOptions options;
+  options.graph = &graph;
+  ColocatePredecessorTreesPass pass;
+  TF_ASSERT_OK(pass.Run(options));
+
+  EXPECT_FALSE(HasNodeAttr(GetNode(*graph, "const_0")->def(), kClassAttr));
+  EXPECT_FALSE(HasNodeAttr(GetNode(*graph, "const_1")->def(), kClassAttr));
+  EXPECT_FALSE(HasNodeAttr(GetNode(*graph, "fill")->def(), kClassAttr));
+  EXPECT_FALSE(HasNodeAttr(GetNode(*graph, "identity")->def(), kClassAttr));
+}
+
 // Test a simple colocate predecessor tree example.
 TEST(ColocatePredecessorTreesPassTest, SimpleExample) {
+  flags::Global().enable_tf2min_ici_weight.reset(true);
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
   Node* const_0 = ops::SourceOp("Const", builder.opts()
@@ -92,6 +128,7 @@ TEST(ColocatePredecessorTreesPassTest, SimpleExample) {
 
 // Test colocate two predecessor trees case.
 TEST(ColocatePredecessorTreesPassTest, PropagateTwoTrees) {
+  flags::Global().enable_tf2min_ici_weight.reset(true);
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
   Node* const_0 = ops::SourceOp("Const", builder.opts()
@@ -170,6 +207,7 @@ TEST(ColocatePredecessorTreesPassTest, PropagateTwoTrees) {
 
 // Test a simple colocate predecessor tree example.
 TEST(ColocatePredecessorTreesPassTest, RootHasMultipleOutputs) {
+  flags::Global().enable_tf2min_ici_weight.reset(true);
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
   Node* const_0 = ops::SourceOp("Const", builder.opts()
@@ -221,6 +259,7 @@ TEST(ColocatePredecessorTreesPassTest, RootHasMultipleOutputs) {
 
 // Test that a const op has device attr, no colocation info is propagated.
 TEST(ColocatePredecessorTreesPassTest, ConstHasDeviceAttr) {
+  flags::Global().enable_tf2min_ici_weight.reset(true);
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
   Node* const_0 = ops::SourceOp("Const", builder.opts()
@@ -255,6 +294,7 @@ TEST(ColocatePredecessorTreesPassTest, ConstHasDeviceAttr) {
 
 // Test that a const op has colocation info, no colocation info is propagated.
 TEST(ColocatePredecessorTreesPassTest, ConstHasColocationInfo) {
+  flags::Global().enable_tf2min_ici_weight.reset(true);
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
   Node* const_0 =
@@ -291,6 +331,7 @@ TEST(ColocatePredecessorTreesPassTest, ConstHasColocationInfo) {
 
 // Test that one input is Arg, no colocation info is propagated.
 TEST(ColocatePredecessorTreesPassTest, InputArg) {
+  flags::Global().enable_tf2min_ici_weight.reset(true);
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
   Node* arg_0 = ops::SourceOp("_Arg", builder.opts()

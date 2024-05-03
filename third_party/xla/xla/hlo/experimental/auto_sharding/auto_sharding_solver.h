@@ -16,9 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 
-#include <cstdint>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -31,17 +29,22 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
+struct AutoShardingSolverOutput {
+  std::vector<NodeStrategyIdx> s_val;
+  std::vector<EdgeStrategyIdx> e_val;
+  double cost = -1.0;
+  absl::flat_hash_set<LivenessIdx> peak_times;
+
+  bool operator==(const AutoShardingSolverOutput& other) const;
+};
+
 struct AutoShardingSolverResult {
  public:
-  AutoShardingSolverResult(
-      absl::StatusOr<std::tuple<std::vector<NodeStrategyIdx>,
-                                std::vector<EdgeStrategyIdx>, double>>
-          status,
-      bool skip_auto_sharding)
+  AutoShardingSolverResult(absl::StatusOr<AutoShardingSolverOutput> status,
+                           bool skip_auto_sharding)
       : status(status), skip_auto_sharding(skip_auto_sharding) {}
   bool operator==(const AutoShardingSolverResult& other) const;
-  absl::StatusOr<std::tuple<std::vector<int64_t>, std::vector<int64_t>, double>>
-      status;
+  absl::StatusOr<AutoShardingSolverOutput> status;
   bool skip_auto_sharding;
 };
 

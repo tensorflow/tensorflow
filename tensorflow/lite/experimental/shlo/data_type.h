@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/shlo/bf16.h"
 #include "tensorflow/lite/experimental/shlo/f16.h"
+#include "tensorflow/lite/experimental/shlo/i4.h"
 
 namespace shlo_ref {
 
@@ -49,9 +50,9 @@ struct Storage<DataType::kI1> {
 };
 template <>
 struct Storage<DataType::kSI4> {
-  using Type = int8_t;
-  static constexpr Type kMinValue = -8;
-  static constexpr Type kMaxValue = 7;
+  using Type = I4;
+  static constexpr Type kMinValue = std::numeric_limits<Type>::lowest();
+  static constexpr Type kMaxValue = std::numeric_limits<Type>::max();
 };
 template <>
 struct Storage<DataType::kSI8> {
@@ -136,6 +137,37 @@ constexpr int64_t SizeOf(DataType data_type) {
       return SizeOf<DataType::kF32>();
       break;
   }
+}
+
+// Gets a string representation of the given DataType.
+constexpr const char* ToString(DataType t) {
+  switch (t) {
+    case DataType::kI1:
+      return "I1";
+      break;
+    case DataType::kSI4:
+      return "SI4";
+      break;
+    case DataType::kSI8:
+      return "SI8";
+      break;
+    case DataType::kSI16:
+      return "SI16";
+      break;
+    case DataType::kSI32:
+      return "SI32";
+      break;
+    case DataType::kBF16:
+      return "BF16";
+      break;
+    case DataType::kF16:
+      return "F16";
+      break;
+    case DataType::kF32:
+      return "F32";
+      break;
+  }
+  return "Unknown data type";
 }
 
 }  // namespace shlo_ref

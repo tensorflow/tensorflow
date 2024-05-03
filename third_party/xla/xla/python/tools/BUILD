@@ -1,10 +1,9 @@
-load("@local_tsl//tsl:tsl.default.bzl", "tsl_pybind_extension")
-
 # NOTE: We can't use `pytype_pybind_extension` nor `pytype_strict_contrib_test`
 # because the OSS versions of these files do not include ports of those rules.
 # We must instead use `tsl_pybind_extension` and `py_strict_test`.
 load("//xla:pytype.default.bzl", "pytype_strict_library")
 load("//xla:strict.default.bzl", "py_strict_test")
+load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -62,14 +61,14 @@ tsl_pybind_extension(
         "//third_party/nanobind",
         "//xla:literal",
         "//xla:xla_data_proto_cc",
+        "//xla/pjrt:status_casters",
         "//xla/python:logging",
         "//xla/python:nb_numpy",
         "//xla/python:types",
         "//xla/tsl/python/lib/core:numpy",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:status_casters",
+        "@pybind11_abseil//pybind11_abseil:import_status_module",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )

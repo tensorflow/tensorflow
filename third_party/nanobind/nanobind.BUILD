@@ -20,7 +20,7 @@ cc_library(
         ],
     ),
     deps = [
-        "@org_tensorflow//third_party/python_runtime:headers",
+        "@local_tsl//third_party/python_runtime:headers",
         "@robin_map",
     ],
 )

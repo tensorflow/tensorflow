@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/runtime/thunk.h"
@@ -63,9 +63,9 @@ absl::Status NcclRecvThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
-                                              se::Stream& stream,
-                                              NcclApi::NcclCommHandle comm) {
+absl::Status NcclRecvThunk::RunNcclCollective(
+    const ExecuteParams& params, se::Stream& stream,
+    NcclCommHandleWrapper comm_wrapper) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -93,8 +93,8 @@ absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing Recv from device ordinal: " << device_ordinal
           << "current_id " << current_id;
-  TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(nccl_api(), device_ordinal, {buffer}, comm));
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(nccl_api(), device_ordinal, {buffer},
+                                          comm_wrapper.comm_handle));
 
   const std::optional<int64_t> source_id = source_target.source;
   se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
@@ -127,7 +127,7 @@ absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
     if (should_run) {
       TF_RETURN_IF_ERROR(nccl_api()->Recv(dest_addr, buffer.element_type,
                                           buffer.element_count, *source_id,
-                                          comm, &stream));
+                                          comm_wrapper.comm_handle, &stream));
     }
 
   } else {

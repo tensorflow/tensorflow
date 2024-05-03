@@ -123,3 +123,35 @@ func.func @main(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32> {
 // STATIC-RANGE-PTQ-TO-COMPUTE-HEAVY: _original_entry_function
 // STATIC-RANGE-PTQ-TO-COMPUTE-HEAVY-NOT: _quantization_method
 // STATIC-RANGE-PTQ-TO-COMPUTE-HEAVY: _tfl_quant_trait = "fully_quantizable"
+
+// -----
+
+// RUN: stablehlo-quant-opt %s -stablehlo-test-lift-quantizable-spots-as-functions-with-quantization-specs="quantization-specs=static-range-ptq-to-all" \
+// RUN:   -split-input-file | FileCheck %s --check-prefix=STATIC-RANGE-PTQ-TO-ALL
+
+// STATIC-RANGE-PTQ-TO-ALL-LABEL: @some_func
+func.func @some_func(%arg0: tensor<1x1x167xf32>) -> tensor<1x1x64xf32> {
+  %0 = stablehlo.constant dense<2.000000e+00> : tensor<167x64xf32>
+  %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [2] x [0], precision = [DEFAULT, DEFAULT] : (tensor<1x1x167xf32>, tensor<167x64xf32>) -> tensor<1x1x64xf32>
+  return %1 : tensor<1x1x64xf32>
+}
+// Tests that XlaCallModuleOp in non-main function has attributes set correctly.
+
+// STATIC-RANGE-PTQ-TO-ALL: %[[CONST:.+]] = stablehlo.constant dense<2.000000e+00>
+// STATIC-RANGE-PTQ-TO-ALL: %[[XLA_CALL_MODULE:.+]] = "tf.XlaCallModule"(%arg0, %[[CONST]])
+
+// Check that the `_quantization_method` attribute contains the quantization
+// method in textproto format, enabling static-range PTQ.
+// STATIC-RANGE-PTQ-TO-ALL-SAME: _entry_function = @composite_dot_general_fn_1
+// STATIC-RANGE-PTQ-TO-ALL-SAME: _original_entry_function
+// STATIC-RANGE-PTQ-TO-ALL-SAME: _quantization_method = "static_range_ptq { }"
+// STATIC-RANGE-PTQ-TO-ALL-SAME: _tfl_quant_trait = "fully_quantizable"
+
+// STATIC-RANGE-PTQ-TO-ALL: return %[[XLA_CALL_MODULE:.+]] : tensor<1x1x64xf32>
+// STATIC-RANGE-PTQ-TO-ALL: }
+
+// STATIC-RANGE-PTQ-TO-ALL-LABEL: private @composite_dot_general_fn_1
+// STATIC-RANGE-PTQ-TO-ALL-SAME: tf_quant.composite_function
+// STATIC-RANGE-PTQ-TO-ALL: %[[DOT_GENERAL:.+]] = stablehlo.dot_general %arg0, %arg1
+// STATIC-RANGE-PTQ-TO-ALL: return %[[DOT_GENERAL:.+]] : tensor<1x1x64xf32>
+// STATIC-RANGE-PTQ-TO-ALL: }

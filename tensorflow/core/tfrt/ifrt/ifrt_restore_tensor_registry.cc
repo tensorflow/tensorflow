@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/future.h"
 #include "tensorflow/core/framework/tensor.h"
 
@@ -31,20 +32,19 @@ namespace tensorflow {
 namespace ifrt_serving {
 
 absl::Status IfrtRestoreTensorRegistry::TryRegister(
-    absl::string_view name,
-    xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> tensor_future) {
+    absl::string_view name, RestoredTensorInfo restored_tensor_info) {
   absl::MutexLock lock(&mutex_);
-  auto& variable = restored_tensors_[name];
-  if (variable.IsValid()) {
+  auto& info = restored_tensors_[name];
+  if (info.tensor_future.IsValid()) {
     return absl::AlreadyExistsError(
         absl::StrCat("Variable '", name, "' already registered."));
   }
-  variable = std::move(tensor_future);
+  info = std::move(restored_tensor_info);
   return absl::OkStatus();
 }
 
 xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>
-IfrtRestoreTensorRegistry::Get(absl::string_view name) const {
+IfrtRestoreTensorRegistry::GetRestoredTensor(absl::string_view name) const {
   absl::MutexLock lock(&mutex_);
   auto it = restored_tensors_.find(name);
   if (it == restored_tensors_.end()) {
@@ -52,7 +52,19 @@ IfrtRestoreTensorRegistry::Get(absl::string_view name) const {
         absl::NotFoundError(absl::StrCat("Variable '", name, "' not found.")));
   }
 
-  return it->second;
+  return it->second.tensor_future;
+}
+
+absl::StatusOr<DtypeAndShape> IfrtRestoreTensorRegistry::GetDtypeAndShape(
+    absl::string_view name) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = restored_tensors_.find(name);
+  if (it == restored_tensors_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("Variable '", name, "' not found."));
+  }
+
+  return it->second.dtype_and_shape;
 }
 
 }  // namespace ifrt_serving

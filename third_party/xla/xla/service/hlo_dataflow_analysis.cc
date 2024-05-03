@@ -1668,7 +1668,7 @@ void HloDataflowAnalysis::OptimizePhiValues() {
 }
 
 /* static */
-StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
+absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
     const CanShareBuffer& can_share_buffer, const ForwardsValue& forwards_value,
     absl::flat_hash_set<absl::string_view> execution_threads) {

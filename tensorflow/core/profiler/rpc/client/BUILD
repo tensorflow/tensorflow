@@ -33,9 +33,7 @@ tf_profiler_pybind_cc_library_wrapper(
 cc_library(
     name = "profiler_client",
     hdrs = ["profiler_client.h"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":profiler_client_impl",
         "//tensorflow/core:lib",

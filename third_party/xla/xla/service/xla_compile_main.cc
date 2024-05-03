@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) {
 
   tsl::port::InitMain(usage.c_str(), &argc, &argv);
 
-  xla::Status result = xla::XlaCompileMain(
+  absl::Status result = xla::XlaCompileMain(
       module_path, output_path, platform, gpu_target_config_path,
       autotune_results_path, symbol_repository, symbol_id, use_attached_device,
       wait_for_uploads, result_output_file);

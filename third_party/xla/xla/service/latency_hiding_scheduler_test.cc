@@ -2896,12 +2896,12 @@ TEST_F(LatencyHidingSchedulerTest, RerunWithSmallerMemoryLimit) {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
   auto sched_config = GetDefaultSchedConfig();
-  sched_config.memory_limit = 140;
+  sched_config.memory_limit = 110;
   sched_config.rerun = 1;
   EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
   // LatencyHidingScheduler runs an additional "rerun" iteration because the
-  // peak memory usage after the first run was 152 bytes (> 140 bytes), so it
-  // sets the new limit to 126 and obtains a peak memory usage of 104 bytes at
+  // peak memory usage after the first run was 136 bytes (> 110 bytes), so it
+  // sets the new limit to 99 and obtains a peak memory usage of 88 bytes at
   // the end of the rerun. In the first run, collective-permute overlaps the
   // slice op, whereas in the rerun, it does not overlap anything.
   std::vector<HloInstruction*> new_instruction_sequence =

@@ -31,11 +31,11 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
         "@local_xla//xla/pjrt:pjrt_c_api_client",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
         "@local_xla//xla/pjrt/c:pjrt_c_api_helpers",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
 )
 

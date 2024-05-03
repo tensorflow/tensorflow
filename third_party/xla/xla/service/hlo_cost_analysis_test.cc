@@ -832,6 +832,62 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
   }
 }
 
+TEST_F(FusionCostAnalysis, NestedCopyFusion) {
+  absl::string_view nested_fusion_text = R"(
+HloModule temp, is_scheduled=true
+
+copy_fusion.1291.clone {
+  input.1291 = s8[2,6144,2,256]{3,1,0,2:T(32,128)(4,1)S(1)} parameter(0)
+  ROOT copy.74276 = s8[2,6144,2,256]{3,1,0,2:T(8,128)(4,1)} copy(input.1291)
+}
+
+fused_computation.4150.clone {
+  param_0.185389 = s8[2,6144,2,256]{3,1,0,2:T(32,128)(4,1)} parameter(0)
+  fusion.103344 = s8[2,6144,2,256]{3,1,0,2:T(8,128)(4,1)} fusion(param_0.185389), kind=kLoop, calls=copy_fusion.1291.clone
+  constant.230138 = s32[]{:T(128)} constant(0)
+  param_1.219146 = s32[]{:T(128)S(6)} parameter(1)
+  ROOT dynamic-slice.40526 = s8[2,384,2,256]{3,1,0,2:T(8,128)(4,1)} dynamic-slice(fusion.103344, constant.230138, param_1.219146, constant.230138, constant.230138), dynamic_slice_sizes={2,384,2,256}
+}
+
+ENTRY temp {
+  param_2.123719 = s8[2,6144,2,256]{3,1,0,2:T(32,128)(4,1)} parameter(0)
+  param_3.66279 = s32[]{:T(128)S(6)} parameter(1)
+  ROOT fusion.85943 = s8[2,384,2,256]{3,1,0,2:T(8,128)(4,1)} fusion(param_2.123719, param_3.66279), kind=kLoop, calls=fused_computation.4150.clone
+}
+)";
+  absl::string_view fusion_text = R"(
+HloModule temp, is_scheduled=true
+
+fused_computation.4150.clone {
+  param_0.185389 = s8[2,6144,2,256]{3,1,0,2:T(32,128)(4,1)} parameter(0)
+  constant.230138 = s32[]{:T(128)} constant(0)
+  param_1.219146 = s32[]{:T(128)S(6)} parameter(1)
+  ROOT dynamic-slice.40526 = s8[2,384,2,256]{3,1,0,2:T(8,128)(4,1)} dynamic-slice(param_0.185389, constant.230138, param_1.219146, constant.230138, constant.230138), dynamic_slice_sizes={2,384,2,256}
+}
+
+ENTRY temp {
+  param_2.123719 = s8[2,6144,2,256]{3,1,0,2:T(32,128)(4,1)} parameter(0)
+  param_3.66279 = s32[]{:T(128)S(6)} parameter(1)
+  ROOT fusion.85943 = s8[2,384,2,256]{3,1,0,2:T(8,128)(4,1)} fusion(param_2.123719, param_3.66279), kind=kLoop, calls=fused_computation.4150.clone
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto nested_fusion_module,
+                          ParseAndReturnVerifiedModule(nested_fusion_text));
+  HloCostAnalysis nested_analysis(ShapeSize);
+  auto* nested_root =
+      nested_fusion_module->entry_computation()->root_instruction();
+  ASSERT_IS_OK(nested_root->Accept(&nested_analysis));
+  TF_ASSERT_OK_AND_ASSIGN(auto fusion_module,
+                          ParseAndReturnVerifiedModule(fusion_text));
+  HloCostAnalysis fusion_analysis(ShapeSize);
+  auto* fusion_root = fusion_module->entry_computation()->root_instruction();
+  ASSERT_IS_OK(fusion_root->Accept(&fusion_analysis));
+  // The nested fusion should only access the bytes size amount of the parameter
+  // based on the size of the consuming dynamic slice.
+  EXPECT_EQ(nested_analysis.bytes_accessed(*nested_root),
+            fusion_analysis.bytes_accessed(*fusion_root));
+}
+
 TEST_F(FusionCostAnalysis, LoopFusionTupleOutput) {
   Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
 

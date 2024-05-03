@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
@@ -123,8 +123,8 @@ TpuPlatform::GetUncachedExecutor(
     return status.status();
   }
   return std::make_unique<stream_executor::StreamExecutor>(
-      this, std::make_unique<stream_executor::tpu::TpuExecutor>(this, executor),
-      config.ordinal);
+      this, std::make_unique<stream_executor::tpu::TpuExecutor>(
+                this, executor, config.ordinal));
 }
 
 ::stream_executor::Platform::Id TpuPlatform::id() const {
@@ -155,19 +155,18 @@ TpuRuntimeVersion TpuPlatform::version() const {
       platform_);
 }
 
-void TpuPlatform::InsertEvent(stream_executor::internal::EventInterface* key,
+void TpuPlatform::InsertEvent(stream_executor::EventInterface* key,
                               SE_Event* val) {
   absl::MutexLock lock(&event_map_mu_);
   event_map_[key] = val;
 }
 
-SE_Event* TpuPlatform::LookupEvent(
-    stream_executor::internal::EventInterface* key) {
+SE_Event* TpuPlatform::LookupEvent(stream_executor::EventInterface* key) {
   absl::ReaderMutexLock lock(&event_map_mu_);
   return event_map_.at(key);
 }
 
-void TpuPlatform::EraseEvent(stream_executor::internal::EventInterface* key) {
+void TpuPlatform::EraseEvent(stream_executor::EventInterface* key) {
   absl::MutexLock lock(&event_map_mu_);
   event_map_.erase(key);
 }

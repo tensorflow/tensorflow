@@ -34,6 +34,8 @@ limitations under the License.
 
 #include "grpcpp/alarm.h"
 #include "grpcpp/server_builder.h"
+#include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "xla/tsl/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/distributed_runtime/master.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -42,8 +44,6 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/master.pb.h"
-#include "tsl/distributed_runtime/rpc/async_service_interface.h"
-#include "tsl/distributed_runtime/rpc/grpc_call.h"
 
 namespace tensorflow {
 
@@ -291,7 +291,7 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
 #undef ENQUEUE_REQUEST
 
   // Start tracing, including the ID attached to the RPC.
-  profiler::TraceMe* TraceRpc(
+  tsl::profiler::TraceMe* TraceRpc(
       StringPiece name,
       const std::multimap<::grpc::string_ref, ::grpc::string_ref>& metadata) {
     StringPiece id;
@@ -299,8 +299,9 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
     if (it != metadata.end()) {
       id = StringPiece(it->second.data(), it->second.size());
     }
-    return new profiler::TraceMe([&] { return strings::StrCat(name, ":", id); },
-                                 profiler::TraceMeLevel::kInfo);
+    return new tsl::profiler::TraceMe(
+        [&] { return strings::StrCat(name, ":", id); },
+        tsl::profiler::TraceMeLevel::kInfo);
   }
 
   GrpcMasterService(const GrpcMasterService&) = delete;

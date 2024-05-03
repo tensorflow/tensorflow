@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/status.h"
 
 namespace xla {
@@ -59,6 +61,10 @@ Future<Status> JoinFutures(absl::Span<Future<Status>> futures) {
     });
   }
   return future;
+}
+
+Future<> JoinFutures(absl::Span<Future<>> futures) {
+  return ::xla::JoinFutures(futures);
 }
 
 }  // namespace ifrt

@@ -33,7 +33,7 @@ limitations under the License.
 
 #ifdef GOOGLE_CUDA
 #include "xla/service/gpu/gpu_asm_opts_util.h"
-#include "xla/stream_executor/gpu/asm_compiler.h"
+#include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #endif  // GOOGLE_CUDA
 
 namespace xla {

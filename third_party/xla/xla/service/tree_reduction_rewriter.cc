@@ -109,7 +109,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   int64_t reduce_window_size_;
 };
 
-StatusOr<bool> TreeReductionRewriter::Run(
+absl::StatusOr<bool> TreeReductionRewriter::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   ReductionRewriterVisitor visitor(reduce_window_size_);

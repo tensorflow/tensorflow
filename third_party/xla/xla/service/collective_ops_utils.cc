@@ -588,6 +588,7 @@ bool IsCollective(const HloInstruction* instruction) {
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kReduceScatter:
       return true;
     case HloOpcode::kFusion:
       if (instruction->IsCustomFusion()) {

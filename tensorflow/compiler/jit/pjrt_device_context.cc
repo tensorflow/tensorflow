@@ -62,7 +62,7 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
   auto first_try_buffer = pjrt_client->BufferFromHostBuffer(
       cpu_tensor->data(), shape.element_type(), shape.dimensions(),
       /*byte_strides=*/std::nullopt,
-      xla::PjRtClient::HostBufferSemantics::kZeroCopy,
+      xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
       /*on_done_with_host_buffer=*/
       [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device,
       device_layout);
@@ -78,7 +78,7 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
         pjrt_client->BufferFromHostBuffer(
             cpu_tensor->data(), shape.element_type(), shape.dimensions(),
             /*byte_strides=*/std::nullopt,
-            xla::PjRtClient::HostBufferSemantics::kZeroCopy,
+            xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
             /*on_done_with_host_buffer=*/
             [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device));
     return second_try_buffer;
@@ -93,7 +93,7 @@ void PjRtDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
                                               Device* device,
                                               Tensor* cpu_tensor,
                                               StatusCallback done) {
-  profiler::TraceMe traceme("PjRtDeviceContext::CopyDeviceTensorToCPU");
+  tsl::profiler::TraceMe traceme("PjRtDeviceContext::CopyDeviceTensorToCPU");
   if (device_tensor->NumElements() == 0) {
     VLOG(2) << "CopyDeviceTensorToCPU empty tensor";
     done(absl::OkStatus());
@@ -136,7 +136,7 @@ void PjRtDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
     return;
   }
 
-  xla::PjRtFuture<Status> future = device_buffer->ToLiteral(literal.get());
+  xla::PjRtFuture<> future = device_buffer->ToLiteral(literal.get());
   future.OnReady([literal = std::move(literal), done = std::move(done)](
                      const tensorflow::Status& status) { done(status); });
 }
@@ -146,14 +146,13 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
                                               Tensor* device_tensor,
                                               StatusCallback done,
                                               bool sync_dst_compute) const {
-  profiler::TraceMe traceme("PjRtDeviceContext::CopyCPUTensorToDevice");
+  tsl::profiler::TraceMe traceme("PjRtDeviceContext::CopyCPUTensorToDevice");
   if (cpu_tensor->NumElements() == 0) {
     VLOG(2) << "CopyCPUTensorToDevice empty tensor";
     done(absl::OkStatus());
     return;
   }
 
-  // TODO(b/252887149): figure out how to cache PJRT client.
   absl::StatusOr<xla::PjRtClient*> pjrt_client =
       GetOrCreatePjRtClient(DeviceType(device->device_type()));
   if (!pjrt_client.ok()) {
@@ -187,8 +186,6 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     CHECK(!result_tensor->GetBuffer());  // Crash OK
     result_tensor->SetBuffer(std::move(*buffer_or));
   }
-  // TODO(b/244666476): evaluate the performance impact of marking ready when
-  // the data in device buffer is computed.
   pjrt_buffer->GetReadyFuture().OnReady(std::move(done));
 }
 
@@ -243,7 +240,7 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
                             AllocatorAttributes dst_alloc_attr,
                             const Tensor* input, Tensor* output,
                             int dev_to_dev_stream_index, StatusCallback done) {
-  profiler::TraceMe traceme("PjRtDevice_DeviceToDeviceCopy");
+  tsl::profiler::TraceMe traceme("PjRtDevice_DeviceToDeviceCopy");
   if (input->NumElements() == 0) {
     VLOG(2) << "PjRtDevice_DeviceToDeviceCopy empty tensor";
     done(absl::OkStatus());
@@ -298,8 +295,6 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
     CHECK(!output_tensor->GetBuffer());  // Crash OK
     output_tensor->SetBuffer(std::move(*buffer_or));
   }
-  // TODO(b/244666476): evaluate the performance impact of marking ready when
-  // the data in device buffer is computed.
   pjrt_buffer->GetReadyFuture().OnReady(std::move(done));
 }
 

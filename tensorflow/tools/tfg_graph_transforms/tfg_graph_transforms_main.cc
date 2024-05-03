@@ -149,7 +149,7 @@ tensorflow::Status RunOptimizationPasses(
 }
 
 // Import model to the TFG MLIR module.
-tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportModel(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportModel(
     DataFormat data_format, const std::string& input_file,
     bool experimental_image_format, mlir::MLIRContext* mlir_context) {
   tensorflow::GraphDebugInfo debug_info;

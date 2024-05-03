@@ -541,7 +541,6 @@ cc_library(
         "xla_call_module_serialization.cc",
         "xla_inline_device_ops.cc",
         "xla_rewrite.cc",
-        "xla_rewrite_v2.cc",
         "xla_validate_inputs.cc",
     ],
     hdrs = [

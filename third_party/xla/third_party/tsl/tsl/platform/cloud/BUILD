@@ -3,7 +3,7 @@
 
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
-    "//tsl:tsl.bzl",
+    "@local_xla//xla/tsl:tsl.bzl",
     "if_windows",
     "internal_visibility",
     "tsl_copts",

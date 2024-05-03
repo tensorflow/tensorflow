@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt_proxy/client/py_module.h"
 #include "xla/python/py_client.h"
+#include "xla/python/py_program.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/tsl/python/lib/core/numpy.h"  //NOLINT
 #ifdef XLA_PYTHON_ENABLE_GPU
@@ -110,7 +111,7 @@ limitations under the License.
 #include "xla/python/transfer_guard_lib.h"
 #include "xla/python/weakref_lru_cache.h"
 #include "xla/python/xla_compiler.h"
-#include "tsl/distributed_runtime/preemption/preemption_sync_manager.h"
+#include "xla/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/status.h"
 
@@ -462,7 +463,7 @@ NB_MODULE(xla_extension, m_nb) {
               "get_topology_for_devices requires >= 1 devices.");
         }
         auto client = py_devices[0]->client();
-        std::vector<PjRtDevice*> ifrt_devices;
+        ifrt::DeviceList::Devices ifrt_devices;
         ifrt_devices.reserve(py_devices.size());
         for (const auto& py_device : py_devices) {
           if (py_device->client().get() != client.get()) {
@@ -472,8 +473,9 @@ NB_MODULE(xla_extension, m_nb) {
           }
           ifrt_devices.push_back(py_device->device());
         }
-        return xla::ValueOrThrow(client->ifrt_client()->GetTopologyForDevices(
-            absl::MakeSpan(ifrt_devices)));
+        ifrt::DeviceList device_list(std::move(ifrt_devices));
+        return xla::ValueOrThrow(
+            client->ifrt_client()->GetTopologyForDevices(device_list));
       });
 
   TF_CHECK_OK(PyArray::RegisterTypes(m_nb));
@@ -609,6 +611,7 @@ NB_MODULE(xla_extension, m_nb) {
   m_nb.def("cuda_array_interface_to_buffer",
            xla::ValueOrThrowWrapper(CudaArrayInterfaceToBuffer));
 
+  BuildIfrtProgramsSubmodule(m_nb);
   BuildProfilerSubmodule(m_nb);
   BuildOpsSubmodule(m_nb);
   BuildOutfeedReceiverSubmodule(m_nb);
@@ -931,7 +934,7 @@ NB_MODULE(xla_extension, m_nb) {
       nb::arg("aval"), nb::arg("sharding"), nb::arg("xs"), nb::arg("devices"),
       nb::arg("committed") = true, nb::arg("force_copy") = false,
       nb::arg("host_buffer_semantics") =
-          PjRtClient::HostBufferSemantics::kZeroCopy);
+          PjRtClient::HostBufferSemantics::kImmutableZeroCopy);
 
   m_nb.def("batched_block_until_ready", [](std::vector<nb::object> xs) {
     ThrowIfError(PyArray::BatchedBlockUntilReady(std::move(xs)));

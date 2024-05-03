@@ -18,7 +18,15 @@ limitations under the License.
 #include <iterator>
 #include <utility>
 
-#include "xla/mlir/runtime/ir/rt_ops.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "xla/mlir/runtime/ir/rt_dialect.h"
 
 namespace xla {
 namespace runtime {

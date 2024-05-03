@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -47,15 +48,15 @@ namespace ifrt {
 
 // array.h
 
-class MockArray final : public llvm::RTTIExtends<MockArray, Array> {
+class MockArray : public llvm::RTTIExtends<MockArray, Array> {
  public:
   MockArray() = default;
   explicit MockArray(tsl::RCReference<xla::ifrt::Array> delegated);
 
   // LINT.IfChange
   MOCK_METHOD(Client*, client, (), (const, final));
-  MOCK_METHOD(Future<Status>, GetReadyFuture, (), (const, final));
-  MOCK_METHOD(Future<Status>, Delete, (), (final));
+  MOCK_METHOD(Future<>, GetReadyFuture, (), (const, final));
+  MOCK_METHOD(Future<>, Delete, (), (final));
   MOCK_METHOD(bool, IsDeleted, (), (const, final));
   MOCK_METHOD(std::string, DebugString, (), (const, final));
 
@@ -71,7 +72,7 @@ class MockArray final : public llvm::RTTIExtends<MockArray, Array> {
               (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>, FullyReplicatedShard,
               (ArrayCopySemantics semantics), (final));
-  MOCK_METHOD(Future<Status>, CopyToHostBuffer,
+  MOCK_METHOD(Future<>, CopyToHostBuffer,
               (void* data,
                std::optional<absl::Span<const int64_t>> byte_strides,
                ArrayCopySemantics semantics),
@@ -92,7 +93,7 @@ class MockArray final : public llvm::RTTIExtends<MockArray, Array> {
 
 // client.h
 
-class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
+class MockClient : public llvm::RTTIExtends<MockClient, Client> {
  public:
   MockClient() = default;
   explicit MockClient(std::unique_ptr<xla::ifrt::Client> delegated);
@@ -127,15 +128,20 @@ class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(int, process_index, (), (const, final));
   MOCK_METHOD(absl::StatusOr<DeviceAssignment>, GetDefaultDeviceAssignment,
               (int num_replicas, int num_partitions), (const, final));
-  MOCK_METHOD(absl::StatusOr<Device*>, LookupDevice, (int device_id),
+  MOCK_METHOD(absl::StatusOr<Device*>, LookupDevice, (DeviceId device_id),
               (const, final));
   MOCK_METHOD(absl::StatusOr<Device*>, LookupAddressableDevice,
               (int local_hardware_id), (const, final));
   MOCK_METHOD(Compiler*, GetDefaultCompiler, (), (final));
   MOCK_METHOD(
       absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>,
-      GetTopologyForDevices, (absl::Span<xla::ifrt::Device* const> devices),
+      GetTopologyForDevices, (const xla::ifrt::DeviceList& devices),
       (const, final));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::PjRtLayout>>,
+              GetDefaultLayoutForDevice,
+              (xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
+               xla::ifrt::Device* device),
+              (const, final));
   // LINT.ThenChange(mock.cc:MockClientDelegation)
 
   xla::ifrt::Client* delegated() const { return delegated_.get(); }
@@ -148,7 +154,7 @@ class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
 
 // compiler.h
 
-class MockCompiler final : public llvm::RTTIExtends<MockCompiler, Compiler> {
+class MockCompiler : public llvm::RTTIExtends<MockCompiler, Compiler> {
  public:
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<LoadedExecutable>>, Compile,
               (std::unique_ptr<Program> program,
@@ -165,40 +171,24 @@ class MockCompiler final : public llvm::RTTIExtends<MockCompiler, Compiler> {
 
 // device.h
 
-class MockDevice final : public Device {
+class MockDevice : public Device {
  public:
   MockDevice() = default;
   explicit MockDevice(Device* delegated);
 
   // LINT.IfChange
-  MOCK_METHOD(xla::PjRtClient*, client, (), (const, final));
+  MOCK_METHOD(Client*, client, (), (const, final));
   MOCK_METHOD(bool, IsAddressable, (), (const, final));
-  MOCK_METHOD(const xla::PjRtDeviceDescription&, description, (),
-              (const, final));
-  MOCK_METHOD(xla::PjRtGlobalDeviceId, global_device_id, (), (const, final));
-  MOCK_METHOD(int, process_index, (), (const, final));
-  MOCK_METHOD(int, local_hardware_id, (), (const, final));
-  MOCK_METHOD(xla::PjRtLocalDeviceId, local_device_id, (), (const, final));
-  MOCK_METHOD(xla::PjRtLocalHardwareId, local_hardware_id_typed, (),
-              (const, final));
-  MOCK_METHOD(absl::string_view, device_kind, (), (const, final));
+  MOCK_METHOD(int, ProcessIndex, (), (const, final));
+  MOCK_METHOD(DeviceId, Id, (), (const, final));
+  MOCK_METHOD(absl::string_view, Kind, (), (const, final));
   MOCK_METHOD(absl::string_view, DebugString, (), (const, final));
   MOCK_METHOD(absl::string_view, ToString, (), (const, final));
   MOCK_METHOD(
       (const absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>&),
       Attributes, (), (const, final));
-  MOCK_METHOD(std::unique_ptr<ScopedAsyncTrackingEvent>,
-              CreateAsyncTrackingEvent, (absl::string_view description),
-              (const, final));
-  MOCK_METHOD(Status, TransferToInfeed, (const LiteralSlice& literal), (final));
-  MOCK_METHOD(Status, TransferFromOutfeed, (MutableBorrowingLiteral literal),
-              (final));
-  MOCK_METHOD(absl::StatusOr<xla::PjRtMemorySpace*>, default_memory_space, (),
-              (const, final));
-  MOCK_METHOD(absl::StatusOr<tsl::AllocatorStats>, GetAllocatorStats, (),
-              (const, final));
-  MOCK_METHOD(absl::Span<xla::PjRtMemorySpace* const>, memory_spaces, (),
-              (const, final));
+  MOCK_METHOD(absl::StatusOr<Memory*>, DefaultMemory, (), (const, final));
+  MOCK_METHOD(absl::Span<Memory* const>, Memories, (), (const, final));
   // LINT.ThenChange(mock.cc:MockDeviceDelegation)
 
   Device* delegated() const { return delegated_; }
@@ -209,20 +199,18 @@ class MockDevice final : public Device {
 
 // memory.h
 
-class MockMemory final : public Memory {
+class MockMemory : public Memory {
  public:
-  MOCK_METHOD(xla::PjRtClient*, client, (), (const, final));
-  MOCK_METHOD(absl::Span<Device* const>, devices, (), (const, final));
-  MOCK_METHOD(int, id, (), (const, final));
-  MOCK_METHOD(absl::string_view, memory_space_kind, (), (const, final));
+  MOCK_METHOD(MemoryId, Id, (), (const, final));
+  MOCK_METHOD(absl::Span<Device* const>, Devices, (), (const, final));
+  MOCK_METHOD(const MemoryKind&, Kind, (), (const, final));
   MOCK_METHOD(absl::string_view, DebugString, (), (const, final));
   MOCK_METHOD(absl::string_view, ToString, (), (const, final));
 };
 
 // executable.h
 
-class MockExecutable final
-    : public llvm::RTTIExtends<MockExecutable, Executable> {
+class MockExecutable : public llvm::RTTIExtends<MockExecutable, Executable> {
  public:
   MOCK_METHOD(absl::string_view, name, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::optional<std::string>>, Fingerprint, (),
@@ -249,7 +237,7 @@ class MockExecutable final
   static char ID;  // NOLINT
 };
 
-class MockLoadedExecutable final
+class MockLoadedExecutable
     : public llvm::RTTIExtends<MockLoadedExecutable, LoadedExecutable> {
  public:
   MOCK_METHOD(Client*, client, (), (const, final));

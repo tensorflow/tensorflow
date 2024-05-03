@@ -652,7 +652,6 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_sparse_matrix_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_ops",
-        "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]) + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cudnn_rnn_kernels",
     ]) + if_cuda([
@@ -670,9 +669,7 @@ cc_library(
 
 cc_library(
     name = "dynamic_kernels_impl",
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/kernels:sobol_op",
     ],
@@ -2001,7 +1998,6 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
         "//tensorflow/core/kernels/mkl:mkl_transpose_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_ops",
-        "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]),
 )
 

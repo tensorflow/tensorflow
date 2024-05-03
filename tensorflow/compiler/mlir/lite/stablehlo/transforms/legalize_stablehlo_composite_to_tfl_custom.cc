@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -45,6 +46,10 @@ bool IsSupportedComposite(::mlir::stablehlo::CompositeOp op) {
   return llvm::is_contained(
       {"odml.update_kv_cache", "odml.scaled_dot_product_attention"},
       op.getName());
+}
+
+bool IsKVCacheCompositeOp(::mlir::stablehlo::CompositeOp op) {
+  return op.getName() == "odml.update_kv_cache";
 }
 
 TFL::ConstBytesAttr CustomOption(OpBuilder* builder,
@@ -75,6 +80,12 @@ TFL::CustomOp BuildCustomOp(stablehlo::CompositeOp composite,
                             const std::string& custom_option_buffer) {
   OpBuilder builder(composite->getContext());
   builder.setInsertionPoint(composite);
+  if (IsKVCacheCompositeOp(composite)) {
+    return builder.create<TFL::CustomOp>(
+        composite->getLoc(), composite->getResultTypes(),
+        composite->getOperands().slice(2, 3), composite.getName(),
+        CustomOption(&builder, custom_option_buffer));
+  }
   return builder.create<TFL::CustomOp>(
       composite->getLoc(), composite->getResultTypes(),
       composite->getOperands(), composite.getName(),
@@ -104,10 +115,47 @@ struct LegalizeCompositeToCustomOpPass
 
   void runOnOperation() override {
     func::FuncOp fn = getOperation();
+
+    int num_layers = 0, current_layer_index = 0;
+    // First walk the function to count number of KV Caches.
+    fn.walk([&](Operation* op) {
+      auto composite = llvm::dyn_cast<stablehlo::CompositeOp>(op);
+      if (!composite || !IsKVCacheCompositeOp(composite)) return;
+      num_layers++;
+    });
+
     fn.walk([&](Operation* op) {
       // Process only StableHLO composite ops.
       auto composite = llvm::dyn_cast<stablehlo::CompositeOp>(op);
       if (!composite || !IsSupportedComposite(composite)) return;
+
+      if (IsKVCacheCompositeOp(composite)) {
+        auto comp_attr = composite.getCompositeAttributes();
+        mlir::Builder builder(composite->getContext());
+
+        // num_layers Composite Attribute.
+        mlir::StringAttr num_layers_str = builder.getStringAttr("num_layers");
+        NamedAttribute num_layers_attr(
+            num_layers_str,
+            IntegerAttr::get(IntegerType::get(fn.getContext(), /*width=*/32),
+                             num_layers));
+
+        // current_layer_index Composite Attribute.
+        mlir::StringAttr current_layer_str =
+            builder.getStringAttr("layer_index");
+        NamedAttribute current_layer_attr(
+            current_layer_str,
+            IntegerAttr::get(IntegerType::get(fn.getContext(), /*width=*/32),
+                             current_layer_index++));
+
+        // Build a new CompositeAttributes attr, add in the above,
+        // and set for the op.
+        mlir::NamedAttrList attributes(comp_attr);
+        attributes.append(num_layers_attr);
+        attributes.append(current_layer_attr);
+        comp_attr = attributes.getDictionary(builder.getContext());
+        composite.setCompositeAttributesAttr(comp_attr);
+      }
 
       // Build flexbuffer options.
       std::string custom_option_buffer;

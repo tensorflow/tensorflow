@@ -1239,6 +1239,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["basic_loops_test.py"],
     python_version = "PY3",
+    tags = ["no_rocm"], #TODO(ROCm) Re-enable after issue is fixed.
     deps = [
         ":basic_loops",
         ":supervisor",

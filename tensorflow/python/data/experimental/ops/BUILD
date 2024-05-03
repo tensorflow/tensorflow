@@ -103,6 +103,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:experimental_dataset_ops_gen",
         "//tensorflow/python/saved_model:nested_structure_coder",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -204,6 +205,23 @@ py_strict_library(
         "//tensorflow/python/ops:experimental_dataset_ops_gen",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "index_flat_map_op",
+    srcs = [
+        "index_flat_map_op.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:structured_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/ops:experimental_dataset_ops_gen",
     ],
 )
 
@@ -504,6 +522,25 @@ py_strict_library(
     deps = [
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "weighted_flat_map_op",
+    srcs = [
+        "weighted_flat_map_op.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:convert",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:random_seed",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/ops:dataset_ops_gen",
+        "//tensorflow/python/ops:experimental_dataset_ops_gen",
     ],
 )
 

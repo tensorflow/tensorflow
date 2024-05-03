@@ -474,6 +474,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:logging",
     ] + tf_grpc_cc_dependencies(),
 )
 

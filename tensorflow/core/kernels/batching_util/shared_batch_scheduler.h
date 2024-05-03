@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "tensorflow/core/kernels/batching_util/batch_input_task.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -263,6 +264,11 @@ class SharedBatchScheduler
     PriorityQueueOptions high_priority_queue_options;
     // A subset of queue options for low priority input.
     PriorityQueueOptions low_priority_queue_options;
+
+    // A policy that determines the mixed priority batching behavior. It is
+    // effective only when enable_priority_queue is true.
+    MixedPriorityBatchingPolicy mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize;
   };
   Status AddQueue(const QueueOptions& options,
                   ProcessBatchCallback process_batch_callback,
@@ -404,10 +410,10 @@ class Queue {
   // Batches are guaranteed to form at task enqueue time.
   std::unique_ptr<Batch<TaskType>> ScheduleBatchWithEagerSplit();
 
-  // Retrieves the tasks up to the specified size from the low priority task
-  // queue. It will immediately return an empty vector when
-  // enable_priority_queue is false.
-  std::vector<std::unique_ptr<TaskType>> GetLowPriorityTasks(size_t size);
+  // Retrieves the low priority tasks that can be padded to a high priority
+  // batch of the specified size.
+  std::vector<std::unique_ptr<TaskType>> GetLowPriorityTasksForPadding(
+      size_t batch_size);
 
   // Processes a batch that has been returned earlier by ScheduleBatch().
   void ProcessBatch(std::unique_ptr<Batch<TaskType>> batch,
@@ -512,6 +518,11 @@ class Queue {
   // Gets the low priority task queue.
   TaskQueue<TaskType>& GetLowPriorityTaskQueue()
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Retrieves the tasks up to the specified size from the low priority task
+  // queue. It will immediately return an empty vector when
+  // enable_priority_queue is false.
+  std::vector<std::unique_ptr<TaskType>> GetLowPriorityTasks(size_t size);
 
   const typename SharedBatchScheduler<TaskType>::QueueOptions options_;
 
@@ -854,13 +865,10 @@ void SharedBatchScheduler<TaskType>::ThreadLogic() {
         std::move(absl::get<BatchTaskUniqueptr>(batch_to_process));
   }
 
-  // TODO(b/316379576): Make the policy determine between padding up to the max
-  // batch size and up to the next smallest allowed batch size.
-  size_t low_priority_task_padding_size =
-      queue_for_batch->max_execution_batch_size() - batch_to_schedule->size();
+  size_t batch_size_to_schedule = batch_to_schedule->size();
   queue_for_batch->ProcessBatch(
       std::move(batch_to_schedule),
-      queue_for_batch->GetLowPriorityTasks(low_priority_task_padding_size));
+      queue_for_batch->GetLowPriorityTasksForPadding(batch_size_to_schedule));
 }
 
 namespace internal {
@@ -1279,14 +1287,39 @@ template <typename TaskType>
 std::vector<std::unique_ptr<TaskType>> Queue<TaskType>::GetLowPriorityTasks(
     size_t size) {
   std::vector<std::unique_ptr<TaskType>> low_priority_tasks_to_pad;
-  // If priority queue is not enable, immediately return instead of attempting
+  // If priority queue is not enabled, immediately return instead of attempting
   // to acquire a lock.
-  if (!options_.enable_priority_queue) return low_priority_tasks_to_pad;
+  if (!options_.enable_priority_queue || size == 0)
+    return low_priority_tasks_to_pad;
   {
     mutex_lock l(mu_);
     low_priority_tasks_to_pad = GetLowPriorityTaskQueue().RemoveTask(size);
   }
   return low_priority_tasks_to_pad;
+}
+
+template <typename TaskType>
+std::vector<std::unique_ptr<TaskType>>
+Queue<TaskType>::GetLowPriorityTasksForPadding(size_t batch_size) {
+  size_t target_batch_size;
+  switch (options_.mixed_priority_batching_policy) {
+    case MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize:
+      target_batch_size = max_execution_batch_size();
+      break;
+    case MixedPriorityBatchingPolicy::
+        kLowPriorityPaddingWithNextAllowedBatchSize:
+      target_batch_size = GetNextAllowedBatchSize(
+          batch_size, options_.allowed_batch_sizes, options_.disable_padding);
+      break;
+    default:
+      target_batch_size = 0;
+      break;
+  }
+
+  if (target_batch_size <= batch_size) {
+    return {};
+  }
+  return GetLowPriorityTasks(target_batch_size - batch_size);
 }
 
 template <typename TaskType>

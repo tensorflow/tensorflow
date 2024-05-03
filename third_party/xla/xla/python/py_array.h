@@ -33,6 +33,8 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
@@ -81,15 +83,8 @@ struct PyArray_Storage {
                   tsl::RCReference<ifrt::Array> ifrt_array,
                   xla::PjRtFuture<absl::Status> result_status);
 
-  // TODO(yashkatariya): remove this once the transition completes.
-  struct DisableFastpath {};
-  explicit PyArray_Storage(DisableFastpath);
-
   ~PyArray_Storage();
   nanobind::handle AsHandle();
-
-  // TODO(yashkatariya): remove this once the transition completes.
-  bool fastpath_enabled;
 
   nanobind::object aval;
   bool weak_type = false;
@@ -103,6 +98,7 @@ struct PyArray_Storage {
   nb_class_ptr<PyClient> py_client;
   std::optional<nb_traceback> traceback;
   tsl::RCReference<ifrt::Array> ifrt_array;
+  nanobind::object fully_replicated_array = nanobind::none();
 
   // optional field, used only in python
   std::vector<PyArray> py_arrays;
@@ -133,10 +129,6 @@ class PyArray : public nanobind::object {
                      nanobind::object sharding,
                      absl::Span<const PyArray> py_arrays, bool committed,
                      bool skip_checks);
-
-  // TODO(yashkatariya): remove this once the transition completes.
-  struct DisableFastpath {};
-  static void PyInit(nanobind::object self, DisableFastpath);
 
   // Only used in C++. `skip_checks` should only be set for Arrays created by
   // jax that cannot possibly have consistency issues (e.g. `sharding` devices
@@ -259,9 +251,6 @@ class PyArray : public nanobind::object {
     return ifrt_array_ptr->sharding().devices().size();
   }
 
-  // TODO(yashkatariya): remove this once the transition completes.
-  bool fastpath_enabled() const { return GetStorage().fastpath_enabled; }
-
   static nanobind::handle type() {
     DCHECK(type_);
     return nanobind::handle(type_);
@@ -301,7 +290,6 @@ class PyArray : public nanobind::object {
       std::vector<nanobind::object> objs);
 
  private:
-  absl::StatusOr<PyArray> FetchSingleShard(std::string_view api);
   absl::StatusOr<PyArray> AssertUnsharded(std::string_view api);
 
   void CheckAndRearrange();

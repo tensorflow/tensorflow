@@ -329,7 +329,7 @@ TEST(TensorBundleTest, SwapBytes) {
   // functions. As a workaround, we make some dummy calls here.
   // TODO(frreiss): Remove this workaround when the compiler bug is fixed.
   ByteSwap(Constant_2x3<int>(42));
-  EXPECT_NE(OkStatus(), FlipEndiannessBit(Prefix("not_a_valid_prefix")));
+  EXPECT_NE(absl::OkStatus(), FlipEndiannessBit(Prefix("not_a_valid_prefix")));
 
   // Test patterns, manually swapped so that we aren't relying on the
   // correctness of our own byte-swapping macros when testing those macros.
@@ -885,7 +885,7 @@ TEST(TensorBundleTest, DirectoryStructure) {
 
   // Ensures we have the expected files.
   auto CheckDirFiles = [env](const string& bundle_prefix,
-                             gtl::ArraySlice<string> expected_files) {
+                             absl::Span<const string> expected_files) {
     StringPiece dir = io::Dirname(bundle_prefix);
     for (const string& expected_file : expected_files) {
       TF_EXPECT_OK(env->FileExists(io::JoinPath(dir, expected_file)));

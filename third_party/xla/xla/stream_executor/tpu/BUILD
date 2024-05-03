@@ -1,8 +1,8 @@
 # Description: StreamExecutor Interface for TPUs
 
-load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -201,7 +201,7 @@ cc_library(
         ":tpu_stream_interface",
         ":tpu_topology_external",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_internal",
+        "//xla/stream_executor:stream_executor_interface",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
@@ -232,7 +232,7 @@ cc_library(
         ":tpu_platform_interface",
         ":tpu_topology_external",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_internal",
+        "//xla/stream_executor:stream_executor_interface",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -260,7 +260,7 @@ cc_library(
         ":tpu_executor_c_api_hdrs",
         ":tpu_topology_external",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_internal",
+        "//xla/stream_executor:stream_executor_interface",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
@@ -307,7 +307,8 @@ cc_library(
         ":tpu_topology_external",
         "//xla:status",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_internal",
+        "//xla/stream_executor:event_interface",
+        "//xla/stream_executor:stream_executor_interface",
         "//xla/tsl/c:tsl_status_internal",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -486,7 +487,7 @@ cc_library(
         ":tpu_platform_interface",
         ":tpu_topology_external",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_internal",
+        "//xla/stream_executor:stream_executor_interface",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
     ],
@@ -543,7 +544,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_internal",
+        "//xla/stream_executor:stream_executor_interface",
         "@com_google_absl//absl/status",
     ],
 )

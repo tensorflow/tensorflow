@@ -341,7 +341,7 @@ bool HloLivenessAnalysis::IsLive(const HloInstruction* instruction,
 }
 
 /* static */
-StatusOr<std::unique_ptr<HloLivenessAnalysis>> HloLivenessAnalysis::Run(
+absl::StatusOr<std::unique_ptr<HloLivenessAnalysis>> HloLivenessAnalysis::Run(
     const HloModule& module) {
   VLOG(1) << "HloLivenessAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());

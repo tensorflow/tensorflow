@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -218,10 +220,12 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     IndexMapperFn GetIndexMapper(
         IndexMapperFn parent_index_mapper) const override {
       int64_t skip_count = dataset()->count_;
-      return
-          [parent_index_mapper, skip_count](size_t element_position) -> size_t {
-            return parent_index_mapper(element_position) + skip_count;
-          };
+      return [parent_index_mapper,
+              skip_count](size_t element_position) -> absl::StatusOr<size_t> {
+        TF_ASSIGN_OR_RETURN(size_t shuffled_element_position,
+                            parent_index_mapper(element_position));
+        return shuffled_element_position + skip_count;
+      };
     }
 
    protected:

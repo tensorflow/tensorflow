@@ -67,7 +67,7 @@ struct FusionInfoCache {
 int64_t SharedMemoryUsage(const HloInstruction& instr,
                           FusionInfoCache* cache = nullptr);
 
-inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
+inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 96; }
 
 // Whether the op transposes the physical data layout. Fusing such ops may lead
 // to uncoalesced data access and may thus not be beneficial.

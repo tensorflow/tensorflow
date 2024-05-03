@@ -472,9 +472,7 @@ tf_proto_library(
 
 cc_library(
     name = "passes",
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt",
     ],
@@ -695,6 +693,7 @@ cc_library(
     hdrs = ["backend_compiler.h"],
     deps = [
         "//tensorflow/core/tfrt/runtime",
+        "@com_google_absl//absl/status",
         "@llvm-project//mlir:IR",
     ],
 )

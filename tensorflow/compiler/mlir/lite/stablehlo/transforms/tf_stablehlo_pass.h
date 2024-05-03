@@ -25,7 +25,7 @@ namespace odml {
 void AddLegalizeTFToStablehloPasses(OpPassManager& pm,
                                     bool skip_quantization_ops,
                                     bool skip_resize,
-                                    bool skip_stateful_partitioned_call);
+                                    bool skip_partitioned_calls);
 
 }  // namespace odml
 }  // namespace mlir

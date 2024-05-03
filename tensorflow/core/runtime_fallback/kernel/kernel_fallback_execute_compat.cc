@@ -138,7 +138,7 @@ static Status ValidateInputTypes(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -328,8 +328,8 @@ std::string GetTracingMetadata(llvm::ArrayRef<tfrt::AsyncValue*> args,
   auto debug_info = exec_ctx.location().GetDebugInfo();
   auto long_name = debug_info.has_value() ? debug_info.value().info : "";
 
-  if (!profiler::TfOpDetailsEnabled()) {
-    return profiler::TraceMeEncode(
+  if (!tsl::profiler::TfOpDetailsEnabled()) {
+    return tsl::profiler::TraceMeEncode(
         {{"id", request_id}, {"long_name", ToAbslStringView(long_name)}});
   }
 
@@ -356,7 +356,7 @@ std::string GetTracingMetadata(llvm::ArrayRef<tfrt::AsyncValue*> args,
     attr_string_stream << ";\n";
   }
 
-  return profiler::TraceMeEncode({
+  return tsl::profiler::TraceMeEncode({
       {"id", request_id},
       {"long_name", ToAbslStringView(long_name)},
       {"inputs", input_string},
@@ -414,9 +414,9 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
     const KernelFallbackCompatRequestState& fallback_request_state,
     const OpKernelRunner& kernel_runner, bool is_async,
     tensorflow::Device* device) {
-  tensorflow::profiler::TraceMe trace_me([&]() -> std::string {
+  tsl::profiler::TraceMe trace_me([&]() -> std::string {
     if (kernel_runner.op_kernel()) {
-      return tensorflow::profiler::TraceMeOp(
+      return tsl::profiler::TraceMeOp(
           kernel_runner.op_kernel()->name_view(),
           kernel_runner.op_kernel()->type_string_view());
     }
@@ -608,9 +608,9 @@ void FallbackGetResource(tfrt::Argument<tfrt::Chain> in_ch,
                          tfrt::RemainingResults results,
                          tfrt::StringAttr device, tfrt::ArrayAttr indices_attr,
                          const tfrt::ExecutionContext& exec_ctx) {
-  tensorflow::profiler::TraceMe trace_me("tfrt_fallback_async.get_resource");
+  tsl::profiler::TraceMe trace_me("tfrt_fallback_async.get_resource");
   trace_me.AppendMetadata([request_id = exec_ctx.request_ctx()->id()]() {
-    return tensorflow::profiler::TraceMeEncode({{"id", request_id}});
+    return tsl::profiler::TraceMeEncode({{"id", request_id}});
   });
 
   const auto* fallback_request_state =
@@ -915,7 +915,7 @@ void BatchFunction(
     // Pass in a BEF function pointer with a I64 attribute.
     int64_t ptr_value = absl::bit_cast<int64_t>(&f.get());
     (*attr_value_map)["opaque_function_handle"].set_i(ptr_value);
-    return OkStatus();
+    return absl::OkStatus();
   };
   auto kernel_runner_or_status = runner_cache->GetOrCreate(
       exec_ctx.location(), kTfKernelNameToFallback,

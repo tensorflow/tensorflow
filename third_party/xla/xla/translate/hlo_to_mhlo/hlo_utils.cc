@@ -39,8 +39,6 @@ using mlir::AffineMap;
 using mlir::Builder;
 using mlir::DenseElementsAttr;
 using mlir::ShapedType;
-using xla::LiteralBase;
-using xla::StatusOr;
 
 template <typename CppType>
 ::mlir::DenseElementsAttr CreateDenseAttrFromLiteral(
@@ -116,7 +114,8 @@ absl::StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
 
   // TODO(hinsu): Support remaining XLA primitive types.
   auto element_type = literal.shape().element_type();
-  return primitive_util::PrimitiveTypeSwitch<StatusOr<mlir::DenseElementsAttr>>(
+  return primitive_util::PrimitiveTypeSwitch<
+      absl::StatusOr<mlir::DenseElementsAttr>>(
       [&](auto primitive_type_constant)
           -> absl::StatusOr<mlir::DenseElementsAttr> {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {

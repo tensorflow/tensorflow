@@ -62,15 +62,6 @@ class QuantizationTestBase : public Test {
     return parseSourceString<ModuleOp>(module_op_str, ctx_.get());
   }
 
-  // Returns the first operation with the given type in the function.
-  template <typename OpType>
-  OpType FindOperationOfType(func::FuncOp function) {
-    for (auto op : function.getBody().getOps<OpType>()) {
-      return op;
-    }
-    return nullptr;
-  }
-
   // Convenience function that returns the first operation of type `OpT` from
   // the `@main` function in `module_op`. Useful when testing with a text
   // representation of a `ModuleOp` containing a single function `@main`.

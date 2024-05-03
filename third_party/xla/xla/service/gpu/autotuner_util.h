@@ -196,11 +196,9 @@ struct AutotunerUtil {
   // Normally, we don't have to use this low level method.
   static bool AddResult(const AutotuneCacheKey& key, AutotuneResult result);
 
-  // Creates a RedzoneAllocator from a given config. If `force_stream` is
-  // provided, than it is used for checking redzones.
+  // Creates a RedzoneAllocator from a given config.
   static absl::StatusOr<se::RedzoneAllocator> CreateRedzoneAllocator(
-      const AutotuneConfig& config, const DebugOptions& opts,
-      se::Stream* force_stream = nullptr);
+      const AutotuneConfig& config, const DebugOptions& opts);
 
   // Functions to save/load XLA's autotuning results.
   //

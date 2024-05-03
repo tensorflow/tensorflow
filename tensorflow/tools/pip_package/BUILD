@@ -113,7 +113,7 @@ filegroup(
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
     }) + select({
-        "@local_tsl//tsl:with_numa_support": [
+        "@local_xla//xla/tsl:with_numa_support": [
             "@hwloc//:COPYING",
         ],
         "//conditions:default": [],
@@ -251,6 +251,7 @@ collect_data_files(
         "//tensorflow:tensorflow_py",
         # utils below are not part of tensorflow_py DAG
         "//tensorflow/compiler/mlir/stablehlo:stablehlo_extension",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:pywrap_calibration",
         "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
         "//tensorflow/python/framework:memory_checker",
         "//tensorflow/python/util:pywrap_xla_ops",

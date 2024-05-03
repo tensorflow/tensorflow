@@ -37,14 +37,14 @@ Status SetPjRtClientInTFGlobalResourceManager(
       rmgr->default_container(), kPjRtStateResourceName, &pjrt_state,
       [&](PjRtState** ret) {
         *ret = PjRtState::Create();
-        return OkStatus();
+        return absl::OkStatus();
       }));
   core::ScopedUnref pjrt_state_ref(pjrt_state);
   if (client == nullptr) {
     return errors::InvalidArgument("PJRT client is nullptr.");
   }
   TF_RETURN_IF_ERROR(pjrt_state->SetPjRtClient(device_type, std::move(client)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type) {
@@ -54,7 +54,7 @@ absl::StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type) {
       rmgr->default_container(), kPjRtStateResourceName, &pjrt_state,
       [&](PjRtState** ret) {
         *ret = PjRtState::Create();
-        return OkStatus();
+        return absl::OkStatus();
       }));
   core::ScopedUnref pjrt_state_ref(pjrt_state);
   return pjrt_state->GetPjRtClient(device_type);

@@ -530,7 +530,10 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
         static_cast<int>(type_a), static_cast<int>(type_b)));
   }
   TF_ASSIGN_OR_RETURN(
-      auto timer, GpuTimer::CreateIfNeeded(stream, profile_result != nullptr));
+      auto timer,
+      GpuTimer::CreateIfNeeded(
+          stream, profile_result && profile_result->warmup_run_executed(),
+          profile_result != nullptr));
 
   // fall back to the default implementation
   if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {
@@ -586,7 +589,10 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
         static_cast<int>(type_a), static_cast<int>(type_b)));
   }
   TF_ASSIGN_OR_RETURN(
-      auto timer, GpuTimer::CreateIfNeeded(stream, profile_result != nullptr));
+      auto timer,
+      GpuTimer::CreateIfNeeded(
+          stream, profile_result && profile_result->warmup_run_executed(),
+          profile_result != nullptr));
 
   // fall back to the default implementation
   if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {
@@ -662,10 +668,13 @@ bool ROCMBlas::GetBlasGemmAlgorithms(
         ret != rocblas_status_success) {
       return ret;
     }
-    out_algorithms->resize(num_sols);
+    out_algorithms->resize(num_sols + 1);
+    (*out_algorithms)[0] = blas::kDefaultAlgorithm;
     for (rocblas_int i = 0; i < num_sols; i++) {
-      (*out_algorithms)[i] = solutions_[i];
+      (*out_algorithms)[i + 1] = solutions_[i];
     }
+    // Sort the list solutions by IDs
+    std::sort(out_algorithms->begin() + 1, out_algorithms->end());
     return rocblas_status_success;
   };
 
@@ -1231,8 +1240,7 @@ void initialize_rocblas() {
         PluginRegistry::Instance()
             ->RegisterFactory<PluginRegistry::BlasFactory>(
                 rocm::kROCmPlatformId, "rocBLAS",
-                [](internal::StreamExecutorInterface *parent)
-                    -> blas::BlasSupport * {
+                [](StreamExecutorInterface *parent) -> blas::BlasSupport * {
                   gpu::GpuExecutor *rocm_executor =
                       dynamic_cast<gpu::GpuExecutor *>(parent);
                   if (rocm_executor == nullptr) {

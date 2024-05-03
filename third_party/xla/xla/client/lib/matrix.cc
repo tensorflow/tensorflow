@@ -612,7 +612,7 @@ absl::StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
     return InvalidArgument("Expected one \",\" in einsum_config.");
   }
 
-  auto maybe_invalid_character = [](char d) {
+  auto maybe_invalid_character = [](char d) -> absl::Status {
     if (absl::ascii_isalpha(d)) {
       return OkStatus();
     }

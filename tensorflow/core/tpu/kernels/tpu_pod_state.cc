@@ -48,11 +48,11 @@ Status DeleteIfExists(ResourceMgr* resource_manager,
       resource_manager->default_container(), resource_name);
   if (status.ok()) {
     VLOG(1) << "Removed existing resource " << resource_name;
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (status.code() == error::NOT_FOUND) {
     VLOG(1) << "No resource " << resource_name << " to remove";
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(1) << "Error removing resource " << resource_name << " : " << status;
   return status;
@@ -101,7 +101,7 @@ Status GetServerAddressAndPort(std::string* server_address, int* serving_port) {
   *server_address =
       std::string(server_address_output, server_address_output_size);
   CHECK_NE(*serving_port, -1);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TpuPodState::TpuPodState(
@@ -136,7 +136,7 @@ Status GetTPUPodState(const ResourceMgr* rmgr, TpuPodState** pod_state) {
     return errors::FailedPrecondition(
         "The TPU system has not been initialized.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HasTPUPodState(const ResourceMgr* rmgr) {

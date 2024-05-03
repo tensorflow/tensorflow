@@ -695,7 +695,7 @@ class HloInstruction {
   //   computation_map: a map from computation id to HloComputation*. This map
   //     must contain all computations which the newly constructed instruction
   //     calls.
-  static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
+  static absl::StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
       const HloInstructionProto& proto,
       const absl::flat_hash_map<int64_t, HloInstruction*>& instruction_map,
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map = {},
@@ -2120,7 +2120,7 @@ class HloInstruction {
   //   TF_RETURN_IF_ERROR(instr.set_backend_config(proto));
   //   return instr.raw_backend_config_string();
   //
-  static StatusOr<std::string> BackendConfigToRawString(
+  static absl::StatusOr<std::string> BackendConfigToRawString(
       const tsl::protobuf::Message& proto);
 
   // Returns the information used to tell the implementation information about
@@ -2806,7 +2806,7 @@ extern template Status HloInstruction::Visit(DfsHloVisitor* visitor);
 extern template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
 absl::string_view ToString(HloInstruction::FusionKind kind);
-StatusOr<HloInstruction::FusionKind> StringToFusionKind(
+absl::StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     absl::string_view kind_name);
 
 // Custom (de)stringification functions for protos that live inside
@@ -2823,14 +2823,17 @@ std::string ConvolutionDimensionNumbersToString(
 std::string ReplicaGroupsToString(
     absl::Span<const ReplicaGroup> replica_groups);
 
-StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const std::string& name);
-StatusOr<RandomDistribution> StringToRandomDistribution(
+absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
     const std::string& name);
-StatusOr<PrecisionConfig::Precision> StringToPrecision(const std::string& name);
+absl::StatusOr<RandomDistribution> StringToRandomDistribution(
+    const std::string& name);
+absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
+    const std::string& name);
 absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
     const std::string& name);
-StatusOr<CustomCallSchedule> StringToCustomCallSchedule(absl::string_view name);
-StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
+absl::StatusOr<CustomCallSchedule> StringToCustomCallSchedule(
+    absl::string_view name);
+absl::StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
     absl::string_view name);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);

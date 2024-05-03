@@ -174,15 +174,17 @@ class DataServiceClient {
   // task a chance to proceed.
   std::shared_ptr<Task> GetTaskToProcess();
   void AdvanceTaskIndex();
-  Status TryGetElement(const Task& task, GetElementResult& result);
+  Status TryGetElement(const Task& task, bool allow_skip,
+                       GetElementResult& result);
   void ProcessGetElementResponse(bool enqueue_result,
                                  GetElementResult& get_element_result,
                                  std::shared_ptr<Result> result, Task& task);
   Status GetElementTraced(Task* task, int64_t deadline_micros,
-                          bool enqueue_result, std::shared_ptr<Result> result);
+                          bool enqueue_result, bool allow_skip,
+                          std::shared_ptr<Result> result);
   Status MaybeRemoveTask(Task& task, int64_t deadline_micros, Result& result);
   Status GetElement(Task* task, int64_t deadline_micros, bool enqueue_result,
-                    std::shared_ptr<Result> result);
+                    bool allow_skip, std::shared_ptr<Result> result);
   bool ResultReady() const;
   std::shared_ptr<Result> PopNextResult();
   bool IsCoordinatedRead() const;

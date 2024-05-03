@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -30,6 +30,7 @@ cc_library(
     name = "passes",
     srcs = [
         "ifrt_duplicated_callee_elimination_pass.cc",
+        "ifrt_verify_sharding_specified_pass.cc",
         "spmd_expandable_interface_verification_pass.cc",
         "spmd_expansion_pass.cc",
     ],
@@ -43,7 +44,6 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

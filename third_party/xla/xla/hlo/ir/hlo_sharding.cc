@@ -625,7 +625,7 @@ Status HloSharding::CheckLeafCount(const Shape& shape) const {
   return OkStatus();
 }
 
-StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
+absl::StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
     const Shape& shape) const {
   if (IsTuple()) {
     ShapeTree<HloSharding> result(shape, HloSharding::Replicate());
@@ -640,7 +640,8 @@ StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
   }
 }
 
-StatusOr<HloSharding> HloSharding::GetTupleSharding(const Shape& shape) const {
+absl::StatusOr<HloSharding> HloSharding::GetTupleSharding(
+    const Shape& shape) const {
   if (IsTuple()) {
     TF_RETURN_IF_ERROR(CheckLeafCount(shape));
     return *this;
@@ -792,7 +793,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   return OkStatus();
 }
 
-/*static*/ StatusOr<HloSharding> HloSharding::FromProto(
+/*static*/ absl::StatusOr<HloSharding> HloSharding::FromProto(
     const OpSharding& proto) {
   std::vector<OpMetadata> metadata(proto.metadata().begin(),
                                    proto.metadata().end());
@@ -846,7 +847,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   TF_RET_CHECK(!proto.tile_assignment_dimensions().empty());
 
   auto product_no_overflow =
-      [](absl::Span<const int64_t> dims) -> StatusOr<int64_t> {
+      [](absl::Span<const int64_t> dims) -> absl::StatusOr<int64_t> {
     int64_t product_of_dimensions = 1;
     bool any_overflow = false;
     for (auto dimension : dims) {

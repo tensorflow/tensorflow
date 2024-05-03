@@ -93,7 +93,7 @@ Status GetComputationCacheEntry(
     std::unique_ptr<CompilationCacheEntryRef>* entry) {
   const Tensor* key;
   TF_RETURN_IF_ERROR(context->input("key", &key));
-  profiler::TraceMe trace_me("TpuExecuteOp::LookupProto", /*level=*/2);
+  tsl::profiler::TraceMe trace_me("TpuExecuteOp::LookupProto", /*level=*/2);
   if (!TensorShapeUtils::IsVector(key->shape()) ||
       key->shape().dim_size(0) != 3) {
     return absl::InvalidArgumentError(
@@ -125,7 +125,7 @@ struct VariableUpdateMap {
 
 // Creates a VariableUpdateMap from both the compilation and the fused variable
 // reads/updates.
-xla::StatusOr<VariableUpdateMap> BuildVariableUpdateMap(
+absl::StatusOr<VariableUpdateMap> BuildVariableUpdateMap(
     absl::Span<const TPUExecutableInfoProto::UpdateIndexPair* const>
         compiled_variable_updates,
     absl::Span<int const> fused_device_var_reads_in_computation_inputs,
@@ -215,11 +215,11 @@ struct InputBuffers {
 };
 
 // Builds an InputBuffers object that describes the inputs to the computation.
-xla::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
+absl::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
     OpKernelContext* context, const xla::Shape& input_host_shape,
     const VariableUpdateMap& variable_updates, xla::Backend* backend,
     int device_ordinal, se::Stream* stream) {
-  profiler::TraceMe trace_me("BuildComputationInputs", /*level=*/2);
+  tsl::profiler::TraceMe trace_me("BuildComputationInputs", /*level=*/2);
   OpInputList arg_list;
   TF_RETURN_IF_ERROR(context->input_list("args", &arg_list));
 
@@ -334,7 +334,7 @@ xla::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
   // Assigns the buffers of 'tensor' as computation input 'i'. Allocates fresh
   // buffers for zero-element tensors where required.
   auto assign_input = [&](int i, const Tensor& tensor,
-                          bool may_reuse) -> xla::Status {
+                          bool may_reuse) -> absl::Status {
     XlaTensor* xla_tensor = XlaTensor::FromTensor(&tensor);
 
     // Size 0 tensors have no backing XlaTensor, but may still need to have
@@ -414,7 +414,7 @@ struct OutputBuffers {
 // any output buffers that do not have corresponding output tensors. The latter
 // may happen for zero-element tensors of type int64 or complex64 which still
 // require a tuple buffer but do not have a corresponding XlaTensor.
-xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
+absl::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
     OpKernelContext* context, xla::ScopedShapedBuffer scoped_buffers,
     absl::Span<const TensorShapeProto* const> output_tensor_shape_protos,
     const VariableUpdateMap& variable_updates, TpuNodeContext* node_context,
@@ -422,7 +422,7 @@ xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
     const std::shared_ptr<se::Event>& definition_event) {
   VLOG(4) << "Output buffers: " << scoped_buffers.ToString();
 
-  profiler::TraceMe trace_me("AllocateOutputTensors", /*level=*/2);
+  tsl::profiler::TraceMe trace_me("AllocateOutputTensors", /*level=*/2);
   // Shapes of the outputs, in TensorShape form.
   const int64_t sub_elements =
       xla::ShapeUtil::TupleElementCount(scoped_buffers.on_host_shape());
@@ -647,15 +647,15 @@ Status TPUExecuteOp::DoWork(OpKernelContext* context) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TpuNodeContext> node_context,
                       TpuNodeContext::Create(device_ordinal));
 
-  profiler::TraceMe trace_me(
+  tsl::profiler::TraceMe trace_me(
       [device_ordinal, context] {
-        return profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "TpuExecuteOp", {{"device_ordinal", device_ordinal},
                              {"id", context->step_id()},
                              {"iter_num", context->frame_iter().iter_id}});
       },
       /*level=*/2);
-  profiler::TraceMe trace_me_init("TPUExecuteOp::Init", /*level=*/2);
+  tsl::profiler::TraceMe trace_me_init("TPUExecuteOp::Init", /*level=*/2);
 
   std::string rendezvous_key_base;
   std::unique_ptr<CompilationCacheEntryRef> entry_ref;

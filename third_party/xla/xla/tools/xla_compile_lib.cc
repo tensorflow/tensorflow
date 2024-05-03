@@ -185,11 +185,10 @@ absl::Status WriteResultFile(const absl::string_view result_output_file,
 absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
     const absl::string_view module_path) {
   auto format = std::string(tsl::io::Extension(module_path));
-  if (format == "hlo" || format == "txt") {
+  if (format == "hlo" || format == "txt" || format == "pb") {
     return LoadModuleFromFile(
-        std::string(module_path), /*format=*/"hlo",
-        hlo_module_loader_details::Config(), [&](HloModuleConfig* c) {},
-        nullptr);
+        std::string(module_path), format, hlo_module_loader_details::Config(),
+        [&](HloModuleConfig* c) {}, nullptr);
   }
   std::string module_string;
   TF_RETURN_IF_ERROR(tsl::ReadFileToString(

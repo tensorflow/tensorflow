@@ -28,6 +28,8 @@ using float8_e4m3b11 = float8_e4m3b11fnuz;  // Deprecated: old name for
 using float8_e5m2 = ::ml_dtypes::float8_e5m2;
 using float8_e5m2fnuz = ::ml_dtypes::float8_e5m2fnuz;
 
+using int2 = ::ml_dtypes::int2;
+using uint2 = ::ml_dtypes::uint2;
 using int4 = ::ml_dtypes::int4;
 using uint4 = ::ml_dtypes::uint4;
 }  // namespace tsl

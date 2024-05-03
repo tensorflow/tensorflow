@@ -28,8 +28,8 @@ namespace function {
 
 typedef FunctionDefHelper FDH;
 
-GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
-              gtl::ArraySlice<FunctionDef> funcs) {
+GraphDef GDef(absl::Span<const NodeDef> nodes,
+              absl::Span<const FunctionDef> funcs) {
   GraphDef g;
   VersionDef* versions = g.mutable_versions();
   versions->set_producer(TF_GRAPH_DEF_VERSION);
@@ -45,8 +45,8 @@ GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
 }
 
 // Helper to construct a NodeDef.
-NodeDef NDef(StringPiece name, StringPiece op, gtl::ArraySlice<string> inputs,
-             gtl::ArraySlice<std::pair<string, FDH::AttrValueWrapper>> attrs,
+NodeDef NDef(StringPiece name, StringPiece op, absl::Span<const string> inputs,
+             absl::Span<const std::pair<string, FDH::AttrValueWrapper>> attrs,
              const string& device) {
   NodeDef n;
   n.set_name(string(name));

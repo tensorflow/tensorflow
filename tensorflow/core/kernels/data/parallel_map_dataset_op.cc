@@ -305,9 +305,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       RecordStop(ctx);
       result->notification.WaitForNotification();
       RecordStart(ctx);
-      profiler::TraceMe traceme([&] {
-        return profiler::TraceMeEncode("ParallelMapConsume",
-                                       {{"element_id", result->uid}});
+      tsl::profiler::TraceMe traceme([&] {
+        return tsl::profiler::TraceMeEncode("ParallelMapConsume",
+                                            {{"element_id", result->uid}});
       });
       return ProcessResult(ctx, result, out_tensors, end_of_sequence);
     }
@@ -489,9 +489,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     void CallFunction(const std::shared_ptr<IteratorContext>& ctx,
                       const std::shared_ptr<InvocationResult>& result)
         TF_LOCKS_EXCLUDED(*mu_) {
-      profiler::TraceMe traceme([&] {
-        return profiler::TraceMeEncode("ParallelMapProduce",
-                                       {{"element_id", result->uid}});
+      tsl::profiler::TraceMe traceme([&] {
+        return tsl::profiler::TraceMeEncode("ParallelMapProduce",
+                                            {{"element_id", result->uid}});
       });
       // Get the next input element.
       std::vector<Tensor> input_element;

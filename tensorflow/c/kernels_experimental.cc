@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/kernels_experimental.h"
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -74,7 +75,7 @@ tensorflow::Status EnsureSparseVariableAccess(
     tensorflow::Var* var, bool lock_held = false) {
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   if (var->copy_on_read_mode.load()) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   std::optional<mutex_lock> ml;
@@ -87,7 +88,7 @@ tensorflow::Status EnsureSparseVariableAccess(
   // copy-on-read mode is false.
   if (var->tensor()->RefCountIsOne()) {
     var->copy_on_read_mode.store(true);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   Tensor tmp;
   if (variantType) {
@@ -114,7 +115,7 @@ tensorflow::Status EnsureSparseVariableAccess(
   }
   *var->tensor() = tmp;
   var->copy_on_read_mode.store(true);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status PrepareToUpdateVariable(
@@ -151,7 +152,7 @@ tensorflow::Status PrepareToUpdateVariable(
     }
     *tensor = tmp;
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::mutex* GetTrainingVariableMutex(TF_OpKernelContext* ctx,
@@ -186,7 +187,7 @@ void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
                                *ptr = new tensorflow::Var(value.dtype());
                                *(*ptr)->tensor() = value;
                                (*ptr)->is_initialized = true;
-                               return ::tensorflow::OkStatus();
+                               return absl::OkStatus();
                              }));
   tensorflow::mutex_lock ml(*variable->mu());
 
@@ -414,9 +415,9 @@ void TF_MaybeLockVariableInputMutexesInOrder(
   std::sort(acquire_order.begin(), acquire_order.end(),
             [&mutexes](int a, int b) { return mutexes[a] < mutexes[b]; });
 
-  auto locks = absl::make_unique<std::vector<tensorflow::mutex_lock>>();
+  auto locks = std::make_unique<std::vector<tensorflow::mutex_lock>>();
   auto shared_locks =
-      absl::make_unique<std::vector<tensorflow::tf_shared_lock>>();
+      std::make_unique<std::vector<tensorflow::tf_shared_lock>>();
   locks->reserve(acquire_order.size());
 
   for (auto acquire : acquire_order) {
@@ -565,7 +566,7 @@ static Status ValidateVariantType(const Variant& variant) {
         type_index_name);
   }
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 static Status VariantBinaryAddFunc(
@@ -581,11 +582,11 @@ static Status CCBinaryAddFunc(
                             TF_Tensor* out)) {
   if (cc_a.dtype() == ::tensorflow::DT_INVALID) {
     *cc_out = cc_b;
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (cc_b.dtype() == ::tensorflow::DT_INVALID) {
     *cc_out = cc_a;
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   Status status;

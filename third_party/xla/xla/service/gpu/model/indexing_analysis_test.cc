@@ -456,6 +456,54 @@ TEST_F(IndexingAnalysisTest, ElementwiseOp) {
                           )"))));
 }
 
+TEST_F(IndexingAnalysisTest, Map) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    mapper {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT add = f32[] add(a, b)
+    }
+    ENTRY e {
+      p0 = f32[10, 20] parameter(0)
+      p1 = f32[10, 20] parameter(1)
+      ROOT add0 = f32[10, 20] map(%p0, %p1), dimensions={}, to_apply=mapper
+    }
+  )");
+  auto input_indexing = GetOutputToInputIndexing(root);
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1) -> (d0, d1)
+                            domain:
+                            d0 in [0, 9]
+                            d1 in [0, 19]
+                          )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1) -> (d0, d1)
+                            domain:
+                            d0 in [0, 9]
+                            d1 in [0, 19]
+                          )"))));
+
+  auto output_indexing_0 = GetInputToOutputIndexing(root, /*input_id=*/0);
+  EXPECT_THAT(output_indexing_0.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1) -> (d0, d1)
+                            domain:
+                            d0 in [0, 9]
+                            d1 in [0, 19]
+                          )"))));
+
+  auto output_indexing_1 = GetInputToOutputIndexing(root, /*input_id=*/1);
+  EXPECT_THAT(output_indexing_1.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1) -> (d0, d1)
+                            domain:
+                            d0 in [0, 9]
+                            d1 in [0, 19]
+                          )"))));
+}
+
 TEST_F(IndexingAnalysisTest, BitcastIsReshape) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
@@ -2255,7 +2303,7 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_FeatureGroups) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1, d2, d3)[s0, s1, s2] -> (d0, d1 + s0, d2 + s1, (d3 floordiv 4) * 4 + s2)
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (d0, d1 + s0, d2 + s1, (d3 floordiv 8) * 4 + s2)
                             domain:
                             d0 in [0, 0]
                             d1 in [0, 9]

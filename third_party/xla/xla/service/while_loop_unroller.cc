@@ -134,7 +134,7 @@ std::optional<WhileLoopConfig> IsLoopUnrollable(HloInstruction* while_op) {
   HloEvaluator evaluator(/*max_loop_iterations=*/0);
   const HloInstruction* while_init = while_op->operand(0);
   const HloInstruction* indvar_init = while_init->operand(*indvar_tuple_idx);
-  StatusOr<Literal> indvar_init_result = evaluator.Evaluate(indvar_init);
+  absl::StatusOr<Literal> indvar_init_result = evaluator.Evaluate(indvar_init);
   if (!indvar_init_result.ok()) {
     VLOG(2) << "Couldn't evaluate induction variable init, "
             << indvar_init_result.status() << ", " << indvar_init->ToString();
@@ -175,9 +175,10 @@ std::unique_ptr<HloInstruction> GetConstantWithPrimitiveType(PrimitiveType type,
 
 // Helper function that replaces a single iteration of a while loop with
 // induction variable equal to induction_value.
-StatusOr<std::unique_ptr<HloComputation>> UnrollSingleIterationOfTrivialLoop(
-    HloInstruction* while_op, const int64_t indvar_idx,
-    const int64_t induction_value) {
+absl::StatusOr<std::unique_ptr<HloComputation>>
+UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
+                                   const int64_t indvar_idx,
+                                   const int64_t induction_value) {
   // We clone the body since we are changing the computation.
   std::unique_ptr<HloComputation> while_body_clone =
       while_op->while_body()->Clone(absl::StrCat(induction_value));
@@ -329,8 +330,9 @@ absl::Status InitialFeasibilityCheck(HloInstruction* while_op,
   return absl::OkStatus();
 }
 
-StatusOr<bool> UnrollInternal(HloInstruction* while_op, WhileLoopConfig config,
-                              int64_t unroll_factor) {
+absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
+                                    WhileLoopConfig config,
+                                    int64_t unroll_factor) {
   TF_RETURN_IF_ERROR(InitialFeasibilityCheck(while_op, config, unroll_factor));
 
   VLOG(3) << "Unrolling while instruction " << while_op->ToShortString()
@@ -363,9 +365,9 @@ StatusOr<bool> UnrollInternal(HloInstruction* while_op, WhileLoopConfig config,
   return true;
 }
 
-StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
-                                     WhileLoopConfig config,
-                                     int64_t unroll_factor) {
+absl::StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
+                                           WhileLoopConfig config,
+                                           int64_t unroll_factor) {
   TF_RETURN_IF_ERROR(InitialFeasibilityCheck(while_op, config, unroll_factor));
 
   VLOG(3) << "Unrolling (wrapped) while instruction "
@@ -378,7 +380,7 @@ StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
 
   auto body_builder =
       HloComputation::Builder(absl::StrCat("unrolled-body-", while_op->name()));
-  StatusOr<HloInstruction*> p = body_builder.AddParameter(
+  absl::StatusOr<HloInstruction*> p = body_builder.AddParameter(
       while_op->while_body()->parameter_instruction(0)->Clone());
 
   std::vector<HloInstruction*> call_operands = {p.value()};
@@ -468,8 +470,8 @@ std::vector<std::pair<HloInstruction*, WhileLoopConfig>> GetUnrollableLoops(
   return while_loop_configs;
 }
 
-StatusOr<bool> Unroll(HloInstruction* while_op, int64_t unroll_factor,
-                      bool wrap_in_trivial_loop) {
+absl::StatusOr<bool> Unroll(HloInstruction* while_op, int64_t unroll_factor,
+                            bool wrap_in_trivial_loop) {
   bool changed = false;
   HloModule* module = while_op->GetModule();
 
@@ -501,7 +503,7 @@ StatusOr<bool> Unroll(HloInstruction* while_op, int64_t unroll_factor,
   return unrolled;
 }
 
-StatusOr<bool> WhileLoopUnroller::Run(
+absl::StatusOr<bool> WhileLoopUnroller::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // TODO(b/288130138) For now, we only support full unrolling. Will add partial

@@ -156,6 +156,13 @@ Status DecomposeCollectivePermute(
   HloInstruction* send_done =
       computation->AddInstruction(HloInstruction::CreateSendDone(send));
 
+  // We will add control dependence to represent how we want to order Send/Recv
+  // and other collective operations. Here we only add the necessary control
+  // dependence to avoid optimization that can cause problems, in particular,
+  // to prevent fusion from fusing the computation of Send-data with the
+  // computation that requires the Recv-result.
+  TF_RETURN_IF_ERROR(send->AddControlDependencyTo(recv_done));
+
   HloInstruction* recv_data = computation->AddInstruction(
       HloInstruction::CreateGetTupleElement(recv_done, 0));
   TF_RETURN_IF_ERROR(collective_permute->ReplaceAllUsesWith(recv_data));

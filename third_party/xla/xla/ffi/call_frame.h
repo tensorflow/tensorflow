@@ -100,6 +100,9 @@ class CallFrameBuilder {
   void AddBufferArg(se::DeviceMemoryBase memory, PrimitiveType type,
                     absl::Span<const int64_t> dims);
 
+  void AddBufferRet(se::DeviceMemoryBase memory, PrimitiveType type,
+                    absl::Span<const int64_t> dims);
+
   void AddAttributes(AttributesMap attrs);
 
  private:
@@ -108,6 +111,7 @@ class CallFrameBuilder {
   struct Buffer;
 
   std::vector<Buffer> args_;
+  std::vector<Buffer> rets_;
   AttributesMap attrs_;
 };
 
@@ -120,7 +124,8 @@ class CallFrame {
   ~CallFrame();
 
   // Builds an XLA_FFI_CallFrame from owned arguments and attributes.
-  XLA_FFI_CallFrame Build(XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx);
+  XLA_FFI_CallFrame Build(const XLA_FFI_Api* api,
+                          XLA_FFI_ExecutionContext* ctx);
 
  private:
   friend class CallFrameBuilder;
@@ -132,21 +137,29 @@ class CallFrame {
   struct Buffer;
   struct Dictionary;
   struct NamedAttribute;
+  struct Results;
   struct Scalar;
   struct String;
 
   using Attribute = std::variant<Scalar, Array, String, Dictionary>;
 
   CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
+            absl::Span<const CallFrameBuilder::Buffer> rets,
             const CallFrameBuilder::AttributesMap& attrs);
 
   static std::unique_ptr<Arguments> InitArgs(
       absl::Span<const CallFrameBuilder::Buffer> args);
 
+  static std::unique_ptr<Results> InitRets(
+      absl::Span<const CallFrameBuilder::Buffer> rets);
+
   static std::unique_ptr<Attributes> InitAttrs(
       const CallFrameBuilder::AttributesMap& attrs);
 
+  static Buffer ConvertBuffer(const CallFrameBuilder::Buffer& buffer);
+
   std::unique_ptr<Arguments> arguments_;
+  std::unique_ptr<Results> results_;
   std::unique_ptr<Attributes> attributes_;
 
   // Declare implementation detail structs to grant access to private members.

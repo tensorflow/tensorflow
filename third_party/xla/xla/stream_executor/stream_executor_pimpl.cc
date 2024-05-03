@@ -46,33 +46,21 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
-#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/numbers.h"
-#include "tsl/platform/stacktrace.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
-namespace {
-
-std::string StackTraceIfVLOG10() {
-  if (VLOG_IS_ON(10)) {
-    return absl::StrCat(" ", tsl::CurrentStackTrace(), "\n");
-  } else {
-    return "";
-  }
-}
-
-}  // namespace
 
 // Get per-device memory limit in bytes. Returns 0 if
 // TF_PER_DEVICE_MEMORY_LIMIT_MB environment variable is not set.
@@ -85,27 +73,13 @@ static int64_t GetMemoryLimitBytes() {
 
 StreamExecutor::StreamExecutor(
     const Platform* platform,
-    std::unique_ptr<internal::StreamExecutorInterface> implementation,
-    int device_ordinal)
+    std::unique_ptr<StreamExecutorInterface> implementation)
     : platform_(platform),
       implementation_(std::move(implementation)),
-      device_ordinal_(device_ordinal),
-      live_stream_count_(0),
       memory_limit_bytes_(GetMemoryLimitBytes()),
       allocator_(this) {}
 
-StreamExecutor::~StreamExecutor() {
-  if (live_stream_count_.load() != 0) {
-    LOG(WARNING) << "Not all streams were deallocated at executor destruction "
-                 << "time. This may lead to unexpected/bad behavior - "
-                 << "especially if any stream is still active!";
-  }
-}
-
-absl::Status StreamExecutor::Init() {
-  TF_RETURN_IF_ERROR(implementation_->Init(device_ordinal_));
-  return absl::OkStatus();
-}
+absl::Status StreamExecutor::Init() { return implementation_->Init(); }
 
 absl::Status StreamExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
                                        Kernel* kernel) {
@@ -132,11 +106,7 @@ StreamExecutor::CreateOrShareConstant(Stream* stream,
 }
 
 void StreamExecutor::Deallocate(DeviceMemoryBase* mem) {
-  VLOG(1) << "Called StreamExecutor::Deallocate(mem=" << mem->opaque()
-          << ") mem->size()=" << mem->size() << StackTraceIfVLOG10();
-
   implementation_->Deallocate(mem);
-  mem->Reset(nullptr, 0);
 }
 
 bool StreamExecutor::CanEnablePeerAccessTo(StreamExecutor* other) {
@@ -157,39 +127,13 @@ const DeviceDescription& StreamExecutor::GetDeviceDescription() const {
   return *device_description_;
 }
 
-int64_t StreamExecutor::GetDeviceLoad() const {
-  return implementation_->GetDeviceLoad();
-}
-
-dnn::DnnSupport* StreamExecutor::AsDnn() {
-  absl::MutexLock lock(&mu_);
-  if (dnn_ != nullptr) {
-    return dnn_.get();
-  }
-
-  dnn_.reset(implementation_->CreateDnn());
-  return dnn_.get();
-}
+dnn::DnnSupport* StreamExecutor::AsDnn() { return implementation_->AsDnn(); }
 
 blas::BlasSupport* StreamExecutor::AsBlas() {
-  absl::MutexLock lock(&mu_);
-  if (blas_ != nullptr) {
-    return blas_.get();
-  }
-
-  blas_.reset(implementation_->CreateBlas());
-  return blas_.get();
+  return implementation_->AsBlas();
 }
 
-fft::FftSupport* StreamExecutor::AsFft() {
-  absl::MutexLock lock(&mu_);
-  if (fft_ != nullptr) {
-    return fft_.get();
-  }
-
-  fft_.reset(implementation_->CreateFft());
-  return fft_.get();
-}
+fft::FftSupport* StreamExecutor::AsFft() { return implementation_->AsFft(); }
 
 absl::Status StreamExecutor::Launch(Stream* stream,
                                     const ThreadDim& thread_dims,
@@ -215,9 +159,7 @@ absl::Status StreamExecutor::Submit(Stream* stream,
 }
 
 absl::Status StreamExecutor::BlockHostUntilDone(Stream* stream) {
-  absl::Status result;
-  result = implementation_->BlockHostUntilDone(stream);
-  return result;
+  return implementation_->BlockHostUntilDone(stream);
 }
 
 absl::Status StreamExecutor::GetStatus(Stream* stream) {
@@ -228,17 +170,12 @@ DeviceMemoryBase StreamExecutor::Allocate(uint64_t size, int64_t memory_space) {
   if (memory_limit_bytes_ > 0 &&
       static_cast<int64_t>(size) > memory_limit_bytes_) {
     LOG(WARNING) << "Not enough memory to allocate " << size << " on device "
-                 << device_ordinal_
+                 << device_ordinal()
                  << " within provided limit.  limit=" << memory_limit_bytes_
                  << "]";
     return DeviceMemoryBase();
   }
-  DeviceMemoryBase buf = implementation_->Allocate(size, memory_space);
-  VLOG(1) << "Called StreamExecutor::Allocate(size=" << size
-          << ", memory_space=" << memory_space << ") returns " << buf.opaque()
-          << StackTraceIfVLOG10();
-
-  return buf;
+  return implementation_->Allocate(size, memory_space);
 }
 
 absl::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
@@ -264,118 +201,47 @@ bool StreamExecutor::GetSymbol(const std::string& symbol_name,
 }
 
 void* StreamExecutor::UnifiedMemoryAllocate(uint64_t bytes) {
-  void* buffer = implementation_->UnifiedMemoryAllocate(bytes);
-  VLOG(1) << "Called StreamExecutor::UnifiedMemoryAllocate(size=" << bytes
-          << ") returns " << buffer << StackTraceIfVLOG10();
-  return buffer;
+  return implementation_->UnifiedMemoryAllocate(bytes);
 }
 
 void StreamExecutor::UnifiedMemoryDeallocate(void* location) {
-  VLOG(1) << "Called StreamExecutor::UnifiedMemoryDeallocate(location="
-          << location << ")" << StackTraceIfVLOG10();
-
   return implementation_->UnifiedMemoryDeallocate(location);
 }
 
 absl::StatusOr<void*> StreamExecutor::CollectiveMemoryAllocate(uint64_t bytes) {
-  TF_ASSIGN_OR_RETURN(void* buffer,
-                      implementation_->CollectiveMemoryAllocate(bytes));
-  VLOG(1) << "Called StreamExecutor::CollectiveMemoryAllocate(size=" << bytes
-          << ") returns " << buffer << StackTraceIfVLOG10();
-  return buffer;
+  return implementation_->CollectiveMemoryAllocate(bytes);
 }
 
 absl::Status StreamExecutor::CollectiveMemoryDeallocate(void* location) {
-  VLOG(1) << "Called StreamExecutor::CollectiveMemoryDeallocate(location="
-          << location << ")" << StackTraceIfVLOG10();
-
   return implementation_->CollectiveMemoryDeallocate(location);
 }
 
-absl::StatusOr<std::unique_ptr<HostMemoryAllocation>>
+absl::StatusOr<std::unique_ptr<MemoryAllocation>>
 StreamExecutor::HostMemoryAllocate(uint64_t size) {
-  void* buffer = implementation_->HostMemoryAllocate(size);
-  VLOG(1) << "Called StreamExecutor::HostMemoryAllocate(size=" << size
-          << ") returns " << buffer << StackTraceIfVLOG10();
-  if (buffer == nullptr && size > 0) {
-    return absl::InternalError(
-        absl::StrFormat("Failed to allocate HostMemory of size %d", size));
-  }
-  return std::make_unique<HostMemoryAllocation>(buffer, size, implementation());
+  return implementation_->HostMemoryAllocate(size);
 }
 
 void StreamExecutor::HostMemoryDeallocate(void* data, uint64_t size) {
-  VLOG(1) << "Called StreamExecutor::HostMemoryDeallocate(data=" << data << ")"
-          << StackTraceIfVLOG10();
-
   return implementation_->HostMemoryDeallocate(data);
 }
 
 bool StreamExecutor::SynchronizeAllActivity() {
-  VLOG(1) << "Called StreamExecutor::SynchronizeAllActivity()"
-          << StackTraceIfVLOG10();
-  bool ok = implementation_->SynchronizeAllActivity();
-
-  return ok;
+  return implementation_->SynchronizeAllActivity();
 }
 
 absl::Status StreamExecutor::SynchronousMemZero(DeviceMemoryBase* location,
                                                 uint64_t size) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemZero(location=" << location
-          << ", size=" << size << ")" << StackTraceIfVLOG10();
-
   return implementation_->SynchronousMemZero(location, size);
-}
-
-bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase* device_dst,
-                                       const DeviceMemoryBase& device_src,
-                                       uint64_t size) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(device_dst="
-          << device_dst->opaque() << ", device_src=" << device_src.opaque()
-          << ", size=" << size << ") D2D" << StackTraceIfVLOG10();
-
-  absl::Status status = implementation_->SynchronousMemcpyDeviceToDevice(
-      device_dst, device_src, size);
-  if (!status.ok()) {
-    LOG(ERROR) << "synchronous memcpy: " << status;
-  }
-  return status.ok();
 }
 
 absl::Status StreamExecutor::SynchronousMemcpyD2H(
     const DeviceMemoryBase& device_src, int64_t size, void* host_dst) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemcpyD2H(device_src="
-          << device_src.opaque() << ", size=" << size
-          << ", host_dst=" << host_dst << ")" << StackTraceIfVLOG10();
-
-  absl::Status result =
-      implementation_->SynchronousMemcpy(host_dst, device_src, size);
-  if (!result.ok()) {
-    result = absl::InternalError(absl::StrFormat(
-        "failed to synchronously memcpy device-to-host: device "
-        "%p to host %p size %d: %s",
-        device_src.opaque(), host_dst, size, result.ToString()));
-  }
-
-  return result;
+  return implementation_->SynchronousMemcpy(host_dst, device_src, size);
 }
 
 absl::Status StreamExecutor::SynchronousMemcpyH2D(
     const void* host_src, int64_t size, DeviceMemoryBase* device_dst) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemcpyH2D(host_src=" << host_src
-          << ", size=" << size << ", device_dst=" << device_dst->opaque() << ")"
-          << StackTraceIfVLOG10();
-
-  absl::Status result =
-      implementation_->SynchronousMemcpy(device_dst, host_src, size);
-  if (!result.ok()) {
-    result = absl::InternalError(absl::StrFormat(
-        "failed to synchronously memcpy host-to-device: host "
-        "%p to device %p size %d: %s",
-        host_src, device_dst->opaque(), size, result.ToString()));
-  }
-
-  return result;
+  return implementation_->SynchronousMemcpy(device_dst, host_src, size);
 }
 
 bool StreamExecutor::Memcpy(Stream* stream, void* host_dst,
@@ -404,8 +270,6 @@ absl::Status StreamExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
 absl::Status StreamExecutor::Memset32(Stream* stream,
                                       DeviceMemoryBase* location,
                                       uint32_t pattern, uint64_t size) {
-  CHECK_EQ(0, size % 4)
-      << "need 32-bit multiple size to fill with 32-bit pattern";
   return implementation_->Memset32(stream, location, pattern, size);
 }
 
@@ -442,41 +306,16 @@ Event::Status StreamExecutor::PollForEventStatus(Event* event) {
 absl::StatusOr<std::unique_ptr<Stream>> StreamExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   auto stream = std::make_unique<Stream>(this);
-  if (priority.has_value()) {
-    if (std::holds_alternative<StreamPriority>(*priority)) {
-      stream->SetPriority(std::get<StreamPriority>(*priority));
-    } else {
-      stream->SetPriority(std::get<int>(*priority));
-    }
-  }
-  TF_RETURN_IF_ERROR(stream->Initialize());
+  TF_RETURN_IF_ERROR(stream->Initialize(priority));
   return std::move(stream);
 }
 
 bool StreamExecutor::AllocateStream(Stream* stream) {
-  live_stream_count_.fetch_add(1, std::memory_order_relaxed);
-  if (!implementation_->AllocateStream(stream)) {
-    auto count = live_stream_count_.fetch_sub(1);
-    CHECK_GE(count, 0) << "live stream count should not dip below zero";
-    LOG(INFO) << "failed to allocate stream; live stream count: " << count;
-    return false;
-  }
-
-  return true;
+  return implementation_->AllocateStream(stream);
 }
 
 void StreamExecutor::DeallocateStream(Stream* stream) {
-  dnn::DnnSupport* dnn;
-  {
-    absl::MutexLock lock(&mu_);
-    dnn = dnn_.get();
-  }
-  if (dnn) {
-    dnn->NotifyStreamDestroyed(stream);
-  }
   implementation_->DeallocateStream(stream);
-  CHECK_GE(live_stream_count_.fetch_sub(1), 0)
-      << "live stream count should not dip below zero";
 }
 
 bool StreamExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
@@ -504,8 +343,8 @@ Stream* StreamExecutor::FindAllocatedStream(void* gpu_stream) {
   return implementation_->FindAllocatedStream(gpu_stream);
 }
 
-internal::StreamExecutorInterface* StreamExecutor::implementation() {
-  return implementation_->GetUnderlyingExecutor();
+StreamExecutorInterface* StreamExecutor::implementation() {
+  return implementation_.get();
 }
 
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(

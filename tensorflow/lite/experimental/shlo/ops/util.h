@@ -64,8 +64,11 @@ absl::Status CheckSupportedTypes(CheckCtx ctx, const Tensor& tensor,
   if ((static_cast<CheckFuncs&&>(checks)(tensor) || ...)) {
     return absl::OkStatus();
   }
+  std::string tensor_type_repr = std::visit(
+      [](auto v) -> std::string { return ToString(v); }, tensor.element_type());
   return absl::FailedPreconditionError("stablehlo." + ctx.op_name +
-                                       ": Unsupported tensor type.");
+                                       ": Unsupported tensor type (" +
+                                       tensor_type_repr + ").");
 }
 
 // Returns true if the tensor's storage type is boolean.

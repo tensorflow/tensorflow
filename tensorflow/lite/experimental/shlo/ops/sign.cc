@@ -29,8 +29,9 @@ struct Sign {
   template <class T>
   T operator()(T v) const {
     constexpr T one = static_cast<T>(1);
+    constexpr T minus_one = static_cast<T>(-1);
     constexpr T zero = static_cast<T>(0);
-    return v < zero ? -one : (v > zero ? one : v);
+    return v < zero ? minus_one : (v > zero ? one : v);
   }
 };
 
@@ -60,10 +61,11 @@ absl::Status Prepare(SignOp& op, const Tensor& input, Tensor& output) {
 absl::Status Evaluate(SignOp& op, const Tensor& input, Tensor& output) {
   Sign sign;
   if (input.IsPerTensorQuantized()) {
-    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       input.quantized_tensor_element_type().StorageType(),
-                       input.quantized_tensor_element_type().ExpressedType(),
-                       sign, input, output)
+    DISPATCH_QUANTIZED(
+        detail::DequantizeOpQuantizePerTensor,
+        input.quantized_per_tensor_element_type().StorageType(),
+        input.quantized_per_tensor_element_type().ExpressedType(), sign, input,
+        output)
   } else if (IsSignedIntTensor(input) || IsFloatTensor(input)) {
     DISPATCH_INT_FLOAT(detail::EvaluateNoQuantization,
                        input.tensor_element_type(), sign, input, output);

@@ -51,8 +51,8 @@ absl::Status Evaluate(DivideOp& op, const Tensor& lhs, const Tensor& rhs,
                        lhs.tensor_element_type(), divide, lhs, rhs, output);
   } else if (IsQuantizedPerTensorTensor(lhs)) {
     DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       lhs.quantized_tensor_element_type().StorageType(),
-                       lhs.quantized_tensor_element_type().ExpressedType(),
+                       lhs.quantized_per_tensor_element_type().StorageType(),
+                       lhs.quantized_per_tensor_element_type().ExpressedType(),
                        divide, lhs, rhs, output)
   }
   return absl::FailedPreconditionError(

@@ -55,7 +55,7 @@ void DequantizeOpQuantizePerAxisImpl(
       const ExpressedT dequantized_res = op(dequantized_input);
       *output_data = Quantize<StorageT, ExpressedT>(
           dequantized_res, output_zero_points[quantization_index],
-          static_cast<ExpressedT>(1 / output_scales[quantization_index]),
+          static_cast<ExpressedT>(1) / output_scales[quantization_index],
           quantization_min, quantization_max);
       output_data += strides[depth];
       input_data += strides[depth];
@@ -82,15 +82,15 @@ void DequantizeOpQuantizePerAxis(F&& func, const Tensor& input,
   using ExpressedT = StorageType<expressed_type>;
   const Shape& shape = input.shape();
   const Axis quantization_dimension =
-      input.quantized_tensor_element_type().QuantizedDimension();
+      input.quantized_per_axis_element_type().QuantizedDimension();
   const absl::Span<const StorageT> input_zero_points =
-      input.quantized_tensor_element_type().ZeroPoints<storage_type>();
+      input.quantized_per_axis_element_type().ZeroPointsAs<storage_type>();
   const absl::Span<const ExpressedT> input_scales =
-      input.quantized_tensor_element_type().Scales<expressed_type>();
+      input.quantized_per_axis_element_type().ScalesAs<expressed_type>();
   const absl::Span<const StorageT> output_zero_points =
-      output.quantized_tensor_element_type().ZeroPoints<storage_type>();
+      output.quantized_per_axis_element_type().ZeroPointsAs<storage_type>();
   const absl::Span<const ExpressedT> output_scales =
-      output.quantized_tensor_element_type().Scales<expressed_type>();
+      output.quantized_per_axis_element_type().ScalesAs<expressed_type>();
   const Strides& strides = ComputeStrides(shape);
   const StorageT* input_data = input.GetDataAs<storage_type>();
   StorageT* output_data = output.GetDataAs<storage_type>();
@@ -108,16 +108,16 @@ void DequantizeOpQuantizePerTensor(F& func, const Tensor& input,
   using ExpressedT = StorageType<expressed_type>;
   const DimensionSize num_elements = input.NumElements();
   const StorageT input_zero_point =
-      input.quantized_tensor_element_type().ZeroPoints<storage_type>()[0];
+      input.quantized_per_tensor_element_type().ZeroPointAs<storage_type>();
   const ExpressedT input_scale =
-      input.quantized_tensor_element_type().Scales<expressed_type>()[0];
+      input.quantized_per_tensor_element_type().ScaleAs<expressed_type>();
   const StorageT output_zero_point =
-      output.quantized_tensor_element_type().ZeroPoints<storage_type>()[0];
+      output.quantized_per_tensor_element_type().ZeroPointAs<storage_type>();
   const ExpressedT output_scale =
-      output.quantized_tensor_element_type().Scales<expressed_type>()[0];
+      output.quantized_per_tensor_element_type().ScaleAs<expressed_type>();
   const StorageT* input_data = input.GetDataAs<storage_type>();
   StorageT* output_data = output.GetDataAs<storage_type>();
-  const ExpressedT inv_scale = static_cast<ExpressedT>(1 / output_scale);
+  const ExpressedT inv_scale = static_cast<ExpressedT>(1) / output_scale;
   for (DimensionSize i = 0; i < num_elements;
        ++i, ++input_data, ++output_data) {
     const ExpressedT dequantized_input =
@@ -170,14 +170,15 @@ absl::Status Evaluate(UnaryElementwiseOp<F>& op, const Tensor& input,
                       Tensor& output) {
   if (input.IsPerAxisQuantized()) {
     DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerAxis,
-                       input.quantized_tensor_element_type().StorageType(),
-                       input.quantized_tensor_element_type().ExpressedType(),
+                       input.quantized_per_axis_element_type().StorageType(),
+                       input.quantized_per_axis_element_type().ExpressedType(),
                        op.func, input, output);
   } else if (input.IsPerTensorQuantized()) {
-    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       input.quantized_tensor_element_type().StorageType(),
-                       input.quantized_tensor_element_type().ExpressedType(),
-                       op.func, input, output)
+    DISPATCH_QUANTIZED(
+        detail::DequantizeOpQuantizePerTensor,
+        input.quantized_per_tensor_element_type().StorageType(),
+        input.quantized_per_tensor_element_type().ExpressedType(), op.func,
+        input, output)
   } else {
     DISPATCH_BOOL_INT_FLOAT(detail::EvaluateNoQuantization,
                             input.tensor_element_type(), op.func, input,

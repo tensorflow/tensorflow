@@ -70,7 +70,7 @@ PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
   for (const auto bw : peak_bws) {
     result.add_peak_bws_giga_bytes_per_second(bw);
   }
-  result.set_ridge_point(TeraToGiga(peak_tera_flops_per_second) /
+  result.set_ridge_point(tsl::profiler::TeraToGiga(peak_tera_flops_per_second) /
                          peak_bws[MemBwType::MEM_BW_TYPE_HBM_RW]);
   return result;
 }
@@ -79,10 +79,13 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
   DeviceCapabilities cap = GetDeviceCaps(device_plane);
   if (!absl::StartsWith(device_plane.name(), kTpuPlanePrefix)) {
     return MakePerfEnv(
-        GigaToTera(GetFlopMaxThroughputPerSM(cap)) * cap.num_cores(),
+        tsl::profiler::GigaToTera(GetFlopMaxThroughputPerSM(cap)) *
+            cap.num_cores(),
         // Ideally, the cap should report separate hbm BW, for now set to same.
-        {UniToGiga(cap.memory_bandwidth()), UniToGiga(cap.memory_bandwidth()),
-         UniToGiga(cap.memory_bandwidth()), UniToGiga(cap.memory_bandwidth())});
+        {tsl::profiler::UniToGiga(cap.memory_bandwidth()),
+         tsl::profiler::UniToGiga(cap.memory_bandwidth()),
+         tsl::profiler::UniToGiga(cap.memory_bandwidth()),
+         tsl::profiler::UniToGiga(cap.memory_bandwidth())});
   } else {
     XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(&device_plane);
     auto peak_tera_flops_per_second =

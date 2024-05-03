@@ -97,7 +97,7 @@ namespace tsl {
 //
 // Returns: OkStatus() on success, -1 otherwise
 //
-Status ByteSwapArray(char *array, size_t bytes_per_elem, int array_len);
+absl::Status ByteSwapArray(char *array, size_t bytes_per_elem, int array_len);
 
 }  // namespace tsl
 

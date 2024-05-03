@@ -23,8 +23,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/future.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -32,21 +35,26 @@ namespace ifrt_serving {
 // This class is thread safe.
 class IfrtRestoreTensorRegistry {
  public:
+  struct RestoredTensorInfo {
+    DtypeAndShape dtype_and_shape;
+    xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> tensor_future;
+  };
   // Tries to register a loaded variable with the given name.
   // Returns an error if the named tensor already exists.
-  absl::Status TryRegister(
-      absl::string_view name,
-      xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> tensor_future)
+  absl::Status TryRegister(absl::string_view name,
+                           RestoredTensorInfo restored_tensor_info)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> Get(
+  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> GetRestoredTensor(
       absl::string_view name) const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  absl::StatusOr<DtypeAndShape> GetDtypeAndShape(absl::string_view name) const
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
   mutable absl::Mutex mutex_;
-  absl::flat_hash_map<std::string,
-                      xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>>
-      restored_tensors_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<std::string, RestoredTensorInfo> restored_tensors_
+      ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace ifrt_serving

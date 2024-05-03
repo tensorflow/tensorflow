@@ -41,7 +41,7 @@ namespace sparse {
 
 class SparseTensor {
  public:
-  typedef typename gtl::ArraySlice<int64_t> VarDimArray;
+  typedef absl::Span<const int64_t> VarDimArray;
   typedef typename gtl::InlinedVector<int64_t, 8> ShapeArray;
 
   static Status Create(Tensor ix, Tensor vals, const VarDimArray shape,
@@ -163,7 +163,7 @@ class SparseTensor {
   // having any order and a Reorder<T>() should be called on it before
   // performing any subsequent operations.
   template <typename T>
-  static SparseTensor Concat(const gtl::ArraySlice<SparseTensor>& tensors);
+  static SparseTensor Concat(const absl::Span<const SparseTensor>& tensors);
 
   // Split() will split the input SparseTensor into a list of num_split
   // SparseTensor given a splitting dimension. If the input dimension range
@@ -179,11 +179,11 @@ class SparseTensor {
   // index at each dimension and the size is the size at each dimension.
   template <typename T>
   static absl::StatusOr<SparseTensor> Slice(
-      const SparseTensor& tensor, const gtl::ArraySlice<int64_t> start,
-      const gtl::ArraySlice<int64_t> size);
+      const SparseTensor& tensor, const absl::Span<const int64_t> start,
+      const absl::Span<const int64_t> size);
 
   // Picks out the dimensions according to `dim_indices`.
-  std::vector<int64_t> PickDims(gtl::ArraySlice<int64_t> dim_indices) const {
+  std::vector<int64_t> PickDims(absl::Span<const int64_t> dim_indices) const {
     std::vector<int64_t> res(dim_indices.size());
     for (size_t i = 0; i < dim_indices.size(); ++i) {
       res[i] = shape_[dim_indices[i]];
@@ -420,7 +420,7 @@ inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 
 template <typename T>
 inline SparseTensor SparseTensor::Concat(
-    const gtl::ArraySlice<SparseTensor>& tensors) {
+    const absl::Span<const SparseTensor>& tensors) {
   DCHECK_GE(tensors.size(), size_t{1}) << "Cannot concat 0 SparseTensors";
   const int dims = tensors[0].dims_;
   DCHECK_GE(dims, 1) << "Cannot concat 0-dimensional SparseTensors";
@@ -574,13 +574,13 @@ inline Status SparseTensor::Split(const SparseTensor& input_tensor,
     }
     result->push_back(std::move(tensor));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
 inline absl::StatusOr<SparseTensor> SparseTensor::Slice(
-    const SparseTensor& input_tensor, const gtl::ArraySlice<int64_t> start,
-    const gtl::ArraySlice<int64_t> size) {
+    const SparseTensor& input_tensor, const absl::Span<const int64_t> start,
+    const absl::Span<const int64_t> size) {
   TensorShape output_shape(input_tensor.shape());
 
   const int dims = input_tensor.dims();

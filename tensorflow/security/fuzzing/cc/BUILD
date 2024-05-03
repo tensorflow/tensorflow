@@ -220,11 +220,16 @@ tf_cc_fuzz_test(
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:tag_constants",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/platform:status",
         "//tensorflow/security/fuzzing/cc/core/framework:datatype_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 

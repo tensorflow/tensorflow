@@ -28,8 +28,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
-#include "xla/python/ifrt/types.pb.h"
-#include "xla/statusor.h"
+#include "xla/python/ifrt/shape.pb.h"
 
 namespace xla {
 namespace ifrt {

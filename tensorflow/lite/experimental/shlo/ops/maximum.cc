@@ -55,8 +55,8 @@ absl::Status Evaluate(MaximumOp& op, const Tensor& lhs, const Tensor& rhs,
                             output);
   } else if (IsQuantizedPerTensorTensor(lhs)) {
     DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       lhs.quantized_tensor_element_type().StorageType(),
-                       lhs.quantized_tensor_element_type().ExpressedType(),
+                       lhs.quantized_per_tensor_element_type().StorageType(),
+                       lhs.quantized_per_tensor_element_type().ExpressedType(),
                        maximum, lhs, rhs, output)
   }
   return absl::FailedPreconditionError(

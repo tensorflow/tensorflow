@@ -25,7 +25,7 @@ namespace shlo_ref {
 struct Abs {
   template <class T>
   T operator()(const T& val) {
-    return val < static_cast<T>(0) ? -val : val;
+    return val < static_cast<T>(0) ? static_cast<T>(-val) : val;
   }
 };
 
@@ -44,10 +44,11 @@ absl::Status Prepare(AbsOp& op, const Tensor& input, Tensor& output) {
 absl::Status Evaluate(AbsOp& op, const Tensor& input, Tensor& output) {
   Abs abs;
   if (input.IsPerTensorQuantized()) {
-    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       input.quantized_tensor_element_type().StorageType(),
-                       input.quantized_tensor_element_type().ExpressedType(),
-                       abs, input, output)
+    DISPATCH_QUANTIZED(
+        detail::DequantizeOpQuantizePerTensor,
+        input.quantized_per_tensor_element_type().StorageType(),
+        input.quantized_per_tensor_element_type().ExpressedType(), abs, input,
+        output)
   } else if (IsSignedIntTensor(input) || IsFloatTensor(input)) {
     DISPATCH_INT_FLOAT(detail::EvaluateNoQuantization,
                        input.tensor_element_type(), abs, input, output);

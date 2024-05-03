@@ -5,10 +5,6 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "@local_tsl//tsl:tsl.bzl",
-    "tsl_copts",
-)
-load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
     "tf_exec_properties",
@@ -16,6 +12,10 @@ load(
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
+)
+load(
+    "//xla/tsl:tsl.bzl",
+    "tsl_copts",
 )
 
 def xla_py_proto_library(**_kwargs):

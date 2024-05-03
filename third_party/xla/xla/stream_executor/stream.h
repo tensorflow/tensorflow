@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -110,7 +111,8 @@ class Stream {
 
   // Initialize the stream. This must be performed before entraining any other
   // operations.
-  absl::Status Initialize();
+  absl::Status Initialize(
+      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
 
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise
@@ -187,15 +189,13 @@ class Stream {
 
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory
-  // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
-  // then registered with StreamExecutor::HostMemoryRegister.
+  // allocated by StreamExecutor::HostMemoryAllocate.
   absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
                       uint64_t size);
 
   // Entrain onto the stream: a memcpy to a GPU destination from a host source
   // of the given target size. host_src must be a pointer to host memory
-  // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
-  // then registered with StreamExecutor::HostMemoryRegister.
+  // allocated by StreamExecutor::HostMemoryAllocate.
   absl::Status Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
                       uint64_t size);
 
@@ -255,7 +255,7 @@ class Stream {
 
   // Returns the (opaque) platform-specific backing object. Ownership is not
   // transferred to the caller.
-  internal::StreamInterface *implementation() { return implementation_.get(); }
+  StreamInterface *implementation() { return implementation_.get(); }
 
   // Entrains onto the stream a callback to the host (from the device).
   // Behaves as DoHostCallbackWithStatus below, but the callback should
@@ -292,9 +292,6 @@ class Stream {
     return parent()->GetDeviceDescription().rocm_compute_capability();
   }
 
-  void SetPriority(StreamPriority priority);
-  void SetPriority(int priority);
-
   std::variant<StreamPriority, int> priority() const;
 
  private:
@@ -317,16 +314,11 @@ class Stream {
 
   // The platform-dependent implementation that the StreamExecutor interface
   // delegates to.
-  std::unique_ptr<internal::StreamInterface> implementation_;
+  std::unique_ptr<StreamInterface> implementation_;
 
   // mutex that guards the allocation / error state flags.
   // Mutable so that it can be obtained via const reader lock.
   mutable absl::Mutex mu_;
-
-  // Whether Init() was successfully called to allocate this stream on the
-  // underlying platform. It simply flips from 0 to 1 with a sanity check.
-  // See StreamExecutor::AllocateStream.
-  bool allocated_ ABSL_GUARDED_BY(mu_);
 
   // The last error (if any) of all method calls.
   absl::Status status_ ABSL_GUARDED_BY(mu_);

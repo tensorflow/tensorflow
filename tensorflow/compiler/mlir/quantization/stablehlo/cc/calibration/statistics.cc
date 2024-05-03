@@ -15,13 +15,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
 
 #include <optional>
-#include <string>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/min_max_value.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
@@ -55,11 +55,18 @@ absl::Status AddCalibrationStatistics(
       return;
     }
 
-    const auto [min_value, max_value] =
+    const std::optional<MinMaxValue> min_max_values =
         py_function_library.GetCalibrationMinMaxValue(*statistics,
                                                       calibration_options);
     CalibratorSingleton::ClearData(id);
 
+    if (min_max_values == std::nullopt) {
+      status = absl::InternalError(
+          "Cannot find min/max values for calibration statistics.");
+      return;
+    }
+
+    const auto [min_value, max_value] = *min_max_values;
     mlir::OpBuilder builder(aggregator_op);
     aggregator_op->setAttr("min", builder.getF32FloatAttr(min_value));
     aggregator_op->setAttr("max", builder.getF32FloatAttr(max_value));

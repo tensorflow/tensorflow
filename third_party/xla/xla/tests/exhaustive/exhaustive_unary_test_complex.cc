@@ -101,7 +101,21 @@ UNARY_TEST_COMPLEX_64(DISABLED_ON_CPU(Log), {
   known_incorrect_fn_ = [this](int64_t val) {
     return std::isnan(this->ConvertValue(val));
   };
-  Run(Log, [](complex64 x) { return std::log<float>(x); });
+  ErrorSpecGen error_spec_gen = +[](complex64 x) {
+    // std::log uses std::abs, which uses hypotf. The latter upcasts its
+    // argument to double, so there are cases where there's excess precision, so
+    // abs returns numeric_limits<float>::max, but it's not possible to arrive
+    // at this number without using doubles internally.
+    // Obviously, the default relative error spec makes no sense for this case.
+    // `log(max) ~ 88.72`, which is very far from `inf`, but `max` is considered
+    // very close to `inf`.
+    if (std::abs(x) == std::numeric_limits<float>::max()) {
+      float inf = std::numeric_limits<float>::infinity();
+      return ErrorSpec{inf, inf};
+    }
+    return GetDefaultSpecGenerator()(x);
+  };
+  Run(Log, [](complex64 x) { return std::log<float>(x); }, error_spec_gen);
 })
 
 UNARY_TEST_COMPLEX_64(Sqrt, {
@@ -219,8 +233,7 @@ UNARY_TEST_COMPLEX_128(Rsqrt, {
 
 UNARY_TEST_COMPLEX_128(Tanh, {
   SetParamsForTanh();
-  Run(
-      Tanh, +[](complex128 x) { return std::tanh(x); });
+  Run(Tanh, +[](complex128 x) { return std::tanh(x); });
 })
 
 INSTANTIATE_TEST_SUITE_P(

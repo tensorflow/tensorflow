@@ -16,6 +16,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
@@ -33,21 +34,26 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "xla/layout_util.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -114,11 +120,8 @@ struct RewriteFunctionSignatures : mlir::OpRewritePattern<mlir::func::FuncOp> {
   }
 };
 
-mlir::LLVM::GEPOp CreateGep(mlir::Operation* op,
-                            mlir::TypedValue<mlir::RankedTensorType> tensor,
-                            ValueRange indices,
-                            mlir::PatternRewriter& rewriter) {
-  auto ptr = mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
+Value GetLinearIndex(mlir::TypedValue<mlir::RankedTensorType> tensor,
+                     ValueRange indices, mlir::PatternRewriter& rewriter) {
   auto byte_shape = ShapeUtil::MakeShape(U8, tensor.getType().getShape());
   if (auto encoding = tensor.getType().getEncoding()) {
     *byte_shape.mutable_layout() = LayoutUtil::MakeLayout(llvm::to_vector(
@@ -131,27 +134,48 @@ mlir::LLVM::GEPOp CreateGep(mlir::Operation* op,
                     mlir::getAffineDimExpr(dim, rewriter.getContext()) * stride;
   }
 
-  rewriter.setInsertionPoint(op);
   Value index = rewriter.create<mlir::affine::AffineApplyOp>(
       tensor.getLoc(), linearize_map, indices);
-  auto index_ty =
-      ShapeUtil::ElementsIn(byte_shape) < std::numeric_limits<int32_t>::max()
-          ? rewriter.getI32Type()
-          : rewriter.getI64Type();
-  index = rewriter.create<mlir::arith::IndexCastUIOp>(tensor.getLoc(), index_ty,
-                                                      index);
+  auto index_ty = rewriter.getIntegerType(
+      mlir::DataLayout::closest(rewriter.getInsertionBlock()->getParentOp())
+          .getTypeSizeInBits(index.getType()));
+  return rewriter.create<mlir::arith::IndexCastUIOp>(tensor.getLoc(), index_ty,
+                                                     index);
+}
 
+std::tuple<Value, Value> GetI4IndexAndNibble(Value linear_index,
+                                             mlir::ImplicitLocOpBuilder& b) {
+  Value one = b.create<mlir::arith::ConstantIntOp>(1, linear_index.getType());
+  Value is_low_nibble = b.create<mlir::arith::CmpIOp>(
+      mlir::arith::CmpIPredicate::eq, one,
+      b.create<mlir::arith::AndIOp>(linear_index, one));
+  Value i8_index = b.create<mlir::arith::ShRUIOp>(linear_index, one);
+  return {i8_index, is_low_nibble};
+}
+
+mlir::LLVM::GEPOp CreateGep(mlir::TypedValue<mlir::RankedTensorType> tensor,
+                            Value linear_index, mlir::PatternRewriter& rewriter,
+                            mlir::Type element_type = nullptr) {
+  if (!element_type) {
+    element_type = tensor.getType().getElementType();
+  }
+  auto ptr = mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
   auto tensor_ptr = rewriter
                         .create<mlir::UnrealizedConversionCastOp>(
                             tensor.getLoc(), ptr, tensor)
                         .getResult(0);
   mlir::LLVMTypeConverter converter(rewriter.getContext());
-  auto llvm_element_type =
-      converter.convertType(tensor.getType().getElementType());
+  auto llvm_element_type = converter.convertType(element_type);
   auto gep = rewriter.create<mlir::LLVM::GEPOp>(
-      tensor.getLoc(), ptr, llvm_element_type, tensor_ptr, index);
+      tensor.getLoc(), ptr, llvm_element_type, tensor_ptr, linear_index);
   gep.setInbounds(true);
   return gep;
+}
+
+mlir::LLVM::GEPOp CreateGep(mlir::TypedValue<mlir::RankedTensorType> tensor,
+                            ValueRange indices,
+                            mlir::PatternRewriter& rewriter) {
+  return CreateGep(tensor, GetLinearIndex(tensor, indices, rewriter), rewriter);
 }
 
 struct RewriteTensorExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
@@ -160,11 +184,31 @@ struct RewriteTensorExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::tensor::ExtractOp op,
       mlir::PatternRewriter& rewriter) const override {
-    auto gep = CreateGep(op, op.getTensor(), op.getIndices(), rewriter);
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    auto linear_index =
+        GetLinearIndex(op.getTensor(), op.getIndices(), rewriter);
+    mlir::Type element_type = op.getTensor().getType().getElementType();
+    Value is_low_nibble = nullptr;
+    if (element_type == rewriter.getI4Type()) {
+      element_type = rewriter.getI8Type();
+      std::tie(linear_index, is_low_nibble) =
+          GetI4IndexAndNibble(linear_index, b);
+    }
+
+    auto gep = CreateGep(op.getTensor(), linear_index, rewriter, element_type);
     auto load =
         rewriter
             .create<mlir::LLVM::LoadOp>(gep.getLoc(), gep.getElemType(), gep)
             .getResult();
+
+    if (is_low_nibble) {
+      auto high_value = b.create<mlir::arith::ShRUIOp>(
+          load, b.create<mlir::arith::ConstantIntOp>(4, load.getType()));
+      load = b.create<mlir::arith::TruncIOp>(
+          op.getType(),
+          b.create<mlir::arith::SelectOp>(is_low_nibble, load, high_value));
+    }
+
     rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
         op, op.getType(), load);
     return success();
@@ -196,10 +240,39 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
       }
     }
 
-    auto gep =
-        CreateGep(op, dest.cast<mlir::TypedValue<mlir::RankedTensorType>>(),
-                  op.getIndices(), rewriter);
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    auto tensor_dest = dest.cast<mlir::TypedValue<mlir::RankedTensorType>>();
+    auto linear_index = GetLinearIndex(tensor_dest, op.getIndices(), rewriter);
+    auto element_type = tensor_dest.getType().getElementType();
+    Value is_low_nibble = nullptr;
+
+    if (element_type == rewriter.getI4Type()) {
+      element_type = rewriter.getI8Type();
+      std::tie(linear_index, is_low_nibble) =
+          GetI4IndexAndNibble(linear_index, b);
+    }
+
+    auto gep = CreateGep(tensor_dest, linear_index, rewriter, element_type);
     auto scalar_value = op.getScalar();
+
+    if (is_low_nibble) {
+      Value current_value =
+          b.create<mlir::LLVM::LoadOp>(gep.getElemType(), gep);
+      auto ty = current_value.getType();
+      scalar_value = b.create<mlir::arith::ExtUIOp>(ty, scalar_value);
+      Value low_updated = b.create<mlir::arith::OrIOp>(
+          b.create<mlir::arith::AndIOp>(
+              current_value, b.create<mlir::arith::ConstantIntOp>(0xf0, ty)),
+          scalar_value);
+      Value high_updated = b.create<mlir::arith::OrIOp>(
+          b.create<mlir::arith::AndIOp>(
+              current_value, b.create<mlir::arith::ConstantIntOp>(0x0f, ty)),
+          b.create<mlir::arith::ShLIOp>(
+              scalar_value, b.create<mlir::arith::ConstantIntOp>(4, ty)));
+      scalar_value = b.create<mlir::arith::SelectOp>(is_low_nibble, low_updated,
+                                                     high_updated);
+    }
+
     mlir::LLVMTypeConverter converter(getContext());
     auto llvm_type = converter.convertType(scalar_value.getType());
     scalar_value = rewriter
@@ -248,7 +321,14 @@ struct RewriteAllocateShared : mlir::OpRewritePattern<AllocateSharedOp> {
     auto module = op->getParentOfType<mlir::ModuleOp>();
     auto shaped_ty = op.getResult().getType().cast<mlir::ShapedType>();
     constexpr int kGPUSharedMemoryAddrSpace = 3;
-    auto array_ty = mlir::LLVM::LLVMArrayType::get(shaped_ty.getElementType(),
+    mlir::Type element_type = shaped_ty.getElementType();
+    if (auto complex_ty = mlir::dyn_cast<mlir::ComplexType>(element_type)) {
+      element_type = mlir::LLVM::LLVMStructType::getLiteral(
+          getContext(),
+          {complex_ty.getElementType(), complex_ty.getElementType()});
+    }
+
+    auto array_ty = mlir::LLVM::LLVMArrayType::get(element_type,
                                                    shaped_ty.getNumElements());
 
     std::string name;
@@ -332,7 +412,7 @@ struct RewriteAtomicRMW : mlir::OpRewritePattern<AtomicRMWOp> {
         mlir::IntegerType::get(op.getContext(), small_type ? 32 : result_size);
 
     // Calculate load address for the input.
-    Value addr = CreateGep(op, input, op.getIndices(), rewriter);
+    Value addr = CreateGep(input, op.getIndices(), rewriter);
     Value shift, mask;
     if (small_type) {
       // Update input pointer by discarding the last two bits - i.e. align to

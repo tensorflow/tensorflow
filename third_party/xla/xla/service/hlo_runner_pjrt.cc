@@ -193,7 +193,7 @@ HloRunnerPjRt::ExecuteWithDeviceBuffers(
 
   auto devices = pjrt_client_->addressable_devices();
 
-  std::optional<PjRtFuture<Status>> returned_future = {};
+  std::optional<PjRtFuture<>> returned_future = {};
 
   TF_ASSIGN_OR_RETURN(
       auto output_buffers,

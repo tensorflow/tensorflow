@@ -483,10 +483,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateXlaInlineDeviceOpsPass();
 // type` with `tf.XlaLaunch` ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateXlaRewritePass();
 
-// Creates a pass that rewrites partitioned calls with `tf._XlaCompile` op and
-// `tf.XlaRun` op.
-std::unique_ptr<OperationPass<ModuleOp>> CreateXlaRewriteV2Pass();
-
 // Create a pass that validates the input graph to the CPU/GPU bridge.
 std::unique_ptr<OperationPass<ModuleOp>> CreateXlaValidateInputsPass();
 }  // namespace TFDevice

@@ -26,8 +26,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
-#include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -41,75 +39,27 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
-#include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_utils.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
-#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel_runner_utils.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/tstring.h"
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
+
+using tensorflow::ifrt_serving::IfrtModelContext;
+using tensorflow::ifrt_serving::VariableDeviceShardingConfigProto;
 
 namespace tensorflow {
 namespace tf_mlrt {
 
 namespace {
-
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> LoadIfrtVariable(
-    tensorflow::ifrt_serving::IfrtModelContext& ifrt_model_context,
-    const tensorflow::Tensor& variable,
-    absl::string_view sharding_config_proto_text, absl::string_view name) {
-  tensorflow::ifrt_serving::VariableDeviceShardingConfigProto sharding_config;
-
-  if (!tensorflow::protobuf::TextFormat::ParseFromString(
-          sharding_config_proto_text, &sharding_config)) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Attribute: ", sharding_config_proto_text, " cannot be parsed"));
-  }
-
-  std::vector<int> device_ids{sharding_config.device_ids().begin(),
-                              sharding_config.device_ids().end()};
-  TF_ASSIGN_OR_RETURN(xla::HloSharding hlo_sharding,
-                      xla::HloSharding::FromProto(sharding_config.sharding()));
-  TF_ASSIGN_OR_RETURN(
-      auto result_array,
-      tensorflow::ifrt_serving::MakeArrayFromTensor(
-          *ifrt_model_context.GetClient(), variable, absl::MakeSpan(device_ids),
-          hlo_sharding, ifrt_model_context.GetThreadPool()));
-
-  return result_array;
-}
-
-std::string GetRuntimeNameFromVarHandle(const ResourceHandle& handle) {
-  return absl::StrCat(handle.container(), "__", handle.name());
-}
-
-absl::StatusOr<ifrt_serving::DtypeAndShape> GetDtypeAndShape(
-    const ResourceHandle& variable) {
-  std::vector<DtypeAndPartialTensorShape> dtype_and_partial_shapes =
-      variable.dtypes_and_shapes();
-
-  if (dtype_and_partial_shapes.size() != 1) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Expected 1 dtype and shape, got ", dtype_and_partial_shapes.size()));
-  }
-  ifrt_serving::DtypeAndShape dtype_and_shape;
-  if (!dtype_and_partial_shapes.front().shape.AsTensorShape(
-          &dtype_and_shape.shape)) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Failed to convert partial shape to full tensor shape: ",
-                     dtype_and_partial_shapes.front().shape.DebugString()));
-  }
-
-  dtype_and_shape.dtype = dtype_and_partial_shapes.front().dtype;
-  return dtype_and_shape;
-}
 
 struct MlrtIfrtRestoreVariableKernel : mlrt::KernelFrame {
   using KernelFrame::KernelFrame;
@@ -149,12 +99,9 @@ struct MlrtIfrtRestoreVariableKernel : mlrt::KernelFrame {
 };
 
 void MlrtIfrtRestoreVariableKernel::Invoke() {
-  std::optional<tensorflow::ifrt_serving::IfrtModelContext*>
-      ifrt_model_context =
-          context()
-              .resource_context()
-              .GetResource<tensorflow::ifrt_serving::IfrtModelContext>(
-                  "IfrtModelContext");
+  std::optional<IfrtModelContext*> ifrt_model_context =
+      context().resource_context().GetResource<IfrtModelContext>(
+          "IfrtModelContext");
   if (!ifrt_model_context.has_value()) {
     execution_context().Fail(absl::FailedPreconditionError(
         "RestoreVariableOp: failed to fetch IfrtModelContext"));
@@ -221,11 +168,22 @@ void MlrtIfrtRestoreVariableKernel::Invoke() {
         xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>::CreatePromise();
     auto future =
         xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(promise);
-
-    std::string runtime_name = GetRuntimeNameFromVarHandle(
-        var_handles()[i].tensor().scalar<ResourceHandle>()());
-    if (auto status =
-            ifrt_restore_tensor_registry.TryRegister(runtime_name, future);
+    const ResourceHandle& var_handle =
+        var_handles()[i].tensor().scalar<ResourceHandle>()();
+    absl::StatusOr<ifrt_serving::DtypeAndShape> dtype_and_shape =
+        ifrt_serving::GetDtypeAndShape(var_handle);
+    if (!dtype_and_shape.ok()) {
+      // TODO(b/330360798) Refactor Invoke() to have less usage on
+      // execution_context().Fail.
+      execution_context().Fail(dtype_and_shape.status());
+      return;
+    }
+    std::string runtime_name =
+        ifrt_serving::GetRuntimeNameFromVarHandle(var_handle);
+    ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
+        restored_tensor_info = {*std::move(dtype_and_shape), std::move(future)};
+    if (auto status = ifrt_restore_tensor_registry.TryRegister(
+            runtime_name, restored_tensor_info);
         !status.ok()) {
       // Propagate errors so that if already-registered futures are being waited
       // on, they can be unblocked.
@@ -268,14 +226,14 @@ class MlrtIfrtLoadVariableKernel : public mlrt::KernelFrame {
 
   static constexpr char kName[] = "tf_mlrt.ifrt_load_variable";
 
-  const ResourceHandle& variable() const {
+  const tensorflow::Tensor& variable_handler_tensor() const {
     DCHECK_GE(arguments().size(), 1);
-    const auto& tensor =
+    const tensorflow::Tensor& ret =
         arguments()[0].Get<tensorflow::tfrt_stub::FallbackTensor>().tensor();
-
-    DCHECK_EQ(tensor.NumElements(), 1);
-    return tensor.scalar<ResourceHandle>()();
+    DCHECK_EQ(ret.NumElements(), 1);
+    return ret;
   }
+
   absl::string_view sharding_config_proto_text() const {
     DCHECK_EQ(attributes().size(), 2);
     return attributes().GetAs<mlrt::bc::String>(0).Get();
@@ -297,79 +255,58 @@ void MlrtIfrtLoadVariableKernel::Invoke() {
 }
 
 absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
-  DCHECK_EQ(1, results().size());
-  std::optional<tensorflow::ifrt_serving::IfrtModelContext*>
-      ifrt_model_context =
-          context()
-              .resource_context()
-              .GetResource<tensorflow::ifrt_serving::IfrtModelContext>(
-                  "IfrtModelContext");
+  DCHECK_EQ(2, results().size());
+  std::optional<IfrtModelContext*> ifrt_model_context =
+      context().resource_context().GetResource<IfrtModelContext>(
+          "IfrtModelContext");
   if (!ifrt_model_context.has_value()) {
     return absl::FailedPreconditionError(
         "LoadVariableOp: failed to fetch IfrtModelContext: ");
   }
 
-  // TODO(b/319045348): remove name() attribute. we now gets name from variable
-  // handle.
-  std::string runtime_name = GetRuntimeNameFromVarHandle(variable());
-  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_tensor_future =
-      (*ifrt_model_context)->GetRestoreTensorRegistry().Get(runtime_name);
-  if (!restored_tensor_future.IsValid()) {
-    return absl::InternalError(absl::StrCat(
-        "LoadVariableOp: failed to fetch variable tensor: ", runtime_name));
+  VariableDeviceShardingConfigProto sharding_config;
+  absl::string_view sharding_config_text = sharding_config_proto_text();
+
+  if (!tensorflow::protobuf::TextFormat::ParseFromString(sharding_config_text,
+                                                         &sharding_config)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Attribute: ", sharding_config_text, " cannot be parsed"));
   }
 
-  auto loaded_variable_promise = xla::ifrt::Future<
-      absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>>::CreatePromise();
-  auto loaded_variable_future =
-      xla::ifrt::Future<absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>>(
-          loaded_variable_promise);
+  auto tensor_promise =
+      mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
+  auto tensor_future = tensor_promise.GetFuture();
 
-  TF_ASSIGN_OR_RETURN(ifrt_serving::DtypeAndShape dtype_and_shape,
-                      GetDtypeAndShape(variable()));
+  ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry =
+      (*ifrt_model_context)->GetRestoreTensorRegistry();
 
-  TF_RETURN_IF_ERROR(
-      (*ifrt_model_context)
-          ->GetLoadedVariableRegistry()
-          .TryRegisterLoadedVariable(
-              runtime_name,
-              [&]() -> absl::StatusOr<ifrt_serving::IfrtLoadedVariableRegistry::
-                                          LoadedVariable> {
-                return ifrt_serving::IfrtLoadedVariableRegistry::LoadedVariable(
-                    {.dtype_and_shape = dtype_and_shape,
-                     .array = loaded_variable_future});
-              }));
+  std::string runtime_name = ifrt_serving::GetRuntimeNameFromVarHandle(
+      variable_handler_tensor().scalar<ResourceHandle>()());
+
+  TF_RETURN_IF_ERROR(ifrt_serving::LoadRestoredTensorAsIfrtLoadedVariable(
+      runtime_name, (*ifrt_model_context)->GetClient(),
+      (*ifrt_model_context)->GetThreadPool(), ifrt_restore_tensor_registry,
+      (*ifrt_model_context)->GetLoadedVariableRegistry(),
+      (*ifrt_model_context)->checkpoint_loader_queue(), sharding_config));
+  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_tensor_future =
+      ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
 
   restored_tensor_future.OnReady(
-      [ifrt_model_context = *ifrt_model_context,
-       sharding_config = std::string(sharding_config_proto_text()),
-       runtime_name = runtime_name,
-       loaded_variable_promise = std::move(loaded_variable_promise)](
+      [tensor_promise = std::move(tensor_promise)](
           absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
         if (!restored_tensor.ok()) {
-          loaded_variable_promise.Set(std::move(restored_tensor).status());
+          std::move(tensor_promise).SetError(restored_tensor.status());
           return;
         }
-
-        // Transfer tensor to array in a separate thread.
-        ifrt_model_context->checkpoint_loader_queue()->AddTask(
-            [ifrt_model_context, runtime_name = std::move(runtime_name),
-             sharding_config = std::move(sharding_config),
-             restored_tensor = std::move(*restored_tensor),
-             loaded_variable_promise =
-                 std::move(loaded_variable_promise)]() mutable {
-              absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-                  variable_array =
-                      LoadIfrtVariable(*ifrt_model_context, restored_tensor,
-                                       sharding_config, runtime_name);
-              loaded_variable_promise.Set(std::move(variable_array));
-            });
+        std::move(tensor_promise)
+            .Set<tensorflow::tfrt_stub::FallbackTensor>(
+                tensorflow::tfrt_stub::FallbackTensor(*restored_tensor));
       });
   // Return the name as the key
   tensorflow::Tensor key_tensor(tensorflow::DT_STRING, {});
   key_tensor.scalar<tsl::tstring>()() = runtime_name;
   results()[0].Set(tensorflow::tfrt_stub::FallbackTensor(key_tensor));
-
+  results()[1].Set(std::move(tensor_future));
   return absl::OkStatus();
 }
 

@@ -57,7 +57,7 @@ static std::string CanonicalizeDeviceType(absl::string_view device_type) {
   return absl::AsciiStrToLower(device_type);
 }
 
-xla::StatusOr<const PJRT_Api*> PjrtApi(absl::string_view device_type) {
+absl::StatusOr<const PJRT_Api*> PjrtApi(absl::string_view device_type) {
   std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
   auto iter = pjrt_apis->find(canonicalize_device_type);
   if (iter == pjrt_apis->end()) {
@@ -67,7 +67,7 @@ xla::StatusOr<const PJRT_Api*> PjrtApi(absl::string_view device_type) {
   return iter->second.first;
 }
 
-xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
+absl::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
   std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
   if (auto iter = pjrt_apis->find(canonicalize_device_type);
       iter != pjrt_apis->end()) {
@@ -81,8 +81,8 @@ xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
 }
 
 typedef const PJRT_Api* (*PjrtApiInitFn)();
-xla::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
-                                              absl::string_view library_path) {
+absl::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
+                                               absl::string_view library_path) {
 #ifdef PLATFORM_WINDOWS
   return tsl::errors::Unimplemented(
       "LoadPjrtPlugin is not implemented on windows yet.");
@@ -105,7 +105,7 @@ xla::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
 #endif
 }
 
-xla::StatusOr<bool> IsPjrtPluginInitialized(absl::string_view device_type) {
+absl::StatusOr<bool> IsPjrtPluginInitialized(absl::string_view device_type) {
   std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
   auto iter = pjrt_apis->find(canonicalize_device_type);
   if (iter == pjrt_apis->end()) {
@@ -128,7 +128,7 @@ static bool IsPjRtCompatibilityEnabled() {
   return enabled;
 }
 
-xla::Status InitializePjrtPlugin(absl::string_view device_type) {
+absl::Status InitializePjrtPlugin(absl::string_view device_type) {
   std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
   auto iter = pjrt_apis->find(canonicalize_device_type);
   if (iter == pjrt_apis->end()) {

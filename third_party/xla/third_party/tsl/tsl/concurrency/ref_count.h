@@ -19,10 +19,18 @@ limitations under the License.
 #include <atomic>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <type_traits>
 #include <utility>
 
 namespace tsl {
+
+namespace internal {
+// TODO(ezhulenev): Replace with C++20 concept when available.
+// https://en.cppreference.com/w/cpp/concepts/derived_from
+template <typename Derived, typename Base>
+using DerivedFrom = typename std::enable_if_t<std::is_base_of_v<Base, Derived>>;
+}  // namespace internal
 
 #ifndef NDEBUG
 inline std::atomic<size_t> total_reference_counted_objects;
@@ -110,8 +118,7 @@ class ReferenceCounted {
 };
 
 // This is a smart pointer that keeps the specified reference counted value
-// around.  It is move-only to avoid accidental copies, but it can be copied
-// explicitly.
+// around.
 template <typename T>
 class RCReference {
  public:
@@ -138,14 +145,12 @@ class RCReference {
   }
 
   // Support implicit conversion from RCReference<Derived> to RCReference<Base>.
-  template <typename U,
-            typename = std::enable_if_t<std::is_base_of<T, U>::value>>
-  RCReference(RCReference<U>&& u) : pointer_(u.pointer_) {  // NOLINT
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  RCReference(RCReference<Derived>&& u) : pointer_(u.pointer_) {  // NOLINT
     u.pointer_ = nullptr;
   }
-  template <typename U,
-            typename = std::enable_if_t<std::is_base_of<T, U>::value>>
-  RCReference(const RCReference<U>& u) : pointer_(u.pointer_) {  // NOLINT
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  RCReference(const RCReference<Derived>& u) : pointer_(u.pointer_) {  // NOLINT
     if (pointer_) pointer_->AddRef();
   }
 

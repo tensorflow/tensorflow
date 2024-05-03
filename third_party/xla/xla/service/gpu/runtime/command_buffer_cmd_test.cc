@@ -227,6 +227,74 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42));
 }
 
+TEST(CommandBufferCmdTest, BarrierCmd) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  auto stream = executor->CreateStream().value();
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=42, b=0
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> e = executor->AllocateArray<int32_t>(length, 0);
+
+  TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&d, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&e, byte_length));
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation alloc_b(/*index=*/1, byte_length, /*color=*/0);
+  BufferAllocation alloc_c(/*index=*/2, byte_length, /*color=*/0);
+  BufferAllocation alloc_d(/*index=*/3, byte_length, /*color=*/0);
+  BufferAllocation alloc_e(/*index=*/4, byte_length, /*color=*/0);
+
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+  BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
+  BufferAllocation::Slice slice_c(&alloc_c, 0, byte_length);
+  BufferAllocation::Slice slice_d(&alloc_d, 0, byte_length);
+  BufferAllocation::Slice slice_e(&alloc_e, 0, byte_length);
+
+  // Prepare commands sequence for constructing command buffer.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_b, slice_a, byte_length);
+  commands.Emplace<BarrierCmd>(s1, s0);
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(s1, slice_c, slice_b, byte_length);
+  commands.Emplace<BarrierCmd>(s0, s1);
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_d, slice_c, byte_length);
+  commands.Emplace<BarrierCmd>(s1, s0);
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(s1, slice_e, slice_d, byte_length);
+
+  ServiceExecutableRunOptions run_options;
+  BufferAllocations allocations({a, b, c, d, e}, 0, executor->GetAllocator());
+
+  CommandBufferCmd::StateManager state;
+
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), {}, nullptr, nullptr);
+
+  CommandBufferCmd::RecordParams record_params = {state};
+
+  auto command_buffer = se::CommandBuffer::Create(executor).value();
+  TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
+
+  // Execute command buffer and verify that it copied the memory.
+  TF_ASSERT_OK(executor->Submit(stream.get(), *command_buffer));
+
+  // Copy `b` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), e, byte_length));
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 42));
+}
+
 TEST(CommandBufferCmdTest, LaunchCmd) {
   se::StreamExecutor* executor = GpuExecutor();
 

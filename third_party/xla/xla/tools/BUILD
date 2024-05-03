@@ -4,12 +4,6 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load(
-    "@local_tsl//tsl:tsl.bzl",
-    "if_cuda_or_rocm",
-    "tsl_gpu_library",
-)
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
-load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
@@ -26,6 +20,13 @@ load(
 )
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load(
+    "//xla/tsl:tsl.bzl",
+    "if_cuda_or_rocm",
+    "if_google",
+    "tsl_gpu_library",
+)
+load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -598,7 +599,12 @@ cc_library(
     srcs = ["hlo_control_flow_flattening.cc"],
     hdrs = ["hlo_control_flow_flattening.h"],
     deps = [
+        "//xla:comparison_util",
+        "//xla:literal",
         "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:call_graph",
         "//xla/service:collective_ops_utils",
@@ -606,7 +612,12 @@ cc_library(
         "//xla/service:hlo_pass",
         "//xla/service:tuple_util",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -742,10 +753,7 @@ xla_test(
     name = "xla_compile_lib_test",
     srcs = ["xla_compile_lib_test.cc"],
     backend_tags = {
-        "gpu": [
-            "requires-gpu-nvidia",
-            "config-cuda-only",
-        ],
+        "gpu": ["requires-gpu-nvidia"] + if_google(["config-cuda-only"]),
     },
     backends = [
         "cpu",

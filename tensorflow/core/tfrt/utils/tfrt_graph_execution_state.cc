@@ -308,7 +308,7 @@ Status TfrtGraphExecutionState::Extend(const GraphDef& graph) {
       functions_to_optimize_,
       PreprocessGraph(*graph_def, options_.run_placer_grappler_on_functions));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -484,7 +484,7 @@ Status PruneGraphDef(GraphDef& graph_def,
     *graph_def.add_node() = std::move(node);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EliminateRefVariablesFromV1ControlFlow(tensorflow::GraphDef& graph_def) {
@@ -561,7 +561,7 @@ Status EliminateRefVariablesFromV1ControlFlow(tensorflow::GraphDef& graph_def) {
   }
 
   graph_def.mutable_node()->Swap(updated_graph_def.mutable_node());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RemoveInputShapesInFunctions(tensorflow::GraphDef& graph_def) {
@@ -643,7 +643,7 @@ Status OptimizeFunctions(
 
     fdef = std::move(new_fdef);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

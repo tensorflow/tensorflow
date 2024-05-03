@@ -15,10 +15,17 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_CPU_ONEDNN_UTIL_H_
 #define XLA_SERVICE_CPU_ONEDNN_UTIL_H_
+
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
+#define EIGEN_USE_THREADS
+
+#include "dnnl.hpp"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/tsl/util/onednn_threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
 namespace cpu {
@@ -43,6 +50,18 @@ inline bool IsSupportedType(xla::PrimitiveType dtype) {
   }
   return false;
 }
+
+std::unique_ptr<tsl::OneDnnThreadPool> CreateOneDnnThreadPool(
+    const Eigen::ThreadPoolDevice* threadpool_device);
+
+dnnl::stream MakeOneDnnStream(
+    const dnnl::engine& cpu_engine,
+    dnnl::threadpool_interop::threadpool_iface* thread_pool);
+
+// This template function must have explicit specialization at the definition
+// site.
+template <typename PrimDesc>
+std::unique_ptr<PrimDesc> CreateOneDnnPrimDesc(HloInstruction*);
 
 }  // namespace cpu
 }  // namespace xla

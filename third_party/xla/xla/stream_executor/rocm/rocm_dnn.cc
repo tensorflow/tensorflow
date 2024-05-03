@@ -2383,8 +2383,12 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
 
   const bool is_profiling = output_profile_result != nullptr;
 
-  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                      GpuTimer::CreateIfNeeded(stream, is_profiling));
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(
+          stream,
+          output_profile_result && output_profile_result->warmup_run_executed(),
+          is_profiling));
 
   // make the forward call
   if (!is_training) {
@@ -2511,8 +2515,12 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
 
   const bool is_profiling = output_profile_result != nullptr;
 
-  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                      GpuTimer::CreateIfNeeded(stream, is_profiling));
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(
+          stream,
+          output_profile_result && output_profile_result->warmup_run_executed(),
+          is_profiling));
 
   // make the backward data call
   auto status = wrap::miopenRNNBackwardData(
@@ -3192,7 +3200,8 @@ class RocmConvRunner : public dnn::ConvRunner {
     return {{algo_id_, false, workspace_size_}};
   }
 
-  absl::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
+  absl::Status operator()(Stream* stream,
+                          dnn::ProfileResult* output_profile_result,
                           DeviceMemoryBase scratch_memory,
                           DeviceMemoryBase input_data,
                           DeviceMemoryBase filter_data,
@@ -3203,9 +3212,13 @@ class RocmConvRunner : public dnn::ConvRunner {
     // Beta is the scaling factor for output.
     float beta = 0.0;
 
-    const bool is_profiling = profile_result != nullptr;
+    const bool is_profiling = output_profile_result != nullptr;
     TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                        GpuTimer::CreateIfNeeded(stream, is_profiling));
+                        GpuTimer::CreateIfNeeded(
+                            stream,
+                            output_profile_result &&
+                                output_profile_result->warmup_run_executed(),
+                            is_profiling));
 
     miopenStatus_t status = miopenStatusSuccess;
     switch (kind_) {
@@ -3276,11 +3289,11 @@ class RocmConvRunner : public dnn::ConvRunner {
       if (status == miopenStatusSuccess) {
         TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
                             timer->GetElapsedDuration());
-        profile_result->set_elapsed_time_in_ms(
+        output_profile_result->set_elapsed_time_in_ms(
             absl::ToDoubleMilliseconds(elapsed));
         dnn::AlgorithmDesc algotype(algo_id_, false);
-        profile_result->set_algorithm(algotype);
-        profile_result->set_scratch_size(scratch_memory.size());
+        output_profile_result->set_algorithm(algotype);
+        output_profile_result->set_scratch_size(scratch_memory.size());
       }
     }
 
@@ -4257,7 +4270,6 @@ absl::Status MIOpenSupport::DoPoolForward(
   bool do_backward = false;
   uint8* workspace = nullptr;
   size_t workspace_size = 0;
-  ScopedDeviceMemory<uint8> wsp_mem;
   if (m_pooling_cache_enabled && element_type == dnn::DataType::kFloat) {
     do_backward = true;
     auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
@@ -4278,7 +4290,8 @@ absl::Status MIOpenSupport::DoPoolForward(
         // reusing the same buffer
         workspace = reinterpret_cast<uint8*>(pdesc->workspace.ptr()->opaque());
       } else {
-        wsp_mem = stream->parent()->AllocateOwnedArray<uint8>(workspace_size);
+        ScopedDeviceMemory<uint8> wsp_mem(stream->parent(),
+          stream->parent()->AllocateArray<uint8>(workspace_size));
         workspace = reinterpret_cast<uint8*>(wsp_mem.ptr()->opaque());
         m_pooling_cache.insert(input_data.opaque(), input_dimensions,
                                output_dimensions, pooling_dimensions,
@@ -4688,7 +4701,7 @@ void initialize_miopen() {
     absl::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
             rocm::kROCmPlatformId, "MIOpen",
-            [](internal::StreamExecutorInterface* parent) -> dnn::DnnSupport* {
+            [](StreamExecutorInterface* parent) -> dnn::DnnSupport* {
               gpu::GpuExecutor* rocm_executor =
                   dynamic_cast<gpu::GpuExecutor*>(parent);
               if (rocm_executor == nullptr) {

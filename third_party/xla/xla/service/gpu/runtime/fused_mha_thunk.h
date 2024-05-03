@@ -92,8 +92,6 @@ class FusedMHABackwardThunk : public Thunk {
                         BufferAllocation::Slice d_bmm1_rhs_slice,
                         BufferAllocation::Slice d_bmm2_rhs_slice,
                         BufferAllocation::Slice d_s_slice,
-                        BufferAllocation::Slice softmax_sum_slice,
-                        BufferAllocation::Slice d_Q_accum_slice,
                         BufferAllocation::Slice mask_slice,
                         BufferAllocation::Slice d_bias_slice,
                         BufferAllocation::Slice fwd_output_slice,
@@ -117,8 +115,6 @@ class FusedMHABackwardThunk : public Thunk {
   BufferAllocation::Slice d_bmm1_rhs_buffer_;
   BufferAllocation::Slice d_bmm2_rhs_buffer_;
   BufferAllocation::Slice d_s_buffer_;
-  BufferAllocation::Slice softmax_sum_buffer_;
-  BufferAllocation::Slice d_Q_accum_buffer_;
   BufferAllocation::Slice mask_buffer_;
   BufferAllocation::Slice d_bias_buffer_;
   BufferAllocation::Slice fwd_output_buffer_;

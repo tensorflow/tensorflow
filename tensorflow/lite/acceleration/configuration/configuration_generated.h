@@ -89,6 +89,10 @@ struct ArmNNSettings;
 struct ArmNNSettingsBuilder;
 struct ArmNNSettingsT;
 
+struct MtkNeuronSettings;
+struct MtkNeuronSettingsBuilder;
+struct MtkNeuronSettingsT;
+
 struct TFLiteSettings;
 struct TFLiteSettingsBuilder;
 struct TFLiteSettingsT;
@@ -191,6 +195,8 @@ bool operator==(const CPUSettingsT &lhs, const CPUSettingsT &rhs);
 bool operator!=(const CPUSettingsT &lhs, const CPUSettingsT &rhs);
 bool operator==(const ArmNNSettingsT &lhs, const ArmNNSettingsT &rhs);
 bool operator!=(const ArmNNSettingsT &lhs, const ArmNNSettingsT &rhs);
+bool operator==(const MtkNeuronSettingsT &lhs, const MtkNeuronSettingsT &rhs);
+bool operator!=(const MtkNeuronSettingsT &lhs, const MtkNeuronSettingsT &rhs);
 bool operator==(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs);
 bool operator!=(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs);
 bool operator==(const FallbackSettingsT &lhs, const FallbackSettingsT &rhs);
@@ -276,11 +282,12 @@ enum Delegate : int32_t {
   Delegate_EDGETPU_CORAL = 6,
   Delegate_CORE_ML = 7,
   Delegate_ARMNN = 8,
+  Delegate_MTK_NEURON = 9,
   Delegate_MIN = Delegate_NONE,
-  Delegate_MAX = Delegate_ARMNN
+  Delegate_MAX = Delegate_MTK_NEURON
 };
 
-inline const Delegate (&EnumValuesDelegate())[9] {
+inline const Delegate (&EnumValuesDelegate())[10] {
   static const Delegate values[] = {
     Delegate_NONE,
     Delegate_NNAPI,
@@ -290,13 +297,14 @@ inline const Delegate (&EnumValuesDelegate())[9] {
     Delegate_EDGETPU,
     Delegate_EDGETPU_CORAL,
     Delegate_CORE_ML,
-    Delegate_ARMNN
+    Delegate_ARMNN,
+    Delegate_MTK_NEURON
   };
   return values;
 }
 
 inline const char * const *EnumNamesDelegate() {
-  static const char * const names[10] = {
+  static const char * const names[11] = {
     "NONE",
     "NNAPI",
     "GPU",
@@ -306,13 +314,14 @@ inline const char * const *EnumNamesDelegate() {
     "EDGETPU_CORAL",
     "CORE_ML",
     "ARMNN",
+    "MTK_NEURON",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameDelegate(Delegate e) {
-  if (::flatbuffers::IsOutRange(e, Delegate_NONE, Delegate_ARMNN)) return "";
+  if (::flatbuffers::IsOutRange(e, Delegate_NONE, Delegate_MTK_NEURON)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesDelegate()[index];
 }
@@ -873,6 +882,147 @@ inline const char *EnumNamePerformance(Performance e) {
 }
 
 }  // namespace CoralSettings_
+
+namespace MtkNeuronSettings_ {
+
+enum ExecutionPreference : int32_t {
+  ExecutionPreference_PREFERENCE_UNDEFINED = 0,
+  ExecutionPreference_PREFERENCE_LOW_POWER = 1,
+  ExecutionPreference_PREFERENCE_FAST_SINGLE_ANSWER = 2,
+  ExecutionPreference_PREFERENCE_SUSTAINED_SPEED = 3,
+  ExecutionPreference_PREFERENCE_TURBO_BOOST = 4,
+  ExecutionPreference_MIN = ExecutionPreference_PREFERENCE_UNDEFINED,
+  ExecutionPreference_MAX = ExecutionPreference_PREFERENCE_TURBO_BOOST
+};
+
+inline const ExecutionPreference (&EnumValuesExecutionPreference())[5] {
+  static const ExecutionPreference values[] = {
+    ExecutionPreference_PREFERENCE_UNDEFINED,
+    ExecutionPreference_PREFERENCE_LOW_POWER,
+    ExecutionPreference_PREFERENCE_FAST_SINGLE_ANSWER,
+    ExecutionPreference_PREFERENCE_SUSTAINED_SPEED,
+    ExecutionPreference_PREFERENCE_TURBO_BOOST
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesExecutionPreference() {
+  static const char * const names[6] = {
+    "PREFERENCE_UNDEFINED",
+    "PREFERENCE_LOW_POWER",
+    "PREFERENCE_FAST_SINGLE_ANSWER",
+    "PREFERENCE_SUSTAINED_SPEED",
+    "PREFERENCE_TURBO_BOOST",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameExecutionPreference(ExecutionPreference e) {
+  if (::flatbuffers::IsOutRange(e, ExecutionPreference_PREFERENCE_UNDEFINED, ExecutionPreference_PREFERENCE_TURBO_BOOST)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesExecutionPreference()[index];
+}
+
+enum ExecutionPriority : int32_t {
+  ExecutionPriority_PRIORITY_UNDEFINED = 0,
+  ExecutionPriority_PRIORITY_LOW = 90,
+  ExecutionPriority_PRIORITY_MEDIUM = 100,
+  ExecutionPriority_PRIORITY_HIGH = 110,
+  ExecutionPriority_MIN = ExecutionPriority_PRIORITY_UNDEFINED,
+  ExecutionPriority_MAX = ExecutionPriority_PRIORITY_HIGH
+};
+
+inline const ExecutionPriority (&EnumValuesExecutionPriority())[4] {
+  static const ExecutionPriority values[] = {
+    ExecutionPriority_PRIORITY_UNDEFINED,
+    ExecutionPriority_PRIORITY_LOW,
+    ExecutionPriority_PRIORITY_MEDIUM,
+    ExecutionPriority_PRIORITY_HIGH
+  };
+  return values;
+}
+
+inline const char *EnumNameExecutionPriority(ExecutionPriority e) {
+  switch (e) {
+    case ExecutionPriority_PRIORITY_UNDEFINED: return "PRIORITY_UNDEFINED";
+    case ExecutionPriority_PRIORITY_LOW: return "PRIORITY_LOW";
+    case ExecutionPriority_PRIORITY_MEDIUM: return "PRIORITY_MEDIUM";
+    case ExecutionPriority_PRIORITY_HIGH: return "PRIORITY_HIGH";
+    default: return "";
+  }
+}
+
+enum OptimizationHint : int32_t {
+  OptimizationHint_OPTIMIZATION_NONE = 0,
+  OptimizationHint_OPTIMIZATION_LOW_LATENCY = 1,
+  OptimizationHint_OPTIMIZATION_DEEP_FUSION = 2,
+  OptimizationHint_OPTIMIZATION_BATCH_PROCESSING = 3,
+  OptimizationHint_MIN = OptimizationHint_OPTIMIZATION_NONE,
+  OptimizationHint_MAX = OptimizationHint_OPTIMIZATION_BATCH_PROCESSING
+};
+
+inline const OptimizationHint (&EnumValuesOptimizationHint())[4] {
+  static const OptimizationHint values[] = {
+    OptimizationHint_OPTIMIZATION_NONE,
+    OptimizationHint_OPTIMIZATION_LOW_LATENCY,
+    OptimizationHint_OPTIMIZATION_DEEP_FUSION,
+    OptimizationHint_OPTIMIZATION_BATCH_PROCESSING
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesOptimizationHint() {
+  static const char * const names[5] = {
+    "OPTIMIZATION_NONE",
+    "OPTIMIZATION_LOW_LATENCY",
+    "OPTIMIZATION_DEEP_FUSION",
+    "OPTIMIZATION_BATCH_PROCESSING",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameOptimizationHint(OptimizationHint e) {
+  if (::flatbuffers::IsOutRange(e, OptimizationHint_OPTIMIZATION_NONE, OptimizationHint_OPTIMIZATION_BATCH_PROCESSING)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesOptimizationHint()[index];
+}
+
+enum OperationCheckMode : int32_t {
+  OperationCheckMode_NO_OPERATION_CHECK = 0,
+  OperationCheckMode_PER_NODE_OPERATION_CHECK = 1,
+  OperationCheckMode_PRE_OPERATION_CHECK = 2,
+  OperationCheckMode_MIN = OperationCheckMode_NO_OPERATION_CHECK,
+  OperationCheckMode_MAX = OperationCheckMode_PRE_OPERATION_CHECK
+};
+
+inline const OperationCheckMode (&EnumValuesOperationCheckMode())[3] {
+  static const OperationCheckMode values[] = {
+    OperationCheckMode_NO_OPERATION_CHECK,
+    OperationCheckMode_PER_NODE_OPERATION_CHECK,
+    OperationCheckMode_PRE_OPERATION_CHECK
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesOperationCheckMode() {
+  static const char * const names[4] = {
+    "NO_OPERATION_CHECK",
+    "PER_NODE_OPERATION_CHECK",
+    "PRE_OPERATION_CHECK",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameOperationCheckMode(OperationCheckMode e) {
+  if (::flatbuffers::IsOutRange(e, OperationCheckMode_NO_OPERATION_CHECK, OperationCheckMode_PRE_OPERATION_CHECK)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesOperationCheckMode()[index];
+}
+
+}  // namespace MtkNeuronSettings_
 
 enum BenchmarkEventType : int32_t {
   BenchmarkEventType_UNDEFINED_BENCHMARK_EVENT_TYPE = 0,
@@ -2633,6 +2783,193 @@ inline ::flatbuffers::Offset<ArmNNSettings> CreateArmNNSettingsDirect(
 
 ::flatbuffers::Offset<ArmNNSettings> CreateArmNNSettings(::flatbuffers::FlatBufferBuilder &_fbb, const ArmNNSettingsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct MtkNeuronSettingsT : public ::flatbuffers::NativeTable {
+  typedef MtkNeuronSettings TableType;
+  tflite::MtkNeuronSettings_::ExecutionPreference execution_preference = tflite::MtkNeuronSettings_::ExecutionPreference_PREFERENCE_UNDEFINED;
+  tflite::MtkNeuronSettings_::ExecutionPriority execution_priority = tflite::MtkNeuronSettings_::ExecutionPriority_PRIORITY_UNDEFINED;
+  std::vector<tflite::MtkNeuronSettings_::OptimizationHint> optimization_hints{};
+  tflite::MtkNeuronSettings_::OperationCheckMode operation_check_mode = tflite::MtkNeuronSettings_::OperationCheckMode_NO_OPERATION_CHECK;
+  bool allow_fp16_precision_for_fp32 = false;
+  bool use_ahwb = false;
+  bool use_cacheable_buffer = true;
+  std::vector<std::string> compile_options{};
+  std::vector<std::string> accelerator_names{};
+  std::string neuron_config_path{};
+};
+
+struct MtkNeuronSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef MtkNeuronSettingsT NativeTableType;
+  typedef MtkNeuronSettingsBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_EXECUTION_PREFERENCE = 4,
+    VT_EXECUTION_PRIORITY = 6,
+    VT_OPTIMIZATION_HINTS = 8,
+    VT_OPERATION_CHECK_MODE = 10,
+    VT_ALLOW_FP16_PRECISION_FOR_FP32 = 12,
+    VT_USE_AHWB = 14,
+    VT_USE_CACHEABLE_BUFFER = 16,
+    VT_COMPILE_OPTIONS = 18,
+    VT_ACCELERATOR_NAMES = 20,
+    VT_NEURON_CONFIG_PATH = 22
+  };
+  tflite::MtkNeuronSettings_::ExecutionPreference execution_preference() const {
+    return static_cast<tflite::MtkNeuronSettings_::ExecutionPreference>(GetField<int32_t>(VT_EXECUTION_PREFERENCE, 0));
+  }
+  tflite::MtkNeuronSettings_::ExecutionPriority execution_priority() const {
+    return static_cast<tflite::MtkNeuronSettings_::ExecutionPriority>(GetField<int32_t>(VT_EXECUTION_PRIORITY, 0));
+  }
+  const ::flatbuffers::Vector<int32_t> *optimization_hints() const {
+    return GetPointer<const ::flatbuffers::Vector<int32_t> *>(VT_OPTIMIZATION_HINTS);
+  }
+  tflite::MtkNeuronSettings_::OperationCheckMode operation_check_mode() const {
+    return static_cast<tflite::MtkNeuronSettings_::OperationCheckMode>(GetField<int32_t>(VT_OPERATION_CHECK_MODE, 0));
+  }
+  bool allow_fp16_precision_for_fp32() const {
+    return GetField<uint8_t>(VT_ALLOW_FP16_PRECISION_FOR_FP32, 0) != 0;
+  }
+  bool use_ahwb() const {
+    return GetField<uint8_t>(VT_USE_AHWB, 0) != 0;
+  }
+  bool use_cacheable_buffer() const {
+    return GetField<uint8_t>(VT_USE_CACHEABLE_BUFFER, 1) != 0;
+  }
+  const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>> *compile_options() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>> *>(VT_COMPILE_OPTIONS);
+  }
+  const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>> *accelerator_names() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>> *>(VT_ACCELERATOR_NAMES);
+  }
+  const ::flatbuffers::String *neuron_config_path() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_NEURON_CONFIG_PATH);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_EXECUTION_PREFERENCE, 4) &&
+           VerifyField<int32_t>(verifier, VT_EXECUTION_PRIORITY, 4) &&
+           VerifyOffset(verifier, VT_OPTIMIZATION_HINTS) &&
+           verifier.VerifyVector(optimization_hints()) &&
+           VerifyField<int32_t>(verifier, VT_OPERATION_CHECK_MODE, 4) &&
+           VerifyField<uint8_t>(verifier, VT_ALLOW_FP16_PRECISION_FOR_FP32, 1) &&
+           VerifyField<uint8_t>(verifier, VT_USE_AHWB, 1) &&
+           VerifyField<uint8_t>(verifier, VT_USE_CACHEABLE_BUFFER, 1) &&
+           VerifyOffset(verifier, VT_COMPILE_OPTIONS) &&
+           verifier.VerifyVector(compile_options()) &&
+           verifier.VerifyVectorOfStrings(compile_options()) &&
+           VerifyOffset(verifier, VT_ACCELERATOR_NAMES) &&
+           verifier.VerifyVector(accelerator_names()) &&
+           verifier.VerifyVectorOfStrings(accelerator_names()) &&
+           VerifyOffset(verifier, VT_NEURON_CONFIG_PATH) &&
+           verifier.VerifyString(neuron_config_path()) &&
+           verifier.EndTable();
+  }
+  MtkNeuronSettingsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(MtkNeuronSettingsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<MtkNeuronSettings> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const MtkNeuronSettingsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct MtkNeuronSettingsBuilder {
+  typedef MtkNeuronSettings Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_execution_preference(tflite::MtkNeuronSettings_::ExecutionPreference execution_preference) {
+    fbb_.AddElement<int32_t>(MtkNeuronSettings::VT_EXECUTION_PREFERENCE, static_cast<int32_t>(execution_preference), 0);
+  }
+  void add_execution_priority(tflite::MtkNeuronSettings_::ExecutionPriority execution_priority) {
+    fbb_.AddElement<int32_t>(MtkNeuronSettings::VT_EXECUTION_PRIORITY, static_cast<int32_t>(execution_priority), 0);
+  }
+  void add_optimization_hints(::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> optimization_hints) {
+    fbb_.AddOffset(MtkNeuronSettings::VT_OPTIMIZATION_HINTS, optimization_hints);
+  }
+  void add_operation_check_mode(tflite::MtkNeuronSettings_::OperationCheckMode operation_check_mode) {
+    fbb_.AddElement<int32_t>(MtkNeuronSettings::VT_OPERATION_CHECK_MODE, static_cast<int32_t>(operation_check_mode), 0);
+  }
+  void add_allow_fp16_precision_for_fp32(bool allow_fp16_precision_for_fp32) {
+    fbb_.AddElement<uint8_t>(MtkNeuronSettings::VT_ALLOW_FP16_PRECISION_FOR_FP32, static_cast<uint8_t>(allow_fp16_precision_for_fp32), 0);
+  }
+  void add_use_ahwb(bool use_ahwb) {
+    fbb_.AddElement<uint8_t>(MtkNeuronSettings::VT_USE_AHWB, static_cast<uint8_t>(use_ahwb), 0);
+  }
+  void add_use_cacheable_buffer(bool use_cacheable_buffer) {
+    fbb_.AddElement<uint8_t>(MtkNeuronSettings::VT_USE_CACHEABLE_BUFFER, static_cast<uint8_t>(use_cacheable_buffer), 1);
+  }
+  void add_compile_options(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> compile_options) {
+    fbb_.AddOffset(MtkNeuronSettings::VT_COMPILE_OPTIONS, compile_options);
+  }
+  void add_accelerator_names(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> accelerator_names) {
+    fbb_.AddOffset(MtkNeuronSettings::VT_ACCELERATOR_NAMES, accelerator_names);
+  }
+  void add_neuron_config_path(::flatbuffers::Offset<::flatbuffers::String> neuron_config_path) {
+    fbb_.AddOffset(MtkNeuronSettings::VT_NEURON_CONFIG_PATH, neuron_config_path);
+  }
+  explicit MtkNeuronSettingsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<MtkNeuronSettings> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<MtkNeuronSettings>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<MtkNeuronSettings> CreateMtkNeuronSettings(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    tflite::MtkNeuronSettings_::ExecutionPreference execution_preference = tflite::MtkNeuronSettings_::ExecutionPreference_PREFERENCE_UNDEFINED,
+    tflite::MtkNeuronSettings_::ExecutionPriority execution_priority = tflite::MtkNeuronSettings_::ExecutionPriority_PRIORITY_UNDEFINED,
+    ::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> optimization_hints = 0,
+    tflite::MtkNeuronSettings_::OperationCheckMode operation_check_mode = tflite::MtkNeuronSettings_::OperationCheckMode_NO_OPERATION_CHECK,
+    bool allow_fp16_precision_for_fp32 = false,
+    bool use_ahwb = false,
+    bool use_cacheable_buffer = true,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> compile_options = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> accelerator_names = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> neuron_config_path = 0) {
+  MtkNeuronSettingsBuilder builder_(_fbb);
+  builder_.add_neuron_config_path(neuron_config_path);
+  builder_.add_accelerator_names(accelerator_names);
+  builder_.add_compile_options(compile_options);
+  builder_.add_operation_check_mode(operation_check_mode);
+  builder_.add_optimization_hints(optimization_hints);
+  builder_.add_execution_priority(execution_priority);
+  builder_.add_execution_preference(execution_preference);
+  builder_.add_use_cacheable_buffer(use_cacheable_buffer);
+  builder_.add_use_ahwb(use_ahwb);
+  builder_.add_allow_fp16_precision_for_fp32(allow_fp16_precision_for_fp32);
+  return builder_.Finish();
+}
+
+inline ::flatbuffers::Offset<MtkNeuronSettings> CreateMtkNeuronSettingsDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    tflite::MtkNeuronSettings_::ExecutionPreference execution_preference = tflite::MtkNeuronSettings_::ExecutionPreference_PREFERENCE_UNDEFINED,
+    tflite::MtkNeuronSettings_::ExecutionPriority execution_priority = tflite::MtkNeuronSettings_::ExecutionPriority_PRIORITY_UNDEFINED,
+    const std::vector<int32_t> *optimization_hints = nullptr,
+    tflite::MtkNeuronSettings_::OperationCheckMode operation_check_mode = tflite::MtkNeuronSettings_::OperationCheckMode_NO_OPERATION_CHECK,
+    bool allow_fp16_precision_for_fp32 = false,
+    bool use_ahwb = false,
+    bool use_cacheable_buffer = true,
+    const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *compile_options = nullptr,
+    const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *accelerator_names = nullptr,
+    const char *neuron_config_path = nullptr) {
+  auto optimization_hints__ = optimization_hints ? _fbb.CreateVector<int32_t>(*optimization_hints) : 0;
+  auto compile_options__ = compile_options ? _fbb.CreateVector<::flatbuffers::Offset<::flatbuffers::String>>(*compile_options) : 0;
+  auto accelerator_names__ = accelerator_names ? _fbb.CreateVector<::flatbuffers::Offset<::flatbuffers::String>>(*accelerator_names) : 0;
+  auto neuron_config_path__ = neuron_config_path ? _fbb.CreateString(neuron_config_path) : 0;
+  return tflite::CreateMtkNeuronSettings(
+      _fbb,
+      execution_preference,
+      execution_priority,
+      optimization_hints__,
+      operation_check_mode,
+      allow_fp16_precision_for_fp32,
+      use_ahwb,
+      use_cacheable_buffer,
+      compile_options__,
+      accelerator_names__,
+      neuron_config_path__);
+}
+
+::flatbuffers::Offset<MtkNeuronSettings> CreateMtkNeuronSettings(::flatbuffers::FlatBufferBuilder &_fbb, const MtkNeuronSettingsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct TFLiteSettingsT : public ::flatbuffers::NativeTable {
   typedef TFLiteSettings TableType;
   tflite::Delegate delegate = tflite::Delegate_NONE;
@@ -2651,6 +2988,7 @@ struct TFLiteSettingsT : public ::flatbuffers::NativeTable {
   std::unique_ptr<tflite::GoogleEdgeTpuSettingsT> google_edgetpu_settings{};
   std::unique_ptr<tflite::CompilationCachingSettingsT> compilation_caching_settings{};
   std::unique_ptr<tflite::ArmNNSettingsT> armnn_settings{};
+  std::unique_ptr<tflite::MtkNeuronSettingsT> mtk_neuron_settings{};
   TFLiteSettingsT() = default;
   TFLiteSettingsT(const TFLiteSettingsT &o);
   TFLiteSettingsT(TFLiteSettingsT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -2676,7 +3014,8 @@ struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_STABLE_DELEGATE_LOADER_SETTINGS = 28,
     VT_GOOGLE_EDGETPU_SETTINGS = 30,
     VT_COMPILATION_CACHING_SETTINGS = 32,
-    VT_ARMNN_SETTINGS = 34
+    VT_ARMNN_SETTINGS = 34,
+    VT_MTK_NEURON_SETTINGS = 36
   };
   tflite::Delegate delegate() const {
     return static_cast<tflite::Delegate>(GetField<int32_t>(VT_DELEGATE, 0));
@@ -2726,6 +3065,9 @@ struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const tflite::ArmNNSettings *armnn_settings() const {
     return GetPointer<const tflite::ArmNNSettings *>(VT_ARMNN_SETTINGS);
   }
+  const tflite::MtkNeuronSettings *mtk_neuron_settings() const {
+    return GetPointer<const tflite::MtkNeuronSettings *>(VT_MTK_NEURON_SETTINGS);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_DELEGATE, 4) &&
@@ -2757,6 +3099,8 @@ struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            verifier.VerifyTable(compilation_caching_settings()) &&
            VerifyOffset(verifier, VT_ARMNN_SETTINGS) &&
            verifier.VerifyTable(armnn_settings()) &&
+           VerifyOffset(verifier, VT_MTK_NEURON_SETTINGS) &&
+           verifier.VerifyTable(mtk_neuron_settings()) &&
            verifier.EndTable();
   }
   TFLiteSettingsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2816,6 +3160,9 @@ struct TFLiteSettingsBuilder {
   void add_armnn_settings(::flatbuffers::Offset<tflite::ArmNNSettings> armnn_settings) {
     fbb_.AddOffset(TFLiteSettings::VT_ARMNN_SETTINGS, armnn_settings);
   }
+  void add_mtk_neuron_settings(::flatbuffers::Offset<tflite::MtkNeuronSettings> mtk_neuron_settings) {
+    fbb_.AddOffset(TFLiteSettings::VT_MTK_NEURON_SETTINGS, mtk_neuron_settings);
+  }
   explicit TFLiteSettingsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2844,8 +3191,10 @@ inline ::flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(
     ::flatbuffers::Offset<tflite::StableDelegateLoaderSettings> stable_delegate_loader_settings = 0,
     ::flatbuffers::Offset<tflite::GoogleEdgeTpuSettings> google_edgetpu_settings = 0,
     ::flatbuffers::Offset<tflite::CompilationCachingSettings> compilation_caching_settings = 0,
-    ::flatbuffers::Offset<tflite::ArmNNSettings> armnn_settings = 0) {
+    ::flatbuffers::Offset<tflite::ArmNNSettings> armnn_settings = 0,
+    ::flatbuffers::Offset<tflite::MtkNeuronSettings> mtk_neuron_settings = 0) {
   TFLiteSettingsBuilder builder_(_fbb);
+  builder_.add_mtk_neuron_settings(mtk_neuron_settings);
   builder_.add_armnn_settings(armnn_settings);
   builder_.add_compilation_caching_settings(compilation_caching_settings);
   builder_.add_google_edgetpu_settings(google_edgetpu_settings);
@@ -5130,6 +5479,79 @@ inline ::flatbuffers::Offset<ArmNNSettings> CreateArmNNSettings(::flatbuffers::F
 }
 
 
+inline bool operator==(const MtkNeuronSettingsT &lhs, const MtkNeuronSettingsT &rhs) {
+  return
+      (lhs.execution_preference == rhs.execution_preference) &&
+      (lhs.execution_priority == rhs.execution_priority) &&
+      (lhs.optimization_hints == rhs.optimization_hints) &&
+      (lhs.operation_check_mode == rhs.operation_check_mode) &&
+      (lhs.allow_fp16_precision_for_fp32 == rhs.allow_fp16_precision_for_fp32) &&
+      (lhs.use_ahwb == rhs.use_ahwb) &&
+      (lhs.use_cacheable_buffer == rhs.use_cacheable_buffer) &&
+      (lhs.compile_options == rhs.compile_options) &&
+      (lhs.accelerator_names == rhs.accelerator_names) &&
+      (lhs.neuron_config_path == rhs.neuron_config_path);
+}
+
+inline bool operator!=(const MtkNeuronSettingsT &lhs, const MtkNeuronSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline MtkNeuronSettingsT *MtkNeuronSettings::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<MtkNeuronSettingsT>(new MtkNeuronSettingsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void MtkNeuronSettings::UnPackTo(MtkNeuronSettingsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = execution_preference(); _o->execution_preference = _e; }
+  { auto _e = execution_priority(); _o->execution_priority = _e; }
+  { auto _e = optimization_hints(); if (_e) { _o->optimization_hints.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->optimization_hints[_i] = static_cast<tflite::MtkNeuronSettings_::OptimizationHint>(_e->Get(_i)); } } else { _o->optimization_hints.resize(0); } }
+  { auto _e = operation_check_mode(); _o->operation_check_mode = _e; }
+  { auto _e = allow_fp16_precision_for_fp32(); _o->allow_fp16_precision_for_fp32 = _e; }
+  { auto _e = use_ahwb(); _o->use_ahwb = _e; }
+  { auto _e = use_cacheable_buffer(); _o->use_cacheable_buffer = _e; }
+  { auto _e = compile_options(); if (_e) { _o->compile_options.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->compile_options[_i] = _e->Get(_i)->str(); } } else { _o->compile_options.resize(0); } }
+  { auto _e = accelerator_names(); if (_e) { _o->accelerator_names.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->accelerator_names[_i] = _e->Get(_i)->str(); } } else { _o->accelerator_names.resize(0); } }
+  { auto _e = neuron_config_path(); if (_e) _o->neuron_config_path = _e->str(); }
+}
+
+inline ::flatbuffers::Offset<MtkNeuronSettings> MtkNeuronSettings::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const MtkNeuronSettingsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateMtkNeuronSettings(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<MtkNeuronSettings> CreateMtkNeuronSettings(::flatbuffers::FlatBufferBuilder &_fbb, const MtkNeuronSettingsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const MtkNeuronSettingsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _execution_preference = _o->execution_preference;
+  auto _execution_priority = _o->execution_priority;
+  auto _optimization_hints = _o->optimization_hints.size() ? _fbb.CreateVectorScalarCast<int32_t>(::flatbuffers::data(_o->optimization_hints), _o->optimization_hints.size()) : 0;
+  auto _operation_check_mode = _o->operation_check_mode;
+  auto _allow_fp16_precision_for_fp32 = _o->allow_fp16_precision_for_fp32;
+  auto _use_ahwb = _o->use_ahwb;
+  auto _use_cacheable_buffer = _o->use_cacheable_buffer;
+  auto _compile_options = _o->compile_options.size() ? _fbb.CreateVectorOfStrings(_o->compile_options) : 0;
+  auto _accelerator_names = _o->accelerator_names.size() ? _fbb.CreateVectorOfStrings(_o->accelerator_names) : 0;
+  auto _neuron_config_path = _o->neuron_config_path.empty() ? 0 : _fbb.CreateString(_o->neuron_config_path);
+  return tflite::CreateMtkNeuronSettings(
+      _fbb,
+      _execution_preference,
+      _execution_priority,
+      _optimization_hints,
+      _operation_check_mode,
+      _allow_fp16_precision_for_fp32,
+      _use_ahwb,
+      _use_cacheable_buffer,
+      _compile_options,
+      _accelerator_names,
+      _neuron_config_path);
+}
+
+
 inline bool operator==(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs) {
   return
       (lhs.delegate == rhs.delegate) &&
@@ -5147,7 +5569,8 @@ inline bool operator==(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs) {
       ((lhs.stable_delegate_loader_settings == rhs.stable_delegate_loader_settings) || (lhs.stable_delegate_loader_settings && rhs.stable_delegate_loader_settings && *lhs.stable_delegate_loader_settings == *rhs.stable_delegate_loader_settings)) &&
       ((lhs.google_edgetpu_settings == rhs.google_edgetpu_settings) || (lhs.google_edgetpu_settings && rhs.google_edgetpu_settings && *lhs.google_edgetpu_settings == *rhs.google_edgetpu_settings)) &&
       ((lhs.compilation_caching_settings == rhs.compilation_caching_settings) || (lhs.compilation_caching_settings && rhs.compilation_caching_settings && *lhs.compilation_caching_settings == *rhs.compilation_caching_settings)) &&
-      ((lhs.armnn_settings == rhs.armnn_settings) || (lhs.armnn_settings && rhs.armnn_settings && *lhs.armnn_settings == *rhs.armnn_settings));
+      ((lhs.armnn_settings == rhs.armnn_settings) || (lhs.armnn_settings && rhs.armnn_settings && *lhs.armnn_settings == *rhs.armnn_settings)) &&
+      ((lhs.mtk_neuron_settings == rhs.mtk_neuron_settings) || (lhs.mtk_neuron_settings && rhs.mtk_neuron_settings && *lhs.mtk_neuron_settings == *rhs.mtk_neuron_settings));
 }
 
 inline bool operator!=(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs) {
@@ -5171,7 +5594,8 @@ inline TFLiteSettingsT::TFLiteSettingsT(const TFLiteSettingsT &o)
         stable_delegate_loader_settings((o.stable_delegate_loader_settings) ? new tflite::StableDelegateLoaderSettingsT(*o.stable_delegate_loader_settings) : nullptr),
         google_edgetpu_settings((o.google_edgetpu_settings) ? new tflite::GoogleEdgeTpuSettingsT(*o.google_edgetpu_settings) : nullptr),
         compilation_caching_settings((o.compilation_caching_settings) ? new tflite::CompilationCachingSettingsT(*o.compilation_caching_settings) : nullptr),
-        armnn_settings((o.armnn_settings) ? new tflite::ArmNNSettingsT(*o.armnn_settings) : nullptr) {
+        armnn_settings((o.armnn_settings) ? new tflite::ArmNNSettingsT(*o.armnn_settings) : nullptr),
+        mtk_neuron_settings((o.mtk_neuron_settings) ? new tflite::MtkNeuronSettingsT(*o.mtk_neuron_settings) : nullptr) {
 }
 
 inline TFLiteSettingsT &TFLiteSettingsT::operator=(TFLiteSettingsT o) FLATBUFFERS_NOEXCEPT {
@@ -5191,6 +5615,7 @@ inline TFLiteSettingsT &TFLiteSettingsT::operator=(TFLiteSettingsT o) FLATBUFFER
   std::swap(google_edgetpu_settings, o.google_edgetpu_settings);
   std::swap(compilation_caching_settings, o.compilation_caching_settings);
   std::swap(armnn_settings, o.armnn_settings);
+  std::swap(mtk_neuron_settings, o.mtk_neuron_settings);
   return *this;
 }
 
@@ -5219,6 +5644,7 @@ inline void TFLiteSettings::UnPackTo(TFLiteSettingsT *_o, const ::flatbuffers::r
   { auto _e = google_edgetpu_settings(); if (_e) { if(_o->google_edgetpu_settings) { _e->UnPackTo(_o->google_edgetpu_settings.get(), _resolver); } else { _o->google_edgetpu_settings = std::unique_ptr<tflite::GoogleEdgeTpuSettingsT>(_e->UnPack(_resolver)); } } else if (_o->google_edgetpu_settings) { _o->google_edgetpu_settings.reset(); } }
   { auto _e = compilation_caching_settings(); if (_e) { if(_o->compilation_caching_settings) { _e->UnPackTo(_o->compilation_caching_settings.get(), _resolver); } else { _o->compilation_caching_settings = std::unique_ptr<tflite::CompilationCachingSettingsT>(_e->UnPack(_resolver)); } } else if (_o->compilation_caching_settings) { _o->compilation_caching_settings.reset(); } }
   { auto _e = armnn_settings(); if (_e) { if(_o->armnn_settings) { _e->UnPackTo(_o->armnn_settings.get(), _resolver); } else { _o->armnn_settings = std::unique_ptr<tflite::ArmNNSettingsT>(_e->UnPack(_resolver)); } } else if (_o->armnn_settings) { _o->armnn_settings.reset(); } }
+  { auto _e = mtk_neuron_settings(); if (_e) { if(_o->mtk_neuron_settings) { _e->UnPackTo(_o->mtk_neuron_settings.get(), _resolver); } else { _o->mtk_neuron_settings = std::unique_ptr<tflite::MtkNeuronSettingsT>(_e->UnPack(_resolver)); } } else if (_o->mtk_neuron_settings) { _o->mtk_neuron_settings.reset(); } }
 }
 
 inline ::flatbuffers::Offset<TFLiteSettings> TFLiteSettings::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const TFLiteSettingsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -5245,6 +5671,7 @@ inline ::flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(::flatbuffers:
   auto _google_edgetpu_settings = _o->google_edgetpu_settings ? CreateGoogleEdgeTpuSettings(_fbb, _o->google_edgetpu_settings.get(), _rehasher) : 0;
   auto _compilation_caching_settings = _o->compilation_caching_settings ? CreateCompilationCachingSettings(_fbb, _o->compilation_caching_settings.get(), _rehasher) : 0;
   auto _armnn_settings = _o->armnn_settings ? CreateArmNNSettings(_fbb, _o->armnn_settings.get(), _rehasher) : 0;
+  auto _mtk_neuron_settings = _o->mtk_neuron_settings ? CreateMtkNeuronSettings(_fbb, _o->mtk_neuron_settings.get(), _rehasher) : 0;
   return tflite::CreateTFLiteSettings(
       _fbb,
       _delegate,
@@ -5262,7 +5689,8 @@ inline ::flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(::flatbuffers:
       _stable_delegate_loader_settings,
       _google_edgetpu_settings,
       _compilation_caching_settings,
-      _armnn_settings);
+      _armnn_settings,
+      _mtk_neuron_settings);
 }
 
 

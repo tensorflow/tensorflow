@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/shlo/ops/count_leading_zeros.h"
 
+#include <cstdint>
 #include <type_traits>
 
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "tensorflow/lite/experimental/shlo/dispatch.h"
+#include "tensorflow/lite/experimental/shlo/i4.h"
 #include "tensorflow/lite/experimental/shlo/ops/unary_elementwise.h"
 #include "tensorflow/lite/experimental/shlo/ops/util.h"
 #include "tensorflow/lite/experimental/shlo/tensor.h"
@@ -29,7 +31,11 @@ namespace shlo_ref {
 struct CountLeadingZeros {
   template <class T>
   T operator()(T v) const {
-    return absl::countl_zero(static_cast<std::make_unsigned_t<T>>(v));
+    if constexpr (std::is_same_v<I4, T>) {
+      return I4(absl::countl_zero(static_cast<uint8_t>(v << 4 | 0xf)));
+    } else {
+      return absl::countl_zero(static_cast<std::make_unsigned_t<T>>(v));
+    }
   }
 };
 
