@@ -69,7 +69,6 @@ tflite_cc_library_with_c_headers_test(
     hdrs = ["c_api_for_testing.h"],
     deps = [
         ":c_api",
-        ":c_api_internal",
         "//tensorflow/lite/core/c:c_api",
     ],
 )
@@ -296,7 +295,6 @@ cc_test(
     deps = [
         ":c_api",
         "//tensorflow/lite/core/c:c_api",
-        "//tensorflow/lite/core/c:c_api_experimental",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -352,8 +350,8 @@ cc_library(
     ] + c_api_opaque_internal_visibility_allowlist(),
     deps = [
         ":c_api_types",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/c:operator",
@@ -389,8 +387,8 @@ cc_library(
     ],
     deps = [
         ":c_api_types",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/c:operator_without_alwayslink",
