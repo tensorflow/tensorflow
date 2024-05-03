@@ -4969,10 +4969,12 @@ Status HloInstruction::GetBackendConfigInternal(
   proto->Clear();
 
   if (auto* proto_ptr = backend_config_.GetProtoPtr()) {
-    if (proto_ptr->GetDescriptor() == proto->GetDescriptor()) {
-      proto->CopyFrom(*proto_ptr);
-      return OkStatus();
+    if (proto_ptr->GetDescriptor() != proto->GetDescriptor()) {
+      return Internal("Mismatched backend config descriptors.");
     }
+
+    proto->CopyFrom(*proto_ptr);
+    return OkStatus();
   }
 
   auto& raw_string = raw_backend_config_string();
