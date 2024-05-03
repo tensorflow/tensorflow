@@ -60,8 +60,20 @@ absl::Status GlobalShuffleIterator::GetNext(IteratorContext* ctx,
   }
 
   absl::MutexLock l(&mu_);
-  TF_ASSIGN_OR_RETURN(int64_t output_index,
-                      ctx->index_mapper()(element_count_++));
+  absl::StatusOr<int64_t> output_index_or =
+      ctx->index_mapper()(element_count_++);
+  if (absl::IsNotFound(output_index_or.status())) {
+    return output_index_or.status();
+  }
+  if (absl::IsOutOfRange(output_index_or.status())) {
+    *end_of_sequence = true;
+    return absl::OkStatus();
+  }
+
+  TF_RETURN_IF_ERROR(output_index_or.status());
+
+  const int64_t& output_index = output_index_or.value();
+
   absl::Status status =
       dataset_->Get(AnyContext(ctx), output_index, out_tensors);
   if (absl::IsOutOfRange(status)) {

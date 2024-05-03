@@ -231,7 +231,7 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
       // element position exceeds the max index. The caller is responsible to
       // handle this case properly.
       if (element_position > max_index) {
-        return element_position;
+        return absl::OutOfRangeError("Out of range");
       }
       if (max_index == 0) {
         return 0;
