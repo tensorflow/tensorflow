@@ -54,6 +54,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace pjrt {
 

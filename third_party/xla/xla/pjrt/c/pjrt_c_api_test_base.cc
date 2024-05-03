@@ -23,11 +23,11 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
-#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"

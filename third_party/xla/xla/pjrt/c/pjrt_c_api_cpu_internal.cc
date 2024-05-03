@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "tsl/platform/errors.h"
 
 namespace pjrt {
 namespace cpu_plugin {
