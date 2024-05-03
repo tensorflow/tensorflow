@@ -175,6 +175,129 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/convolution.mlir b/stablehlo/stablehlo/conversions/linalg/tests/convolution.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/convolution.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/convolution.mlir
+@@ -356,7 +356,7 @@
+ }
+ // CHECK-DAG:       %[[CST:.+]] = arith.constant 0.000000e+00 : f32
+ // CHECK:       %[[COLLAPSE:.+]] = tensor.collapse_shape %[[FILTER]] {{\[}}[0, 1, 2, 3]] : tensor<2x2x1x6xf32> into tensor<24xf32>
+-// CHECK:       %[[EXPAND:.+]] = tensor.expand_shape %[[COLLAPSE]] {{\[}}[0, 1, 2, 3]] : tensor<24xf32> into tensor<2x2x2x3xf32>
++// CHECK:       %[[EXPAND:.+]] = tensor.expand_shape %[[COLLAPSE]] {{\[}}[0, 1, 2, 3]] output_shape [2, 2, 2, 3] : tensor<24xf32> into tensor<2x2x2x3xf32>
+ // CHECK:       %[[INIT:.+]] = tensor.empty() : tensor<2x3x4x2x3xf32>
+ // CHECK:       %[[FILL:.+]] = linalg.fill ins(%[[CST]] : f32) outs(%[[INIT]] : tensor<2x3x4x2x3xf32>) -> tensor<2x3x4x2x3xf32>
+ // CHECK:       %[[OUT:.+]] = linalg.depthwise_conv_2d_nhwc_hwcm
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir b/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+@@ -865,7 +865,7 @@
+   %0 = "stablehlo.reshape"(%arg0) : (tensor<i32>) -> tensor<1xi32>
+   func.return %0 : tensor<1xi32>
+ }
+-// CHECK: tensor.expand_shape %{{.*}} [] : tensor<i32> into tensor<1xi32>
++// CHECK: tensor.expand_shape %{{.*}} [] output_shape [1] : tensor<i32> into tensor<1xi32>
+ 
+ // -----
+ 
+@@ -876,7 +876,7 @@
+   func.return %0 : tensor<1xui32>
+ }
+ // CHECK:         %[[ARG_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[ARG_UNSIGNED]] : tensor<ui32> to tensor<i32>
+-// CHECK:         %[[RET_SIGNLESS:.*]] = tensor.expand_shape %[[ARG_SIGNLESS]] [] : tensor<i32> into tensor<1xi32>
++// CHECK:         %[[RET_SIGNLESS:.*]] = tensor.expand_shape %[[ARG_SIGNLESS]] [] output_shape [1] : tensor<i32> into tensor<1xi32>
+ // CHECK:         %[[RET_UNSIGNED:.*]] = builtin.unrealized_conversion_cast %[[RET_SIGNLESS]] : tensor<1xi32> to tensor<1xui32>
+ // CHECK:         return %[[RET_UNSIGNED]] : tensor<1xui32>
+ 
+@@ -978,7 +978,7 @@
+ }
+ // CHECK: %[[FLATTEN:.*]] = tensor.collapse_shape %{{.*}} {{\[}}[0, 1]] : tensor<?x?xf32> into tensor<?xf32>
+ // CHECK: %[[CAST:.*]] = tensor.cast %[[FLATTEN]] : tensor<?xf32> to tensor<40xf32>
+-// CHECK: tensor.expand_shape %[[CAST]] {{\[}}[0, 1, 2]] : tensor<40xf32> into tensor<2x4x5xf32>
++// CHECK: tensor.expand_shape %[[CAST]] {{\[}}[0, 1, 2]] output_shape [2, 4, 5] : tensor<40xf32> into tensor<2x4x5xf32>
+ 
+ // -----
+ 
+@@ -988,7 +988,7 @@
+   func.return %0 : tensor<1x3xi32>
+ }
+ // CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<?xi32> to tensor<3xi32>
+-// CHECK: tensor.expand_shape %[[CAST]] {{\[}}[0, 1]] : tensor<3xi32> into tensor<1x3xi32>
++// CHECK: tensor.expand_shape %[[CAST]] {{\[}}[0, 1]] output_shape [1, 3] : tensor<3xi32> into tensor<1x3xi32>
+ 
+ // -----
+ 
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/random.mlir b/stablehlo/stablehlo/conversions/linalg/tests/random.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/random.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/random.mlir
+@@ -480,8 +480,8 @@
+ // CHECK-DAG:   %[[VAL_101:.*]] = arith.xori %[[VAL_100]], %[[VAL_87]] : i32
+ 
+ // CHECK: linalg.yield %[[YIELDED_1:.*]], %[[YIELDED_2:.*]] : i64, i64
+-// CHECK-DAG: %[[VAL_206:.*]] = tensor.expand_shape %[[VAL_207:.*]]#0 {{\[\[}}0, 1]] : tensor<4xi64> into tensor<4x1xi64>
+-// CHECK-DAG: %[[VAL_208:.*]] = tensor.expand_shape %[[VAL_207]]#1 {{\[\[}}0, 1]] : tensor<4xi64> into tensor<4x1xi64>
++// CHECK-DAG: %[[VAL_206:.*]] = tensor.expand_shape %[[VAL_207:.*]]#0 {{\[\[}}0, 1]]
++// CHECK-DAG: %[[VAL_208:.*]] = tensor.expand_shape %[[VAL_207]]#1 {{\[\[}}0, 1]]
+ // CHECK-DAG: %[[VAL_209:.*]] = tensor.empty() : tensor<4x2xi64>
+ // CHECK-DAG: %[[VAL_213:.*]] = tensor.insert %[[VAL_30]] into %[[VAL_0]]{{\[}}%[[VAL_19]]] : tensor<2xi64>
+ 
+@@ -575,10 +575,10 @@
+ // CHECK: %[[COLLAPSE:.+]] = tensor.collapse_shape %[[CONCAT]]
+ 
+ 
+-// CHECK: %[[VAL_213:.*]] = tensor.expand_shape %[[COLLAPSE]] {{\[\[}}0, 1]] : tensor<80xi32> into tensor<80x1xi32>
++// CHECK: %[[VAL_213:.*]] = tensor.expand_shape %[[COLLAPSE]] {{\[\[}}0, 1]]
+ // CHECK: %[[VAL_214:.*]] = tensor.extract_slice %[[VAL_213]][0, 0] [77, 1] [1, 1] : tensor<80x1xi32> to tensor<77x1xi32>
+ // CHECK: %[[VAL_215:.*]] = tensor.collapse_shape %[[VAL_214]] {{\[\[}}0, 1]] : tensor<77x1xi32> into tensor<77xi32>
+-// CHECK: %[[VAL_216:.*]] = tensor.expand_shape %[[VAL_215]] {{\[\[}}0, 1]] : tensor<77xi32> into tensor<7x11xi32>
++// CHECK: %[[VAL_216:.*]] = tensor.expand_shape %[[VAL_215]] {{\[\[}}0, 1]]
+ // CHECK: %[[VAL_217:.*]] = tensor.insert %[[NEWSTATE]] into %[[ARG0]]{{\[}}%[[C1]]] : tensor<2xi64>
+ // CHECK: return %[[VAL_217]], %[[VAL_216]] : tensor<2xi64>, tensor<7x11xi32>
+ 
+@@ -616,10 +616,10 @@
+ // CHECK-DAG: %[[COLLAPSE:.+]] = tensor.collapse_shape %[[CONCAT]] {{\[\[}}0, 1]] : tensor<8x2xi64> into tensor<16xi64>
+ 
+ 
+-// CHECK-DAG: %[[EXPANDED:.*]] = tensor.expand_shape %[[COLLAPSE]] {{\[\[}}0, 1]] : tensor<16xi64> into tensor<16x1xi64>
++// CHECK-DAG: %[[EXPANDED:.*]] = tensor.expand_shape %[[COLLAPSE]] {{\[\[}}0, 1]]
+ // CHECK-DAG: %[[SLICE:.*]] = tensor.extract_slice %[[EXPANDED]][0, 0] [15, 1] [1, 1] : tensor<16x1xi64> to tensor<15x1xi64>
+ // CHECK-DAG: %[[EXPAND_2:.*]] = tensor.collapse_shape %[[SLICE]] {{\[\[}}0, 1]] : tensor<15x1xi64> into tensor<15xi64>
+-// CHECK-DAG: %[[RESHAPE:.*]] = tensor.expand_shape %[[EXPAND_2]] {{\[\[}}0, 1]] : tensor<15xi64> into tensor<3x5xi64>
++// CHECK-DAG: %[[RESHAPE:.*]] = tensor.expand_shape %[[EXPAND_2]] {{\[\[}}0, 1]]
+ // CHECK-DAG: %[[INSERTED:.+]] = tensor.insert %[[NEWSTATE]] into %[[ARG0]][%[[C1]]] : tensor<2xi64>
+ // CHECK: return %[[INSERTED]], %[[RESHAPE]]
+ 
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
+--- stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
++++ stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
+@@ -45,14 +45,14 @@
+ 
+ // CHECK-LABEL: @divide
+ func.func @divide(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<10xi32> {
+-  // CHECK: tosa.div
++  // CHECK: tosa.int_div
+   %0 = "stablehlo.divide"(%arg0, %arg1) : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
+   return %0 : tensor<10xi32>
+ }
+ 
+ // CHECK-LABEL: @divide_f32
+ func.func @divide_f32(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
+-  // tosa.div only supports i32, so this should not legalize.
++  // tosa.int_div only supports i32, so this should not legalize.
+   // CHECK: stablehlo.divide
+   %0 = "stablehlo.divide"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+   return %0 : tensor<10xf32>
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
+@@ -125,7 +125,7 @@
+ Pattern =>
+   replace op<stablehlo.divide>(input0 : Value<_: Tosa_Int32Tensor>,
+                           input1 : Value<_: Tosa_Int32Tensor>)
+-     with op<tosa.div>(input0, input1);
++     with op<tosa.int_div>(input0, input1);
+ Pattern =>
+   replace op<stablehlo.maximum>(input0 : Value<_: Tosa_Tensor>,
+                            input1 : Value<_: Tosa_Tensor>)
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel

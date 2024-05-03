@@ -768,7 +768,6 @@ cc_library(
         "transforms/lower_index_cast_pass.cc",
         "transforms/naive_copy_removal.cc",
         "transforms/propagate_static_shapes_to_kernel.cc",
-        "transforms/test_hlo_transform_dialect_interpreter.cc",
         "transforms/tile_loops_pass.cc",
         "transforms/unbufferize_pass.cc",
         "transforms/unroll_loops.cc",

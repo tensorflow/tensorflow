@@ -23,7 +23,7 @@ func.func @fusion() -> memref<4x4x8x32xf32> {
   // CHECK:   %[[COLLAPSE_SHAPE:.*]] = memref.collapse_shape %[[ARG0]] {{\[\[}}0, 1, 2], [3{{\]\]}}
   // CHECK:   "some.use"(%[[COLLAPSE_SHAPE]], %[[ARG0]])
   %alloc = memref.alloc() {alignment = 64 : i64} : memref<128x32xf32>
-  %expand_shape = memref.expand_shape %alloc [[0, 1, 2], [3]] : memref<128x32xf32> into memref<4x4x8x32xf32>
+  %expand_shape = memref.expand_shape %alloc [[0, 1, 2], [3]] output_shape [4, 4, 8, 32] : memref<128x32xf32> into memref<4x4x8x32xf32>
   "some.use"(%alloc, %expand_shape) : (memref<128x32xf32>, memref<4x4x8x32xf32>) -> ()
   return %expand_shape : memref<4x4x8x32xf32>
 }

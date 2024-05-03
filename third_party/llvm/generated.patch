@@ -1,1 +1,16 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/lldb/packages/Python/lldbsuite/test/make/Makefile.rules b/lldb/packages/Python/lldbsuite/test/make/Makefile.rules
+--- a/lldb/packages/Python/lldbsuite/test/make/Makefile.rules
++++ b/lldb/packages/Python/lldbsuite/test/make/Makefile.rules
+@@ -629,9 +629,9 @@
+ else
+ 	$(LD) $(DYLIB_OBJECTS) $(LDFLAGS) -shared -o "$(DYLIB_FILENAME)"
+ ifeq "$(SPLIT_DEBUG_SYMBOLS)" "YES"
+-	ifeq "$(SAVE_FULL_DEBUG_BINARY)" "YES"
++ifeq "$(SAVE_FULL_DEBUG_BINARY)" "YES"
+ 	cp "$(DYLIB_FILENAME)" "$(DYLIB_FILENAME).unstripped"
+-	endif
++endif
+ 	$(OBJCOPY) --only-keep-debug "$(DYLIB_FILENAME)" "$(DYLIB_FILENAME).debug"
+ 	$(OBJCOPY) --strip-debug --add-gnu-debuglink="$(DYLIB_FILENAME).debug" "$(DYLIB_FILENAME)" "$(DYLIB_FILENAME)"
+ endif
