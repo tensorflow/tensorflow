@@ -31,9 +31,6 @@ class Pass;
 namespace func {
 class FuncOp;
 }  // namespace func
-namespace lmhlo {
-class FusionOp;
-}  // namespace lmhlo
 
 namespace mhlo {
 
