@@ -17,5 +17,5 @@ func.func @parallel_2d(%arg0: memref<4x4xf32>, %arg1: memref<4x4xf32>) {
   %1 = bufferization.to_tensor %0 : memref<4x4xf32>
   bufferization.materialize_in_destination %1 in writable %arg1
       : (tensor<4x4xf32>, memref<4x4xf32>) -> ()
-  "lmhlo.terminator"() : () -> ()
+  return
 }

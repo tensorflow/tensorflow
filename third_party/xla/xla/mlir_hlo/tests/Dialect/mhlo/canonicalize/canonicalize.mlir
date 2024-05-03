@@ -1429,27 +1429,6 @@ func.func @unpack_repack_same_tuple_single_element(%arg0: tuple<tensor<i32>>) ->
   func.return %3 : tuple<tensor<i32>>
 }
 
-// CHECK-LABEL: func @erase_dead_lhlo_constant
-func.func @erase_dead_lhlo_constant() {
-  %M = memref.alloc() : memref<256x1024xf32>
-  // CHECK-NEXT: return
-  "lmhlo.constant"(%M) {value = dense<0.0> : tensor<f32>} : (memref<256x1024xf32>) -> ()
-  memref.dealloc %M : memref<256x1024xf32>
-  func.return
-}
-
-// A negative test for dead lhlo constant op erasure.
-// CHECK-LABEL: func @erase_dead_lhlo_constant_negative
-func.func @erase_dead_lhlo_constant_negative(%M : memref<4xf32>) -> memref<256x1024xf32> {
-  // CHECK-NEXT: lmhlo.constant
-  "lmhlo.constant"(%M) {value = dense<0.0> : tensor<f32>} : (memref<4xf32>) -> ()
-  // CHECK-NEXT: memref.alloc
-  // CHECK-NEXT: lmhlo.constant
-  %N = memref.alloc() : memref<256x1024xf32>
-  "lmhlo.constant"(%N) {value = dense<0.0> : tensor<f32>} : (memref<256x1024xf32>) -> ()
-  func.return %N : memref<256x1024xf32>
-}
-
 // CHECK-LABEL: func @fold_get_dimension_size
 func.func @fold_get_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<i32> {
   %size = "mhlo.get_dimension_size"(%I) <{dimension = 2 : i64}> : (tensor<1x128x512xf32>) -> tensor<i32>

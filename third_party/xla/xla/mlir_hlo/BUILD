@@ -1253,7 +1253,6 @@ cc_binary(
     deps = [
         ":all_passes",
         ":hlo_dialect_registration",
-        ":lhlo",
         ":transforms_gpu_passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllExtensions",
