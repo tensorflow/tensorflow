@@ -761,7 +761,10 @@ message DebugOptions {
   // the results of regular emitters.
   bool xla_gpu_verify_triton_fusion_numerics = 291;
 
-  // Next id: 292
+  // File to write autotune logs to. It will stored in txt format.
+  string xla_gpu_dump_autotune_logs_to = 292;
+
+  // Next id: 293
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

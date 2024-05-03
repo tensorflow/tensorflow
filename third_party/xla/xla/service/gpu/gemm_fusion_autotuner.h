@@ -108,7 +108,8 @@ class GemmFusionAutotunerImpl {
   absl::Status Autotune(
       AutotunerCompileUtil& compile_util,
       const absl::flat_hash_map<const HloFusionInstruction*,
-                                std::vector<Config>>& gemm_config_sets);
+                                std::vector<Config>>& gemm_config_sets,
+      absl::flat_hash_map<AutotuneCacheKey, uint64_t> fusion_count_map);
 
   // Helper methods.
   const AutotuneConfig& GetConfig() const { return config_; }

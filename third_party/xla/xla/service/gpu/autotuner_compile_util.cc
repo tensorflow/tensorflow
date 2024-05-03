@@ -88,6 +88,7 @@ AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
   opts_.set_xla_gpu_dump_autotune_results_to("");
   opts_.set_xla_gpu_load_autotune_results_from("");
   opts_.set_xla_gpu_dump_llvmir(false);
+  opts_.set_xla_gpu_dump_autotune_logs_to("");
   // Avoid using another thread pool.
   opts_.set_xla_gpu_force_compilation_parallelism(1);
   opts_.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);

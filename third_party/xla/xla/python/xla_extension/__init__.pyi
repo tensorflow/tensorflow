@@ -308,6 +308,7 @@ class DebugOptions:
   xla_enable_dumping: bool
   xla_gpu_dump_autotune_results_to: str
   xla_gpu_load_autotune_results_from: str
+  xla_gpu_dump_autotune_logs_to: str
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int
