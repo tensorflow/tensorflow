@@ -71,9 +71,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
  public:
   CoordinationServiceAgentImpl() = default;
   ~CoordinationServiceAgentImpl() override {
-    // TODO(b/339231167): Fix the lint.
-    absl::Status s =
-        Shutdown();  // NOLINT(clang-analyzer-optin.cplusplus.VirtualCall)
+    absl::Status s = ShutdownInternal();
     VLOG(3) << "Coordination agent dtor failed with status: " << s;
   }
   absl::Status Initialize(Env* env, std::string_view job_name, int task_id,
@@ -139,6 +137,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   void StopHeartbeat();
 
  private:
+  absl::Status ShutdownInternal();
+
   Env* env_ = nullptr;  // Not owned.
   const uint64_t incarnation_id_ = random::New64();
   CoordinatedTask task_;
@@ -477,6 +477,10 @@ absl::Status CoordinationServiceAgentImpl::ReportError(
 }
 
 absl::Status CoordinationServiceAgentImpl::Shutdown() {
+  return ShutdownInternal();
+}
+
+absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
   absl::Status status = absl::OkStatus();
   bool is_connected = false;
   {

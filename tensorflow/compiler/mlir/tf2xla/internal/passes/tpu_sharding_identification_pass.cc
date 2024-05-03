@@ -296,10 +296,16 @@ std::optional<llvm::StringRef> GetXlaShardingFromArg(
         }
 
         if (llvm::isa<mlir::TF::IdentityOp, mlir::TF::CastOp,
-                      mlir::TF::ReadVariableOp>(owner)) {
+                      mlir::TF::ReadVariableOp, mlir::TF::XlaAllReduceOp>(
+                owner)) {
           next_values_to_visit.push_back(use.getOwner()->getResult(0));
           continue;
         }
+        // if (llvm::isa<mlir::TF::IdentityOp, mlir::TF::CastOp,
+        //               mlir::TF::ReadVariableOp>(owner)) {
+        //   next_values_to_visit.push_back(use.getOwner()->getResult(0));
+        //   continue;
+        // }
 
         if (auto call_op = llvm::dyn_cast<mlir::CallOpInterface>(owner)) {
           mlir::func::FuncOp func =
