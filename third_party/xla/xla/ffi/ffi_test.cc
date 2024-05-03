@@ -453,7 +453,7 @@ TEST(FfiTest, BufferBaseArgument) {
 
 TEST(FfiTest, TypedAndRankedBufferArgument) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceMemoryBase memory(storage.data(), storage.size() * sizeof(float));
 
   CallFrameBuilder builder;
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -481,7 +481,8 @@ TEST(FfiTest, TypedAndRankedBufferArgument) {
 
 TEST(FfiTest, ComplexBufferArgument) {
   std::vector<std::complex<float>> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(std::complex<float>));
+  se::DeviceMemoryBase memory(storage.data(),
+                              storage.size() * sizeof(std::complex<float>));
 
   CallFrameBuilder builder;
   builder.AddBufferArg(memory, PrimitiveType::C64, /*dims=*/{2, 2});
@@ -494,6 +495,23 @@ TEST(FfiTest, ComplexBufferArgument) {
   };
 
   auto handler = Ffi::Bind().Arg<BufferR2<PrimitiveType::C64>>().To(fn);
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, TokenArgument) {
+  CallFrameBuilder builder;
+  builder.AddBufferArg(se::DeviceMemoryBase(), PrimitiveType::TOKEN,
+                       /*dims=*/{});
+  auto call_frame = builder.Build();
+
+  auto fn = [&](Token tok) {
+    EXPECT_EQ(tok.data.opaque(), nullptr);
+    EXPECT_EQ(tok.dimensions.size(), 0);
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Arg<Token>().To(fn);
   auto status = Call(*handler, call_frame);
   TF_ASSERT_OK(status);
 }

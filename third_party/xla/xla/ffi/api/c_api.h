@@ -166,6 +166,7 @@ typedef enum {
   XLA_FFI_DataType_BF16 = 16,
   XLA_FFI_DataType_C64 = 15,
   XLA_FFI_DataType_C128 = 18,
+  XLA_FFI_DataType_TOKEN = 17,
 } XLA_FFI_DataType;
 // LINT.ThenChange(ffi_test.cc)
 

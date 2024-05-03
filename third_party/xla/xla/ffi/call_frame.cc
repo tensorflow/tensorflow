@@ -251,6 +251,7 @@ static XLA_FFI_DataType ToDataType(PrimitiveType primitive_type) {
     case PrimitiveType::BF16:
     case PrimitiveType::C64:
     case PrimitiveType::C128:
+    case PrimitiveType::TOKEN:
       return static_cast<XLA_FFI_DataType>(primitive_type);
     default:
       DCHECK(false) << "Unsupported primitive type "

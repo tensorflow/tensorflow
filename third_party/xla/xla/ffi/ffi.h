@@ -82,11 +82,16 @@ template <PrimitiveType dtype> using BufferR3 = Buffer<dtype, 3>;
 template <PrimitiveType dtype> using BufferR4 = Buffer<dtype, 4>;
 // clang-format on
 
+using Token = BufferR0<PrimitiveType::TOKEN>;
+
 namespace internal {
 
 inline BufferBase DecodeBuffer(XLA_FFI_Buffer* buf) {
-  size_t size_bytes = primitive_util::ByteWidth(PrimitiveType(buf->dtype));
-  for (int64_t i = 0; i < buf->rank; ++i) size_bytes *= buf->dims[i];
+  size_t size_bytes = 0;
+  if (primitive_util::IsArrayType(PrimitiveType(buf->dtype))) {
+    size_bytes = primitive_util::ByteWidth(PrimitiveType(buf->dtype));
+    for (int64_t i = 0; i < buf->rank; ++i) size_bytes *= buf->dims[i];
+  }
 
   BufferBase buffer;
   buffer.dtype = PrimitiveType(buf->dtype);
@@ -112,8 +117,11 @@ std::optional<Buffer<dtype, rank>> DecodeBuffer(XLA_FFI_Buffer* buf,
     }
   }
 
-  size_t size_bytes = primitive_util::ByteWidth(PrimitiveType(buf->dtype));
-  for (int64_t i = 0; i < buf->rank; ++i) size_bytes *= buf->dims[i];
+  size_t size_bytes = 0;
+  if (primitive_util::IsArrayType(PrimitiveType(buf->dtype))) {
+    size_bytes = primitive_util::ByteWidth(PrimitiveType(buf->dtype));
+    for (int64_t i = 0; i < buf->rank; ++i) size_bytes *= buf->dims[i];
+  }
 
   Buffer<dtype, rank> buffer;
   buffer.data = se::DeviceMemory<NativeType<dtype>>(

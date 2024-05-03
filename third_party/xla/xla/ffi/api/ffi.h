@@ -57,6 +57,7 @@ enum class DataType : uint8_t {
   BF16 = XLA_FFI_DataType_BF16,
   C64 = XLA_FFI_DataType_C64,
   C128 = XLA_FFI_DataType_C128,
+  TOKEN = XLA_FFI_DataType_TOKEN,
 };
 
 inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
@@ -93,6 +94,8 @@ inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
       return os << "C64";
     case DataType::C128:
       return os << "C128";
+    case DataType::TOKEN:
+      return os << "TOKEN";
   }
 }
 
@@ -172,21 +175,22 @@ struct DataTypeToNative {
 };
 
 // clang-format off
-template <> struct DataTypeToNative<DataType::PRED> { using type = bool; };
-template <> struct DataTypeToNative<DataType::U8>   { using type = uint8_t; };
-template <> struct DataTypeToNative<DataType::U16>  { using type = uint16_t; };
-template <> struct DataTypeToNative<DataType::U32>  { using type = uint32_t; };
-template <> struct DataTypeToNative<DataType::U64>  { using type = uint64_t; };
-template <> struct DataTypeToNative<DataType::S8>   { using type = int8_t; };
-template <> struct DataTypeToNative<DataType::S16>  { using type = int16_t; };
-template <> struct DataTypeToNative<DataType::S32>  { using type = int32_t; };
-template <> struct DataTypeToNative<DataType::S64>  { using type = int64_t; };
-template <> struct DataTypeToNative<DataType::F16>  { using type = uint16_t; };
-template <> struct DataTypeToNative<DataType::F32>  { using type = float; };
-template <> struct DataTypeToNative<DataType::F64>  { using type = double; };
-template <> struct DataTypeToNative<DataType::BF16> { using type = uint16_t; };
-template <> struct DataTypeToNative<DataType::C64>  { using type = std::complex<float>; }; // NOLINT
-template <> struct DataTypeToNative<DataType::C128> { using type = std::complex<double>; }; // NOLINT
+template <> struct DataTypeToNative<DataType::PRED>  { using type = bool; };
+template <> struct DataTypeToNative<DataType::U8>    { using type = uint8_t; };
+template <> struct DataTypeToNative<DataType::U16>   { using type = uint16_t; };
+template <> struct DataTypeToNative<DataType::U32>   { using type = uint32_t; };
+template <> struct DataTypeToNative<DataType::U64>   { using type = uint64_t; };
+template <> struct DataTypeToNative<DataType::S8>    { using type = int8_t; };
+template <> struct DataTypeToNative<DataType::S16>   { using type = int16_t; };
+template <> struct DataTypeToNative<DataType::S32>   { using type = int32_t; };
+template <> struct DataTypeToNative<DataType::S64>   { using type = int64_t; };
+template <> struct DataTypeToNative<DataType::F16>   { using type = uint16_t; };
+template <> struct DataTypeToNative<DataType::F32>   { using type = float; };
+template <> struct DataTypeToNative<DataType::F64>   { using type = double; };
+template <> struct DataTypeToNative<DataType::BF16>  { using type = uint16_t; };
+template <> struct DataTypeToNative<DataType::C64>   { using type = std::complex<float>; }; // NOLINT
+template <> struct DataTypeToNative<DataType::C128>  { using type = std::complex<double>; }; // NOLINT
+template <> struct DataTypeToNative<DataType::TOKEN> { using type = void; };
 // clang-format on
 
 inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
@@ -209,6 +213,8 @@ template <DataType dtype> using BufferR2 = Buffer<dtype, 2>;
 template <DataType dtype> using BufferR3 = Buffer<dtype, 3>;
 template <DataType dtype> using BufferR4 = Buffer<dtype, 4>;
 // clang-format on
+
+using Token = BufferR0<DataType::TOKEN>;
 
 namespace internal {
 
