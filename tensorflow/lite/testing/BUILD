@@ -443,9 +443,12 @@ cc_library(
     deps = [
         ":join",
         ":split",
+        ":test_runner",
         ":tf_driver",
         ":tflite_driver",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite:string",
+        "@com_google_absl//absl/log:check",
     ] + select({
         "//conditions:default": [
             "//tensorflow/core:framework",
