@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/client.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
@@ -59,6 +61,8 @@ class DistributedRuntimeCoordinationServiceClient
   absl::Status KeyValueDelete(std::string_view key) override;
   absl::Status WaitAtBarrier(std::string barrier_id,
                              absl::Duration timeout) override;
+  absl::Status WaitAtBarrier(std::string barrier_id, absl::Duration timeout,
+                             absl::Span<const int32_t> process_ids) override;
   absl::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
       override;
 
@@ -175,6 +179,20 @@ absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
 absl::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
     std::string barrier_id, absl::Duration timeout) {
   return coord_agent_->WaitAtBarrier(barrier_id, timeout, /*tasks=*/{});
+}
+
+absl::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
+    std::string barrier_id, absl::Duration timeout,
+    absl::Span<const int32_t> process_ids) {
+  std::vector<tensorflow::CoordinatedTask> tasks;
+  tasks.reserve(process_ids.size());
+  for (int32_t process_id : process_ids) {
+    tensorflow::CoordinatedTask task;
+    task.set_job_name("jax_worker");
+    task.set_task_id(process_id);
+    tasks.push_back(std::move(task));
+  }
+  return coord_agent_->WaitAtBarrier(barrier_id, timeout, tasks);
 }
 
 absl::StatusOr<tsl::CoordinationServiceAgent*>
