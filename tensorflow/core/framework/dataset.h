@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tsl/framework/allocator.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/thread_annotations.h"
 
@@ -1329,6 +1330,10 @@ class DatasetBase : public core::RefCounted {
 
   // Returns the number of bytes allocated for tensors of this dataset.
   virtual int64_t AllocatedBytes() const { return 0; }
+
+  // Returns the estimated element size based on `output_shapes()` and
+  // `output_dtypes()`.
+  virtual std::optional<int64_t> GetEstimatedElementSize() const;
 
   // Returns the estimated number of bytes used for tensors of this dataset.
   virtual int64_t TotalBytes() const { return 0; }
