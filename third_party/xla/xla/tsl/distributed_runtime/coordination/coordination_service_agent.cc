@@ -583,7 +583,7 @@ absl::StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
 absl::StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
     std::string_view key, absl::Duration timeout) {
   auto n = std::make_shared<absl::Notification>();
-  auto result = std::make_shared<StatusOr<std::string>>();
+  auto result = std::make_shared<absl::StatusOr<std::string>>();
   GetKeyValueAsync(
       key, [n, result](const absl::StatusOr<std::string>& status_or_value) {
         *result = status_or_value;
