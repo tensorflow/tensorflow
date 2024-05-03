@@ -173,7 +173,6 @@ add_mlir_library(MhloToStandard
 
   DEPENDS
   MLIRhlo_opsIncGen
-  MLIRlhlo_opsIncGen
   MLIRMhloLegalizeToStandardIncGen
   MLIRMhloPassIncGen
   MhloTypeConversion
