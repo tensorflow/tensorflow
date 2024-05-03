@@ -56,8 +56,8 @@ tf_native_cc_binary(
         "importer_test_min_max.cc",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
