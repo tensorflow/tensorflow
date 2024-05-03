@@ -751,6 +751,31 @@ func.func @op_custom_call_api_version_original(%arg0: tensor<f32>) -> tensor<f32
   func.return %0 : tensor<f32>
 }
 
+// CHECK-LABEL: "op_custom_call_custom_call_schedule_none"
+func.func @op_custom_call_custom_call_schedule_none(%arg0: tensor<f32>) -> tensor<f32> {
+  //      CHECK: "stablehlo.custom_call"(%arg0) <{backend_config = "", call_target_name = "foo"}> : (tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.custom_call"(%arg0) {
+    call_target_name = "foo",
+    custom_call_schedule = #mhlo<custom_call_schedule NONE>
+  } : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: "op_custom_call_custom_call_schedule_none_ffi"
+func.func @op_custom_call_custom_call_schedule_none_ffi(%arg0: tensor<f32>) -> tensor<f32> {
+  //      CHECK: "stablehlo.custom_call"(%arg0) <{backend_config = "", call_target_name = "mhlo.custom_call"}> {
+  // CHECK-SAME:   mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"},
+  // CHECK-SAME:   mhlo.version = 1 : i64
+  // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.custom_call"(%arg0) {
+    call_target_name = "foo",
+    backend_config = {foo = "bar"},
+    api_version = 4 : i32,
+    custom_call_schedule = #mhlo<custom_call_schedule NONE>
+  } : (tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
 // CHECK-LABEL: "op_divide"
 func.func @op_divide(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   // CHECK: "stablehlo.divide"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -1937,6 +1962,17 @@ func.func @attr_precision_config_invalid() -> tensor<8x8xf32> {
 
 // -----
 
+func.func @attr_invalid_nested_in_dictionary() -> tensor<8x8xf32> {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
+  %0 = "mhlo.custom_call"() {
+    call_target_name = "foo",
+    precision_config = {config = #mhlo<precision PACKED_NIBBLE>}
+  } : () -> tensor<8x8xf32>
+  func.return %0 : tensor<8x8xf32>
+}
+
+// -----
+
 func.func @op_add_dependency(%arg0: tensor<16xf32>, %arg1: !mhlo.token) -> tensor<16xf32> {
   // expected-error@+1 {{failed to legalize operation 'mhlo.add_dependency' that was explicitly marked illegal}}
   %0 = "mhlo.add_dependency"(%arg0, %arg1) : (tensor<16xf32>, !mhlo.token) -> tensor<16xf32>
@@ -2036,10 +2072,23 @@ func.func @op_convolution_unknown_dimension_numbers(%arg0: tensor<1x8x8x32x207xf
 
 // -----
 
-func.func @op_custom_call_custom_call_schedule(%arg0: tensor<f32>) -> tensor<f32> {
+func.func @op_custom_call_custom_call_schedule_earliest(%arg0: tensor<f32>) -> tensor<f32> {
   // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
   %0 = "mhlo.custom_call"(%arg0) {
     call_target_name = "foo",
+    custom_call_schedule = #mhlo<custom_call_schedule EARLIEST>
+  } : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
+func.func @op_custom_call_custom_call_schedule_earliest_ffi(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
+  %0 = "mhlo.custom_call"(%arg0) {
+    call_target_name = "foo",
+    backend_config = {foo = "bar"},
+    api_version = 4 : i32,
     custom_call_schedule = #mhlo<custom_call_schedule EARLIEST>
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>

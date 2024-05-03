@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
@@ -326,6 +327,15 @@ Attribute convertAttr(Attribute hloAttr) {
     }
     return ArrayAttr::get(hloAttrs.getContext(), stablehloAttrs);
   }
+  if (auto hloAttrs = mlir::dyn_cast<DictionaryAttr>(hloAttr)) {
+    SmallVector<NamedAttribute> stablehloAttrs;
+    for (auto hloAttr : hloAttrs) {
+      auto stablehloAttr = convertAttr(hloAttr.getValue());
+      if (!stablehloAttr) return {};
+      stablehloAttrs.push_back({hloAttr.getName(), stablehloAttr});
+    }
+    return DictionaryAttr::get(hloAttrs.getContext(), stablehloAttrs);
+  }
   return hloAttr;
 }
 
@@ -338,11 +348,9 @@ Attribute convertAttr(Attribute hloAttr) {
 // a dependency on upstream printing / parsing. If an attribute name is changed,
 // we can fork and  modify the code of `stringifyPrecision` as needed for
 // compatibility.
-Attribute encodePrecisionConfig(Attribute hloAttrs) {
-  auto hloArrayAttr = mlir::dyn_cast<ArrayAttr>(hloAttrs);
-  if (!hloArrayAttr) return {};
+Attribute encodePrecisionConfig(ArrayAttr precisionConfigAttr) {
   SmallVector<Attribute> stablehloAttrs;
-  for (auto hloAttr : hloArrayAttr) {
+  for (auto hloAttr : precisionConfigAttr) {
     auto precisionAttr = mlir::dyn_cast<mhlo::PrecisionAttr>(hloAttr);
     if (!precisionAttr) return {};
     StringRef precisionStr = mhlo::stringifyPrecision(precisionAttr.getValue());
@@ -350,7 +358,16 @@ Attribute encodePrecisionConfig(Attribute hloAttrs) {
     stablehloAttrs.push_back(
         StringAttr::get(hloAttr.getContext(), precisionStr));
   }
-  return ArrayAttr::get(hloAttrs.getContext(), stablehloAttrs);
+  return ArrayAttr::get(precisionConfigAttr.getContext(), stablehloAttrs);
+}
+
+template <typename FailedToConvertTy>
+LogicalResult notifyConversionFailure(ConversionPatternRewriter& rewriter,
+                                      Operation* op,
+                                      std::string const& errorMessage,
+                                      FailedToConvertTy ty) {
+  return rewriter.notifyMatchFailure(
+      op, [=](Diagnostic& diag) { diag << errorMessage << ": " << ty; });
 }
 
 // Converts region to function.
@@ -377,9 +394,11 @@ FailureOr<func::FuncOp> rewriteMhloRegionAsFunc(
   SetVector<Value> values;
   getUsedValuesDefinedAbove(region, values);
   if (!values.empty())
-    return op->emitError(
+    return notifyConversionFailure(
+        rewriter, op,
         "MHLO feature serialization in StableHLO only supports regions that "
-        "do not capture SSA values from above");
+        "do not capture SSA values from above",
+        op);
 
   // Insert into the parent module
   OpBuilder::InsertionGuard g(rewriter);
@@ -389,7 +408,8 @@ FailureOr<func::FuncOp> rewriteMhloRegionAsFunc(
   // Convert so that function signature is correct
   if (failed(rewriter.convertRegionTypes(&region, *typeConverter,
                                          /*entryConversion=*/nullptr)))
-    return failure();
+    return notifyConversionFailure(rewriter, op,
+                                   "failed to convert region types", op);
 
   // Create function with args that match block inputs / return types
   rewriter.setInsertionPointToEnd(&module.getBodyRegion().front());
@@ -404,6 +424,58 @@ FailureOr<func::FuncOp> rewriteMhloRegionAsFunc(
   rewriter.inlineRegionBefore(region, funcOp.getFunctionBody(), funcOp.end());
 
   return funcOp;
+}
+
+// Convert HLO attributes to StableHLO, using `convertAttr`.
+//
+// Has additional logic for skipping experimental features or default values
+// of features that aren't in StableHLO like custom_call_schedule.
+//
+template <typename HloOpTy>
+LogicalResult convertAttributes(ConversionPatternRewriter& rewriter,
+                                HloOpTy hloOp,
+                                SmallVector<NamedAttribute>& stablehloAttrs) {
+  for (NamedAttribute hloAttr : hloOp->getAttrs()) {
+    Attribute stablehloAttr;
+
+    // Skip custom_call_schedule if using the default attribute
+    if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
+      // custom_call_schedule is private to XLA, but we still want to allow
+      // #mhlo<custom_call_schedule NONE> (by ignoring it).
+      if (hloAttr.getName() == "custom_call_schedule" &&
+          hloOp.getCustomCallSchedule() == mhlo::CustomCallSchedule::NONE)
+        continue;
+    }
+
+    // If PACKED_NIBBLE enum support enabled, convert to string "PACKED_NIBBLE"
+    if constexpr (std::is_same<HloOpTy, mhlo::ConvolutionOp>::value ||
+                  std::is_same<HloOpTy, mhlo::DotGeneralOp>::value ||
+                  std::is_same<HloOpTy, mhlo::DotOp>::value) {
+      if (hloAttr.getName() == "precision_config" &&
+          hasPackedNibble(hloOp.getPrecisionConfig())) {
+        stablehloAttr =
+            encodePrecisionConfig(hloOp.getPrecisionConfig().value());
+      }
+    }
+
+    // Handle DenseElements --> DenseArray for certain StableHLO ops
+    if constexpr (!std::is_same<HloOpTy, mhlo::TanOp>::value &&
+                  !std::is_same<HloOpTy, mhlo::ErfOp>::value &&
+                  !std::is_same<HloOpTy, mhlo::TopKOp>::value) {
+      if (!stablehloAttr)
+        stablehloAttr = convertDenseArray<HloToStablehloOp<HloOpTy>>(
+            hloAttr.getName(), hloAttr.getValue());
+    }
+
+    // Generic handler for all other attributes
+    if (!stablehloAttr) stablehloAttr = convertAttr(hloAttr.getValue());
+
+    if (!stablehloAttr)
+      return notifyConversionFailure(rewriter, hloOp, "failed to convert attr ",
+                                     hloAttr.getValue());
+    stablehloAttrs.push_back({hloAttr.getName(), stablehloAttr});
+  }
+  return success();
 }
 
 // Experimental and public ops in MHLO that do not exist yet in StableHLO can be
@@ -434,23 +506,13 @@ LogicalResult rewriteMhloOpAsCustomCall(HloOpTy hloOp,
   SmallVector<Type> stablehloTypes;
   if (failed(
           typeConverter->convertTypes(hloOp->getResultTypes(), stablehloTypes)))
-    return failure();
+    return notifyConversionFailure(rewriter, hloOp,
+                                   "failed to convert op types", hloOp);
 
   // Convert MHLO attributes to StableHLO equivalents.
   SmallVector<NamedAttribute> stablehloConvertedAttrs;
-  for (NamedAttribute hloAttr : hloOp->getAttrs()) {
-    // Special case Attrs/Values not in StableHLO
-    // precision_config exists in both MHLO and StableHLO, but MHLO's version
-    // has additional enum values not supported in StableHLO.
-    Attribute stablehloAttr;
-    if (hloAttr.getName() == "precision_config") {
-      stablehloAttr = encodePrecisionConfig(hloAttr.getValue());
-    } else {
-      stablehloAttr = convertAttr(hloAttr.getValue());
-    }
-    if (!stablehloAttr) return failure();
-    stablehloConvertedAttrs.push_back({hloAttr.getName(), stablehloAttr});
-  }
+  if (failed(convertAttributes(rewriter, hloOp, stablehloConvertedAttrs)))
+    return failure();
 
   // Create functions from regions
   std::optional<func::FuncOp> stablehloConvertedRegion;
@@ -494,15 +556,21 @@ class HloToStablehloCustomCallOpConverter
   LogicalResult matchAndRewrite(
       HloOpTy hloOp, typename HloOpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    if (hasPrivateFeaturesNotInStablehlo(hloOp)) return failure();
+    if (hasPrivateFeaturesNotInStablehlo(hloOp))
+      return notifyConversionFailure(
+          rewriter, hloOp, "op has private features not in StableHLO", hloOp);
     bool hasExperimentalFeatures = hasExperimentalFeaturesNotInStablehlo(hloOp);
-    if (!allowExperimentalFeatures && hasExperimentalFeatures) return failure();
+    if (!allowExperimentalFeatures && hasExperimentalFeatures)
+      return notifyConversionFailure(
+          rewriter, hloOp,
+          "op has experimental features, but conversion not enabled", hloOp);
     auto hasPublicFeatures = hasPublicFeaturesNotInStablehlo(hloOp);
     if (hasPublicFeatures || hasExperimentalFeatures) {
       return rewriteMhloOpAsCustomCall(
           hloOp, rewriter, this->getTypeConverter(), adaptor.getOperands());
     }
-    return failure();
+    return notifyConversionFailure(
+        rewriter, hloOp, "op not candidate for custom_call conversion", hloOp);
   }
 
   bool allowExperimentalFeatures;
@@ -572,22 +640,8 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
     // If an attribute is not defined in MHLO, then it is unchanged,
     // with the exception of ArrayAttr which is converted recursively.
     SmallVector<NamedAttribute> stablehloAttrs;
-    for (NamedAttribute hloAttr : hloOp->getAttrs()) {
-      if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
-        // custom_call_schedule is private to XLA, but we still want to allow
-        // #mhlo<custom_call_schedule NONE> (by ignoring it).
-        if (hloAttr.getName() == "custom_call_schedule" &&
-            hloOp.getCustomCallSchedule() == mhlo::CustomCallSchedule::NONE)
-          continue;
-      }
-      auto stablehloAttr = convertDenseArray<HloToStablehloOp<HloOpTy>>(
-          hloAttr.getName(), hloAttr.getValue());
-      if (!stablehloAttr) {
-        stablehloAttr = convertAttr(hloAttr.getValue());
-      }
-      if (!stablehloAttr) return failure();
-      stablehloAttrs.push_back({hloAttr.getName(), stablehloAttr});
-    }
+    if (failed(convertAttributes(rewriter, hloOp, stablehloAttrs)))
+      return failure();
 
     // Convert the MHLO operation to a StableHLO equivalent.
     // This can almost be done in a generic fashion, except for stablehlo.case
