@@ -645,6 +645,1536 @@ TEST_P(MemorySpaceAssignmentTest, NegateChain) {
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
 }
 
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopyTest) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  negate0 = f32[2,3]{1,0} negate(p1)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  negate3 = f32[2,3]{1,0} negate(negate2)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  negate6 = f32[2,3]{1,0} negate(negate5)
+  negate7 = f32[2,3]{1,0} negate(negate6)
+  p0_copy = f32[2,3]{1,0} copy(p0)
+  ROOT add0 = f32[2,3]{1,0} add(p0_copy, negate7)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+// This is the case where prefetched p0 at the root and p0_copy need distinct
+// async copies, and it's incorrect to use the same async copy for both of them
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopyDoubleUseTest) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  negate0 = f32[2,3]{1,0} negate(p1)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  negate3 = f32[2,3]{1,0} negate(negate2)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  negate6 = f32[2,3]{1,0} negate(negate5)
+  negate7 = f32[2,3]{1,0} negate(negate6)
+  p0_copy = f32[2,3]{1,0} copy(p0)
+  add = add(p0_copy, p0)
+  ROOT tuple = tuple(negate7, add)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       DuplicateCopyDoubleUseWithSimplificationTest) {
+  absl::string_view hlo_string = R"(
+HloModule jit_scan, is_scheduled=true, entry_computation_layout={(s32[]{:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)})->(s32[]{:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)}, s32[4]{0:T(128)}, f32[4]{0:T(128)}, /*index=5*/f32[4]{0:T(128)}, s32[4]{0:T(128)})}, allow_spmd_sharding_propagation_to_parameters={true,true,true}, allow_spmd_sharding_propagation_to_output={true,true,true,true,true,true,true}
+
+wide.region_0.10.clone.clone.clone {
+  constant.17..sunk = s32[]{:T(128)} constant(4)
+  constant.4..sunk = s32[]{:T(128)} constant(0)
+  constant.15..sunk = s32[]{:T(128)} constant(1)
+  wide.arg_tuple.4 = (s32[]{:T(128)}, s32[]{:T(128)}, f32[4]{0:T(128)}, s32[4]{0:T(128)}, f32[4]{0:T(128)}, /*index=5*/f32[4]{0:T(128)}, f32[4]{0:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}) parameter(0)
+  get-tuple-element.172 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.4), index=0
+  get-tuple-element.183 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.4), index=1
+  add.27 = s32[]{:T(128)} add(get-tuple-element.183, get-tuple-element.172)
+  add.28 = s32[]{:T(128)} add(add.27, constant.17..sunk)
+  compare.17 = pred[]{:T(512)} compare(add.27, constant.4..sunk), direction=LT
+  select.14 = s32[]{:T(128)} select(compare.17, add.28, add.27)
+  get-tuple-element.188 = f32[4]{0:T(128)} get-tuple-element(wide.arg_tuple.4), index=6
+  dynamic-slice.3 = f32[1]{0:T(128)} dynamic-slice(get-tuple-element.188, select.14), dynamic_slice_sizes={1}
+  cosine.8 = f32[1]{0:T(128)} cosine(dynamic-slice.3)
+  sine.8 = f32[1]{0:T(128)} sine(cosine.8)
+  get-tuple-element.174 = f32[4]{0:T(128)} get-tuple-element(wide.arg_tuple.4), index=2
+  dynamic-update-slice.15 = f32[4]{0:T(128)} dynamic-update-slice(get-tuple-element.174, sine.8, select.14)
+  cosine.9 = f32[1]{0:T(128)} cosine(cosine.8)
+  get-tuple-element.177 = f32[4]{0:T(128)} get-tuple-element(wide.arg_tuple.4), index=5
+  dynamic-update-slice.18 = f32[4]{0:T(128)} dynamic-update-slice(get-tuple-element.177, cosine.9, get-tuple-element.172)
+  sine.9 = f32[1]{0:T(128)} sine(dynamic-slice.3)
+  get-tuple-element.176 = f32[4]{0:T(128)} get-tuple-element(wide.arg_tuple.4), index=4
+  dynamic-update-slice.17 = f32[4]{0:T(128)} dynamic-update-slice(get-tuple-element.176, sine.9, get-tuple-element.172)
+  bitcast.1 = s32[1]{0:T(128)} bitcast(select.14)
+  get-tuple-element.175 = s32[4]{0:T(128)} get-tuple-element(wide.arg_tuple.4), index=3
+  dynamic-update-slice.16 = s32[4]{0:T(128)} dynamic-update-slice(get-tuple-element.175, bitcast.1, get-tuple-element.172)
+  add.26 = s32[]{:T(128)} add(get-tuple-element.172, constant.15..sunk)
+  get-tuple-element.189 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.4), index=7
+  get-tuple-element.190 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.4), index=8
+  get-tuple-element.191 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.4), index=9
+  ROOT tuple.19 = (s32[]{:T(128)}, s32[]{:T(128)}, f32[4]{0:T(128)}, s32[4]{0:T(128)}, f32[4]{0:T(128)}, /*index=5*/f32[4]{0:T(128)}, f32[4]{0:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}) tuple(add.26, get-tuple-element.183, dynamic-update-slice.15, dynamic-update-slice.16, dynamic-update-slice.17, dynamic-update-slice.18, get-tuple-element.188, get-tuple-element.189, get-tuple-element.190, get-tuple-element.191)
+}
+
+wide.region_1.60.clone.clone {
+  constant.19 = s32[]{:T(128)} constant(4)
+  wide.arg_tuple.3 = (s32[]{:T(128)}, s32[]{:T(128)}, f32[4]{0:T(128)}, s32[4]{0:T(128)}, f32[4]{0:T(128)}, /*index=5*/f32[4]{0:T(128)}, f32[4]{0:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}) parameter(0)
+  get-tuple-element.133 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.3), index=0
+  ROOT compare.16 = pred[]{:T(512)} compare(get-tuple-element.133, constant.19), direction=LT
+}
+
+ENTRY main.82 {
+  constant.4 = s32[]{:T(128)} constant(0)
+  constant.15 = s32[]{:T(128)} constant(1)
+  constant.17 = s32[]{:T(128)} constant(4)
+  Arg_0.1 = s32[]{:T(128)} parameter(0)
+  Arg_1.2 = f32[4]{0:T(128)} parameter(1)
+  Arg_2.3 = f32[4]{0:T(128)} parameter(2)
+  copy.23 = f32[4]{0:T(128)} copy(Arg_2.3)
+  copy.4 = s32[]{:T(128)} copy(constant.4)
+  custom-call = s32[4]{0:T(128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.1 = f32[4]{0:T(128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.2 = f32[4]{0:T(128)} custom-call(), custom_call_target="AllocateBuffer"
+  tuple.17 = (s32[]{:T(128)}, s32[]{:T(128)}, f32[4]{0:T(128)}, s32[4]{0:T(128)}, f32[4]{0:T(128)}, /*index=5*/f32[4]{0:T(128)}, f32[4]{0:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}) tuple(copy.4, Arg_0.1, copy.23, custom-call, custom-call.1, custom-call.2, Arg_1.2, constant.15, constant.4, constant.17)
+  while.2 = (s32[]{:T(128)}, s32[]{:T(128)}, f32[4]{0:T(128)}, s32[4]{0:T(128)}, f32[4]{0:T(128)}, /*index=5*/f32[4]{0:T(128)}, f32[4]{0:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}) while(tuple.17), condition=wide.region_1.60.clone.clone, body=wide.region_0.10.clone.clone.clone
+  get-tuple-element.198 = s32[4]{0:T(128)} get-tuple-element(while.2), index=3
+  get-tuple-element.70 = s32[]{:T(128)} get-tuple-element(while.2), index=0
+  copy.22 = s32[]{:T(128)S(6)} copy(Arg_0.1)
+  add.19 = s32[]{:T(128)} add(copy.22, get-tuple-element.70)
+  get-tuple-element.194 = f32[4]{0:T(128)} get-tuple-element(while.2), index=2
+  get-tuple-element.196 = f32[4]{0:T(128)} get-tuple-element(while.2), index=4
+  get-tuple-element.197 = f32[4]{0:T(128)} get-tuple-element(while.2), index=5
+  tuple.20 = (s32[]{:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)}, s32[4]{0:T(128)}, f32[4]{0:T(128)}, /*index=5*/f32[4]{0:T(128)}, s32[4]{0:T(128)}) tuple(add.19, Arg_1.2, get-tuple-element.194, get-tuple-element.198, get-tuple-element.196, get-tuple-element.197, get-tuple-element.198)
+  get-tuple-element.199 = s32[]{:T(128)} get-tuple-element(tuple.20), index=0
+  get-tuple-element.200 = f32[4]{0:T(128)} get-tuple-element(tuple.20), index=1
+  get-tuple-element.201 = f32[4]{0:T(128)} get-tuple-element(tuple.20), index=2
+  get-tuple-element.202 = s32[4]{0:T(128)} get-tuple-element(tuple.20), index=3
+  get-tuple-element.203 = f32[4]{0:T(128)} get-tuple-element(tuple.20), index=4
+  get-tuple-element.204 = f32[4]{0:T(128)} get-tuple-element(tuple.20), index=5
+  get-tuple-element.205 = s32[4]{0:T(128)} get-tuple-element(tuple.20), index=6
+  copy.24 = f32[4]{0:T(128)} copy(get-tuple-element.200)
+  copy.25 = s32[4]{0:T(128)} copy(get-tuple-element.205)
+  ROOT tuple.21 = (s32[]{:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)}, s32[4]{0:T(128)}, f32[4]{0:T(128)}, /*index=5*/f32[4]{0:T(128)}, s32[4]{0:T(128)}) tuple(get-tuple-element.199, copy.24, get-tuple-element.201, get-tuple-element.202, get-tuple-element.203, get-tuple-element.204, copy.25)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 128 * 1024 * 1024;
+  AssignMemorySpace(module.get(), options);
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopyGTETest) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = (f32[2,3]{1,0}, f32[]) parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  negate0 = f32[2,3]{1,0} negate(p1)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  negate3 = f32[2,3]{1,0} negate(negate2)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  negate6 = f32[2,3]{1,0} negate(negate5)
+  negate7 = f32[2,3]{1,0} negate(negate6)
+  gte = get-tuple-element(p0), index=0
+  p0_copy = f32[2,3]{1,0} copy(gte)
+  ROOT add0 = f32[2,3]{1,0} add(p0_copy, negate7)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateNestedCopyTest) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[4,6]{1,0} parameter(0)
+  p1 = f32[4,6]{1,0} parameter(1)
+  negate0 = f32[4,6]{1,0} negate(p1)
+  negate1 = f32[4,6]{1,0} negate(negate0)
+  negate2 = f32[4,6]{1,0} negate(negate1)
+  negate3 = f32[4,6]{1,0} negate(negate2)
+  negate4 = f32[4,6]{1,0} negate(negate3)
+  negate5 = f32[4,6]{1,0} negate(negate4)
+  negate6 = f32[4,6]{1,0} negate(negate5)
+  negate7 = f32[4,6]{1,0} negate(negate6)
+  p0_copy_a = f32[4,6]{1,0} copy(p0)
+  p0_copy_b = f32[4,6]{1,0} copy(p0_copy_a)
+  ROOT add0 = f32[4,6]{1,0} add(p0_copy_b, negate7)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateLongNestedCopyTest) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[4,6]{1,0} parameter(0)
+  p1 = f32[4,6]{1,0} parameter(1)
+  negate0 = f32[4,6]{1,0} negate(p1)
+  negate1 = f32[4,6]{1,0} negate(negate0)
+  negate2 = f32[4,6]{1,0} negate(negate1)
+  negate3 = f32[4,6]{1,0} negate(negate2)
+  negate4 = f32[4,6]{1,0} negate(negate3)
+  negate5 = f32[4,6]{1,0} negate(negate4)
+  negate6 = f32[4,6]{1,0} negate(negate5)
+  negate7 = f32[4,6]{1,0} negate(negate6)
+  p0_copy_a = f32[4,6]{1,0} copy(p0)
+  p0_copy_b = f32[4,6]{1,0} copy(p0_copy_a)
+  negate10 = f32[4,6]{1,0} negate(negate7)
+  negate11 = f32[4,6]{1,0} negate(negate10)
+  negate12 = f32[4,6]{1,0} negate(negate11)
+  negate13 = f32[4,6]{1,0} negate(negate12)
+  negate14 = f32[4,6]{1,0} negate(negate13)
+  negate15 = f32[4,6]{1,0} negate(negate14)
+  negate16 = f32[4,6]{1,0} negate(negate15)
+  negate17 = f32[4,6]{1,0} negate(negate16)
+  ROOT add0 = f32[4,6]{1,0} add(p0_copy_b, negate17)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopyConstantTest) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  c0 = f32[2,3]{1,0} constant({ {0, 0, 0}, {0, 0, 0} })
+  p0 = f32[2,3]{1,0} parameter(0)
+  negate0 = f32[2,3]{1,0} negate(p0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  negate3 = f32[2,3]{1,0} negate(negate2)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  negate6 = f32[2,3]{1,0} negate(negate5)
+  negate7 = f32[2,3]{1,0} negate(negate6)
+  c0_copy = f32[2,3]{1,0} copy(c0)
+  ROOT add0 = f32[2,3]{1,0} add(c0_copy, negate7)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+// TODO(mehrdadk): copy.3 is getting removed in this test. Verify it doesn't
+// cause any problems
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopyPreAssignedAndRootTest) {
+  absl::string_view hlo_string = R"(
+HloModule jit_run, is_scheduled=true
+
+%fused_computation (param_0: f32[2]) -> f32[2] {
+  %param_0 = f32[2]{0:T(128)} parameter(0)
+  %constant.3 = f32[]{:T(128)} constant(93)
+  %broadcast.1 = f32[2]{0:T(128)} broadcast(f32[]{:T(128)} %constant.3), dimensions={}
+  ROOT %add.4 = f32[2]{0:T(128)} add(f32[2]{0:T(128)} %param_0, f32[2]{0:T(128)} %broadcast.1)
+}
+
+ENTRY %main.33 (Arg_0.1: f32[], Arg_1.2: f32[2], Arg_2.3: f32[], Arg_3.4: f32[2]) -> (f32[2], f32[], f32[2], f32[], f32[2]) {
+  %constant.2 = f32[]{:T(128)} constant(92)
+  %constant.1 = f32[]{:T(128)} constant(1)
+  %constant.8 = f32[2]{0:T(128)} constant({2, 3})
+  %Arg_2.3 = f32[]{:T(128)} parameter(2)
+  %Arg_0.1 = f32[]{:T(128)} parameter(0)
+  %Arg_3.4 = f32[2]{0:T(128)} parameter(3)
+  %Arg_1.2 = f32[2]{0:T(128)} parameter(1)
+  %copy.2 = f32[]{:T(128)S(6)} copy(f32[]{:T(128)} %Arg_2.3)
+  %add.3 = f32[]{:T(128)} add(f32[]{:T(128)S(6)} %copy.2, f32[]{:T(128)} %constant.2)
+  %copy.1 = f32[]{:T(128)S(6)} copy(f32[]{:T(128)} %Arg_0.1)
+  %add.2 = f32[]{:T(128)} add(f32[]{:T(128)S(6)} %copy.1, f32[]{:T(128)} %constant.1)
+  %add.0 = f32[2]{0:T(128)} add(f32[2]{0:T(128)} %Arg_1.2, f32[2]{0:T(128)} %constant.8)
+  %fusion = f32[2]{0:T(128)} fusion(f32[2]{0:T(128)} %Arg_3.4), kind=kLoop, calls=%fused_computation
+  %tuple = (f32[2]{0:T(128)}, f32[]{:T(128)}, f32[2]{0:T(128)}, f32[]{:T(128)}, f32[2]{0:T(128)}) tuple(f32[2]{0:T(128)} %constant.8, f32[]{:T(128)} %add.2, f32[2]{0:T(128)} %add.0, f32[]{:T(128)} %add.3, f32[2]{0:T(128)} %fusion)
+  %get-tuple-element.5 = f32[2]{0:T(128)} get-tuple-element((f32[2]{0:T(128)}, f32[]{:T(128)}, f32[2]{0:T(128)}, f32[]{:T(128)}, f32[2]{0:T(128)}) %tuple), index=0
+  %get-tuple-element.6 = f32[]{:T(128)} get-tuple-element((f32[2]{0:T(128)}, f32[]{:T(128)}, f32[2]{0:T(128)}, f32[]{:T(128)}, f32[2]{0:T(128)}) %tuple), index=1
+  %get-tuple-element.7 = f32[2]{0:T(128)} get-tuple-element((f32[2]{0:T(128)}, f32[]{:T(128)}, f32[2]{0:T(128)}, f32[]{:T(128)}, f32[2]{0:T(128)}) %tuple), index=2
+  %get-tuple-element.8 = f32[]{:T(128)} get-tuple-element((f32[2]{0:T(128)}, f32[]{:T(128)}, f32[2]{0:T(128)}, f32[]{:T(128)}, f32[2]{0:T(128)}) %tuple), index=3
+  %get-tuple-element.9 = f32[2]{0:T(128)} get-tuple-element((f32[2]{0:T(128)}, f32[]{:T(128)}, f32[2]{0:T(128)}, f32[]{:T(128)}, f32[2]{0:T(128)}) %tuple), index=4
+  %copy.3 = f32[2]{0:T(128)} copy(f32[2]{0:T(128)} %get-tuple-element.5)
+  ROOT %tuple.1 = (f32[2]{0:T(128)}, f32[]{:T(128)}, f32[2]{0:T(128)}, f32[]{:T(128)}, f32[2]{0:T(128)}) tuple(f32[2]{0:T(128)} %copy.3, f32[]{:T(128)} %get-tuple-element.6, f32[2]{0:T(128)} %get-tuple-element.7, f32[]{:T(128)} %get-tuple-element.8, f32[2]{0:T(128)} %get-tuple-element.9)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopyBugTestA) {
+  absl::string_view hlo_string = R"(
+HloModule jit_for, is_scheduled=true, entry_computation_layout={(f32[4]{0:T(128)}, f32[4]{0:T(128)})->(f32[4]{0:T(128)}, f32[4]{0:T(128)})}, allow_spmd_sharding_propagation_to_parameters={true,true}, allow_spmd_sharding_propagation_to_output={true,true}
+
+ENTRY %main.82 (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> (f32[4], f32[4]) {
+  %constant.23 = s32[]{:T(128)} constant(3), metadata={op_name="jit(for)/jit(main)/while/body/select_n" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}
+  %constant.19 = s32[]{:T(128)} constant(2), metadata={op_name="jit(for)/jit(main)/while/body/select_n" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}
+  %constant.4 = s32[]{:T(128)} constant(0)
+  %constant.3 = s32[]{:T(128)} constant(1), metadata={op_name="jit(for)/jit(main)/while/body/select_n" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}
+  %Arg_1.2 = f32[4]{0:T(128)} parameter(1)
+  %Arg_0.1 = f32[4]{0:T(128)} parameter(0)
+  %copy.9 = f32[4]{0:T(128)} copy(f32[4]{0:T(128)} %Arg_0.1)
+  %bitcast = f32[1]{0:T(128)} bitcast(f32[4]{0:T(128)} %Arg_1.2), metadata={op_name="jit(for)/jit(main)/dynamic_slice[slice_sizes=(1,)]" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}
+  %bitcast.1 = f32[1]{0:T(128)} bitcast(f32[4]{0:T(128)} %copy.9), metadata={op_name="jit(for)/jit(main)/dynamic_slice[slice_sizes=(1,)]" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}
+  %copy.1 = f32[4]{0:T(128)} copy(f32[4]{0:T(128)} %Arg_1.2)
+  %dynamic-update-slice.7 = f32[4]{0:T(128)} dynamic-update-slice(f32[4]{0:T(128)} %copy.1, f32[1]{0:T(128)} %bitcast.1, s32[]{:T(128)} %constant.4), metadata={op_name="jit(for)/jit(main)/dynamic_update_slice" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"4294967295","ones":"0","bitwidth":"32"}]},"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+  %slice = f32[1]{0:T(128)} slice(f32[4]{0:T(128)} %dynamic-update-slice.7), slice={[1:2]}, metadata={op_name="jit(for)/jit(main)/while/body/dynamic_slice[slice_sizes=(1,)]" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}
+  %dynamic-update-slice.8 = f32[4]{0:T(128)} dynamic-update-slice(f32[4]{0:T(128)} %copy.9, f32[1]{0:T(128)} %bitcast, s32[]{:T(128)} %constant.4), control-predecessors={%dynamic-update-slice.7, %bitcast.1}, metadata={op_name="jit(for)/jit(main)/dynamic_update_slice" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"4294967295","ones":"0","bitwidth":"32"}]},"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+  %slice.1 = f32[1]{0:T(128)} slice(f32[4]{0:T(128)} %dynamic-update-slice.8), slice={[1:2]}, control-predecessors={%dynamic-update-slice.7, %bitcast.1}, metadata={op_name="jit(for)/jit(main)/while/body/dynamic_slice[slice_sizes=(1,)]" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}
+  %dynamic-update-slice.0 = f32[4]{0:T(128)} dynamic-update-slice(f32[4]{0:T(128)} %dynamic-update-slice.8, f32[1]{0:T(128)} %slice, s32[]{:T(128)} %constant.3), control-predecessors={%slice.1}, metadata={op_name="jit(for)/jit(main)/while/body/dynamic_update_slice" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"4294967294","ones":"1","bitwidth":"32"}]},"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+  %slice.3 = f32[1]{0:T(128)} slice(f32[4]{0:T(128)} %dynamic-update-slice.0), slice={[2:3]}, control-predecessors={%slice.1}, metadata={op_name="jit(for)/jit(main)/while/body/dynamic_slice[slice_sizes=(1,)]" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}
+  %dynamic-update-slice.1 = f32[4]{0:T(128)} dynamic-update-slice(f32[4]{0:T(128)} %dynamic-update-slice.7, f32[1]{0:T(128)} %slice.1, s32[]{:T(128)} %constant.3), control-predecessors={%slice}, metadata={op_name="jit(for)/jit(main)/while/body/dynamic_update_slice" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"4294967294","ones":"1","bitwidth":"32"}]},"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+  %slice.2 = f32[1]{0:T(128)} slice(f32[4]{0:T(128)} %dynamic-update-slice.1), slice={[2:3]}, control-predecessors={%slice}, metadata={op_name="jit(for)/jit(main)/while/body/dynamic_slice[slice_sizes=(1,)]" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}
+  %dynamic-update-slice.3 = f32[4]{0:T(128)} dynamic-update-slice(f32[4]{0:T(128)} %dynamic-update-slice.1, f32[1]{0:T(128)} %slice.3, s32[]{:T(128)} %constant.19), control-predecessors={%slice.2}, metadata={op_name="jit(for)/jit(main)/while/body/dynamic_update_slice" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"4294967293","ones":"2","bitwidth":"32"}]},"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+  %slice.4 = f32[1]{0:T(128)} slice(f32[4]{0:T(128)} %dynamic-update-slice.3), slice={[3:4]}, control-predecessors={%slice.2}, metadata={op_name="jit(for)/jit(main)/while/body/dynamic_slice[slice_sizes=(1,)]" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}
+  %dynamic-update-slice.2 = f32[4]{0:T(128)} dynamic-update-slice(f32[4]{0:T(128)} %dynamic-update-slice.0, f32[1]{0:T(128)} %slice.2, s32[]{:T(128)} %constant.19), control-predecessors={%slice.3}, metadata={op_name="jit(for)/jit(main)/while/body/dynamic_update_slice" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"4294967293","ones":"2","bitwidth":"32"}]},"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+  %slice.7 = f32[1]{0:T(128)} slice(f32[4]{0:T(128)} %dynamic-update-slice.2), slice={[3:4]}, control-predecessors={%slice.3}, metadata={op_name="jit(for)/jit(main)/while/body/dynamic_slice[slice_sizes=(1,)]" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}
+  %dynamic-update-slice.4 = f32[4]{0:T(128)} dynamic-update-slice(f32[4]{0:T(128)} %dynamic-update-slice.2, f32[1]{0:T(128)} %slice.4, s32[]{:T(128)} %constant.23), control-predecessors={%slice.7}, metadata={op_name="jit(for)/jit(main)/while/body/dynamic_update_slice" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"4294967292","ones":"3","bitwidth":"32"}]},"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+  %dynamic-update-slice.5 = f32[4]{0:T(128)} dynamic-update-slice(f32[4]{0:T(128)} %dynamic-update-slice.3, f32[1]{0:T(128)} %slice.7, s32[]{:T(128)} %constant.23), control-predecessors={%slice.4}, metadata={op_name="jit(for)/jit(main)/while/body/dynamic_update_slice" source_file="third_party/py/jax/tests/for_loop_test.py" source_line=375}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"4294967292","ones":"3","bitwidth":"32"}]},"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+  ROOT %tuple.81 = (f32[4]{0:T(128)}, f32[4]{0:T(128)}) tuple(f32[4]{0:T(128)} %dynamic-update-slice.4, f32[4]{0:T(128)} %dynamic-update-slice.5)
+}
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopyBugTestB) {
+  absl::string_view hlo_string = R"(
+HloModule jit_for, is_scheduled=true, entry_computation_layout={(f32[4]{0:T(128)}, f32[4]{0:T(128)})->(f32[4]{0:T(128)}, f32[4]{0:T(128)})}, allow_spmd_sharding_propagation_to_parameters={true,true}, allow_spmd_sharding_propagation_to_output={true,true}
+
+ENTRY main.134 {
+  constant.23 = s32[]{:T(128)} constant(3)
+  constant.16 = s32[]{:T(128)} constant(2)
+  constant.4 = s32[]{:T(128)} constant(0)
+  constant.3 = s32[]{:T(128)} constant(1)
+  Arg_1.2 = f32[4]{0:T(128)} parameter(1)
+  Arg_0.1 = f32[4]{0:T(128)} parameter(0)
+  copy.17 = f32[4]{0:T(128)} copy(Arg_0.1)
+  bitcast = f32[1]{0:T(128)} bitcast(Arg_1.2)
+  bitcast.1 = f32[1]{0:T(128)} bitcast(copy.17)
+  copy.1 = f32[4]{0:T(128)} copy(Arg_1.2)
+  dynamic-update-slice.7 = f32[4]{0:T(128)} dynamic-update-slice(copy.1, bitcast.1, constant.4)
+  bitcast.2 = f32[1]{0:T(128)} bitcast(dynamic-update-slice.7)
+  dynamic-update-slice.8 = f32[4]{0:T(128)} dynamic-update-slice(copy.17, bitcast, constant.4)
+  bitcast.3 = f32[1]{0:T(128)} bitcast(dynamic-update-slice.8)
+  copy.3 = f32[4]{0:T(128)} copy(dynamic-update-slice.7)
+  dynamic-update-slice.11 = f32[4]{0:T(128)} dynamic-update-slice(copy.3, bitcast.3, constant.4)
+  slice = f32[1]{0:T(128)} slice(dynamic-update-slice.11), slice={[1:2]}
+  dynamic-update-slice.12 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.8, bitcast.2, constant.4)
+  slice.1 = f32[1]{0:T(128)} slice(dynamic-update-slice.12), slice={[1:2]}
+  dynamic-update-slice.0 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.12, slice, constant.3)
+  slice.3 = f32[1]{0:T(128)} slice(dynamic-update-slice.0), slice={[1:2]}
+  dynamic-update-slice.1 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.11, slice.1, constant.3)
+  slice.2 = f32[1]{0:T(128)} slice(dynamic-update-slice.1), slice={[1:2]}
+  dynamic-update-slice.3 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.1, slice.3, constant.3)
+  slice.4 = f32[1]{0:T(128)} slice(dynamic-update-slice.3), slice={[2:3]}
+  dynamic-update-slice.2 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.0, slice.2, constant.3)
+  slice.7 = f32[1]{0:T(128)} slice(dynamic-update-slice.2), slice={[2:3]}
+  dynamic-update-slice.4 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.2, slice.4, constant.16)
+  slice.11 = f32[1]{0:T(128)} slice(dynamic-update-slice.4), slice={[2:3]}
+  dynamic-update-slice.5 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.3, slice.7, constant.16)
+  slice.8 = f32[1]{0:T(128)} slice(dynamic-update-slice.5), slice={[2:3]}
+  dynamic-update-slice.9 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.5, slice.11, constant.16)
+  slice.12 = f32[1]{0:T(128)} slice(dynamic-update-slice.9), slice={[3:4]}
+  dynamic-update-slice.6 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.4, slice.8, constant.16)
+  slice.13 = f32[1]{0:T(128)} slice(dynamic-update-slice.6), slice={[3:4]}
+  dynamic-update-slice.10 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.6, slice.12, constant.23)
+  slice.15 = f32[1]{0:T(128)} slice(dynamic-update-slice.10), slice={[3:4]}
+  dynamic-update-slice.13 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.9, slice.13, constant.23)
+  slice.14 = f32[1]{0:T(128)} slice(dynamic-update-slice.13), slice={[3:4]}
+  dynamic-update-slice.15 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.13, slice.15, constant.23)
+  dynamic-update-slice.14 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.10, slice.14, constant.23)
+  ROOT tuple.133 = (f32[4]{0:T(128)}, f32[4]{0:T(128)}) tuple(dynamic-update-slice.14, dynamic-update-slice.15)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  // HloPrintOptions print_options = HloPrintOptions::ShortParsable();
+  // std::cout << module.get()->ToString(print_options);
+
+  AssignMemorySpace(module.get());
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopyWhileDirectTest) {
+  absl::string_view hlo_string = R"(
+HloModule jit_while, is_scheduled=true, entry_computation_layout={(f32[3,3]{1,0:T(4,128)})->f32[3,3]{1,0:T(4,128)}}, allow_spmd_sharding_propagation_to_parameters={true}, allow_spmd_sharding_propagation_to_output={true}
+
+%region_0.2 (Arg_.3: f32[3,3]) -> f32[3,3] {
+  %Arg_.3 = f32[3,3]{1,0:T(4,128)} parameter(0)
+  ROOT %multiply.4 = f32[3,3]{1,0:T(4,128)} multiply(f32[3,3]{1,0:T(4,128)} %Arg_.3, f32[3,3]{1,0:T(4,128)} %Arg_.3)
+}
+
+%region_1.5 (Arg_.6: f32[3,3]) -> pred[] {
+  %constant = f32[1,1]{1,0:T(1,128)} constant({ {8} })
+  %Arg_.6 = f32[3,3]{1,0:T(4,128)} parameter(0)
+  %slice.8 = f32[1,1]{1,0:T(1,128)} slice(f32[3,3]{1,0:T(4,128)} %Arg_.6), slice={[0:1], [2:3]}
+  %compare.0 = pred[1,1]{1,0:T(4,128)(4,1)} compare(f32[1,1]{1,0:T(1,128)} %slice.8, f32[1,1]{1,0:T(1,128)} %constant), direction=LE
+  ROOT %bitcast = pred[]{:T(512)} bitcast(pred[1,1]{1,0:T(4,128)(4,1)} %compare.0)
+}
+
+ENTRY %main.12 (Arg_0.1: f32[3,3]) -> f32[3,3] {
+  %Arg_0.1 = f32[3,3]{1,0:T(4,128)} parameter(0)
+  %copy.4 = f32[3,3]{1,0:T(4,128)} copy(f32[3,3]{1,0:T(4,128)} %Arg_0.1)
+  ROOT %while.11 = f32[3,3]{1,0:T(4,128)} while(f32[3,3]{1,0:T(4,128)} %copy.4), condition=%region_1.5, body=%region_0.2
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopyBugIgammacTest) {
+  absl::string_view hlo_string = R"(
+HloModule jit_f, is_scheduled=true, entry_computation_layout={(f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)})->(f32[]{:T(128)}, f32[]{:T(128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, /*index=5*/f32[5,5,4,3]{1,2,3,0:T(4,128)}, s32[5]{0:T(128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, /*index=10*/f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, s32[5]{0:T(128)}, s32[4]{0:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, /*index=15*/f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)})}, allow_spmd_sharding_propagation_to_parameters={true,true}, allow_spmd_sharding_propagation_to_output={true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true}
+
+region_6.471 {
+  Arg_0.472 = f32[]{:T(128)} parameter(0)
+  Arg_1.473 = f32[]{:T(128)} parameter(1)
+  ROOT add.474 = f32[]{:T(128)} add(Arg_0.472, Arg_1.473)
+}
+
+region_7.476 {
+  Arg_0.477 = f32[]{:T(128)} parameter(0)
+  Arg_1.478 = f32[]{:T(128)} parameter(1)
+  ROOT add.479 = f32[]{:T(128)} add(Arg_0.477, Arg_1.478)
+}
+
+wide.wide.region_2.16.clone.clone.clone.clone {
+  constant.120..sunk.2..sunk2 = s32[]{:T(128)} constant(1)
+  wide.wide.arg_tuple.13 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, s32[]{:T(128)}, s32[]{:T(128)}, /*index=5*/f32[3]{0:T(128)}, f32[3]{0:T(128)}, f32[3]{0:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, /*index=10*/f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, s32[]{:T(128)}, f32[1,1,1]{0,1,2:T(1,128)}) parameter(0)
+  get-tuple-element.1363 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.13), index=0
+  get-tuple-element.1385 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.13), index=8
+  get-tuple-element.1386 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.13), index=9
+  get-tuple-element.1387 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.wide.arg_tuple.13), index=10
+  dynamic-slice.21 = f32[1,1,1]{0,1,2:T(1,128)} dynamic-slice(get-tuple-element.1387, get-tuple-element.1385, get-tuple-element.1386, get-tuple-element.1363), dynamic_slice_sizes={1,1,1}
+  cosine.6 = f32[1,1,1]{0,1,2:T(1,128)} cosine(dynamic-slice.21)
+  get-tuple-element.1388 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.wide.arg_tuple.13), index=11
+  dynamic-slice.23 = f32[1,1,1]{0,1,2:T(1,128)} dynamic-slice(get-tuple-element.1388, get-tuple-element.1385, get-tuple-element.1386, get-tuple-element.1363), dynamic_slice_sizes={1,1,1}
+  multiply.6 = f32[1,1,1]{0,1,2:T(1,128)} multiply(dynamic-slice.23, cosine.6)
+  get-tuple-element.1365 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.wide.arg_tuple.13), index=2
+  dynamic-slice.22 = f32[1,1,1]{0,1,2:T(1,128)} dynamic-slice(get-tuple-element.1365, get-tuple-element.1385, get-tuple-element.1386, get-tuple-element.1363), dynamic_slice_sizes={1,1,1}
+  add.51 = f32[1,1,1]{0,1,2:T(1,128)} add(dynamic-slice.22, multiply.6)
+  dynamic-update-slice.89 = f32[5,4,3]{0,1,2:T(4,128)} dynamic-update-slice(get-tuple-element.1365, add.51, get-tuple-element.1385, get-tuple-element.1386, get-tuple-element.1363)
+  sine.6 = f32[1,1,1]{0,1,2:T(1,128)} sine(dynamic-slice.21)
+  get-tuple-element.1390 = f32[1,1,1]{0,1,2:T(1,128)} get-tuple-element(wide.wide.arg_tuple.13), index=13
+  add.48 = f32[1,1,1]{0,1,2:T(1,128)} add(sine.6, get-tuple-element.1390)
+  get-tuple-element.1364 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.wide.arg_tuple.13), index=1
+  dynamic-slice.20 = f32[1,1,1]{0,1,2:T(1,128)} dynamic-slice(get-tuple-element.1364, get-tuple-element.1385, get-tuple-element.1386, get-tuple-element.1363), dynamic_slice_sizes={1,1,1}
+  add.50 = f32[1,1,1]{0,1,2:T(1,128)} add(dynamic-slice.20, add.48)
+  dynamic-update-slice.88 = f32[5,4,3]{0,1,2:T(4,128)} dynamic-update-slice(get-tuple-element.1364, add.50, get-tuple-element.1385, get-tuple-element.1386, get-tuple-element.1363)
+  bitcast.39 = f32[1]{0:T(128)} bitcast(cosine.6)
+  get-tuple-element.1368 = f32[3]{0:T(128)} get-tuple-element(wide.wide.arg_tuple.13), index=5
+  dynamic-update-slice.90 = f32[3]{0:T(128)} dynamic-update-slice(get-tuple-element.1368, bitcast.39, get-tuple-element.1363)
+  bitcast.40 = f32[1]{0:T(128)} bitcast(sine.6)
+  get-tuple-element.1369 = f32[3]{0:T(128)} get-tuple-element(wide.wide.arg_tuple.13), index=6
+  dynamic-update-slice.91 = f32[3]{0:T(128)} dynamic-update-slice(get-tuple-element.1369, bitcast.40, get-tuple-element.1363)
+  bitcast.41 = f32[1]{0:T(128)} bitcast(dynamic-slice.23)
+  get-tuple-element.1370 = f32[3]{0:T(128)} get-tuple-element(wide.wide.arg_tuple.13), index=7
+  dynamic-update-slice.92 = f32[3]{0:T(128)} dynamic-update-slice(get-tuple-element.1370, bitcast.41, get-tuple-element.1363)
+  add.47 = s32[]{:T(128)} add(get-tuple-element.1363, constant.120..sunk.2..sunk2)
+  copy.40 = s32[]{:T(128)} copy(get-tuple-element.1385)
+  copy.41 = s32[]{:T(128)} copy(get-tuple-element.1386)
+  get-tuple-element.1389 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.13), index=12
+  ROOT tuple.83 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, s32[]{:T(128)}, s32[]{:T(128)}, /*index=5*/f32[3]{0:T(128)}, f32[3]{0:T(128)}, f32[3]{0:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, /*index=10*/f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, s32[]{:T(128)}, f32[1,1,1]{0,1,2:T(1,128)}) tuple(add.47, dynamic-update-slice.88, dynamic-update-slice.89, copy.40, copy.41, dynamic-update-slice.90, dynamic-update-slice.91, dynamic-update-slice.92, get-tuple-element.1385, get-tuple-element.1386, get-tuple-element.1387, get-tuple-element.1388, get-tuple-element.1389, get-tuple-element.1390)
+}
+
+wide.wide.region_3.133.clone.clone.clone.clone {
+  constant.101 = s32[]{:T(128)} constant(3)
+  wide.wide.arg_tuple.12 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, s32[]{:T(128)}, s32[]{:T(128)}, /*index=5*/f32[3]{0:T(128)}, f32[3]{0:T(128)}, f32[3]{0:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, /*index=10*/f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, s32[]{:T(128)}, f32[1,1,1]{0,1,2:T(1,128)}) parameter(0)
+  get-tuple-element.1086 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.12), index=0
+  ROOT compare.26 = pred[]{:T(512)} compare(get-tuple-element.1086, constant.101), direction=LT
+}
+
+fused_computation.3.clone {
+  param_0.15 = f32[4,5,4,3]{1,2,3,0:T(4,128)} parameter(0)
+  param_2.42 = f32[5,4,3]{0,1,2:T(4,128)} parameter(2)
+  bitcast.42 = f32[1,5,4,3]{1,2,3,0:T(4,128)} bitcast(param_2.42)
+  param_1.30 = s32[]{:T(128)} parameter(1)
+  constant.116 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.93 = f32[4,5,4,3]{1,2,3,0:T(4,128)} dynamic-update-slice(param_0.15, bitcast.42, param_1.30, constant.116, constant.116, constant.116)
+}
+
+fused_computation.2.clone {
+  param_0.16 = f32[4,5,4,3]{1,2,3,0:T(4,128)} parameter(0)
+  param_2.43 = f32[5,4,3]{0,1,2:T(4,128)} parameter(2)
+  bitcast.43 = f32[1,5,4,3]{1,2,3,0:T(4,128)} bitcast(param_2.43)
+  param_1.31 = s32[]{:T(128)} parameter(1)
+  constant.117 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.94 = f32[4,5,4,3]{1,2,3,0:T(4,128)} dynamic-update-slice(param_0.16, bitcast.43, param_1.31, constant.117, constant.117, constant.117)
+}
+
+fused_computation.1.clone {
+  param_0.17 = f32[4,5,4,3]{1,2,3,0:T(4,128)} parameter(0)
+  param_2.44 = f32[5,4,3]{0,1,2:T(4,128)} parameter(2)
+  bitcast.44 = f32[1,5,4,3]{1,2,3,0:T(4,128)} bitcast(param_2.44)
+  param_1.32 = s32[]{:T(128)} parameter(1)
+  constant.118 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.95 = f32[4,5,4,3]{1,2,3,0:T(4,128)} dynamic-update-slice(param_0.17, bitcast.44, param_1.32, constant.118, constant.118, constant.118)
+}
+
+fused_computation.clone {
+  param_0.18 = f32[4,5,4,3]{1,2,3,0:T(4,128)} parameter(0)
+  param_2.45 = f32[5,4,3]{0,1,2:T(4,128)} parameter(2)
+  bitcast.45 = f32[1,5,4,3]{1,2,3,0:T(4,128)} bitcast(param_2.45)
+  param_1.33 = s32[]{:T(128)} parameter(1)
+  constant.119 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.96 = f32[4,5,4,3]{1,2,3,0:T(4,128)} dynamic-update-slice(param_0.18, bitcast.45, param_1.33, constant.119, constant.119, constant.119)
+}
+
+wide.wide.region_1.176.clone.clone.clone {
+  constant.3..sunk.1..sunk = s32[]{:T(128)} constant(0)
+  constant.120..sunk.2..sunk = s32[]{:T(128)} constant(1)
+  constant.120..sunk.1..sunk = s32[]{:T(128)} constant(1)
+  wide.wide.arg_tuple.11 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, /*index=5*/s32[]{:T(128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, /*index=10*/s32[]{:T(128)}, s32[4]{0:T(128)}, f32[4,3]{1,0:T(4,128)}, f32[4,3]{1,0:T(4,128)}, f32[4,3]{1,0:T(4,128)}, /*index=15*/s32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, f32[]{:T(128)}, s32[]{:T(128)}, /*index=20*/f32[1,1,1]{0,1,2:T(1,128)}) parameter(0)
+  get-tuple-element.1412 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.11), index=0
+  get-tuple-element.1434 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.wide.arg_tuple.11), index=1
+  get-tuple-element.1436 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.wide.arg_tuple.11), index=3
+  get-tuple-element.1448 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.11), index=15
+  get-tuple-element.1414 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.wide.arg_tuple.11), index=2
+  copy.22 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.1414)
+  get-tuple-element.1416 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.wide.arg_tuple.11), index=4
+  copy.23 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.1416)
+  get-tuple-element.1453 = f32[1,1,1]{0,1,2:T(1,128)} get-tuple-element(wide.wide.arg_tuple.11), index=20
+  copy.21 = s32[]{:T(128)} copy(constant.3..sunk.1..sunk)
+  copy.24 = s32[]{:T(128)} copy(constant.3..sunk.1..sunk)
+  copy.25 = s32[]{:T(128)} copy(constant.3..sunk.1..sunk)
+  custom-call = f32[3]{0:T(128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.1 = f32[3]{0:T(128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.2 = f32[3]{0:T(128)} custom-call(), custom_call_target="AllocateBuffer"
+  tuple.81 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, s32[]{:T(128)}, s32[]{:T(128)}, /*index=5*/f32[3]{0:T(128)}, f32[3]{0:T(128)}, f32[3]{0:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, /*index=10*/f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, s32[]{:T(128)}, f32[1,1,1]{0,1,2:T(1,128)}) tuple(copy.21, copy.22, copy.23, copy.24, copy.25, custom-call, custom-call.1, custom-call.2, get-tuple-element.1448, get-tuple-element.1412, get-tuple-element.1434, get-tuple-element.1436, constant.120..sunk.2..sunk, get-tuple-element.1453)
+  while.18 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, s32[]{:T(128)}, s32[]{:T(128)}, /*index=5*/f32[3]{0:T(128)}, f32[3]{0:T(128)}, f32[3]{0:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, /*index=10*/f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, s32[]{:T(128)}, f32[1,1,1]{0,1,2:T(1,128)}) while(tuple.81), condition=wide.wide.region_3.133.clone.clone.clone.clone, body=wide.wide.region_2.16.clone.clone.clone.clone
+  get-tuple-element.1192 = f32[3]{0:T(128)} get-tuple-element(while.18), index=6
+  bitcast.48 = f32[1,3]{1,0:T(1,128)} bitcast(get-tuple-element.1192)
+  get-tuple-element.1425 = f32[4,3]{1,0:T(4,128)} get-tuple-element(wide.wide.arg_tuple.11), index=13
+  dynamic-update-slice.100 = f32[4,3]{1,0:T(4,128)} dynamic-update-slice(get-tuple-element.1425, bitcast.48, get-tuple-element.1412, constant.3..sunk.1..sunk)
+  get-tuple-element.1194 = f32[3]{0:T(128)} get-tuple-element(while.18), index=7
+  bitcast.49 = f32[1,3]{1,0:T(1,128)} bitcast(get-tuple-element.1194)
+  get-tuple-element.1426 = f32[4,3]{1,0:T(4,128)} get-tuple-element(wide.wide.arg_tuple.11), index=14
+  dynamic-update-slice.101 = f32[4,3]{1,0:T(4,128)} dynamic-update-slice(get-tuple-element.1426, bitcast.49, get-tuple-element.1412, constant.3..sunk.1..sunk)
+  get-tuple-element.1190 = f32[3]{0:T(128)} get-tuple-element(while.18), index=5
+  bitcast.47 = f32[1,3]{1,0:T(1,128)} bitcast(get-tuple-element.1190)
+  get-tuple-element.1424 = f32[4,3]{1,0:T(4,128)} get-tuple-element(wide.wide.arg_tuple.11), index=12
+  dynamic-update-slice.98 = f32[4,3]{1,0:T(4,128)} dynamic-update-slice(get-tuple-element.1424, bitcast.47, get-tuple-element.1412, constant.3..sunk.1..sunk)
+  get-tuple-element.1188 = s32[]{:T(128)} get-tuple-element(while.18), index=4
+  bitcast.46 = s32[1]{0:T(128)} bitcast(get-tuple-element.1188)
+  get-tuple-element.1423 = s32[4]{0:T(128)} get-tuple-element(wide.wide.arg_tuple.11), index=11
+  dynamic-update-slice.97 = s32[4]{0:T(128)} dynamic-update-slice(get-tuple-element.1423, bitcast.46, get-tuple-element.1412)
+  get-tuple-element.1435 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(while.18), index=1
+  get-tuple-element.1419 = f32[4,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(wide.wide.arg_tuple.11), index=7
+  fusion.16 = f32[4,5,4,3]{1,2,3,0:T(4,128)} fusion(get-tuple-element.1419, get-tuple-element.1412, get-tuple-element.1414), kind=kLoop, calls=fused_computation.2.clone
+  copy.80 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.1435)
+  get-tuple-element.1437 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(while.18), index=2
+  get-tuple-element.1421 = f32[4,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(wide.wide.arg_tuple.11), index=9
+  fusion.18 = f32[4,5,4,3]{1,2,3,0:T(4,128)} fusion(get-tuple-element.1421, get-tuple-element.1412, get-tuple-element.1416), kind=kLoop, calls=fused_computation.clone
+  copy.81 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.1437)
+  get-tuple-element.1443 = s32[]{:T(128)} get-tuple-element(while.18), index=3
+  get-tuple-element.1418 = f32[4,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(wide.wide.arg_tuple.11), index=6
+  fusion.15 = f32[4,5,4,3]{1,2,3,0:T(4,128)} fusion(get-tuple-element.1418, get-tuple-element.1412, get-tuple-element.1434), kind=kLoop, calls=fused_computation.3.clone
+  get-tuple-element.1420 = f32[4,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(wide.wide.arg_tuple.11), index=8
+  fusion.17 = f32[4,5,4,3]{1,2,3,0:T(4,128)} fusion(get-tuple-element.1420, get-tuple-element.1412, get-tuple-element.1436), kind=kLoop, calls=fused_computation.1.clone
+  add.53 = s32[]{:T(128)} add(get-tuple-element.1412, constant.120..sunk.1..sunk)
+  copy.82 = s32[]{:T(128)} copy(get-tuple-element.1448)
+  get-tuple-element.1449 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.11), index=16
+  get-tuple-element.1450 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.11), index=17
+  get-tuple-element.1451 = f32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.11), index=18
+  get-tuple-element.1452 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.11), index=19
+  ROOT tuple.86 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, /*index=5*/s32[]{:T(128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, /*index=10*/s32[]{:T(128)}, s32[4]{0:T(128)}, f32[4,3]{1,0:T(4,128)}, f32[4,3]{1,0:T(4,128)}, f32[4,3]{1,0:T(4,128)}, /*index=15*/s32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, f32[]{:T(128)}, s32[]{:T(128)}, /*index=20*/f32[1,1,1]{0,1,2:T(1,128)}) tuple(add.53, get-tuple-element.1434, copy.80, get-tuple-element.1436, copy.81, copy.82, fusion.15, fusion.16, fusion.17, fusion.18, get-tuple-element.1443, dynamic-update-slice.97, dynamic-update-slice.98, dynamic-update-slice.100, dynamic-update-slice.101, get-tuple-element.1448, get-tuple-element.1449, get-tuple-element.1450, get-tuple-element.1451, get-tuple-element.1452, get-tuple-element.1453)
+}
+
+wide.wide.region_4.258.clone.clone.clone {
+  constant.110 = s32[]{:T(128)} constant(4)
+  wide.wide.arg_tuple.10 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, /*index=5*/s32[]{:T(128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, /*index=10*/s32[]{:T(128)}, s32[4]{0:T(128)}, f32[4,3]{1,0:T(4,128)}, f32[4,3]{1,0:T(4,128)}, f32[4,3]{1,0:T(4,128)}, /*index=15*/s32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, f32[]{:T(128)}, s32[]{:T(128)}, /*index=20*/f32[1,1,1]{0,1,2:T(1,128)}) parameter(0)
+  get-tuple-element.1133 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.10), index=0
+  ROOT compare.27 = pred[]{:T(512)} compare(get-tuple-element.1133, constant.110), direction=LT
+}
+
+fused_computation.11.clone {
+  param_0.19 = f32[5,5,4,3]{1,2,3,0:T(4,128)} parameter(0)
+  param_2.46 = f32[5,4,3]{0,1,2:T(4,128)} parameter(2)
+  bitcast.50 = f32[1,5,4,3]{1,2,3,0:T(4,128)} bitcast(param_2.46)
+  param_1.34 = s32[]{:T(128)} parameter(1)
+  constant.138 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.102 = f32[5,5,4,3]{1,2,3,0:T(4,128)} dynamic-update-slice(param_0.19, bitcast.50, param_1.34, constant.138, constant.138, constant.138)
+}
+
+fused_computation.10.clone {
+  param_0.20 = f32[5,5,4,3]{1,2,3,0:T(4,128)} parameter(0)
+  param_2.47 = f32[5,4,3]{0,1,2:T(4,128)} parameter(2)
+  bitcast.51 = f32[1,5,4,3]{1,2,3,0:T(4,128)} bitcast(param_2.47)
+  param_1.35 = s32[]{:T(128)} parameter(1)
+  constant.139 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.103 = f32[5,5,4,3]{1,2,3,0:T(4,128)} dynamic-update-slice(param_0.20, bitcast.51, param_1.35, constant.139, constant.139, constant.139)
+}
+
+fused_computation.9.clone {
+  param_0.21 = f32[5,5,4,3]{1,2,3,0:T(4,128)} parameter(0)
+  param_2.48 = f32[5,4,3]{0,1,2:T(4,128)} parameter(2)
+  bitcast.52 = f32[1,5,4,3]{1,2,3,0:T(4,128)} bitcast(param_2.48)
+  param_1.36 = s32[]{:T(128)} parameter(1)
+  constant.140 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.104 = f32[5,5,4,3]{1,2,3,0:T(4,128)} dynamic-update-slice(param_0.21, bitcast.52, param_1.36, constant.140, constant.140, constant.140)
+}
+
+fused_computation.8.clone {
+  param_0.22 = f32[5,5,4,3]{1,2,3,0:T(4,128)} parameter(0)
+  param_2.49 = f32[5,4,3]{0,1,2:T(4,128)} parameter(2)
+  bitcast.53 = f32[1,5,4,3]{1,2,3,0:T(4,128)} bitcast(param_2.49)
+  param_1.37 = s32[]{:T(128)} parameter(1)
+  constant.141 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.105 = f32[5,5,4,3]{1,2,3,0:T(4,128)} dynamic-update-slice(param_0.22, bitcast.53, param_1.37, constant.141, constant.141, constant.141)
+}
+
+fused_computation.7.clone {
+  param_0.23 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} parameter(0)
+  param_2.50 = f32[4,5,4,3]{1,2,3,0:T(4,128)} parameter(2)
+  bitcast.55 = f32[1,4,5,4,3]{2,3,4,1,0:T(4,128)} bitcast(param_2.50)
+  param_1.38 = s32[]{:T(128)} parameter(1)
+  constant.142 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.107 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} dynamic-update-slice(param_0.23, bitcast.55, param_1.38, constant.142, constant.142, constant.142, constant.142)
+}
+
+fused_computation.6.clone {
+  param_0.24 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} parameter(0)
+  param_2.51 = f32[4,5,4,3]{1,2,3,0:T(4,128)} parameter(2)
+  bitcast.56 = f32[1,4,5,4,3]{2,3,4,1,0:T(4,128)} bitcast(param_2.51)
+  param_1.39 = s32[]{:T(128)} parameter(1)
+  constant.143 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.108 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} dynamic-update-slice(param_0.24, bitcast.56, param_1.39, constant.143, constant.143, constant.143, constant.143)
+}
+
+fused_computation.5.clone {
+  param_0.25 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} parameter(0)
+  param_2.52 = f32[4,5,4,3]{1,2,3,0:T(4,128)} parameter(2)
+  bitcast.57 = f32[1,4,5,4,3]{2,3,4,1,0:T(4,128)} bitcast(param_2.52)
+  param_1.40 = s32[]{:T(128)} parameter(1)
+  constant.144 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.109 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} dynamic-update-slice(param_0.25, bitcast.57, param_1.40, constant.144, constant.144, constant.144, constant.144)
+}
+
+fused_computation.4.clone {
+  param_0.26 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} parameter(0)
+  param_2.53 = f32[4,5,4,3]{1,2,3,0:T(4,128)} parameter(2)
+  bitcast.58 = f32[1,4,5,4,3]{2,3,4,1,0:T(4,128)} bitcast(param_2.53)
+  param_1.41 = s32[]{:T(128)} parameter(1)
+  constant.145 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.111 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} dynamic-update-slice(param_0.26, bitcast.58, param_1.41, constant.145, constant.145, constant.145, constant.145)
+}
+
+fused_computation.13.clone {
+  param_0.27 = f32[5,4,3]{2,1,0:T(4,128)} parameter(0)
+  param_2.54 = f32[4,3]{1,0:T(4,128)} parameter(2)
+  bitcast.60 = f32[1,4,3]{2,1,0:T(4,128)} bitcast(param_2.54)
+  param_1.42 = s32[]{:T(128)} parameter(1)
+  constant.146 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.113 = f32[5,4,3]{2,1,0:T(4,128)} dynamic-update-slice(param_0.27, bitcast.60, param_1.42, constant.146, constant.146)
+}
+
+fused_computation.12.clone {
+  param_0.28 = f32[5,4,3]{2,1,0:T(4,128)} parameter(0)
+  param_2.55 = f32[4,3]{1,0:T(4,128)} parameter(2)
+  bitcast.61 = f32[1,4,3]{2,1,0:T(4,128)} bitcast(param_2.55)
+  param_1.43 = s32[]{:T(128)} parameter(1)
+  constant.147 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.114 = f32[5,4,3]{2,1,0:T(4,128)} dynamic-update-slice(param_0.28, bitcast.61, param_1.43, constant.147, constant.147)
+}
+
+fused_computation.14.clone {
+  param_0.29 = f32[5,4,3]{2,1,0:T(4,128)} parameter(0)
+  param_2.56 = f32[4,3]{1,0:T(4,128)} parameter(2)
+  bitcast.62 = f32[1,4,3]{2,1,0:T(4,128)} bitcast(param_2.56)
+  param_1.44 = s32[]{:T(128)} parameter(1)
+  constant.149 = s32[]{:T(128)} constant(0)
+  ROOT dynamic-update-slice.116 = f32[5,4,3]{2,1,0:T(4,128)} dynamic-update-slice(param_0.29, bitcast.62, param_1.44, constant.149, constant.149)
+}
+
+wide.region_0.312.clone {
+  constant.3..sunk = s32[]{:T(128)} constant(0)
+  constant.120..sunk.1 = s32[]{:T(128)} constant(1)
+  constant.120..sunk.2 = s32[]{:T(128)} constant(1)
+  constant.3..sunk.1 = s32[]{:T(128)} constant(0)
+  constant.4..sunk.1 = f32[]{:T(128)} constant(0)
+  constant.120..sunk = s32[]{:T(128)} constant(1)
+  wide.arg_tuple.15 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, /*index=5*/f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, s32[5]{0:T(128)}, /*index=10*/f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, s32[5]{0:T(128)}, /*index=15*/s32[4]{0:T(128)}, f32[5,4,3]{2,1,0:T(4,128)}, f32[5,4,3]{2,1,0:T(4,128)}, f32[5,4,3]{2,1,0:T(4,128)}, s32[]{:T(128)}, /*index=20*/s32[]{:T(128)}, f32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, f32[]{:T(128)}, /*index=25*/s32[]{:T(128)}, f32[1,1,1]{0,1,2:T(1,128)}) parameter(0)
+  get-tuple-element.1481 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.15), index=0
+  copy.162 = s32[]{:T(128)} copy(constant.3..sunk)
+  copy.56 = s32[]{:T(128)} copy(copy.162)
+  copy.61 = s32[]{:T(128)} copy(copy.162)
+  get-tuple-element.1483 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=2
+  copy.54 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.1483)
+  get-tuple-element.1485 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=4
+  copy.55 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.1485)
+  get-tuple-element.1392 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=1
+  get-tuple-element.1394 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=3
+  get-tuple-element.1534 = f32[1,1,1]{0,1,2:T(1,128)} get-tuple-element(wide.arg_tuple.15), index=26
+  custom-call.3 = f32[4,5,4,3]{1,2,3,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.4 = f32[4,5,4,3]{1,2,3,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.5 = f32[4,5,4,3]{1,2,3,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.6 = f32[4,5,4,3]{1,2,3,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.10 = f32[4,3]{1,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.8 = f32[4,3]{1,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.9 = f32[4,3]{1,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.7 = s32[4]{0:T(128)} custom-call(), custom_call_target="AllocateBuffer"
+  tuple.84 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, /*index=5*/s32[]{:T(128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, /*index=10*/s32[]{:T(128)}, s32[4]{0:T(128)}, f32[4,3]{1,0:T(4,128)}, f32[4,3]{1,0:T(4,128)}, f32[4,3]{1,0:T(4,128)}, /*index=15*/s32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, f32[]{:T(128)}, s32[]{:T(128)}, /*index=20*/f32[1,1,1]{0,1,2:T(1,128)}) tuple(copy.162, get-tuple-element.1392, copy.54, get-tuple-element.1394, copy.55, copy.56, custom-call.3, custom-call.4, custom-call.5, custom-call.6, copy.61, custom-call.7, custom-call.8, custom-call.9, custom-call.10, get-tuple-element.1481, constant.120..sunk.1, constant.3..sunk.1, constant.4..sunk.1, constant.120..sunk.2, get-tuple-element.1534)
+  while.20 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, /*index=5*/s32[]{:T(128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, f32[4,5,4,3]{1,2,3,0:T(4,128)}, /*index=10*/s32[]{:T(128)}, s32[4]{0:T(128)}, f32[4,3]{1,0:T(4,128)}, f32[4,3]{1,0:T(4,128)}, f32[4,3]{1,0:T(4,128)}, /*index=15*/s32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, f32[]{:T(128)}, s32[]{:T(128)}, /*index=20*/f32[1,1,1]{0,1,2:T(1,128)}) while(tuple.84), condition=wide.wide.region_4.258.clone.clone.clone, body=wide.wide.region_1.176.clone.clone.clone
+  get-tuple-element.1295 = f32[4,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(while.20), index=6
+  get-tuple-element.1491 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=10
+  fusion.23 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} fusion(get-tuple-element.1491, get-tuple-element.1481, get-tuple-element.1295), kind=kLoop, calls=fused_computation.7.clone
+  get-tuple-element.1297 = f32[4,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(while.20), index=7
+  get-tuple-element.1492 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=11
+  fusion.24 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} fusion(get-tuple-element.1492, get-tuple-element.1481, get-tuple-element.1297), kind=kLoop, calls=fused_computation.6.clone
+  get-tuple-element.1299 = f32[4,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(while.20), index=8
+  get-tuple-element.1493 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=12
+  fusion.25 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} fusion(get-tuple-element.1493, get-tuple-element.1481, get-tuple-element.1299), kind=kLoop, calls=fused_computation.5.clone
+  get-tuple-element.1301 = f32[4,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(while.20), index=9
+  get-tuple-element.1494 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=13
+  fusion.26 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} fusion(get-tuple-element.1494, get-tuple-element.1481, get-tuple-element.1301), kind=kLoop, calls=fused_computation.4.clone
+  get-tuple-element.1306 = f32[4,3]{1,0:T(4,128)} get-tuple-element(while.20), index=12
+  get-tuple-element.1497 = f32[5,4,3]{2,1,0:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=16
+  fusion.27 = f32[5,4,3]{2,1,0:T(4,128)} fusion(get-tuple-element.1497, get-tuple-element.1481, get-tuple-element.1306), kind=kLoop, calls=fused_computation.13.clone
+  get-tuple-element.1308 = f32[4,3]{1,0:T(4,128)} get-tuple-element(while.20), index=13
+  get-tuple-element.1498 = f32[5,4,3]{2,1,0:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=17
+  fusion.28 = f32[5,4,3]{2,1,0:T(4,128)} fusion(get-tuple-element.1498, get-tuple-element.1481, get-tuple-element.1308), kind=kLoop, calls=fused_computation.12.clone
+  get-tuple-element.1310 = f32[4,3]{1,0:T(4,128)} get-tuple-element(while.20), index=14
+  get-tuple-element.1499 = f32[5,4,3]{2,1,0:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=18
+  fusion.29 = f32[5,4,3]{2,1,0:T(4,128)} fusion(get-tuple-element.1499, get-tuple-element.1481, get-tuple-element.1310), kind=kLoop, calls=fused_computation.14.clone
+  get-tuple-element.1293 = s32[]{:T(128)} get-tuple-element(while.20), index=5
+  bitcast.54 = s32[1]{0:T(128)} bitcast(get-tuple-element.1293)
+  get-tuple-element.1490 = s32[5]{0:T(128)} get-tuple-element(wide.arg_tuple.15), index=9
+  dynamic-update-slice.106 = s32[5]{0:T(128)} dynamic-update-slice(get-tuple-element.1490, bitcast.54, get-tuple-element.1481)
+  get-tuple-element.1303 = s32[]{:T(128)} get-tuple-element(while.20), index=10
+  bitcast.59 = s32[1]{0:T(128)} bitcast(get-tuple-element.1303)
+  get-tuple-element.1495 = s32[5]{0:T(128)} get-tuple-element(wide.arg_tuple.15), index=14
+  dynamic-update-slice.112 = s32[5]{0:T(128)} dynamic-update-slice(get-tuple-element.1495, bitcast.59, get-tuple-element.1481)
+  get-tuple-element.1510 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(while.20), index=2
+  get-tuple-element.1487 = f32[5,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=6
+  fusion.20 = f32[5,5,4,3]{1,2,3,0:T(4,128)} fusion(get-tuple-element.1487, get-tuple-element.1481, get-tuple-element.1483), kind=kLoop, calls=fused_computation.10.clone
+  copy.140 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.1510)
+  get-tuple-element.1512 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(while.20), index=4
+  get-tuple-element.1489 = f32[5,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=8
+  fusion.22 = f32[5,5,4,3]{1,2,3,0:T(4,128)} fusion(get-tuple-element.1489, get-tuple-element.1481, get-tuple-element.1485), kind=kLoop, calls=fused_computation.8.clone
+  copy.141 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.1512)
+  get-tuple-element.1509 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(while.20), index=1
+  get-tuple-element.1511 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(while.20), index=3
+  get-tuple-element.1523 = s32[4]{0:T(128)} get-tuple-element(while.20), index=11
+  get-tuple-element.1486 = f32[5,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=5
+  fusion.19 = f32[5,5,4,3]{1,2,3,0:T(4,128)} fusion(get-tuple-element.1486, get-tuple-element.1481, get-tuple-element.1392), kind=kLoop, calls=fused_computation.11.clone
+  get-tuple-element.1488 = f32[5,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=7
+  fusion.21 = f32[5,5,4,3]{1,2,3,0:T(4,128)} fusion(get-tuple-element.1488, get-tuple-element.1481, get-tuple-element.1394), kind=kLoop, calls=fused_computation.9.clone
+  add.54 = s32[]{:T(128)} add(get-tuple-element.1481, constant.120..sunk)
+  get-tuple-element.1527 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.15), index=19
+  get-tuple-element.1528 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.15), index=20
+  get-tuple-element.1529 = f32[]{:T(128)} get-tuple-element(wide.arg_tuple.15), index=21
+  get-tuple-element.1530 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.15), index=22
+  get-tuple-element.1531 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.15), index=23
+  get-tuple-element.1532 = f32[]{:T(128)} get-tuple-element(wide.arg_tuple.15), index=24
+  get-tuple-element.1533 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.15), index=25
+  ROOT tuple.89 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, /*index=5*/f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, s32[5]{0:T(128)}, /*index=10*/f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, s32[5]{0:T(128)}, /*index=15*/s32[4]{0:T(128)}, f32[5,4,3]{2,1,0:T(4,128)}, f32[5,4,3]{2,1,0:T(4,128)}, f32[5,4,3]{2,1,0:T(4,128)}, s32[]{:T(128)}, /*index=20*/s32[]{:T(128)}, f32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, f32[]{:T(128)}, /*index=25*/s32[]{:T(128)}, f32[1,1,1]{0,1,2:T(1,128)}) tuple(add.54, get-tuple-element.1509, copy.140, get-tuple-element.1511, copy.141, fusion.19, fusion.20, fusion.21, fusion.22, dynamic-update-slice.106, fusion.23, fusion.24, fusion.25, fusion.26, dynamic-update-slice.112, get-tuple-element.1523, fusion.27, fusion.28, fusion.29, get-tuple-element.1527, get-tuple-element.1528, get-tuple-element.1529, get-tuple-element.1530, get-tuple-element.1531, get-tuple-element.1532, get-tuple-element.1533, get-tuple-element.1534)
+}
+
+wide.region_5.426.clone {
+  constant.129 = s32[]{:T(128)} constant(5)
+  wide.arg_tuple.14 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, /*index=5*/f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, s32[5]{0:T(128)}, /*index=10*/f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, s32[5]{0:T(128)}, /*index=15*/s32[4]{0:T(128)}, f32[5,4,3]{2,1,0:T(4,128)}, f32[5,4,3]{2,1,0:T(4,128)}, f32[5,4,3]{2,1,0:T(4,128)}, s32[]{:T(128)}, /*index=20*/s32[]{:T(128)}, f32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, f32[]{:T(128)}, /*index=25*/s32[]{:T(128)}, f32[1,1,1]{0,1,2:T(1,128)}) parameter(0)
+  get-tuple-element.1227 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.14), index=0
+  ROOT compare.28 = pred[]{:T(512)} compare(get-tuple-element.1227, constant.129), direction=LT
+}
+
+ENTRY main.482 {
+  constant.4 = f32[]{:T(128)} constant(0)
+  constant.3 = s32[]{:T(128)} constant(0)
+  constant.120 = s32[]{:T(128)} constant(1)
+  constant.127 = f32[1,1,1]{0,1,2:T(1,128)} constant({ { {1} } })
+  Arg_0.1 = f32[5,4,3]{0,1,2:T(4,128)} parameter(0)
+  Arg_1.2 = f32[5,4,3]{0,1,2:T(4,128)} parameter(1)
+  custom-call.16 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.17 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.18 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.19 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.11 = f32[5,5,4,3]{1,2,3,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.12 = f32[5,5,4,3]{1,2,3,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.13 = f32[5,5,4,3]{1,2,3,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.14 = f32[5,5,4,3]{1,2,3,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.22 = f32[5,4,3]{2,1,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.23 = f32[5,4,3]{2,1,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.24 = f32[5,4,3]{2,1,0:T(4,128)} custom-call(), custom_call_target="AllocateBuffer"
+  broadcast.6.clone.4 = f32[5,4,3]{0,1,2:T(4,128)} broadcast(constant.4), dimensions={}
+  broadcast.6.clone.5 = f32[5,4,3]{0,1,2:T(4,128)} broadcast(constant.4), dimensions={}
+  copy.105 = s32[]{:T(128)} copy(constant.3)
+  custom-call.15 = s32[5]{0:T(128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.20 = s32[5]{0:T(128)} custom-call(), custom_call_target="AllocateBuffer"
+  custom-call.21 = s32[4]{0:T(128)} custom-call(), custom_call_target="AllocateBuffer"
+  tuple.87 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, /*index=5*/f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, s32[5]{0:T(128)}, /*index=10*/f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, s32[5]{0:T(128)}, /*index=15*/s32[4]{0:T(128)}, f32[5,4,3]{2,1,0:T(4,128)}, f32[5,4,3]{2,1,0:T(4,128)}, f32[5,4,3]{2,1,0:T(4,128)}, s32[]{:T(128)}, /*index=20*/s32[]{:T(128)}, f32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, f32[]{:T(128)}, /*index=25*/s32[]{:T(128)}, f32[1,1,1]{0,1,2:T(1,128)}) tuple(copy.105, Arg_0.1, broadcast.6.clone.4, Arg_1.2, broadcast.6.clone.5, custom-call.11, custom-call.12, custom-call.13, custom-call.14, custom-call.15, custom-call.16, custom-call.17, custom-call.18, custom-call.19, custom-call.20, custom-call.21, custom-call.22, custom-call.23, custom-call.24, constant.120, constant.3, constant.4, constant.120, constant.3, constant.4, constant.120, constant.127)
+  while.21 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, /*index=5*/f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, s32[5]{0:T(128)}, /*index=10*/f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, s32[5]{0:T(128)}, /*index=15*/s32[4]{0:T(128)}, f32[5,4,3]{2,1,0:T(4,128)}, f32[5,4,3]{2,1,0:T(4,128)}, f32[5,4,3]{2,1,0:T(4,128)}, s32[]{:T(128)}, /*index=20*/s32[]{:T(128)}, f32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}, f32[]{:T(128)}, /*index=25*/s32[]{:T(128)}, f32[1,1,1]{0,1,2:T(1,128)}) while(tuple.87), condition=wide.region_5.426.clone, body=wide.region_0.312.clone
+  get-tuple-element.941 = f32[5,4,3]{2,1,0:T(4,128)} get-tuple-element(while.21), index=16
+  copy.10 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.941)
+  get-tuple-element.940 = f32[5,4,3]{2,1,0:T(4,128)} get-tuple-element(while.21), index=17
+  copy.11 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.940)
+  get-tuple-element.942 = f32[5,4,3]{2,1,0:T(4,128)} get-tuple-element(while.21), index=18
+  copy.13 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.942)
+  get-tuple-element.453 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(while.21), index=2
+  reduce.475 = f32[]{:T(128)} reduce(get-tuple-element.453, constant.4), dimensions={0,1,2}, to_apply=region_6.471
+  get-tuple-element.455 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(while.21), index=4
+  reduce.480 = f32[]{:T(128)} reduce(get-tuple-element.455, constant.4), dimensions={0,1,2}, to_apply=region_7.476
+  get-tuple-element.1537 = f32[5,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(while.21), index=5
+  get-tuple-element.1538 = f32[5,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(while.21), index=6
+  get-tuple-element.1539 = f32[5,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(while.21), index=7
+  get-tuple-element.1540 = f32[5,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(while.21), index=8
+  get-tuple-element.1541 = s32[5]{0:T(128)} get-tuple-element(while.21), index=9
+  get-tuple-element.1542 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} get-tuple-element(while.21), index=10
+  get-tuple-element.1543 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} get-tuple-element(while.21), index=11
+  get-tuple-element.1544 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} get-tuple-element(while.21), index=12
+  get-tuple-element.1545 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} get-tuple-element(while.21), index=13
+  get-tuple-element.1546 = s32[5]{0:T(128)} get-tuple-element(while.21), index=14
+  get-tuple-element.1547 = s32[4]{0:T(128)} get-tuple-element(while.21), index=15
+  broadcast.6 = f32[5,4,3]{0,1,2:T(4,128)} broadcast(constant.4), dimensions={}
+  broadcast.6.clone.6 = f32[5,4,3]{0,1,2:T(4,128)} broadcast(constant.4), dimensions={}
+  tuple.90 = (f32[]{:T(128)}, f32[]{:T(128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, /*index=5*/f32[5,5,4,3]{1,2,3,0:T(4,128)}, s32[5]{0:T(128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, /*index=10*/f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, s32[5]{0:T(128)}, s32[4]{0:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, /*index=15*/f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}) tuple(reduce.475, reduce.480, get-tuple-element.1537, get-tuple-element.1538, get-tuple-element.1539, get-tuple-element.1540, get-tuple-element.1541, get-tuple-element.1542, get-tuple-element.1543, get-tuple-element.1544, get-tuple-element.1545, get-tuple-element.1546, get-tuple-element.1547, copy.10, copy.11, copy.10, copy.13, broadcast.6, broadcast.6.clone.6)
+  get-tuple-element.1554 = f32[]{:T(128)} get-tuple-element(tuple.90), index=0
+  get-tuple-element.1555 = f32[]{:T(128)} get-tuple-element(tuple.90), index=1
+  get-tuple-element.1556 = f32[5,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(tuple.90), index=2
+  get-tuple-element.1557 = f32[5,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(tuple.90), index=3
+  get-tuple-element.1558 = f32[5,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(tuple.90), index=4
+  get-tuple-element.1559 = f32[5,5,4,3]{1,2,3,0:T(4,128)} get-tuple-element(tuple.90), index=5
+  get-tuple-element.1560 = s32[5]{0:T(128)} get-tuple-element(tuple.90), index=6
+  get-tuple-element.1561 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} get-tuple-element(tuple.90), index=7
+  get-tuple-element.1562 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} get-tuple-element(tuple.90), index=8
+  get-tuple-element.1563 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} get-tuple-element(tuple.90), index=9
+  get-tuple-element.1564 = f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)} get-tuple-element(tuple.90), index=10
+  get-tuple-element.1565 = s32[5]{0:T(128)} get-tuple-element(tuple.90), index=11
+  get-tuple-element.1566 = s32[4]{0:T(128)} get-tuple-element(tuple.90), index=12
+  get-tuple-element.1567 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(tuple.90), index=13
+  get-tuple-element.1568 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(tuple.90), index=14
+  get-tuple-element.1569 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(tuple.90), index=15
+  get-tuple-element.1570 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(tuple.90), index=16
+  get-tuple-element.1571 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(tuple.90), index=17
+  get-tuple-element.1572 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(tuple.90), index=18
+  copy.163 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.1569)
+  ROOT tuple.91 = (f32[]{:T(128)}, f32[]{:T(128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, f32[5,5,4,3]{1,2,3,0:T(4,128)}, /*index=5*/f32[5,5,4,3]{1,2,3,0:T(4,128)}, s32[5]{0:T(128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, /*index=10*/f32[5,4,5,4,3]{2,3,4,1,0:T(4,128)}, s32[5]{0:T(128)}, s32[4]{0:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, /*index=15*/f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}, f32[5,4,3]{0,1,2:T(4,128)}) tuple(get-tuple-element.1554, get-tuple-element.1555, get-tuple-element.1556, get-tuple-element.1557, get-tuple-element.1558, get-tuple-element.1559, get-tuple-element.1560, get-tuple-element.1561, get-tuple-element.1562, get-tuple-element.1563, get-tuple-element.1564, get-tuple-element.1565, get-tuple-element.1566, get-tuple-element.1567, get-tuple-element.1568, copy.163, get-tuple-element.1570, get-tuple-element.1571, get-tuple-element.1572)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 256 * 1024;
+  AssignMemorySpace(module.get(), options);
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopyBugATest) {
+  absl::string_view hlo_string = R"(
+HloModule jit_for, is_scheduled=true, entry_computation_layout={(f32[4]{0:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)})->(f32[4]{0:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)})}, allow_spmd_sharding_propagation_to_parameters={true,true,true,true,true}, allow_spmd_sharding_propagation_to_output={true,true,true,true,true}
+
+fused_computation {
+  param_0 = f32[4]{0:T(128)} parameter(0)
+  slice.19 = f32[1]{0:T(128)} slice(param_0), slice={[0:1]}
+  slice.20 = f32[1]{0:T(128)} slice(param_0), slice={[1:2]}
+  slice.21 = f32[1]{0:T(128)} slice(param_0), slice={[2:3]}
+  slice.23 = f32[1]{0:T(128)} slice(param_0), slice={[3:4]}
+  ROOT tuple.34 = (f32[1]{0:T(128)}, f32[1]{0:T(128)}, f32[1]{0:T(128)}, f32[1]{0:T(128)}) tuple(slice.19, slice.20, slice.21, slice.23)
+}
+
+fused_computation.1 {
+  param_0.1 = f32[4]{0:T(128)} parameter(0)
+  slice.24 = f32[1]{0:T(128)} slice(param_0.1), slice={[0:1]}
+  slice.25 = f32[1]{0:T(128)} slice(param_0.1), slice={[1:2]}
+  slice.26 = f32[1]{0:T(128)} slice(param_0.1), slice={[2:3]}
+  slice.27 = f32[1]{0:T(128)} slice(param_0.1), slice={[3:4]}
+  ROOT tuple.37 = (f32[1]{0:T(128)}, f32[1]{0:T(128)}, f32[1]{0:T(128)}, f32[1]{0:T(128)}) tuple(slice.24, slice.25, slice.26, slice.27)
+}
+
+fused_computation.2 {
+  param_0.2 = f32[4]{0:T(128)} parameter(0)
+  slice.28 = f32[1]{0:T(128)} slice(param_0.2), slice={[0:1]}
+  slice.29 = f32[1]{0:T(128)} slice(param_0.2), slice={[1:2]}
+  slice.30 = f32[1]{0:T(128)} slice(param_0.2), slice={[2:3]}
+  slice.31 = f32[1]{0:T(128)} slice(param_0.2), slice={[3:4]}
+  ROOT tuple.40 = (f32[1]{0:T(128)}, f32[1]{0:T(128)}, f32[1]{0:T(128)}, f32[1]{0:T(128)}) tuple(slice.28, slice.29, slice.30, slice.31)
+}
+
+ENTRY main.181 {
+  constant.8 = s32[]{:T(128)} constant(3)
+  constant.6 = f32[1]{0:T(128)} constant({0})
+  constant.74 = s32[]{:T(128)} constant(2)
+  constant.79 = s32[]{:T(128)} constant(1)
+  constant.84 = s32[]{:T(128)} constant(0)
+  Arg_0.1 = f32[4]{0:T(128)} parameter(0)
+  Arg_1.2 = f32[4]{0:T(128)} parameter(1)
+  Arg_2.3 = f32[4]{0:T(128)} parameter(2)
+  Arg_3.4 = f32[4]{0:T(128)} parameter(3)
+  Arg_4.5 = f32[4]{0:T(128)} parameter(4)
+  copy.14 = f32[4]{0:T(128)} copy(Arg_4.5)
+  copy.13 = f32[4]{0:T(128)} copy(Arg_3.4)
+  fusion.2 = (f32[1]{0:T(128)}, f32[1]{0:T(128)}, f32[1]{0:T(128)}, f32[1]{0:T(128)}) fusion(Arg_2.3), kind=kLoop, calls=fused_computation.2
+  get-tuple-element.259 = f32[1]{0:T(128)} get-tuple-element(fusion.2), index=3
+  slice.15 = f32[1]{0:T(128)} slice(copy.14), slice={[3:4]}
+  multiply.96 = f32[1]{0:T(128)} multiply(slice.15, get-tuple-element.259)
+  fusion.1 = (f32[1]{0:T(128)}, f32[1]{0:T(128)}, f32[1]{0:T(128)}, f32[1]{0:T(128)}) fusion(Arg_1.2), kind=kLoop, calls=fused_computation.1
+  get-tuple-element.255 = f32[1]{0:T(128)} get-tuple-element(fusion.1), index=3
+  multiply.100 = f32[1]{0:T(128)} multiply(multiply.96, get-tuple-element.255)
+  negate.40 = f32[1]{0:T(128)} negate(multiply.100)
+  fusion = (f32[1]{0:T(128)}, f32[1]{0:T(128)}, f32[1]{0:T(128)}, f32[1]{0:T(128)}) fusion(Arg_0.1), kind=kLoop, calls=fused_computation
+  get-tuple-element.251 = f32[1]{0:T(128)} get-tuple-element(fusion), index=3
+  multiply.104 = f32[1]{0:T(128)} multiply(negate.40, get-tuple-element.251)
+  slice.22 = f32[1]{0:T(128)} slice(copy.13), slice={[3:4]}
+  add.24 = f32[1]{0:T(128)} add(slice.22, multiply.104)
+  dynamic-update-slice.25 = f32[4]{0:T(128)} dynamic-update-slice(copy.13, add.24, constant.8)
+  slice = f32[1]{0:T(128)} slice(dynamic-update-slice.25), slice={[2:3]}
+  get-tuple-element.258 = f32[1]{0:T(128)} get-tuple-element(fusion.2), index=2
+  dynamic-update-slice.16 = f32[4]{0:T(128)} dynamic-update-slice(copy.14, constant.6, constant.8)
+  slice.1 = f32[1]{0:T(128)} slice(dynamic-update-slice.16), slice={[2:3]}
+  multiply.97 = f32[1]{0:T(128)} multiply(slice.1, get-tuple-element.258)
+  get-tuple-element.254 = f32[1]{0:T(128)} get-tuple-element(fusion.1), index=2
+  multiply.101 = f32[1]{0:T(128)} multiply(multiply.97, get-tuple-element.254)
+  negate.41 = f32[1]{0:T(128)} negate(multiply.101)
+  get-tuple-element.250 = f32[1]{0:T(128)} get-tuple-element(fusion), index=2
+  multiply.105 = f32[1]{0:T(128)} multiply(negate.41, get-tuple-element.250)
+  add.133 = f32[1]{0:T(128)} add(slice, multiply.105)
+  dynamic-update-slice.56 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.25, add.133, constant.74)
+  slice.5 = f32[1]{0:T(128)} slice(dynamic-update-slice.56), slice={[1:2]}
+  get-tuple-element.257 = f32[1]{0:T(128)} get-tuple-element(fusion.2), index=1
+  dynamic-update-slice.57 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.16, constant.6, constant.74)
+  slice.6 = f32[1]{0:T(128)} slice(dynamic-update-slice.57), slice={[1:2]}
+  multiply.98 = f32[1]{0:T(128)} multiply(slice.6, get-tuple-element.257)
+  get-tuple-element.253 = f32[1]{0:T(128)} get-tuple-element(fusion.1), index=1
+  multiply.102 = f32[1]{0:T(128)} multiply(multiply.98, get-tuple-element.253)
+  negate.42 = f32[1]{0:T(128)} negate(multiply.102)
+  get-tuple-element.249 = f32[1]{0:T(128)} get-tuple-element(fusion), index=1
+  multiply.108 = f32[1]{0:T(128)} multiply(negate.42, get-tuple-element.249)
+  add.136 = f32[1]{0:T(128)} add(slice.5, multiply.108)
+  dynamic-update-slice.58 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.56, add.136, constant.79)
+  bitcast = f32[1]{0:T(128)} bitcast(dynamic-update-slice.58)
+  dynamic-update-slice.59 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.57, constant.6, constant.79)
+  bitcast.1 = f32[1]{0:T(128)} bitcast(dynamic-update-slice.59)
+  get-tuple-element.256 = f32[1]{0:T(128)} get-tuple-element(fusion.2), index=0
+  multiply.99 = f32[1]{0:T(128)} multiply(bitcast.1, get-tuple-element.256)
+  get-tuple-element.252 = f32[1]{0:T(128)} get-tuple-element(fusion.1), index=0
+  multiply.103 = f32[1]{0:T(128)} multiply(multiply.99, get-tuple-element.252)
+  negate.43 = f32[1]{0:T(128)} negate(multiply.103)
+  get-tuple-element.248 = f32[1]{0:T(128)} get-tuple-element(fusion), index=0
+  multiply.110 = f32[1]{0:T(128)} multiply(negate.43, get-tuple-element.248)
+  add.138 = f32[1]{0:T(128)} add(bitcast, multiply.110)
+  dynamic-update-slice.60 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.58, add.138, constant.84)
+  dynamic-update-slice.61 = f32[4]{0:T(128)} dynamic-update-slice(dynamic-update-slice.59, constant.6, constant.84)
+  tuple.41 = (f32[4]{0:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)}) tuple(Arg_0.1, Arg_1.2, Arg_2.3, dynamic-update-slice.60, dynamic-update-slice.61)
+  get-tuple-element.265 = f32[4]{0:T(128)} get-tuple-element(tuple.41), index=0
+  get-tuple-element.266 = f32[4]{0:T(128)} get-tuple-element(tuple.41), index=1
+  get-tuple-element.267 = f32[4]{0:T(128)} get-tuple-element(tuple.41), index=2
+  get-tuple-element.268 = f32[4]{0:T(128)} get-tuple-element(tuple.41), index=3
+  get-tuple-element.269 = f32[4]{0:T(128)} get-tuple-element(tuple.41), index=4
+  copy.15 = f32[4]{0:T(128)} copy(get-tuple-element.265)
+  copy.16 = f32[4]{0:T(128)} copy(get-tuple-element.266)
+  copy.17 = f32[4]{0:T(128)} copy(get-tuple-element.267)
+  ROOT tuple.42 = (f32[4]{0:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)}, f32[4]{0:T(128)}) tuple(copy.15, copy.16, copy.17, get-tuple-element.268, get-tuple-element.269)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 256 * 1024;
+  AssignMemorySpace(module.get(), options);
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopyBugIgammacSmallTest) {
+  absl::string_view hlo_string = R"(
+HloModule jit_f, is_scheduled=true
+
+wide.wide.region_2.16.clone.clone.clone.clone {
+  wide.wide.arg_tuple.13 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) parameter(0)
+  get-tuple-element.1363 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.13), index=0
+  get-tuple-element.1365 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.wide.arg_tuple.13), index=1
+  ROOT tuple.83 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) tuple(get-tuple-element.1363, get-tuple-element.1365)
+}
+
+wide.wide.region_3.133.clone.clone.clone.clone {
+  constant.101 = s32[]{:T(128)} constant(3)
+  wide.wide.arg_tuple.12 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) parameter(0)
+  get-tuple-element.1086 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.12), index=0
+  ROOT compare.26 = pred[]{:T(512)} compare(get-tuple-element.1086, constant.101), direction=LT
+}
+
+wide.wide.region_1.176.clone.clone.clone {
+  wide.wide.arg_tuple.11 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) parameter(0)
+  get-tuple-element.1412 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.11), index=0
+  get-tuple-element.1416 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.wide.arg_tuple.11), index=1
+  copy.23 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.1416)
+  tuple.81 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) tuple(get-tuple-element.1412, copy.23)
+  while.18 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) while(tuple.81), condition=wide.wide.region_3.133.clone.clone.clone.clone, body=wide.wide.region_2.16.clone.clone.clone.clone
+  get-tuple-element.1437 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(while.18), index=1
+  copy.81 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.1437)
+  ROOT tuple.86 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) tuple(get-tuple-element.1412, copy.81)
+}
+
+wide.wide.region_4.258.clone.clone.clone {
+  constant.110 = s32[]{:T(128)} constant(4)
+  wide.wide.arg_tuple.10 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) parameter(0)
+  get-tuple-element.1133 = s32[]{:T(128)} get-tuple-element(wide.wide.arg_tuple.10), index=0
+  ROOT compare.27 = pred[]{:T(512)} compare(get-tuple-element.1133, constant.110), direction=LT
+}
+
+wide.region_0.312.clone {
+  wide.arg_tuple.15 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) parameter(0)
+  get-tuple-element.1481 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.15), index=0
+  get-tuple-element.1485 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(wide.arg_tuple.15), index=1
+  copy.55 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.1485)
+  tuple.84 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) tuple(get-tuple-element.1481, copy.55)
+  while.20 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) while(tuple.84), condition=wide.wide.region_4.258.clone.clone.clone, body=wide.wide.region_1.176.clone.clone.clone
+  get-tuple-element.1512 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(while.20), index=1
+  copy.141 = f32[5,4,3]{0,1,2:T(4,128)} copy(get-tuple-element.1512)
+  ROOT tuple.89 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) tuple(get-tuple-element.1481, copy.141)
+}
+
+wide.region_5.426.clone {
+  constant.129 = s32[]{:T(128)} constant(5)
+  wide.arg_tuple.14 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) parameter(0)
+  get-tuple-element.1227 = s32[]{:T(128)} get-tuple-element(wide.arg_tuple.14), index=0
+  ROOT compare.28 = pred[]{:T(512)} compare(get-tuple-element.1227, constant.129), direction=LT
+}
+
+region_7.476 {
+  Arg_0.477 = f32[]{:T(128)} parameter(0)
+  Arg_1.478 = f32[]{:T(128)} parameter(1)
+  ROOT add.479 = f32[]{:T(128)} add(Arg_0.477, Arg_1.478)
+}
+
+ENTRY main.482 {
+  constant.4 = f32[]{:T(128)} constant(0)
+  constant.3 = s32[]{:T(128)} constant(0)
+  copy.105 = s32[]{:T(128)} copy(constant.3)
+  broadcast.6.clone.5 = f32[5,4,3]{0,1,2:T(4,128)} broadcast(constant.4), dimensions={}
+  tuple.87 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) tuple(copy.105, broadcast.6.clone.5)
+  while.21 = (s32[]{:T(128)}, f32[5,4,3]{0,1,2:T(4,128)}) while(tuple.87), condition=wide.region_5.426.clone, body=wide.region_0.312.clone
+  get-tuple-element.455 = f32[5,4,3]{0,1,2:T(4,128)} get-tuple-element(while.21), index=1
+  reduce.480 = f32[]{:T(128)} reduce(get-tuple-element.455, constant.4), dimensions={0,1,2}, to_apply=region_7.476
+  tuple.90 = (f32[]{:T(128)}) tuple(reduce.480)
+  get-tuple-element.1555 = f32[]{:T(128)} get-tuple-element(tuple.90), index=0
+  ROOT tuple.91 = (f32[]{:T(128)}) tuple(get-tuple-element.1555)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 128;
+  AssignMemorySpace(module.get(), options);
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopyBugTest) {
+  absl::string_view hlo_string = R"(
+HloModule jit_func, is_scheduled=true, entry_computation_layout={()->(f32[3]{0:T(128)}, s32[3]{0:T(128)}, f32[3]{0:T(128)}, s32[3]{0:T(128)})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
+
+%top_k_gt_f32_comparator.5 (Arg_0.6: f32[], Arg_1.7: f32[], Arg_2.8: s32[], Arg_3.9: s32[]) -> pred[] {
+  %Arg_3.9 = s32[]{:T(128)} parameter(3)
+  %Arg_2.8 = s32[]{:T(128)} parameter(2)
+  %Arg_1.7 = f32[]{:T(128)} parameter(1)
+  %Arg_0.6 = f32[]{:T(128)} parameter(0)
+  ROOT %compare.10 = pred[]{:T(512)} compare(f32[]{:T(128)} %Arg_0.6, f32[]{:T(128)} %Arg_1.7), direction=GT
+}
+
+ENTRY %main.35 () -> (f32[3], s32[3], f32[3], s32[3]) {
+  %constant.3 = f32[7]{0:T(128)} constant({3, 1, 4, 2, 5, 6, 7})
+  %iota.4 = s32[7]{0:T(128)} iota(), iota_dimension=0
+  %sort.11 = (f32[7]{0:T(128)}, s32[7]{0:T(128)}) sort(f32[7]{0:T(128)} %constant.3, s32[7]{0:T(128)} %iota.4), dimensions={0}, to_apply=%top_k_gt_f32_comparator.5
+  %get-tuple-element.14 = s32[7]{0:T(128)} get-tuple-element((f32[7]{0:T(128)}, s32[7]{0:T(128)}) %sort.11), index=1
+  %get-tuple-element.12 = f32[7]{0:T(128)} get-tuple-element((f32[7]{0:T(128)}, s32[7]{0:T(128)}) %sort.11), index=0
+  %bitcast = f32[3]{0:T(128)} bitcast(f32[7]{0:T(128)} %get-tuple-element.12)
+  %bitcast.1 = s32[3]{0:T(128)} bitcast(s32[7]{0:T(128)} %get-tuple-element.14)
+  %tuple = (f32[3]{0:T(128)}, s32[3]{0:T(128)}, f32[3]{0:T(128)}, s32[3]{0:T(128)}) tuple(f32[3]{0:T(128)} %bitcast, s32[3]{0:T(128)} %bitcast.1, f32[3]{0:T(128)} %bitcast, s32[3]{0:T(128)} %bitcast.1)
+  %get-tuple-element.4 = f32[3]{0:T(128)} get-tuple-element((f32[3]{0:T(128)}, s32[3]{0:T(128)}, f32[3]{0:T(128)}, s32[3]{0:T(128)}) %tuple), index=0
+  %get-tuple-element.5 = s32[3]{0:T(128)} get-tuple-element((f32[3]{0:T(128)}, s32[3]{0:T(128)}, f32[3]{0:T(128)}, s32[3]{0:T(128)}) %tuple), index=1
+  %get-tuple-element.6 = f32[3]{0:T(128)} get-tuple-element((f32[3]{0:T(128)}, s32[3]{0:T(128)}, f32[3]{0:T(128)}, s32[3]{0:T(128)}) %tuple), index=2
+  %get-tuple-element.7 = s32[3]{0:T(128)} get-tuple-element((f32[3]{0:T(128)}, s32[3]{0:T(128)}, f32[3]{0:T(128)}, s32[3]{0:T(128)}) %tuple), index=3
+  %copy.2 = f32[3]{0:T(128)} copy(f32[3]{0:T(128)} %get-tuple-element.6)
+  %copy.3 = s32[3]{0:T(128)} copy(s32[3]{0:T(128)} %get-tuple-element.7)
+  ROOT %tuple.1 = (f32[3]{0:T(128)}, s32[3]{0:T(128)}, f32[3]{0:T(128)}, s32[3]{0:T(128)}) tuple(f32[3]{0:T(128)} %get-tuple-element.4, s32[3]{0:T(128)} %get-tuple-element.5, f32[3]{0:T(128)} %copy.2, s32[3]{0:T(128)} %copy.3)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << "Instruction " << i << ": "
+            << sequence.instructions()[i]->ToString();
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopySingleWhileInnerLoopTest) {
+  absl::string_view hlo_string = R"(
+HloModule WhileAllocationBug, is_scheduled=true
+
+%WhileBodyA {
+  %increment_constant = f32[] constant(1)
+  %body_param = (f32[2,3]{1,0}, f32[]) parameter(0)
+  %get-tuple-element.1 = f32[] get-tuple-element((f32[2,3]{1,0}, f32[]) %body_param), index=1
+  %incremented_counter = f32[] add(f32[] %get-tuple-element.1, f32[] %increment_constant)
+  %get-tuple-element.2 = f32[2,3]{1,0} get-tuple-element((f32[2,3]{1,0}, f32[]) %body_param), index=0
+  %loop_neg = f32[2,3]{1,0} negate(f32[2,3]{1,0} %get-tuple-element.2)
+  %loop_copy = f32[2,3]{1,0} copy(f32[2,3]{1,0} %loop_neg)
+  ROOT %tuple = (f32[2,3]{1,0}, f32[]) tuple(f32[2,3]{1,0} %loop_copy, f32[] %incremented_counter)
+  }
+
+%WhileCondA {
+  %loop_threshold = f32[] constant(50)
+  %cond_param = (f32[2,3]{1,0}, f32[]) parameter(0)
+  %counter_value = f32[] get-tuple-element((f32[2,3]{1,0}, f32[]) %cond_param), index=1
+  ROOT %compare = pred[] compare(f32[] %counter_value, f32[] %loop_threshold), direction=LT
+  }
+
+ENTRY %Entry {
+  %data_a = f32[2,3]{1,0} parameter(0)
+  %counter_a = f32[] parameter(1)
+  %negate0 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %data_a)
+  %negate1 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %negate0)
+  %negate2 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %negate1)
+  %negate3 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %negate2)
+  %negate4 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %negate3)
+  %data_a_copy = f32[2,3]{1,0} copy(f32[2,3]{1,0} %data_a)
+  %input_a = (f32[2,3]{1,0}, f32[]) tuple(f32[2,3]{1,0} %data_a_copy, f32[] %counter_a)
+  %while_a = (f32[2,3]{1,0}, f32[]) while((f32[2,3]{1,0}, f32[]) %input_a), condition=%WhileCondA, body=%WhileBodyA
+  %get-tuple-element.3 = f32[2,3]{1,0} get-tuple-element((f32[2,3]{1,0}, f32[]) %while_a), index=0
+  ROOT %tuple.1 = tuple(f32[2,3]{1,0} %get-tuple-element.3, f32[2,3]{1,0} %negate4)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  for (const auto& computation : module->computations()) {
+    const HloInstructionSequence& sequence =
+        module->schedule().sequence(computation);
+    for (int i = 0; i < sequence.instructions().size(); ++i) {
+      VLOG(3) << i << ": " << sequence.instructions()[i]->ToString() << "\n";
+    }
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopySingleWhileTest) {
+  absl::string_view hlo_string = R"(
+HloModule WhileAllocationBug, is_scheduled=true
+
+%WhileBodyA {
+  %increment_constant = f32[] constant(1)
+  %body_param = (f32[2,3]{1,0}, f32[]) parameter(0)
+  %get-tuple-element.1 = f32[] get-tuple-element((f32[2,3]{1,0}, f32[]) %body_param), index=1
+  %incremented_counter = f32[] add(f32[] %get-tuple-element.1, f32[] %increment_constant)
+  %get-tuple-element.2 = f32[2,3]{1,0} get-tuple-element((f32[2,3]{1,0}, f32[]) %body_param), index=0
+  %loop_neg = f32[2,3]{1,0} negate(f32[2,3]{1,0} %get-tuple-element.2)
+  ROOT %tuple = (f32[2,3]{1,0}, f32[]) tuple(f32[2,3]{1,0} %loop_neg, f32[] %incremented_counter)
+  }
+
+%WhileCondA {
+  %loop_threshold = f32[] constant(50)
+  %cond_param = (f32[2,3]{1,0}, f32[]) parameter(0)
+  %counter_value = f32[] get-tuple-element((f32[2,3]{1,0}, f32[]) %cond_param), index=1
+  ROOT %compare = pred[] compare(f32[] %counter_value, f32[] %loop_threshold), direction=LT
+  }
+
+ENTRY %Entry {
+  %data_a = f32[2,3]{1,0} parameter(0)
+  %counter_a = f32[] parameter(1)
+  %negate0 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %data_a)
+  %negate1 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %negate0)
+  %negate2 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %negate1)
+  %negate3 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %negate2)
+  %negate4 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %negate3)
+  %data_a_copy = f32[2,3]{1,0} copy(f32[2,3]{1,0} %data_a)
+  %input_a = (f32[2,3]{1,0}, f32[]) tuple(f32[2,3]{1,0} %data_a_copy, f32[] %counter_a)
+  %while_a = (f32[2,3]{1,0}, f32[]) while((f32[2,3]{1,0}, f32[]) %input_a), condition=%WhileCondA, body=%WhileBodyA
+  %get-tuple-element.3 = f32[2,3]{1,0} get-tuple-element((f32[2,3]{1,0}, f32[]) %while_a), index=0
+  ROOT %tuple.1 = tuple(f32[2,3]{1,0} %get-tuple-element.3, f32[2,3]{1,0} %negate4)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  for (const auto& computation : module->computations()) {
+    const HloInstructionSequence& sequence =
+        module->schedule().sequence(computation);
+    for (int i = 0; i < sequence.instructions().size(); ++i) {
+      VLOG(3) << i << ": " << sequence.instructions()[i]->ToString() << "\n";
+    }
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateMultiCopySingleWhileTest2) {
+  absl::string_view hlo_string = R"(
+HloModule WhileAllocationBug, is_scheduled=true
+
+%WhileBodyA {
+  %increment_constant = f32[] constant(1)
+  %body_param = (f32[4,2]{1,0}, f32[4,2]{1,0}, f32[]) parameter(0)
+  %gte.0= f32[4,2]{1,0} get-tuple-element(%body_param), index=0
+  %copy.0 = f32[4,2]{1,0} copy(%gte.0)
+  %negate0 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %gte.0)
+  %negate1 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %negate0)
+  %negate2 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %negate1)
+  %negate3 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %negate2)
+  %negate4 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %negate3)
+  %negate5 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %negate4)
+  %negate6 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %negate5)
+  %gte.1= f32[4,2]{1,0} get-tuple-element(%body_param), index=1
+  %add = f32[4,2]{1,0} add(%negate6, %gte.1)
+  %gte.2= f32[] get-tuple-element(%body_param), index=2
+  %incremented_counter = f32[] add(gte.2, %increment_constant)
+  ROOT %tuple = (f32[4,2]{1,0}, f32[4,2]{1,0}, f32[]) tuple(%copy.0, %add, %incremented_counter)
+  }
+
+%WhileCondA {
+  %loop_threshold = f32[] constant(50)
+  %cond_param = (f32[4,2]{1,0}, f32[4,2]{1,0}, f32[]) parameter(0)
+  %counter_value = f32[] get-tuple-element(%cond_param), index=2
+  ROOT %compare = pred[] compare(f32[] %counter_value, f32[] %loop_threshold), direction=LT
+  }
+
+ENTRY %Entry {
+  %data_a = f32[4,2]{1,0} parameter(0)
+  %counter_a = f32[] parameter(1)
+  %p2 = f32[4,2]{1,0} parameter(2)
+  %negate0 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %p2)
+  %negate1 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %negate0)
+  %negate2 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %negate1)
+  %negate3 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %negate2)
+  %negate4 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %negate3)
+  %negate5 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %negate4)
+  %negate6 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %negate5)
+  %negate7 = f32[4,2]{1,0} negate(f32[4,2]{1,0} %negate6)
+  %data_a_copy = f32[4,2]{1,0} copy(f32[4,2]{1,0} %data_a)
+  %input_a = (f32[4,2]{1,0}, f32[4,2]{1,0}, f32[]) tuple(%data_a, %data_a_copy, %counter_a)
+  %while_a = (f32[4,2]{1,0}, f32[4,2]{1,0}, f32[]) while(%input_a), condition=%WhileCondA, body=%WhileBodyA
+  %gte.3 = f32[4,2]{1,0} get-tuple-element(%while_a), index=0
+  %copy = f32[4,2]{1,0} copy(%gte.3)
+  ROOT %tuple.1 = tuple(f32[4,2]{1,0} %copy, f32[4,2]{1,0} %negate7)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 1024;
+  options.max_outstanding_prefetches = 100;
+  options.max_outstanding_evictions = 100;
+  AssignMemorySpace(module.get(), options);
+  for (const auto& computation : module->computations()) {
+    const HloInstructionSequence& sequence =
+        module->schedule().sequence(computation);
+    for (int i = 0; i < sequence.instructions().size(); ++i) {
+      VLOG(3) << i << ": " << sequence.instructions()[i]->ToString() << "\n";
+    }
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopySingleWhileEvictionTest) {
+  absl::string_view hlo_string = R"(
+HloModule WhileAllocationBug, is_scheduled=true
+
+ENTRY %Entry {
+  %data_a = f32[2,3]{1,0} parameter(0)
+  %data_a_copy = f32[2,3]{1,0} copy(f32[2,3]{1,0} %data_a)
+  %negate0 = f32[2,3]{1,0:S(1)} negate(f32[2,3]{1,0} %data_a_copy)
+  %negate1 = f32[2,3]{1,0:S(1)} negate(f32[2,3]{1,0} %negate0)
+  %negate2 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %negate1)
+  %negate3 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %negate2)
+  %negate4 = f32[2,3]{1,0} negate(f32[2,3]{1,0} %negate3)
+  ROOT %tuple = tuple(f32[2,3]{1,0} %negate0, f32[2,3]{1,0} %negate4)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 24;
+  AssignMemorySpace(module.get(), options);
+  for (const auto& computation : module->computations()) {
+    const HloInstructionSequence& sequence =
+        module->schedule().sequence(computation);
+    for (int i = 0; i < sequence.instructions().size(); ++i) {
+      VLOG(3) << i << ": " << sequence.instructions()[i]->ToString() << "\n";
+    }
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopySingleWhileFailureHandlingTest) {
+  absl::string_view hlo_string = R"(
+HloModule WhileAllocationBug, is_scheduled=true
+
+%WhileBodyA {
+  %increment_constant = f32[] constant(1)
+  %body_param = (f32[4,6]{1,0}, f32[]) parameter(0)
+  %get-tuple-element.1 = f32[] get-tuple-element((f32[4,6]{1,0}, f32[]) %body_param), index=1
+  %incremented_counter = f32[] add(f32[] %get-tuple-element.1, f32[] %increment_constant)
+  %get-tuple-element.2 = f32[4,6]{1,0} get-tuple-element((f32[4,6]{1,0}, f32[]) %body_param), index=0
+  %loop_neg = f32[4,6]{1,0} negate(f32[4,6]{1,0} %get-tuple-element.2)
+  ROOT %tuple = (f32[4,6]{1,0}, f32[]) tuple(f32[4,6]{1,0} %loop_neg, f32[] %incremented_counter)
+  }
+
+%WhileCondA {
+  %loop_threshold = f32[] constant(50)
+  %cond_param = (f32[4,6]{1,0}, f32[]) parameter(0)
+  %counter_value = f32[] get-tuple-element((f32[4,6]{1,0}, f32[]) %cond_param), index=1
+  ROOT %compare = pred[] compare(f32[] %counter_value, f32[] %loop_threshold), direction=LT
+  }
+
+ENTRY %Entry {
+  %data_a = f32[4,6]{1,0} parameter(0)
+  %counter_a = f32[] parameter(1)
+  %negate0 = f32[4,6]{1,0} negate(f32[4,6]{1,0} %data_a)
+  %negate1 = f32[4,6]{1,0} negate(f32[4,6]{1,0} %negate0)
+  %negate2 = f32[4,6]{1,0} negate(f32[4,6]{1,0} %negate1)
+  %negate3 = f32[4,6]{1,0} negate(f32[4,6]{1,0} %negate2)
+  %negate4 = f32[4,6]{1,0} negate(f32[4,6]{1,0} %negate3)
+  %data_a_copy = f32[4,6]{1,0} copy(f32[4,6]{1,0} %data_a)
+  %input_a = (f32[4,6]{1,0}, f32[]) tuple(f32[4,6]{1,0} %data_a_copy, f32[] %counter_a)
+  %while_a = (f32[4,6]{1,0}, f32[]) while((f32[4,6]{1,0}, f32[]) %input_a), condition=%WhileCondA, body=%WhileBodyA
+  %get-tuple-element.3 = f32[4,6]{1,0} get-tuple-element((f32[4,6]{1,0}, f32[]) %while_a), index=0
+  ROOT %tuple.1 = tuple(f32[4,6]{1,0} %get-tuple-element.3, f32[4,6]{1,0} %negate4)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  for (const auto& computation : module->computations()) {
+    const HloInstructionSequence& sequence =
+        module->schedule().sequence(computation);
+    for (int i = 0; i < sequence.instructions().size(); ++i) {
+      VLOG(3) << i << ": " << sequence.instructions()[i]->ToString() << "\n";
+    }
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopyDoubleWhileTest) {
+  absl::string_view hlo_string = R"(
+  HloModule WhileAllocationBug, is_scheduled=true
+
+  %WhileBodyA (body_param: (f32[2,1], f32[])) -> (f32[2,1], f32[]) {
+    %increment_constant = f32[] constant(1)
+    %body_param = (f32[2,1]{1,0}, f32[]) parameter(0)
+    %get-tuple-element.1 = f32[] get-tuple-element((f32[2,1]{1,0}, f32[]) %body_param), index=1
+    %incremented_counter = f32[] add(f32[] %get-tuple-element.1, f32[] %increment_constant)
+    %get-tuple-element.2 = f32[2,1]{1,0} get-tuple-element((f32[2,1]{1,0}, f32[]) %body_param), index=0
+    %neg = f32[2,1]{1,0} negate(f32[2,1]{1,0} %get-tuple-element.2)
+    ROOT %tuple = (f32[2,1]{1,0}, f32[]) tuple(f32[2,1]{1,0} %neg, f32[] %incremented_counter)
+  }
+
+  %WhileCondA (cond_param: (f32[2,1], f32[])) -> pred[] {
+    %loop_threshold = f32[] constant(50)
+    %cond_param = (f32[2,1]{1,0}, f32[]) parameter(0)
+    %counter_value = f32[] get-tuple-element((f32[2,1]{1,0}, f32[]) %cond_param), index=1
+    ROOT %compare = pred[] compare(f32[] %counter_value, f32[] %loop_threshold), direction=LT
+  }
+
+  %WhileBodyB (body_param: (f32[2,1], f32[])) -> (f32[2,1], f32[]) {
+    %increment_constant = f32[] constant(1)
+    %body_param = (f32[2,1]{1,0}, f32[]) parameter(0)
+    %get-tuple-element.1 = f32[] get-tuple-element((f32[2,1]{1,0}, f32[]) %body_param), index=1
+    %incremented_counter = f32[] add(f32[] %get-tuple-element.1, f32[] %increment_constant)
+    %get-tuple-element.2 = f32[2,1]{1,0} get-tuple-element((f32[2,1]{1,0}, f32[]) %body_param), index=0
+    %neg = f32[2,1]{1,0} negate(f32[2,1]{1,0} %get-tuple-element.2)
+    ROOT %tuple = (f32[2,1]{1,0}, f32[]) tuple(f32[2,1]{1,0} %neg, f32[] %incremented_counter)
+  }
+
+  %WhileCondB (cond_param: (f32[2,1], f32[])) -> pred[] {
+    %loop_threshold = f32[] constant(50)
+    %cond_param = (f32[2,1]{1,0}, f32[]) parameter(0)
+    %counter_value = f32[] get-tuple-element((f32[2,1]{1,0}, f32[]) %cond_param), index=1
+    ROOT %compare = pred[] compare(f32[] %counter_value, f32[] %loop_threshold), direction=LT
+  }
+
+  ENTRY %Entry (param_iter: f32[2,1], param_data: f32[], p2: f32[2,1]) -> (f32[2,1], f32[2,1]) {
+    %data_a = f32[2,1]{1,0} parameter(0)
+    %counter_a = f32[] parameter(1)
+    %counter_b = f32[] parameter(2)
+    %data_b = f32[2,1]{1,0} copy(f32[2,1]{1,0} %data_a)
+    %input_a = (f32[2,1]{1,0}, f32[]) tuple(f32[2,1]{1,0} %data_a, f32[] %counter_a)
+    %while_a = (f32[2,1]{1,0}, f32[]) while((f32[2,1]{1,0}, f32[]) %input_a), condition=%WhileCondA, body=%WhileBodyA
+    %input_b = (f32[2,1]{1,0}, f32[]) tuple(f32[2,1]{1,0} %data_b, f32[] %counter_b)
+    %while_b = (f32[2,1]{1,0}, f32[]) while((f32[2,1]{1,0}, f32[]) %input_b), condition=%WhileCondB, body=%WhileBodyB
+    %output_a = f32[2,1]{1,0} get-tuple-element((f32[2,1]{1,0}, f32[]) %while_a), index=0
+    %output_b = f32[2,1]{1,0} get-tuple-element((f32[2,1]{1,0}, f32[]) %while_b), index=0
+    ROOT %output = (f32[2,1]{1,0}, f32[2,1]{1,0}) tuple(f32[2,1]{1,0} %output_a, f32[2,1]{1,0} %output_b)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << i << ": " << sequence.instructions()[i]->ToString();
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, DuplicateCopyDoubleWhileNestedTest) {
+  absl::string_view hlo_string = R"(
+  HloModule WhileAllocationBug, is_scheduled=true
+
+  %WhileBodyA (body_param: (f32[4,6], f32[], f32[4,6])) -> (f32[4,6], f32[], f32[4,6]) {
+    %increment_constant = f32[] constant(1)
+    %body_param = (f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) parameter(0)
+    %get-tuple-element.1 = f32[] get-tuple-element((f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) %body_param), index=1
+    %incremented_counter = f32[] add(f32[] %get-tuple-element.1, f32[] %increment_constant)
+    %get-tuple-element.2 = f32[4,6]{1,0} get-tuple-element((f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) %body_param), index=0
+    %get-tuple-element.3 = f32[4,6]{1,0} get-tuple-element((f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) %body_param), index=2
+    %neg = f32[4,6]{1,0} negate(f32[4,6]{1,0} %get-tuple-element.2)
+    ROOT %tuple = (f32[4,6]{1,0}, f32[], f32[4,6]) tuple(f32[4,6]{1,0} %neg, f32[] %incremented_counter, f32[4,6]{1,0} %get-tuple-element.3)
+  }
+
+  %WhileCondA (cond_param: (f32[4,6], f32[], f32[4,6])) -> pred[] {
+    %loop_threshold = f32[] constant(100)
+    %cond_param = (f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) parameter(0)
+    %counter_value = f32[] get-tuple-element((f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) %cond_param), index=1
+    ROOT %compare = pred[] compare(f32[] %counter_value, f32[] %loop_threshold), direction=LT
+  }
+
+  %WhileBodyB (body_param: (f32[4,6], f32[], f32[4,6])) -> (f32[4,6], f32[], f32[4,6]) {
+    %body_param = (f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) parameter(0)
+    %data = f32[4,6]{1,0} get-tuple-element((f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) %body_param), index=0
+    %counter = f32[] get-tuple-element((f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) %body_param), index=1
+    %copy = f32[4,6]{1,0} copy(%data)
+    %tuple = (f32[4,6]{1,0}, f32[], f32[4,6]) tuple(f32[4,6]{1,0} %copy, f32[] %counter, f32[4,6]%data)
+    ROOT %while = (f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) while((f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) %tuple), condition=%WhileCondA, body=%WhileBodyA
+  }
+
+  %WhileCondB (cond_param: (f32[4,6], f32[], f32[4,6])) -> pred[] {
+    %loop_threshold = f32[] constant(50)
+    %cond_param = (f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) parameter(0)
+    %counter_value = f32[] get-tuple-element((f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) %cond_param), index=1
+    ROOT %compare = pred[] compare(f32[] %counter_value, f32[] %loop_threshold), direction=LT
+  }
+
+  ENTRY %Entry (param_iter: f32[4,6], param_data: f32[], p2: f32[4,6]) -> f32[4,6] {
+    %data = f32[4,6]{1,0} parameter(0)
+    %counter = f32[] parameter(1)
+    %copy = f32[4,6]{1,0} copy(f32[4,6]{1,0} %data)
+    %tuple = (f32[4,6]{1,0}, f32[], f32[4,6]) tuple(f32[4,6]{1,0} %copy, f32[] %counter, f32[4,6]{1,0} %data)
+    %while = (f32[4,6]{1,0}, f32[], f32[4,6]) while((f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) %tuple), condition=%WhileCondB, body=%WhileBodyB
+    ROOT %output = f32[4,6]{1,0} get-tuple-element((f32[4,6]{1,0}, f32[], f32[4,6]{1,0}) %while), index=0
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(3) << i << ": " << sequence.instructions()[i]->ToString();
+  }
+}
+
 TEST_P(MemorySpaceAssignmentTest, AlwaysSpillJitPrefetchTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
@@ -2670,7 +4200,7 @@ TEST_P(MemorySpaceAssignmentTest, WhileSharedBufferVerificationBug) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
-  while_cond {
+while_cond {
     p0 = (f32[3]{0}, f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
     ROOT gte = pred[] get-tuple-element(p0), index=3
   }
@@ -2762,7 +4292,7 @@ TEST_P(MemorySpaceAssignmentTest, b172243149) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
-  while_cond {
+while_cond {
     p0 = (f32[3]{0}, f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
     ROOT gte = pred[] get-tuple-element(p0), index=3
   }
@@ -2996,7 +4526,7 @@ TEST_P(MemorySpaceAssignmentTest, ConditionalMultiUse) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
-
+  std::cout << module.get()->ToString() << "\n";
   if (allocate_across_sequential_calls()) {
     // Make sure the copy1->add edge is in alternate memory. Before conditional,
     // this should be evicted to default memory and neg uses the input from
@@ -5437,7 +6967,7 @@ TEST_P(MemorySpaceAssignmentTest,
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
-  while_cond {
+while_cond {
     p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
     ROOT gte = pred[] get-tuple-element(p0), index=2
   }
@@ -5454,7 +6984,7 @@ TEST_P(MemorySpaceAssignmentTest,
     ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(add, gte1, gte2)
   }
 
-  ENTRY entry {
+ENTRY entry {
     p0 = f32[3]{0} parameter(0)
     p1 = pred[] parameter(1)
     copy = f32[3]{0} copy(p0)
@@ -5861,6 +7391,61 @@ TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile2) {
                       op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
                                     op::GetTupleElement(op::While()))));
   }
+}
+
+TEST_P(MemorySpaceAssignmentTest, WhileTestA) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond1 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body1 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    gte2 = pred[] get-tuple-element(p0), index=2
+    add = f32[3]{0} add(gte0, gte1)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, add, gte2)
+  }
+
+  while_cond2 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body2 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    gte2 = pred[] get-tuple-element(p0), index=2
+    add = f32[3]{0} add(gte0, gte1)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, add, gte2)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    tuple1 = (f32[3]{0}, f32[3]{0}, pred[]) tuple(copy, p0, p1)
+    while1 = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple1), condition=while_cond1, body=while_body1
+    gte0 = f32[3]{0} get-tuple-element(while1), index=0
+    gte1 = f32[3]{0} get-tuple-element(while1), index=1
+    negate0 = f32[3]{0} negate(gte1)
+    tuple2 = (f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, negate0, p1)
+    while2 = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple2), condition=while_cond2, body=while_body2
+    gte2 = f32[3]{0} get-tuple-element(while2), index=0
+    gte3 = f32[3]{0} get-tuple-element(while2), index=1
+    negate1 = f32[3]{0} negate(gte3)
+    ROOT add = f32[3]{0} add(negate1, gte2)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
 }
 
 TEST_P(MemorySpaceAssignmentTest,
@@ -8157,8 +9742,7 @@ TEST_P(MemorySpaceAssignmentTest, HoistCopyStart) {
 }
 
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
-                         MemorySpaceAssignmentTest,
-                         ::testing::Values(false, true));
+                         MemorySpaceAssignmentTest, ::testing::Values(true));
 
 using AsynchronousCopyOrderingTest = ::testing::Test;
 

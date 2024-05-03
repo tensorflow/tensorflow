@@ -16,12 +16,18 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_THUNK_EXECUTOR_H_
 #define XLA_SERVICE_CPU_RUNTIME_THUNK_EXECUTOR_H_
 
+#include <atomic>
 #include <cstdint>
 #include <limits>
 #include <string>
 #include <vector>
 
+#include "absl/container/fixed_array.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
 #include "xla/service/cpu/runtime/thunk.h"
 
@@ -32,6 +38,13 @@ namespace xla::cpu {
 // thunks concurrently in a given thread pool.
 class ThunkExecutor {
  public:
+  // It's up to the caller to provide the task runner that will execute tasks
+  // produced by the executor. It can be a simple inline executor that runs
+  // tasks on the same thread, or a runner backed by a thread pool.
+  using Task = absl::AnyInvocable<void()>;
+  using TaskRunner = absl::AnyInvocable<void(Task)>;
+
+  // Nodes identified by their index in the captured ThunkSequence.
   using NodeId = int64_t;
 
   static constexpr NodeId kInvalidNodeId = std::numeric_limits<NodeId>::min();
@@ -44,18 +57,48 @@ class ThunkExecutor {
   // NodeDef defines an execution order for all thunks in a sequence.
   struct NodeDef {
     NodeId id = kInvalidNodeId;
-    std::vector<NodeId> out_edges;
     std::vector<NodeId> in_edges;
+    std::vector<NodeId> out_edges;
   };
 
+  // Executes the thunk sequence using the prepared dataflow graph.
+  absl::Status Execute(const Thunk::ExecuteParams& params, TaskRunner runner);
+
   absl::Span<const NodeDef> nodes_defs() const { return nodes_defs_; }
+  const NodeDef& node_def(NodeId id) const { return nodes_defs_[id]; }
+
   absl::Span<const NodeId> source() const { return source_; }
   absl::Span<const NodeId> sink() const { return sink_; }
 
   std::string ToString() const;
 
  private:
+  using ReadyQueue = absl::InlinedVector<NodeId, 8>;
+
   ThunkExecutor(ThunkSequence thunk_sequence, std::vector<NodeDef> nodes_defs);
+
+  // At run time NodeDef instantiated as a Node with an atomic counter that
+  // drops to zero when all in_edges are ready.
+  struct Node {
+    NodeId id = kInvalidNodeId;
+    std::atomic<int64_t>* counter = nullptr;
+    const std::vector<NodeId>* out_edges = nullptr;
+  };
+
+  // A struct to keep the state of a running executor.
+  struct ExecuteState {
+    ExecuteState(ThunkExecutor* executor, TaskRunner runner);
+
+    ThunkExecutor* executor;
+    TaskRunner runner;
+
+    absl::FixedArray<std::atomic<int64_t>> counters;
+    absl::InlinedVector<Node, 32> nodes;
+    absl::BlockingCounter done;
+  };
+
+  absl::Status Execute(ExecuteState* state, const Thunk::ExecuteParams& params,
+                       ReadyQueue ready_queue);
 
   ThunkSequence thunk_sequence_;
   std::vector<NodeDef> nodes_defs_;

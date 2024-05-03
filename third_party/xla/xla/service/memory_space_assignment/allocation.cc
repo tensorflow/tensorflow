@@ -208,6 +208,8 @@ Allocation::Allocation(HloPosition defining_position, MemorySpace memory_space,
       cross_program_prefetch_index_(cross_program_prefetch_index) {
   CHECK(!is_scoped_allocation ||
         original_defining_position_.index == ShapeIndex({}));
+  // VLOG(3) << "Created a new Allocation at " <<
+  // original_defining_position_.ToString();
 }
 
 HloPosition Allocation::original_defining_position() const {

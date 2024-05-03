@@ -327,7 +327,8 @@ MemorySpaceAssignment::Run(HloModule* module,
                            const Options& options) {
   CHECK(module->has_schedule());
   VLOG(3) << "Module before memory space assignment: ";
-  XLA_VLOG_LINES(3, module->ToString());
+  HloPrintOptions print_options = HloPrintOptions::ShortParsable();
+  XLA_VLOG_LINES(3, module->ToString(print_options));
   VLOG(3) << "Schedule: " << module->schedule().ToString();
   MemorySpaceAssignment memory_space_assignment(module, options,
                                                 hlo_live_range);
@@ -355,7 +356,8 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   TF_RETURN_IF_ERROR(ExportAndColorBuffers());
 
   VLOG(3) << "Module after memory space assignment: ";
-  XLA_VLOG_LINES(3, module_->ToString());
+  HloPrintOptions print_options = HloPrintOptions::ShortParsable();
+  XLA_VLOG_LINES(3, module_->ToString(print_options));
   TF_CHECK_OK(module_->schedule().Verify());
   TF_ASSIGN_OR_RETURN(AsyncCopyStats stats, CalculateAsyncCopyStats());
   VLOG(1) << "Maximum number of outstanding async copies/slices: "
