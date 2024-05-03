@@ -76,6 +76,15 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_layouts_extension_hdrs",
+    hdrs = ["pjrt_c_api_layouts_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_wrapper_impl",
     srcs = ["pjrt_c_api_wrapper_impl.cc"],
     hdrs = ["pjrt_c_api_wrapper_impl.h"],
@@ -83,6 +92,7 @@ cc_library(
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
+        ":pjrt_c_api_layouts_extension_hdrs",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status",
@@ -131,6 +141,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_layouts_extension_hdrs",
         ":pjrt_c_api_profiler_extension_hdrs",
         "//xla:shape_util",
         "//xla:status",
@@ -141,6 +152,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",

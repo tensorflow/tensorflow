@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -302,10 +303,7 @@ class PjRtCApiClient : public PjRtClient {
   }
 
   StatusOr<Layout> GetDefaultLayout(PrimitiveType element_type,
-                                    absl::Span<const int64_t> dims) override {
-    // TODO(skyewm): implement
-    return Unimplemented("PJRT C API does not support GetDefaultLayout");
-  }
+                                    absl::Span<const int64_t> dims) override;
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
