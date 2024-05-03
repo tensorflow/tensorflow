@@ -257,10 +257,12 @@ std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
             : reducer.Reduce(num_lives, num_primitives, std::move(Intervals));
     reduced_intervals = reducer.GetReducedIntervals();
     reduced_groups = reducer.GetReducedGroups();
-  } else {
+  } else {  // If we've already done term reduction, just copy over the results.
+    for (const auto& interval : intervals) {
+      reduced_intervals.push_back({interval.first(), interval.second()});
+    }
     for (const auto& group : groups) {
-      reduced_groups.push_back(
-          absl::btree_set<int64_t>(group.prims().begin(), group.prims().end()));
+      reduced_groups.push_back({group.prims().begin(), group.prims().end()});
     }
   }
   solver.MakeIntVarArray(reduced_groups.size(), 0.0, MPSolver::infinity(),
