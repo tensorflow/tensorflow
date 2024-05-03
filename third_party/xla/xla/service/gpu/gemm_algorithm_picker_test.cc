@@ -135,13 +135,8 @@ ENTRY main {
 
   SCOPED_TRACE(m->ToString());
   HloInstruction* dot;
-  if (module_cfg.debug_options().xla_gpu_enable_cublaslt()) {
-    ASSERT_THAT(m->entry_computation()->root_instruction(),
-                GmockMatch(m::CustomCall(&dot)));
-  } else {
-    ASSERT_THAT(m->entry_computation()->root_instruction(),
-                GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
-  }
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
 
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           dot->backend_config<GpuBackendConfig>());
@@ -224,13 +219,8 @@ ENTRY main {
   SCOPED_TRACE(m->ToString());
   HloInstruction* dot;
 
-  if (module_cfg.debug_options().xla_gpu_enable_cublaslt()) {
-    ASSERT_THAT(m->entry_computation()->root_instruction(),
-                GmockMatch(m::CustomCall(&dot)));
-  } else {
-    ASSERT_THAT(m->entry_computation()->root_instruction(),
-                GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
-  }
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
 
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           dot->backend_config<GpuBackendConfig>());
