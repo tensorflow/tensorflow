@@ -279,7 +279,6 @@ class TfrtCpuClient final : public PjRtClient {
     return addressable_devices_;
   }
 
-  absl::StatusOr<PjRtDevice*> LookupDevice(int device_id) const override;
   absl::StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const override;
 

@@ -224,10 +224,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return addressable_devices_;
   }
 
-  StatusOr<PjRtDevice*> LookupDevice(int device_id) const override {
-    return LookupDevice(PjRtGlobalDeviceId(device_id));
-  }
-
   StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const override {
     auto it = id_to_device_.find(global_device_id.value());

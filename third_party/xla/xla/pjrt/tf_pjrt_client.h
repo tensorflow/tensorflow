@@ -204,12 +204,9 @@ class TfPjRtClient : public PjRtClient {
   absl::Span<PjRtDevice* const> addressable_devices() const override {
     return wrapped_->addressable_devices();
   }
-  StatusOr<PjRtDevice*> LookupDevice(int device_id) const override {
-    return LookupDevice(PjRtGlobalDeviceId(device_id));
-  }
   StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const override {
-    return wrapped_->LookupDevice(global_device_id.value());
+    return wrapped_->LookupDevice(global_device_id);
   }
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override {

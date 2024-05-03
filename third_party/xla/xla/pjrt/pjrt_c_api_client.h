@@ -267,7 +267,6 @@ class PjRtCApiClient : public PjRtClient {
   absl::Span<PjRtDevice* const> devices() const override;
   absl::Span<PjRtDevice* const> addressable_devices() const override;
 
-  StatusOr<PjRtDevice*> LookupDevice(int device_id) const override;
   StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const override;
 

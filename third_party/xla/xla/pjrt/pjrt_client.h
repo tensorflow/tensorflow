@@ -525,10 +525,6 @@ class PjRtClient {
   virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
 
   // Lookup any PjRtDevice for a given PjRtDevice::id().
-  ABSL_DEPRECATED("Use LookupDevice(PjRtGlobalDeviceId) instead")
-  virtual StatusOr<PjRtDevice*> LookupDevice(int device_id) const {
-    return LookupDevice(PjRtGlobalDeviceId(device_id));
-  }
   virtual StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const = 0;
 
