@@ -673,6 +673,7 @@ class HloInstruction {
   };
 
   inline static constexpr char kMainExecutionThread[] = "main";
+  inline static constexpr char kHostThread[] = "host";
 
   virtual ~HloInstruction() { DetachFromOperandsAndUsers(); }
 
