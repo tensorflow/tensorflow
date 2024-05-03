@@ -887,14 +887,10 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
       return custom_call;
     }
     auto weights = custom_call->operand(1);
-    if (weights->user_count() > 1) {
-      return absl::FailedPreconditionError(
-          "Cannot prepack weights. There is more than one consumer.");
-    }
     auto weights_shape = weights->shape();
     Literal weights_literal;
     if (!(weights_shape.rank() == 2 &&
-          evaluator_.TryEvaluate(weights, &weights_literal))) {
+          evaluator_.TryEvaluate(weights, &weights_literal, true))) {
       return absl::CancelledError(
           "Cannot prepack weights. Not constant 2D weights.");
     }
