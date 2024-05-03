@@ -1612,60 +1612,65 @@ absl::StatusOr<bool> ProcessShardingInstruction(
   auto process_shard_group_instruction =
       [&](HloInstruction* instruction,
           bool replaced_with_copy) -> absl::StatusOr<bool> {
-    if (use_shard_group && instruction->has_sharding() &&
-        instruction->sharding().IsShardGroup()) {
-      if (instruction->IsCustomCall("Sharding")) {
-        CHECK(instruction->operand(0)->opcode() != HloOpcode::kParameter ||
-              (allow_spmd_sharding_propagation_to_parameters_vector &&
-               allow_spmd_sharding_propagation_to_parameters_vector->size() ==
-                   module->entry_computation()->num_parameters() &&
-               allow_spmd_sharding_propagation_to_parameters_vector->at(
-                   instruction->operand(0)->parameter_number())));
-      }
-      if (instruction->IsCustomCall("Sharding") && !replaced_with_copy) {
-        // Pass shard group to operand sharding custom-call if it's not
-        // replaced with a copy, meaning that the shardings are to annotate
-        // shard_group.
-        HloSharding operand_sharding = instruction->operand(0)->has_sharding()
-                                           ? instruction->operand(0)->sharding()
-                                           : HloSharding::Unknown();
-        operand_sharding.SetShardGroup(instruction->sharding().GetShardGroup());
-        instruction->mutable_operand(0)->set_sharding(
-            std::move(operand_sharding));
-        return true;
-      } else {
-        // Otherwise store the shard group relations.
-        const int64_t shard_group_id =
-            instruction->sharding().GetShardGroup().shard_group_id;
-        (*instruction_to_shard_group_id)[instruction] = shard_group_id;
-        if (instruction->sharding().IsShardAs()) {
-          auto& shard_as_group =
-              (*shard_group_id_to_shard_as_group)[shard_group_id];
-          if (!shard_as_group.empty()) {
-            CHECK(ShapeUtil::SameDimensions(instruction->shape(),
-                                            (*shard_as_group.begin())->shape()))
-                << "Instruction: " << instruction->ToString()
-                << " has different shape from the shapes of the other "
-                   "instructions within the same shard_as group: "
-                << (*shard_as_group.begin())->shape().ToString();
-          }
-          shard_as_group.insert(instruction);
-        } else {
-          auto& shard_like_group =
-              (*shard_group_id_to_shard_like_group)[shard_group_id];
-          if (!shard_like_group.empty()) {
-            CHECK(ShapeUtil::SameDimensions(
-                instruction->shape(), (*shard_like_group.begin())->shape()))
-                << "Instruction: " << instruction->ToString()
-                << " has different shape from the shapes of the other "
-                   "instructions within the same shard_like group: "
-                << (*shard_like_group.begin())->shape().ToString();
-          }
-          shard_like_group.insert(instruction);
+    // Run shard group processing IFF it's not CSE prevention.
+    if (replace_sharding_with_copy) {
+      if (use_shard_group && instruction->has_sharding() &&
+          instruction->sharding().IsShardGroup()) {
+        if (instruction->IsCustomCall("Sharding")) {
+          CHECK(instruction->operand(0)->opcode() != HloOpcode::kParameter ||
+                (allow_spmd_sharding_propagation_to_parameters_vector &&
+                 allow_spmd_sharding_propagation_to_parameters_vector->size() ==
+                     module->entry_computation()->num_parameters() &&
+                 allow_spmd_sharding_propagation_to_parameters_vector->at(
+                     instruction->operand(0)->parameter_number())));
         }
-        HloSharding sharding = instruction->sharding();
-        sharding.ClearShardGroup();
-        instruction->set_sharding(std::move(sharding));
+        if (instruction->IsCustomCall("Sharding") && !replaced_with_copy) {
+          // Pass shard group to operand sharding custom-call if it's not
+          // replaced with a copy, meaning that the shardings are to annotate
+          // shard_group.
+          HloSharding operand_sharding =
+              instruction->operand(0)->has_sharding()
+                  ? instruction->operand(0)->sharding()
+                  : HloSharding::Unknown();
+          operand_sharding.SetShardGroup(
+              instruction->sharding().GetShardGroup());
+          instruction->mutable_operand(0)->set_sharding(
+              std::move(operand_sharding));
+          return true;
+        } else {
+          // Otherwise store the shard group relations.
+          const int64_t shard_group_id =
+              instruction->sharding().GetShardGroup().shard_group_id;
+          (*instruction_to_shard_group_id)[instruction] = shard_group_id;
+          if (instruction->sharding().IsShardAs()) {
+            auto& shard_as_group =
+                (*shard_group_id_to_shard_as_group)[shard_group_id];
+            if (!shard_as_group.empty()) {
+              CHECK(ShapeUtil::SameDimensions(
+                  instruction->shape(), (*shard_as_group.begin())->shape()))
+                  << "Instruction: " << instruction->ToString()
+                  << " has different shape from the shapes of the other "
+                     "instructions within the same shard_as group: "
+                  << (*shard_as_group.begin())->shape().ToString();
+            }
+            shard_as_group.insert(instruction);
+          } else {
+            auto& shard_like_group =
+                (*shard_group_id_to_shard_like_group)[shard_group_id];
+            if (!shard_like_group.empty()) {
+              CHECK(ShapeUtil::SameDimensions(
+                  instruction->shape(), (*shard_like_group.begin())->shape()))
+                  << "Instruction: " << instruction->ToString()
+                  << " has different shape from the shapes of the other "
+                     "instructions within the same shard_like group: "
+                  << (*shard_like_group.begin())->shape().ToString();
+            }
+            shard_like_group.insert(instruction);
+          }
+          HloSharding sharding = instruction->sharding();
+          sharding.ClearShardGroup();
+          instruction->set_sharding(std::move(sharding));
+        }
       }
     }
     return false;
