@@ -3192,6 +3192,7 @@ cc_library(
         ":flatten_call_graph",
         ":hlo_cse",
         ":hlo_pass",
+        ":pattern_matcher",
         ":tuple_simplifier",
         ":while_loop_analysis",
         ":while_loop_constant_sinking",
@@ -3214,7 +3215,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
