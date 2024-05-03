@@ -428,6 +428,18 @@ TokKind HloLexer::LexNumberOrPattern() {
     current_ptr_ = consumable.data();
     auto slice = StringViewFromPointers(token_state_.token_start, current_ptr_);
     if (absl::SimpleAtoi(slice, &token_state_.int64_val)) {
+      if (token_state_.int64_val == 0) {
+        for (int i = 0; i < slice.size(); ++i) {
+          if (slice[i] == ' ') {
+            continue;
+          } else if (slice[i] == '-') {
+            token_state_.decimal_val = -0.0;
+            return TokKind::kDecimal;
+          } else {
+            break;
+          }
+        }
+      }
       return TokKind::kInt;
     }
     uint64_t uint64_val;
