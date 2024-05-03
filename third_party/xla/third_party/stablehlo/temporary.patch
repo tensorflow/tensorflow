@@ -266,6 +266,18 @@ diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/random.mlir b/stablehl
  // CHECK-DAG: %[[INSERTED:.+]] = tensor.insert %[[NEWSTATE]] into %[[ARG0]][%[[C1]]] : tensor<2xi64>
  // CHECK: return %[[INSERTED]], %[[RESHAPE]]
  
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+@@ -829,7 +829,7 @@
+     // TODO(#2216) Cleanup Attribute -> DenseArrayAttr
+     rewriter.replaceOpWithNewOp<linalg::TransposeOp>(
+         op, adaptor.getOperand(), emptyTensor,
+-        op.getPermutationAttr().dyn_cast_or_null<DenseI64ArrayAttr>(),
++        llvm::dyn_cast_or_null<DenseI64ArrayAttr>(op.getPermutationAttr()),
+         linalg::getPrunedAttributeList(op));
+     return success();
+   }
 diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
 --- stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
 +++ stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
@@ -298,6 +310,39 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeTo
  Pattern =>
    replace op<stablehlo.maximum>(input0 : Value<_: Tosa_Tensor>,
                             input1 : Value<_: Tosa_Tensor>)
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
+--- stablehlo/stablehlo/dialect/StablehloAttrs.td
++++ stablehlo/stablehlo/dialect/StablehloAttrs.td
+@@ -30,7 +30,7 @@
+   let valueType = DenseI64ArrayAttr.valueType;
+   let returnType = "::llvm::ArrayRef<int64_t>";
+   let baseAttr = DenseI64ArrayAttr;
+-  let convertFromStorage = "$_self.cast<DenseI64ArrayAttr>().asArrayRef()";
++  let convertFromStorage = "cast<DenseI64ArrayAttr>($_self).asArrayRef()";
+   let constBuilderCall = "$_builder.getDenseI64ArrayAttr($0)";
+ }
+ 
+@@ -38,7 +38,7 @@
+   let storageType = "Attribute";
+   let valueType = DenseBoolArrayAttr.valueType;
+   let returnType = "::llvm::ArrayRef<bool>";
+-  let convertFromStorage = "$_self.cast<DenseBoolArrayAttr>().asArrayRef()";
++  let convertFromStorage = "cast<DenseBoolArrayAttr>($_self).asArrayRef()";
+   let constBuilderCall = "$_builder.getDenseBoolArrayAttr($0)";
+ }
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -257,7 +257,7 @@
+ void ConstantOp::getAsmResultNames(
+     function_ref<void(Value, StringRef)> setNameFn) {
+   mlir::TensorType type = getType();
+-  if (type.getElementType().isa<IntegerType>()) {
++  if (isa<IntegerType>(type.getElementType())) {
+     setNameFn(getResult(), "c");
+   } else {
+     setNameFn(getResult(), "cst");
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
@@ -2180,7 +2225,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp b/
 +    auto res = verifyCustomCallOpAttributes(
 +        op, rewriter, [&](NamedAttribute attr) -> LogicalResult {
 +          if (attr.getName() != "largest") return success();
-+          if (attr.getValue().cast<BoolAttr>().getValue() == false)
++          if (cast<BoolAttr>(attr.getValue()).getValue() == false)
 +            return rewriter.notifyMatchFailure(
 +                op, "largest = false is not supported.");
 +          return success();
@@ -2442,7 +2487,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 +    // the verifier to make sure that its value is consistent with result type.
 +    if (!succeeded(hlo::matchInts(op.getOutputShape())))
 +      return rewriter.notifyMatchFailure(op, "expected static output_shape");
-+    if (!op.getOutput().getType().cast<ShapedType>().hasStaticShape())
++    if (!cast<ShapedType>(op.getOutput().getType()).hasStaticShape())
 +      return rewriter.notifyMatchFailure(op, "expected static output type");
 +    rewriter.replaceOpWithNewOp<RngBitGeneratorOp>(
 +        op, op->getResultTypes(), op.getRngAlgorithm(), op.getInitialState());
@@ -2464,7 +2509,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 +      return rewriter.notifyMatchFailure(impl, "expected constant k");
 +
 +    // We rely on many of the properties checked by verification.
-+    auto valuesType = op.getValues().getType().cast<ShapedType>();
++    auto valuesType = cast<ShapedType>(op.getValues().getType());
 +    auto valuesLastDimSize = valuesType.getShape()[valuesType.getRank() - 1];
 +    if (hlo::isDynamicDimSize(valuesLastDimSize) ||
 +        valuesLastDimSize != k[0])
@@ -2616,7 +2661,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    // At the moment, we only support refining return types using fully static
 +    // shape values which serves the current use cases well.
 +    // Support for partially static shape values is left for future work.
-+    auto initialStateType = op.getInitialState().getType().cast<ShapedType>();
++    auto initialStateType = cast<ShapedType>(op.getInitialState().getType());
 +    SmallVector<int64_t> outputShape;
 +    if (failed(hlo::matchInts(op.getOutputShape(), outputShape)))
 +      return rewriter.notifyMatchFailure(op, "expected constant output_shape");
@@ -2636,7 +2681,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    if (!maybeOp || failed(maybeOp->verify())) return failure();
 +    DynamicTopKOpAdaptor op = *maybeOp;
 +
-+    auto operandType = op.getOperand().getType().cast<ShapedType>();
++    auto operandType = cast<ShapedType>(op.getOperand().getType());
 +    SmallVector<int64_t> outputShape(operandType.getShape());
 +    SmallVector<int64_t> k;
 +    if (failed(hlo::matchInts(op.getK(), k)))
@@ -2709,6 +2754,18 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/
  }
  
  // -----
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
+@@ -822,7 +822,7 @@
+ 
+     auto newOp = rewriter.create<ReduceOp>(
+         op.getLoc(), newInputs, newInitVals,
+-        op.getDimensionsAttr().cast<DenseI64ArrayAttr>(), newElementTypes);
++        cast<DenseI64ArrayAttr>(op.getDimensionsAttr()), newElementTypes);
+     Block *newReducerBlock = rewriter.createBlock(&newOp.getBody());
+ 
+     IRMapping mapper;
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
