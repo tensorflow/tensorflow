@@ -332,7 +332,7 @@ PjitFunction::PjitFunction(
       shard_arg_fallback_(std::move(shard_arg_fallback)),
       cache_(std::move(cache)) {
   std::sort(static_argnums_.begin(), static_argnums_.end());
-  static_argnames.reserve(static_argnames.size());
+  static_argnames_.reserve(static_argnames.size());
   for (nb::str& name : static_argnames) {
     PyObject* s = name.inc_ref().ptr();
     PyUnicode_InternInPlace(&s);
