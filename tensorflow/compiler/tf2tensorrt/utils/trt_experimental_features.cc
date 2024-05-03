@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #include "tensorflow/core/util/env_var.h"

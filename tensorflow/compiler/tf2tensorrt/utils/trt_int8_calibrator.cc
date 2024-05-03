@@ -13,12 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_int8_calibrator.h"
-
 #include <atomic>
 #include <unordered_map>
-
-#include "tensorflow/core/platform/logging.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"

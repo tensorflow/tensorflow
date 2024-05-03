@@ -13,16 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
-
 #include <algorithm>
 #include <functional>
-
-#include "absl/algorithm/container.h"
-#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
