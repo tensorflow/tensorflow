@@ -111,6 +111,7 @@ filegroup(
         "runtime_matmul_f64.cc",
         "runtime_matmul_s32.cc",
         "runtime_fork_join.cc",
+        #"runtime_handle_ffi_call.cc", # TODO(b/338344732): Add  "runtime_handle_ffi_call.cc".
     ],
     visibility = internal_visibility([":friends"]),
 )
@@ -138,6 +139,7 @@ filegroup(
         "runtime_fork_join.h",
         "runtime_lightweight_check.h",
         "runtime_matmul.h",
+        #"runtime_handle_ffi_call.h", # TODO(b/338344732): Add  "runtime_handle_ffi_call.h"
     ],
     visibility = internal_visibility([":friends"]),
 )
@@ -481,6 +483,7 @@ cc_library(
         ":runtime_fft",
         ":runtime_fork_join",
         ":runtime_fp16",
+        ":runtime_handle_ffi_call",
         ":runtime_key_value_sort",
         ":runtime_matmul",
         ":runtime_matmul_acl",
@@ -637,6 +640,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -1166,6 +1170,33 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
+    name = "runtime_handle_ffi_call",
+    srcs = ["runtime_handle_ffi_call.cc"],
+    hdrs = ["runtime_handle_ffi_call.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/ffi:call_frame",
+        "//xla/ffi:ffi_api",
+        "//xla/service:custom_call_status_public_headers",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AsmParser",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

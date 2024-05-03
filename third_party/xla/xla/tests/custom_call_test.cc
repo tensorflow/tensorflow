@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
@@ -642,14 +643,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiTupleRotate",
 
 }  // namespace
 
-// TODO(abanas): When #10056 (typed FFI support) is ready, this class can be
-// replaced by a simple 'using FfiCustomCallTest = CustomCallTest;'
-class FfiCustomCallTest : public CustomCallTest {
- protected:
-  void SetUp() override {
-    GTEST_SKIP() << "Typed FFI is not supported yet on CPU";
-  }
-};
+using FfiCustomCallTest = CustomCallTest;
 
 XLA_TEST_F(FfiCustomCallTest, FfiReportsSuccess) {
   auto module = CreateNewVerifiedModule();
@@ -905,7 +899,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleAttrPointer) {
   auto n = 4.0f;
   auto ptr = reinterpret_cast<uintptr_t>(&n);
   builder.AddInstruction(HloInstruction::CreateCustomCall(
-      r0f32_, {constant}, "__xla_test$$FfiR0F32AddN",
+      r0f32_, {constant}, "__xla_test$$FfiR0F32AddNPointer",
       /*opaque=*/absl::StrFormat("{n = %d : i64}", ptr),
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
@@ -1083,6 +1077,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleOutput) {
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiTupleInput) {
+  GTEST_SKIP() << "Tuple inputs not yet implemented.";
   const char* const kModuleStr = R"(
     HloModule m
 
