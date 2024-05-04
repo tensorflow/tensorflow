@@ -43,7 +43,7 @@ class IndexDomain {
   IndexDomain(const IndexDomain&) = default;
   IndexDomain(IndexDomain&&) = default;
   IndexDomain& operator=(const IndexDomain&) = default;
-  IndexDomain& operator=(IndexDomain&&) = default;
+  IndexDomain& operator=(IndexDomain&&) noexcept = default;
 
   const Index& origin() const { return origin_; }
   const Shape& shape() const { return shape_; }
