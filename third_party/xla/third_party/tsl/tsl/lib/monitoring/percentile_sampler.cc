@@ -19,6 +19,12 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
+#include "tsl/lib/monitoring/types.h"
+#include "tsl/platform/env_time.h"
+#include "tsl/platform/macros.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/types.h"
+
 // We replace this implementation with a null implementation for mobile
 // platforms.
 #ifdef IS_MOBILE_PLATFORM
