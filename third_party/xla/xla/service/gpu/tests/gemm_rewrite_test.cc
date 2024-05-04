@@ -67,65 +67,21 @@ class GemmRewriteTest : public GpuCodegenTest {
     return backend().default_stream_executor()->GetDeviceDescription();
   }
 
- public:
-  const se::GpuComputeCapability& GpuComputeComp() {
+ protected:
+  const se::GpuComputeCapability& Capability() {
     return device_desc().gpu_compute_capability();
   }
-  se::GpuComputeCapability CudaHopperOrRocmMI300() {
-    return std::visit(
-        VariantVisitor{[](const se::CudaComputeCapability&) {
-                         return se::GpuComputeCapability{
-                             se::CudaComputeCapability{
-                                 se::CudaComputeCapability::HOPPER, 0}};
-                       },
-                       [](const se::RocmComputeCapability&) {
-                         return se::GpuComputeCapability{
-                             se::RocmComputeCapability{"gfx942"}};
-                       }},
-        GpuComputeComp());
+
+  bool IsCuda() {
+    return std::holds_alternative<se::CudaComputeCapability>(Capability());
   }
 
-  enum class Switch : uint32_t {
-    False,  // check always fails
-    True,   // check always succeeds
-  };
-  // Switch based on GPU platform only: true/false for both
-  bool CudaOrRocmCheck(Switch cuda_set, Switch rocm_set) {
-    return CudaOrRocmCheck(
-        [cuda_set](const se::CudaComputeCapability&) {
-          return cuda_set == Switch::True;
-        },
-        [rocm_set](const se::RocmComputeCapability&) {
-          return rocm_set == Switch::True;
-        });
-  }
-  // Major version check for CUDA and true/false for ROCM
-  bool CudaOrRocmCheck(int cuda_major, Switch rocm_set) {
-    return CudaOrRocmCheck(cuda_major, 0, rocm_set);
-  }
-  // Full version check for CUDA and true/false for ROCM
-  bool CudaOrRocmCheck(int cuda_major, int cuda_minor, Switch rocm_set) {
-    return CudaOrRocmCheck(cuda_major, cuda_minor,
-                           [rocm_set](const se::RocmComputeCapability&) {
-                             return rocm_set == Switch::True;
-                           });
-  }
-  // Full version check for CUDA and generic version for ROCM
-  bool CudaOrRocmCheck(
-      int cuda_major, int cuda_minor,
-      absl::AnyInvocable<bool(const se::RocmComputeCapability&)> rocm_fun) {
-    return CudaOrRocmCheck(
-        [cuda_major, cuda_minor](const se::CudaComputeCapability& cc) {
-          return cc.IsAtLeast(cuda_major, cuda_minor);
-        },
-        std::move(rocm_fun));
-  }
-  // The most generic version for both platforms
-  bool CudaOrRocmCheck(
-      absl::AnyInvocable<bool(const se::CudaComputeCapability&)> cuda_fun,
-      absl::AnyInvocable<bool(const se::RocmComputeCapability&)> rocm_fun) {
-    return std::visit(VariantVisitor{std::move(cuda_fun), std::move(rocm_fun)},
-                      GpuComputeComp());
+  se::GpuComputeCapability CudaHopperOrRocmMI300() {
+    if (IsCuda()) {
+      return se::CudaComputeCapability::Hopper();
+    } else {
+      return se::RocmComputeCapability{"gfx942"};
+    }
   }
 
   DebugOptions GetDebugOptionsForTest() override {
@@ -138,15 +94,23 @@ class GemmRewriteTest : public GpuCodegenTest {
   }
 
   bool SkipGpuBlasLtTest() {
-    return CudaOrRocmCheck(
-        [](const se::CudaComputeCapability&) {  // never skip gpublas-lt tests
-                                                // for CUDA
-          return false;
-        },
-        [this](const se::RocmComputeCapability& rocm) {
-          bool blaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
-          return (blaslt && !rocm.has_hipblaslt());
-        });
+    return !IsCuda() &&
+           !std::get<se::RocmComputeCapability>(Capability()).has_hipblaslt() &&
+           GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  }
+
+  bool HasFp8Support() {
+    if (IsCuda()) {
+      return std::get<se::CudaComputeCapability>(Capability()).IsAtLeast(8, 9);
+    }
+    return std::get<se::RocmComputeCapability>(Capability())
+               .has_fp8_support() &&
+           GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  }
+
+  bool HasCudaComputeCapability(const se::CudaComputeCapability& cc) {
+    return IsCuda() &&
+           std::get<se::CudaComputeCapability>(Capability()).IsAtLeast(cc);
   }
 };
 
@@ -177,10 +141,11 @@ ENTRY AddDotsFunc {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TEST_F(GemmRewriteTest, TestBatchedAutotuning) {
-  if (CudaOrRocmCheck(se::CudaComputeCapability::AMPERE, Switch::False)) {
+  if (HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
     GTEST_SKIP()
         << "There is no autotuning starting with the Nvidia Ampere generation";
   }
+
   const char* hlo_text = R"(
 HloModule ComplexDotMultipleNonContracting
 
@@ -259,7 +224,8 @@ ENTRY bf16gemm {
 }
   )";
 
-  if (CudaOrRocmCheck(9, 0, Switch::False)) {
+  if (!IsCuda() ||
+      HasCudaComputeCapability(se::CudaComputeCapability::Hopper())) {
     // The Hopper optimized HLO has a BF16 multiply instruction since Hopper has
     // native BF16 multiply support.
     MatchOptimizedHlo(hlo_text, R"(
@@ -826,11 +792,7 @@ ENTRY AddDotsFunc {
 }
 
 TEST_P(ParameterizedGemmRewriteTest, ComplexAlphaSimpleRewrite) {
-  if (CudaOrRocmCheck(
-          [](se::CudaComputeCapability) { return false; },
-          [this](se::RocmComputeCapability rocm) {
-            return GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
-          })) {
+  if (!IsCuda() && GetDebugOptionsForTest().xla_gpu_enable_cublaslt()) {
     GTEST_SKIP() << "TODO: Unsupported C64 gpublas-lt datatype on ROCM";
   }
   const char* hlo_text = R"(
@@ -964,7 +926,8 @@ ENTRY bf16gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (CudaOrRocmCheck(se::CudaComputeCapability::AMPERE, Switch::True)) {
+  if (!IsCuda() ||
+      HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
 ; CHECK: {{.*}} custom-call(bf16[16,8]{1,0} {{.*}}, bf16[8,8]{1,0} {{.*}}), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
@@ -992,7 +955,8 @@ ENTRY bf16gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (CudaOrRocmCheck(se::CudaComputeCapability::AMPERE, Switch::True)) {
+  if (!IsCuda() ||
+      HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
     ; CHECK: {{.*}} custom-call(bf16[3,8,8]{2,1,0} {{.*}}, bf16[3,8,8]{2,1,0} {{.*}}), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
@@ -1025,7 +989,8 @@ ENTRY int8gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (CudaOrRocmCheck(se::CudaComputeCapability::VOLTA, Switch::True)) {
+  if (!IsCuda() ||
+      HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
 ; CHECK: {{.*}} custom-call(s8[12,4]{1,0} [[A:%[^ ]+]], s8[4,8]{0,1} [[B:%[^ ]+]]), custom_call_target="__cublas$gemm"
@@ -1042,7 +1007,7 @@ ENTRY int8gemm {
 }
 
 TEST_F(GemmRewriteTest, Int8GemmRankGreaterThanTwo) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
+  if (!IsCuda()) {
     GTEST_SKIP() << "DoBlasGemmWithAlgorithm is not yet implemented on ROCm";
   }
 
@@ -1059,7 +1024,8 @@ ENTRY main.4 {
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (CudaOrRocmCheck(se::CudaComputeCapability::VOLTA, Switch::True)) {
+  if (!IsCuda() ||
+      HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
 ; CHECK: [[GEMM:%[^ ]+]] = (s32[8,4]{1,0}, s8[{{[0-9]+}}]{0}) custom-call(s8[8,4]{1,0} %{{.*}}, s8[4,4]{0,1} %{{.*}}), custom_call_target="__cublas$gemm",
@@ -1083,7 +1049,8 @@ ENTRY int8gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (CudaOrRocmCheck(se::CudaComputeCapability::VOLTA, Switch::True)) {
+  if (!IsCuda() ||
+      HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
 ; CHECK: {{.*}} custom-call(s8[12,4]{1,0} [[A:%[^ ]+]], s8[4,8]{0,1} [[B:%[^ ]+]]),
@@ -1117,7 +1084,8 @@ ENTRY int8gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (CudaOrRocmCheck(se::CudaComputeCapability::VOLTA, Switch::True)) {
+  if (!IsCuda() ||
+      HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
 ; CHECK: {{.*}} custom-call(s8[12,4]{1,0} [[A:%[^ ]+]], s8[4,8]{0,1} [[B:%[^ ]+]]),
@@ -1139,7 +1107,7 @@ ENTRY int8gemm {
 }
 
 TEST_P(ParameterizedGemmRewriteTest, Int8GemmNotMultipleOfFour) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
+  if (!IsCuda()) {
     GTEST_SKIP() << "DoBlasGemmWithAlgorithm is not yet implemented on ROCm";
   }
 
@@ -1154,7 +1122,8 @@ ENTRY int8gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (CudaOrRocmCheck(se::CudaComputeCapability::VOLTA, Switch::True)) {
+  if (!IsCuda() ||
+      HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
 ; CHECK: {{.*}} custom-call(s8[16,4]{1,0} [[A:%[^ ]+]], s8[4,12]{0,1} [[B:%[^ ]+]]), custom_call_target="__cublas$gemm"
@@ -1171,7 +1140,7 @@ ENTRY int8gemm {
 }
 
 TEST_P(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
+  if (!IsCuda()) {
     GTEST_SKIP() << "DoBlasGemmWithAlgorithm is not yet implemented on ROCm";
   }
 
@@ -1190,7 +1159,8 @@ TEST_P(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
                            {"f16", "f32", true},
                            {"bf16", "f32", true}};
 
-  if (CudaOrRocmCheck(se::CudaComputeCapability::VOLTA, Switch::True)) {
+  if (!IsCuda() ||
+      HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     // For compute capabilities before volta, we always do upcasting, so it
     // would be impossible for this test to fail. That is why we only add these
     // cases when the compute capability is at least Volta.
@@ -1254,7 +1224,7 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GpuComputeComp());
+  GemmRewriter pass(Capability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1278,7 +1248,7 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GpuComputeComp());
+  GemmRewriter pass(Capability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1302,7 +1272,7 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GpuComputeComp());
+  GemmRewriter pass(Capability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
@@ -1323,7 +1293,7 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GpuComputeComp());
+  GemmRewriter pass(Capability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1347,7 +1317,7 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GpuComputeComp());
+  GemmRewriter pass(Capability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1375,7 +1345,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GpuComputeComp());
+  GemmRewriter pass(Capability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1403,7 +1373,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GpuComputeComp());
+  GemmRewriter pass(Capability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1433,7 +1403,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GpuComputeComp());
+  GemmRewriter pass(Capability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -2102,7 +2072,7 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GpuComputeComp());
+  GemmRewriter pass(Capability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -2152,7 +2122,7 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GpuComputeComp());
+  GemmRewriter pass(Capability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   SCOPED_TRACE(module->ToString());
   EXPECT_TRUE(changed);
@@ -3000,7 +2970,8 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, BF16VectorBiasPadded) {
-  if (!CudaOrRocmCheck(se::CudaComputeCapability::AMPERE, Switch::True)) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
     GTEST_SKIP() << "Padding of GEMM bf16 operands only implemented on "
                     "architectures with bf16 Tensor Cores.";
   }
@@ -3531,11 +3502,11 @@ ENTRY test {
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasThenApproxGeluActivation) {
 #if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60000
-  auto rocm_switch = Switch::False;  // GELU is only available from ROCM 6.0
+  auto rocm_switch = false;  // GELU is only available from ROCM 6.0
 #else
-  auto rocm_switch = Switch::True;
+  auto rocm_switch = true;
 #endif
-  if (CudaOrRocmCheck(Switch::False, rocm_switch)) {
+  if (!IsCuda() && rocm_switch) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
   }
   const char* hlo_text = R"(
@@ -3598,7 +3569,7 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, ApproxGeluActivationWithAux) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
+  if (!IsCuda()) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
   }
   const char* hlo_text = R"(
@@ -3658,7 +3629,7 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasThenApproxGeluActivationWithAux) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
+  if (!IsCuda()) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
   }
   const char* hlo_text = R"(
@@ -3722,7 +3693,8 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, ApproxGeluActivationBF16) {
-  if (!CudaOrRocmCheck(se::CudaComputeCapability::AMPERE, Switch::True)) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
     GTEST_SKIP() << "Padding of GEMM bf16 operands only implemented on "
                     "architectures with bf16 Tensor Cores.";
   }
@@ -3792,7 +3764,7 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GpuComputeComp());
+  GemmRewriter pass(Capability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -3869,7 +3841,7 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GpuComputeComp());
+  GemmRewriter pass(Capability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -3909,7 +3881,8 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasF16Padded) {
-  if (!CudaOrRocmCheck(se::CudaComputeCapability::VOLTA, Switch::True)) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     GTEST_SKIP() << "Padding of GEMM operands only implemented on "
                     "architectures with Tensor Cores.";
   }
@@ -3959,7 +3932,8 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, ReluActivationF16Padded) {
-  if (!CudaOrRocmCheck(se::CudaComputeCapability::VOLTA, Switch::True)) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     GTEST_SKIP() << "Padding of GEMM operands only implemented on "
                     "architectures with Tensor Cores.";
   }
@@ -4055,7 +4029,8 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasReluActivationF16Padded) {
-  if (!CudaOrRocmCheck(se::CudaComputeCapability::VOLTA, Switch::True)) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     GTEST_SKIP() << "Padding of GEMM operands only implemented on "
                     "architectures with Tensor Cores.";
   }
@@ -4143,7 +4118,7 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GpuComputeComp());
+  GemmRewriter pass(Capability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -4185,7 +4160,8 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasBF16Padded) {
-  if (!CudaOrRocmCheck(se::CudaComputeCapability::AMPERE, Switch::True)) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
     GTEST_SKIP() << "Padding of GEMM operands in bfloat16 only implemented on "
                     "Ampere and newer architectures.";
   }
@@ -4234,7 +4210,8 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, ReluActivationBF16Padded) {
-  if (!CudaOrRocmCheck(se::CudaComputeCapability::AMPERE, Switch::True)) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
     GTEST_SKIP() << "Padding of GEMM operands in bfloat16 only implemented on "
                     "Ampere and newer architectures.";
   }
@@ -4286,7 +4263,8 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasReluActivationBF16Padded) {
-  if (!CudaOrRocmCheck(se::CudaComputeCapability::AMPERE, Switch::True)) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
     GTEST_SKIP() << "Padding of GEMM operands in bfloat16 only implemented on "
                     "Ampere and newer architectures.";
   }
@@ -4315,7 +4293,7 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasReluActivationF64) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
+  if (!IsCuda()) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt F64 datatype on ROCM";
   }
   const char* hlo_text = R"(
@@ -4440,7 +4418,7 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(GpuComputeComp());
+  GemmRewriter pass(Capability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   SCOPED_TRACE(module->ToString());
   EXPECT_TRUE(changed);
@@ -4503,7 +4481,7 @@ ENTRY main {
 // Test gemm matrix bias add fusion with mix type and out of place update(C !=
 // D)
 TEST_F(CublasLtGemmRewriteTest, MatrixBiasMixTypeOutOfPlace) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
+  if (!IsCuda()) {
     GTEST_SKIP() << "TODO: Unsupported mixed datatypes on ROCM";
   }
   std::vector<std::tuple<absl::string_view, absl::string_view>>
@@ -4542,7 +4520,7 @@ ENTRY test {
 // Test batch gemm matrix bias add fusion with mix type and out of place
 // update(C != D)
 TEST_F(CublasLtGemmRewriteTest, MatrixBiasMixTypeOutOfPlaceBatched) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
+  if (!IsCuda()) {
     GTEST_SKIP() << "TODO: Unsupported mixed datatypes on ROCM";
   }
   std::vector<std::tuple<absl::string_view, absl::string_view>>
@@ -4580,7 +4558,7 @@ ENTRY test {
 
 // Test gemm matrix bias add fusion with mix type and in place update(C = D)
 TEST_F(CublasLtGemmRewriteTest, MatrixBiasMixTypeInPlace) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
+  if (!IsCuda()) {
     GTEST_SKIP() << "TODO: Unsupported mixed datatypes on ROCM";
   }
   std::vector<std::tuple<absl::string_view, absl::string_view>>
@@ -4672,9 +4650,7 @@ class ParameterizedFp8GemmRewriteTest : public ParameterizedGemmRewriteTest {
   // architectures (Ada, Hopper, and later).
   void CheckFp8IfSupported(absl::string_view hlo_text,
                            ErrorSpec error_spec = ErrorSpec{1e-2, 1e-2}) {
-    if (!CudaOrRocmCheck(8, 9, [](const se::RocmComputeCapability& cc) {
-          return cc.has_fp8_support();
-        })) {
+    if (!HasFp8Support()) {
       return;
     }
     std::string replaced_hlo_text =
@@ -4729,9 +4705,7 @@ class ParameterizedFp8GemmRewriteTest : public ParameterizedGemmRewriteTest {
 };
 
 TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {
-  if (CudaOrRocmCheck(8, 9, [](const se::RocmComputeCapability& cc) {
-        return cc.has_fp8_support();
-      })) {
+  if (HasFp8Support()) {
     GTEST_SKIP() << "Test requires a pre-Ada GPU or an AMD GPU prior to MI300.";
   }
   const char* hlo_text = R"(
@@ -4756,9 +4730,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteOnPreAdaWithF32Output) {
-  if (CudaOrRocmCheck(8, 9, [](const se::RocmComputeCapability& cc) {
-        return cc.has_fp8_support();
-      })) {
+  if (HasFp8Support()) {
     GTEST_SKIP() << "Test requires a pre-Ada GPU or an AMD GPU prior to MI300.";
   }
   const char* hlo_text = R"(
@@ -4805,7 +4777,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedTypesF8) {
   EXPECT_TRUE(RunAndCompare(absl::StrReplaceAll(hlo_text, replacements_),
                             ErrorSpec{1e-2, 1e-2}));
   RunAndFilecheckHloRewrite(hlo_text,
-                            GemmRewriter(GpuComputeComp(), /*f8_rewrite=*/true),
+                            GemmRewriter(Capability(), /*f8_rewrite=*/true),
                             R"(
 ; CHECK-LABEL: ENTRY %unsupported_types ({{.*}}: <<F8E5M2>>[16,16], {{.*}}: <<F8E5M2>>[16,16]) -> <<F8E5M2>>[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = <<F8E5M2>>[16,16]{1,0} parameter(0)
