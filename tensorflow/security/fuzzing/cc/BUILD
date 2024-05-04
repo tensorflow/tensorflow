@@ -50,7 +50,7 @@ tf_cc_fuzz_test(
     srcs = ["bfloat16_fuzz.cc"],
     tags = ["no_oss"],  # b/175698644
     deps = [
-        "//tensorflow/core:test",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/framework:bfloat16",
     ],
 )
@@ -69,7 +69,8 @@ tf_cc_fuzz_test(
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:resource_loader",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core/util:saved_tensor_slice_proto_cc",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -98,6 +99,7 @@ tf_cc_fuzz_test(
     srcs = ["consume_leading_digits_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
     ],
@@ -178,6 +180,7 @@ tf_cc_fuzz_test(
     deps = [
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:attr_value_util",
+        "//tensorflow/core/platform:stringpiece",
     ],
 )
 
