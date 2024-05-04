@@ -69,6 +69,8 @@ INCLUDEPRE_RE = re.compile(r"absl::lts_[0-9]+::base_internal::ThrowStdOutOfRange
                            r"google::protobuf::MessageLite::ParseFromString|" # for pywrap_saved_model
                            r"absl::Mutex::ReaderLock|" # for //tensorflow/contrib/rnn:python/ops/_gru_ops.so and more ops
                            r"absl::Mutex::ReaderUnlock|" # for //tensorflow/contrib/rnn:python/ops/_gru_ops.so and more ops
+                           r"mlir::tensorflow_to_stablehlo::pywrap::PywrapSavedModelToStablehlo|" # for pywrap_tensorflow_to_stablehlo
+                           r"mlir::tensorflow_to_stablehlo::pywrap::PywrapTfModuleToStablehlo|" # for pywrap_tensorflow_to_stablehlo
                            r"tensorflow::internal::LogMessage|"
                            r"tensorflow::internal::LogString|"
                            r"tensorflow::internal::CheckOpMessageBuilder|"
@@ -91,6 +93,7 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"^(TFE_\w*)$|"
                         r"nsync::|"
                         r"tensorflow::|"
+                        r"tensorflow_to_stablehlo::|"
                         r"toco::|"
                         r"tsl::|"
                         r"functor::|"

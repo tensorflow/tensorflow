@@ -31,6 +31,7 @@
       been added to TF binary distributions (Python wheels).
 * Replace `DebuggerOptions` of TensorFlow Quantizer, and migrate to
   `DebuggerConfig` of StableHLO Quantizer.
+* Add TensorFlow to StableHLO converter to TensorFlow pip package.
 
 ## Keras
 

@@ -22,6 +22,7 @@ package_group(
     packages = [
         "//tensorflow/compiler/mlir/lite/...",
         "//tensorflow/compiler/mlir/quantization/...",
+        "//tensorflow/compiler/mlir/tensorflow_to_stablehlo/...",
     ] + internal_visibility_allowlist(),
 )
 

@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+from typing import Any
+
 # LINT.IfChange(savedmodel_to_stablehlo)
 def savedmodel_to_stablehlo(
     input_path: str,

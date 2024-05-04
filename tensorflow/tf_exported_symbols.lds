@@ -16,3 +16,4 @@
 *lite*
 *TFL*
 *quantization*
+*tensorflow_to_stablehlo*
