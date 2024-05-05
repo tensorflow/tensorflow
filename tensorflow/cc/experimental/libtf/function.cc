@@ -123,7 +123,7 @@ bool Match(TaggedValue signature, TaggedValue value) {
         return false;
       }
       tensorflow::PartialTensorShape tensor_shape;
-      DCHECK(tensor->Shape(&tensor_shape).ok());
+      DCHECK_OK(tensor->Shape(&tensor_shape));
       if (!tensor_shape.IsCompatibleWith(spec.shape)) {
         return false;
       }
