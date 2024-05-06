@@ -1,3 +1,4 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -1257,4 +1258,21 @@ alias(
     name = "bazel_issue_21519",
     actual = ":empty",
     visibility = ["//visibility:public"],
+)
+
+bzl_library(
+    name = "lit_bzl",
+    srcs = ["lit.bzl"],
+    deps = ["@bazel_skylib//lib:paths"],
+)
+
+bzl_library(
+    name = "xla_bzl",
+    srcs = ["xla.bzl"],
+    deps = [
+        "//xla/tsl:tsl_bzl",
+        "@local_config_rocm//rocm:build_defs_bzl",
+        "@local_tsl//tsl/platform:build_config_root_bzl",
+        "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
+    ],
 )

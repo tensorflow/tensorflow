@@ -1707,6 +1707,12 @@ bzl_library(
     deps = tf_platform_alias("rules_cc_bzl"),
 )
 
+bzl_library(
+    name = "build_config_root_bzl",
+    srcs = ["build_config_root.bzl"],
+    deps = tf_platform_alias("build_config_root_bzl"),
+)
+
 cc_library(
     name = "retrying_utils",
     srcs = [
