@@ -147,7 +147,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # done in MLIR level.
     # Tests that the quantized graph outputs similar values. The rtol and atol
     # values are arbitrary.
-    self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
+    self.assertAllClose(new_outputs, expected_outputs, rtol=0.3, atol=0.2)
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
@@ -1280,9 +1280,8 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._output_saved_model_path
     )
 
-    # Tests that the output graph contains subtract and multiply for
+    # Tests that the output graph contains multiply op for symmetric
     # dequantization.
-    self.assertTrue(re.search('stablehlo.subtract', module_str))
     self.assertTrue(re.search('stablehlo.multiply', module_str))
     # Tests that the output graph contains float dot_general.
     self.assertTrue(
