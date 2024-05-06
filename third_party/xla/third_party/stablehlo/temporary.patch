@@ -164,6 +164,98 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
  
  #-------------------------------------------------------------------------------
  # Directory setup
+diff --ruN a/stablehlo/docs/interpreter_status.md b/stablehlo/docs/interpreter_status.md
+--- stablehlo/docs/interpreter_status.md
++++ stablehlo/docs/interpreter_status.md
+@@ -60,23 +60,14 @@
+ 
+ ### Not in HLO
+ 
+-Apart from the specced ops, this category consists of 10 unspecced ops (see
+-[StableHLO Ops Categories](#stablehlo-ops-categories)) which are planed to be
+-moved out of StableHLO. Some of these ops have existing passes in
++Apart from the specced ops, this category consists of 8 unspecced ops (see
++[StableHLO Ops Categories](#stablehlo-ops-categories)) which are planned to be
++moved out of StableHLO. Most of these ops have existing passes in
+ [mhlo](https://github.com/openxla/xla/tree/main/xla/mlir_hlo/mhlo/transforms) to
+-convert them to StableHLO equivalent ops. There are three ops the interpreter
+-does not support because there are no existing decompositions to StableHLO ops:
+-
+-* `compute_reshape_shape`
+-* `cstr_reshapable`
+-* `trace`
+-
+-`compute_reshape_shape` and `cstr_reshapable` ops are part of the ongoing
+-Dynamism work, and they are planned to be removed from StableHLO (see
+-[#1668](https://github.com/openxla/stablehlo/issues/1668)).
+-
+-`trace` op is private to XLA and there no no users in JAX, PyTorch or TensorFlow
+-(see [#604](https://github.com/openxla/stablehlo/issues/604)).
++convert them to StableHLO equivalent ops. There is one op the interpreter
++does not support because there is no existing decompositions to StableHLO ops:
++`trace`. `trace` op is private to XLA and there no no users in JAX, PyTorch or
++TensorFlow (see [#604](https://github.com/openxla/stablehlo/issues/604)).
+ 
+ <!-- markdownlint-disable line-length -->
+ The tool to convert remaining ops in this category to equivalent StableHLO ops
+@@ -254,17 +245,11 @@
+ # broadcast
+ mlir-hlo-opt -mhlo-legalize-broadcast-to-broadcast-in-dim <path/to/input>
+ 
+-# compute_reshape_shape
+-# This op will be removed from StableHLO as part of Dynamism work (see #1668).
+-
+ # create_token
+ mlir-hlo-opt -mhlo-legalize-create-token-to-after-all <path/to/input>
+ 
+ # cross-replica-sum
+ mlir-hlo-opt -mhlo-legalize-cross-replica-sum-to-all-reduce <path/to/input>
+-
+-# cstr_reshapable
+-# This op will be removed from StableHLO as part of Dynamism work (see #1668).
+ 
+ # dot
+ mlir-hlo-opt -mhlo-legalize-dot-to-dot-general <path/to/input>
+@@ -295,6 +280,6 @@
+ | Extensibility | custom_call, get_tuple_element, tuple                                                                                                                                                                                                                                                                                                                                                                                                                                       | 3     |
+ | Miscellaneous | batch_norm_grad, batch_norm_inference, batch_norm_training, cholesky, constant, fft, iota, rng, rng_bit_generator, triangular_solve                                                                                                                                                                                                                                                                                                                                         | 10    |
+ | Modularity    | call, func, module, return                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 4     |
+-| Not In HLO    | broadcast, compute_reshape_shape, create_token, cross-replica-sum, cstr_reshapable, dot, einsum, torch_index_select, trace, unary_einsum                                                                                                                                                                                                                                                                                                                                    | 10    |
++| Not In HLO    | broadcast, create_token, cross-replica-sum, dot, einsum, torch_index_select, trace, unary_einsum                                                                                                                                                                                                                                                                                                                                                                            | 10    |
+ | Quantization  | uniform_dequantize, uniform_quantize                                                                                                                                                                                                                                                                                                                                                                                                                                        | 2     |
+ | Reduction     | convolution, dot_general, reduce, reduce_window, select_and_scatter                                                                                                                                                                                                                                                                                                                                                                                                         | 5     |
+diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
+--- stablehlo/docs/spec.md
++++ stablehlo/docs/spec.md
+@@ -331,8 +331,7 @@
+   ([#3](https://github.com/openxla/stablehlo/issues/3)), and
+   `trace` ([#604](https://github.com/openxla/stablehlo/issues/604)).
+ * "Dynamism" category of StableHLO operations - they were bootstrapped from
+-   MHLO, but we haven't specced them yet: `compute_reshape_shape`,
+-  `cstr_reshapable`, `dynamic_broadcast_in_dim`, `dynamic_conv`,
++   MHLO, but we haven't specced them yet: `dynamic_broadcast_in_dim`, `dynamic_conv`,
+   `dynamic_gather`, `dynamic_iota`, `dynamic_pad`, `dynamic_reshape`,
+   `real_dynamic_slice`, `set_dimension_size`
+   ([#8](https://github.com/openxla/stablehlo/issues/8)).
+diff --ruN a/stablehlo/docs/status.md b/stablehlo/docs/status.md
+--- stablehlo/docs/status.md
++++ stablehlo/docs/status.md
+@@ -66,7 +66,6 @@
+ | compare                  | yes           | yes          | yes            | yes             | yes         |
+ | complex                  | yes           | yes          | yes            | yes             | yes         |
+ | composite                | yes           | yes          | infeasible     | yes             | yes         |
+-| compute_reshape_shape    | no            | revisit      | no             | yes             | no          |
+ | concatenate              | yes           | yes          | yes            | yes             | yes         |
+ | constant                 | yes           | yes          | yes            | yes             | yes         |
+ | convert                  | yes           | yes          | infeasible     | yes             | yes         |
+@@ -75,7 +74,6 @@
+ | count_leading_zeros      | yes           | yes          | yes            | yes             | yes         |
+ | create_token             | no            | yes\*        | yes\*          | yes             | revisit     |
+ | cross-replica-sum        | no            | revisit      | yes\*          | no              | revisit     |
+-| cstr_reshapable          | no            | revisit      | no             | yes             | no          |
+ | custom_call              | yes           | yes          | infeasible     | yes             | yes         |
+ | divide                   | yes           | yes          | yes            | yes             | yes         |
+ | dot                      | no            | revisit      | infeasible     | yes             | revisit     |
 diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists.txt
 --- stablehlo/stablehlo/CMakeLists.txt
 +++ stablehlo/stablehlo/CMakeLists.txt
@@ -343,6 +435,101 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
      setNameFn(getResult(), "c");
    } else {
      setNameFn(getResult(), "cst");
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
+--- stablehlo/stablehlo/dialect/StablehloOps.td
++++ stablehlo/stablehlo/dialect/StablehloOps.td
+@@ -3503,58 +3503,4 @@
+   let results = (outs HLO_Tensor);
+ }
+ 
+-def StableHLO_ComputeReshapeShapeOp : StableHLO_Op<
+-    "compute_reshape_shape",
+-    [Pure, AllShapesMatch<["dynamic_shape", "result"]>]> {
+-  let summary = "ComputeReshapeShape operation";
+-  let description = [{
+-    This operation is a work in progress, so it is not yet included in
+-    the StableHLO specification: https://github.com/openxla/stablehlo/issues/8.
+-
+-    Informally, this operation computes an output_shape for DynamicReshapeOp
+-    from the `num_elements` number of elements in an operand of DynamicReshapeOp
+-    and the `dynamic_shape` shape provided to TF's reshape:
+-    https://www.tensorflow.org/api_docs/python/tf/reshape
+-
+-    For example, for `num_elements = 12` and `dynamic_shape = [2, -1]`,
+-    the `result` is going to be `[2, 6]`. If operands are not valid (e.g. if
+-    dimensions do not evenly divide the number of elements, or if there are
+-    multiple -1 values in dimensions), this leads to undefined behavior.
+-
+-    Example:
+-    ```mlir
+-    %result = stablehlo.compute_reshape_shape %num_elements, %dynamic_shape
+-           : (index, tensor<2xi32>) -> tensor<2xi32>
+-    ```
+-  }];
+-
+-  let arguments = (ins Index:$num_elements, 1DTensorOf<[AnyInteger, Index]>:$dynamic_shape);
+-  let results = (outs 1DTensorOf<[AnyInteger, Index]>:$result);
+-
+-  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
+-}
+-
+-def StableHLO_CstrReshapableOp :
+-    StableHLO_Op<"cstr_reshapable", [Pure]> {
+-  let summary = "CstrReshapable operation";
+-  let description = [{
+-    This operation is a work in progress, so it is not yet included in
+-    the StableHLO specification: https://github.com/openxla/stablehlo/issues/8.
+-
+-    Informally, this operation creates a witness on the constraint that
+-    ComputeReshapeShape would succeed with the provided operands.
+-
+-    Example:
+-    ```mlir
+-    %result = stablehlo.cstr_reshapable %num_elements, %dynamic_shape
+-           : (index, tensor<3xi32>) -> !shape.witness
+-    ```
+-  }];
+-
+-  let arguments = (ins Index:$num_elements, 1DTensorOf<[AnyInteger, Index]>:$dynamic_shape);
+-  let results = (outs Shape_WitnessType:$result);
+-
+-  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
+-}
+-
+ #endif // STABLEHLO_DIALECT_STABLEHLO_OPS
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.td b/stablehlo/stablehlo/dialect/VhloOps.td
+--- stablehlo/stablehlo/dialect/VhloOps.td
++++ stablehlo/stablehlo/dialect/VhloOps.td
+@@ -294,14 +294,6 @@
+     VHLO_AnyAttr:$version
+   );
+   let results = (outs Variadic<VHLO_AnyType>:$results);
+-}
+-
+-// TODO(#8): ComputeReshapeShapeOp is not part of the StableHLO spec.
+-// This operation is a work in progress, so it is not yet included in
+-// the StableHLO specification.
+-def VHLO_ComputeReshapeShapeOpV1 : VHLO_Op<"compute_reshape_shape_v1", "0.9.0", "current"> {
+-  let arguments = (ins VHLO_AnyType:$num_elements, VHLO_AnyType:$dynamic_shape);
+-  let results = (outs VHLO_AnyType:$result);
+ }
+ 
+ def VHLO_ConcatenateOpV1 : VHLO_Op<"concatenate_v1", "0.9.0", "current"> {
+@@ -368,14 +360,6 @@
+     VHLO_AnyAttr:$replica_groups
+   );
+   let results = (outs VHLO_AnyType:$result);
+-}
+-
+-// TODO(#8): CstrReshapableOp is not part of the StableHLO spec.
+-// This operation is a work in progress, so it is not yet included in
+-// the StableHLO specification.
+-def VHLO_CstrReshapableOpV1 : VHLO_Op<"cstr_reshapable_v1", "0.9.0", "current"> {
+-  let results = (outs VHLO_AnyType:$result);
+-  let arguments = (ins VHLO_AnyType:$num_elements, VHLO_AnyType:$dynamic_shape);
+ }
+ 
+ // TODO(#1187): api_version is different between VHLO and the StableHLO spec:
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
@@ -2732,10 +2919,203 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir
+--- stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir
++++ stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir
+@@ -407,16 +407,6 @@
+   func.return %0, %1 : tensor<?xindex>, tensor<?xindex>
+ }
+ 
+-// CHECK-LABEL:  func @chlo_reshape_dynamic(
+-// CHECK-SAME:   %[[A0:.*]]: tensor<?xf32>,
+-// CHECK-SAME:   %[[A1:.*]]: tensor<2xi32>
+-// CHECK:        %[[T:.*]] = "chlo.dynamic_reshape"(%[[A0]], %[[A1]]) : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+-// CHECK:        return %[[T]] : tensor<?x?xf32>
+-func.func @chlo_reshape_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
+-  %0 = "chlo.dynamic_reshape"(%arg0, %arg1) : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+-  func.return %0 : tensor<?x?xf32>
+-}
+-
+ // CHECK-LABEL:  func @chlo_erf_inv
+ // CHECK-SAME:   %[[A0:.*0]]: tensor<16x16xf32>)
+ // CHECK:          chlo.erf_inv %[[A0]] : tensor<16x16xf32> -> tensor<16x16xf32>
+diff --ruN a/stablehlo/stablehlo/tests/print_stablehlo.mlir b/stablehlo/stablehlo/tests/print_stablehlo.mlir
+--- stablehlo/stablehlo/tests/print_stablehlo.mlir
++++ stablehlo/stablehlo/tests/print_stablehlo.mlir
+@@ -172,30 +172,6 @@
+   "stablehlo.return"() : () -> ()
+ }
+ 
+-// CHECK-LABEL: func @no_attr_ops
+-func.func @no_attr_ops(%arg0 : tensor<4xf32>, %arg1 : !stablehlo.token,
+-                       %arg2 : tensor<4xi32>, %arg3 : index) -> !stablehlo.token {
+-  // CHECK-NEXT: %0 = stablehlo.clamp %arg0, %arg0, %arg0 : tensor<4xf32>
+-  // CHECK-NEXT: %1 = stablehlo.complex %arg0, %arg0 : tensor<4xcomplex<f32>>
+-  // CHECK-NEXT: %2 = stablehlo.compute_reshape_shape %arg3, %arg2 : (index, tensor<4xi32>) -> tensor<4xi32>
+-  // CHECK-NEXT: %3 = stablehlo.uniform_quantize %arg0 : (tensor<4xf32>) -> tensor<4x!quant.uniform<u8:f32, 3.400000e+01:16>>
+-  // CHECK-NEXT: %4 = stablehlo.uniform_dequantize %3 : (tensor<4x!quant.uniform<u8:f32, 3.400000e+01:16>>) -> tensor<4xf32>
+-  // CHECK-NEXT: %5 = stablehlo.after_all %arg1, %arg1 : !stablehlo.token
+-  // CHECK-NEXT: %6 = stablehlo.after_all : !stablehlo.token
+-  // CHECK-NEXT: %7 = stablehlo.cstr_reshapable %arg3, %arg2 : (index, tensor<4xi32>) -> !shape.witness
+-  // CHECK-NEXT: %8 = stablehlo.compute_reshape_shape %arg3, %arg2 : (index, tensor<4xi32>) -> tensor<4xi32>
+-  %0 = "stablehlo.clamp"(%arg0, %arg0, %arg0) : (tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+-  %1 = "stablehlo.complex"(%arg0, %arg0) {} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xcomplex<f32>>
+-  %2 = "stablehlo.compute_reshape_shape"(%arg3, %arg2) : (index, tensor<4xi32>) -> tensor<4xi32>
+-  %3 = "stablehlo.uniform_quantize"(%arg0) : (tensor<4xf32>) -> tensor<4x!quant.uniform<ui8:f32, 34.0:16>>
+-  %4 = "stablehlo.uniform_dequantize"(%3) : (tensor<4x!quant.uniform<ui8:f32, 34.0:16>>) -> tensor<4xf32>
+-  %5 = "stablehlo.after_all"(%arg1, %arg1) : (!stablehlo.token, !stablehlo.token) -> !stablehlo.token
+-  %6 = "stablehlo.after_all"() : () -> !stablehlo.token
+-  %7 = "stablehlo.cstr_reshapable"(%arg3, %arg2) : (index, tensor<4xi32>) -> !shape.witness
+-  %8 = "stablehlo.compute_reshape_shape"(%arg3, %arg2) : (index, tensor<4xi32>) -> tensor<4xi32>
+-  "stablehlo.return"(%arg1) : (!stablehlo.token) -> ()
+-}
+-
+ // CHECK-LABEL: func @multiple_attr_ops
+ func.func @multiple_attr_ops(%arg0 : tensor<3x4xf32>) -> () {
+   // CHECK:      %0 = stablehlo.reduce_precision %arg0, format = e8m10 : tensor<3x4xf32>
+diff --ruN a/stablehlo/stablehlo/tests/shape_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/shape_legalize_to_stablehlo.mlir
+--- stablehlo/stablehlo/tests/shape_legalize_to_stablehlo.mlir
++++ stablehlo/stablehlo/tests/shape_legalize_to_stablehlo.mlir
+@@ -1,30 +1,4 @@
+ // RUN: stablehlo-opt --shape-legalize-to-stablehlo --split-input-file --verify-diagnostics %s | FileCheck %s
+-
+-// CHECK-LABEL: func.func @compute_reshape_shape
+-func.func @compute_reshape_shape(%arg0: index, %arg1: tensor<2xi32>) -> tensor<2xi32> {
+-  %0 = stablehlo.compute_reshape_shape %arg0, %arg1 : (index, tensor<2xi32>) -> tensor<2xi32>
+-  func.return %0 : tensor<2xi32>
+-  //      CHECK: %[[ARG0_I32:.*]] = builtin.unrealized_conversion_cast %arg0 : index to tensor<i32>
+-  // CHECK-NEXT: %[[TMP0:.*]] = stablehlo.constant dense<-1> : tensor<i32>
+-  // CHECK-NEXT: %[[INPUT_SIZE0x1:.*]] = stablehlo.slice %arg1 [0:1] : (tensor<2xi32>) -> tensor<1xi32>
+-  // CHECK-NEXT: %[[INPUT_SIZE0:.*]] = stablehlo.reshape %[[INPUT_SIZE0x1]] : (tensor<1xi32>) -> tensor<i32>
+-  // CHECK-NEXT: %[[TMP1:.*]] = stablehlo.multiply %[[TMP0]], %[[INPUT_SIZE0]] : tensor<i32>
+-  // CHECK-NEXT: %[[INPUT_SIZE1x1:.*]] = stablehlo.slice %arg1 [1:2] : (tensor<2xi32>) -> tensor<1xi32>
+-  // CHECK-NEXT: %[[INPUT_SIZE1:.*]] = stablehlo.reshape %[[INPUT_SIZE1x1]] : (tensor<1xi32>) -> tensor<i32>
+-  // CHECK-NEXT: %[[INPUT_SIZE_PRODUCT:.*]] = stablehlo.multiply %[[TMP1]], %[[INPUT_SIZE1]] : tensor<i32>
+-  // CHECK-NEXT: %[[COMPUTED_SIZE:.*]] = stablehlo.divide %[[ARG0_I32]], %[[INPUT_SIZE_PRODUCT]] : tensor<i32>
+-  // CHECK-NEXT: %[[M1:.*]] = stablehlo.constant dense<-1> : tensor<i32>
+-  // CHECK-NEXT: %[[INPUT_SIZE0_EQ_M1:.*]] = stablehlo.compare  EQ, %[[INPUT_SIZE0]], %[[M1]],  NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
+-  // CHECK-NEXT: %[[RESULT_SIZE0:.*]] = stablehlo.select %[[INPUT_SIZE0_EQ_M1]], %[[COMPUTED_SIZE]], %[[INPUT_SIZE0]] : tensor<i1>, tensor<i32>
+-  // CHECK-NEXT: %[[RESULT_SIZE0x1:.*]] = stablehlo.reshape %[[RESULT_SIZE0]] : (tensor<i32>) -> tensor<1xi32>
+-  // CHECK-NEXT: %[[INPUT_SIZE1_EQ_M1:.*]] = stablehlo.compare  EQ, %[[INPUT_SIZE1]], %[[M1]],  NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
+-  // CHECK-NEXT: %[[RESULT_SIZE1:.*]] = stablehlo.select %[[INPUT_SIZE1_EQ_M1]], %[[COMPUTED_SIZE]], %[[INPUT_SIZE1]] : tensor<i1>, tensor<i32>
+-  // CHECK-NEXT: %[[RESULT_SIZE1x1:.*]] = stablehlo.reshape %[[RESULT_SIZE1]] : (tensor<i32>) -> tensor<1xi32>
+-  // CHECK-NEXT: %[[RESULT:.*]] = stablehlo.concatenate %[[RESULT_SIZE0x1]], %[[RESULT_SIZE1x1]], dim = 0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+-  // CHECK-NEXT: return %[[RESULT]] : tensor<2xi32>
+-}
+-
+-// -----
+ 
+ // CHECK-LABEL: func.func @num_elements_tensor_to_index
+ func.func @num_elements_tensor_to_index(%arg0: tensor<2xindex>) -> index {
+@@ -213,18 +187,6 @@
+ 
+ // -----
+ 
+-func.func @mhlo_cstr_reshapable(%arg0: index, %arg1: tensor<2xindex>, %arg2: tensor<?x2xf32>) -> tensor<?x4xf32> {
+-  // expected-error@+1 {{failed to legalize operation 'stablehlo.cstr_reshapable' that was explicitly marked illegal}}
+-  %0 = stablehlo.cstr_reshapable %arg0, %arg1 : (index, tensor<2xindex>) -> !shape.witness
+-  %1 = shape.assuming %0 -> (tensor<?x4xf32>) {
+-    %2 = stablehlo.dynamic_reshape %arg2, %arg1 : (tensor<?x2xf32>, tensor<2xindex>) -> tensor<?x4xf32>
+-    shape.assuming_yield %2 : tensor<?x4xf32>
+-  }
+-  func.return %1 : tensor<?x4xf32>
+-}
+-
+-// -----
+-
+ // CHECK-LABEL: func @const_shape
+ func.func @const_shape() -> tensor<2xindex> {
+   %0 = shape.const_shape [6, 4] : tensor<2xindex>
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
-@@ -356,6 +356,18 @@
+@@ -231,85 +231,6 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: func @eval_compute_reshape_shape
+-func.func @eval_compute_reshape_shape() -> tensor<4xi32> {
+-  // CHECK-NOT: stablehlo.compute_reshape_shape
+-  // CHECK: [[RESULT:%.*]] = stablehlo.constant dense<[2, 128, 2, 64]> : tensor<4xi32>
+-  // CHECK: return [[RESULT]]
+-  %0 = arith.constant dense<[2, 128, 2, 64]> : tensor<4xi32>
+-  %1 = arith.constant 32768 : index
+-  %2 = stablehlo.compute_reshape_shape %1, %0 : (index, tensor<4xi32>) -> tensor<4xi32>
+-  func.return %2 : tensor<4xi32>
+-}
+-
+-// -----
+-
+-// CHECK-LABEL: func @eval_compute_reshape_shape_zero_dynamic_shape
+-func.func @eval_compute_reshape_shape_zero_dynamic_shape() -> tensor<0xi32> {
+-  // CHECK-NOT: stablehlo.compute_reshape_shape
+-  // CHECK: [[RESULT:%.*]] = stablehlo.constant dense<> : tensor<0xi32>
+-  // CHECK: return [[RESULT]]
+-  %0 = arith.constant dense<[]> : tensor<0xi32>
+-  %1 = arith.constant 32768 : index
+-  %2 = stablehlo.compute_reshape_shape %1, %0 : (index, tensor<0xi32>) -> tensor<0xi32>
+-  func.return %2 : tensor<0xi32>
+-}
+-
+-// -----
+-
+-// CHECK-LABEL: func @eval_compute_reshape_shape_unknown_dimension
+-func.func @eval_compute_reshape_shape_unknown_dimension() -> (tensor<4xi32>, tensor<1xi32>) {
+-  // CHECK-NOT: stablehlo.compute_reshape_shape
+-  // CHECK: [[RESULT1:%.*]] = stablehlo.constant dense<[2, 128, 2, 64]> : tensor<4xi32>
+-  // CHECK: [[RESULT2:%.*]] = stablehlo.constant dense<32768> : tensor<1xi32>
+-  // CHECK: return [[RESULT1]], [[RESULT2]]
+-  %0 = arith.constant dense<[2, -1, 2, 64]> : tensor<4xi32>
+-  %1 = arith.constant dense<[-1]> : tensor<1xi32>
+-  %2 = arith.constant 32768 : index
+-  %3 = stablehlo.compute_reshape_shape %2, %0 : (index, tensor<4xi32>) -> tensor<4xi32>
+-  %4 = stablehlo.compute_reshape_shape %2, %1 : (index, tensor<1xi32>) -> tensor<1xi32>
+-  func.return %3, %4 : tensor<4xi32>, tensor<1xi32>
+-}
+-
+-// -----
+-
+-// CHECK-LABEL: func @eval_compute_reshape_shape_two_unknown_dims
+-func.func @eval_compute_reshape_shape_two_unknown_dims() -> tensor<4xi32> {
+-  // CHECK: [[RESULT:%.*]] = stablehlo.compute_reshape_shape
+-  // CHECK: return [[RESULT]]
+-  %0 = arith.constant dense<[2, -1, -1, 64]> : tensor<4xi32>
+-  %1 = arith.constant 32768 : index
+-  %2 = stablehlo.compute_reshape_shape %1, %0 : (index, tensor<4xi32>) -> tensor<4xi32>
+-  func.return %2 : tensor<4xi32>
+-}
+-
+-// -----
+-
+-// CHECK-LABEL: func @eval_compute_reshape_shape_non_divisible_shape
+-func.func @eval_compute_reshape_shape_non_divisible_shape() -> (tensor<4xi32>, tensor<4xi32>) {
+-  // CHECK: [[RESULT1:%.*]] = stablehlo.compute_reshape_shape
+-  // CHECK: [[RESULT2:%.*]] = stablehlo.compute_reshape_shape
+-  // CHECK: return [[RESULT1]], [[RESULT2]]
+-  %0 = arith.constant dense<[2, 128, 3, -1]> : tensor<4xi32>
+-  %1 = arith.constant dense<[2, 128, 2, 63]> : tensor<4xi32>
+-  %2 = arith.constant 32768 : index
+-  %3 = stablehlo.compute_reshape_shape %2, %0 : (index, tensor<4xi32>) -> tensor<4xi32>
+-  %4 = stablehlo.compute_reshape_shape %2, %1 : (index, tensor<4xi32>) -> tensor<4xi32>
+-  func.return %3, %4 : tensor<4xi32>, tensor<4xi32>
+-}
+-
+-// -----
+-
+-// CHECK-LABEL: func @eval_compute_reshape_shape_non_specializable
+-func.func @eval_compute_reshape_shape_non_specializable(%arg0 : tensor<4xi32>, %arg1 : index) -> tensor<4xi32> {
+-  // CHECK: [[RESULT:%.*]] = stablehlo.compute_reshape_shape
+-  // CHECK: return [[RESULT]]
+-  %0 = stablehlo.compute_reshape_shape %arg1, %arg0 : (index, tensor<4xi32>) -> tensor<4xi32>
+-  func.return %0 : tensor<4xi32>
+-}
+-
+-// -----
+-
+ // CHECK-LABEL: func @eval_concatenate_1d
+ func.func @eval_concatenate_1d() -> tensor<4xi64> {
+   // CHECK-NOT: stablehlo.concatenate
+@@ -356,6 +277,18 @@
    %0 = stablehlo.constant dense<[true, false]> : tensor<2xi1>
    %1 = stablehlo.convert %0 : (tensor<2xi1>) -> tensor<2xi64>
    return %1 : tensor<2xi64>
@@ -2754,6 +3134,546 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/
  }
  
  // -----
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_10_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_10_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_10_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_10_0.mlir
+@@ -998,13 +998,6 @@
+   // CHECK: "vhlo.complex_v1"(%arg0, %arg1) : (!vhlo.tensor_v1<!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<!vhlo.complex_v1<!vhlo.f32_v1>>
+   %0 = "stablehlo.complex"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<complex<f32>>
+   func.return %0 : tensor<complex<f32>>
+-}
+-
+-// CHECK-LABEL: "op_compute_reshape_shape"
+-func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
+-  // CHECK: "vhlo.compute_reshape_shape_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.tensor_v1<1x!vhlo.index_v1>
+-  %0 = "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
+-  func.return %0 : tensor<1xindex>
+ }
+ 
+ // CHECK-LABEL: "op_concatenate"
+@@ -1096,13 +1089,6 @@
+   func.return %0 : tensor<f32>
+ }
+ 
+-// CHECK-LABEL: "op_cstr_reshapable"
+-func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
+-  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
+-  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
+-  func.return %0 : !shape.witness
+-}
+-
+ // CHECK-LABEL: "op_custom_call"
+ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
+   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_11_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_11_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_11_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_11_0.mlir
+@@ -998,13 +998,6 @@
+   // CHECK: "vhlo.complex_v1"(%arg0, %arg1) : (!vhlo.tensor_v1<!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<!vhlo.complex_v1<!vhlo.f32_v1>>
+   %0 = "stablehlo.complex"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<complex<f32>>
+   func.return %0 : tensor<complex<f32>>
+-}
+-
+-// CHECK-LABEL: "op_compute_reshape_shape"
+-func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
+-  // CHECK: "vhlo.compute_reshape_shape_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.tensor_v1<1x!vhlo.index_v1>
+-  %0 = "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
+-  func.return %0 : tensor<1xindex>
+ }
+ 
+ // CHECK-LABEL: "op_concatenate"
+@@ -1096,13 +1089,6 @@
+   func.return %0 : tensor<f32>
+ }
+ 
+-// CHECK-LABEL: "op_cstr_reshapable"
+-func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
+-  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
+-  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
+-  func.return %0 : !shape.witness
+-}
+-
+ // CHECK-LABEL: "op_custom_call"
+ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
+   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_12_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_12_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_12_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_12_0.mlir
+@@ -998,13 +998,6 @@
+   // CHECK: "vhlo.complex_v1"(%arg0, %arg1) : (!vhlo.tensor_v1<!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<!vhlo.complex_v1<!vhlo.f32_v1>>
+   %0 = "stablehlo.complex"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<complex<f32>>
+   func.return %0 : tensor<complex<f32>>
+-}
+-
+-// CHECK-LABEL: "op_compute_reshape_shape"
+-func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
+-  // CHECK: "vhlo.compute_reshape_shape_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.tensor_v1<1x!vhlo.index_v1>
+-  %0 = "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
+-  func.return %0 : tensor<1xindex>
+ }
+ 
+ // CHECK-LABEL: "op_concatenate"
+@@ -1096,13 +1089,6 @@
+   func.return %0 : tensor<f32>
+ }
+ 
+-// CHECK-LABEL: "op_cstr_reshapable"
+-func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
+-  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
+-  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
+-  func.return %0 : !shape.witness
+-}
+-
+ // CHECK-LABEL: "op_custom_call"
+ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
+   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_13_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_13_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_13_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_13_0.mlir
+@@ -998,13 +998,6 @@
+   // CHECK: "vhlo.complex_v1"(%arg0, %arg1) : (!vhlo.tensor_v1<!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<!vhlo.complex_v1<!vhlo.f32_v1>>
+   %0 = "stablehlo.complex"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<complex<f32>>
+   func.return %0 : tensor<complex<f32>>
+-}
+-
+-// CHECK-LABEL: "op_compute_reshape_shape"
+-func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
+-  // CHECK: "vhlo.compute_reshape_shape_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.tensor_v1<1x!vhlo.index_v1>
+-  %0 = "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
+-  func.return %0 : tensor<1xindex>
+ }
+ 
+ // CHECK-LABEL: "op_concatenate"
+@@ -1096,13 +1089,6 @@
+   func.return %0 : tensor<f32>
+ }
+ 
+-// CHECK-LABEL: "op_cstr_reshapable"
+-func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
+-  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
+-  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
+-  func.return %0 : !shape.witness
+-}
+-
+ // CHECK-LABEL: "op_custom_call"
+ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
+   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_14_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_14_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_14_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_14_0.mlir
+@@ -998,13 +998,6 @@
+   // CHECK: "vhlo.complex_v1"(%arg0, %arg1) : (!vhlo.tensor_v1<!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<!vhlo.complex_v1<!vhlo.f32_v1>>
+   %0 = "stablehlo.complex"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<complex<f32>>
+   func.return %0 : tensor<complex<f32>>
+-}
+-
+-// CHECK-LABEL: "op_compute_reshape_shape"
+-func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
+-  // CHECK: "vhlo.compute_reshape_shape_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.tensor_v1<1x!vhlo.index_v1>
+-  %0 = "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
+-  func.return %0 : tensor<1xindex>
+ }
+ 
+ // CHECK-LABEL: "op_concatenate"
+@@ -1096,13 +1089,6 @@
+   func.return %0 : tensor<f32>
+ }
+ 
+-// CHECK-LABEL: "op_cstr_reshapable"
+-func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
+-  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
+-  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
+-  func.return %0 : !shape.witness
+-}
+-
+ // CHECK-LABEL: "op_custom_call"
+ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
+   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_15_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_15_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_15_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_15_0.mlir
+@@ -1004,13 +1004,6 @@
+   // CHECK: "vhlo.complex_v1"(%arg0, %arg1) : (!vhlo.tensor_v1<!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<!vhlo.complex_v1<!vhlo.f32_v1>>
+   %0 = "stablehlo.complex"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<complex<f32>>
+   func.return %0 : tensor<complex<f32>>
+-}
+-
+-// CHECK-LABEL: "op_compute_reshape_shape"
+-func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
+-  // CHECK: "vhlo.compute_reshape_shape_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.tensor_v1<1x!vhlo.index_v1>
+-  %0 = "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
+-  func.return %0 : tensor<1xindex>
+ }
+ 
+ // CHECK-LABEL: "op_concatenate"
+@@ -1102,13 +1095,6 @@
+   func.return %0 : tensor<f32>
+ }
+ 
+-// CHECK-LABEL: "op_cstr_reshapable"
+-func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
+-  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
+-  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
+-  func.return %0 : !shape.witness
+-}
+-
+ // CHECK-LABEL: "op_custom_call"
+ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
+   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_16_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_16_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_16_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_16_0.mlir
+@@ -1016,13 +1016,6 @@
+   // CHECK: "vhlo.complex_v1"(%arg0, %arg1) : (!vhlo.tensor_v1<!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<!vhlo.complex_v1<!vhlo.f32_v1>>
+   %0 = "stablehlo.complex"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<complex<f32>>
+   func.return %0 : tensor<complex<f32>>
+-}
+-
+-// CHECK-LABEL: "op_compute_reshape_shape"
+-func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
+-  // CHECK: "vhlo.compute_reshape_shape_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.tensor_v1<1x!vhlo.index_v1>
+-  %0 = "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
+-  func.return %0 : tensor<1xindex>
+ }
+ 
+ // CHECK-LABEL: "op_concatenate"
+@@ -1114,13 +1107,6 @@
+   func.return %0 : tensor<f32>
+ }
+ 
+-// CHECK-LABEL: "op_cstr_reshapable"
+-func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
+-  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
+-  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
+-  func.return %0 : !shape.witness
+-}
+-
+ // CHECK-LABEL: "op_custom_call"
+ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
+   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_17_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_17_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_17_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_17_0.mlir
+@@ -1035,13 +1035,6 @@
+   // CHECK: "vhlo.complex_v1"(%arg0, %arg1) : (!vhlo.tensor_v1<!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<!vhlo.complex_v1<!vhlo.f32_v1>>
+   %0 = "stablehlo.complex"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<complex<f32>>
+   func.return %0 : tensor<complex<f32>>
+-}
+-
+-// CHECK-LABEL: "op_compute_reshape_shape"
+-func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
+-  // CHECK: "vhlo.compute_reshape_shape_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.tensor_v1<1x!vhlo.index_v1>
+-  %0 = "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
+-  func.return %0 : tensor<1xindex>
+ }
+ 
+ // CHECK-LABEL: "op_concatenate"
+@@ -1133,13 +1126,6 @@
+   func.return %0 : tensor<f32>
+ }
+ 
+-// CHECK-LABEL: "op_cstr_reshapable"
+-func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
+-  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
+-  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
+-  func.return %0 : !shape.witness
+-}
+-
+ // CHECK-LABEL: "op_custom_call"
+ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
+   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_18_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_18_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_18_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_18_0.mlir
+@@ -1035,13 +1035,6 @@
+   // CHECK: "vhlo.complex_v1"(%arg0, %arg1) : (!vhlo.tensor_v1<!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<!vhlo.complex_v1<!vhlo.f32_v1>>
+   %0 = "stablehlo.complex"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<complex<f32>>
+   func.return %0 : tensor<complex<f32>>
+-}
+-
+-// CHECK-LABEL: "op_compute_reshape_shape"
+-func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
+-  // CHECK: "vhlo.compute_reshape_shape_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.tensor_v1<1x!vhlo.index_v1>
+-  %0 = "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
+-  func.return %0 : tensor<1xindex>
+ }
+ 
+ // CHECK-LABEL: "op_concatenate"
+@@ -1133,13 +1126,6 @@
+   func.return %0 : tensor<f32>
+ }
+ 
+-// CHECK-LABEL: "op_cstr_reshapable"
+-func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
+-  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
+-  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
+-  func.return %0 : !shape.witness
+-}
+-
+ // CHECK-LABEL: "op_custom_call"
+ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
+   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_19_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_19_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_19_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_19_0.mlir
+@@ -1070,13 +1070,6 @@
+     }
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+-}
+-
+-// CHECK-LABEL: "op_compute_reshape_shape"
+-func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
+-  // CHECK: "vhlo.compute_reshape_shape_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.tensor_v1<1x!vhlo.index_v1>
+-  %0 = "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
+-  func.return %0 : tensor<1xindex>
+ }
+ 
+ // CHECK-LABEL: "op_concatenate"
+@@ -1168,13 +1161,6 @@
+   func.return %0 : tensor<f32>
+ }
+ 
+-// CHECK-LABEL: "op_cstr_reshapable"
+-func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
+-  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
+-  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
+-  func.return %0 : !shape.witness
+-}
+-
+ // CHECK-LABEL: "op_custom_call"
+ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
+   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_9_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_9_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_9_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_9_0.mlir
+@@ -998,13 +998,6 @@
+   // CHECK: "vhlo.complex_v1"(%arg0, %arg1) : (!vhlo.tensor_v1<!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<!vhlo.complex_v1<!vhlo.f32_v1>>
+   %0 = "stablehlo.complex"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<complex<f32>>
+   func.return %0 : tensor<complex<f32>>
+-}
+-
+-// CHECK-LABEL: "op_compute_reshape_shape"
+-func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
+-  // CHECK: "vhlo.compute_reshape_shape_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.tensor_v1<1x!vhlo.index_v1>
+-  %0 = "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
+-  func.return %0 : tensor<1xindex>
+ }
+ 
+ // CHECK-LABEL: "op_concatenate"
+@@ -1096,13 +1089,6 @@
+   func.return %0 : tensor<f32>
+ }
+ 
+-// CHECK-LABEL: "op_cstr_reshapable"
+-func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
+-  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
+-  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
+-  func.return %0 : !shape.witness
+-}
+-
+ // CHECK-LABEL: "op_custom_call"
+ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
+   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
+@@ -1070,13 +1070,6 @@
+     }
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+-}
+-
+-// CHECK-LABEL: "op_compute_reshape_shape"
+-func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
+-  // CHECK: "vhlo.compute_reshape_shape_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.tensor_v1<1x!vhlo.index_v1>
+-  %0 = "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
+-  func.return %0 : tensor<1xindex>
+ }
+ 
+ // CHECK-LABEL: "op_concatenate"
+@@ -1168,13 +1161,6 @@
+   func.return %0 : tensor<f32>
+ }
+ 
+-// CHECK-LABEL: "op_cstr_reshapable"
+-func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
+-  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
+-  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
+-  func.return %0 : !shape.witness
+-}
+-
+ // CHECK-LABEL: "op_custom_call"
+ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
+   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+@@ -432,38 +432,6 @@
+         broadcastedOnFalse);
+     rewriter.create<shape::AssumingYieldOp>(loc, finalResult);
+     rewriter.replaceOp(op, {assumingOp.getResult(0)});
+-    return success();
+-  }
+-};
+-
+-struct ConvertDynamicReshapeOp final
+-    : OpRewritePattern<mlir::chlo::DynamicReshapeOp> {
+-  using OpRewritePattern::OpRewritePattern;
+-
+-  LogicalResult matchAndRewrite(mlir::chlo::DynamicReshapeOp op,
+-                                PatternRewriter &rewriter) const override {
+-    Location loc = op.getLoc();
+-    TypedValue<TensorType> tensor = op.getOperand();
+-    TypedValue<RankedTensorType> shape = op.getOutputShape();
+-
+-    auto shapeTy = cast<ShapedType>(shape.getType());
+-    auto resultTy = cast<ShapedType>(op.getType());
+-
+-    Value inputShape = rewriter.create<shape::ShapeOfOp>(loc, tensor);
+-    Value numEls = rewriter.create<shape::NumElementsOp>(loc, inputShape);
+-    Value cstr =
+-        rewriter.create<mlir::stablehlo::CstrReshapableOp>(loc, numEls, shape);
+-    rewriter.replaceOpWithNewOp<shape::AssumingOp>(
+-        op, cstr, [&](OpBuilder &b, Location l) {
+-          Value computedShape =
+-              b.create<mlir::stablehlo::ComputeReshapeShapeOp>(l, shapeTy,
+-                                                               numEls, shape);
+-          SmallVector<Value> result;
+-          result.push_back(b.create<mlir::stablehlo::DynamicReshapeOp>(
+-              l, resultTy, tensor, computedShape));
+-          return result;
+-        });
+-
+     return success();
+   }
+ };
+@@ -2201,7 +2169,7 @@
+   populateForBroadcastingBinaryOp<ConvertRankedDynamicBroadcastBinaryOp>(
+       context, patterns, 5);
+   patterns
+-      ->add<ConvertConstantLikeOp, ConvertDynamicReshapeOp, ConvertSelectOp>(
++      ->add<ConvertConstantLikeOp, ConvertSelectOp>(
+           context);
+ }
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/MapStablehloToVhlo.h b/stablehlo/stablehlo/transforms/MapStablehloToVhlo.h
+--- stablehlo/stablehlo/transforms/MapStablehloToVhlo.h
++++ stablehlo/stablehlo/transforms/MapStablehloToVhlo.h
+@@ -73,7 +73,6 @@
+ MAP_STABLEHLO_TO_VHLO(CompareOp, V1)
+ MAP_STABLEHLO_TO_VHLO(ComplexOp, V1)
+ MAP_STABLEHLO_TO_VHLO(CompositeOp, V1)
+-MAP_STABLEHLO_TO_VHLO(ComputeReshapeShapeOp, V1)
+ MAP_STABLEHLO_TO_VHLO(ConcatenateOp, V1)
+ MAP_STABLEHLO_TO_VHLO(ConstantOp, V1)
+ MAP_STABLEHLO_TO_VHLO(ConvertOp, V1)
+@@ -81,7 +80,6 @@
+ MAP_STABLEHLO_TO_VHLO(CosineOp, V1)
+ MAP_STABLEHLO_TO_VHLO(CreateTokenOp, V1)
+ MAP_STABLEHLO_TO_VHLO(CrossReplicaSumOp, V1)
+-MAP_STABLEHLO_TO_VHLO(CstrReshapableOp, V1)
+ MAP_STABLEHLO_TO_VHLO(CustomCallOp, V1)
+ MAP_STABLEHLO_TO_VHLO(DivOp, V1)
+ MAP_STABLEHLO_TO_VHLO(DotGeneralOp, V1)
+diff --ruN a/stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp
+@@ -133,78 +133,6 @@
+   }
+   return castToI32(rewriter, value.getLoc(), value);
+ }
+-
+-struct ConvertComputeReshapeShapeOpPattern
+-    : public OpRewritePattern<ComputeReshapeShapeOp> {
+-  using OpRewritePattern::OpRewritePattern;
+-  LogicalResult matchAndRewrite(ComputeReshapeShapeOp op,
+-                                PatternRewriter& rewriter) const override {
+-    // Cast num_elements from index to tensor<i32>.
+-    // Cast dynamic_shape from tensor<Nxindex> to tensor<Nxi32> if needed.
+-    // (stablehlo.compute_reshape_shape supports both index- and integer-based
+-    // dynamic_shape operands).
+-    // This cannot error out given how the operation is currently defined.
+-    auto numElementsI32 = castToI32(rewriter, op.getLoc(), op.getNumElements());
+-    auto dynamicShapeI32x1 =
+-        castToI32(rewriter, op.getLoc(), op.getDynamicShape());
+-    if (!numElementsI32 || !dynamicShapeI32x1)
+-      return rewriter.notifyMatchFailure(op, "cast to i32 failed");
+-    auto rank = cast<ShapedType>(dynamicShapeI32x1.getType()).getNumElements();
+-
+-    // Obtain individual input dimension sizes and also compute the product of
+-    // all these dimension sizes.
+-    auto i32Type = RankedTensorType::get({}, rewriter.getI32Type());
+-    Value dynamicNumElementsI32 = rewriter.create<ConstantOp>(
+-        op.getLoc(), DenseIntElementsAttr::get<int32_t>(i32Type, -1));
+-    SmallVector<Value> dynamicSizesI32;
+-    for (auto i = 0; i < rank; ++i) {
+-      auto dynamicSizeI32x1 = rewriter.create<SliceOp>(
+-          op.getLoc(), dynamicShapeI32x1, rewriter.getDenseI64ArrayAttr(i),
+-          rewriter.getDenseI64ArrayAttr(i + 1),
+-          rewriter.getDenseI64ArrayAttr(1));
+-      auto dynamicSizeI32 =
+-          rewriter.create<ReshapeOp>(op.getLoc(), i32Type, dynamicSizeI32x1);
+-      dynamicSizesI32.push_back(dynamicSizeI32);
+-      dynamicNumElementsI32 = rewriter.create<MulOp>(
+-          op.getLoc(), dynamicNumElementsI32, dynamicSizeI32);
+-    }
+-
+-    // Compute the dimension size that corresponds to -1 in dynamic_shape.
+-    // If such a dimension doesn't exist, then this value doesn't matter.
+-    auto computedSizeI32 = rewriter.create<DivOp>(op.getLoc(), numElementsI32,
+-                                                  dynamicNumElementsI32);
+-
+-    // Compute individual output dimension sizes, replacing a potential -1
+-    // with the value computed above.
+-    auto i32x1Type = RankedTensorType::get({1}, rewriter.getI32Type());
+-    Value minusOneI32 = rewriter.create<ConstantOp>(
+-        op.getLoc(), DenseIntElementsAttr::get<int32_t>(i32Type, -1));
+-    SmallVector<Value> resultSizesI32x1;
+-    for (auto i = 0; i < rank; ++i) {
+-      auto eqMinusOne =
+-          rewriter.create<CompareOp>(op.getLoc(), dynamicSizesI32[i],
+-                                     minusOneI32, ComparisonDirection::EQ);
+-      auto resultSizeI32 = rewriter.create<SelectOp>(
+-          op.getLoc(), eqMinusOne, computedSizeI32, dynamicSizesI32[i]);
+-      auto resultSizeI32x1 =
+-          rewriter.create<ReshapeOp>(op.getLoc(), i32x1Type, resultSizeI32);
+-      resultSizesI32x1.push_back(resultSizeI32x1);
+-    }
+-    auto resultI32 =
+-        rewriter.create<ConcatenateOp>(op.getLoc(), resultSizesI32x1,
+-                                       /*dimension=*/0);
+-
+-    // Cast the result to tensor<Nxindex> if needed.
+-    // (stablehlo.compute_reshape_shape supports both index- and integer-based
+-    // results).
+-    // This cannot error out given how the operation is currently defined.
+-    auto resultIndex = maybeCastToIndex(op.getResult(), resultI32, rewriter);
+-    if (!resultIndex || resultIndex.getType() != op.getType())
+-      return rewriter.notifyMatchFailure(op, "cast to index failed");
+-    rewriter.replaceOp(op, resultIndex);
+-    return success();
+-  }
+-};
+ 
+ struct ConvertNumElementsOpPattern
+     : public OpRewritePattern<shape::NumElementsOp> {
+@@ -623,7 +551,6 @@
+     target = std::make_shared<ConversionTarget>(*context);
+     target->addIllegalDialect<shape::ShapeDialect>();
+     target->addIllegalDialect<tensor::TensorDialect>();
+-    target->addIllegalOp<stablehlo::ComputeReshapeShapeOp>();
+     target->addIllegalOp<arith::IndexCastOp>();
+     target->addIllegalOp<arith::MulIOp>();
+     target->addDynamicallyLegalDialect<stablehlo::StablehloDialect>(
+@@ -662,7 +589,6 @@
+ 
+ void populateShapeToStablehloPatterns(MLIRContext* context,
+                                       RewritePatternSet* patterns) {
+-  patterns->add<ConvertComputeReshapeShapeOpPattern>(context);
+   patterns->add<ConvertConstShapeOpPattern>(context);
+   patterns->add<ConvertMulIOpPattern>(context);
+   patterns->add<ConvertIndexCastOpPattern>(context);
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
 --- stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
 +++ stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
@@ -2769,7 +3689,68 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cp
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-@@ -482,9 +482,10 @@
+@@ -403,60 +403,6 @@
+   }
+ };
+ 
+-struct EvalComputeReshapeShapeOpPattern
+-    : public OpRewritePattern<ComputeReshapeShapeOp> {
+-  using OpRewritePattern::OpRewritePattern;
+-  LogicalResult matchAndRewrite(ComputeReshapeShapeOp op,
+-                                PatternRewriter& rewriter) const override {
+-    auto resultType = op.getType();
+-
+-    int64_t numElems;
+-    if (failed(hlo::matchInt(op.getNumElements(), numElems)))
+-      return rewriter.notifyMatchFailure(
+-          op, "expected constant number of elements");
+-
+-    SmallVector<int64_t> dynShapeValues;
+-    if (failed(hlo::matchInts(op.getDynamicShape(), dynShapeValues)))
+-      return rewriter.notifyMatchFailure(op, "expected constant dynamic shape");
+-
+-    std::optional<size_t> unspecifiedDimIdx;
+-    int64_t dimProduct = 1;
+-    constexpr int64_t kUnspecifiedDimSize = -1;
+-    for (size_t i = 0; i < dynShapeValues.size(); ++i) {
+-      if (dynShapeValues[i] == kUnspecifiedDimSize) {
+-        if (unspecifiedDimIdx.has_value())
+-          return rewriter.notifyMatchFailure(
+-              op, "multiple -1 values in dimensions is an undefined behavior");
+-
+-        unspecifiedDimIdx = i;
+-        continue;
+-      }
+-
+-      dimProduct *= dynShapeValues[i];
+-    }
+-
+-    if (numElems % dimProduct != 0)
+-      return rewriter.notifyMatchFailure(
+-          op,
+-          "dimensions that can't evenly divide num elements is an undefined "
+-          "behavior");
+-
+-    if (unspecifiedDimIdx.has_value())
+-      dynShapeValues[unspecifiedDimIdx.value()] = numElems / dimProduct;
+-
+-    const auto resultBitWidth = resultType.getElementTypeBitWidth();
+-    auto result = llvm::to_vector(
+-        llvm::map_range(dynShapeValues, [&](int64_t value) -> APSInt {
+-          return APSInt(APInt(resultBitWidth, value), false);
+-        }));
+-
+-    rewriter.replaceOpWithNewOp<ConstantOp>(op,
+-                                            getTensorAttr(resultType, result));
+-
+-    return success();
+-  }
+-};
+-
+ struct EvalConcatenateOpPattern : public OpRewritePattern<ConcatenateOp> {
+   using OpRewritePattern::OpRewritePattern;
+   LogicalResult matchAndRewrite(ConcatenateOp op,
+@@ -482,9 +428,10 @@
    LogicalResult matchAndRewrite(ConvertOp op,
                                  PatternRewriter& rewriter) const override {
      auto resultType = op.getType();
@@ -2783,4 +3764,12 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
      auto resultBitWidth = resultType.getElementType().getIntOrFloatBitWidth();
      return evalElementwise(rewriter, op, [&](APSInt operand) {
        return operand.extOrTrunc(resultBitWidth);
+@@ -1240,7 +1187,6 @@
+   patterns->add<EvalBroadcastInDimOpPattern>(context);
+   patterns->add<EvalClampOpPattern>(context);
+   patterns->add<EvalCompareOpPattern>(context);
+-  patterns->add<EvalComputeReshapeShapeOpPattern>(context);
+   patterns->add<EvalConcatenateOpPattern>(context);
+   patterns->add<EvalConvertOpPattern>(context);
+   patterns->add<EvalDivOpPattern>(context);
 

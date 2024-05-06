@@ -177,8 +177,6 @@ Status LowerHlotoLoops(mlir::ModuleOp module,
   // Transform HLO operations to LinAlg and standard.
   pm.addNestedPass<FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
 
   // Remove the remaining references to unsigned types after all HLO compute
   // operations were converted.
