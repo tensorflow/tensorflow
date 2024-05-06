@@ -141,28 +141,6 @@ def MHLO_DynamicIotaOp: MHLO_ShapedInterfaceOp<"dynamic_iota", [Pure]> {
   let hasCustomHLOConverter = 1;
 }
 
-
-def MHLO_CreateTokenOp : MHLO_Op<"create_token", [Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "CreateToken operation";
-  let description = [{
-    This operation is on its way out of StableHLO, so it is not included in
-    the specification: https://github.com/openxla/stablehlo/issues/3.
-
-    Informally, this operation does the same thing as AfterAllOp with 0 inputs:
-    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#after_all
-
-    Example:
-    ```mlir
-    %output = mhlo.create_token : !mhlo.token
-    ```
-  }];
-
-  let results = (outs MHLO_Token:$output);
-
-  let assemblyFormat = "attr-dict `:` type(results)";
-}
-
 //===----------------------------------------------------------------------===//
 // MHLO unary elementwise op definitions.
 //===----------------------------------------------------------------------===//
@@ -1233,6 +1211,9 @@ def MHLO_AfterAllOp : MHLO_Op<"after_all", [Pure,
 
   let arguments = (ins Variadic<MHLO_Token>:$inputs);
   let results = (outs MHLO_Token:$result);
+
+  // Add builder for token creation
+  let builders = [OpBuilder<(ins)>];
 
   let assemblyFormat = [{
     $inputs attr-dict

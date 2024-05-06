@@ -361,6 +361,13 @@ func.func @op_after_all(%arg0: !mhlo.token) -> !mhlo.token {
   func.return %0 : !mhlo.token
 }
 
+// CHECK-LABEL: "op_after_all_create_token"
+func.func @op_after_all_create_token() -> !mhlo.token {
+  // CHECK: "stablehlo.after_all"() : () -> !stablehlo.token
+  %0 = "mhlo.after_all"() : () -> !mhlo.token
+  func.return %0 : !mhlo.token
+}
+
 // CHECK-LABEL: "op_all_gather"
 func.func @op_all_gather(%arg0: tensor<16x8xf32>) -> tensor<16x16xf32> {
   //               CHECK: "stablehlo.all_gather"(%arg0) <{
@@ -683,13 +690,6 @@ func.func @op_cosine(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK: "stablehlo.cosine"(%arg0) : (tensor<f32>) -> tensor<f32>
   %0 = "mhlo.cosine"(%arg0) : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
-}
-
-// CHECK-LABEL: "op_create_token"
-func.func @op_create_token() -> !mhlo.token {
-  // CHECK: "stablehlo.create_token"() : () -> !stablehlo.token
-  %0 = "mhlo.create_token"() : () -> !mhlo.token
-  func.return %0 : !mhlo.token
 }
 
 // CHECK-LABEL: "op_cross_replica_sum"

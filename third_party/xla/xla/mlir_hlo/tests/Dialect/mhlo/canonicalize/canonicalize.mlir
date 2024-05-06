@@ -1043,7 +1043,7 @@ func.func @do_not_dce_while_with_outfeed(%arg0: tensor<i64>) -> tensor<i64> {
     "mhlo.return"(%1) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg1: tensor<i64>):
-    %1 = "mhlo.create_token"() : () -> !mhlo.token
+    %1 = "mhlo.after_all"() : () -> !mhlo.token
     // Side-effecting op outfeed present inside while.
     %2 = "mhlo.outfeed"(%arg1, %1) {outfeed_config = ""} : (tensor<i64>, !mhlo.token) -> !mhlo.token
     "mhlo.return"(%arg1) : (tensor<i64>) -> ()
@@ -1061,7 +1061,7 @@ func.func @dce_while_without_side_effect(%arg0: tensor<i64>) -> tensor<i64> {
     "mhlo.return"(%1) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg1: tensor<i64>):
-    %1 = "mhlo.create_token"() : () -> !mhlo.token
+    %1 = "mhlo.after_all"() : () -> !mhlo.token
     "mhlo.return"(%arg1) : (tensor<i64>) -> ()
   }) : (tensor<i64>) -> tensor<i64>
 

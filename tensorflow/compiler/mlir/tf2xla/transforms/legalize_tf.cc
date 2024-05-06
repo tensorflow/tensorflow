@@ -5267,14 +5267,14 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
   }
 };
 
-// Converts InfeedDequeueTuple to XLA HLO create_token, infeed and
+// Converts InfeedDequeueTuple to XLA HLO after_all, infeed and
 // get_tuple_element ops.
 //
 // All HLO infeed ops expect a HLO token type operand and produce a tuple
 // containing a token. This HLO token type is used to order multiple infeed
 // operations within a computation. The token type can come from other
-// infeed/outfeed/send/recv ops or can be generated using create_token op with
-// no operands. Here we emit a create_token op to generate the token type
+// infeed/outfeed/send/recv ops or can be generated using after_all op with
+// no operands. Here we emit a after_all op to generate the token type
 // operand of infeed. The mhlo.InfeedOp can produce multiple results and later
 // will be exported to XLA infeed op with single tuple return type.
 //
@@ -5283,7 +5283,7 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
 //
 // would be lowered to
 //
-// %token = "mhlo.create_token"() : () -> !mhlo.token
+// %token = "mhlo.after_all"() : () -> !mhlo.token
 // %data_and_token = "mhlo.infeed"(%token) {infeed_config = ""} :
 //      (!mhlo.token) -> tensor<3xi32>, tensor<4xf32>, !mhlo.token>
 //
@@ -5305,9 +5305,8 @@ class ConvertInfeedDequeueTupleOp
     }
 
     // Infeed takes a single token operand. Generate the token using
-    // create_token op to pass to the infeed op.
-    auto token = rewriter.create<CreateTokenOp>(
-        op.getLoc(), mhlo::TokenType::get(rewriter.getContext()));
+    // after_all op to pass to the infeed op.
+    auto token = rewriter.create<AfterAllOp>(op.getLoc());
 
     result_types.push_back(token.getType());
 
@@ -5357,11 +5356,11 @@ class ConvertInfeedDequeueTupleOp
   }
 };
 
-// Converts tf.OutfeedEnqueueTuple to XLA HLO tuple, create_token and outfeed
+// Converts tf.OutfeedEnqueueTuple to XLA HLO tuple, after_all and outfeed
 // ops.
 //
 // XLA HLO outfeed op expects a token, which we generate by emitting an
-// create_token op.
+// after_all op.
 //
 // For example the following IR:
 // "tf.OutfeedEnqueueTuple"(%val_1, %val_2) : (tensor<3xi32>, tensor<4xf32>) ->
@@ -5369,7 +5368,7 @@ class ConvertInfeedDequeueTupleOp
 //
 // would be lowered to
 //
-// %token = "mhlo.create_token"() : () -> !mhlo.token
+// %token = "mhlo.after_all"() : () -> !mhlo.token
 // %outfeed_token = "mhlo.outfeed"(%val_1, %val_2, %token) {outfeed_config = ""}
 // :
 //      (tensor<3xi32>, tensor<4xf32>, !mhlo.token) -> !mhlo.token
@@ -5382,7 +5381,7 @@ class ConvertOutfeedEnqueueTupleOp
   LogicalResult matchAndRewrite(TF::OutfeedEnqueueTupleOp op,
                                 PatternRewriter &rewriter) const override {
     auto token_type = mhlo::TokenType::get(rewriter.getContext());
-    auto token = rewriter.create<CreateTokenOp>(op.getLoc(), token_type);
+    auto token = rewriter.create<AfterAllOp>(op.getLoc());
 
     rewriter.create<OutfeedOp>(op.getLoc(), token_type, op.getInputs(), token,
                                /*outfeed_config=*/rewriter.getStringAttr(""));

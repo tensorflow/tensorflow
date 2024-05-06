@@ -92,12 +92,6 @@ def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "func::FuncOp">
   let dependentDialects = ["scf::SCFDialect", "tensor::TensorDialect"];
 }
 
-def LegalizeCreateTokenToAfterAllPass : Pass<"mhlo-legalize-create-token-to-after-all", "func::FuncOp"> {
-  let summary = "Legalize create_token ops to after_all ops.";
-  let constructor = "createLegalizeCreateTokenToAfterAllPass()";
-  let dependentDialects = ["mhlo::MhloDialect"];
-}
-
 def LegalizeCrossReplicaSumToAllReducePass : Pass<"mhlo-legalize-cross-replica-sum-to-all-reduce", "func::FuncOp"> {
   let summary = "Legalizes cross-replica-sum ops to all_reduce ops.";
   let constructor = "createLegalizeCrossReplicaSumToAllReducePass()";

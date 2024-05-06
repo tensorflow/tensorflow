@@ -6,10 +6,10 @@
 func.func @zero_input() -> !mhlo.token {
   // CHECK:      %0 = mhlo.replica_id : tensor<ui32>
   // CHECK-NEXT: %1 = mhlo.partition_id : tensor<ui32>
-  // CHECK-NEXT: %2 = mhlo.create_token : !mhlo.token
+  // CHECK-NEXT: %2 = mhlo.after_all : !mhlo.token
   %0 = "mhlo.replica_id"() : () -> tensor<ui32>
   %1 = "mhlo.partition_id"() : () -> tensor<ui32>
-  %2 = "mhlo.create_token"() : () -> !mhlo.token
+  %2 = "mhlo.after_all"() : () -> !mhlo.token
   return %2 : !mhlo.token
 }
 

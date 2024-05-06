@@ -2008,19 +2008,10 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
     }
     case HloOpcode::kAfterAll: {
-      // HLO AfterAll ops without any token input are used to just create a
-      // token. MHLO has a special op CreateToken for this case.
-      if (instruction->operands().empty()) {
-        return func_builder
-            ->create<mlir::mhlo::CreateTokenOp>(loc, result_type, operands,
-                                                attributes)
-            .getOperation();
-      } else {
-        return func_builder
-            ->create<mlir::mhlo::AfterAllOp>(loc, result_type, operands,
-                                             attributes)
-            .getOperation();
-      }
+      return func_builder
+          ->create<mlir::mhlo::AfterAllOp>(loc, result_type, operands,
+                                           attributes)
+          .getOperation();
     }
 
     case HloOpcode::kConvert: {

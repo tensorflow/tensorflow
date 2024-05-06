@@ -840,8 +840,7 @@ LogicalResult RewriteFunction(
   // a token will be created. Otherwise a token block argument is inserted.
   Value init_token =
       rewrite_block ? func_body.addArgument(token_type, func.getLoc())
-                    : builder.create<CreateTokenOp>(func.getLoc(), token_type)
-                          .getResult();
+                    : builder.create<AfterAllOp>(func.getLoc()).getResult();
 
   // Stack to keep track of region based control flow op nesting and current
   // op to visit.

@@ -616,6 +616,14 @@ func.func @reduce_scatter_invalid(%data: tensor<4x0xf32>) -> tensor<4x4xf32> {
 
 // -----
 
+// CHECK-LABEL: func @after_all
+func.func @after_all() -> !mhlo.token {
+  %0 = "mhlo.after_all"() : () -> !mhlo.token
+  func.return %0: !mhlo.token
+}
+
+// -----
+
 // CHECK-LABEL: func @all_to_all
 func.func @all_to_all(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
   %0 = "mhlo.all_to_all"(%data) {
@@ -1587,13 +1595,6 @@ func.func @cholesky_wrong_infer_shape(%arg0: tensor<1x2x2xf32>) -> tensor<1x2x2x
   // expected-error@+1 {{'mhlo.cholesky' op inferred type(s) 'tensor<1x2x2xf32>' are incompatible with return type(s) of operation 'tensor<1x2x2x2xf32>'}}
   %0 = "mhlo.cholesky"(%arg0) { lower = true } : (tensor<1x2x2xf32>) -> tensor<1x2x2x2xf32>
   func.return %0: tensor<1x2x2x2xf32>
-}
-
-// -----
-
-func.func @create_token() -> !mhlo.token {
-  %0 = "mhlo.create_token"() : () -> !mhlo.token
-  func.return %0: !mhlo.token
 }
 
 // -----
@@ -5549,7 +5550,7 @@ func.func @quantized_dot_general(%arg0: tensor<2x16x32x!quant.uniform<i8:f32, 2.
 
 // CHECK-LABEL: func @add_dependency
 func.func @add_dependency(%data: tensor<4x16xf32>) -> tensor<4x16xf32> {
-  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %token = "mhlo.after_all"() : () -> !mhlo.token
   %0 = "mhlo.add_dependency"(%data, %token) : (tensor<4x16xf32>, !mhlo.token) -> tensor<4x16xf32>
   func.return %0 : tensor<4x16xf32>
 }
@@ -5557,8 +5558,8 @@ func.func @add_dependency(%data: tensor<4x16xf32>) -> tensor<4x16xf32> {
 
 // CHECK-LABEL: func @add_dependency_token
 func.func @add_dependency_token(%data: tensor<4x16xf32>) -> !mhlo.token {
-  %token = "mhlo.create_token"() : () -> !mhlo.token
-  %token2 = "mhlo.create_token"() : () -> !mhlo.token
+  %token = "mhlo.after_all"() : () -> !mhlo.token
+  %token2 = "mhlo.after_all"() : () -> !mhlo.token
   %0 = "mhlo.add_dependency"(%token2, %token) : (!mhlo.token, !mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
 }
@@ -5568,7 +5569,7 @@ func.func @add_dependency_token(%data: tensor<4x16xf32>) -> !mhlo.token {
 func.func @add_dependency(%data: tensor<4x16xf32>) -> !mhlo.token {
   // @expected-error@+3 {{'mhlo.add_dependency' op failed to infer returned types}}
   // expected-error@+2 {{'mhlo.add_dependency' op inferred type(s) 'tensor<4x16xf32>' are incompatible with return type(s) of operation '!mhlo.token'}}
-  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %token = "mhlo.after_all"() : () -> !mhlo.token
   %0 = "mhlo.add_dependency"(%data, %token) : (tensor<4x16xf32>, !mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
 }
@@ -5578,8 +5579,8 @@ func.func @add_dependency(%data: tensor<4x16xf32>) -> !mhlo.token {
 func.func @add_dependency(%data: tensor<4x16xf32>) -> tensor<4x16xf32> {
   // @expected-error@+4 {{'mhlo.add_dependency' op failed to infer returned types}}
   // expected-error@+3 {{inferred type(s) '!mhlo.token' are incompatible with return type(s) of operation 'tensor<4x16xf32>'}}
-  %token = "mhlo.create_token"() : () -> !mhlo.token
-  %token2 = "mhlo.create_token"() : () -> !mhlo.token
+  %token = "mhlo.after_all"() : () -> !mhlo.token
+  %token2 = "mhlo.after_all"() : () -> !mhlo.token
   %0 = "mhlo.add_dependency"(%token2, %token) : (!mhlo.token, !mhlo.token) -> tensor<4x16xf32>
   func.return %0 : tensor<4x16xf32>
 }
@@ -6515,7 +6516,7 @@ func.func @composite_c2(%arg0: tensor<f32>) {
 // -----
 
 func.func @foo() -> !mhlo.token {
-  %0 = mhlo.create_token : !mhlo.token
+  %0 = "mhlo.after_all"() : () -> (!mhlo.token)
   func.return %0 : !mhlo.token
 }
 
@@ -6530,7 +6531,7 @@ func.func @composite_c3(%arg0: tensor<f32>) {
 // -----
 
 func.func @foo(%arg0: tensor<f64>) -> !mhlo.token {
-  %0 = mhlo.create_token : !mhlo.token
+  %0 = "mhlo.after_all"() : () -> (!mhlo.token)
   func.return %0 : !mhlo.token
 }
 

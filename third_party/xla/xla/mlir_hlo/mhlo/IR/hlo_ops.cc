@@ -569,6 +569,10 @@ LogicalResult AsyncDoneOp::inferReturnTypes(
 // AfterAllOp
 //===----------------------------------------------------------------------===//
 
+void AfterAllOp::build(OpBuilder& odsBuilder, OperationState& odsState) {
+  AfterAllOp::build(odsBuilder, odsState, {});
+}
+
 LogicalResult AfterAllOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange,
     DictionaryAttr, OpaqueProperties, RegionRange,
@@ -710,18 +714,6 @@ LogicalResult verifyOutputOperandAliasing(CallableOpType* op) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult FusionOp::verify() { return verifyOutputOperandAliasing(this); }
-
-//===----------------------------------------------------------------------===//
-// CreateTokenOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult CreateTokenOp::inferReturnTypes(
-    MLIRContext* context, std::optional<Location> location, ValueRange,
-    DictionaryAttr, OpaqueProperties, RegionRange,
-    SmallVectorImpl<Type>& inferredReturnTypes) {
-  return hlo::inferCreateTokenOp(getMhloDialect(context), location,
-                                 inferredReturnTypes);
-}
 
 //===----------------------------------------------------------------------===//
 // CustomCallOp

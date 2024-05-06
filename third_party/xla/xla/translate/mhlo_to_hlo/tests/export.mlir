@@ -26,6 +26,17 @@ func.func @main(%arg0: !mhlo.token, %arg1: !mhlo.token) -> !mhlo.token {
 
 // -----
 
+
+// CHECK:  HloModule
+func.func @main() -> !mhlo.token {
+  %0 = "mhlo.after_all"() : () -> !mhlo.token
+  func.return %0 : !mhlo.token
+}
+
+// CHECK:  ROOT [[TOKEN:%.*]] = token[] after-all()
+
+// -----
+
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
   %0 = "mhlo.reduce_scatter"(%arg0) ({
@@ -493,16 +504,6 @@ func.func @main(%arg0: tensor<1xf32>) -> tensor<1x10xf32> {
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = f32[1] parameter(0)
 // CHECK:  ROOT %broadcast.2 = f32[1,10] broadcast(f32[1] [[ARG]]), dimensions={0}
-
-// -----
-
-// CHECK:  HloModule
-func.func @main() -> !mhlo.token {
-  %0 = "mhlo.create_token"() : () -> !mhlo.token
-  func.return %0 : !mhlo.token
-}
-
-// CHECK:  ROOT [[TOKEN:%.*]] = token[] after-all()
 
 // -----
 
@@ -3043,7 +3044,7 @@ func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
 // CHECK: %[[ARG0:.*]] = f32[3,4] parameter(0)
 // CHECK: %[[TOK:.*]] = token[] after-all()
 // CHECK: ROOT %[[RESULT:.*]] = f32[3,4] add-dependency(f32[3,4] %[[ARG0]], token[] %[[TOK]])
-  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %token = "mhlo.after_all"() : () -> !mhlo.token
   %0 = "mhlo.add_dependency"(%arg, %token) : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
   func.return %0 : tensor<3x4xf32>
 }
@@ -3052,7 +3053,7 @@ func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
 
 // CHECK:  HloModule
 func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> attributes {execution_thread = "test_thread"} {
-  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %token = "mhlo.after_all"() : () -> !mhlo.token
   %0 = "mhlo.add_dependency"(%arg, %token) : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
   func.return %0 : tensor<3x4xf32>
 }

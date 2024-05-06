@@ -198,16 +198,16 @@ diff --ruN a/stablehlo/docs/interpreter_status.md b/stablehlo/docs/interpreter_s
  
  <!-- markdownlint-disable line-length -->
  The tool to convert remaining ops in this category to equivalent StableHLO ops
-@@ -254,17 +245,11 @@
+@@ -254,17 +245,8 @@
  # broadcast
  mlir-hlo-opt -mhlo-legalize-broadcast-to-broadcast-in-dim <path/to/input>
  
 -# compute_reshape_shape
 -# This op will be removed from StableHLO as part of Dynamism work (see #1668).
 -
- # create_token
- mlir-hlo-opt -mhlo-legalize-create-token-to-after-all <path/to/input>
- 
+-# create_token
+-mlir-hlo-opt -mhlo-legalize-create-token-to-after-all <path/to/input>
+-
  # cross-replica-sum
  mlir-hlo-opt -mhlo-legalize-cross-replica-sum-to-all-reduce <path/to/input>
 -
@@ -216,18 +216,24 @@ diff --ruN a/stablehlo/docs/interpreter_status.md b/stablehlo/docs/interpreter_s
  
  # dot
  mlir-hlo-opt -mhlo-legalize-dot-to-dot-general <path/to/input>
-@@ -295,6 +280,6 @@
+@@ -295,6 +277,6 @@
  | Extensibility | custom_call, get_tuple_element, tuple                                                                                                                                                                                                                                                                                                                                                                                                                                       | 3     |
  | Miscellaneous | batch_norm_grad, batch_norm_inference, batch_norm_training, cholesky, constant, fft, iota, rng, rng_bit_generator, triangular_solve                                                                                                                                                                                                                                                                                                                                         | 10    |
  | Modularity    | call, func, module, return                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 4     |
 -| Not In HLO    | broadcast, compute_reshape_shape, create_token, cross-replica-sum, cstr_reshapable, dot, einsum, torch_index_select, trace, unary_einsum                                                                                                                                                                                                                                                                                                                                    | 10    |
-+| Not In HLO    | broadcast, create_token, cross-replica-sum, dot, einsum, torch_index_select, trace, unary_einsum                                                                                                                                                                                                                                                                                                                                                                            | 10    |
++| Not In HLO    | broadcast, cross-replica-sum, dot, einsum, torch_index_select, trace, unary_einsum                                                                                                                                                                                                                                                                                                                                                                            | 10    |
  | Quantization  | uniform_dequantize, uniform_quantize                                                                                                                                                                                                                                                                                                                                                                                                                                        | 2     |
  | Reduction     | convolution, dot_general, reduce, reduce_window, select_and_scatter                                                                                                                                                                                                                                                                                                                                                                                                         | 5     |
 diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
 --- stablehlo/docs/spec.md
 +++ stablehlo/docs/spec.md
-@@ -331,8 +331,7 @@
+@@ -326,13 +326,12 @@
+ * `chlo` operations ([#602](https://github.com/openxla/stablehlo/issues/602)).
+ * "Not in HLO" category of StableHLO operations - they were initially part of
+   the StableHLO opset but have been later deemed to not fit it well:
+-  `broadcast`, `create_token`, `cross-replica-sum`, `dot`, `einsum`,
++  `broadcast`, `cross-replica-sum`, `dot`, `einsum`,
+   `torch_index_select`, `unary_einsum`
    ([#3](https://github.com/openxla/stablehlo/issues/3)), and
    `trace` ([#604](https://github.com/openxla/stablehlo/issues/604)).
  * "Dynamism" category of StableHLO operations - they were bootstrapped from
@@ -240,7 +246,7 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
 diff --ruN a/stablehlo/docs/status.md b/stablehlo/docs/status.md
 --- stablehlo/docs/status.md
 +++ stablehlo/docs/status.md
-@@ -66,7 +66,6 @@
+@@ -66,16 +66,13 @@
  | compare                  | yes           | yes          | yes            | yes             | yes         |
  | complex                  | yes           | yes          | yes            | yes             | yes         |
  | composite                | yes           | yes          | infeasible     | yes             | yes         |
@@ -248,9 +254,10 @@ diff --ruN a/stablehlo/docs/status.md b/stablehlo/docs/status.md
  | concatenate              | yes           | yes          | yes            | yes             | yes         |
  | constant                 | yes           | yes          | yes            | yes             | yes         |
  | convert                  | yes           | yes          | infeasible     | yes             | yes         |
-@@ -75,7 +74,6 @@
+ | convolution              | yes           | yes          | infeasible     | revisit         | yes         |
+ | cosine                   | yes           | yes          | yes            | yes             | yes         |
  | count_leading_zeros      | yes           | yes          | yes            | yes             | yes         |
- | create_token             | no            | yes\*        | yes\*          | yes             | revisit     |
+-| create_token             | no            | yes\*        | yes\*          | yes             | revisit     |
  | cross-replica-sum        | no            | revisit      | yes\*          | no              | revisit     |
 -| cstr_reshapable          | no            | revisit      | no             | yes             | no          |
  | custom_call              | yes           | yes          | infeasible     | yes             | yes         |
@@ -426,7 +433,18 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -257,7 +257,7 @@
+@@ -232,6 +232,10 @@
+ // AfterAllOp
+ //===----------------------------------------------------------------------===//
+ 
++void AfterAllOp::build(OpBuilder& odsBuilder, OperationState& odsState) {
++  AfterAllOp::build(odsBuilder, odsState, {});
++}
++
+ LogicalResult AfterAllOp::inferReturnTypes(
+     MLIRContext* context, std::optional<Location> location, ValueRange operands,
+     DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+@@ -257,7 +261,7 @@
  void ConstantOp::getAsmResultNames(
      function_ref<void(Value, StringRef)> setNameFn) {
    mlir::TensorType type = getType();
@@ -435,10 +453,67 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
      setNameFn(getResult(), "c");
    } else {
      setNameFn(getResult(), "cst");
+@@ -324,18 +328,6 @@
+ 
+ void ConstantOp::print(::mlir::OpAsmPrinter& p) {
+   hlo::printConstantOp(p, getOperation(), getValue());
+-}
+-
+-//===----------------------------------------------------------------------===//
+-// CreateTokenOp
+-//===----------------------------------------------------------------------===//
+-
+-LogicalResult CreateTokenOp::inferReturnTypes(
+-    MLIRContext* context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+-    SmallVectorImpl<Type>& inferredReturnTypes) {
+-  return hlo::inferCreateTokenOp(getStablehloDialect(context), location,
+-                                 inferredReturnTypes);
+ }
+ 
+ //===----------------------------------------------------------------------===//
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
-@@ -3503,58 +3503,4 @@
+@@ -149,27 +149,6 @@
+     /// Interface method for ConditionallySpeculatable.
+     mlir::Speculation::Speculatability getSpeculatability();
+   }];
+-}
+-
+-def StableHLO_CreateTokenOp : StableHLO_Op<"create_token", [Pure,
+-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+-  let summary = "CreateToken operation";
+-  let description = [{
+-    This operation is on its way out of StableHLO, so it is not included in
+-    the StableHLO specification: https://github.com/openxla/stablehlo/issues/3.
+-
+-    Informally, this operation does the same thing as AfterAllOp with 0 inputs:
+-    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#after_all
+-
+-    Example:
+-    ```mlir
+-    %output = stablehlo.create_token : !stablehlo.token
+-    ```
+-  }];
+-
+-  let results = (outs HLO_Token:$output);
+-
+-  let assemblyFormat = "attr-dict `:` type(results)";
+ }
+ 
+ //===----------------------------------------------------------------------===//
+@@ -1186,6 +1165,9 @@
+ 
+   let arguments = (ins Variadic<HLO_Token>:$inputs /*after_all_i1*/);
+   let results = (outs HLO_Token:$result);
++
++  // Add builder for token creation
++  let builders = [OpBuilder<(ins)>];
+ 
+   let assemblyFormat = [{
+     $inputs attr-dict
+@@ -3503,58 +3485,4 @@
    let results = (outs HLO_Tensor);
  }
  
@@ -497,6 +572,49 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
 -}
 -
  #endif // STABLEHLO_DIALECT_STABLEHLO_OPS
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -2020,13 +2020,6 @@
+   return success();
+ }
+ 
+-LogicalResult inferCreateTokenOp(HloDialectInterface* dialect,
+-                                 std::optional<Location> location,
+-                                 SmallVectorImpl<Type>& inferredReturnTypes) {
+-  inferredReturnTypes.push_back(dialect->createTokenType());
+-  return success();
+-}
+-
+ LogicalResult inferDotOp(
+     std::optional<Location> location, RankedTensorType lhsType,
+     RankedTensorType rhsType, std::optional<ArrayAttr> precisionConfig,
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
+--- stablehlo/stablehlo/dialect/TypeInference.h
++++ stablehlo/stablehlo/dialect/TypeInference.h
+@@ -198,10 +198,6 @@
+     std::optional<ArrayAttr> precisionConfig,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes);
+ 
+-LogicalResult inferCreateTokenOp(HloDialectInterface* dialect,
+-                                 std::optional<Location> location,
+-                                 SmallVectorImpl<Type>& inferredReturnTypes);
+-
+ LogicalResult inferDotOp(
+     std::optional<Location> location, RankedTensorType lhsType,
+     RankedTensorType rhsType, std::optional<ArrayAttr> precisionConfig,
+diff --ruN a/stablehlo/stablehlo/dialect/Version.h b/stablehlo/stablehlo/dialect/Version.h
+--- stablehlo/stablehlo/dialect/Version.h
++++ stablehlo/stablehlo/dialect/Version.h
+@@ -38,7 +38,7 @@
+   static FailureOr<Version> fromString(llvm::StringRef versionRef);
+ 
+   /// Return a Version representing the current VHLO dialect version.
+-  static Version getCurrentVersion() { return Version(0, 19, 9); }
++  static Version getCurrentVersion() { return Version(0, 20, 0); }
+ 
+   /// Return a Version representing the minimum supported VHLO dialect version.
+   static Version getMinimumVersion() { return Version(0, 9, 0); }
 diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.td b/stablehlo/stablehlo/dialect/VhloOps.td
 --- stablehlo/stablehlo/dialect/VhloOps.td
 +++ stablehlo/stablehlo/dialect/VhloOps.td
@@ -515,6 +633,15 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.td b/stablehlo/stablehlo/dialec
  }
  
  def VHLO_ConcatenateOpV1 : VHLO_Op<"concatenate_v1", "0.9.0", "current"> {
+@@ -355,7 +347,7 @@
+ // TODO(#3): CreateTokenOp is not part of the StableHLO spec.
+ // This operation is on its way out of StableHLO, so it is not included in
+ // the StableHLO specification.
+-def VHLO_CreateTokenOpV1 : VHLO_Op<"create_token_v1", "0.9.0", "current"> {
++def VHLO_CreateTokenOpV1 : VHLO_Op<"create_token_v1", "0.9.0", "0.19.0"> {
+   let results = (outs VHLO_AnyType:$output);
+ }
+ 
 @@ -368,14 +360,6 @@
      VHLO_AnyAttr:$replica_groups
    );
@@ -2919,6 +3046,47 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/reference/Ops.cpp
+--- stablehlo/stablehlo/reference/Ops.cpp
++++ stablehlo/stablehlo/reference/Ops.cpp
+@@ -553,8 +553,6 @@
+       auto operand = scope.findTensor(op.getOperand());
+       auto result = cosineOp(operand, op.getType());
+       scope.add(op.getResult(), result);
+-    } else if (isa<CreateTokenOp>(operation)) {
+-      failOnDecomposableOp(operation);
+     } else if (isa<CrossReplicaSumOp>(operation)) {
+       failOnDecomposableOp(operation);
+     } else if (auto op = dyn_cast<DivOp>(operation)) {
+diff --ruN a/stablehlo/stablehlo/tests/infer_stablehlo.mlir b/stablehlo/stablehlo/tests/infer_stablehlo.mlir
+--- stablehlo/stablehlo/tests/infer_stablehlo.mlir
++++ stablehlo/stablehlo/tests/infer_stablehlo.mlir
+@@ -764,9 +764,9 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: func @create_token
+-func.func @create_token() -> !stablehlo.token {
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
++// CHECK-LABEL: func @after_all
++func.func @after_all(%arg0: !stablehlo.token, %arg1: !stablehlo.token) -> !stablehlo.token {
++  %0 = "stablehlo.after_all"(%arg0, %arg1) : (!stablehlo.token, !stablehlo.token) -> !stablehlo.token
+   // CHECK: types0 = !stablehlo.token
+   %1 = "hlo_test_infer.get_return_types"(%0) : (!stablehlo.token) -> !stablehlo.token
+   func.return %1 : !stablehlo.token
+@@ -774,9 +774,9 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: func @after_all
+-func.func @after_all(%arg0: !stablehlo.token, %arg1: !stablehlo.token) -> !stablehlo.token {
+-  %0 = "stablehlo.after_all"(%arg0, %arg1) : (!stablehlo.token, !stablehlo.token) -> !stablehlo.token
++// CHECK-LABEL: func @after_all_create_token
++func.func @after_all_create_token() -> !stablehlo.token {
++  %0 = "stablehlo.after_all"() : () -> !stablehlo.token
+   // CHECK: types0 = !stablehlo.token
+   %1 = "hlo_test_infer.get_return_types"(%0) : (!stablehlo.token) -> !stablehlo.token
+   func.return %1 : !stablehlo.token
 diff --ruN a/stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir
 --- stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir
 +++ stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir
@@ -2939,9 +3107,99 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir b/stablehlo/stabl
  // CHECK-LABEL:  func @chlo_erf_inv
  // CHECK-SAME:   %[[A0:.*0]]: tensor<16x16xf32>)
  // CHECK:          chlo.erf_inv %[[A0]] : tensor<16x16xf32> -> tensor<16x16xf32>
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
+@@ -647,6 +647,14 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @after_all
++func.func @after_all() -> !stablehlo.token {
++  %0 = "stablehlo.after_all"() : () -> !stablehlo.token
++  func.return %0: !stablehlo.token
++}
++
++// -----
++
+ // CHECK-LABEL: func @all_to_all
+ func.func @all_to_all(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
+   %0 = "stablehlo.all_to_all"(%data) {
+@@ -1587,13 +1595,6 @@
+   // expected-error@+1 {{minor dimensions of 'a' must have equal size, got shape 1, 2, 1}}
+   %0 = "stablehlo.cholesky"(%arg0) { lower = true } : (tensor<1x2x1xf32>) -> tensor<1x2x1xf32>
+   func.return %0: tensor<1x2x1xf32>
+-}
+-
+-// -----
+-
+-func.func @create_token() -> !stablehlo.token {
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+-  func.return %0: !stablehlo.token
+ }
+ 
+ // -----
+@@ -5540,7 +5541,7 @@
+ // -----
+ 
+ func.func @foo() -> !stablehlo.token {
+-  %0 = stablehlo.create_token : !stablehlo.token
++  %0 = stablehlo.after_all : !stablehlo.token
+   func.return %0 : !stablehlo.token
+ }
+ 
+@@ -5555,7 +5556,7 @@
+ // -----
+ 
+ func.func @foo(%arg0: tensor<f64>) -> !stablehlo.token {
+-  %0 = stablehlo.create_token : !stablehlo.token
++  %0 = stablehlo.after_all : !stablehlo.token
+   func.return %0 : !stablehlo.token
+ }
+ 
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
+@@ -25,6 +25,11 @@
+ 
+ func.func @test_after_all(%arg0: !stablehlo.token, %arg1: !stablehlo.token) -> !stablehlo.token {
+   %0 = "stablehlo.after_all"(%arg0, %arg1) : (!stablehlo.token, !stablehlo.token) -> !stablehlo.token
++  func.return %0 : !stablehlo.token
++}
++
++func.func @test_after_all_create_token() -> !stablehlo.token {
++  %0 = "stablehlo.after_all"() : () -> !stablehlo.token
+   func.return %0 : !stablehlo.token
+ }
+ 
+@@ -272,11 +277,6 @@
+   func.return %0 : tensor<2xf32>
+ }
+ 
+-func.func @test_create_token() -> !stablehlo.token {
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+-  func.return %0 : !stablehlo.token
+-}
+-
+ func.func @test_cross_replica_sum(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+   %0 = stablehlo.constant dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi32>
+   %1 = "stablehlo.cross-replica-sum"(%arg0) {replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>} : (tensor<10xf32>) -> tensor<10xf32>
 diff --ruN a/stablehlo/stablehlo/tests/print_stablehlo.mlir b/stablehlo/stablehlo/tests/print_stablehlo.mlir
 --- stablehlo/stablehlo/tests/print_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/print_stablehlo.mlir
+@@ -34,10 +34,10 @@
+ func.func @zero_input() -> !stablehlo.token {
+   // CHECK:      %0 = stablehlo.replica_id : tensor<ui32>
+   // CHECK-NEXT: %1 = stablehlo.partition_id : tensor<ui32>
+-  // CHECK-NEXT: %2 = stablehlo.create_token : !stablehlo.token
++  // CHECK-NEXT: %2 = stablehlo.after_all : !stablehlo.token
+   %0 = "stablehlo.replica_id"() : () -> tensor<ui32>
+   %1 = "stablehlo.partition_id"() : () -> tensor<ui32>
+-  %2 = "stablehlo.create_token"() : () -> !stablehlo.token
++  %2 = "stablehlo.after_all"() : () -> !stablehlo.token
+   return %2 : !stablehlo.token
+ }
+ 
 @@ -172,30 +172,6 @@
    "stablehlo.return"() : () -> ()
  }
@@ -3026,6 +3284,24 @@ diff --ruN a/stablehlo/stablehlo/tests/shape_legalize_to_stablehlo.mlir b/stable
  // CHECK-LABEL: func @const_shape
  func.func @const_shape() -> tensor<2xindex> {
    %0 = shape.const_shape [6, 4] : tensor<2xindex>
+diff --ruN a/stablehlo/stablehlo/tests/stablehlo_probe_instrumentation.mlir b/stablehlo/stablehlo/tests/stablehlo_probe_instrumentation.mlir
+--- stablehlo/stablehlo/tests/stablehlo_probe_instrumentation.mlir
++++ stablehlo/stablehlo/tests/stablehlo_probe_instrumentation.mlir
+@@ -32,12 +32,12 @@
+ 
+ // CHECK-LABEL: func @only_instrument_tensor_type
+ func.func @only_instrument_tensor_type(%arg0: tensor<f32>) -> (!stablehlo.token, tuple<tensor<f32>>, tensor<f32>) {
+-  // CHECK: stablehlo.create_token
++  // CHECK: stablehlo.after_all
+   // CHECK-NEXT: stablehlo.tuple
+   // CHECK-NEXT: [[SUM:%.*]] = stablehlo.add
+   // CHECK-NEXT: interpreter.probe [[SUM]]
+   // CHECK-NEXT: return
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
++  %0 = "stablehlo.after_all"() : () -> !stablehlo.token
+   %1 = "stablehlo.tuple"(%arg0) : (tensor<f32>) -> tuple<tensor<f32>>
+   %2 = stablehlo.add %arg0, %arg0 : tensor<f32>
+   func.return %0, %1, %2 : !stablehlo.token, tuple<tensor<f32>>, tensor<f32>
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
@@ -3134,6 +3410,25 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/
  }
  
  // -----
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_deprecations.0_19_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_deprecations.0_19_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_deprecations.0_19_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_deprecations.0_19_0.mlir
+@@ -0,0 +1,15 @@
++// RUN: stablehlo-opt --mlir-print-op-generic %s.bc | FileCheck %s
++// RUN: stablehlo-translate --deserialize %s.bc | stablehlo-translate --serialize --target=0.19.0 | stablehlo-translate --deserialize --mlir-print-op-generic | FileCheck --check-prefix=DESERIALIZED %s
++
++// This file is bytecoded targeting 0.19.0 for ops that are removed in 0.20.0
++// ensuring that the bytecode files are still readable.
++// If regenerating bytecode file is needed, must rebuild at 0.19.0 since this
++// file's MLIR textual assembly is invalid at HEAD.
++
++// CHECK-LABEL: "op_create_token"
++func.func @op_create_token() -> !stablehlo.token {
++  // CHECK: "vhlo.create_token_v1"() : () -> !vhlo.token_v1
++  // DESERIALIZED: "stablehlo.after_all"() : () -> !stablehlo.token
++  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
++  func.return %0 : !stablehlo.token
++}
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_10_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_10_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_10_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_10_0.mlir
@@ -3151,20 +3446,34 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_10_0.ml
  }
  
  // CHECK-LABEL: "op_concatenate"
-@@ -1096,13 +1089,6 @@
+@@ -1078,13 +1071,6 @@
    func.return %0 : tensor<f32>
  }
  
+-// CHECK-LABEL: "op_create_token"
+-func.func @op_create_token() -> !stablehlo.token {
+-  // CHECK: "vhlo.create_token_v1"() : () -> !vhlo.token_v1
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+-  func.return %0 : !stablehlo.token
+-}
+-
+ // CHECK-LABEL: "op_cross_replica_sum"
+ func.func @op_cross_replica_sum(%arg0: tensor<f32>) -> tensor<f32> {
+   //               CHECK: "vhlo.cross-replica-sum_v1"(%arg0) <{
+@@ -1094,13 +1080,6 @@
+     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+-}
+-
 -// CHECK-LABEL: "op_cstr_reshapable"
 -func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
 -  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
 -  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
 -  func.return %0 : !shape.witness
--}
--
+ }
+ 
  // CHECK-LABEL: "op_custom_call"
- func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
-   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_11_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_11_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_11_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_11_0.mlir
@@ -3182,20 +3491,34 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_11_0.ml
  }
  
  // CHECK-LABEL: "op_concatenate"
-@@ -1096,13 +1089,6 @@
+@@ -1078,13 +1071,6 @@
    func.return %0 : tensor<f32>
  }
  
+-// CHECK-LABEL: "op_create_token"
+-func.func @op_create_token() -> !stablehlo.token {
+-  // CHECK: "vhlo.create_token_v1"() : () -> !vhlo.token_v1
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+-  func.return %0 : !stablehlo.token
+-}
+-
+ // CHECK-LABEL: "op_cross_replica_sum"
+ func.func @op_cross_replica_sum(%arg0: tensor<f32>) -> tensor<f32> {
+   //               CHECK: "vhlo.cross-replica-sum_v1"(%arg0) <{
+@@ -1094,13 +1080,6 @@
+     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+-}
+-
 -// CHECK-LABEL: "op_cstr_reshapable"
 -func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
 -  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
 -  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
 -  func.return %0 : !shape.witness
--}
--
+ }
+ 
  // CHECK-LABEL: "op_custom_call"
- func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
-   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_12_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_12_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_12_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_12_0.mlir
@@ -3213,20 +3536,34 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_12_0.ml
  }
  
  // CHECK-LABEL: "op_concatenate"
-@@ -1096,13 +1089,6 @@
+@@ -1078,13 +1071,6 @@
    func.return %0 : tensor<f32>
  }
  
+-// CHECK-LABEL: "op_create_token"
+-func.func @op_create_token() -> !stablehlo.token {
+-  // CHECK: "vhlo.create_token_v1"() : () -> !vhlo.token_v1
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+-  func.return %0 : !stablehlo.token
+-}
+-
+ // CHECK-LABEL: "op_cross_replica_sum"
+ func.func @op_cross_replica_sum(%arg0: tensor<f32>) -> tensor<f32> {
+   //               CHECK: "vhlo.cross-replica-sum_v1"(%arg0) <{
+@@ -1094,13 +1080,6 @@
+     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+-}
+-
 -// CHECK-LABEL: "op_cstr_reshapable"
 -func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
 -  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
 -  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
 -  func.return %0 : !shape.witness
--}
--
+ }
+ 
  // CHECK-LABEL: "op_custom_call"
- func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
-   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_13_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_13_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_13_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_13_0.mlir
@@ -3244,20 +3581,34 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_13_0.ml
  }
  
  // CHECK-LABEL: "op_concatenate"
-@@ -1096,13 +1089,6 @@
+@@ -1078,13 +1071,6 @@
    func.return %0 : tensor<f32>
  }
  
+-// CHECK-LABEL: "op_create_token"
+-func.func @op_create_token() -> !stablehlo.token {
+-  // CHECK: "vhlo.create_token_v1"() : () -> !vhlo.token_v1
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+-  func.return %0 : !stablehlo.token
+-}
+-
+ // CHECK-LABEL: "op_cross_replica_sum"
+ func.func @op_cross_replica_sum(%arg0: tensor<f32>) -> tensor<f32> {
+   //               CHECK: "vhlo.cross-replica-sum_v1"(%arg0) <{
+@@ -1094,13 +1080,6 @@
+     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+-}
+-
 -// CHECK-LABEL: "op_cstr_reshapable"
 -func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
 -  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
 -  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
 -  func.return %0 : !shape.witness
--}
--
+ }
+ 
  // CHECK-LABEL: "op_custom_call"
- func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
-   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_14_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_14_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_14_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_14_0.mlir
@@ -3275,20 +3626,34 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_14_0.ml
  }
  
  // CHECK-LABEL: "op_concatenate"
-@@ -1096,13 +1089,6 @@
+@@ -1078,13 +1071,6 @@
    func.return %0 : tensor<f32>
  }
  
+-// CHECK-LABEL: "op_create_token"
+-func.func @op_create_token() -> !stablehlo.token {
+-  // CHECK: "vhlo.create_token_v1"() : () -> !vhlo.token_v1
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+-  func.return %0 : !stablehlo.token
+-}
+-
+ // CHECK-LABEL: "op_cross_replica_sum"
+ func.func @op_cross_replica_sum(%arg0: tensor<f32>) -> tensor<f32> {
+   //               CHECK: "vhlo.cross-replica-sum_v1"(%arg0) <{
+@@ -1094,13 +1080,6 @@
+     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+-}
+-
 -// CHECK-LABEL: "op_cstr_reshapable"
 -func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
 -  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
 -  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
 -  func.return %0 : !shape.witness
--}
--
+ }
+ 
  // CHECK-LABEL: "op_custom_call"
- func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
-   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_15_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_15_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_15_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_15_0.mlir
@@ -3306,20 +3671,34 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_15_0.ml
  }
  
  // CHECK-LABEL: "op_concatenate"
-@@ -1102,13 +1095,6 @@
+@@ -1084,13 +1077,6 @@
    func.return %0 : tensor<f32>
  }
  
+-// CHECK-LABEL: "op_create_token"
+-func.func @op_create_token() -> !stablehlo.token {
+-  // CHECK: "vhlo.create_token_v1"() : () -> !vhlo.token_v1
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+-  func.return %0 : !stablehlo.token
+-}
+-
+ // CHECK-LABEL: "op_cross_replica_sum"
+ func.func @op_cross_replica_sum(%arg0: tensor<f32>) -> tensor<f32> {
+   //               CHECK: "vhlo.cross-replica-sum_v1"(%arg0) <{
+@@ -1100,13 +1086,6 @@
+     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+-}
+-
 -// CHECK-LABEL: "op_cstr_reshapable"
 -func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
 -  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
 -  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
 -  func.return %0 : !shape.witness
--}
--
+ }
+ 
  // CHECK-LABEL: "op_custom_call"
- func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
-   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_16_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_16_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_16_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_16_0.mlir
@@ -3337,20 +3716,34 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_16_0.ml
  }
  
  // CHECK-LABEL: "op_concatenate"
-@@ -1114,13 +1107,6 @@
+@@ -1096,13 +1089,6 @@
    func.return %0 : tensor<f32>
  }
  
+-// CHECK-LABEL: "op_create_token"
+-func.func @op_create_token() -> !stablehlo.token {
+-  // CHECK: "vhlo.create_token_v1"() : () -> !vhlo.token_v1
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+-  func.return %0 : !stablehlo.token
+-}
+-
+ // CHECK-LABEL: "op_cross_replica_sum"
+ func.func @op_cross_replica_sum(%arg0: tensor<f32>) -> tensor<f32> {
+   //               CHECK: "vhlo.cross-replica-sum_v1"(%arg0) <{
+@@ -1112,13 +1098,6 @@
+     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+-}
+-
 -// CHECK-LABEL: "op_cstr_reshapable"
 -func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
 -  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
 -  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
 -  func.return %0 : !shape.witness
--}
--
+ }
+ 
  // CHECK-LABEL: "op_custom_call"
- func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
-   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_17_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_17_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_17_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_17_0.mlir
@@ -3368,20 +3761,34 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_17_0.ml
  }
  
  // CHECK-LABEL: "op_concatenate"
-@@ -1133,13 +1126,6 @@
+@@ -1115,13 +1108,6 @@
    func.return %0 : tensor<f32>
  }
  
+-// CHECK-LABEL: "op_create_token"
+-func.func @op_create_token() -> !stablehlo.token {
+-  // CHECK: "vhlo.create_token_v1"() : () -> !vhlo.token_v1
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+-  func.return %0 : !stablehlo.token
+-}
+-
+ // CHECK-LABEL: "op_cross_replica_sum"
+ func.func @op_cross_replica_sum(%arg0: tensor<f32>) -> tensor<f32> {
+   //               CHECK: "vhlo.cross-replica-sum_v1"(%arg0) <{
+@@ -1131,13 +1117,6 @@
+     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+-}
+-
 -// CHECK-LABEL: "op_cstr_reshapable"
 -func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
 -  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
 -  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
 -  func.return %0 : !shape.witness
--}
--
+ }
+ 
  // CHECK-LABEL: "op_custom_call"
- func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
-   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_18_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_18_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_18_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_18_0.mlir
@@ -3399,20 +3806,34 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_18_0.ml
  }
  
  // CHECK-LABEL: "op_concatenate"
-@@ -1133,13 +1126,6 @@
+@@ -1115,13 +1108,6 @@
    func.return %0 : tensor<f32>
  }
  
+-// CHECK-LABEL: "op_create_token"
+-func.func @op_create_token() -> !stablehlo.token {
+-  // CHECK: "vhlo.create_token_v1"() : () -> !vhlo.token_v1
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+-  func.return %0 : !stablehlo.token
+-}
+-
+ // CHECK-LABEL: "op_cross_replica_sum"
+ func.func @op_cross_replica_sum(%arg0: tensor<f32>) -> tensor<f32> {
+   //               CHECK: "vhlo.cross-replica-sum_v1"(%arg0) <{
+@@ -1131,13 +1117,6 @@
+     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+-}
+-
 -// CHECK-LABEL: "op_cstr_reshapable"
 -func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
 -  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
 -  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
 -  func.return %0 : !shape.witness
--}
--
+ }
+ 
  // CHECK-LABEL: "op_custom_call"
- func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
-   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_19_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_19_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_19_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_19_0.mlir
@@ -3430,20 +3851,34 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_19_0.ml
  }
  
  // CHECK-LABEL: "op_concatenate"
-@@ -1168,13 +1161,6 @@
+@@ -1150,13 +1143,6 @@
    func.return %0 : tensor<f32>
  }
  
+-// CHECK-LABEL: "op_create_token"
+-func.func @op_create_token() -> !stablehlo.token {
+-  // CHECK: "vhlo.create_token_v1"() : () -> !vhlo.token_v1
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+-  func.return %0 : !stablehlo.token
+-}
+-
+ // CHECK-LABEL: "op_cross_replica_sum"
+ func.func @op_cross_replica_sum(%arg0: tensor<f32>) -> tensor<f32> {
+   //               CHECK: "vhlo.cross-replica-sum_v1"(%arg0) <{
+@@ -1166,13 +1152,6 @@
+     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+-}
+-
 -// CHECK-LABEL: "op_cstr_reshapable"
 -func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
 -  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
 -  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
 -  func.return %0 : !shape.witness
--}
--
+ }
+ 
  // CHECK-LABEL: "op_custom_call"
- func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
-   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_9_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_9_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_9_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_9_0.mlir
@@ -3461,20 +3896,34 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_9_0.mli
  }
  
  // CHECK-LABEL: "op_concatenate"
-@@ -1096,13 +1089,6 @@
+@@ -1078,13 +1071,6 @@
    func.return %0 : tensor<f32>
  }
  
+-// CHECK-LABEL: "op_create_token"
+-func.func @op_create_token() -> !stablehlo.token {
+-  // CHECK: "vhlo.create_token_v1"() : () -> !vhlo.token_v1
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+-  func.return %0 : !stablehlo.token
+-}
+-
+ // CHECK-LABEL: "op_cross_replica_sum"
+ func.func @op_cross_replica_sum(%arg0: tensor<f32>) -> tensor<f32> {
+   //               CHECK: "vhlo.cross-replica-sum_v1"(%arg0) <{
+@@ -1094,13 +1080,6 @@
+     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+-}
+-
 -// CHECK-LABEL: "op_cstr_reshapable"
 -func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
 -  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
 -  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
 -  func.return %0 : !shape.witness
--}
--
+ }
+ 
  // CHECK-LABEL: "op_custom_call"
- func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
-   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
@@ -3492,20 +3941,34 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/st
  }
  
  // CHECK-LABEL: "op_concatenate"
-@@ -1168,13 +1161,6 @@
+@@ -1150,13 +1143,6 @@
    func.return %0 : tensor<f32>
  }
  
+-// CHECK-LABEL: "op_create_token"
+-func.func @op_create_token() -> !stablehlo.token {
+-  // CHECK: "vhlo.create_token_v1"() : () -> !vhlo.token_v1
+-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+-  func.return %0 : !stablehlo.token
+-}
+-
+ // CHECK-LABEL: "op_cross_replica_sum"
+ func.func @op_cross_replica_sum(%arg0: tensor<f32>) -> tensor<f32> {
+   //               CHECK: "vhlo.cross-replica-sum_v1"(%arg0) <{
+@@ -1166,13 +1152,6 @@
+     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+-}
+-
 -// CHECK-LABEL: "op_cstr_reshapable"
 -func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
 -  // CHECK: "vhlo.cstr_reshapable_v1"(%arg0, %arg1) : (!vhlo.index_v1, !vhlo.tensor_v1<1x!vhlo.index_v1>) -> !vhlo.witness_v1
 -  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
 -  func.return %0 : !shape.witness
--}
--
+ }
+ 
  // CHECK-LABEL: "op_custom_call"
- func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
-   //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 --- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 +++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
@@ -3560,7 +4023,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
 diff --ruN a/stablehlo/stablehlo/transforms/MapStablehloToVhlo.h b/stablehlo/stablehlo/transforms/MapStablehloToVhlo.h
 --- stablehlo/stablehlo/transforms/MapStablehloToVhlo.h
 +++ stablehlo/stablehlo/transforms/MapStablehloToVhlo.h
-@@ -73,7 +73,6 @@
+@@ -73,15 +73,12 @@
  MAP_STABLEHLO_TO_VHLO(CompareOp, V1)
  MAP_STABLEHLO_TO_VHLO(ComplexOp, V1)
  MAP_STABLEHLO_TO_VHLO(CompositeOp, V1)
@@ -3568,9 +4031,9 @@ diff --ruN a/stablehlo/stablehlo/transforms/MapStablehloToVhlo.h b/stablehlo/sta
  MAP_STABLEHLO_TO_VHLO(ConcatenateOp, V1)
  MAP_STABLEHLO_TO_VHLO(ConstantOp, V1)
  MAP_STABLEHLO_TO_VHLO(ConvertOp, V1)
-@@ -81,7 +80,6 @@
+ MAP_STABLEHLO_TO_VHLO(ConvolutionOp, V1)
  MAP_STABLEHLO_TO_VHLO(CosineOp, V1)
- MAP_STABLEHLO_TO_VHLO(CreateTokenOp, V1)
+-MAP_STABLEHLO_TO_VHLO(CreateTokenOp, V1)
  MAP_STABLEHLO_TO_VHLO(CrossReplicaSumOp, V1)
 -MAP_STABLEHLO_TO_VHLO(CstrReshapableOp, V1)
  MAP_STABLEHLO_TO_VHLO(CustomCallOp, V1)
@@ -3772,4 +4235,43 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
    patterns->add<EvalConcatenateOpPattern>(context);
    patterns->add<EvalConvertOpPattern>(context);
    patterns->add<EvalDivOpPattern>(context);
+diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersion.cpp b/stablehlo/stablehlo/transforms/VhloToVersion.cpp
+--- stablehlo/stablehlo/transforms/VhloToVersion.cpp
++++ stablehlo/stablehlo/transforms/VhloToVersion.cpp
+@@ -37,6 +37,7 @@
+ #include "stablehlo/dialect/VhloOps.h"
+ #include "stablehlo/dialect/VhloTypes.h"
+ #include "stablehlo/transforms/Passes.h"
++#include "third_party/stablehlo/stablehlo/dialect/VhloOps.h"
+ 
+ #define DEBUG_TYPE "compat-passes"
+ 
+@@ -292,6 +293,17 @@
+   }
+ };
+ 
++struct CreateTokenToAfterAllPattern : OpConversionPattern<CreateTokenOpV1> {
++  using OpConversionPattern::OpConversionPattern;
++  LogicalResult matchAndRewrite(
++      CreateTokenOpV1 op, typename CreateTokenOpV1::Adaptor /*adaptor*/,
++      ConversionPatternRewriter& rewriter) const override {
++    rewriter.replaceOpWithNewOp<AfterAllOpV1>(
++        op, op->getResultTypes(), op->getOperands(), op->getAttrs());
++    return success();
++  }
++};
++
+ /////////////////////////////////////////
+ /// Upgrade and Downgrade Definitions ///
+ /////////////////////////////////////////
+@@ -303,8 +315,7 @@
+ void populateVhloToVersionPatterns(RewritePatternSet* patterns,
+                                    TypeConverter* converter,
+                                    MLIRContext* context) {
+-  // Currently empty because we're starting from a clean slate in v0.9.0 and
+-  // changes so far are additive.
++  patterns->add<vhlo::CreateTokenToAfterAllPattern>(context);
+ }
+ 
+ }  // namespace stablehlo
 

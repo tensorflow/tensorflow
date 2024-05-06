@@ -45,10 +45,6 @@ void populateComplexLoweringPatterns(MLIRContext *context,
 void populateOptimizeMhloPatterns(MLIRContext *context,
                                   RewritePatternSet *patterns);
 
-// Rewrite patterns for create_token to equivalent after_all legalization.
-void populateCreateTokenToAfterAllPatterns(mlir::MLIRContext *context,
-                                           RewritePatternSet *patterns);
-
 // Rewrite patterns for cross-replica-sum to equivalent all_reduce legalization.
 void populateCrossReplicaSumToAllReducePatterns(mlir::MLIRContext *context,
                                                 RewritePatternSet *patterns);

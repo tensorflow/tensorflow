@@ -373,7 +373,6 @@ cc_library(
         "mhlo/transforms/hlo_legalize_to_stablehlo/hlo_legalize_to_stablehlo_pass.cc",
         "mhlo/transforms/legalize_broadcast_to_broadcast_in_dim/legalize_broadcast_to_broadcast_in_dim.cc",
         "mhlo/transforms/legalize_control_flow/legalize_control_flow.cc",
-        "mhlo/transforms/legalize_create_token_to_after_all/legalize_create_token_to_after_all.cc",
         "mhlo/transforms/legalize_cross_replica_sum_to_all_reduce/legalize_cross_replica_sum_to_all_reduce.cc",
         "mhlo/transforms/legalize_dot_general_to_dot/legalize_dot_general_to_dot.cc",
         "mhlo/transforms/legalize_dot_to_dot_general/legalize_dot_to_dot_general.cc",

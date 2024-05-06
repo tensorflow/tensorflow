@@ -467,7 +467,7 @@ class XlaCallModuleOp : public XlaOpKernel {
         } else if (options.add_token_input_output) {
           // Add a dummy token if the inner computation takes a token but the
           // custom call doesn't have a token argument.
-          args.push_back(builder.create<mlir::mhlo::CreateTokenOp>(loc));
+          args.push_back(builder.create<mlir::mhlo::AfterAllOp>(loc));
         }
 
         llvm::SmallVector<mlir::Value> elements;
@@ -499,7 +499,7 @@ class XlaCallModuleOp : public XlaOpKernel {
             mlir::Value token = results.back();
             if (!token.use_empty()) {
               token.replaceAllUsesWith(
-                  builder.create<mlir::mhlo::CreateTokenOp>(loc));
+                  builder.create<mlir::mhlo::AfterAllOp>(loc));
             }
             results.pop_back();
           }

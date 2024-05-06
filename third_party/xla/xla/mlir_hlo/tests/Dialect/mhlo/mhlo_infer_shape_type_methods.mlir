@@ -745,16 +745,6 @@ func.func @dynamic_update_slice_with_bounds(%input: tensor<3x?x?xi64, #mhlo.type
 
 // -----
 
-// CHECK-LABEL: func @create_token
-func.func @create_token() -> !mhlo.token {
-  %0 = "mhlo.create_token"() : () -> !mhlo.token
-  // CHECK: types0 = !mhlo.token
-  %1 = "mhlo_test.get_return_types"(%0) : (!mhlo.token) -> !mhlo.token
-  func.return %1 : !mhlo.token
-}
-
-// -----
-
 // CHECK-LABEL: func @after_all_empty_arg
 func.func @after_all_empty_arg() -> !mhlo.token {
   %0 = "mhlo.after_all"() : () -> !mhlo.token
