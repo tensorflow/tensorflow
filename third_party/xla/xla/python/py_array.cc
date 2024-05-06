@@ -21,8 +21,10 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <new>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -30,6 +32,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -66,6 +69,7 @@ limitations under the License.
 #include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/py_client.h"
@@ -1414,21 +1418,22 @@ StatusOr<nb::object> PyHostValue::AsNumPyArray(
         std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold;
       };
       auto hold = std::make_unique<Hold>();
-      TF_ASSIGN_OR_RETURN(hold->external_reference_hold,
-                          pjrt_buffer->AcquireExternalReference());
       hold->buffer = tsl::FormRef(ifrt_array);
+      auto* hold_ptr = hold.release();
+      nb::capsule hold_capsule(
+          hold_ptr, [](void* h) noexcept { delete static_cast<Hold*>(h); });
+      {
+        // Release the GIL as `AcquireExternalReference` may block.
+        nb::gil_scoped_release gil;
+        TF_ASSIGN_OR_RETURN(hold_ptr->external_reference_hold,
+                            pjrt_buffer->AcquireExternalReference());
+        TF_RETURN_IF_ERROR(ifrt_array->GetReadyFuture().Await());
+      }
       void* data =
-          hold->external_reference_hold->OpaqueDeviceMemoryDataPointer();
-      nb::capsule hold_capsule(hold.release(), [](void* h) noexcept {
-        delete static_cast<Hold*>(h);
-      });
+          hold_ptr->external_reference_hold->OpaqueDeviceMemoryDataPointer();
       nb_numpy_ndarray array(dtype, shape->dimensions(),
                              ByteStridesForShape(*shape), data, hold_capsule);
       array.attr("flags").attr("writeable") = nb::bool_(false);
-      {
-        nb::gil_scoped_release gil;
-        TF_RETURN_IF_ERROR(ifrt_array->GetReadyFuture().Await());
-      }
       return array;
     }
   }

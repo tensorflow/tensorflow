@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <utility>
 
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
 #include "tsl/platform/mem.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -53,16 +55,23 @@ class MaybeOwningCpuMemory {
   MaybeOwningCpuMemory(const MaybeOwningCpuMemory&) = delete;
   MaybeOwningCpuMemory& operator=(const MaybeOwningCpuMemory&) = delete;
 
-  // Owning.
-  static absl::StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> AllocateShared(
-      size_t size) {
+  // Allocates owning memory wrapped in an available `AsyncValueRef`.
+  static absl::StatusOr<tsl::AsyncValueRef<MaybeOwningCpuMemory>>
+  AllocateAvailableAvr(size_t size) {
+    TF_ASSIGN_OR_RETURN(auto memory, Allocate(size));
+    return tsl::MakeAvailableAsyncValueRef<MaybeOwningCpuMemory>(
+        std::move(memory));
+  }
+
+  // Allocates raw owning memory. The typical usage is for delayed allocation.
+  static absl::StatusOr<MaybeOwningCpuMemory> Allocate(size_t size) {
     uint8_t* data = static_cast<uint8_t*>(
         tsl::port::AlignedMalloc(size, cpu_function_runtime::MinAlign()));
     if (!data) {
       return ResourceExhausted("Out of memory allocating %d bytes.", size);
     }
-    return std::make_shared<MaybeOwningCpuMemory>(
-        OwnedDataPtr{data, tsl::port::AlignedFree}, size);
+    return MaybeOwningCpuMemory(OwnedDataPtr{data, tsl::port::AlignedFree},
+                                size);
   }
 
   void* data() const { return buf_; }
@@ -83,15 +92,39 @@ class TrackedTfrtCpuDeviceBuffer {
   // For non-tuple, takes a single buffer.
   // For tuple, takes the leaf buffers. Tuple index table created internally.
   // Nested tuple is not supported.
+
+  // Constructor for allocated cpu memory, i.e., `buffers` should have concrete
+  // states. Definition event is after the list of `definition_events`.
   TrackedTfrtCpuDeviceBuffer(
-      bool is_tuple,
-      absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
+      bool is_tuple, bool owns_buffers,
+      absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers,
       absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
+  // Variant with single definition event.
   TrackedTfrtCpuDeviceBuffer(
-      bool is_tuple,
-      absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
+      bool is_tuple, bool owns_buffers,
+      absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers,
+      tsl::AsyncValueRef<CpuEvent> definition_event,
+      absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
+
+  // Constructor for unallocated cpu memory, i.e., `buffers` have unconstructed
+  // states, also needs to provide `buffer_sizes` which will be the sizes of
+  // the `buffers` after allocation. Definition event is after the list of
+  // `definition_events`. Callers need to ensure cpu memory is allocated before
+  // the definition event is ready.
+  TrackedTfrtCpuDeviceBuffer(
+      bool is_tuple, bool owns_buffers,
+      absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers,
+      absl::InlinedVector<size_t, 4> buffer_sizes,
+      absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events,
+      absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
+
+  // Variant with single definition event.
+  TrackedTfrtCpuDeviceBuffer(
+      bool is_tuple, bool owns_buffers,
+      absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers,
+      absl::InlinedVector<size_t, 4> buffer_sizes,
       tsl::AsyncValueRef<CpuEvent> definition_event,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
@@ -104,11 +137,16 @@ class TrackedTfrtCpuDeviceBuffer {
 
   ~TrackedTfrtCpuDeviceBuffer();
 
-  absl::Span<const std::shared_ptr<MaybeOwningCpuMemory>> Buffers() {
+  absl::Span<const tsl::AsyncValueRef<MaybeOwningCpuMemory>> Buffers() {
     return buffers_;
   }
 
-  std::shared_ptr<MaybeOwningCpuMemory> Buffer(const ShapeIndex& shape_index);
+  absl::Span<const size_t> BufferSizes() { return buffer_sizes_; }
+
+  tsl::AsyncValueRef<MaybeOwningCpuMemory> Buffer(
+      const ShapeIndex& shape_index);
+
+  size_t BufferSize(const ShapeIndex& shape_index);
 
   const tsl::AsyncValueRef<CpuEvent>& definition_event() const {
     return definition_event_;
@@ -129,16 +167,21 @@ class TrackedTfrtCpuDeviceBuffer {
   // buffer is passed to a computation that aliases its inputs to outputs.
   void ReleaseDeviceMemory();
 
+  bool owns_buffers() const { return owns_buffers_; }
+
  private:
   bool is_tuple_;
+  bool owns_buffers_;
   // If tuple, tuple index table is created and stored.
-  std::shared_ptr<MaybeOwningCpuMemory> tuple_index_table_;
+  tsl::AsyncValueRef<MaybeOwningCpuMemory> tuple_index_table_;
   // If non-tuple, `buffers_` contains 1 buffer; otherwise all leaf buffers.
-  absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers_;
+  absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers_;
+  // Should correspond to size of each buffer in `buffers_` when `buffers_` is
+  // available.
+  absl::InlinedVector<size_t, 4> buffer_sizes_;
   // The definition event are associated with CPU operations that write to the
   // buffers.
   tsl::AsyncValueRef<CpuEvent> definition_event_;
-
   // Usage events are associated with CPU operations that read from the buffers.
   absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> usage_events_;
   // A callback to call when the TrackedTfrtCpuDeviceBuffer is about to be
