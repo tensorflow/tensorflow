@@ -225,7 +225,11 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
   }
 
   absl::Status RandomIndexingCompatible() const override {
-    return random_indexing_compatible_;
+    // TODO(b/325112575): Fix incompatibility issue with batch dataset where it
+    // assumes the index_mapper is stateless. And fix the failed test in
+    // weighted_flat_map_test.py.
+    return absl::FailedPreconditionError(
+        absl::StrCat(type_string(), " does not support random access."));
   }
 
  private:
