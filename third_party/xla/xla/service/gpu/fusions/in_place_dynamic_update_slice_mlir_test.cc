@@ -204,6 +204,37 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, BitcastDus) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, MOFDus) {
+  auto kHloString = R"(
+    HloModule module
+
+    fused_computation {
+      p0 = f32[10,11,12] parameter(0)
+      p1 = f32[1,11,12] parameter(1)
+      p2 = f32[8,11,12] parameter(2)
+      p3 = f32[1,11,12] parameter(3)
+      p4 = s32[] parameter(4)
+      c0 = s32[] constant(0)
+      cmp = pred[] compare(p4, c0), direction=EQ
+      broadcast = pred[1,11,12] broadcast(cmp), dimensions={}
+      select = f32[1,11,12] select(broadcast, p1, p3)
+      dus0 = f32[10,11,12] dynamic-update-slice(p0, select, c0, c0, c0)
+      dus1 = f32[8,11,12] dynamic-update-slice(p2, select, c0, c0, c0)
+      ROOT tuple = (f32[10,11,12], f32[8,11,12]) tuple(dus0, dus1)
+    }
+    ENTRY entry {
+      p0 = f32[10,11,12] parameter(0)
+      p1 = f32[1,11,12] parameter(1)
+      p2 = f32[8,11,12] parameter(2)
+      p3 = f32[1,11,12] parameter(3)
+      p4 = s32[] parameter(4)
+      ROOT fusion_root_multiple = (f32[10,11,12], f32[8,11,12])
+        fusion(p0, p1, p2, p3, p4), kind=kLoop, calls=fused_computation
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, OperandSubgraphWithTwoRoots) {
   auto kHloString = R"(
     HloModule in_place_dus

@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 
 namespace mlir::quant::stablehlo {
@@ -49,6 +51,11 @@ class QuantizationReport {
 
   // Prints a human-readable report to stdout.
   void Print() const;
+
+  // Saves the report to `file_path`. The textproto representation of
+  // `QuantizationResults` will be written to the file. Returns non-ok status
+  // when the file write fails.
+  absl::Status Save(StringRef file_path) const;
 
  private:
   ::stablehlo::quantization::QuantizationResults CollectResultsFromModuleOp(

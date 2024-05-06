@@ -155,7 +155,7 @@ class DeferActivationTransposeForMaxPoolReduceWindowOp
                PatternRewriter& rewriter) const override {
     auto transpose_op = cast<TransposeOp>(op.getOperand(0).getDefiningOp());
 
-    const auto result_type = op.getResult(0).getType().cast<TensorType>();
+    const auto result_type = mlir::cast<TensorType>(op.getResult(0).getType());
     const SmallVector<int64_t> new_result_shape =
         Permute<int64_t>(result_type.getShape(), kNchwToNhwcPermutation);
 

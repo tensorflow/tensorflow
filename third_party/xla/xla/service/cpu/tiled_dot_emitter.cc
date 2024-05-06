@@ -360,8 +360,9 @@ void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
   ksl_.For(
       "dot.inner.epilg.outer", /*start=*/current_tile_col,
       /*end=*/b_->CreateAdd(columns_llvm, current_tile_col),
-      /*step=*/1, /*peel_first_iteration=*/false,
-      [&](llvm::Value* col, llvm::Value* is_first_scalar_col) {
+      /*step=*/1, [&](llvm::Value* col) {
+        llvm::Value* is_first_scalar_col =
+            b_->CreateICmpEQ(col, current_tile_col);
         llvm::Value* rhs_element = vsl_.LoadScalar(rhs_, col);
         llvm::Value* total_offset = b_->CreateMul(col, b_->getInt64(m()));
         llvm::Value* lhs_base_pointer =

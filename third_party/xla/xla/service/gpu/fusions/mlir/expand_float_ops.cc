@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -199,7 +200,7 @@ int GetExponentBias(mlir::FloatType ty) {
 }
 
 Value IsInf(Value value, mlir::ImplicitLocOpBuilder& b) {
-  auto ty = value.getType().cast<mlir::FloatType>();
+  auto ty = mlir::cast<mlir::FloatType>(value.getType());
   if (mlir::LLVM::isCompatibleOuterType(ty)) {
     value = b.create<mlir::math::AbsFOp>(value);
     Value inf = b.create<ma::ConstantFloatOp>(
@@ -265,7 +266,7 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
 
   // This is a port of ConvertImpl in
   // https://github.com/jax-ml/ml_dtypes/blob/main/ml_dtypes/include/float8.h
-  auto from_ty = value.getType().cast<mlir::FloatType>();
+  auto from_ty = mlir::cast<mlir::FloatType>(value.getType());
   if (to_ty == b.getFloat8E5M2Type() && from_ty == b.getF16Type()) {
     return EmitF16ToF8e5m2(value, b);
   }
@@ -510,8 +511,8 @@ struct RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
   mlir::LogicalResult matchAndRewrite(
       ma::TruncFOp op, mlir::PatternRewriter& rewriter) const override {
     using FloatValue = mlir::TypedValue<mlir::FloatType>;
-    auto src = op.getOperand().cast<FloatValue>();
-    auto dst_ty = op.getType().cast<mlir::FloatType>();
+    auto src = mlir::cast<FloatValue>(op.getOperand());
+    auto dst_ty = mlir::cast<mlir::FloatType>(op.getType());
     if (dst_ty.getWidth() != 8) {
       return rewriter.notifyMatchFailure(op, "not an 8 bit truncf");
     }
@@ -528,8 +529,8 @@ struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
   mlir::LogicalResult matchAndRewrite(
       ma::ExtFOp op, mlir::PatternRewriter& rewriter) const override {
     using FloatValue = mlir::TypedValue<mlir::FloatType>;
-    auto src = op.getOperand().cast<FloatValue>();
-    auto dst_ty = op.getType().cast<mlir::FloatType>();
+    auto src = mlir::cast<FloatValue>(op.getOperand());
+    auto dst_ty = mlir::cast<mlir::FloatType>(op.getType());
     if (src.getType().getWidth() != 8) {
       return rewriter.notifyMatchFailure(op, "not an 8 bit extf");
     }
@@ -547,8 +548,8 @@ struct RewriteF8UneCst : public mlir::OpRewritePattern<ma::CmpFOp> {
   mlir::LogicalResult matchAndRewrite(
       ma::CmpFOp op, mlir::PatternRewriter& rewriter) const override {
     using FloatValue = mlir::TypedValue<mlir::FloatType>;
-    auto lhs = op.getLhs().cast<FloatValue>();
-    auto rhs = op.getRhs().cast<FloatValue>();
+    auto lhs = mlir::cast<FloatValue>(op.getLhs());
+    auto rhs = mlir::cast<FloatValue>(op.getRhs());
 
     llvm::APFloat rhs_cst(rhs.getType().getFloatSemantics());
     if (lhs.getType().getWidth() != 8 ||
@@ -580,7 +581,7 @@ struct RewriteAbsFPattern : public mlir::OpRewritePattern<mlir::math::AbsFOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::math::AbsFOp op, mlir::PatternRewriter& rewriter) const override {
     using FloatValue = mlir::TypedValue<mlir::FloatType>;
-    auto src = op.getOperand().cast<FloatValue>();
+    auto src = mlir::cast<FloatValue>(op.getOperand());
     // LowerGpuOpsToNVVMOps has a lowering for abs that doesn't work with bf16.
     // Once that's removed, remove the code for BF16 here.
     if (src.getType().getWidth() != 8 && !src.getType().isBF16()) {

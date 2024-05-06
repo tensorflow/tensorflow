@@ -550,7 +550,7 @@ absl::StatusOr<Value> EmitMulAdd(Value lhs, Value rhs, Value accumulator,
                                  mlir::Type result_element_type,
                                  mlir::Type accumulator_type,
                                  ImplicitLocOpBuilder& b) {
-  if (result_element_type.isa<FloatType>()) {
+  if (mlir::isa<FloatType>(result_element_type)) {
     if (result_element_type.isBF16()) {
       lhs = b.create<arith::ExtFOp>(b.getF32Type(), lhs);
       rhs = b.create<arith::ExtFOp>(b.getF32Type(), rhs);
@@ -657,7 +657,7 @@ absl::StatusOr<SmallVector<Value>> EmitParameter(const HloInstruction* instr,
                                                  ValueRange indices,
                                                  ImplicitLocOpBuilder& b) {
   Value value = this_fn.getArgument(instr->parameter_number());
-  if (value.getType().isa<mlir::TensorType>()) {
+  if (mlir::isa<mlir::TensorType>(value.getType())) {
     value = b.create<mlir::tensor::ExtractOp>(value, indices);
   } else {
     TF_RET_CHECK(indices.empty());
@@ -1085,16 +1085,6 @@ bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(compute_capability);
 
-  if (fusion.GetRoots().size() > 1) {
-    auto first_shape = fusion.GetRoots()[0].instruction().shape();
-    for (int i = 1; i < fusion.GetRoots().size(); ++i) {
-      if (fusion.GetRoots()[i].instruction().shape().dimensions() !=
-          first_shape.dimensions()) {
-        return false;
-      }
-    }
-  }
-
   return !HloFindIf(
       fusion.GetRoots(), fusion, [=](HloInstructionAdaptor instr) {
         return !absl::c_all_of(instr.instruction().called_computations(),
@@ -1118,11 +1108,11 @@ Value ProvideParameter(const PartitionedComputation& computation,
   if (!caller) {
     caller = &computation.FindSubgraph(instr);
   }
-  const auto& injected_values = caller->injected_values;
-  if (auto it = injected_values.find(operand); it != injected_values.end()) {
-    auto injected_param_values =
-        this_fn.getArguments().take_back(caller->injected_values.size());
-    return {{injected_param_values[it->second]}};
+  const auto& injected_value_starts = caller->injected_value_starts;
+  if (auto it = injected_value_starts.find(operand);
+      it != injected_value_starts.end()) {
+    return this_fn.getArguments().take_back(
+        caller->num_injected_values)[it->second];
   }
 
   auto callee = call_target_provider(operand);
@@ -1184,27 +1174,29 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
 
   emit_instr = [&](const HloInstruction* instr,
                    ValueRange indices) -> absl::StatusOr<SmallVector<Value>> {
-    // TODO(jreiffers): Check dominance, e.g.:
-    //
-    // padding_value = log(param)
-    // pad = pad(bar, padding_value)
-    // broadcast = broadcast(padding_value)
-    // pad + broadcast
-    //
-    // If padding_value was first emitted in the context of pad, it'll be
-    // inside an scf.if. For now this doesn't matter, because the indexing
-    // is considered to be different, but once the partitioner is smarter,
-    // it will matter.
-    //
-    // Also, this caching should be combined with parameter caching.
     std::vector<void*> indices_ptrs;
     indices_ptrs.reserve(indices.size());
     for (auto index : indices) {
       indices_ptrs.push_back(index.getAsOpaquePointer());
     }
     auto& entry = cached_instructions[std::make_pair(instr, indices_ptrs)];
+    // Only use the entry if its parent block is still in scope. Note that this
+    // should always be the case normally - if not, we risk exponential code
+    // size.
     if (!entry.empty()) {
-      return entry;
+      auto* entry_block = entry.front().getParentBlock();
+      auto* insertion_block = builder.getInsertionBlock();
+      while (insertion_block != nullptr) {
+        if (insertion_block == entry_block) return entry;
+        if (insertion_block->getParentOp()) {
+          insertion_block = insertion_block->getParentOp()->getBlock();
+        } else {
+          insertion_block = nullptr;
+          VLOG(2) << "Failed dominance check while looking up cache for "
+                  << instr->ToShortString()
+                  << ". This is a bug in the computation partitioner.";
+        }
+      }
     }
 
     TF_ASSIGN_OR_RETURN(auto lowered_instr,
@@ -1223,11 +1215,21 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
       << subgraph.ToString();
   for (const auto [root, indexing] :
        llvm::zip(subgraph.roots, subgraph.root_indexing)) {
+    if (auto it = subgraph.injected_value_starts.find(root);
+        it != subgraph.injected_value_starts.end()) {
+      auto injected =
+          this_fn.getArguments().take_back(subgraph.num_injected_values);
+      int arity =
+          root->shape().IsTuple() ? root->shape().tuple_shapes_size() : 1;
+      absl::c_copy(injected.slice(it->second, arity),
+                   std::back_inserter(results));
+      continue;
+    }
     TF_RET_CHECK(indexing.getNumDims() + indexing.getNumSymbols() ==
                  indices.size())
         << "Incorrect number of indices (got " << indices.size()
         << ", expected " << indexing.getNumDims() << " dims and "
-        << indexing.getNumSymbols() << "symbols) in " << subgraph.ToString();
+        << indexing.getNumSymbols() << " symbols) in " << subgraph.ToString();
     int num_dims = indexing.getNumDims();
     auto root_indices =
         ApplyAffineMap(indexing, /*dims=*/indices.take_front(num_dims),
@@ -1265,8 +1267,8 @@ absl::Status SubgraphToMlirFunction(
       computation.computation().num_parameters());
   auto indices_and_injected_values = func.getArguments().drop_front(
       computation.computation().num_parameters());
-  int num_injected_values = subgraph.injected_values.size();
-  auto indices = indices_and_injected_values.drop_back(num_injected_values);
+  auto indices =
+      indices_and_injected_values.drop_back(subgraph.num_injected_values);
   TF_ASSIGN_OR_RETURN(
       auto results,
       SubgraphToMlir(computation, subgraph, func, call_target_provider,
@@ -1274,10 +1276,7 @@ absl::Status SubgraphToMlirFunction(
 
   // We have been converting signed types to signless types. To match the
   // function signature, we have to convert back to signed types.
-  auto function = mlir::cast<mlir::func::FuncOp>(
-      results.front().getDefiningOp()->getParentOp());
-  const auto& function_results = function.getFunctionType().getResults();
-  for (auto [index, function_result] : llvm::enumerate(function_results)) {
+  for (auto [index, function_result] : llvm::enumerate(func.getResultTypes())) {
     results[index] =
         builder
             .create<mlir::UnrealizedConversionCastOp>(

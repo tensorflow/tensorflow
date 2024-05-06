@@ -526,8 +526,9 @@ std::optional<std::vector<HloInstruction*>> CollectChainsToPushBackwards(
     HloInstruction* instr, int64_t loop_iter, const HloComputation* while_body,
     int64_t level_to_operate_on,
     const absl::flat_hash_set<const HloInstruction*>& loop_invariant_params,
-    HloPredicate should_allow_loop_variant_parameter_in_chain) {
-  if (instr->HasControlDependencies()) {
+    HloPredicate should_allow_loop_variant_parameter_in_chain,
+    bool should_allow_control_dependencies) {
+  if (instr->HasControlDependencies() && !should_allow_control_dependencies) {
     return std::nullopt;
   }
   return CollectIndependentOperandChain(
@@ -689,7 +690,8 @@ class WhileLoopAnalysis {
       CollectivePipeliner::PipeliningDirection direction,
       HloPredicate should_process, HloPredicate acceptable_formatting,
       HloPredicate should_allow_loop_variant_parameter_in_chain =
-          HloPredicateFalse);
+          HloPredicateFalse,
+      bool should_allow_control_dependencies = false);
   HloInstruction* while_loop_instruction() const { return while_; }
 
  private:
@@ -798,7 +800,8 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
     int64_t level_to_operate_on,
     CollectivePipeliner::PipeliningDirection direction,
     HloPredicate should_process, HloPredicate acceptable_formatting,
-    HloPredicate should_allow_loop_variant_parameter_in_chain) {
+    HloPredicate should_allow_loop_variant_parameter_in_chain,
+    bool should_allow_control_dependencies) {
   move_infos_.clear();
   HloComputation* while_body = while_->while_body();
   const HloInstruction* loop_parameter =
@@ -1006,7 +1009,8 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
       auto chain_collected = CollectChainsToPushBackwards(
           instr, *loop_iteration_idx_, while_body, level_to_operate_on,
           invariant_loop_parameters_,
-          should_allow_loop_variant_parameter_in_chain);
+          should_allow_loop_variant_parameter_in_chain,
+          should_allow_control_dependencies);
       if (!chain_collected.has_value()) {
         VLOG(5) << "Skipping " << instr->name()
                 << " because didn't find compatible slice of parameter";
@@ -2414,7 +2418,8 @@ absl::StatusOr<bool> CollectivePipeliner::Run(
     loop_analysis.CollectCollectivesToMove(
         config_.level_to_operate_on, config_.pipelining_direction,
         config_.should_process, config_.acceptable_formatting,
-        config_.should_allow_loop_variant_parameter_in_chain);
+        config_.should_allow_loop_variant_parameter_in_chain,
+        config_.should_allow_control_dependencies);
     if (loop_analysis.GetMoveInfos().empty()) {
       continue;
     }

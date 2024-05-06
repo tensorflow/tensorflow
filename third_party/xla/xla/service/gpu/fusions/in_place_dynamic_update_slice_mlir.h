@@ -50,8 +50,6 @@ class MlirInPlaceDynamicUpdateSliceFusion : public MlirFusionEmitterBase {
         dus_ops_(
             GetOutputDefiningDynamicUpdateSlices(analysis.fusion_roots())) {}
 
-  static bool IsSupported(const HloFusionAnalysis& analysis);
-
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
@@ -72,7 +70,7 @@ class MlirInPlaceDynamicUpdateSliceFusion : public MlirFusionEmitterBase {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
 
-  std::optional<mlir_converter::EpilogueSpecification> GetEpilogue(
+  std::vector<mlir_converter::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
       mlir::MLIRContext* mlir_context) const override;
 

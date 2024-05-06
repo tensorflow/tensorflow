@@ -68,7 +68,7 @@ class ParallelExecutor {
       TensorWithLayout* t) = 0;
 
   // Returns a tensor copied from `t` when `t` contains only a single device.
-  virtual Future<StatusOr<Tensor>> ToHostBuffer(TensorWithLayout* t) = 0;
+  virtual Future<Tensor> ToHostBuffer(TensorWithLayout* t) = 0;
 };
 
 // Factory method for Default ParallelExecutor instance.

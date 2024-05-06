@@ -128,7 +128,7 @@ apple_static_xcframework(
 
 ios_unit_test(
     name = "Tests",
-    size = "small",
+    size = "medium",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,

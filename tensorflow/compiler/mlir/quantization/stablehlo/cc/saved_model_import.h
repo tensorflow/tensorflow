@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
@@ -38,7 +39,8 @@ namespace mlir::quant::stablehlo {
 // `tensorflow::Session` which may be useful when reading values from resources
 // (e.g. `TF::VarHandleOp`s).
 using ImportedMlirModuleOp =
-    std::pair<ModuleOp, std::unique_ptr<::tensorflow::SavedModelBundle>>;
+    std::pair<OwningOpRef<ModuleOp>,
+              std::unique_ptr<::tensorflow::SavedModelBundle>>;
 
 // Loads a SavedModel at `saved_model_path` and converts it to `mlir::ModuleOp`.
 //
@@ -72,7 +74,7 @@ void UpdateFunctionAliases(
 // Loads a SavedModel to `mlir::ModuleOp` and performs preprocesses including
 // shape inference and graph freezing.
 // TODO: b/329206105 - Add unit tests after decomposing preprocessing passes.
-absl::StatusOr<ModuleOp> ImportSavedModel(
+absl::StatusOr<OwningOpRef<ModuleOp>> ImportSavedModel(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,

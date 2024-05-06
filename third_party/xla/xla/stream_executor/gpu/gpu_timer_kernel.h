@@ -16,11 +16,21 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_TIMER_KERNEL_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_TIMER_KERNEL_H_
 
+#include "absl/status/statusor.h"
+#include "xla/stream_executor/gpu/gpu_semaphore.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/stream.h"
+
 namespace stream_executor::gpu {
-enum struct GpuSemaphoreState { Hold, Release, TimedOut };
-namespace delay_kernel {
-void* kernel();  // returns a pointer to a CUDA C++ device function
-}  // namespace delay_kernel
+// Returns true if the current backend and GPU supports the delay kernel for
+// time measurement. It might return an error if checking for the support at
+// runtime failed.
+absl::StatusOr<bool> DelayKernelIsSupported(GpuStream* stream);
+
+// Launches the delay kernel on the given stream. The caller is responsible for
+// keeping the returned semaphore alive until the kernel finished executing.
+// Setting the semaphore to `kRelease` makes the kernel quit.
+absl::StatusOr<GpuSemaphore> LaunchDelayKernel(Stream* stream);
 }  // namespace stream_executor::gpu
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_GPU_TIMER_KERNEL_H_

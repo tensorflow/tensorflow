@@ -51,7 +51,7 @@ namespace gpu {
 namespace {
 
 const Shape& GetElementShape(const HloFusionAnalysis& analysis) {
-  const Shape* shape = &analysis.fusion_roots().front()->shape();
+  const Shape* shape = &analysis.fusion_root(0).shape();
   while (shape->IsTuple()) {
     shape = &shape->tuple_shapes(0);
   }
@@ -236,7 +236,8 @@ std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(
   if (!thread_id_to_output_indexing.has_value()) {
     return std::nullopt;
   }
-  const HloInstruction* fusion_root = analysis_.fusion_roots()[root_index];
+  const HloInstruction* fusion_root =
+      &analysis_.fusion_root(root_index).instruction();
   auto output_to_input_indexing =
       ComputeOutputToInputIndexing(fusion_root, /*output_id=*/0, ctx);
   IndexingMapSet output_to_input_indexing_set =

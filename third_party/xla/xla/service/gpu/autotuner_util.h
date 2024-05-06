@@ -267,7 +267,9 @@ struct AutotunerUtil {
   // quadratic blow-up when serializing cache for a large number of modules.
   static absl::StatusOr<std::string> SerializeAutotuneResultsForModule(
       const HloModule& module, const AutotuneConfig& autotune_config,
-      bool as_textproto = false);
+      bool as_textproto);
+  static AutotuneResults SerializeAutotuneResultsForModule(
+      const HloModule& module, const AutotuneConfig& autotune_config);
 
   static absl::Status SerializeAutotuneResults(AutotuneResults* results);
   static absl::Status LoadAutotuneResults(absl::string_view data,

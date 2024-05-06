@@ -31,6 +31,9 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 
+// An index to indicate a non per-core executable bundle cache.
+inline constexpr int kNoCoreSelectedIndex = -1;
+
 absl::StatusOr<ifrt_serving::DtypeAndShape> GetDtypeAndShape(
     const ResourceHandle& resource_handle);
 

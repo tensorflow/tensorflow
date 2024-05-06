@@ -15,21 +15,59 @@ limitations under the License.
 
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.cc.inc"
+#include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+using llvm::ArrayRef;
+using mlir::AffineExpr;
+using mlir::AffineMap;
+using mlir::failure;
+using mlir::getAffineConstantExpr;
+using mlir::getAffineDimExpr;
+using mlir::getAffineSymbolExpr;
+using mlir::LogicalResult;
+using mlir::MLIRContext;
+using mlir::OpBuilder;
+using mlir::OperationState;
+using mlir::PatternRewriter;
+using mlir::RankedTensorType;
+using mlir::Region;
+using mlir::SmallVector;
+using mlir::success;
+using mlir::Type;
+using mlir::Value;
+using mlir::ValueRange;
+
+namespace arith = mlir::arith;
+
 struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
   // Returns true if the given operation 'callable', that implements the
@@ -75,6 +113,7 @@ struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
     return true;
   }
 };
+
 }  // namespace
 
 void XlaGpuDialect::initialize() {
@@ -86,7 +125,7 @@ void XlaGpuDialect::initialize() {
   addInterfaces<XlaGpuInlinerInterface>();
 }
 
-mlir::LogicalResult PureCallOp::verifySymbolUses(
+LogicalResult PureCallOp::verifySymbolUses(
     mlir::SymbolTableCollection &symbolTable) {
   auto callee = getCalleeAttr();
   auto function =
@@ -105,7 +144,7 @@ mlir::LogicalResult PureCallOp::verifySymbolUses(
                        << "' expects " << func_arg_count;
   }
 
-  return mlir::success();
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -118,6 +157,343 @@ void AllocateSharedOp::getAsmResultNames(
 }
 
 //===----------------------------------------------------------------------===//
+// ApplyIndexingOp
+//===----------------------------------------------------------------------===//
+
+void ApplyIndexingOp::build(OpBuilder &builder, OperationState &result,
+                            ValueRange operands,
+                            const IndexingMap &indexing_map) {
+  build(builder, result, operands, indexing_map.GetAffineMap(),
+        indexing_map.GetDimVars(), indexing_map.GetRangeVars());
+}
+
+void ApplyIndexingOp::build(OpBuilder &builder, OperationState &result,
+                            ValueRange operands, AffineMap affine_map,
+                            ArrayRef<DimVar> dim_vars,
+                            ArrayRef<RangeVar> range_vars) {
+  SmallVector<int64_t, 4> lower_bounds, upper_bounds;
+  for (const DimVar &dim_var : dim_vars) {
+    lower_bounds.push_back(dim_var.bounds.lower);
+    upper_bounds.push_back(dim_var.bounds.upper);
+  }
+  for (const RangeVar &range_var : range_vars) {
+    lower_bounds.push_back(range_var.range.lower);
+    upper_bounds.push_back(range_var.range.upper);
+  }
+  build(builder, result, operands, affine_map, lower_bounds, upper_bounds);
+}
+
+void ApplyIndexingOp::build(OpBuilder &builder, OperationState &result,
+                            ValueRange operands, AffineMap affine_map,
+                            ArrayRef<int64_t> lower_bounds,
+                            ArrayRef<int64_t> upper_bounds) {
+  SmallVector<Type, 2> result_types(affine_map.getNumResults(),
+                                    builder.getIndexType());
+  build(builder, result, result_types, operands, affine_map, lower_bounds,
+        upper_bounds);
+}
+
+// Parser a comma-separated list of type %operand in [lower_bound, upper_bound].
+// Adds the parsed elements to the provided containers.
+mlir::ParseResult parseOperandsWithBoundsList(
+    mlir::OpAsmParser &parser,
+    SmallVector<mlir::OpAsmParser::UnresolvedOperand, 4> *operands,
+    SmallVector<int64_t, 4> *lower_bounds,
+    SmallVector<int64_t, 4> *upper_bounds) {
+  int64_t lower_bound, upper_bound;
+  mlir::OpAsmParser::UnresolvedOperand operand;
+  if (parser.parseCommaSeparatedList([&]() {
+        if (parser.parseOperand(operand) || parser.parseKeyword("in") ||
+            parser.parseLSquare() || parser.parseInteger(lower_bound) ||
+            parser.parseComma() || parser.parseInteger(upper_bound) ||
+            parser.parseRSquare()) {
+          return failure();
+        }
+        operands->push_back(operand);
+        lower_bounds->push_back(lower_bound);
+        upper_bounds->push_back(upper_bound);
+        return success();
+      })) {
+    return failure();
+  }
+  return success();
+}
+
+mlir::ParseResult ApplyIndexingOp::parse(mlir::OpAsmParser &parser,
+                                         OperationState &result) {
+  mlir::Builder &builder = parser.getBuilder();
+  auto index_type = builder.getIndexType();
+
+  mlir::AffineMapAttr affine_map_attr;
+  if (parser.parseAttribute(affine_map_attr, "map", result.attributes)) {
+    return failure();
+  }
+
+  SmallVector<mlir::OpAsmParser::UnresolvedOperand, 4> operands;
+  SmallVector<int64_t, 4> lower_bounds, upper_bounds;
+  if (succeeded(parser.parseOptionalLParen())) {
+    if (parseOperandsWithBoundsList(parser, &operands, &lower_bounds,
+                                    &upper_bounds) ||
+        parser.parseRParen()) {
+      return failure();
+    }
+  }
+  if (succeeded(parser.parseOptionalLSquare())) {
+    if (parseOperandsWithBoundsList(parser, &operands, &lower_bounds,
+                                    &upper_bounds) ||
+        parser.parseRSquare()) {
+      return failure();
+    }
+  }
+  if (parser.resolveOperands(operands, index_type, result.operands) ||
+      parser.parseOptionalAttrDict(result.attributes)) {
+    return failure();
+  }
+  result.addAttribute("lower_bounds",
+                      builder.getDenseI64ArrayAttr(lower_bounds));
+  result.addAttribute("upper_bounds",
+                      builder.getDenseI64ArrayAttr(upper_bounds));
+
+  auto map = affine_map_attr.getAffineMap();
+  result.addTypes(SmallVector<Type, 2>(map.getNumResults(), index_type));
+  return success();
+}
+
+void ApplyIndexingOp::print(mlir::OpAsmPrinter &p) {
+  mlir::AffineMapAttr affine_map_attr = getMapAttr();
+  AffineMap affine_map = affine_map_attr.getAffineMap();
+  p << " " << affine_map_attr;
+
+  auto lower_bounds = getLowerBounds();
+  auto upper_bounds = getUpperBounds();
+  auto operands = getOperands();
+  unsigned num_dimensions = affine_map.getNumDims();
+  if (num_dimensions > 0) {
+    p << '(';
+    for (int dim_id = 0; dim_id < num_dimensions; ++dim_id) {
+      p << operands[dim_id] << " in " << '[' << lower_bounds[dim_id] << ", "
+        << upper_bounds[dim_id] << ']';
+      if (dim_id != num_dimensions - 1) {
+        p << ", ";
+      }
+    }
+    p << ')';
+  }
+  unsigned num_symbols = affine_map.getNumSymbols();
+  if (num_symbols > 0) {
+    p << '[';
+    for (int symbol_id = 0; symbol_id < num_symbols; ++symbol_id) {
+      unsigned operand_id = num_dimensions + symbol_id;
+      p << operands[operand_id] << " in " << '[' << lower_bounds[operand_id]
+        << ", " << upper_bounds[operand_id] << ']';
+      if (symbol_id != num_symbols - 1) {
+        p << ", ";
+      }
+    }
+    p << ']';
+  }
+  p.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{
+                              "map", "lower_bounds", "upper_bounds"});
+}
+
+LogicalResult ApplyIndexingOp::verify() {
+  auto affine_map = getMapAttr().getAffineMap();
+  unsigned num_variables = affine_map.getNumDims() + affine_map.getNumSymbols();
+  if (getOperands().size() != num_variables ||
+      getLowerBounds().size() != num_variables ||
+      getUpperBounds().size() != num_variables) {
+    return emitOpError(
+        "operand, lower_bounds, upper_bounds count and affine map dimension "
+        "and symbol count must match");
+  }
+  IndexingMap indexing_map = getIndexingMap();
+  if (indexing_map.IsKnownEmpty()) {
+    return emitOpError("indexing map is empty");
+  }
+  return success();
+}
+
+IndexingMap ApplyIndexingOp::getIndexingMap() {
+  auto lower_bounds = getLowerBounds();
+  auto upper_bounds = getUpperBounds();
+
+  AffineMap affine_map = getAffineMap();
+  unsigned num_dimensions = affine_map.getNumDims();
+  std::vector<DimVar> dim_vars;
+  dim_vars.reserve(num_dimensions);
+  for (unsigned id = 0; id < num_dimensions; ++id) {
+    dim_vars.push_back(DimVar{Interval{lower_bounds[id], upper_bounds[id]}});
+  }
+  unsigned num_symbols = affine_map.getNumSymbols();
+  std::vector<RangeVar> range_vars;
+  range_vars.reserve(num_symbols);
+  for (unsigned id = num_dimensions; id < num_symbols + num_dimensions; ++id) {
+    range_vars.push_back(
+        RangeVar{Interval{lower_bounds[id], upper_bounds[id]}});
+  }
+  return IndexingMap(affine_map, std::move(dim_vars), std::move(range_vars),
+                     /*rt_vars=*/{});
+}
+
+namespace {
+
+// Simplifies the indexing map, removes unused variables.
+struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
+  using OpRewritePattern<ApplyIndexingOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
+                                PatternRewriter &rewriter) const override {
+    IndexingMap indexing_map = indexing_op.getIndexingMap();
+    bool is_simplified = indexing_map.Simplify(GetIndexingMapForInstruction);
+
+    // Remove unused symbols.
+    auto unused_symbols_bit_vector = indexing_map.RemoveUnusedVars();
+    bool symbols_removed = !unused_symbols_bit_vector.empty();
+
+    if (!is_simplified && !symbols_removed) {
+      return rewriter.notifyMatchFailure(indexing_op,
+                                         "IndexingMap stayed unchanged");
+    }
+    if (!unused_symbols_bit_vector.empty()) {
+      SmallVector<Value, 4> operands;
+      operands.reserve(unused_symbols_bit_vector.count());
+      for (int i = 0; i < unused_symbols_bit_vector.size(); ++i) {
+        if (!unused_symbols_bit_vector[i]) {
+          operands.push_back(indexing_op.getOperand(i));
+        }
+      }
+      rewriter.replaceOpWithNewOp<ApplyIndexingOp>(indexing_op, operands,
+                                                   indexing_map);
+    } else {
+      rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
+          indexing_op, indexing_op.getOperands(), indexing_map);
+    }
+    return success();
+  }
+};
+
+// Folds constants into the indexing map.
+struct FoldApplyIndexingOperands
+    : public mlir::OpRewritePattern<ApplyIndexingOp> {
+  using OpRewritePattern<ApplyIndexingOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
+                                PatternRewriter &rewriter) const override {
+    AffineMap affine_map = indexing_op.getAffineMap();
+
+    MLIRContext *ctx = affine_map.getContext();
+    unsigned num_operands = indexing_op->getNumOperands();
+    unsigned num_dims = affine_map.getNumDims();
+    llvm::SmallBitVector constant_operands(num_operands, false);
+    mlir::DenseMap<AffineExpr, AffineExpr> replacements;
+    unsigned num_nonconstant_operands = num_operands;
+    for (auto &operand : indexing_op->getOpOperands()) {
+      auto constant = operand.get().getDefiningOp<arith::ConstantIndexOp>();
+      if (!constant) continue;
+
+      unsigned operand_number = operand.getOperandNumber();
+      replacements[operand_number < num_dims
+                       ? getAffineDimExpr(operand_number, ctx)
+                       : getAffineSymbolExpr(operand_number - num_dims, ctx)] =
+          getAffineConstantExpr(constant.value(), ctx);
+      constant_operands.set(operand_number);
+      --num_nonconstant_operands;
+    }
+    if (replacements.empty()) {
+      return rewriter.notifyMatchFailure(indexing_op,
+                                         "No constant operands found");
+    }
+    SmallVector<Value, 4> new_operands;
+    new_operands.reserve(num_nonconstant_operands);
+    ArrayRef<int64_t> lbs = indexing_op.getLowerBounds();
+    ArrayRef<int64_t> ubs = indexing_op.getUpperBounds();
+    SmallVector<int64_t, 4> new_lbs, new_ubs;
+    new_lbs.reserve(num_nonconstant_operands);
+    new_ubs.reserve(num_nonconstant_operands);
+    for (auto [index, operand] : llvm::enumerate(indexing_op.getOperands())) {
+      if (constant_operands[index]) continue;
+      new_operands.push_back(operand);
+      new_lbs.push_back(lbs[index]);
+      new_ubs.push_back(ubs[index]);
+    }
+    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
+        indexing_op, new_operands, affine_map.replace(replacements), new_lbs,
+        new_ubs);
+    return success();
+  }
+};
+
+// Folds constant and dim/symbol expression results.
+struct FoldApplyIndexingResults
+    : public mlir::OpRewritePattern<ApplyIndexingOp> {
+  using OpRewritePattern<ApplyIndexingOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
+                                PatternRewriter &rewriter) const override {
+    mlir::Location loc = indexing_op.getLoc();
+    IndexingMap indexing_map = indexing_op.getIndexingMap();
+    AffineMap *affine_map = &indexing_map.GetMutableAffineMap();
+    unsigned num_results = affine_map->getNumResults();
+    SmallVector<AffineExpr, 4> new_exprs;
+    new_exprs.reserve(num_results);
+    SmallVector<Value, 4> new_values;
+    new_values.reserve(num_results);
+    for (mlir::OpResult opresult : indexing_op->getOpResults()) {
+      if (opresult.use_empty()) {
+        new_values.push_back(opresult);
+        continue;
+      }
+
+      unsigned id = opresult.getResultNumber();
+      AffineExpr result_expr = affine_map->getResult(id);
+      if (auto const_expr =
+              mlir::dyn_cast<mlir::AffineConstantExpr>(result_expr)) {
+        new_values.push_back(rewriter.create<arith::ConstantIndexOp>(
+            loc, const_expr.getValue()));
+        continue;
+      }
+      if (auto dim_expr = mlir::dyn_cast<mlir::AffineDimExpr>(result_expr)) {
+        new_values.push_back(indexing_op.getOperand(dim_expr.getPosition()));
+        continue;
+      }
+      if (auto symbol_expr =
+              mlir::dyn_cast<mlir::AffineSymbolExpr>(result_expr)) {
+        new_values.push_back(indexing_op.getOperand(
+            indexing_map.GetDimVarsCount() + symbol_expr.getPosition()));
+        continue;
+      }
+      new_exprs.push_back(result_expr);
+      new_values.push_back(Value{});
+    }
+    if (new_exprs.size() == num_results) {
+      return rewriter.notifyMatchFailure(
+          indexing_op, "No constant or dim/symbol expression found");
+    }
+    *affine_map =
+        AffineMap::get(affine_map->getNumDims(), affine_map->getNumSymbols(),
+                       new_exprs, affine_map->getContext());
+    auto new_indexing_op = rewriter.create<ApplyIndexingOp>(
+        loc, indexing_op.getOperands(), indexing_map);
+    for (int new_result_id = 0, new_indexing_op_result_id = 0;
+         new_result_id < new_values.size(); ++new_result_id) {
+      auto &new_value = new_values[new_result_id];
+      if (new_value) continue;
+      new_value = new_indexing_op.getResult(new_indexing_op_result_id++);
+    }
+    rewriter.replaceOp(indexing_op, new_values);
+    return success();
+  }
+};
+
+}  // namespace
+
+void ApplyIndexingOp::getCanonicalizationPatterns(
+    mlir::RewritePatternSet &results, MLIRContext *context) {
+  results.add<FoldApplyIndexingOperands, FoldApplyIndexingResults,
+              SimplifyIndexingMap>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // AtomicRMWOp
 //===----------------------------------------------------------------------===//
 
@@ -125,14 +501,6 @@ void AtomicRMWOp::getAsmResultNames(
     llvm::function_ref<void(mlir::Value, mlir::StringRef)> setNameFn) {
   setNameFn(getResult(), "atomic_rmw");
 }
-
-using mlir::OpBuilder;
-using mlir::OperationState;
-using mlir::RankedTensorType;
-using mlir::Region;
-using mlir::Type;
-using mlir::Value;
-using mlir::ValueRange;
 
 void AtomicRMWOp::build(OpBuilder &builder, OperationState &result,
                         Value tensor, ValueRange ivs) {

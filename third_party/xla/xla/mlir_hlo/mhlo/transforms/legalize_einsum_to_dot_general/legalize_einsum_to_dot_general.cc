@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -68,8 +69,8 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
       index++;
     }
 
-    auto lhsType = einsum.getLhs().getType().cast<RankedTensorType>();
-    auto rhsType = einsum.getRhs().getType().cast<RankedTensorType>();
+    auto lhsType = mlir::cast<RankedTensorType>(einsum.getLhs().getType());
+    auto rhsType = mlir::cast<RankedTensorType>(einsum.getRhs().getType());
     assert(static_cast<int64_t>(lhsTokens.size()) == lhsType.getRank());
     assert(static_cast<int64_t>(rhsTokens.size()) == rhsType.getRank());
 

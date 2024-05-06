@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {
@@ -33,9 +34,9 @@ class IdentityNOp;
 RankedTensorType GetRankedTensorTypeForOperand(Value operand) {
   DenseElementsAttr attr;
   if (matchPattern(operand, m_Constant(&attr))) {
-    return attr.getType().dyn_cast<RankedTensorType>();
+    return mlir::dyn_cast<RankedTensorType>(attr.getType());
   }
-  return operand.getType().dyn_cast<RankedTensorType>();
+  return mlir::dyn_cast<RankedTensorType>(operand.getType());
 }
 
 // Returns the tf.Equal/tf.NotEqual result type given `x` and `y` and inputs. If
@@ -53,7 +54,7 @@ Type DeduceEqualCmpOpType(Builder *builder, Location loc, Value x, Value y,
     }
   }
 
-  auto ranked_type = result_type.dyn_cast<RankedTensorType>();
+  auto ranked_type = mlir::dyn_cast<RankedTensorType>(result_type);
   if (!ranked_type) return UnrankedTensorType::get(builder->getI1Type());
 
   return RankedTensorType::get(ranked_type.getShape(), builder->getI1Type());
@@ -65,7 +66,7 @@ Type InferReductionOpType(Value input, Value reduction_indices,
   Type element_ty = getElementTypeOrSelf(input_ty);
 
   // Output type is unranked if input type is not ranked.
-  auto ranked_ty = input_ty.dyn_cast<RankedTensorType>();
+  auto ranked_ty = mlir::dyn_cast<RankedTensorType>(input_ty);
   if (!ranked_ty) return UnrankedTensorType::get(element_ty);
   int64_t rank = ranked_ty.getRank();
 
@@ -124,7 +125,7 @@ LogicalResult VerifyTypesCompatibility(Operation::operand_type_range types,
   // the dimension index on the first mismatch and ignore dimension at that
   // index in following types.
   for (Type ty : types) {
-    RankedTensorType ranked_ty = ty.dyn_cast<RankedTensorType>();
+    RankedTensorType ranked_ty = mlir::dyn_cast<RankedTensorType>(ty);
     if (!ranked_ty) continue;
 
     int64_t rank = ranked_ty.getRank();

@@ -401,8 +401,8 @@ void DataServiceDispatcherImpl::ReportProcessingTimesFromActiveTasks(
     std::shared_ptr<const Task> task;
     Status s = state_.TaskFromId(task_id, task);
     if (!s.ok()) {
-      LOG(WARNING) << "Could not find task with id " << task_id
-                   << " in tf.data service dispatcher state: " << s;
+      VLOG(1) << "Could not find task with id " << task_id
+              << " in tf.data service dispatcher state: " << s;
       continue;
     }
 
@@ -410,11 +410,10 @@ void DataServiceDispatcherImpl::ReportProcessingTimesFromActiveTasks(
         task->iteration->iteration_id, worker_address,
         absl::Nanoseconds(processing_time_nsec));
     if (!auto_scaler_status.ok()) {
-      LOG_EVERY_N_SEC(WARNING, 300)
-          << "Failed to report processing time for Iteration "
-          << task->iteration->iteration_id << " and worker address "
-          << worker_address
-          << " to tf.data service AutoScaler: " << auto_scaler_status;
+      VLOG(1) << "Failed to report processing time for Iteration "
+              << task->iteration->iteration_id << " and worker address "
+              << worker_address
+              << " to tf.data service AutoScaler: " << auto_scaler_status;
     }
   }
 }
@@ -783,10 +782,9 @@ Status DataServiceDispatcherImpl::MaybeRemoveTask(
   Status auto_scaler_status = auto_scaler_.RemoveWorker(
       task->iteration->iteration_id, task->worker_address);
   if (!auto_scaler_status.ok()) {
-    LOG(WARNING) << "Failed to remove worker with address "
-                 << task->worker_address << " for Iteration "
-                 << task->iteration->iteration_id
-                 << " from tf.data service AutoScaler: " << auto_scaler_status;
+    VLOG(1) << "Failed to remove worker with address " << task->worker_address
+            << " for Iteration " << task->iteration->iteration_id
+            << " from tf.data service AutoScaler: " << auto_scaler_status;
   }
   VLOG(1) << "Task " << task->task_id << " successfully removed";
   return absl::OkStatus();
@@ -804,9 +802,9 @@ Status DataServiceDispatcherImpl::ReleaseIterationClient(
   Status auto_scaler_status =
       auto_scaler_.RemoveConsumer(iteration->iteration_id, iteration_client_id);
   if (!auto_scaler_status.ok()) {
-    LOG(WARNING) << "Failed to remove consumer with ID " << iteration_client_id
-                 << " for Iteration " << iteration->iteration_id
-                 << " from tf.data service AutoScaler: " << auto_scaler_status;
+    VLOG(1) << "Failed to remove consumer with ID " << iteration_client_id
+            << " for Iteration " << iteration->iteration_id
+            << " from tf.data service AutoScaler: " << auto_scaler_status;
   }
   Update update;
   ReleaseIterationClientUpdate* release_iteration_client =
@@ -1138,11 +1136,10 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
       iteration->iteration_id, request->iteration_client_id(),
       absl::Nanoseconds(request->target_processing_time_nsec()));
   if (!auto_scaler_status.ok()) {
-    LOG_EVERY_N(WARNING, 20)
-        << "Failed to report target processing time for Iteration "
-        << iteration->iteration_id << " and consumer ID "
-        << request->iteration_client_id()
-        << " to tf.data service AutoScaler: " << auto_scaler_status;
+    VLOG(1) << "Failed to report target processing time for Iteration "
+            << iteration->iteration_id << " and consumer ID "
+            << request->iteration_client_id()
+            << " to tf.data service AutoScaler: " << auto_scaler_status;
   }
 
   std::vector<std::shared_ptr<const Task>> tasks;
@@ -1402,9 +1399,9 @@ void DataServiceDispatcherImpl::MaintenanceThread() {
       Status s = auto_scaler_.UpdateOptimalNumberOfWorkersMetric(
           state_.GetNumberOfRegisteredWorkers());
       if (!s.ok()) {
-        LOG(WARNING) << "Error updating the optimal number of workers metric "
-                        "in tf.data service AutoScaler: "
-                     << s;
+        VLOG(1) << "Error updating the optimal number of workers metric "
+                   "in tf.data service AutoScaler: "
+                << s;
       }
     }
     {
@@ -1427,14 +1424,13 @@ void DataServiceDispatcherImpl::RemoveClientFromAutoScaler(int64_t client_id)
     Status auto_scaler_status =
         auto_scaler_.RemoveConsumer(iteration->iteration_id, client_id);
     if (!auto_scaler_status.ok()) {
-      LOG(WARNING) << "Failed to remove consumer with ID " << client_id
-                   << " for Iteration " << iteration->iteration_id
-                   << " from tf.data service AutoScaler: "
-                   << auto_scaler_status;
+      VLOG(1) << "Failed to remove consumer with ID " << client_id
+              << " for Iteration " << iteration->iteration_id
+              << " from tf.data service AutoScaler: " << auto_scaler_status;
     }
   } else {
-    LOG(WARNING) << "Could not find Iteration for client with id " << client_id
-                 << " in tf.data service dispatcher state: " << s;
+    VLOG(1) << "Could not find Iteration for client with id " << client_id
+            << " in tf.data service dispatcher state: " << s;
   }
 }
 
@@ -1468,17 +1464,15 @@ void DataServiceDispatcherImpl::RemoveWorkerFromAutoScaler(
       Status auto_scaler_status = auto_scaler_.RemoveWorker(
           task->iteration->iteration_id, worker_address);
       if (!auto_scaler_status.ok()) {
-        LOG(WARNING) << "Failed to remove worker with address "
-                     << worker_address << " for Iteration "
-                     << task->iteration->iteration_id
-                     << " from tf.data service AutoScaler: "
-                     << auto_scaler_status;
+        VLOG(1) << "Failed to remove worker with address " << worker_address
+                << " for Iteration " << task->iteration->iteration_id
+                << " from tf.data service AutoScaler: " << auto_scaler_status;
       }
     }
   } else {
-    LOG(WARNING) << "Could not find tasks for worker with address "
-                 << worker_address << " in tf.data service dispatcher state: "
-                 << tasks_for_worker_status;
+    VLOG(1) << "Could not find tasks for worker with address " << worker_address
+            << " in tf.data service dispatcher state: "
+            << tasks_for_worker_status;
   }
 }
 
@@ -1516,10 +1510,8 @@ Status DataServiceDispatcherImpl::GcOldIterations()
     Status auto_scaler_status =
         auto_scaler_.UnregisterIteration(iteration->iteration_id);
     if (!auto_scaler_status.ok()) {
-      LOG(WARNING) << "Failed to unregister Iteration "
-                   << iteration->iteration_id
-                   << " with tf.data service AutoScaler: "
-                   << auto_scaler_status;
+      VLOG(1) << "Failed to unregister Iteration " << iteration->iteration_id
+              << " with tf.data service AutoScaler: " << auto_scaler_status;
     }
     LOG(INFO) << "Garbage collected iteration " << iteration->DebugString();
   }

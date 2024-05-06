@@ -74,7 +74,7 @@ class BacktrackAnalysisInfo {
   // the result cannot be backtracked to a region argument, returns
   // std::nullopt.
   std::optional<int> GetArg(int result_index) const {
-    if (auto arg = GetValue(result_index).dyn_cast<BlockArgument>())
+    if (auto arg = mlir::dyn_cast<BlockArgument>(GetValue(result_index)))
       if (arg.getParentBlock() == &region_->front()) return arg.getArgNumber();
     return std::nullopt;
   }
@@ -191,7 +191,7 @@ BacktrackAnalysis::BacktrackAnalysis(
 // possible.
 Value BacktrackAnalysis::BacktrackValue(Value value) {
   while (Operation* op = value.getDefiningOp()) {
-    int res_index = value.cast<OpResult>().getResultNumber();
+    int res_index = mlir::cast<OpResult>(value).getResultNumber();
     if (auto graph = dyn_cast<tf_executor::GraphOp>(op)) {
       value = graph.GetFetch().getOperand(res_index);
     } else if (auto island = dyn_cast<tf_executor::IslandOp>(op)) {

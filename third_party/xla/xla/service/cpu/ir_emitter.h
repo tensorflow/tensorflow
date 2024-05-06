@@ -450,6 +450,16 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       bool only_accesses_arg_memory = false,
       bool only_accesses_inaccessible_mem_or_arg_mem = false);
 
+  template <typename T>
+  llvm::AllocaInst* StoreTypes(std::string_view alloca_name, T&& args);
+  template <typename T>
+  llvm::Value* StoreShapes(std::string_view alloca_name, T&& args);
+
+  // Emits a call to a proxy that builds an FFI call frame for `custom_call`
+  llvm::Value* EmitCallToFfi(HloCustomCallInstruction* custom_call,
+                             llvm::Value* output_address,
+                             llvm::AllocaInst* operands_alloca);
+
   // Assignment of the buffers needed by the computation and their shape
   // information.
   const BufferAssignment& assignment_;

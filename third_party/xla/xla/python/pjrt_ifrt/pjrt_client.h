@@ -42,8 +42,8 @@ limitations under the License.
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -204,6 +204,7 @@ class PjRtClient final
       device_map_;
   absl::flat_hash_map<xla::PjRtMemorySpace*, std::unique_ptr<PjRtMemory>>
       memory_map_;
+  absl::flat_hash_map<DeviceId, PjRtDevice*> device_id_map_;
 };
 
 }  // namespace ifrt

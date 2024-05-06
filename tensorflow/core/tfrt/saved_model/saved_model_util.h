@@ -16,32 +16,30 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_UTIL_H_
 #define TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_UTIL_H_
 
-#include <cstdint>
-#include <functional>
-#include <limits>
-#include <memory>
-#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
-#include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
-#include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
-#include "tensorflow/core/tfrt/runtime/runtime.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tsl/platform/protobuf.h"
-#include "tfrt/host_context/function.h"  // from @tf_runtime
-#include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
-#include "tfrt/host_context/resource_context.h"  // from @tf_runtime
+#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -142,6 +140,9 @@ absl::StatusOr<mlrt::bc::Buffer> LoadMlrtAndMlir(
 absl::Status DeserializeAoTMlirModule(
     absl::string_view saved_model_dir, mlir::MLIRContext* context,
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
+
+CallableOptions CombineSignatureDefs(
+    const google::protobuf::Map<std::string, SignatureDef>& signature_defs);
 
 void RegisterTfrtDialectsForAot(mlir::DialectRegistry& registry);
 

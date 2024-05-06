@@ -45,8 +45,8 @@ class KernelSupportLibrary {
   //
   //   if (`start` < `end`) {
   //     `for_body_generator(/*ind_var=*/start, /*is_first_iteration=*/true)`;
-  //     for (i64 i = `start` + `step`; i s< `end`; i += `step`)
-  //       `for_body_generator(/*ind_var=*/,i, /*is_first_iteration=*/false)`;
+  //     for (i64 i = `start` + `step`; i < `end`; i += `step`)
+  //       `for_body_generator(/*ind_var=*/i, /*is_first_iteration=*/false)`;
   //   }
   Status ForWithStatus(
       absl::string_view name, llvm::Value* start, llvm::Value* end,
@@ -86,81 +86,24 @@ class KernelSupportLibrary {
         /*step=*/b_->getInt64(step), for_body_generator);
   }
 
-  // Generates the following control flow structure if `peel_first_iteration` is
-  // true:
+  // Generates the following control flow structure:
   //
-  //   if (`start` < `end`) {
-  //     `for_body_generator(/*ind_var=*/start, /*is_first_iteration=*/,true)`;
-  //     for (i64 i = `start` + `step`; i s< `end`; i += `step`)
-  //       `for_body_generator(/*ind_var=*/,i, /*is_first_iteration=*/,false)`;
-  //   }
-  //
-  // and the following if `peel_first_iteration` is false:
-  //
-  //   for (i64 i = `start`; i s< `end`; i += `step`)
-  //     `for_body_generator(/*ind_var=*/,i,
-  //                         /*is_first_iteration=*/,(i != `start`))`;
-  Status ForWithStatus(
-      absl::string_view name, llvm::Value* start, llvm::Value* end,
-      llvm::Value* step, bool peel_first_iteration,
-      const std::function<Status(llvm::Value* ind_var,
-                                 llvm::Value* is_first_iteration)>&
-          for_body_generator);
-
-  void For(absl::string_view name, llvm::Value* start, llvm::Value* end,
-           llvm::Value* step, bool peel_first_iteration,
-           const std::function<void(llvm::Value* ind_var,
-                                    llvm::Value* is_first_iteration)>&
-               for_body_generator) {
-    TF_CHECK_OK(ForWithStatus(
-        name, start, end, step, peel_first_iteration,
-        [&](llvm::Value* ind_var, llvm::Value* is_first_iteration) -> Status {
-          for_body_generator(ind_var, is_first_iteration);
-          return OkStatus();
-        }));
-  }
-
-  Status ForWithStatus(
-      absl::string_view name, llvm::Value* start, llvm::Value* end,
-      int64_t step, bool peel_first_iteration,
-      const std::function<Status(llvm::Value* ind_var,
-                                 llvm::Value* is_first_iteration)>&
-          for_body_generator) {
-    return ForWithStatus(
-        name, /*start=*/start, /*end=*/end,
-        /*step=*/llvm::ConstantInt::get(start->getType(), step),
-        peel_first_iteration, for_body_generator);
-  }
-
-  void For(absl::string_view name, llvm::Value* start, llvm::Value* end,
-           int64_t step, bool peel_first_iteration,
-           const std::function<void(llvm::Value* ind_var,
-                                    llvm::Value* is_first_iteration)>&
-               for_body_generator) {
-    For(name, /*start=*/start, /*end=*/end,
-        /*step=*/llvm::ConstantInt::get(start->getType(), step),
-        peel_first_iteration, for_body_generator);
-  }
-
+  //   for (i64 i = `start`; i < `end`; i += `step`)
+  //     `for_body_generator(/*ind_var=*/i)`;
   Status ForWithStatus(
       absl::string_view name, llvm::Value* start, llvm::Value* end,
       llvm::Value* step,
-      const std::function<Status(llvm::Value* ind_var)>& for_body_generator) {
-    return ForWithStatus(name, start, end, step,
-                         /*peel_first_iteration=*/false,
-                         [&](llvm::Value* indvar, llvm::Value*) -> Status {
-                           return for_body_generator(indvar);
-                         });
-  }
+      const std::function<Status(llvm::Value* ind_var)>& for_body_generator);
 
   void For(
       absl::string_view name, llvm::Value* start, llvm::Value* end,
       llvm::Value* step,
       const std::function<void(llvm::Value* ind_var)>& for_body_generator) {
-    For(name, start, end, step,
-        /*peel_first_iteration=*/false, [&](llvm::Value* indvar, llvm::Value*) {
-          return for_body_generator(indvar);
-        });
+    CHECK_EQ(OkStatus(), ForWithStatus(name, start, end, step,
+                                       [&](llvm::Value* ind_var) -> Status {
+                                         for_body_generator(ind_var);
+                                         return OkStatus();
+                                       }));
   }
 
   Status ForWithStatus(
@@ -169,8 +112,7 @@ class KernelSupportLibrary {
       const std::function<Status(llvm::Value* ind_var)>& for_body_generator) {
     return ForWithStatus(name, start, end,
                          llvm::ConstantInt::get(start->getType(), step),
-                         /*peel_first_iteration=*/false,
-                         [&](llvm::Value* indvar, llvm::Value*) -> Status {
+                         [&](llvm::Value* indvar) -> Status {
                            return for_body_generator(indvar);
                          });
   }

@@ -11,8 +11,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -251,6 +254,29 @@ ParallelMapDatasetParams ParallelMapDatasetParams8() {
       /*node_name=*/kNodeName);
 }
 
+// Case when the output_shapes is partial(unknown)
+ParallelMapDatasetParams ParallelMapDatasetParams9() {
+  return ParallelMapDatasetParams(
+      BatchDatasetParams(RangeDatasetParams(0, 4, 1),
+                         /*batch_size=*/3,
+                         /*drop_remainder=*/false,
+                         /*parallel_copy*/ false,
+                         /*output_dtypes=*/{DT_INT64},
+                         /*output_shapes=*/{PartialTensorShape({-1})},
+                         /*node_name=*/"batch_dataset"),
+      /*other_arguments=*/{},
+      /*num_parallel_calls=*/1,
+      /*func=*/MapFunc("XTimesTwo", DT_INT64),
+      /*func_lib*/ {test::function::XTimesTwo()},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({-1})},
+      /*use_inter_op_parallelism=*/false,
+      /*deterministic=*/DeterminismPolicy::kDeterministic,
+      /*preserve_cardinality=*/false,
+      /*node_name=*/kNodeName);
+}
+
 ParallelMapDatasetParams ParallelMapDatasetParamsWithInvalidNumParallelCalls() {
   return ParallelMapDatasetParams(
       RangeDatasetParams(0, 10, 3),
@@ -292,6 +318,12 @@ std::vector<GetNextTestCase<ParallelMapDatasetParams>> GetNextTestCases() {
            ParallelMapDatasetParams6(),
            /*expected_outputs=*/
            CreateTensors<int64_t>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           /*compare_order=*/true},
+          {/*dataset_params=*/
+           ParallelMapDatasetParams9(),
+           /*expected_outputs=*/
+           {CreateTensor<int64_t>(TensorShape{3}, {0, 2, 4}),
+            CreateTensor<int64_t>(TensorShape{1}, {6})},
            /*compare_order=*/true}};
 }
 
@@ -323,6 +355,20 @@ TEST_F(ParallelMapDatasetOpTest, DatasetOutputShapes) {
   auto dataset_params = ParallelMapDatasetParams1();
   TF_ASSERT_OK(Initialize(dataset_params));
   TF_ASSERT_OK(CheckDatasetOutputShapes({PartialTensorShape({})}));
+}
+
+TEST_F(ParallelMapDatasetOpTest, DatasetElementSizeHasValue) {
+  auto dataset_params = ParallelMapDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  auto element_size = dataset_->GetEstimatedElementSize();
+  ASSERT_TRUE(element_size.has_value());
+  EXPECT_GT(element_size.value(), 0);
+}
+
+TEST_F(ParallelMapDatasetOpTest, DatasetElementSizeNoValue) {
+  auto dataset_params = ParallelMapDatasetParams9();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  EXPECT_FALSE(dataset_->GetEstimatedElementSize().has_value());
 }
 
 std::vector<CardinalityTestCase<ParallelMapDatasetParams>>

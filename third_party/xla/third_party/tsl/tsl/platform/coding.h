@@ -22,6 +22,7 @@ limitations under the License.
 #define TENSORFLOW_TSL_PLATFORM_CODING_H_
 
 #include "tsl/platform/stringpiece.h"
+#include "tsl/platform/tstring.h"
 #include "tsl/platform/types.h"
 
 namespace tsl {

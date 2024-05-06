@@ -114,7 +114,6 @@ add_mlir_library(MhloQuantToIntConversion
   Core
 
   LINK_LIBS PUBLIC
-  LmhloDialect
   MhloDialect
   MhloTypeConversion
   MLIRIR
@@ -135,7 +134,6 @@ add_mlir_library(MhloToMemrefConversion
   Core
 
   LINK_LIBS PUBLIC
-  LmhloDialect
   MhloDialect
   MhloTypeConversion
   MLIRIR
@@ -173,7 +171,6 @@ add_mlir_library(MhloToStandard
 
   DEPENDS
   MLIRhlo_opsIncGen
-  MLIRlhlo_opsIncGen
   MLIRMhloLegalizeToStandardIncGen
   MLIRMhloPassIncGen
   MhloTypeConversion
@@ -198,7 +195,6 @@ add_mlir_library(ChloPasses
   MLIRhlo_opsIncGen
   MLIRChloLegalizeToHloIncGen
   MLIRMhloPassIncGen
-  MLIRLmhloPassIncGen
 
   LINK_COMPONENTS
   Core
@@ -225,7 +221,6 @@ add_mlir_library(MhloToLinalg
 
   LINK_LIBS PUBLIC
   HloToLinalgUtils
-  LmhloDialect
   MhloDialect
   MhloRngUtils
   MhloToArithmeticConversion
@@ -251,7 +246,6 @@ add_mlir_library(MhloShapeOpsToStandard
   Core
 
   LINK_LIBS PUBLIC
-  LmhloDialect
   MhloDialect
   MhloTypeConversion
   MLIRComplexDialect

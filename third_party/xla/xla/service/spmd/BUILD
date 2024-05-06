@@ -66,6 +66,7 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_pass",
         "//xla/service:hlo_pass_pipeline",
+        "//xla/service:host_memory_offload_annotations_hdr",
         "//xla/service:pattern_matcher",
         "//xla/service:shape_inference",
         "//xla/service:sharding_propagation",
@@ -125,6 +126,17 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/lib/core:status_test_util",
     ],
+)
+
+cc_library(
+    name = "shard_barrier_partitioner",
+    srcs = ["shard_barrier_partitioner.cc"],
+    hdrs = ["shard_barrier_partitioner.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service:custom_call_sharding_helper",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(

@@ -28,7 +28,7 @@ namespace test {
 
 // Given a raw string, return a ModuleOp that can be used with the given
 // MLIRContext.
-tsl::StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
+absl::StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
     absl::string_view module_string, MLIRContext* mlir_context);
 
 }  // namespace test

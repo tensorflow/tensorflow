@@ -69,7 +69,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
       : platform_id_(platform_id),
         platform_name_(platform_name),
         platform_version_(platform_version),
-        gpu_topology_(gpu_device_ids),
+        gpu_topology_(gpu_device_ids, platform_version),
         attributes_(attributes) {}
 
   bool operator==(const StreamExecutorGpuTopologyDescription& other) const {

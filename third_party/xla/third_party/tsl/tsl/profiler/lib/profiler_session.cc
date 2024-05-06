@@ -56,13 +56,13 @@ ProfileOptions GetOptions(const ProfileOptions& opts) {
   return absl::WrapUnique(new ProfilerSession(options));
 }
 
-Status ProfilerSession::Status() {
+absl::Status ProfilerSession::Status() {
   mutex_lock l(mutex_);
   return status_;
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status ProfilerSession::CollectDataInternal(XSpace* space) {
+absl::Status ProfilerSession::CollectDataInternal(XSpace* space) {
   mutex_lock l(mutex_);
   TF_RETURN_IF_ERROR(status_);
   LOG(INFO) << "Profiler session collecting data.";
@@ -74,17 +74,17 @@ Status ProfilerSession::CollectDataInternal(XSpace* space) {
   }
   // Allow another session to start.
   profiler_lock_.ReleaseIfActive();
-  return OkStatus();
+  return absl::OkStatus();
 }
 #endif
 
-Status ProfilerSession::CollectData(XSpace* space) {
+absl::Status ProfilerSession::CollectData(XSpace* space) {
 #if !defined(IS_MOBILE_PLATFORM)
   space->add_hostnames(port::Hostname());
   TF_RETURN_IF_ERROR(CollectDataInternal(space));
   profiler::PostProcessSingleHostXSpace(space, start_time_ns_, stop_time_ns_);
 #endif
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 ProfilerSession::ProfilerSession(const ProfileOptions& options)

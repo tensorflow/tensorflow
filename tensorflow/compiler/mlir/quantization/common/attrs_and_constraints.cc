@@ -42,14 +42,14 @@ namespace mlir::quant {
 using ::mlir::stablehlo::DotGeneralOp;
 
 bool HasStaticShape(Value value) {
-  auto shaped_type = value.getType().dyn_cast<ShapedType>();
+  auto shaped_type = mlir::dyn_cast<ShapedType>(value.getType());
   if (!shaped_type) return false;
 
   return shaped_type.hasStaticShape();
 }
 
 bool HasStaticShapeAtDims(Value value, const ArrayRef<int> dims) {
-  auto shaped_type = value.getType().dyn_cast<ShapedType>();
+  auto shaped_type = mlir::dyn_cast<ShapedType>(value.getType());
   if (!shaped_type || !shaped_type.hasRank()) return false;
 
   for (auto dim : dims) {
@@ -59,9 +59,9 @@ bool HasStaticShapeAtDims(Value value, const ArrayRef<int> dims) {
 }
 
 Type CloneTypeWithNewElementType(Type old_type, Type element_type) {
-  if (!old_type.isa<ShapedType>()) return {};
+  if (!mlir::isa<ShapedType>(old_type)) return {};
 
-  return old_type.cast<ShapedType>().clone(element_type);
+  return mlir::cast<ShapedType>(old_type).clone(element_type);
 }
 
 SmallVector<Value> CloneOpWithReplacedOperands(
@@ -133,9 +133,11 @@ absl::StatusOr<bool> IsDotGeneralFullyConnected(DotGeneralOp dot_general_op) {
   const ArrayRef<int64_t> rhs_contracting_dims =
       dot_dimension_numbers.getRhsContractingDimensions();
   const int64_t input_rank =
-      dot_general_op.getOperand(0).getType().dyn_cast<ShapedType>().getRank();
+      mlir::dyn_cast<ShapedType>(dot_general_op.getOperand(0).getType())
+          .getRank();
   const int64_t filter_rank =
-      dot_general_op.getOperand(1).getType().dyn_cast<ShapedType>().getRank();
+      mlir::dyn_cast<ShapedType>(dot_general_op.getOperand(1).getType())
+          .getRank();
   // The following conditions are such requirements:
   //   - rank(lhs) is 1 or 2
   //   - rank(rhs) = 2
@@ -164,7 +166,8 @@ std::optional<int64_t> GetDotGeneralQuantizationDim(
     DotGeneralOp dot_general_op) {
   if (dot_general_op == nullptr) return std::nullopt;
   const int64_t filter_rank =
-      dot_general_op.getOperand(1).getType().dyn_cast<ShapedType>().getRank();
+      mlir::dyn_cast<ShapedType>(dot_general_op.getOperand(1).getType())
+          .getRank();
 
   // To quantize rhs per-channel, we currently only consider the case where
   // `stablehlo.dot_general` is legalizable to `tfl.fully_connected`.

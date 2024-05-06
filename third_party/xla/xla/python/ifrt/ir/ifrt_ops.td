@@ -40,6 +40,7 @@ def Ifrt_ReshardOp : Ifrt_Op<"Reshard", [NestedInIfrtFunc]> {
 
   let arguments = (ins
     Ifrt_ArrayType:$input,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$donated,
     Variadic<Ifrt_ControlType>:$control_inputs);
   let results = (outs
     Ifrt_ArrayType:$output);

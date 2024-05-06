@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -101,7 +102,7 @@ YieldOp CreateCall(Operation* op, func::FuncOp func, Region& caller_region,
 
 // Converts the condition for an IfOp/WhileOp to a boolean value.
 Value ConvertConditionToBoolean(Operation* op, Value cond) {
-  if (auto ranked_type = cond.getType().dyn_cast<RankedTensorType>())
+  if (auto ranked_type = mlir::dyn_cast<RankedTensorType>(cond.getType()))
     if (ranked_type.getRank() == 0 &&
         ranked_type.getElementType().isSignlessInteger(1))
       return cond;

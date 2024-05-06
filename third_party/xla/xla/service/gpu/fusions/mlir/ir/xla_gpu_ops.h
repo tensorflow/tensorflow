@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project  // IWYU pragma : keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project  // IWYU pragma : keep
+#include "xla/service/gpu/model/indexing_map.h"
 
 #define GET_OP_CLASSES
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.h.inc"

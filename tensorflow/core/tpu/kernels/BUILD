@@ -160,7 +160,6 @@ cc_library(
         ":sparse_core_ops_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -169,6 +168,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_highway//:hwy",
         "@com_google_highway//hwy/contrib/sort:vqsort",
+        "@local_tsl//tsl/profiler/lib:traceme",
         "@local_xla//xla:util",
         "@local_xla//xla/stream_executor/tpu:tpu_api",
         "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
@@ -986,6 +986,7 @@ cc_library(
     name = "tpu_embedding_ops",
     srcs = ["tpu_embedding_ops.cc"],
     deps = [
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
         "//tensorflow/compiler/tf2xla:xla_helpers",

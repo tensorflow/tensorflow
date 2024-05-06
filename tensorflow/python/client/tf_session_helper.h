@@ -34,13 +34,13 @@ namespace tensorflow {
 
 // A NameVector is a vector of tensor or operation names, as borrowed
 // C strings.
-typedef tensorflow::gtl::InlinedVector<const char*, 8> NameVector;
+typedef absl::InlinedVector<const char*, 8UL> NameVector;
 
 // A PyObjectVector is a vector of borrowed pointers to PyObjects.
-typedef tensorflow::gtl::InlinedVector<PyObject*, 8> PyObjectVector;
+typedef absl::InlinedVector<PyObject*, 8UL> PyObjectVector;
 
 // A TF_TensorVector is a vector of borrowed pointers to TF_Tensors.
-typedef gtl::InlinedVector<TF_Tensor*, 8> TF_TensorVector;
+typedef absl::InlinedVector<TF_Tensor*, 8UL> TF_TensorVector;
 
 TF_Session* TF_NewSessionRef(TF_Graph* graph, const TF_SessionOptions* opts,
                              TF_Status* status);
@@ -139,7 +139,7 @@ string EqualAttrValueWrapper(const string& actual, const string& expected);
 // dimension".  Sets unknown_shape to false.
 //
 // If shape is unknown, sets unknown_shape to true.
-tensorflow::gtl::InlinedVector<int64_t, 6> TF_GraphGetTensorShapeHelper(
+absl::InlinedVector<int64_t, 6UL> TF_GraphGetTensorShapeHelper(
     TF_Graph* graph, TF_Output output, TF_Status* status, bool* unknown_shape);
 
 // Runs the graph associated with the session starting with the supplied inputs.

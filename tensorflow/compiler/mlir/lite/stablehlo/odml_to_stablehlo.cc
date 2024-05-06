@@ -63,7 +63,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "xla/mlir/framework/transforms/passes.h"
-#include "xla/mlir_hlo/lhlo/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/core/platform/errors.h"
@@ -156,7 +155,7 @@ opt<std::string> exported_model_signatures(
 namespace mlir {
 namespace odml {
 
-tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
+absl::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
     const std::string& input_path, MLIRContext* context,
     llvm::SourceMgr* source_mgr,
     std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle) {
@@ -215,7 +214,7 @@ tensorflow::Status ExportModule(mlir::ModuleOp module,
   output->os() << result;
   output->keep();
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status ConvertTFToStableHLO(
@@ -261,7 +260,7 @@ tensorflow::Status ConvertTFToStableHLO(
     return tensorflow::errors::Aborted("Lowering to StableHLO failed.");
   }
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
@@ -352,7 +351,6 @@ void initAllPasses() {
   mlir::registerAllPasses();
   mlir::registerTensorFlowPasses();
   mlir::mhlo::registerAllMhloPasses();
-  mlir::lmhlo::registerAllLmhloPasses();
   // These are in compiler/mlir/tf2xla and not part of the above MHLO passes.
   mlir::mhlo::registerTfXlaPasses();
   mlir::mhlo::registerLegalizeTFPass();

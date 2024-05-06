@@ -16,18 +16,28 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_HELPERS_H_
 #define XLA_PJRT_C_PJRT_C_API_HELPERS_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/xla_data.pb.h"
 
@@ -99,6 +109,14 @@ using PJRT_TopologyDescriptionDeleter =
 // The lifetime of the Api pointed to must be longer than the client.
 PJRT_TopologyDescriptionDeleter MakeTopologyDescriptionDeleter(
     const PJRT_Api* api);
+
+using PJRT_Layouts_MemoryLayoutDeleter =
+    std::function<void(PJRT_Layouts_MemoryLayout*)>;
+
+// The lifetime of `api` must be longer than the layout object to be
+// deleted. This function requires that `api` includes the PJRT_Layouts
+// extension.
+PJRT_Layouts_MemoryLayoutDeleter MakeMemoryLayoutDeleter(const PJRT_Api* api);
 
 // Fatal error logging if status is not success. This terminates the process
 // and frees the PJRT_Error passed in.
@@ -262,8 +280,8 @@ absl::StatusOr<xla::Layout> ConvertToLayout(
 PJRT_Buffer_Type GetElementType(const PJRT_Api* api, PJRT_Buffer* buffer);
 absl::Span<const int64_t> GetDimensions(const PJRT_Api* api,
                                         PJRT_Buffer* buffer);
-PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
-                                         PJRT_Buffer* buffer);
+std::unique_ptr<PJRT_Layouts_MemoryLayout, PJRT_Layouts_MemoryLayoutDeleter>
+GetMemoryLayout(const PJRT_Api* api, PJRT_Buffer* buffer);
 
 absl::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
                                               const int64_t* dims,

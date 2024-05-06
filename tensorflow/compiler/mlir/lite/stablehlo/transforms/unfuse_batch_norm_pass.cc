@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
@@ -60,7 +61,8 @@ Value broadcastToFeatureDim(Location loc, RankedTensorType result_type,
 
 // Gets the shape of operand, assuming it is a dynamic shape with static rank.
 Value getShapeValue(Location loc, Value operand, PatternRewriter &rewriter) {
-  RankedTensorType resultType = operand.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType resultType =
+      mlir::dyn_cast<RankedTensorType>(operand.getType());
   return rewriter.create<shape::ShapeOfOp>(
       loc,
       RankedTensorType::get(/*shape=*/{resultType.getRank()},
@@ -92,8 +94,8 @@ Value materializeEpsilon(Operation *op, FloatAttr epsilon_attr,
   }
 
   auto scalar_type = RankedTensorType::get(/*shape=*/{}, fp_type);
-  auto epsilon_tensor_attr =
-      DenseElementsAttr::get(scalar_type, {epsilon_attr.cast<Attribute>()});
+  auto epsilon_tensor_attr = DenseElementsAttr::get(
+      scalar_type, {mlir::cast<Attribute>(epsilon_attr)});
   Value epsilon = b.create<mhlo::ConstantOp>(epsilon_tensor_attr);
   auto dims_type = RankedTensorType::get(/*shape=*/{0}, b.getIntegerType(64));
   auto dims = DenseIntElementsAttr::get(dims_type, SmallVector<int64_t, 1>{});
@@ -113,7 +115,7 @@ class UnfuseBatchNormTrainingPattern
   LogicalResult matchAndRewrite(mhlo::BatchNormTrainingOp bn_op,
                                 PatternRewriter &rewriter) const override {
     auto inputs = bn_op.getOperand();
-    auto input_type = inputs.getType().dyn_cast<RankedTensorType>();
+    auto input_type = mlir::dyn_cast<RankedTensorType>(inputs.getType());
     if (!input_type) {
       return failure();
     }
@@ -172,13 +174,14 @@ class UnfuseBatchNormInferencePattern
     // Enforce type invariants.
     // Note that we deduce the actual element type from the variance,
     // which should not be subject to quantization at a higher level.
-    auto input_type = bn_op.getOperand().getType().dyn_cast<RankedTensorType>();
+    auto input_type =
+        mlir::dyn_cast<RankedTensorType>(bn_op.getOperand().getType());
     auto variance_type =
-        bn_op.getVariance().getType().dyn_cast<RankedTensorType>();
+        mlir::dyn_cast<RankedTensorType>(bn_op.getVariance().getType());
     if (!input_type || !variance_type) {
       return failure();
     }
-    auto fp_type = variance_type.getElementType().dyn_cast<FloatType>();
+    auto fp_type = mlir::dyn_cast<FloatType>(variance_type.getElementType());
     if (!fp_type) {
       return failure();
     }

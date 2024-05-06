@@ -149,8 +149,31 @@ bool Needs64Bits(const Shape& shape) {
                          : absl::c_any_of(shape.tuple_shapes(), Needs64Bits);
 }
 
+bool Is64BitIndex(const HloInstruction* instr, int operand) {
+  const auto& shape = instr->operand(operand)->shape();
+  return shape.element_type() == PrimitiveType::S64 ||
+         shape.element_type() == PrimitiveType::U64;
+}
+
 bool Needs64BitIndices(const HloComputation* computation) {
   for (auto* instr : computation->instructions()) {
+    // Check if any HLO instructions directly take 64 bit indices as operands.
+    switch (instr->opcode()) {
+      case HloOpcode::kDynamicSlice:
+      case HloOpcode::kDynamicUpdateSlice:
+        for (int i = 1; i < instr->operand_count(); ++i) {
+          if (Is64BitIndex(instr, i)) return true;
+        }
+        break;
+      case HloOpcode::kGather:
+      case HloOpcode::kScatter:
+        CHECK(instr->shape().IsArray()) << "Variadic scatter is unsupported.";
+        if (Is64BitIndex(instr, 1)) return true;
+        break;
+      default:
+        break;
+    }
+
     if (Needs64Bits(instr->shape()) ||
         absl::c_any_of(instr->called_computations(), Needs64BitIndices)) {
       return true;
@@ -270,7 +293,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
   pm.addPass(CreatePropagateSliceIndicesPass());
-  pm.addPass(CreateLowerFuncPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateConvertPureCallOpsPass());
   pm.addPass(CreateLowerXlaGpuToScfPass());
   pm.addPass(CreateLowerTensorsPass(
       is_amd, is_amd ? device.rocm_compute_capability().gcn_arch_name()
@@ -436,23 +459,31 @@ SmallVector<Value> MlirFusionEmitterBase::EmitThreadLoopNest(
 absl::Status MlirFusionEmitterBase::EmitMlir(
     mlir::ModuleOp module, mlir::func::FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
-  std::optional<mlir_converter::EpilogueSpecification> epilogue =
-      GetEpilogue(fusion, module->getContext());
+  std::vector<mlir_converter::EpilogueSpecification> epilogues =
+      GetEpilogues(fusion, module->getContext());
   mlir_converter::PartitionedComputations computations(
-      fusion.fused_instructions_computation(), module->getContext(), epilogue);
+      fusion.fused_instructions_computation(), module->getContext(), epilogues);
   auto subgraph_to_mlir_fn = computations.DeclareFunctions(module);
 
   // Erase subgraphs for all heroes that aren't used anywhere else. This is
   // necessary because the instructions may not have elemental implementations
   // (scatter).
-  if (epilogue) {
-    for (auto* custom : epilogue->heroes) {
+  for (const auto& epilogue : epilogues) {
+    for (auto* custom : epilogue.heroes) {
       if (custom->user_count() == 0) {
         subgraph_to_mlir_fn.extract(&computations.FindSubgraph(custom))
             .mapped()
             .erase();
       }
     }
+  }
+
+  // The epilogue functions replace the root tuple.
+  auto* root = fusion.fused_instructions_computation()->root_instruction();
+  if (!epilogues.empty() && root->opcode() == HloOpcode::kTuple) {
+    subgraph_to_mlir_fn.extract(&computations.FindSubgraph(root))
+        .mapped()
+        .erase();
   }
 
   auto call_targets =
@@ -465,11 +496,11 @@ absl::Status MlirFusionEmitterBase::EmitMlir(
       }
     }
   }
-  if (const auto& epilogue = computations.epilogue()) {
+  for (const auto& epilogue : computations.epilogues()) {
     TF_RETURN_IF_ERROR(mlir_converter::SubgraphToMlirFunction(
         computations.FindPartitionedComputation(
             fusion.fused_instructions_computation()),
-        *epilogue, subgraph_to_mlir_fn[&*epilogue], call_targets));
+        epilogue, subgraph_to_mlir_fn[&epilogue], call_targets));
   }
 
   int index_bitwidth =
@@ -484,25 +515,38 @@ absl::Status MlirFusionEmitterBase::EmitMlir(
   return EmitEntryFunction(computations, call_targets, entry_function, fusion);
 }
 
-mlir::ValueRange MlirFusionEmitterBase::EmitEpilogue(
+absl::flat_hash_map<const HloInstruction*, ValueRange>
+MlirFusionEmitterBase::EmitEpilogue(
+    int epilogue_index,
     const mlir_converter::PartitionedComputations& computations,
-    mlir::func::FuncOp entry_fn, mlir::ValueRange hero_values,
-    mlir::ValueRange output_indices,
-    mlir::ImplicitLocOpBuilder& builder) const {
-  const auto& epilogue = computations.epilogue();
-  if (!epilogue) {
-    return hero_values;
+    mlir::func::FuncOp entry_fn,
+    const absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>&
+        injected,
+    ValueRange output_indices, mlir::ImplicitLocOpBuilder& builder) const {
+  const auto& epilogue = computations.epilogues().at(epilogue_index);
+  auto epilogue_fn = mlir::cast<mlir::func::FuncOp>(
+      entry_fn->getParentOfType<mlir::ModuleOp>().lookupSymbol(epilogue.name));
+  SmallVector<Value> operands = ValueRange(entry_fn.getArguments().take_front(
+      computations.fusion()->num_parameters()));
+  absl::c_copy(output_indices, std::back_inserter(operands));
+  int injected_offset = operands.size();
+  operands.resize(injected_offset + epilogue.num_injected_values);
+  for (auto [injected_instruction, start] : epilogue.injected_value_starts) {
+    absl::c_copy(injected.at(injected_instruction),
+                 operands.begin() + injected_offset + start);
   }
 
-  auto epilogue_fn = mlir::cast<mlir::func::FuncOp>(
-      entry_fn->getParentOfType<mlir::ModuleOp>().lookupSymbol(epilogue->name));
-  SmallVector<Value> operands =
-      mlir::ValueRange(entry_fn.getArguments().take_front(
-          computations.fusion()->num_parameters()));
-  absl::c_copy(output_indices, std::back_inserter(operands));
-  absl::c_copy(hero_values, std::back_inserter(operands));
-
-  return builder.create<PureCallOp>(epilogue_fn, operands).getResults();
+  ValueRange results =
+      builder.create<PureCallOp>(epilogue_fn, operands).getResults();
+  absl::flat_hash_map<const HloInstruction*, ValueRange> results_per_root;
+  for (auto* root : epilogue.roots) {
+    int arity =
+        root->shape().IsTuple() ? root->shape().tuple_shapes().size() : 1;
+    results_per_root[root] = results.take_front(arity);
+    results = results.drop_front(arity);
+  }
+  CHECK_EQ(results.size(), 0);
+  return results_per_root;
 }
 
 }  // namespace gpu

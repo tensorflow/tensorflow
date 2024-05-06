@@ -110,7 +110,8 @@ class NameCompressPass : public impl::NameCompressBase<NameCompressPass> {
       arg_attrs.reserve(func.getNumArguments());
       // Iterate over the function arguments, skipping the control tokens.
       for (int i = 0, e = func.getNumArguments(); i != e; i += 2) {
-        NamedAttrList attrs = func.getArgAttrsAttr()[i].cast<DictionaryAttr>();
+        NamedAttrList attrs =
+            mlir::cast<DictionaryAttr>(func.getArgAttrsAttr()[i]);
         attrs.set(dialect_->getTfgNameAttrIdentifier(), encode_new_name());
         arg_attrs.append({attrs.getDictionary(&getContext()), empty_dict_});
       }

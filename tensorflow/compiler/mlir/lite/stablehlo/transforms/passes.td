@@ -114,3 +114,9 @@ def CompositeLoweringPass : Pass<"composite-lowering", "ModuleOp"> {
   let dependentDialects = ["mlir::mhlo::MhloDialect", "TFL::TensorFlowLiteDialect"];
   let constructor = "mlir::odml::CreateCompositeLoweringPass()";
 }
+
+def TransposeCommuteOpsPass : Pass<"transpose-commute-ops", "ModuleOp"> {
+  let summary = "Move transpose through specific ops";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+  let constructor = "mlir::odml::CreateTransposeCommuteOpsPass()";
+}

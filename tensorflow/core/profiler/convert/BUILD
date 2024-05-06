@@ -736,6 +736,7 @@ cc_library(
         ":xplane_to_hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/protobuf:memory_viewer_preprocess_proto_cc",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/service:hlo_proto_cc",
     ],

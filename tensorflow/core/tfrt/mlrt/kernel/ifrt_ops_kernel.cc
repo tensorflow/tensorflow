@@ -49,11 +49,11 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel_runner_utils.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/tstring.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 using tensorflow::ifrt_serving::IfrtModelContext;
-using tensorflow::ifrt_serving::VariableDeviceShardingConfigProto;
 
 namespace tensorflow {
 namespace tf_mlrt {
@@ -153,7 +153,7 @@ void MlrtIfrtRestoreVariableKernel::Invoke() {
 
     tfrt_stub::OpKernelRunState run_state;
     OpKernelContext context;
-    std::vector<xla::ifrt::Promise<absl::StatusOr<tensorflow::Tensor>>> results;
+    std::vector<xla::ifrt::Promise<tensorflow::Tensor>> results;
   };
   auto async_state =
       std::make_unique<AsyncState>(input_tf_tensor_values, params, num_outputs);
@@ -163,10 +163,8 @@ void MlrtIfrtRestoreVariableKernel::Invoke() {
   ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry =
       (*ifrt_model_context)->GetRestoreTensorRegistry();
   for (int i = 0; i < num_outputs; ++i) {
-    auto promise =
-        xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>::CreatePromise();
-    auto future =
-        xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(promise);
+    auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
+    auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
     const ResourceHandle& var_handle =
         var_handles()[i].tensor().scalar<ResourceHandle>()();
     absl::StatusOr<ifrt_serving::DtypeAndShape> dtype_and_shape =
@@ -180,7 +178,8 @@ void MlrtIfrtRestoreVariableKernel::Invoke() {
     std::string runtime_name =
         ifrt_serving::GetRuntimeNameFromVarHandle(var_handle);
     ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
-        restored_tensor_info = {*std::move(dtype_and_shape), std::move(future)};
+        restored_tensor_info = {false, *std::move(dtype_and_shape),
+                                std::move(future)};
     if (auto status = ifrt_restore_tensor_registry.TryRegister(
             runtime_name, restored_tensor_info);
         !status.ok()) {
@@ -234,8 +233,13 @@ class MlrtIfrtLoadVariableKernel : public mlrt::KernelFrame {
   }
 
   absl::string_view sharding_config_proto_text() const {
-    DCHECK_EQ(attributes().size(), 2);
+    DCHECK_EQ(attributes().size(), 3);
     return attributes().GetAs<mlrt::bc::String>(0).Get();
+  }
+
+  bool used_by_host() const {
+    DCHECK_EQ(attributes().size(), 3);
+    return attributes().GetAs<bool>(2);
   }
 
   Context& context() { return execution_context().GetUserContext<Context>(); }
@@ -272,7 +276,12 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
   std::string runtime_name = ifrt_serving::GetRuntimeNameFromVarHandle(
       variable_handler_tensor().scalar<ResourceHandle>()());
 
-  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_tensor_future =
+  if (used_by_host()) {
+    TF_RETURN_IF_ERROR(
+        ifrt_restore_tensor_registry.SetUsedByHost(runtime_name));
+  }
+
+  xla::ifrt::Future<tensorflow::Tensor> restored_tensor_future =
       ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
 
   restored_tensor_future.OnReady(

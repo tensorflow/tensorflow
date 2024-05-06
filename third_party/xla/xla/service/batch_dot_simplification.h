@@ -31,7 +31,7 @@ class BatchDotSimplification : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-  absl::string_view name() const override;
+  absl::string_view name() const override { return "batch-dot-simplification"; }
 
  private:
   absl::StatusOr<bool> ElideDegenerateBatchDimensionFromBatchDot(

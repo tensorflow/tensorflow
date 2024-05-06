@@ -59,7 +59,8 @@ NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
 absl::Status NcclSendThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(NcclCollectiveThunk::Initialize(params));
   if (execution_counters_) {
-    TF_RETURN_IF_ERROR(execution_counters_->Initialize(params.executor));
+    TF_RETURN_IF_ERROR(execution_counters_->Initialize(
+        params.executor, params.collective_params->run_id));
   }
   return absl::OkStatus();
 }
@@ -111,8 +112,9 @@ absl::Status NcclSendThunk::RunNcclCollective(
     if (config_.validation_kind ==
         NcclP2PConfig::ValidationKind::kConditional) {
       se::StreamExecutor* executor = params.stream->parent();
-      TF_ASSIGN_OR_RETURN(int64_t * counter,
-                          execution_counters_->GetCounter(executor));
+      TF_ASSIGN_OR_RETURN(int64_t* counter,
+                          execution_counters_->GetCounter(
+                              executor, params.collective_params->run_id));
       auto it = config_.source_target_to_bounds.find(
           std::make_pair(current_id, *source_target.target));
       if (it == config_.source_target_to_bounds.end()) {

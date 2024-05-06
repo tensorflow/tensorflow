@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/ffi/ffi.h"
 
+#include <complex>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -108,24 +109,40 @@ TEST(FfiTest, WrongNumAttrs) {
 
 TEST(FfiTest, BuiltinAttributes) {
   CallFrameBuilder::AttributesBuilder attrs;
-  attrs.Insert("i32", 42);
+  attrs.Insert("pred", true);
+  attrs.Insert("i8", static_cast<int8_t>(42));
+  attrs.Insert("i16", static_cast<int16_t>(42));
+  attrs.Insert("i32", static_cast<int32_t>(42));
+  attrs.Insert("i64", static_cast<int64_t>(42));
   attrs.Insert("f32", 42.0f);
+  attrs.Insert("f64", 42.0);
   attrs.Insert("str", "foo");
 
   CallFrameBuilder builder;
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
-  auto fn = [&](int32_t i32, float f32, std::string_view str) {
+  auto fn = [&](bool pred, int8_t i8, int16_t i16, int32_t i32, int64_t i64,
+                float f32, double f64, std::string_view str) {
+    EXPECT_EQ(pred, true);
+    EXPECT_EQ(i8, 42);
+    EXPECT_EQ(i16, 42);
     EXPECT_EQ(i32, 42);
+    EXPECT_EQ(i64, 42);
     EXPECT_EQ(f32, 42.0f);
+    EXPECT_EQ(f64, 42.0);
     EXPECT_EQ(str, "foo");
     return absl::OkStatus();
   };
 
   auto handler = Ffi::Bind()
+                     .Attr<bool>("pred")
+                     .Attr<int8_t>("i8")
+                     .Attr<int16_t>("i16")
                      .Attr<int32_t>("i32")
+                     .Attr<int64_t>("i64")
                      .Attr<float>("f32")
+                     .Attr<double>("f64")
                      .Attr<std::string_view>("str")
                      .To(fn);
 
@@ -163,22 +180,36 @@ TEST(FfiTest, BuiltinAttributesAutoBinding) {
 
 TEST(FfiTest, ArrayAttr) {
   CallFrameBuilder::AttributesBuilder attrs;
-  attrs.Insert("arr", std::vector<int32_t>({1, 2, 3, 4}));
+  attrs.Insert("arr0", std::vector<int8_t>({1, 2, 3, 4}));
+  attrs.Insert("arr1", std::vector<int16_t>({1, 2, 3, 4}));
+  attrs.Insert("arr2", std::vector<int32_t>({1, 2, 3, 4}));
+  attrs.Insert("arr3", std::vector<int64_t>({1, 2, 3, 4}));
+  attrs.Insert("arr4", std::vector<float>({1, 2, 3, 4}));
+  attrs.Insert("arr5", std::vector<double>({1, 2, 3, 4}));
 
   CallFrameBuilder builder;
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
-  auto fn = [&](absl::Span<const int32_t> arr) {
-    EXPECT_EQ(arr.size(), 4);
-    EXPECT_EQ(arr[0], 1);
-    EXPECT_EQ(arr[1], 2);
-    EXPECT_EQ(arr[2], 3);
-    EXPECT_EQ(arr[3], 4);
+  auto fn = [&](auto arr0, auto arr1, auto arr2, auto arr3, auto arr4,
+                auto arr5) {
+    EXPECT_EQ(arr0, absl::Span<const int8_t>({1, 2, 3, 4}));
+    EXPECT_EQ(arr1, absl::Span<const int16_t>({1, 2, 3, 4}));
+    EXPECT_EQ(arr2, absl::Span<const int32_t>({1, 2, 3, 4}));
+    EXPECT_EQ(arr3, absl::Span<const int64_t>({1, 2, 3, 4}));
+    EXPECT_EQ(arr4, absl::Span<const float>({1, 2, 3, 4}));
+    EXPECT_EQ(arr5, absl::Span<const double>({1, 2, 3, 4}));
     return absl::OkStatus();
   };
 
-  auto handler = Ffi::Bind().Attr<absl::Span<const int32_t>>("arr").To(fn);
+  auto handler = Ffi::Bind()
+                     .Attr<absl::Span<const int8_t>>("arr0")
+                     .Attr<absl::Span<const int16_t>>("arr1")
+                     .Attr<absl::Span<const int32_t>>("arr2")
+                     .Attr<absl::Span<const int64_t>>("arr3")
+                     .Attr<absl::Span<const float>>("arr4")
+                     .Attr<absl::Span<const double>>("arr5")
+                     .To(fn);
   auto status = Call(*handler, call_frame);
 
   TF_ASSERT_OK(status);
@@ -422,7 +453,7 @@ TEST(FfiTest, BufferBaseArgument) {
 
 TEST(FfiTest, TypedAndRankedBufferArgument) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceMemoryBase memory(storage.data(), storage.size() * sizeof(float));
 
   CallFrameBuilder builder;
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -430,6 +461,7 @@ TEST(FfiTest, TypedAndRankedBufferArgument) {
 
   auto fn = [&](BufferR2<PrimitiveType::F32> buffer) {
     EXPECT_EQ(buffer.data.opaque(), storage.data());
+    EXPECT_EQ(buffer.data.ElementCount(), storage.size());
     EXPECT_EQ(buffer.dimensions.size(), 2);
     return absl::OkStatus();
   };
@@ -445,6 +477,43 @@ TEST(FfiTest, TypedAndRankedBufferArgument) {
     auto status = Call(*handler, call_frame);
     TF_ASSERT_OK(status);
   }
+}
+
+TEST(FfiTest, ComplexBufferArgument) {
+  std::vector<std::complex<float>> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(),
+                              storage.size() * sizeof(std::complex<float>));
+
+  CallFrameBuilder builder;
+  builder.AddBufferArg(memory, PrimitiveType::C64, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto fn = [&](BufferR2<PrimitiveType::C64> buffer) {
+    EXPECT_EQ(buffer.data.opaque(), storage.data());
+    EXPECT_EQ(buffer.dimensions.size(), 2);
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Arg<BufferR2<PrimitiveType::C64>>().To(fn);
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, TokenArgument) {
+  CallFrameBuilder builder;
+  builder.AddBufferArg(se::DeviceMemoryBase(), PrimitiveType::TOKEN,
+                       /*dims=*/{});
+  auto call_frame = builder.Build();
+
+  auto fn = [&](Token tok) {
+    EXPECT_EQ(tok.data.opaque(), nullptr);
+    EXPECT_EQ(tok.dimensions.size(), 0);
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Arg<Token>().To(fn);
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, WrongRankBufferArgument) {
@@ -498,6 +567,28 @@ TEST(FfiTest, RemainingArgs) {
   };
 
   auto handler = Ffi::Bind().RemainingArgs().To(fn);
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, RemainingRets) {
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder builder;
+  builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto fn = [&](Result<BufferBase> ret, RemainingResults rets) {
+    EXPECT_EQ(rets.size(), 1);
+    EXPECT_TRUE(rets.get<BufferBase>(0).has_value());
+    EXPECT_FALSE(rets.get<BufferBase>(1).has_value());
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Ret<BufferBase>().RemainingResults().To(fn);
   auto status = Call(*handler, call_frame);
 
   TF_ASSERT_OK(status);

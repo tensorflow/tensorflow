@@ -488,6 +488,11 @@ absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
     throw XlaRuntimeError(
         "DLPack is supported for PjRt-compatible backends only.");
   }
+  if (!device->IsAddressable()) {
+    throw XlaRuntimeError(
+        "DLPack is only supported for devices addressable by the current "
+        "process.");
+  }
   if (std::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
         "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "

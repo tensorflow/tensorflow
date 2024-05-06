@@ -94,9 +94,11 @@ TEST_F(ConvertAssetArgsTest, ConvertsSingleAssetArg) {
   EXPECT_THAT(arg_attrs.get("tf_saved_model.bound_input"), IsNull());
 
   const ArrayRef<Attribute> index_path_attrs =
-      arg_attrs.get("tf_saved_model.index_path").cast<ArrayAttr>().getValue();
+      mlir::cast<ArrayAttr>(arg_attrs.get("tf_saved_model.index_path"))
+          .getValue();
   EXPECT_THAT(index_path_attrs, SizeIs(1));
-  StringAttr index_path = index_path_attrs[0].dyn_cast_or_null<StringAttr>();
+  StringAttr index_path =
+      mlir::dyn_cast_or_null<StringAttr>(index_path_attrs[0]);
   EXPECT_THAT(index_path, NotNull());
   EXPECT_THAT(index_path, Eq("arg_0:0"));
 }
@@ -122,9 +124,11 @@ TEST_F(ConvertAssetArgsTest, NonBoundedArgsNotModified) {
   EXPECT_THAT(arg_attrs.get("tf_saved_model.bound_input"), IsNull());
 
   const ArrayRef<Attribute> index_path_attrs =
-      arg_attrs.get("tf_saved_model.index_path").cast<ArrayAttr>().getValue();
+      mlir::cast<ArrayAttr>(arg_attrs.get("tf_saved_model.index_path"))
+          .getValue();
   EXPECT_THAT(index_path_attrs, SizeIs(1));
-  StringAttr index_path = index_path_attrs[0].dyn_cast_or_null<StringAttr>();
+  StringAttr index_path =
+      mlir::dyn_cast_or_null<StringAttr>(index_path_attrs[0]);
   EXPECT_THAT(index_path, NotNull());
   EXPECT_THAT(index_path, Eq("arg_0:0"));
 }

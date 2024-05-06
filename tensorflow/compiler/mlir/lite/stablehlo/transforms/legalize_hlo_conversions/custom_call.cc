@@ -37,7 +37,7 @@ LogicalResult ConvertCustomCallOp::matchAndRewrite(
       rewriter.getStringAttr(mhlo_custom_call.getCallTargetName()));
 
   if (auto bc = mhlo_custom_call.getBackendConfig()) {
-    if (auto stringattr = bc->dyn_cast_or_null<mlir::StringAttr>()) {
+    if (auto stringattr = mlir::dyn_cast_or_null<mlir::StringAttr>(*bc)) {
       tfl_custom.setCustomOptionAttr(
           TFL::ConstBytesAttr::get(rewriter.getContext(), stringattr));
     }
@@ -53,7 +53,7 @@ LogicalResult ConvertCustomCallOp::matchAndRewrite(
 std::optional<bool> IsCustomCallLegal(mhlo::CustomCallOp op) {
   if (op.getCallTargetName().starts_with("custom_call.")) {
     auto bc = op.getBackendConfig();
-    if (!bc || bc->isa<mlir::StringAttr>()) {
+    if (!bc || mlir::isa<mlir::StringAttr>(*bc)) {
       return false;
     }
   }

@@ -121,7 +121,7 @@ class MlirTensor : public TracingTensorHandle {
 
   Value getValue() { return value_; }
   Type getElementType() {
-    return value_.getType().cast<ShapedType>().getElementType();
+    return mlir::cast<ShapedType>(value_.getType()).getElementType();
   }
 
   // For LLVM style RTTI.
@@ -340,11 +340,11 @@ Status MlirAbstractOp::SetOpName(const char* const op_name) {
 
 Status MlirAbstractOp::AddRef(Type type, Type* output_type) {
   Type elt_type = getElementTypeOrSelf(type);
-  if (elt_type.isa<mlir::TF::TensorFlowRefType>()) {
+  if (mlir::isa<mlir::TF::TensorFlowRefType>(elt_type)) {
     return InvalidArgument("Requested reference to a reference type");
   }
   elt_type = TensorFlowRefType::get(elt_type);
-  if (RankedTensorType tensor_type = type.dyn_cast<RankedTensorType>()) {
+  if (RankedTensorType tensor_type = mlir::dyn_cast<RankedTensorType>(type)) {
     *output_type = RankedTensorType::get(tensor_type.getShape(), elt_type);
   }
   *output_type = UnrankedTensorType::get(elt_type);
@@ -373,11 +373,11 @@ Status MlirAbstractOp::Create(ArrayRef<Value> operands,
         return InvalidArgument("Missing attribute '", output_arg.number_attr(),
                                "' required for output list '",
                                output_arg.name(), "'");
-      if (!repeats_attr.isa<IntegerAttr>())
+      if (!mlir::isa<IntegerAttr>(repeats_attr))
         return InvalidArgument("Attribute '", output_arg.number_attr(),
                                "' required for output list '",
                                output_arg.name(), "' isn't an integer");
-      int64_t repeats = repeats_attr.cast<IntegerAttr>().getInt();
+      int64_t repeats = mlir::cast<IntegerAttr>(repeats_attr).getInt();
 
       if (!output_arg.type_attr().empty()) {
         // Same type repeated "repeats" times.
@@ -386,7 +386,7 @@ Status MlirAbstractOp::Create(ArrayRef<Value> operands,
           return InvalidArgument("Missing attribute '", output_arg.type_attr(),
                                  "' required for output '", output_arg.name(),
                                  "'");
-        TypedAttr type_attr = attr.dyn_cast<TypedAttr>();
+        TypedAttr type_attr = mlir::dyn_cast<TypedAttr>(attr);
         if (!type_attr)
           return InvalidArgument("Attribute '", output_arg.type_attr(),
                                  "' required for output '", output_arg.name(),
@@ -410,7 +410,7 @@ Status MlirAbstractOp::Create(ArrayRef<Value> operands,
         return InvalidArgument("Missing attribute '", output_arg.type_attr(),
                                "' required for output '", output_arg.name(),
                                "'");
-      TypeAttr type_attr = attr.dyn_cast<TypeAttr>();
+      TypeAttr type_attr = mlir::dyn_cast<TypeAttr>(attr);
       if (!type_attr)
         return InvalidArgument("Attribute '", output_arg.type_attr(),
                                "' required for output '", output_arg.name(),
@@ -423,13 +423,13 @@ Status MlirAbstractOp::Create(ArrayRef<Value> operands,
         return InvalidArgument(
             "Missing attribute '", output_arg.type_list_attr(),
             "' required for output '", output_arg.name(), "'");
-      ArrayAttr array_attr = attr.dyn_cast<ArrayAttr>();
+      ArrayAttr array_attr = mlir::dyn_cast<ArrayAttr>(attr);
       if (!array_attr)
         return InvalidArgument("Attribute '", output_arg.type_list_attr(),
                                "' required for output '", output_arg.name(),
                                "' isn't an array attribute");
       for (Attribute attr : array_attr) {
-        TypeAttr type_attr = attr.dyn_cast<TypeAttr>();
+        TypeAttr type_attr = mlir::dyn_cast<TypeAttr>(attr);
         if (!type_attr)
           return InvalidArgument("Array Attribute '",
                                  output_arg.type_list_attr(),

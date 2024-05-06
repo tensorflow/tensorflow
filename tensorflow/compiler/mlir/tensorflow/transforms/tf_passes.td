@@ -193,56 +193,6 @@ def StackOpsDecompositionPass : Pass<"tf-stack-ops-decomposition", "ModuleOp"> {
 
 
 
-def TPUShardingIdentificationPass : Pass<"tf-tpu-sharding-identification", "ModuleOp"> {
-  let summary = "Identifies and handles inputs/outputs of TPU computation that is "
-           "sharded across logical cores.";
-  let constructor = "TFTPU::CreateTPUShardingIdentificationPass()";
-  let description = [{
-    Bubbles up sharding configuration from `cluster_func` regions into
-    the attributes of `cluster_func`. This is done by parsing the
-    `XlaSharding` / `TPUPartitionedOutput` / `TPUPartitionedInput` ops inside
-    `cluster_func`.
-
-    For example, given the following `cluster_func` wrapping `func`:
-
-    ```mlir
-      func @test(%arg0: tensor<*xi32>) {
-        "tf_device.cluster_func"(%arg0) {
-            func = @func,
-            step_marker_location = ""} : (tensor<*xi32>) -> tensor<*xi32>
-        return
-      }
-
-      func @func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
-        %0 = "tf.XlaSharding"(%arg0) {_XlaSharding = "\01\02\03",
-                                      sharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
-        %1 = "tf.A"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
-        return %1 : tensor<*xi32>
-      }
-    ```
-
-    Now, cluster_func receives the following `*_sharding_configuration`
-    attributes, and `func` receives the mhlo.sharding attribute:
-
-    ```mlir
-      func @test(%arg0: tensor<*xi32>) {
-        %0 = "tf_device.cluster_func"(%arg0) {
-            func = @func,
-            input_sharding_configuration = ["\01\02\03"],
-            output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"],
-            step_marker_location = ""} : (tensor<*xi32>) -> tensor<*xi32>
-        return
-      }
-      func @func(%arg0: tensor<*xi32> {mhlo.sharding = "\01\02\03"}) ->
-                (tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}) {
-        %0 = "tf.XlaSharding"(%arg0) {_XlaSharding = "\01\02\03", sharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
-        %1 = "tf.A"(%0) : (tensor<*xi32>) -> tensor<*xi32>
-        return %1 : tensor<*xi32>
-      }
-    ```
-  }];
-}
-
 def UnrollBatchMatMulPass : Pass<"tf-unroll-batch-matmul", "mlir::func::FuncOp"> {
   let summary = "Unroll TF BatchMatMul op into Reshape, Slice, MatMul, Pack ops.";
   let constructor = "TF::CreateUnrollBatchMatMulPassPass()";
@@ -381,7 +331,9 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
 
   let options = [
     Option<"max_iterations_", "max-iterations", "int64_t", /*default=*/"10",
-           "Maximum shape inference iterations">
+           "Maximum shape inference iterations">,
+    Option<"input_arg_shapes_", "input-arg-shapes", "std::string", /*default=*/"",
+           "Input tensor shapes. Shapes for different tensors are separated by ':', and dimension sizes for the same tensor are separated by ','">,
   ];
 }
 

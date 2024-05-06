@@ -288,3 +288,23 @@ cc_library(
         "//third_party/python_runtime:headers",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# cc_library(
+#     name = "pyclif_tensor",
+#     srcs = ["pyclif_tensor.cc"],
+#     hdrs = ["pyclif_tensor.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":ndarray_tensor",
+#         ":ndarray_tensor_bridge",
+#         ":safe_pyobject_ptr",
+#         "@com_google_absl//absl/log:check",
+#         "@com_google_absl//absl/status",
+#         "//third_party/clif/python:clif",
+#         "//third_party/python_runtime:headers",
+#         "@local_xla//xla/tsl/python/lib/core:numpy",
+#         "//tensorflow/core:framework",
+#     ],
+# )
+# copybara:uncomment_end

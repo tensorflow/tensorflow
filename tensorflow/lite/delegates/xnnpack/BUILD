@@ -514,6 +514,26 @@ cc_library(
 )
 
 cc_library(
+    name = "dynamically_quantized_transpose_conv_tester",
+    testonly = 1,
+    srcs = ["dynamically_quantized_transpose_conv_tester.cc"],
+    hdrs = ["dynamically_quantized_transpose_conv_tester.h"],
+    deps = [
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_library(
     name = "fully_connected_tester",
     testonly = 1,
     srcs = ["fully_connected_tester.cc"],
@@ -1366,6 +1386,23 @@ cc_test(
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite/c:c_api_types",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "dynamically_quantized_transpose_conv_test",
+    srcs = ["dynamically_quantized_transpose_conv_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":dynamically_quantized_transpose_conv_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest",
     ],
 )

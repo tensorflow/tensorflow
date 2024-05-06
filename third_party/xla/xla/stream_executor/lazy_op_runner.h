@@ -283,7 +283,6 @@ struct FusedMatmulOp {
 struct FusedMHAOp {
   using Signature = FusedMHASignature;
   struct Config {
-    FusedMHAKind kind;
     double scale;
     const MatmulTensorDescriptor& bmm1_lhs_descriptor;
     const MatmulTensorDescriptor& bmm1_rhs_descriptor;
@@ -291,11 +290,9 @@ struct FusedMHAOp {
     const MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor;
     const TensorDescriptor& output_descriptor;
     std::optional<TensorDescriptor> bias_descriptor;
-    std::optional<TensorDescriptor> mask_descriptor;
     std::optional<TensorDescriptor> activation_descriptor;
     std::optional<double> dropout_rate;
     std::optional<int64_t> seed;
-    bool is_flash_attention;
     FMHAMaskKind mask_type;
   };
 
@@ -304,12 +301,11 @@ struct FusedMHAOp {
                           Stream* stream) {
     TF_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
     return dnn->FusedMHARunnerFromDesc(
-        stream, desc, config.kind, config.bmm1_lhs_descriptor,
-        config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
-        config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
-        config.activation_descriptor, config.mask_descriptor,
+        stream, desc, config.bmm1_lhs_descriptor, config.bmm1_rhs_descriptor,
+        config.bmm2_rhs_descriptor, config.intermediate_bmm2_lhs_descriptor,
+        config.output_descriptor, config.activation_descriptor,
         config.bias_descriptor, config.scale, config.dropout_rate, config.seed,
-        config.is_flash_attention, config.mask_type);
+        config.mask_type);
   }
 };
 
@@ -317,7 +313,6 @@ struct FusedMHABackwardOp {
   using Signature = FusedMHABackwardSignature;
 
   struct Config {
-    FusedMHAKind kind;
     double scale;
     const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor;
     const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor;
@@ -328,13 +323,11 @@ struct FusedMHABackwardOp {
     const TensorDescriptor& d_bmm1_rhs_descriptor;
     const TensorDescriptor& d_bmm2_rhs_descriptor;
     std::optional<TensorDescriptor> d_s_descriptor;
-    std::optional<TensorDescriptor> mask_descriptor;
     std::optional<TensorDescriptor> d_bias_descriptor;
     std::optional<TensorDescriptor> fwd_output_descriptor;
     std::optional<TensorDescriptor> bias_descriptor;
     std::optional<double> dropout_rate;
     std::optional<int64_t> seed;
-    bool is_flash_attention;
     FMHAMaskKind mask_type;
   };
 
@@ -344,15 +337,14 @@ struct FusedMHABackwardOp {
                           Stream* stream) {
     TF_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
     return dnn->FusedMHABackwardRunnerFromDesc(
-        stream, desc, config.kind, config.bmm1_grad_gemm1_rhs_descriptor,
+        stream, desc, config.bmm1_grad_gemm1_rhs_descriptor,
         config.bmm1_grad_gemm2_rhs_descriptor,
         config.bmm2_grad_gemm1_lhs_descriptor,
         config.bmm2_grad_gemm2_rhs_descriptor, config.d_output_descriptor,
         config.d_bmm1_lhs_descriptor, config.d_bmm1_rhs_descriptor,
         config.d_bmm2_rhs_descriptor, config.d_s_descriptor,
-        config.mask_descriptor, config.d_bias_descriptor,
-        config.fwd_output_descriptor, config.bias_descriptor, config.scale,
-        config.dropout_rate, config.seed, config.is_flash_attention,
+        config.d_bias_descriptor, config.fwd_output_descriptor,
+        config.bias_descriptor, config.scale, config.dropout_rate, config.seed,
         config.mask_type);
   }
 };

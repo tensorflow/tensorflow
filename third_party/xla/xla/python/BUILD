@@ -143,7 +143,10 @@ py_strict_test(
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
-    ] + xla_py_test_deps(),
+    ] + if_google(
+        [":xla_gpu_extension"],
+        [],
+    ) + xla_py_test_deps(),
 )
 
 tsl_pybind_extension(
@@ -191,7 +194,6 @@ cc_library(
         "//xla:shape_util",
         "//xla:status",
         "//xla:status_macros",
-        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:exceptions",
@@ -323,7 +325,6 @@ cc_library(
         ":nb_helpers",
         ":nb_numpy",
         ":pprof_profile_builder",
-        ":py_client_gpu",
         ":py_host_callback_proto_cc",
         ":python_ref_manager",
         ":traceback",
@@ -383,8 +384,8 @@ cc_library(
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_target_registry",
         "//xla/service:platform_util",
+        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/python/lib/core:numpy",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/framework:allocator",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
@@ -399,10 +400,11 @@ cc_library(
         "@llvm-project//mlir:IR",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
+        # TODO(b/324133505): remove this dependency after JAX OSS migrates to cuda plugin.
         "//xla/stream_executor/cuda:cuda_driver",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ]) + if_cuda_or_rocm([":py_client_gpu"]),  # TODO(b/337876408): remove after migration to plugin
 )
 
 cc_library(
@@ -442,12 +444,14 @@ cc_library(
 
 cc_library(
     name = "py_client_gpu",
-    srcs = if_cuda_or_rocm([
-        "py_client_gpu.cc",
-    ]),
-    hdrs = if_cuda_or_rocm([
-        "py_client_gpu.h",
-    ]),
+    srcs = if_google(
+        ["py_client_gpu.cc"],
+        if_cuda_or_rocm(["py_client_gpu.cc"]),
+    ),
+    hdrs = if_google(
+        ["py_client_gpu.h"],
+        if_cuda_or_rocm(["py_client_gpu.h"]),
+    ),
     compatible_with = [],
     copts = [
         "-fexceptions",
@@ -468,11 +472,10 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
-    ] + if_cuda([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ] + if_rocm(
+        ["@local_config_rocm//rocm:rocm_headers"],
+        ["@local_config_cuda//cuda:cuda_headers"],
+    ),
 )
 
 cc_library(
@@ -724,7 +727,7 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_future",
         "//xla/python/ifrt",
-        "@local_tsl//tsl/concurrency:ref_count",
+        "//xla/tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
@@ -772,8 +775,8 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:status_casters",
         "//xla/python/ifrt",
+        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/python/lib/core:numpy",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
@@ -1181,6 +1184,52 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "gpu_support",
+    srcs = ["gpu_support.cc"],
+    hdrs = ["gpu_support.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        ":nb_class_ptr",
+        ":py_client",
+        "//third_party/nanobind",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:status_casters",
+        "//xla/pjrt/distributed:client",
+        "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/pjrt/gpu:gpu_helpers",
+        "//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "//xla/python/pjrt_ifrt",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
+    ],
+)
+
+tsl_pybind_extension(
+    name = "xla_gpu_extension",
+    srcs = ["xla_gpu_support.cc"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    pytype_deps = [],
+    pytype_srcs = [],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gpu_support",
+        ":logging",
+        ":py_client",
+        # placeholder for index annotation deps
+        "//third_party/nanobind",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
+    ],
+)
+
 tsl_pybind_extension(
     name = "xla_extension",
     srcs = ["xla.cc"],
@@ -1188,10 +1237,13 @@ tsl_pybind_extension(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = select({
-        ":gpu_enabled": ["XLA_PYTHON_ENABLE_GPU=1"],
-        "//conditions:default": [],
-    }),
+    defines = if_google(
+        [],
+        select({
+            ":gpu_enabled": ["XLA_PYTHON_ENABLE_GPU=1"],
+            "//conditions:default": [],
+        }),
+    ),
     features = ["-use_header_modules"],
     linkopts = select({
         ":use_jax_cuda_pip_rpaths": [
@@ -1273,7 +1325,6 @@ tsl_pybind_extension(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed:protocol_proto_cc",
         "//xla/pjrt/distributed:service",
-        "//xla/pjrt/gpu:gpu_helpers",
         "//xla/python/ifrt",
         "//xla/python/ifrt:plugin_program",
         "//xla/python/ifrt:plugin_program_serdes",
@@ -1281,9 +1332,9 @@ tsl_pybind_extension(
         "//xla/python/pjrt_ifrt",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service/cpu:collectives_interface",
+        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/distributed_runtime/preemption:preemption_sync_manager",
         "//xla/tsl/python/lib/core:numpy",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
@@ -1305,17 +1356,20 @@ tsl_pybind_extension(
         "//conditions:default": [
             "//xla/pjrt/cpu:mpi_collectives",
         ],
-    }) + select({
-        ":gpu_enabled": [
-            "//xla/pjrt/gpu:se_gpu_pjrt_client",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        ":link_gpu_plugin": [
-            ":gpu_plugin_deps",
-        ],
-        "//conditions:default": [],
-    }),
+    }) + if_google(
+        [],
+        select({
+            ":gpu_enabled": [
+                ":gpu_support",
+            ],
+            "//conditions:default": [],
+        }) + select({
+            ":link_gpu_plugin": [
+                ":gpu_plugin_deps",
+            ],
+            "//conditions:default": [],
+        }),
+    ),
 )
 
 cc_library(

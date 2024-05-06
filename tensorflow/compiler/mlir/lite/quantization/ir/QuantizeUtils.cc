@@ -32,8 +32,8 @@ using namespace mlir::quantfork;
 static Attribute convertPrimitiveValueAttr(
     Attribute origRealValue, quant::QuantizedType quantizedElementType,
     const UniformQuantizedValueConverter &converter, Type &outConvertedType) {
-  if (origRealValue.isa<FloatAttr>()) {
-    FloatAttr floatAttr = origRealValue.cast<FloatAttr>();
+  if (mlir::isa<FloatAttr>(origRealValue)) {
+    FloatAttr floatAttr = mlir::cast<FloatAttr>(origRealValue);
     outConvertedType = quantizedElementType.getStorageType();
     return IntegerAttr::get(quantizedElementType.getStorageType(),
                             converter.quantizeFloatToInt(floatAttr.getValue()));
@@ -64,11 +64,11 @@ static SparseElementsAttr convertSparseElementsAttr(
     quant::QuantizedType quantizedElementType,
     const UniformQuantizedValueConverter &converter) {
   DenseElementsAttr realDenseAttr = realSparseAttr.getValues();
-  if (!realDenseAttr.isa<DenseFPElementsAttr>()) {
+  if (!mlir::isa<DenseFPElementsAttr>(realDenseAttr)) {
     return nullptr;
   }
   DenseElementsAttr quantDenseAttr =
-      convertDenseFPElementsAttr(realDenseAttr.cast<DenseFPElementsAttr>(),
+      convertDenseFPElementsAttr(mlir::cast<DenseFPElementsAttr>(realDenseAttr),
                                  quantizedElementType, converter);
   if (!quantDenseAttr) {
     return nullptr;
@@ -76,9 +76,9 @@ static SparseElementsAttr convertSparseElementsAttr(
 
   // Cast from an expressed-type-based type to storage-type-based type,
   // preserving the sparse shape (i.e. tensor<4xf32> -> tensor<4xi8>).
-  ShapedType newSparseType =
-      quantizedElementType.castExpressedToStorageType(realSparseAttr.getType())
-          .dyn_cast_or_null<ShapedType>();
+  ShapedType newSparseType = mlir::dyn_cast_or_null<ShapedType>(
+      quantizedElementType.castExpressedToStorageType(
+          realSparseAttr.getType()));
   if (!newSparseType) {
     return nullptr;
   }
@@ -93,17 +93,19 @@ Attribute mlir::quantfork::quantizeAttrUniform(
     Attribute realValue, quant::UniformQuantizedType quantizedElementType,
     const UniformQuantizedValueConverter &converter, Type &outConvertedType) {
   // Fork to handle different variants of constants supported.
-  if (realValue.isa<DenseFPElementsAttr>()) {
+  if (mlir::isa<DenseFPElementsAttr>(realValue)) {
     // Dense tensor or vector constant.
-    auto converted = convertDenseFPElementsAttr(
-        realValue.cast<DenseFPElementsAttr>(), quantizedElementType, converter);
+    auto converted =
+        convertDenseFPElementsAttr(mlir::cast<DenseFPElementsAttr>(realValue),
+                                   quantizedElementType, converter);
     outConvertedType = converted.getType();
     return converted;
   }
-  if (realValue.isa<SparseElementsAttr>()) {
+  if (mlir::isa<SparseElementsAttr>(realValue)) {
     // Sparse tensor or vector constant.
-    auto converted = convertSparseElementsAttr(
-        realValue.cast<SparseElementsAttr>(), quantizedElementType, converter);
+    auto converted =
+        convertSparseElementsAttr(mlir::cast<SparseElementsAttr>(realValue),
+                                  quantizedElementType, converter);
     outConvertedType = converted.getType();
     return converted;
   }
@@ -121,13 +123,14 @@ Attribute mlir::quantfork::quantizeAttr(
     Attribute realValue, quant::QuantizedType quantizedElementType,
     Type &outConvertedType) {
   if (auto uniformQuantized =
-          quantizedElementType.dyn_cast<quant::UniformQuantizedType>()) {
+          mlir::dyn_cast<quant::UniformQuantizedType>(quantizedElementType)) {
     UniformQuantizedValueConverter converter(uniformQuantized);
     return quantizeAttrUniform(realValue, uniformQuantized, converter,
                                outConvertedType);
   }
   if (auto uniformQuantizedPerAxis =
-          quantizedElementType.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
+          mlir::dyn_cast<quant::UniformQuantizedPerAxisType>(
+              quantizedElementType)) {
     UniformQuantizedPerAxisValueConverter converter(uniformQuantizedPerAxis);
     auto converted = converter.convert(realValue);
     // TODO: why we need this outConvertedType? remove it?

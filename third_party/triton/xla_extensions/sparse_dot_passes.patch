@@ -176,7 +176,7 @@ diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect
      switch (version) {
      case 2:
        return warpsPerTileV2(dotOp, shape, numWarps);
-@@ -337,6 +340,97 @@ public:
+@@ -337,6 +340,98 @@ public:
      return success();
    }
  };
@@ -214,8 +214,9 @@ diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect
 +    int numWarps = ttg::TritonGPUDialect::getNumWarps(mod);
 +    auto CTALayout = ttg::getCTALayout(oldRetType.getEncoding());
 +
-+    auto instrShape = mmaVersionToInstrShape(
-+        versionMajor, retShapePerCTA, a.getType().cast<TensorOrMemDesc>());
++    auto instrShape =
++        mmaVersionToInstrShape(versionMajor, retShapePerCTA,
++                               a.getType().cast<TensorOrMemDesc>(), numWarps);
 +    auto warpsPerTile = BlockedToMMA::getWarpsPerTile(
 +        dotOp, retShapePerCTA, versionMajor, numWarps, instrShape);
 +    ttg::NvidiaMmaEncodingAttr mmaEnc =
@@ -296,7 +297,7 @@ diff --git a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp b
  } // namespace
  
  static bool isMMAv3Dot(Operation *op) {
-@@ -163,22 +167,28 @@ getSharedEncIfAllUsersAreDotEnc(Value va
+@@ -165,22 +169,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val) {
      } else {
        if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))
          return std::nullopt;
@@ -340,7 +341,7 @@ diff --git a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp b
      }
      // Check that the shared encodings needed by the users are compatible.
      if (!tempAttr || (attr != nullptr && attr != tempAttr))
-@@ -311,7 +321,7 @@ loadOpsToDistanceAndUse(scf::ForOp forOp
+@@ -313,7 +323,7 @@ loadOpsToDistanceAndUse(scf::ForOp forOp) {
        };
  
    for (Operation &op : forOp.getBody()->without_terminator()) {
@@ -349,16 +350,26 @@ diff --git a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp b
        continue;
      dfs(&op, 0, &op);
    }
-@@ -385,7 +395,7 @@ collectOpsToPipeline(scf::ForOp forOp,
+@@ -391,7 +401,8 @@ collectOpsToPipeline(scf::ForOp forOp,
    // loads.
    for (auto &[loadOp, distAndUse] : loadOpToDistAndUse) {
      PipelinedOpInfo loadInfo;
--    if (isa<tt::DotOp>(distAndUse.second)) {
+-    if (auto dot = dyn_cast<tt::DotOp>(distAndUse.second)) {
 +    if (isDotOp(distAndUse.second)) {
++      auto dot = dyn_cast<tt::DotOp>(distAndUse.second);
        if (loadIsMMAv3(loadOp)) {
          loadInfo.loadIsMMAV3 = true;
          loadInfo.sharedEncoding =
-@@ -743,7 +753,7 @@ bool mlir::triton::preProcessLoopAndGetS
+@@ -410,7 +421,7 @@ collectOpsToPipeline(scf::ForOp forOp,
+         // The codegen bug is caught by an assertion, so if you think you've
+         // fixed it, feel free to delete this code and see if the assert still
+         // fails.  :)
+-        if (!loadInfo.sharedEncoding) {
++        if (dot && !loadInfo.sharedEncoding) {
+           if (auto dotEnc = dot.getResult()
+                                 .getType()
+                                 .getEncoding()
+@@ -788,7 +799,7 @@ bool mlir::triton::preProcessLoopAndGetSchedule(
      int useStage = opToInfo[info.use].stage;
      int numBuffers = useStage - defStage;
  

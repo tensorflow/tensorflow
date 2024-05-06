@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_handle.h"
@@ -297,7 +298,9 @@ void GlobalShuffleDatasetOp::MakeDataset(OpKernelContext* ctx,
                   "compatible with random access. Got: ",
                   input->RandomIndexingCompatible().ToString())));
 
-  int64_t cardinality = input->Cardinality();
+  CardinalityOptions options;
+  options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_MODERATE);
+  int64_t cardinality = input->Cardinality(std::move(options));
   OP_REQUIRES(ctx, cardinality > 0,
               absl::InvalidArgumentError(absl::StrCat(
                   "`global_shuffle` requires the input dataset to have a "

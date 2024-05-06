@@ -90,7 +90,7 @@ inline std::string ProtobufStringToString(const absl::Cord& s) {
   return std::string(s);
 }
 inline void SetProtobufStringSwapAllowed(std::string* src, absl::Cord* dest) {
-  dest->CopyFrom(*src);
+  *dest = *src;
 }
 #endif  // defined(TENSORFLOW_PROTOBUF_USES_CORD)
 

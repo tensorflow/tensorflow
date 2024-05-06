@@ -157,6 +157,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/move_copy_to_users.h"
+#include "xla/service/gpu/pipelined_p2p_rewriter.h"
 #include "xla/service/gpu/prepare_hlo_for_ir_emitting_pipeline.h"
 #include "xla/service/gpu/reduction_degenerate_dim_remover.h"
 #include "xla/service/gpu/reduction_dimension_grouper.h"
@@ -173,6 +174,7 @@ limitations under the License.
 #include "xla/service/gpu/topk_specializer.h"
 #include "xla/service/gpu/topk_splitter.h"
 #include "xla/service/gpu/tree_reduction_rewriter.h"
+#include "xla/service/gpu/triton_fusion_numerics_verifier.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_computation_deduplicator.h"
 #include "xla/service/hlo_constant_folding.h"
@@ -919,9 +921,8 @@ absl::Status RunCollectiveOptimizationPasses(
         /*pipelining_direction=*/
         CollectivePipeliner::PipeliningDirection::kForward,
         /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>,
-        /*acceptable_formatting=*/[](const HloInstruction*) { return true; },
-        /*reuse_pipelined_op_buffer=*/
-        [](const HloInstruction*) { return false; }};
+        /*acceptable_formatting=*/HloPredicateTrue,
+        /*reuse_pipelined_op_buffer=*/HloPredicateFalse};
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
@@ -935,9 +936,8 @@ absl::Status RunCollectiveOptimizationPasses(
         /*pipelining_direction=*/
         CollectivePipeliner::PipeliningDirection::kBackward,
         /*should_process=*/HloPredicateIsOp<HloOpcode::kAllGather>,
-        /*acceptable_formatting=*/[](const HloInstruction*) { return true; },
-        /*reuse_pipelined_op_buffer=*/
-        [](const HloInstruction*) { return false; }};
+        /*acceptable_formatting=*/HloPredicateTrue,
+        /*reuse_pipelined_op_buffer=*/HloPredicateFalse};
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
@@ -951,9 +951,8 @@ absl::Status RunCollectiveOptimizationPasses(
         /*pipelining_direction=*/
         CollectivePipeliner::PipeliningDirection::kForward,
         /*should_process=*/HloPredicateIsOp<HloOpcode::kReduceScatter>,
-        /*acceptable_formatting=*/[](const HloInstruction*) { return true; },
-        /*reuse_pipelined_op_buffer=*/
-        [](const HloInstruction*) { return false; }};
+        /*acceptable_formatting=*/HloPredicateTrue,
+        /*reuse_pipelined_op_buffer=*/HloPredicateFalse};
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
 
@@ -1132,40 +1131,32 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
   config.convert_all_to_all = HloPredicateTrue;
   pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
 
-  auto convert_to_async = [&hlo_module](const HloInstruction* inst) {
-    const bool enable_all_async =
-        hlo_module->config().debug_options().xla_gpu_enable_async_collectives();
+  absl::flat_hash_set<DebugOptions::CollectiveOpType> disabled_async_ops;
+  for (auto collective_op_type : hlo_module->config()
+                                     .debug_options()
+                                     .xla_gpu_disable_async_collectives()) {
+    disabled_async_ops.insert(
+        static_cast<DebugOptions::CollectiveOpType>(collective_op_type));
+  }
+  auto convert_to_async = [&hlo_module,
+                           &disabled_async_ops](const HloInstruction* inst) {
     switch (inst->opcode()) {
       case HloOpcode::kAllReduceStart:
-        return enable_all_async || hlo_module->config()
-                                       .debug_options()
-                                       .xla_gpu_enable_async_all_reduce();
-      case HloOpcode::kAllGatherStart:
-        return enable_all_async || hlo_module->config()
-                                       .debug_options()
-                                       .xla_gpu_enable_async_all_gather();
+        return !disabled_async_ops.contains(DebugOptions::ALLREDUCE);
       case HloOpcode::kCollectivePermuteStart:
-        return enable_all_async ||
-               hlo_module->config()
-                   .debug_options()
-                   .xla_gpu_enable_async_collective_permute();
+        return !disabled_async_ops.contains(DebugOptions::COLLECTIVEPERMUTE);
+      case HloOpcode::kAllGatherStart:
+        return !disabled_async_ops.contains(DebugOptions::ALLGATHER);
       case HloOpcode::kAsyncStart: {
         auto async_inst = Cast<HloAsyncInstruction>(inst);
         switch (async_inst->async_wrapped_opcode()) {
           case HloOpcode::kCollectiveBroadcast:
-            return enable_all_async ||
-                   hlo_module->config()
-                       .debug_options()
-                       .xla_gpu_enable_async_collective_broadcast();
+            return !disabled_async_ops.contains(
+                DebugOptions::COLLECTIVEBROADCAST);
           case HloOpcode::kReduceScatter:
-            return enable_all_async ||
-                   hlo_module->config()
-                       .debug_options()
-                       .xla_gpu_enable_async_reduce_scatter();
+            return !disabled_async_ops.contains(DebugOptions::REDUCESCATTER);
           case HloOpcode::kAllToAll:
-            return enable_all_async || hlo_module->config()
-                                           .debug_options()
-                                           .xla_gpu_enable_async_all_to_all();
+            return !disabled_async_ops.contains(DebugOptions::ALLTOALL);
           default:
             return false;
         }
@@ -1198,6 +1189,26 @@ absl::Status RunPostFusionSimplificationPasses(
           .xla_gpu_multi_streamed_windowed_einsum()) {
     pipeline.AddPass<StreamAttributeAnnotator>();
     pipeline.AddPass<StreamAttributeAsyncWrapper>();
+  }
+
+  return pipeline.Run(hlo_module).status();
+}
+
+absl::Status RunPostFusionVerificationPasses(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec,
+    const GpuCompiler::CompileOptions& options,
+    const Compiler::TargetConfig& gpu_target_config) {
+  HloPassPipeline pipeline("post-fusion-verification-pipeline optimization");
+
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_verify_triton_fusion_numerics()) {
+    TF_ASSIGN_OR_RETURN(
+        AutotuneConfig autotune_config,
+        GetAutotuneConfig(stream_exec, hlo_module->config().debug_options(),
+                          options, gpu_target_config));
+
+    pipeline.AddPass<TritonFusionNumericsVerifier>(autotune_config);
   }
 
   return pipeline.Run(hlo_module).status();
@@ -1306,6 +1317,9 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunPostFusionCollectiveOptimizationPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunPostFusionSimplificationPasses(
       hlo_module, layout_insensitive_algsimp_opts));
+
+  TF_RETURN_IF_ERROR(RunPostFusionVerificationPasses(
+      hlo_module, stream_exec, options, gpu_target_config));
 
   return absl::OkStatus();
 }  // NOLINT(readability/fn_size)
@@ -1582,7 +1596,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
-  const DebugOptions& debug_opts = module->config().debug_options();
+  const DebugOptions debug_opts = module->config().debug_options();
   TF_RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_opts));
   bool is_deviceless = options.target_config.has_value() ||
                        !debug_opts.xla_gpu_target_config_filename().empty();
@@ -1614,13 +1628,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   // out we have no way of telling how far through the process we got).
   RecordHloPassesDuration(end_usecs - start_usecs);
 
-  TF_ASSIGN_OR_RETURN(
-      AutotuneConfig autotune_config,
-      GetAutotuneConfig(stream_exec, debug_opts, options, gpu_target_config));
   AutotuneResults autotune_results;
   if (!is_deviceless) {
-    TF_RETURN_IF_ERROR(
-        AutotunerUtil::SerializeAutotuneResults(&autotune_results));
+    TF_ASSIGN_OR_RETURN(
+        AutotuneConfig autotune_config,
+        GetAutotuneConfig(stream_exec, debug_opts, options, gpu_target_config));
+    autotune_results = AutotunerUtil::SerializeAutotuneResultsForModule(
+        *module, autotune_config);
     TF_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_opts));
   }
   const std::optional<std::string> optimized_fingerprint =
@@ -2183,6 +2197,12 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
   {
     HloPassPipeline pipeline("post-scheduling-passes");
 
+    if (module->config()
+            .debug_options()
+            .xla_gpu_enable_pipelined_collectives() ||
+        module->config().debug_options().xla_gpu_enable_pipelined_p2p()) {
+      pipeline.AddPass<PipelinedP2PRewriter>();
+    }
     HloPredicate is_nop =
         HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant,
                          HloOpcode::kBitcast, HloOpcode::kGetTupleElement>;

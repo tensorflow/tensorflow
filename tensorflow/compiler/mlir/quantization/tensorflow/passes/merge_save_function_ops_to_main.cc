@@ -143,7 +143,7 @@ BlockArgument GetFilePrefixArg(func::FuncOp main_func_op) {
     auto index_path_attr =
         main_func_op.getArgAttrOfType<ArrayAttr>(i, kTfSavedModelIndexPathAttr);
     if (index_path_attr && !index_path_attr.empty() &&
-        index_path_attr[0].cast<StringAttr>() == kTfFilePrefix) {
+        mlir::cast<StringAttr>(index_path_attr[0]) == kTfFilePrefix) {
       return main_func_op.getArgument(i);
     }
   }

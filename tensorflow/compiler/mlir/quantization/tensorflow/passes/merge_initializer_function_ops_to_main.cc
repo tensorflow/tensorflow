@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/manipulate_model_attr.h"
@@ -153,7 +154,7 @@ LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
 
   FetchOp fetch_op = graph_op.GetFetch();
   for (const Value fetch : fetch_op.getFetches()) {
-    if (!fetch.getType().isa<tf_executor::ControlType>()) {
+    if (!mlir::isa<tf_executor::ControlType>(fetch.getType())) {
       fetch_op.emitError(absl::StrFormat(
           "Validation failed for the initializer function: %s. "
           "All initializer function's fetches should be "

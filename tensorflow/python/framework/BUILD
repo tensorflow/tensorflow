@@ -3115,7 +3115,11 @@ tf_python_pybind_extension(
         "_errors_test_helper.pyi",
     ],
     deps = [
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/core/platform:status",
         "//tensorflow/python/lib/core:pybind11_status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
         "@pybind11",
     ],
 )

@@ -137,7 +137,7 @@ ValueRange CreateTFXlaCallModuleOp(OpBuilder& builder, const Location location,
   SmallVector<Attribute> shape_attrs;
   for (const Type result_type : output_types) {
     shape_attrs.push_back(
-        tf_type::ShapeAttr::get(ctx, result_type.cast<ShapedType>()));
+        tf_type::ShapeAttr::get(ctx, mlir::cast<ShapedType>(result_type)));
   }
   auto empty_array_attr = ArrayAttr::get(ctx, {});
   auto platforms = ArrayAttr::get(ctx, {StringAttr::get(ctx, kPlatformCpu)});
@@ -267,7 +267,7 @@ LogicalResult SetAttributeMap(MLIRContext& context,
     const NamedAttribute& attribute = attributes[idx];
     // Skip the following steps if the attribute value is `NullAttribute`.
     if (const auto string_attr =
-            attribute.getValue().dyn_cast_or_null<StringAttr>();
+            mlir::dyn_cast_or_null<StringAttr>(attribute.getValue());
         string_attr != nullptr &&
         string_attr.getValue().equals(kNullAttributeValue)) {
       continue;

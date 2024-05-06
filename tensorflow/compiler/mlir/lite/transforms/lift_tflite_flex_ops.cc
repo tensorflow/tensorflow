@@ -117,7 +117,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     // TODO(b/146131919): correct handling of resource type
     if (auto tensor_array_v3_op = dyn_cast<TF::TensorArrayV3Op>(tf_op)) {
       Value handle = tensor_array_v3_op.getHandle();
-      auto handle_type = handle.getType().cast<TensorType>();
+      auto handle_type = mlir::cast<TensorType>(handle.getType());
       if (handle_type.getElementType().isInteger(/*width=*/32)) {
         Type resource_tensor_type =
             handle_type.clone(TF::ResourceType::get(rewriter.getContext()));
@@ -225,8 +225,8 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
         return emitError(loc, mlir_attr.status().message());
       }
       if (absl::StrContains(op_name, "Dataset") &&
-          mlir_attr->isa<TF::FuncAttr>()) {
-        mlir_attr = mlir_attr->cast<TF::FuncAttr>().getName();
+          mlir::isa<TF::FuncAttr>(*mlir_attr)) {
+        mlir_attr = mlir::cast<TF::FuncAttr>(*mlir_attr).getName();
       }
       attributes.push_back(builder.getNamedAttr(attr_name, *mlir_attr));
     }

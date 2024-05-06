@@ -63,7 +63,7 @@ inline bool CompatibleElementType(const HloInstruction* instr) {
   return element_type == BF16 || element_type == F32 || element_type == F16;
 }
 
-// Type conversion from and to any of F16, BF16 and FP32.
+// Type conversion from and to any of BF16 and FP32.
 // TODO(intel-tf): Support more types when enabled.
 template <typename Pattern>
 inline auto SupportedConvert(Pattern pattern) {
@@ -83,14 +83,44 @@ inline auto SupportedConvert(HloInstruction** convert, Pattern pattern) {
   return m::Convert(convert, pattern).WithPredicate(supported_convert);
 }
 
+inline bool IsRowMajor(const Shape& shape) {
+  return LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
+}
+
 template <typename Pattern>
-auto ElementwiseSafeIntermediate(HloInstruction** instr, Pattern pattern) {
+inline auto BitcastWithReshapeSemantics(HloInstruction** bitcast,
+                                        Pattern pattern) {
+  // TODO(intel-tf): Add stronger condition that Bitcast does not have transpose
+  // semantics. Some of the HLO passes replaces Transpose with Bitcast. Here
+  // the layouts are checked to be rowmajor since the current pass runs after
+  // the layout assignment and oneDNN matmul is enabled for rowmajor layouts.
+  auto is_reshape = [](const HloInstruction* instr) -> bool {
+    if (!instr) return false;
+    auto input_shape = instr->operand(0)->shape();
+    auto output_shape = instr->shape();
+    bool is_same_type = ShapeUtil::SameElementType(input_shape, output_shape);
+    bool has_equal_num_elems = ShapeUtil::ElementsIn(input_shape) ==
+                               ShapeUtil::ElementsIn(output_shape);
+    bool has_rowmajor_layout =
+        IsRowMajor(input_shape) && IsRowMajor(output_shape);
+    return is_same_type && has_equal_num_elems && has_rowmajor_layout;
+  };
+  return m::Bitcast(bitcast, pattern).WithPredicate(is_reshape);
+}
+
+template <typename Pattern>
+auto ElementwiseSafeIntermediates(HloInstruction** instr,
+                                  HloInstruction** optional_bitcast,
+                                  Pattern pattern) {
   return m::AnyOf<HloInstruction>(
       m::Broadcast(instr, pattern.WithOneUser()),
       m::Slice(instr, pattern.WithOneUser()),
       m::Bitcast(instr, pattern.WithOneUser()),
       m::Reshape(instr, pattern.WithOneUser()),
-      SupportedConvert(instr, pattern.WithOneUser()), pattern);
+      SupportedConvert(instr, pattern.WithOneUser()),
+      SupportedConvert(instr, BitcastWithReshapeSemantics(
+                                  optional_bitcast, pattern.WithOneUser())),
+      pattern);
 }
 
 inline auto OneDnnMatmulInstr(HloInstruction** instr) {
@@ -178,22 +208,26 @@ inline auto MultiplyMultiplyAnyOrder(PatternA a, PatternB b, PatternC c) {
       m::MultiplyAnyOrder(c, m::MultiplyAnyOrder(a, b)));
 }
 
-bool GELUActivation(HloInstruction* instr, HloInstruction** src) {
-  // Attempt to match GELU_TANH activation
+auto GELUActivation(HloInstruction* instr, HloInstruction** src) {
+  // Attempt to match GELU_TANH activation or GELU_ERF activation
   // (https://arxiv.org/abs/1606.08415), where:
   // gelu_tanh(x) = x * cdf(x)
   // cdf(x) = 0.5 * (1 + tanh(sqrt(2 / pi) * (x + 0.044715 * x**3))
-  //                     \--------- errf_approximate term -------/
+  //                     -------------errf_approximate------------
+  //
+  // gelu_erf(x) = x * cdf(x)
+  // cdf(x) = 0.5 * (1 + erf(x / sqrt(2)))
+  //                     --errf_exact--
 
   HloInstruction* errf;
 
   // The expression 0.5 * x * (1 + errf) as common pattern for GELU exact and
   // approximate activations.
-  auto common_pattrn = MultiplyMultiplyAnyOrder(
+  auto common_pattern = MultiplyMultiplyAnyOrder(
       BcastConstScalar(0.5), m::Op(src),
       m::AddAnyOrder(BcastConstScalar(1.0), m::Op(&errf).WithOneUser()));
 
-  bool matched = Match(instr, common_pattrn);
+  bool matched = Match(instr, common_pattern);
   if (matched) {
     // The subexpression 0.044715 * x**3 appears in GELU approximate activation.
     // However, it is often optimized by other HLO passes into an expression of
@@ -221,9 +255,29 @@ bool GELUActivation(HloInstruction* instr, HloInstruction** src) {
                     m::AddAnyOrder(m::Op().Is(*src), subexpr_pattern)
                         .WithOneUser()))
             .WithOneUser();
-    matched = Match(errf, errf_apprx_pattern);
+
+    HloInstruction* erf;
+    auto errf_exact_pattern =
+        m::Op(&erf)
+            .WithOpcode(HloOpcode::kErf)
+            .WithOperand(
+                0, m::MultiplyAnyOrder(m::Op(src),
+                                       m::AnyOf<HloInstruction>(
+                                           BcastConstScalarNear(0.707106769),
+                                           BcastConstScalarNear(0.70703125),
+                                           BcastConstScalarNear(0.707182348)))
+                       .WithOneUser())
+            .WithOneUser();
+
+    if (Match(errf, errf_apprx_pattern)) {
+      // Matched Gelu-approximate pattern
+      return OneDnnMatMulConfig::GELU_TANH;
+    } else if (Match(errf, errf_exact_pattern)) {
+      // Matched Gelu-exact pattern
+      return OneDnnMatMulConfig::GELU_ERF;
+    }
   }
-  return matched;
+  return OneDnnMatMulConfig::UNDEFINED;
 }
 
 // OneDNN matmul can fuse add operation with automatic broadcasting along the
@@ -295,31 +349,6 @@ inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* dot) {
   return true;
 }
 
-inline bool IsRowMajor(const Shape& shape) {
-  return LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
-}
-
-template <typename Pattern>
-inline auto BitcastWithReshapeSemantics(HloInstruction** bitcast,
-                                        Pattern pattern) {
-  // TODO(intel-tf): Add stronger condition that Bitcast does not have transpose
-  // semantics. Some of the HLO passes replaces Transpose with Bitcast. Here
-  // the layouts are checked to be rowmajor since the current pass runs after
-  // the layout assignment and oneDNN matmul is enabled for rowmajor layouts.
-  auto is_reshape = [](const HloInstruction* instr) -> bool {
-    if (!instr) return false;
-    auto input_shape = instr->operand(0)->shape();
-    auto output_shape = instr->shape();
-    bool is_same_type = ShapeUtil::SameElementType(input_shape, output_shape);
-    bool has_equal_num_elems = ShapeUtil::ElementsIn(input_shape) ==
-                               ShapeUtil::ElementsIn(output_shape);
-    bool has_rowmajor_layout =
-        IsRowMajor(input_shape) && IsRowMajor(output_shape);
-    return is_same_type && has_equal_num_elems && has_rowmajor_layout;
-  };
-  return m::Bitcast(bitcast, pattern).WithPredicate(is_reshape);
-}
-
 template <typename Pattern>
 inline auto OptionalConvertAndBitcast(HloInstruction** optional_convert,
                                       HloInstruction** optional_bitcast,
@@ -331,12 +360,11 @@ inline auto OptionalConvertAndBitcast(HloInstruction** optional_convert,
   //   2. pattern-root -> bf16/f16-to-fp32 convert
   //   3. pattern-root -> bitcast
   //   4. pattern-root
-  auto common =
-      m::AnyOf<HloInstruction>(
-          SupportedConvert(optional_convert, std::move(pattern).WithOneUser())
-              .WithElementType(PrimitiveType::F32),
-          std::move(pattern).WithOneUser())
-          .WithOneUser();
+  auto common = m::AnyOf<HloInstruction>(
+      SupportedConvert(optional_convert, std::move(pattern).WithOneUser())
+          .WithOperand(0, m::Op().WithElementType(PrimitiveType::BF16))
+          .WithElementType(PrimitiveType::F32),
+      std::move(pattern).WithOneUser());
   return m::AnyOf<HloInstruction>(
       BitcastWithReshapeSemantics(optional_bitcast, common), common);
 }
@@ -588,15 +616,17 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
   Status HandleMaximum(HloInstruction* instr) override {
     HloInstruction* matmul_call;
     HloInstruction* intermediate_instr = nullptr;
+    HloInstruction* optional_bitcast = nullptr;
     // Attempt to elide maximum and fuse ReLU activation into GEMM, including
     // when slicing or bitcasting is applied to the result.
-    if (Match(instr, m::MaximumAnyOrder(ElementwiseSafeIntermediate(
-                                            &intermediate_instr,
-                                            OneDnnMatmulInstr(&matmul_call))
-                                            .WithOneUser(),
-                                        BcastConstScalar(0)))) {
+    if (Match(instr,
+              m::MaximumAnyOrder(ElementwiseSafeIntermediates(
+                                     &intermediate_instr, &optional_bitcast,
+                                     OneDnnMatmulInstr(&matmul_call))
+                                     .WithOneUser(),
+                                 BcastConstScalar(0)))) {
       return FuseActivation(OneDnnMatMulConfig::RELU, instr, matmul_call,
-                            intermediate_instr);
+                            intermediate_instr, optional_bitcast);
     }
     return OkStatus();
   }
@@ -605,12 +635,14 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
     HloInstruction* matmul_call;
     HloInstruction* intermediate_instr = nullptr;
     HloInstruction* src;
-    if (GELUActivation(instr, &src)) {
-      if (Match(src,
-                ElementwiseSafeIntermediate(&intermediate_instr,
-                                            OneDnnMatmulInstr(&matmul_call)))) {
-        return FuseActivation(OneDnnMatMulConfig::GELU_TANH, instr, matmul_call,
-                              intermediate_instr);
+    auto activation = GELUActivation(instr, &src);
+    if (activation != OneDnnMatMulConfig::UNDEFINED) {
+      HloInstruction* optional_bitcast = nullptr;
+      if (Match(src, ElementwiseSafeIntermediates(
+                         &intermediate_instr, &optional_bitcast,
+                         OneDnnMatmulInstr(&matmul_call)))) {
+        return FuseActivation(activation, instr, matmul_call,
+                              intermediate_instr, optional_bitcast);
       }
     }
 
@@ -648,16 +680,32 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
 
   Status FuseActivation(OneDnnMatMulConfig_FusionKind kind,
                         HloInstruction* activation, HloInstruction* matmul,
-                        HloInstruction* intermediate_instr = nullptr) {
+                        HloInstruction* intermediate_instr = nullptr,
+                        HloInstruction* optional_bitcast = nullptr) {
     TF_ASSIGN_OR_RETURN(auto backend_config,
                         matmul->backend_config<BackendConfig>());
     auto* matmul_config = backend_config.mutable_onednn_matmul_config();
     matmul_config->add_fused_ops(kind);
-
+    TF_RETURN_IF_ERROR(matmul->set_backend_config(backend_config));
     std::unique_ptr<HloInstruction> output = matmul->Clone();
-    TF_RETURN_IF_ERROR(output->set_backend_config(backend_config));
-
-    if (intermediate_instr) {
+    if (optional_bitcast != nullptr &&
+        optional_bitcast->opcode() == HloOpcode::kBitcast) {
+      HloInstruction* new_instr = nullptr;
+      if (intermediate_instr != nullptr &&
+          intermediate_instr->opcode() == HloOpcode::kConvert) {
+        auto bitcast_call =
+            matmul->AddInstruction(HloInstruction::CreateBitcast(
+                ShapeUtil::ChangeElementType(optional_bitcast->shape(),
+                                             matmul->shape().element_type()),
+                matmul));
+        new_instr = bitcast_call->AddInstruction(HloInstruction::CreateConvert(
+            ShapeUtil::ChangeElementType(
+                bitcast_call->shape(),
+                intermediate_instr->shape().element_type()),
+            bitcast_call));
+        return ReplaceInstruction(activation, new_instr);
+      }
+    } else if (intermediate_instr) {
       output = intermediate_instr->CloneWithNewOperands(
           intermediate_instr->shape(),
           {matmul->parent()->AddInstruction(std::move(output))});
@@ -839,14 +887,10 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
       return custom_call;
     }
     auto weights = custom_call->operand(1);
-    if (weights->user_count() > 1) {
-      return absl::FailedPreconditionError(
-          "Cannot prepack weights. There is more than one consumer.");
-    }
     auto weights_shape = weights->shape();
     Literal weights_literal;
     if (!(weights_shape.rank() == 2 &&
-          evaluator_.TryEvaluate(weights, &weights_literal))) {
+          evaluator_.TryEvaluate(weights, &weights_literal, true))) {
       return absl::CancelledError(
           "Cannot prepack weights. Not constant 2D weights.");
     }

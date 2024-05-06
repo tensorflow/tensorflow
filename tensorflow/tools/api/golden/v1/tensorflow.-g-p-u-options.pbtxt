@@ -162,6 +162,13 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_INT32
       }
+      field {
+        name: "stream_merge_options"
+        number: 19
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.GPUOptions.Experimental.StreamMergeOptions"
+      }
       nested_type {
         name: "VirtualDevices"
         field {
@@ -181,6 +188,27 @@ tf_proto {
           number: 3
           label: LABEL_REPEATED
           type: TYPE_INT32
+        }
+      }
+      nested_type {
+        name: "StreamMergeOptions"
+        field {
+          name: "merge_host_to_device_stream"
+          number: 1
+          label: LABEL_OPTIONAL
+          type: TYPE_BOOL
+        }
+        field {
+          name: "merge_device_to_host_stream"
+          number: 2
+          label: LABEL_OPTIONAL
+          type: TYPE_BOOL
+        }
+        field {
+          name: "merge_device_to_device_stream"
+          number: 3
+          label: LABEL_OPTIONAL
+          type: TYPE_BOOL
         }
       }
     }

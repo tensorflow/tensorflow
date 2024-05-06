@@ -123,7 +123,7 @@ absl::StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(
     func_op->walk([&](mlir::Operation* op) {
       for (const mlir::NamedAttribute& attr : op->getAttrs()) {
         if (const auto sym =
-                attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
+                mlir::dyn_cast<mlir::FlatSymbolRefAttr>(attr.getValue())) {
           mlir::Operation* func =
               mlir::SymbolTable::lookupNearestSymbolFrom(op, sym);
           if (func) {

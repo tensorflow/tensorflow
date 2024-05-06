@@ -390,3 +390,55 @@ def XlaBroadcastPass : Pass<"tf-xla-broadcast", "mlir::func::FuncOp"> {
   let constructor = "tensorflow::tf2xla::internal::CreateXlaBroadcastPass()";
   let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
 }
+
+def TPUShardingIdentificationPass : Pass<"tf-tpu-sharding-identification", "ModuleOp"> {
+  let summary = "Identifies and handles inputs/outputs of TPU computation that is "
+           "sharded across logical cores.";
+  let constructor = "tensorflow::tf2xla::internal::CreateTPUShardingIdentificationPass()";
+  let description = [{
+    Bubbles up sharding configuration from `cluster_func` regions into
+    the attributes of `cluster_func`. This is done by parsing the
+    `XlaSharding` / `TPUPartitionedOutput` / `TPUPartitionedInput` ops inside
+    `cluster_func`.
+
+    For example, given the following `cluster_func` wrapping `func`:
+
+    ```mlir
+      func @test(%arg0: tensor<*xi32>) {
+        "tf_device.cluster_func"(%arg0) {
+            func = @func,
+            step_marker_location = ""} : (tensor<*xi32>) -> tensor<*xi32>
+        return
+      }
+
+      func @func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+        %0 = "tf.XlaSharding"(%arg0) {_XlaSharding = "\01\02\03",
+                                      sharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+        %1 = "tf.A"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
+        return %1 : tensor<*xi32>
+      }
+    ```
+
+    Now, cluster_func receives the following `*_sharding_configuration`
+    attributes, and `func` receives the mhlo.sharding attribute:
+
+    ```mlir
+      func @test(%arg0: tensor<*xi32>) {
+        %0 = "tf_device.cluster_func"(%arg0) {
+            func = @func,
+            input_sharding_configuration = ["\01\02\03"],
+            output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"],
+            step_marker_location = ""} : (tensor<*xi32>) -> tensor<*xi32>
+        return
+      }
+      func @func(%arg0: tensor<*xi32> {mhlo.sharding = "\01\02\03"}) ->
+                (tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}) {
+        %0 = "tf.XlaSharding"(%arg0) {_XlaSharding = "\01\02\03", sharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+        %1 = "tf.A"(%0) : (tensor<*xi32>) -> tensor<*xi32>
+        return %1 : tensor<*xi32>
+      }
+    ```
+  }];
+}
+
+

@@ -68,17 +68,16 @@ bool LeafVectorsAreConsistent(const std::vector<ShardingStrategy>& one,
 // NOLINTBEGIN(readability/fn_size)
 // TODO(zhuohan): Decompose this function into smaller pieces
 absl::StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
-BuildStrategyAndCost(const HloInstructionSequence& sequence,
-                     const HloModule* module,
-                     const absl::flat_hash_map<const HloInstruction*, int64_t>&
-                         instruction_execution_counts,
-                     const InstructionDepthMap& depth_map,
-                     const InstructionBatchDimMap& batch_dim_map,
-                     const AliasMap& alias_map,
-                     const ClusterEnvironment& cluster_env,
-                     AutoShardingOption& option, const CallGraph& call_graph,
-                     const HloCostAnalysis& hlo_cost_analysis,
-                     bool trying_multiple_mesh_shapes) {
+BuildStrategyAndCost(
+    const HloInstructionSequence& sequence, const HloModule* module,
+    const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_execution_counts,
+    const InstructionDepthMap& depth_map,
+    const InstructionBatchDimMap& batch_dim_map, const AliasMap& alias_map,
+    const ClusterEnvironment& cluster_env, AutoShardingOption& option,
+    const CallGraph& call_graph, const HloCostAnalysis& hlo_cost_analysis,
+    bool trying_multiple_mesh_shapes) {
   const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
   StrategyMap strategy_map;
   // This map stores all of the trimmed strategies due to user specified
@@ -110,6 +109,16 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     VLOG(2) << "instruction_id = " << instruction_id << ": "
             << ToAdaptiveString(ins);
     std::unique_ptr<StrategyGroup> strategy_group;
+
+    if (!instructions_to_shard.contains(ins)) {
+      VLOG(2) << "  Manually sharded;";
+      strategy_group = HandleManuallyShardedInstruction(
+          ins, ins->shape(), instruction_id, strategy_groups, strategy_map);
+      XLA_VLOG_LINES(2,
+                     absl::StrCat("strategies:\n", strategy_group->ToString()));
+      strategy_map[ins] = std::move(strategy_group);
+      continue;
+    }
 
     HloOpcode opcode = ins->opcode();
 
@@ -702,8 +711,23 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
               src_strategy_group, ins->shape(), instruction_id,
               /* have_memory_cost= */ true, strategy_groups, cluster_env,
               pretrimmed_strategy_map);
-        } else if (ins->has_sharding()) {
+        } else if (IsSPMDFullToShardShapeCustomCall(ins)) {
+          return absl::InternalError(
+              "An SPMDFullToShardShape call found outside a manually "
+              "partitioned sub-graph.");
+        } else if (IsSPMDShardToFullShapeCustomCall(ins)) {
+          if (!ins->has_sharding()) {
+            return absl::InternalError(
+                "An SPMDShardToFullShape custom call found without a sharding "
+                "annotation.");
+          }
           generate_non_following_strategies(false);
+        } else if (IsTopKCustomCall(ins)) {
+          generate_non_following_strategies(false, {0});
+        } else if (IsPartialReduceCustomCall(ins)) {
+          strategy_group = HandlePartialReduce(
+              ins, instruction_id, /* have_memory_cost */ true, strategy_groups,
+              cluster_env, strategy_map, call_graph);
         } else if (OutputInputSameShapes(ins)) {
           auto* partitioner =
               GetCustomCallPartitioner(ins->custom_call_target());
@@ -718,8 +742,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                 /* have_memory_cost= */ true, strategy_groups, cluster_env,
                 pretrimmed_strategy_map);
           }
-        } else if (IsTopKCustomCall(ins)) {
-          generate_non_following_strategies(false, {0});
+        } else if (ins->has_sharding()) {
+          generate_non_following_strategies(false);
         } else {
           // TODO (b/258723035) Handle CustomCall ops for GPUs in a better way.
           generate_non_following_strategies(true);

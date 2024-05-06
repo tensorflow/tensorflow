@@ -343,26 +343,28 @@ TEST_F(AddressComputationFusionRewriterTest,
 
   const char* expected = R"(
     ; CHECK:     %address-computation {{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[8,8]{1,0} parameter(1)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[2:3], [0:8], [0:8]}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[B1]]),
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(1)
-    ; CHECK:       [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[P0]], [[B1]])
-    ; CHECK:         kind=kCustom, calls=%address-computation,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
-    ; CHECK:         }
-    ; CHECK:       ROOT {{.*}} = f16[8,8]{1,0} add([[FUSION]], [[B1]])
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[P0]], [[P1]])
+    ; CHECK-DAG:     kind=kCustom, calls=%address-computation,
+    ; CHECK-DAG:     backend_config={
+    ; CHECK-DAG:       "kind":"__custom_fusion",
+    ; CHECK-DAG:       "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK-DAG:     }
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
+    ; CHECK:       ROOT {{.*}} = f16[8,8]{1,0} add([[FUSION]], [[B0]])
     ; CHECK:     }
   )";
 
@@ -426,9 +428,32 @@ TEST_F(AddressComputationFusionRewriterTest,
     }
   )";
 
+  const char* expected = R"(
+    ; CHECK:     %address-computation{{.*}} {
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK:              custom_call_target="__cublas$gemm"
+    ; CHECK:     }
+    ; CHECK:     %address-computation{{.*}} {
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK:              custom_call_target="__cublas$gemm"
+    ; CHECK:     }
+  )";
+
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            std::nullopt);
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, SimpleGemmSlicingNotParameter) {

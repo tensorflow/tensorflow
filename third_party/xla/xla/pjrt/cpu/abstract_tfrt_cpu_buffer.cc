@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
-#include "xla/runtime/cpu_event.h"
+#include "xla/service/cpu/cpu_event.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_xfeed.h"
 #include "xla/service/shaped_buffer.h"
@@ -56,11 +56,11 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/async_value.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/connected_traceme.h"
@@ -68,8 +68,6 @@ limitations under the License.
 
 namespace xla {
 namespace {
-
-using ::xla::runtime::CpuEvent;
 
 constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
 
@@ -654,8 +652,7 @@ AbstractTfrtCpuBuffer::AllocateTrackedDeviceBuffer(
 /*static*/ void AbstractTfrtCpuBuffer::AllocateAvsAndEvents(
     const Shape& shape,
     absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
-    absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4>*
-        definition_events) {
+    absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>* definition_events) {
   // Nested tuple shapes are not supported here.
   int num_leaf_buffers = shape.IsTuple() ? shape.tuple_shapes_size() : 1;
   for (int i = 0; i < num_leaf_buffers; ++i) {

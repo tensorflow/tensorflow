@@ -61,5 +61,6 @@ tf_cc_binary(
         ":op_compatibility_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:path",
     ],
 )

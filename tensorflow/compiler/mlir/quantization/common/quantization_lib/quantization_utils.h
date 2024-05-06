@@ -493,6 +493,7 @@ class QuantizationPattern : public RewritePattern {
         continue;
       }
 
+      bool is_operand_or_result_modified = false;
       // Collect all the quantized inputs and "clone" the matched op by these
       // inputs.
       SmallVector<Value, 4> inputs;
@@ -517,6 +518,7 @@ class QuantizationPattern : public RewritePattern {
             // Dynamic range quantization is applied by having QuantizeOp as an
             // input. Only int8 weight is supported for now.
             inputs.push_back(dq_op.getOperand());
+            is_operand_or_result_modified = true;
           } else {
             // Otherwise, it's the case where the operand is activations or the
             // quantizing_op is non-supported/weight-only.
@@ -525,6 +527,7 @@ class QuantizationPattern : public RewritePattern {
         } else {
           if (auto dq_op =
                   dyn_cast_or_null<DequantizeOpT>(operand.getDefiningOp())) {
+            is_operand_or_result_modified = true;
             inputs.push_back(dq_op.getOperand());
           } else if (!ele_type.isF32()) {
             // If the operand is an integer tensor, then it doesn't require the
@@ -561,6 +564,7 @@ class QuantizationPattern : public RewritePattern {
           outputs_replaced.insert(
               {user.getResult(), enumerated_result.index()});
           output_types.push_back(user.getType());
+          is_operand_or_result_modified = true;
         } else if (!result_ele_type.isF32()) {
           // If the result is an integer tensor, then it doesn't require the
           // D op in the pattern.
@@ -574,6 +578,13 @@ class QuantizationPattern : public RewritePattern {
         } else {
           return failure();
         }
+      }
+
+      // For float16 quantization if none of the operand or result is modified,
+      // replacing the op. See b/335025403.
+      if (inference_type == tensorflow::DT_HALF &&
+          !is_operand_or_result_modified) {
+        return failure();
       }
 
       rewriter.setInsertionPointAfter(quantizing_op);

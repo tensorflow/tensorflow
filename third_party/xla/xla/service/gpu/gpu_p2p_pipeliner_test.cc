@@ -96,7 +96,7 @@ TEST_F(GpuP2PPipelinerTest,
     recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1,
       frontend_attributes={
         _xla_send_recv_pipeline="0"
-      }
+      }, control-predecessors={send.0}
     recv-data = u32[2] get-tuple-element(recv-done.0), index=0
 
     c1 = u32[] constant(1)

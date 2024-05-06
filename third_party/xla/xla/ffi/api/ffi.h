@@ -20,6 +20,8 @@ limitations under the License.
 #error Two different XLA FFI implementations cannot be included together
 #endif  // XLA_FFI_FFI_H_
 
+#include <algorithm>
+#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -53,14 +55,48 @@ enum class DataType : uint8_t {
   F32 = XLA_FFI_DataType_F32,
   F64 = XLA_FFI_DataType_F64,
   BF16 = XLA_FFI_DataType_BF16,
+  C64 = XLA_FFI_DataType_C64,
+  C128 = XLA_FFI_DataType_C128,
+  TOKEN = XLA_FFI_DataType_TOKEN,
 };
 
 inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
-  static constexpr const char* kDataTypeNames[] = {
-      "INVALID", "PRED", "S8",  "S16", "S32", "S64", "U8",
-      "U16",     "U32",  "U64", "F16", "F32", "F64", "BF16",
-  };
-  return os << kDataTypeNames[static_cast<int>(dtype)];
+  switch (dtype) {
+    case DataType::INVALID:
+      return os << "INVALID";
+    case DataType::PRED:
+      return os << "PRED";
+    case DataType::S8:
+      return os << "S8";
+    case DataType::S16:
+      return os << "S16";
+    case DataType::S32:
+      return os << "S32";
+    case DataType::S64:
+      return os << "S64";
+    case DataType::U8:
+      return os << "U8";
+    case DataType::U16:
+      return os << "U16";
+    case DataType::U32:
+      return os << "U32";
+    case DataType::U64:
+      return os << "U64";
+    case DataType::F16:
+      return os << "F16";
+    case DataType::F32:
+      return os << "F32";
+    case DataType::F64:
+      return os << "F64";
+    case DataType::BF16:
+      return os << "BF16";
+    case DataType::C64:
+      return os << "C64";
+    case DataType::C128:
+      return os << "C128";
+    case DataType::TOKEN:
+      return os << "TOKEN";
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -78,6 +114,10 @@ class Span {
       : Span(vec.data(), vec.size()) {}
 
   T& operator[](size_t index) const { return data_[index]; }
+
+  bool operator==(const Span<T>& other) const {
+    return size() == other.size() && std::equal(begin(), end(), other.begin());
+  }
 
   size_t size() const { return size_; }
 
@@ -135,19 +175,22 @@ struct DataTypeToNative {
 };
 
 // clang-format off
-template <> struct DataTypeToNative<DataType::PRED> { using type = bool; };
-template <> struct DataTypeToNative<DataType::U8>   { using type = uint8_t; };
-template <> struct DataTypeToNative<DataType::U16>  { using type = uint16_t; };
-template <> struct DataTypeToNative<DataType::U32>  { using type = uint32_t; };
-template <> struct DataTypeToNative<DataType::U64>  { using type = uint64_t; };
-template <> struct DataTypeToNative<DataType::S8>   { using type = int8_t; };
-template <> struct DataTypeToNative<DataType::S16>  { using type = int16_t; };
-template <> struct DataTypeToNative<DataType::S32>  { using type = int32_t; };
-template <> struct DataTypeToNative<DataType::S64>  { using type = int64_t; };
-template <> struct DataTypeToNative<DataType::F16>  { using type = uint16_t; };
-template <> struct DataTypeToNative<DataType::F32>  { using type = float; };
-template <> struct DataTypeToNative<DataType::F64>  { using type = double; };
-template <> struct DataTypeToNative<DataType::BF16> { using type = uint16_t; };
+template <> struct DataTypeToNative<DataType::PRED>  { using type = bool; };
+template <> struct DataTypeToNative<DataType::U8>    { using type = uint8_t; };
+template <> struct DataTypeToNative<DataType::U16>   { using type = uint16_t; };
+template <> struct DataTypeToNative<DataType::U32>   { using type = uint32_t; };
+template <> struct DataTypeToNative<DataType::U64>   { using type = uint64_t; };
+template <> struct DataTypeToNative<DataType::S8>    { using type = int8_t; };
+template <> struct DataTypeToNative<DataType::S16>   { using type = int16_t; };
+template <> struct DataTypeToNative<DataType::S32>   { using type = int32_t; };
+template <> struct DataTypeToNative<DataType::S64>   { using type = int64_t; };
+template <> struct DataTypeToNative<DataType::F16>   { using type = uint16_t; };
+template <> struct DataTypeToNative<DataType::F32>   { using type = float; };
+template <> struct DataTypeToNative<DataType::F64>   { using type = double; };
+template <> struct DataTypeToNative<DataType::BF16>  { using type = uint16_t; };
+template <> struct DataTypeToNative<DataType::C64>   { using type = std::complex<float>; }; // NOLINT
+template <> struct DataTypeToNative<DataType::C128>  { using type = std::complex<double>; }; // NOLINT
+template <> struct DataTypeToNative<DataType::TOKEN> { using type = void; };
 // clang-format on
 
 inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
@@ -170,6 +213,8 @@ template <DataType dtype> using BufferR2 = Buffer<dtype, 2>;
 template <DataType dtype> using BufferR3 = Buffer<dtype, 3>;
 template <DataType dtype> using BufferR4 = Buffer<dtype, 4>;
 // clang-format on
+
+using Token = BufferR0<DataType::TOKEN>;
 
 namespace internal {
 
@@ -333,11 +378,14 @@ struct RetDecoding<Buffer<dtype, rank>> {
     }                                                                       \
   }
 
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int8_t, XLA_FFI_DataType_S8);
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int16_t, XLA_FFI_DataType_S16);
 XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int32_t, XLA_FFI_DataType_S32);
 XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int64_t, XLA_FFI_DataType_S64);
 XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(float, XLA_FFI_DataType_F32);
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(double, XLA_FFI_DataType_F64);
 
-#undef XLA_FFI_REGISTER_SCALAR_ATTR_DECODING
+#undef XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING
 
 // A type tag to mark i64 attributes as pointers to `T`.
 template <typename T>

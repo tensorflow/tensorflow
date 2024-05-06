@@ -19,9 +19,12 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -38,6 +41,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_memory.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
@@ -67,13 +71,7 @@ constexpr double kMaxCostEpsilon = 1.0001;
 // bounds, etc.) using smaller absolute values, due to limitations on precision.
 // To compensate, the overbudget objective coefficient must be amplified by the
 // same amount.
-constexpr double kMemoryMultiplier = 1e-6;
-
-// Any memory terms below this threshold will be dropped (to reduce MIP size).
-constexpr double kTinyTermThreshold = 1e-6;
-
-// Always include memory constraints with this number of terms or fewer.
-constexpr int64_t kMemoryCardinalityThreshold = 1000;
+constexpr double kMemoryMultiplier = 1e-5;
 
 bool AutoShardingSolverOutput::operator==(
     const AutoShardingSolverOutput& other) const {
@@ -90,6 +88,7 @@ bool AutoShardingSolverResult::operator==(
 void PrintLargestInstructions(
     const std::vector<NodeStrategyIdx>& chosen_strategy,
     const AutoShardingSolverRequest& request) {
+  if (!request.node_intervals().empty()) return;  // TODO(moffitt): Handle this.
   // This memory consumption computation is different from that in
   // PrintAutoShardingSolution() because L and m are created to be different
   // from liveness_set and strategy.memory_cost.
@@ -158,7 +157,7 @@ AutoShardingSolverResult SolveAndExtractSolution(
     const std::vector<std::vector<MPVariable*>>& s,
     const std::vector<std::vector<MPVariable*>>& e,
     const MPVariable* overbudget_var, const MPVariable* makespan_var,
-    absl::Time start_time, MPSolver& solver);
+    MPSolver& solver);
 
 double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
   double min_memory_budget_required_estimate = 0.0;
@@ -219,6 +218,110 @@ AutoShardingSolverRequest ScaleRequest(
   ScaleCoeffs(scaling_factor, scaled_request.mutable_computation_costs());
   ScaleCoeffs(scaling_factor, scaled_request.mutable_resharding_costs());
   return scaled_request;
+}
+
+// Given the live matrix and memory costs (for nodes or edges), reduce terms and
+// create constrained variables for the subsequent groups.
+std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
+    MPSolver& solver, int64_t num_lives, int64_t num_primitives,
+    const std::function<
+        tsl::protobuf::RepeatedField<int64_t>(int64_t)>&  // NOLINT
+        live,
+    const tsl::protobuf::RepeatedPtrField<  // NOLINT
+        AutoShardingSolverRequest_Pair>& intervals,
+    const tsl::protobuf::RepeatedPtrField<  // NOLINT
+        AutoShardingSolverRequest_Group>& groups,
+    const tsl::protobuf::RepeatedPtrField<  // NOLINT
+        AutoShardingSolverRequest_Costs>& memory_costs,
+    std::string_view prim_type,
+    std::vector<std::vector<MPVariable*>>& prim_vars,
+    std::vector<std::pair<int64_t, int64_t>>& reduced_intervals,
+    std::vector<MPVariable*>& group_vars) {
+  std::optional<std::pair<int64_t, int64_t>> num_terms = std::nullopt;
+  std::vector<absl::btree_set<int64_t>> reduced_groups;
+  if (groups.empty()) {
+    // If we've been given primitive intervals instead of a liveness matrix, we
+    // need to update the # of lives in order to use the memory term reducer.
+    for (const auto& interval : intervals) {
+      if (interval.first() > interval.second()) continue;  // Interval undefined
+      num_lives = std::max(num_lives, interval.second() + 1);
+    }
+    auto Intervals =
+        [intervals](int64_t prim_idx) -> std::pair<int64_t, int64_t> {
+      return {intervals.at(prim_idx).first(), intervals.at(prim_idx).second()};
+    };
+    MemoryTermReducer reducer;
+    num_terms =
+        intervals.empty()
+            ? reducer.Reduce(num_lives, num_primitives, live)
+            : reducer.Reduce(num_lives, num_primitives, std::move(Intervals));
+    reduced_intervals = reducer.GetReducedIntervals();
+    reduced_groups = reducer.GetReducedGroups();
+  } else {  // If we've already done term reduction, just copy over the results.
+    for (const auto& interval : intervals) {
+      reduced_intervals.push_back({interval.first(), interval.second()});
+    }
+    for (const auto& group : groups) {
+      reduced_groups.push_back({group.prims().begin(), group.prims().end()});
+    }
+  }
+  solver.MakeIntVarArray(reduced_groups.size(), 0.0, MPSolver::infinity(),
+                         absl::StrCat("group_", prim_type), &group_vars);
+  for (int64_t group_idx = 0; group_idx < group_vars.size(); ++group_idx) {
+    MPConstraint* constraint = solver.MakeRowConstraint(
+        -MPSolver::infinity(), 0.0,
+        absl::StrCat("group_", prim_type, "[", group_idx, "]"));
+    constraint->SetCoefficient(group_vars[group_idx], -1.0);
+    for (const int64_t prim_idx : reduced_groups[group_idx]) {
+      for (int64_t j = 0; j < prim_vars[prim_idx].size(); ++j) {
+        double memory_cost = memory_costs.at(prim_idx).costs(j);
+        memory_cost *= kMemoryMultiplier;
+        const double accumulated_coefficient =
+            constraint->GetCoefficient(prim_vars[prim_idx][j]);
+        constraint->SetCoefficient(prim_vars[prim_idx][j],
+                                   accumulated_coefficient + memory_cost);
+      }
+    }
+  }
+  return num_terms;
+}
+
+// Adds the appropriate memory terms (for nodes or edges) at the given time.
+void AddMemoryTerms(
+    const AutoShardingSolverRequest& request, MPSolver& solver,
+    int64_t num_primitives,
+    const std::vector<std::pair<int64_t, int64_t>>& intervals,
+    const tsl::protobuf::RepeatedPtrField<  // NOLINT
+        AutoShardingSolverRequest_Costs>& memory_costs,
+    const MPVariable* overbudget_var,
+    std::vector<std::vector<MPVariable*>>& prim_vars,
+    std::vector<MPVariable*>& group_vars,
+    absl::flat_hash_map<LivenessIdx, MPConstraint*>& constraints) {
+  for (int64_t prim_idx = 0; prim_idx < intervals.size(); ++prim_idx) {
+    for (int64_t time_idx = intervals[prim_idx].first;
+         time_idx <= intervals[prim_idx].second; ++time_idx) {
+      if (!constraints.contains(time_idx)) {
+        MPConstraint* constraint = solver.MakeRowConstraint(
+            -MPSolver::infinity(), request.memory_budget() * kMemoryMultiplier,
+            absl::StrCat("mem[", time_idx, "]"));
+        if (overbudget_var) constraint->SetCoefficient(overbudget_var, -1.0);
+        constraints[time_idx] = constraint;
+      }
+      MPConstraint* constraint = constraints[time_idx];
+      if (prim_idx >= num_primitives) {
+        constraint->SetCoefficient(group_vars[prim_idx - num_primitives], 1.0);
+        continue;
+      }
+      for (int64_t j = 0; j < prim_vars[prim_idx].size(); ++j) {
+        double memory_cost = memory_costs.at(prim_idx).costs(j);
+        memory_cost *= kMemoryMultiplier;
+        const double accumulated_coefficient =
+            constraint->GetCoefficient(prim_vars[prim_idx][j]);
+        constraint->SetCoefficient(prim_vars[prim_idx][j],
+                                   accumulated_coefficient + memory_cost);
+      }
+    }
+  }
 }
 
 // Taking an auto-sharding problem (`request`) as an input, calls the OR tools
@@ -474,6 +577,46 @@ AutoShardingSolverResult CallORToolsSolver(
   }
   // c.
   if (request.memory_budget() > 0) {
+    auto LiveNodes =
+        [request](int64_t live_idx) -> tsl::protobuf::RepeatedField<int64_t> {
+      return request.live(live_idx).nodes();
+    };
+    auto LiveEdges =
+        [request](int64_t live_idx) -> tsl::protobuf::RepeatedField<int64_t> {
+      return request.live_edges(live_idx).edges();
+    };
+    std::vector<std::pair<int64_t, int64_t>> reduced_intervals_nodes,
+        reduced_intervals_edges;
+    std::vector<MPVariable*> group_node_vars, group_edge_vars;
+    const absl::Time term_reduction_start_time = absl::Now();
+    auto num_node_terms = ReduceMemoryTerms(
+        *solver, request.live_size(), request.num_nodes(), std::move(LiveNodes),
+        request.node_intervals(), request.node_groups(), request.memory_costs(),
+        "node", s, reduced_intervals_nodes, group_node_vars);
+    auto num_edge_terms = ReduceMemoryTerms(
+        *solver, request.live_edges_size(), request.edges_size(),
+        std::move(LiveEdges), request.edge_intervals(), request.edge_groups(),
+        request.memory_edge_costs(), "edge", e, reduced_intervals_edges,
+        group_edge_vars);
+    const absl::Time term_reduction_end_time = absl::Now();
+    if (num_node_terms && num_edge_terms) {
+      const auto term_reduction_duration =
+          term_reduction_end_time - term_reduction_start_time;
+      LOG(INFO) << "Memory Term Reducer took "
+                << absl::ToInt64Milliseconds(term_reduction_duration)
+                << " ms and reduced the number of terms from "
+                << num_node_terms->first + num_edge_terms->first << " to "
+                << num_node_terms->second + num_edge_terms->second;
+    }
+    absl::flat_hash_map<LivenessIdx, MPConstraint*> constraints;
+    AddMemoryTerms(request, *solver, request.num_nodes(),
+                   reduced_intervals_nodes, request.memory_costs(),
+                   overbudget_var, s, group_node_vars, constraints);
+    if (request.enable_memory_edge_costs()) {
+      AddMemoryTerms(request, *solver, request.edges_size(),
+                     reduced_intervals_edges, request.memory_edge_costs(),
+                     overbudget_var, e, group_edge_vars, constraints);
+    }
     if (overbudget_var) {
       solver->MutableObjective()->SetCoefficient(
           overbudget_var,
@@ -645,7 +788,7 @@ AutoShardingSolverResult CallORToolsSolver(
     VLOG(0) << "Max cost: " << request.max_cost().coeff();
   }
   auto result = SolveAndExtractSolution(request, s, e, overbudget_var,
-                                        makespan_var, start_time, *solver);
+                                        makespan_var, *solver);
   if (result.status.ok()) {
     const AutoShardingEvaluation evaluation =
         Evaluate(unscaled_request, result);
@@ -711,154 +854,14 @@ std::vector<EdgeStrategyIdx> GetChosenEdgeStrategy(
   return chosen_edge_strategy;
 }
 
-// Finds the timestep with the largest memory overbudget (-1 if no such value).
-LivenessIdx FindPeakLiveness(const AutoShardingSolverRequest& request,
-                             const std::vector<std::vector<MPVariable*>>& s,
-                             const std::vector<std::vector<MPVariable*>>& e) {
-  const std::vector<NodeStrategyIdx> chosen_node_strategy =
-      GetChosenNodeStrategy(request, s);
-  const std::vector<EdgeStrategyIdx> chosen_edge_strategy =
-      GetChosenEdgeStrategy(request, e);
-  LivenessIdx peak_time_idx = -1;
-  double peak_overbudget = 0.0;
-  for (LivenessIdx time_idx = 0; time_idx < request.live_size(); ++time_idx) {
-    if (request.live(time_idx).nodes_size() <= kMemoryCardinalityThreshold) {
-      continue;  // We always enforce these, no need to consider them again.
-    }
-    double memory_usage = 0.0;
-    for (NodeIdx node_idx : request.live(time_idx).nodes()) {
-      const NodeStrategyIdx j = chosen_node_strategy[node_idx];
-      memory_usage += request.memory_costs(node_idx).costs(j);
-    }
-    if (!request.live_edges().empty() && request.enable_memory_edge_costs()) {
-      for (EdgeIdx edge_idx : request.live_edges(time_idx).edges()) {
-        const EdgeStrategyIdx j = chosen_edge_strategy[edge_idx];
-        memory_usage += request.memory_edge_costs(edge_idx).costs(j);
-      }
-    }
-    const double overbudget = memory_usage - request.memory_budget();
-    if (peak_overbudget < overbudget) {
-      peak_overbudget = overbudget;
-      peak_time_idx = time_idx;
-    }
-  }
-  return peak_time_idx;
-}
-
-// Imposes a new memory constraint at the given location.  Returns the number of
-// tiny terms created.
-int ImposeMemoryConstraint(const AutoShardingSolverRequest& request,
-                           const std::vector<std::vector<MPVariable*>>& s,
-                           const std::vector<std::vector<MPVariable*>>& e,
-                           const MPVariable* overbudget_var, MPSolver& solver,
-                           LivenessIdx time_idx) {
-  int tiny_term_count = 0;
-  VLOG(1) << "Imposing a memory constraint at time index " << time_idx;
-  MPConstraint* constraint =
-      solver.MakeRowConstraint(-MPSolver::infinity(), MPSolver::infinity(),
-                               absl::StrCat("mem[", time_idx, "]"));
-  if (overbudget_var) constraint->SetCoefficient(overbudget_var, -1.0);
-  double tiny_term_total = 0.0;  // Used to trim the memory budget downward.
-  for (NodeIdx node_idx : request.live(time_idx).nodes()) {
-    double tiny_term_max = 0.0;
-    for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
-      double memory_cost = request.memory_costs(node_idx).costs(j);
-      if (memory_cost < kTinyTermThreshold * request.memory_budget()) {
-        tiny_term_max = std::max(tiny_term_max, memory_cost);
-        if (memory_cost > 0.0) ++tiny_term_count;
-        continue;
-      }
-      memory_cost *= kMemoryMultiplier;
-      const double accumulated_coefficient =
-          constraint->GetCoefficient(s[node_idx][j]);
-      constraint->SetCoefficient(s[node_idx][j],
-                                 accumulated_coefficient + memory_cost);
-    }
-    tiny_term_total += tiny_term_max;
-  }
-  if (!request.live_edges().empty() && request.enable_memory_edge_costs()) {
-    for (EdgeIdx edge_idx : request.live_edges(time_idx).edges()) {
-      double tiny_term_max = 0.0;
-      for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
-        double memory_cost = request.memory_edge_costs(edge_idx).costs(j);
-        if (memory_cost < kTinyTermThreshold * request.memory_budget()) {
-          tiny_term_max = std::max(tiny_term_max, memory_cost);
-          if (memory_cost > 0.0) ++tiny_term_count;
-          continue;
-        }
-        memory_cost *= kMemoryMultiplier;
-        const double accumulated_coefficient =
-            constraint->GetCoefficient(e[edge_idx][j]);
-        constraint->SetCoefficient(e[edge_idx][j],
-                                   accumulated_coefficient + memory_cost);
-      }
-      tiny_term_total += tiny_term_max;
-    }
-  }
-  constraint->SetUB(kMemoryMultiplier *
-                    (request.memory_budget() - tiny_term_total));
-  return tiny_term_count;
-}
-
 AutoShardingSolverResult SolveAndExtractSolution(
     const AutoShardingSolverRequest& request,
     const std::vector<std::vector<MPVariable*>>& s,
     const std::vector<std::vector<MPVariable*>>& e,
     const MPVariable* overbudget_var, const MPVariable* makespan_var,
-    absl::Time start_time, MPSolver& solver) {
-  int tiny_term_count = 0;
-  absl::flat_hash_set<LivenessIdx> peak_times, small_times;
-  if (request.memory_budget() > 0) {
-    // Always enforce constraints that have a relatively small number of terms.
-    for (LivenessIdx time_idx = 0; time_idx < request.live_size(); ++time_idx) {
-      if (request.live(time_idx).nodes_size() <= kMemoryCardinalityThreshold) {
-        small_times.insert(time_idx);
-        tiny_term_count += ImposeMemoryConstraint(request, s, e, overbudget_var,
-                                                  solver, time_idx);
-      }
-    }
-    // Also add in any peak times that were encountered in previous iterations.
-    if (!request.deterministic_mode()) {
-      for (const LivenessIdx peak_time_idx : request.peak_times()) {
-        if (small_times.contains(peak_time_idx)) continue;
-        peak_times.insert(peak_time_idx);
-        tiny_term_count += ImposeMemoryConstraint(request, s, e, overbudget_var,
-                                                  solver, peak_time_idx);
-      }
-    }
-  }
+    MPSolver& solver) {
   auto status = solver.Solve();
-  if (request.memory_budget() > 0) {
-    // Continue to add memory constraints until (a) they are all satisfied,
-    // (b) the problem becomes infeasible, or (c) the solver times out.
-    while (status == operations_research::MPSolver::OPTIMAL) {
-      std::vector<std::pair<const MPVariable*, double>> hint;
-      for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
-        if (request.s_follow(node_idx) >= 0) continue;
-        for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
-          hint.push_back({s[node_idx][j], s[node_idx][j]->solution_value()});
-        }
-      }
-      solver.SetHint(hint);
-      const LivenessIdx peak_time_idx = FindPeakLiveness(request, s, e);
-      if (peak_time_idx == -1 || peak_times.contains(peak_time_idx)) break;
-      if (small_times.contains(peak_time_idx)) break;
-      peak_times.insert(peak_time_idx);
-      tiny_term_count += ImposeMemoryConstraint(request, s, e, overbudget_var,
-                                                solver, peak_time_idx);
-      if (request.has_solver_timeout()) {
-        auto remaining_time =
-            request.solver_timeout().solver_timeout_in_seconds();
-        remaining_time -= absl::ToInt64Seconds(absl::Now() - start_time);
-        solver.SetTimeLimit(absl::Seconds(std::max(remaining_time, 0L)));
-      }
-      status = solver.Solve();
-    }
-    LOG(INFO) << "Imposed " << peak_times.size() + small_times.size()
-              << " memory constraints out of " << request.live_size();
-  }
   LOG(INFO) << "Solver Status: " << status;
-  LOG(INFO) << "Number of tiny terms: " << tiny_term_count;
 
   if (status == operations_research::MPSolver::INFEASIBLE) {
     LOG(ERROR) << "MPSolver could not find any feasible solution.";
@@ -965,7 +968,7 @@ AutoShardingSolverResult SolveAndExtractSolution(
   PrintLargestInstructions(chosen_node_strategy, request);
   const AutoShardingSolverOutput output = {std::move(chosen_node_strategy),
                                            std::move(chosen_edge_strategy),
-                                           unsalted_objective, peak_times};
+                                           unsalted_objective};
   return AutoShardingSolverResult(output, false);
 }
 
@@ -1036,28 +1039,116 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
   if (request.memory_budget() > 0) {
     double total_overbudget = 0.0;
     double lower_bound_overbudget = 0.0;
-    for (LivenessIdx time_idx = 0; time_idx < request.live_size(); ++time_idx) {
-      double total_memory_cost = 0.0;
-      double lower_bound_memory_cost = 0.0;
-      for (NodeIdx node_idx : request.live(time_idx).nodes()) {
-        const auto& m = request.memory_costs(node_idx).costs();
-        total_memory_cost += m[s_val[node_idx]];
-        lower_bound_memory_cost += *std::min_element(m.begin(), m.end());
-      }
-      if (!request.live_edges().empty() && request.enable_memory_edge_costs()) {
-        for (EdgeIdx edge_idx : request.live_edges(time_idx).edges()) {
-          const auto& m = request.memory_edge_costs(edge_idx).costs();
-          total_memory_cost += m[e_val[edge_idx]];
-          lower_bound_memory_cost += *std::min_element(m.begin(), m.end());
+    std::vector<double> total_memory_costs, lower_bound_memory_costs;
+    if (request.node_intervals().empty()) {  // Handles live matrices.
+      total_memory_costs.resize(request.live_size(), 0.0);
+      lower_bound_memory_costs.resize(request.live_size(), 0.0);
+      for (LivenessIdx time_idx = 0; time_idx < request.live_size();
+           ++time_idx) {
+        for (NodeIdx node_idx : request.live(time_idx).nodes()) {
+          const auto& m = request.memory_costs(node_idx).costs();
+          total_memory_costs[time_idx] += m[s_val[node_idx]];
+          lower_bound_memory_costs[time_idx] +=
+              *std::min_element(m.begin(), m.end());
+        }
+        if (!request.live_edges().empty() &&
+            request.enable_memory_edge_costs()) {
+          for (EdgeIdx edge_idx : request.live_edges(time_idx).edges()) {
+            const auto& m = request.memory_edge_costs(edge_idx).costs();
+            total_memory_costs[time_idx] += m[e_val[edge_idx]];
+            lower_bound_memory_costs[time_idx] +=
+                *std::min_element(m.begin(), m.end());
+          }
         }
       }
+    } else {  // Handles the interval-based memory representation.
+      std::vector<double> total_node_group_costs, total_edge_group_costs,
+          lower_bound_node_group_costs, lower_bound_edge_group_costs;
+      for (const auto& group : request.node_groups()) {
+        double total_group_cost = 0.0;
+        double lower_bound_group_cost = 0.0;
+        for (const NodeIdx node_idx : group.prims()) {
+          const auto& m = request.memory_costs(node_idx).costs();
+          total_group_cost += m[s_val[node_idx]];
+          lower_bound_group_cost += *std::min_element(m.begin(), m.end());
+        }
+        total_node_group_costs.push_back(total_group_cost);
+        lower_bound_node_group_costs.push_back(lower_bound_group_cost);
+      }
+      for (const auto& group : request.edge_groups()) {
+        double total_group_cost = 0.0;
+        double lower_bound_group_cost = 0.0;
+        for (const EdgeIdx edge_idx : group.prims()) {
+          const auto& m = request.memory_edge_costs(edge_idx).costs();
+          total_group_cost += m[e_val[edge_idx]];
+          lower_bound_group_cost += *std::min_element(m.begin(), m.end());
+        }
+        total_edge_group_costs.push_back(total_group_cost);
+        lower_bound_edge_group_costs.push_back(lower_bound_group_cost);
+      }
+      for (NodeIdx node_idx = 0; node_idx < request.node_intervals_size();
+           ++node_idx) {
+        const auto& interval = request.node_intervals(node_idx);
+        if (interval.first() > interval.second()) continue;
+        // Expand cost vectors if needed to cover the range of this interval.
+        while (total_memory_costs.size() <= interval.second()) {
+          total_memory_costs.push_back(0.0);
+          lower_bound_memory_costs.push_back(0.0);
+        }
+        double total_memory_cost = 0.0, lower_bound_memory_cost = 0.0;
+        if (node_idx < request.num_nodes()) {
+          const auto& m = request.memory_costs(node_idx).costs();
+          total_memory_cost = m[s_val[node_idx]];
+          lower_bound_memory_cost = *std::min_element(m.begin(), m.end());
+        } else {
+          int64_t group_idx = node_idx - request.num_nodes();
+          total_memory_cost = total_node_group_costs[group_idx];
+          lower_bound_memory_cost = lower_bound_node_group_costs[group_idx];
+        }
+        for (LivenessIdx time_idx = interval.first();
+             time_idx <= interval.second(); ++time_idx) {
+          total_memory_costs[time_idx] += total_memory_cost;
+          lower_bound_memory_costs[time_idx] += lower_bound_memory_cost;
+        }
+      }
+      if (request.enable_memory_edge_costs()) {
+        for (EdgeIdx edge_idx = 0; edge_idx < request.edge_intervals_size();
+             ++edge_idx) {
+          const auto& interval = request.edge_intervals(edge_idx);
+          if (interval.first() > interval.second()) continue;
+          // Expand cost vectors if needed to cover the range of this interval.
+          while (total_memory_costs.size() <= interval.second()) {
+            total_memory_costs.push_back(0.0);
+            lower_bound_memory_costs.push_back(0.0);
+          }
+          double total_memory_cost = 0.0, lower_bound_memory_cost = 0.0;
+          if (edge_idx < request.edges_size()) {
+            const auto& m = request.memory_edge_costs(edge_idx).costs();
+            total_memory_cost = m[e_val[edge_idx]];
+            lower_bound_memory_cost = *std::min_element(m.begin(), m.end());
+          } else {
+            int64_t group_idx = edge_idx - request.edges_size();
+            total_memory_cost = total_edge_group_costs[group_idx];
+            lower_bound_memory_cost = lower_bound_edge_group_costs[group_idx];
+          }
+          for (LivenessIdx time_idx = interval.first();
+               time_idx <= interval.second(); ++time_idx) {
+            total_memory_costs[time_idx] += total_memory_cost;
+            lower_bound_memory_costs[time_idx] += lower_bound_memory_cost;
+          }
+        }
+      }
+    }
+    for (LivenessIdx time_idx = 0; time_idx < total_memory_costs.size();
+         ++time_idx) {
       if (request.has_overbudget_coeff()) {
-        total_overbudget = std::max(
-            total_overbudget, total_memory_cost - request.memory_budget());
-        lower_bound_overbudget =
-            std::max(lower_bound_overbudget,
-                     lower_bound_memory_cost - request.memory_budget());
-      } else if (total_memory_cost > request.memory_budget()) {
+        total_overbudget =
+            std::max(total_overbudget,
+                     total_memory_costs[time_idx] - request.memory_budget());
+        lower_bound_overbudget = std::max(
+            lower_bound_overbudget,
+            lower_bound_memory_costs[time_idx] - request.memory_budget());
+      } else if (total_memory_costs[time_idx] > request.memory_budget()) {
         evaluation.violation_codes.insert(kMemoryViolationCode);
       }
     }

@@ -23,6 +23,7 @@ package_group(
         # copybara:uncomment "//learning/...",
         "//third_party/australis/...",
         "//third_party/iree/...",
+        "//third_party/libxc/...",
         "//third_party/mira/...",
         "//third_party/mlcompass/...",
         "//third_party/mlir_edge/model_curriculum/...",
@@ -643,6 +644,7 @@ xla_cc_test(
         ":util",
         ":xla_data_proto_cc",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -735,7 +737,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":types",
-        "//xla/stream_executor",
+        "//xla/stream_executor:stream_executor_interface",
         "@com_google_absl//absl/strings",
     ],
 )

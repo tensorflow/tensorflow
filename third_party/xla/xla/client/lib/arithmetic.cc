@@ -174,8 +174,4 @@ XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis) {
   return ArgMinMax(input, output_type, axis, /*is_min=*/false);
 }
 
-XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis) {
-  return ArgMinMax(input, output_type, axis, /*is_min=*/true);
-}
-
 }  // namespace xla

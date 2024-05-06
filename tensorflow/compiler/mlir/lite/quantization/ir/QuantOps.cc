@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 using namespace mlir;
 using namespace mlir::quantfork;
@@ -51,20 +52,20 @@ OpFoldResult StorageCastOp::fold(FoldAdaptor) {
 
 /// The quantization specification should match the expressed type.
 static bool isValidQuantizationSpec(Attribute quantSpec, Type expressed) {
-  if (auto typeAttr = quantSpec.dyn_cast<TypeAttr>()) {
+  if (auto typeAttr = mlir::dyn_cast<TypeAttr>(quantSpec)) {
     Type spec = typeAttr.getValue();
-    if (spec.isa<TensorType, VectorType>()) return false;
+    if (mlir::isa<TensorType, VectorType>(spec)) return false;
 
     // The spec should be either a quantized type which is compatible to the
     // expressed type, or a primitive type which is as same as the
     // (element type of) the expressed type.
-    if (auto quantizedType = spec.dyn_cast<QuantizedType>())
+    if (auto quantizedType = mlir::dyn_cast<QuantizedType>(spec))
       return quantizedType.isCompatibleExpressedType(expressed);
 
-    if (auto tensorType = expressed.dyn_cast<TensorType>())
+    if (auto tensorType = mlir::dyn_cast<TensorType>(expressed))
       return spec == tensorType.getElementType();
 
-    if (auto vectorType = expressed.dyn_cast<VectorType>())
+    if (auto vectorType = mlir::dyn_cast<VectorType>(expressed))
       return spec == vectorType.getElementType();
   }
   return false;
@@ -99,13 +100,13 @@ LogicalResult QuantizeRegionOp::verify() {
 }
 
 LogicalResult StatisticsOp::verify() {
-  auto tensorArg = getArg().getType().dyn_cast<TensorType>();
+  auto tensorArg = mlir::dyn_cast<TensorType>(getArg().getType());
   if (!tensorArg) return emitOpError("arg needs to be tensor type.");
 
   // Verify layerStats attribute.
   {
     auto layerStatsType = getLayerStats().getShapedType();
-    if (!layerStatsType.getElementType().isa<FloatType>()) {
+    if (!mlir::isa<FloatType>(layerStatsType.getElementType())) {
       return emitOpError("layerStats must have a floating point element type");
     }
     if (layerStatsType.getRank() != 1 || layerStatsType.getDimSize(0) != 2) {
@@ -122,7 +123,7 @@ LogicalResult StatisticsOp::verify() {
                         std::multiplies<int64_t>());
 
     auto axisStatsType = getAxisStats()->getShapedType();
-    if (!axisStatsType.getElementType().isa<FloatType>()) {
+    if (!mlir::isa<FloatType>(axisStatsType.getElementType())) {
       return emitOpError("axisStats must have a floating point element type");
     }
     if (axisStatsType.getRank() != 2 || axisStatsType.getDimSize(1) != 2 ||

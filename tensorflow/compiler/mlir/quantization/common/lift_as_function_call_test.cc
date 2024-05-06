@@ -118,10 +118,11 @@ TEST_F(LiftAsFunctionCallTest, FunctionLiftedAsXlaCallModuleOp) {
       FindOperationOfType<mlir::stablehlo::DotGeneralOp>(entry_func);
 
   EXPECT_TRUE(isa<TF::XlaCallModuleOp>(lifted_op));
-  EXPECT_EQ(lifted_op->getAttr("_original_entry_function").cast<StringAttr>(),
-            "composite_dot_general_fn_1");
   EXPECT_EQ(
-      lifted_dot_general_op->getAttr("precision_config").cast<ArrayAttr>(),
+      mlir::cast<StringAttr>(lifted_op->getAttr("_original_entry_function")),
+      "composite_dot_general_fn_1");
+  EXPECT_EQ(
+      mlir::cast<ArrayAttr>(lifted_dot_general_op->getAttr("precision_config")),
       builder_.getArrayAttr(SmallVector<Attribute>(
           1, mlir::stablehlo::PrecisionAttr::get(
                  ctx_.get(), mlir::stablehlo::Precision::DEFAULT))));
@@ -144,8 +145,9 @@ TEST_F(LiftAsFunctionCallTest, FunctionNoAttrLiftedAsXlaCallModuleOp) {
                          "composite_dot_general_fn", operands, results)[0]
           .getDefiningOp();
   EXPECT_TRUE(isa<TF::XlaCallModuleOp>(lifted_op));
-  EXPECT_EQ(lifted_op->getAttr("_original_entry_function").cast<StringAttr>(),
-            "composite_dot_general_fn_1");
+  EXPECT_EQ(
+      mlir::cast<StringAttr>(lifted_op->getAttr("_original_entry_function")),
+      "composite_dot_general_fn_1");
 }
 
 TEST_F(LiftAsFunctionCallTest, EinsumSupportedForXlaDotV2Succeeds) {

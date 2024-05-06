@@ -489,6 +489,42 @@ TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
   EXPECT_EQ(negate, computation->root_instruction());
 }
 
+TEST_F(HloComputationTest, RemoveSeveralUnusedFusionParameters) {
+  const char* const kHloModule = R"(
+  HloModule test
+
+  f {
+    p0 = f32[] parameter(0)
+    p1 = f32[] parameter(1)
+    p2 = f32[] parameter(2)
+    add = f32[] add(p0, p2)
+    ROOT neg = f32[] negate(p1)
+  }
+
+  ENTRY main {
+    param0 = f32[] parameter(0)
+    param1 = f32[] parameter(1)
+    param2 = f32[] parameter(2)
+    ROOT res = f32[] fusion(param0, param1, param2), kind=kLoop, calls=f
+  }
+  )";
+  // Unverified because we don't allow a fusion with dead instructions. But we
+  // can run into this case if we have a multi-output fusion with an unused
+  // tuple output and then remove the tuple output.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHloModule));
+  auto root = module->entry_computation()->root_instruction();
+  auto dead_add = FindInstruction(module.get(), "add");
+  ASSERT_IS_OK(root->fused_instructions_computation()
+                   ->RemoveInstructionAndUnusedOperands(dead_add));
+  root = module->entry_computation()->root_instruction();
+  // We don't remove unused parameters in entry computations, so we still expect
+  // the parameter number of the remaining fusion operand to be 1.
+  EXPECT_THAT(root, GmockMatch(m::Fusion(m::Parameter(1))));
+  EXPECT_THAT(root->fused_expression_root(),
+              GmockMatch(m::Negate(m::Parameter(0))));
+}
+
 TEST_F(HloComputationTest, ReplaceParameter) {
   const char* const kHloModule = R"(
     HloModule ModuleWithWhile

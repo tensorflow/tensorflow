@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "xla/stream_executor/stream_executor_pimpl.h"
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -29,7 +28,6 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -38,18 +36,13 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -72,9 +65,7 @@ static int64_t GetMemoryLimitBytes() {
 }
 
 StreamExecutor::StreamExecutor(const Platform* platform)
-    : platform_(platform),
-      memory_limit_bytes_(GetMemoryLimitBytes()),
-      allocator_(this) {}
+    : platform_(platform), memory_limit_bytes_(GetMemoryLimitBytes()) {}
 
 const DeviceDescription& StreamExecutor::GetDeviceDescription() const {
   absl::MutexLock lock(&mu_);
@@ -117,87 +108,6 @@ absl::StatusOr<std::unique_ptr<Stream>> StreamExecutor::CreateStream(
   auto stream = std::make_unique<Stream>(this);
   TF_RETURN_IF_ERROR(stream->Initialize(priority));
   return std::move(stream);
-}
-
-StreamExecutorInterface* StreamExecutor::implementation() { return this; }
-
-StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
-    StreamExecutor* executor)
-    : DeviceMemoryAllocator(executor->platform()) {
-  stream_executors_ = {executor};
-}
-
-StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
-    const Platform* platform,
-    absl::Span<StreamExecutor* const> stream_executors)
-    : DeviceMemoryAllocator(platform),
-      stream_executors_(stream_executors.begin(), stream_executors.end()) {}
-
-absl::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
-    int device_ordinal, uint64_t size, bool retry_on_failure,
-    int64_t memory_space) {
-  TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
-                      GetStreamExecutor(device_ordinal));
-  DeviceMemoryBase result =
-      executor->AllocateArray<uint8_t>(size, memory_space);
-  if (size > 0 && result == nullptr) {
-    return absl::ResourceExhaustedError(absl::StrFormat(
-        "Failed to allocate request for %s (%uB) on device ordinal %d",
-        tsl::strings::HumanReadableNumBytes(size), size, device_ordinal));
-  }
-  VLOG(3) << absl::StreamFormat("Allocated %s (%uB) on device ordinal %d: %p",
-                                tsl::strings::HumanReadableNumBytes(size), size,
-                                device_ordinal, result.opaque());
-  return OwningDeviceMemory(result, device_ordinal, this);
-}
-
-absl::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
-                                                       DeviceMemoryBase mem) {
-  if (!mem.is_null()) {
-    TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
-                        GetStreamExecutor(device_ordinal));
-    VLOG(3) << absl::StreamFormat("Freeing %p on device ordinal %d",
-                                  mem.opaque(), device_ordinal);
-    executor->Deallocate(&mem);
-  }
-  return absl::OkStatus();
-}
-
-absl::StatusOr<StreamExecutor*>
-StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) const {
-  if (device_ordinal < 0) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "device ordinal value (%d) must be non-negative", device_ordinal));
-  }
-  for (StreamExecutor* se : stream_executors_) {
-    if (se->device_ordinal() == device_ordinal) {
-      return se;
-    }
-  }
-  return absl::NotFoundError(
-      absl::StrFormat("Device %s:%d present but not supported",
-                      platform()->Name(), device_ordinal));
-}
-
-bool StreamExecutorMemoryAllocator::AllowsAsynchronousDeallocation() const {
-  return false;
-}
-
-absl::StatusOr<Stream*> StreamExecutorMemoryAllocator::GetStream(
-    int device_ordinal) {
-  CHECK(!AllowsAsynchronousDeallocation())
-      << "The logic below only works for synchronous allocators";
-  TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
-                      GetStreamExecutor(device_ordinal));
-  absl::MutexLock lock(&mutex_);
-  if (!streams_.count(device_ordinal)) {
-    auto p = streams_.emplace(std::piecewise_construct,
-                              std::forward_as_tuple(device_ordinal),
-                              std::forward_as_tuple(executor));
-    TF_RETURN_IF_ERROR(p.first->second.Initialize());
-    return &p.first->second;
-  }
-  return &streams_.at(device_ordinal);
 }
 
 }  // namespace stream_executor

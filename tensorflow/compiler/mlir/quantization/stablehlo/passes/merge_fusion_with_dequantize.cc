@@ -69,8 +69,8 @@ class MergeFusionWithUniformDequantizePattern
     auto func_name = call_op.getCallee();
     if (!func_name.starts_with("quantized_")) return failure();
     if (call_op->getNumResults() != 1) return failure();
-    if (!getElementTypeOrSelf(call_op->getResult(0).getType())
-             .isa<UniformQuantizedType>())
+    if (!mlir::isa<UniformQuantizedType>(
+            getElementTypeOrSelf(call_op->getResult(0).getType())))
       return failure();
 
     // Fetch the callee function.
@@ -89,8 +89,8 @@ class MergeFusionWithUniformDequantizePattern
     // Create a new func.call op with f32 output.
     auto new_call_op = call_op.clone();
     new_call_op->getResult(0).setType(
-        call_op.getResult(0).getType().cast<ShapedType>().clone(
-            rewriter.getF32Type()));
+        mlir::cast<ShapedType>(call_op.getResult(0).getType())
+            .clone(rewriter.getF32Type()));
     rewriter.setInsertionPoint(call_op);
     rewriter.insert(new_call_op);
 

@@ -339,6 +339,12 @@ struct PrimitiveTypeToNative<C128> {
   using type = complex128;
 };
 
+// Token
+template <>
+struct PrimitiveTypeToNative<TOKEN> {
+  using type = void;
+};
+
 template <PrimitiveType kType>
 using NativeTypeOf =
     typename primitive_util::PrimitiveTypeToNative<kType>::type;

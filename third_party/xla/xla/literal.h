@@ -365,10 +365,36 @@ class LiteralBase {
           }
 
           CHECK(LayoutUtil::IsDenseArray(subshape));
+          const int64_t size_bytes = literal.size_bytes(index);
+          const int64_t bytes_to_hash = std::min(size_bytes, kByteLimit);
+          // When layout insensitive, we need to hash the data bytes in logical
+          // order rather than physical order.
+          const bool use_physical_order =
+              kIsLayoutSensitive || !subshape.has_layout();
           auto data = absl::MakeConstSpan(
               static_cast<const char*>(literal.untyped_data(index)),
-              std::min(kByteLimit, literal.size_bytes(index)));
-          state = H::combine(std::move(state), data);
+              size_bytes);
+          if (use_physical_order) {
+            state = H::combine(std::move(state), data.first(bytes_to_hash));
+            return;
+          }
+          const int64_t elem_size =
+              ShapeUtil::ByteSizeOfPrimitiveType(subshape.element_type());
+          absl::Span<const int64_t> minor_to_major =
+              subshape.layout().minor_to_major();
+          DimensionVector elem_index(subshape.dimensions_size());
+          absl::Span<int64_t> elem_index_span(elem_index.data(),
+                                              elem_index.size());
+          int64_t bytes_hashed = 0;
+          while (bytes_hashed < bytes_to_hash) {
+            int64_t offset =
+                elem_size * IndexUtil::MultidimensionalIndexToLinearIndex(
+                                subshape, minor_to_major, elem_index);
+            state =
+                H::combine(std::move(state), data.subspan(offset, elem_size));
+            if (!IndexUtil::BumpIndices(subshape, elem_index_span)) return;
+            bytes_hashed += elem_size;
+          }
         });
 
     return std::move(state);
@@ -1484,11 +1510,20 @@ class MutableBorrowingLiteral : public MutableLiteralBase {
   MutableBorrowingLiteral(MutableLiteralBase* literal);
   MutableBorrowingLiteral(MutableBorrowingLiteral literal,
                           const ShapeIndex& view_root);
+
+  // 'src_buf_ptr' is not owned by this class and must outlive the
+  // lifetime of this class. It points to an appropriately sized buffer with
+  // data interpreted as indicated by 'shape'.
+  // This constructor is only used for array shapes.
   MutableBorrowingLiteral(const char* src_buf_ptr, const Shape& shape);
 
-  // Create a literal from a list of buffers and a shape.
-  // Returns a tuple literal if `shape` is a tuple type.
+  // Similar as above, except to be used for constructing non-nested tuples.
   MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs, const Shape& shape);
+
+  // Similar as above, except to be used for constructing literals with
+  // potentially nested tuples (same shape as `src_buf_ptrs`) with borrowed
+  // buffers for each shape index.
+  explicit MutableBorrowingLiteral(ShapeTree<char*> src_buf_ptrs);
 
  private:
   const Piece& root_piece() const override { return *root_piece_; };

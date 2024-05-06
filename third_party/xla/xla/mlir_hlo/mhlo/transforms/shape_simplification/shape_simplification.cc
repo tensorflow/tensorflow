@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -183,7 +184,8 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
     for (auto shape : broadcastOp.getShapes()) {
       auto shapeOfOp = shape.getDefiningOp<ShapeOfOp>();
       if (!shapeOfOp) return failure();
-      auto shapedType = shapeOfOp->getOperandTypes().front().cast<ShapedType>();
+      auto shapedType =
+          mlir::cast<ShapedType>(shapeOfOp->getOperandTypes().front());
 
       // Abort on the existence of unranked shapes as they require more logic.
       if (!shapedType.hasRank()) return failure();

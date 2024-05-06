@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/core/framework/bfloat16.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/bfloat16.h"
 
 // This is a fuzzer for tensorflow::FloatToBFloat16 and
 // tensorflow::BFloat16ToFloat.

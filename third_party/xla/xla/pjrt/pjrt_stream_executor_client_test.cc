@@ -33,8 +33,8 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/async_value_ref.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -87,7 +87,8 @@ Status ExecuteWithSameInputBuffer(
     absl::AnyInvocable<void(XlaBuilder&)> set_up_aliases) {
   auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
   TF_ASSIGN_OR_RETURN(auto client, GetClient());
-  TF_ASSIGN_OR_RETURN(auto* device0, client->LookupDevice(0));
+  TF_RET_CHECK(!client->addressable_devices().empty());
+  auto* device0 = client->addressable_devices().front();
   TF_ASSIGN_OR_RETURN(auto buffer,
                       client->CreateUninitializedBuffer(shape, device0));
   TF_ASSIGN_OR_RETURN(auto executable,

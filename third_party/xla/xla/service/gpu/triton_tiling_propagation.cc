@@ -797,16 +797,27 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
           // TritonFusionAnalysis after the padding and the split-k transform
           // are applied.
           const std::vector<Fragment*>& fragments = src_logical[i];
-          // We must have 2 fragments at this point.
-          CHECK_EQ(fragments.size(), 2);
-          // The dst_dim_numbers must be the same for the 2 fragments of the
-          // contracting dimension after applying split-k.
-          CHECK_EQ(fragments[0]->dst_dim_number(),
-                   fragments[1]->dst_dim_number());
 
+          // We must have 2 non-trivial fragments at this point. We may have
+          // more than 2 fragments if there are trivial fragments with count 1.
+          CHECK_GE(fragments.size(), 2);
+          // The dst_dim_numbers must be the same for all fragments of the
+          // contracting dimension after applying split-k.
+          CHECK(absl::c_all_of(fragments, [&](const Fragment* fragment) {
+            return fragment->dst_dim_number() ==
+                   fragments.front()->dst_dim_number();
+          }));
+
+          std::vector<Fragment*> non_trivial_fragments;
+          absl::c_copy_if(fragments, std::back_inserter(non_trivial_fragments),
+                          [](const Fragment* fragment) {
+                            return fragment->full_count() > 1;
+                          });
+          CHECK_EQ(non_trivial_fragments.size(), 2);
           new_fragments.emplace_back(
-              fragments[0]->dst_dim_number(),
-              fragments[0]->full_count() * fragments[1]->full_count() -
+              non_trivial_fragments[0]->dst_dim_number(),
+              non_trivial_fragments[0]->full_count() *
+                      non_trivial_fragments[1]->full_count() -
                   padding);
           dst_logical[i] = {&new_fragments.back()};
         }

@@ -72,8 +72,24 @@ struct CudaComputeCapability {
     this->minor = proto.minor();
   }
 
+  static CudaComputeCapability Hopper() {
+    return CudaComputeCapability{HOPPER, 0};
+  }
+
+  static CudaComputeCapability Volta() {
+    return CudaComputeCapability{VOLTA, 0};
+  }
+
+  static CudaComputeCapability Ampere() {
+    return CudaComputeCapability{AMPERE, 0};
+  }
+
   bool IsAtLeast(int other_major, int other_minor = 0) const {
-    return !(*this < CudaComputeCapability{other_major, other_minor});
+    return IsAtLeast(CudaComputeCapability{other_major, other_minor});
+  }
+
+  bool IsAtLeast(const CudaComputeCapability &cc) const {
+    return !(*this < cc);
   }
 
   bool IsAtLeastVolta() const {

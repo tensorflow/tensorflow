@@ -133,14 +133,17 @@ struct CallFrame::Dictionary {
 };
 
 struct CallFrame::Array {
-  std::variant<std::vector<int32_t>, std::vector<int64_t>, std::vector<float>>
+  std::variant<std::vector<int8_t>, std::vector<int16_t>, std::vector<int32_t>,
+               std::vector<int64_t>, std::vector<float>,
+               std::vector<double>>
       value;  // XLA_FFI_Array::data
 
   XLA_FFI_Array array = {XLA_FFI_Array_STRUCT_SIZE, nullptr};
 };
 
 struct CallFrame::Scalar {
-  std::variant<int32_t, int64_t, float> value;  // XLA_FFI_Scalar::value
+  std::variant<bool, int8_t, int16_t, int32_t, int64_t, float, double>
+      value;  // XLA_FFI_Scalar::value
 
   XLA_FFI_Scalar scalar = {XLA_FFI_Scalar_STRUCT_SIZE, nullptr};
 };
@@ -246,9 +249,13 @@ static XLA_FFI_DataType ToDataType(PrimitiveType primitive_type) {
     case PrimitiveType::F32:
     case PrimitiveType::F64:
     case PrimitiveType::BF16:
+    case PrimitiveType::C64:
+    case PrimitiveType::C128:
+    case PrimitiveType::TOKEN:
       return static_cast<XLA_FFI_DataType>(primitive_type);
     default:
-      DCHECK(false) << "Unsupported primitive type" << primitive_type;
+      DCHECK(false) << "Unsupported primitive type "
+                    << PrimitiveType_Name(primitive_type);
       return XLA_FFI_DataType_INVALID;
   }
 }
@@ -355,12 +362,20 @@ struct CallFrame::ConvertAttribute {
 
 template <typename T>
 static XLA_FFI_DataType GetDataType() {
-  if constexpr (std::is_same_v<int32_t, T>) {
+  if constexpr (std::is_same_v<bool, T>) {
+    return XLA_FFI_DataType_PRED;
+  } else if constexpr (std::is_same_v<int8_t, T>) {
+    return XLA_FFI_DataType_S8;
+  } else if constexpr (std::is_same_v<int16_t, T>) {
+    return XLA_FFI_DataType_S16;
+  } else if constexpr (std::is_same_v<int32_t, T>) {
     return XLA_FFI_DataType_S32;
   } else if constexpr (std::is_same_v<int64_t, T>) {
     return XLA_FFI_DataType_S64;
   } else if constexpr (std::is_same_v<float, T>) {
     return XLA_FFI_DataType_F32;
+  } else if constexpr (std::is_same_v<double, T>) {
+    return XLA_FFI_DataType_F64;
   } else {
     static_assert(sizeof(T) == 0, "unsupported FFI data type");
   }

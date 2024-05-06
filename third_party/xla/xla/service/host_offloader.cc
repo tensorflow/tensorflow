@@ -575,12 +575,6 @@ Status HostOffloader::MemoryOnlyOffloadInsertCopies(
           unique_buffer,
           match::CustomCall({host_memory_offload_annotations::
                                  kMoveToDeviceCustomCallTarget})));
-  if (matching_annotations.empty()) {
-    return Internal(
-        "The offloaded data (from %s) never feeds into a matching \"load\" "
-        "annotation.",
-        custom_call->name());
-  }
 
   // This fits the pattern that we're looking for. Save these annotations to
   // later insert copies around.
@@ -711,6 +705,10 @@ Status HostOffloader::HandleInputStreaming(HloComputation* computation) {
       computation->parent()->entry_computation_layout();
 
   for (int i = 0; i < entry_computation_layout.parameter_count(); ++i) {
+    if (entry_computation_layout.parameter_shape(i).IsToken()) {
+      LOG(WARNING) << "Token parameters are not supported for streaming.";
+      continue;
+    }
     if (entry_computation_layout.parameter_shape(i).IsTuple()) {
       // Handle tuple parameters, which may contain streamed elements. Nested
       // tuples are not supported.

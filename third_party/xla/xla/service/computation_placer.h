@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_COMPUTATION_PLACER_H_
 #define XLA_SERVICE_COMPUTATION_PLACER_H_
 
+#include <cstdint>
 #include <map>
 #include <memory>
-#include <utility>
-#include <vector>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/array2d.h"
@@ -36,11 +36,11 @@ namespace xla {
 // computations. For R replicas and C computations, R * C devices are required
 // execute the computation in parallel. The assigned device ids can be accessed
 // by assignment(replica, computation).
-class DeviceAssignment : public Array2D<int> {
+class DeviceAssignment : public Array2D<int64_t> {
  public:
   DeviceAssignment() {}
   DeviceAssignment(int replica_count, int computation_count)
-      : Array2D<int>(replica_count, computation_count, -1) {
+      : Array2D<int64_t>(replica_count, computation_count, -1) {
     CHECK_GT(replica_count, 0);
     CHECK_GT(computation_count, 0);
   }

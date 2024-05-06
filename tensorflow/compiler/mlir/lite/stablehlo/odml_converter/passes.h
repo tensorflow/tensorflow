@@ -16,7 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_ODML_CONVERTER_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_ODML_CONVERTER_PASSES_H_
 
+#include <memory>
+
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+
 namespace mlir::odml {
+
+std::unique_ptr<OperationPass<ModuleOp>> CreateSHLOSimplifyPass();
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/lite/stablehlo/odml_converter/passes.h.inc"

@@ -397,6 +397,9 @@ def QuantizePass : Pass<"tfl-quantize", "mlir::func::FuncOp"> {
              "std::string", "Names of location to blocklist from quantization">,
       Option<"enable_custom_op_weight_only_", "enable-custom-op-weight-only",
              "std::string", "", "Specifies which custom ops are weight-only.">,
+      Option<"enable_float16_quantization_",
+              "enable-float16-quantization", "bool",
+              "false", "Whether apply float16 quantization. If false, int8 quantization is applied.">,
   ];
 }
 

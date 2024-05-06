@@ -67,8 +67,8 @@
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/test.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -896,7 +896,7 @@ TEST_F(IfrtBackendHandlerTest, CompileSuccess) {
       .WillOnce(Return(absl::MakeSpan(addressable_devices)));
   EXPECT_CALL(*executable, Fingerprint()).WillOnce(Return("fingerprint"));
   EXPECT_CALL(*executable, GetReadyFuture())
-      .WillOnce(Return(Future<absl::Status>(absl::OkStatus())));
+      .WillOnce(Return(Future<>(absl::OkStatus())));
 
   ASSERT_OK_AND_ASSIGN(CompileResponse response,
                        CompileTestLoadedExecutable(std::move(executable)));
@@ -1144,7 +1144,7 @@ TEST_F(IfrtBackendHandlerTest, LoadedExecutableDelete) {
 
   {
     EXPECT_CALL(*executable, Delete())
-        .WillOnce(Return(Future<absl::Status>(absl::OkStatus())));
+        .WillOnce(Return(Future<>(absl::OkStatus())));
 
     auto request = NewIfrtRequest(NewOpId());
     LoadedExecutableDeleteRequest* delete_request =

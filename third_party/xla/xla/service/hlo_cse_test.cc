@@ -903,6 +903,40 @@ TEST_F(HloCseTest, IgnoreControlDependencies) {
   EXPECT_EQ(changed, true);
 }
 
+TEST_F(HloCseTest, MultiOutputFusion) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    f {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add.0 = f32[] add(p0, p1)
+      add.1 = f32[] add(p0, p1)
+      ROOT res = (f32[], f32[]) tuple(add.0, add.1)
+    }
+
+    ENTRY entry {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT root = (f32[], f32[]) fusion(p0, p1), kind=kLoop, calls=f
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+
+  SCOPED_TRACE(absl::StrCat("Module after CSE:\n", m->ToString()));
+  EXPECT_EQ(changed, true);
+  HloInstruction* add0;
+  HloInstruction* add1;
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction()->fused_expression_root(),
+      GmockMatch(m::Tuple(m::Add(&add0, m::Parameter(0), m::Parameter(1)),
+                          m::Add(&add1, m::Parameter(0), m::Parameter(1)))));
+  EXPECT_EQ(add0, add1);
+}
+
 class HloCseCommutativeOpTest
     : public HloCseTest,
       public ::testing::WithParamInterface<std::string /*op*/> {};

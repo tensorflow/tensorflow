@@ -53,8 +53,9 @@ namespace {
 static Status PopulateResultTupleBuffers(const ShapedBuffer& result,
                                          se::Stream* stream,
                                          se::Stream* transfer_stream) {
-  TF_ASSIGN_OR_RETURN(auto transfer_manager, TransferManager::GetForPlatform(
-                                                 stream->parent()->platform()));
+  TF_ASSIGN_OR_RETURN(
+      auto transfer_manager,
+      TransferManager::GetForPlatform(stream->parent()->GetPlatform()));
   if (transfer_manager->CanShapedBufferBeAccessedNow(stream->parent(),
                                                      result)) {
     TF_RETURN_IF_ERROR(transfer_manager->WriteTupleIndexTablesAsync(
@@ -77,7 +78,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
     std::vector<ExecutionInput>* arguments, se::Stream* stream,
     se::Stream* transfer_stream) {
   auto stream_exec = stream->parent();
-  auto platform = stream_exec->platform();
+  auto platform = stream_exec->GetPlatform();
   TF_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));

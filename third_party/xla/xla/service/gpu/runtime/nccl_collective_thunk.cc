@@ -44,9 +44,9 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
@@ -402,7 +402,7 @@ absl::Status NcclCollectiveThunk::Prepare(const PrepareParams& params,
       xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_per_stream_comms();
   return resource_requests.AddClique(
       NcclCliqueKey(std::move(participants),
-                    enable_per_stream_comms ? GetStreamId() : kNoStreamId,
+                    enable_per_stream_comms ? nccl_stream_id() : kNoStreamId,
                     stream_kind),
       num_local_participants);
 }
@@ -435,7 +435,7 @@ bool operator==(const FirstCallRendezvousKey& a,
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
                                 Thunk::KindToString(kind()));
-  const NcclStreamId stream_id = GetStreamId();
+  const NcclStreamId stream_id = nccl_stream_id();
   AsyncStreamKind stream_kind = GetAsyncStreamKind();
   TF_ASSIGN_OR_RETURN(
       NcclCommHandleWrapper comm_handle,
@@ -447,7 +447,8 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   if (IsAsync()) {
     // Launch collective operation on an async stream.
-    se::Stream& async_stream = *params.async_comms_streams[async_stream_idx];
+    se::Stream& async_stream =
+        *params.collective_params->async_streams.at(async_stream_idx);
 
     // Wait for main compute stream to make sure all buffers are ready.
     TF_RETURN_IF_ERROR(async_stream.WaitFor(params.stream));
@@ -514,8 +515,11 @@ std::string NcclCollectiveThunk::GetDeviceString(
 
 NcclCollectiveDoneThunk::NcclCollectiveDoneThunk(
     Thunk::Kind kind, ThunkInfo thunk_info,
-    std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events)
-    : Thunk(kind, std::move(thunk_info)), async_events_(async_events) {}
+    std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events,
+    AsyncStreamKind async_stream_kind)
+    : Thunk(kind, std::move(thunk_info)),
+      async_events_(async_events),
+      async_stream_kind_(async_stream_kind) {}
 
 absl::Status NcclCollectiveDoneThunk::ExecuteOnStream(
     const ExecuteParams& params) {

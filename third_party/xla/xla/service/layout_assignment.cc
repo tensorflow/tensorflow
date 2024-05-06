@@ -1266,6 +1266,7 @@ void LayoutAssignment::SetupCopiedInstruction(const HloInstruction& instruction,
     }
   }
   copy->set_metadata(instruction.metadata());
+  copy->set_frontend_attributes(instruction.frontend_attributes());
 }
 
 Status LayoutAssignment::CheckLayouts(

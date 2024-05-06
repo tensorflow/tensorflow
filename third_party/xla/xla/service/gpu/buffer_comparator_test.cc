@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -56,25 +56,26 @@ class BufferComparatorTest : public testing::Test {
                            const std::vector<ElementType>& expected) {
     auto stream = stream_exec_->CreateStream().value();
 
-    se::ScopedDeviceMemory<ElementType> current_buffer(
+    se::DeviceMemoryHandle current_buffer(
         stream_exec_, stream_exec_->AllocateArray<ElementType>(current.size()));
-    se::ScopedDeviceMemory<ElementType> expected_buffer(
+    se::DeviceMemoryHandle expected_buffer(
         stream_exec_,
         stream_exec_->AllocateArray<ElementType>(expected.size()));
 
-    TF_CHECK_OK(stream->Memcpy(current_buffer.ptr(), current.data(),
-                               current_buffer->size()));
-    TF_CHECK_OK(stream->Memcpy(expected_buffer.ptr(), expected.data(),
-                               expected_buffer->size()));
+    TF_CHECK_OK(stream->Memcpy(current_buffer.memory_ptr(), current.data(),
+                               current_buffer.memory().size()));
+    TF_CHECK_OK(stream->Memcpy(expected_buffer.memory_ptr(), expected.data(),
+                               expected_buffer.memory().size()));
     TF_CHECK_OK(stream->BlockHostUntilDone());
 
     BufferComparator comparator(
         ShapeUtil::MakeShape(
             primitive_util::NativeToPrimitiveType<ElementType>(),
-            {static_cast<int64_t>(current_buffer->ElementCount())}),
+            {static_cast<int64_t>(current.size())}),
         HloModuleConfig());
     return comparator
-        .CompareEqual(stream.get(), *current_buffer, *expected_buffer)
+        .CompareEqual(stream.get(), current_buffer.memory(),
+                      expected_buffer.memory())
         .value();
   }
 
@@ -350,20 +351,20 @@ TEST_F(BufferComparatorTest, BF16) {
 
   auto stream = stream_exec_->CreateStream().value();
 
-  se::ScopedDeviceMemory<Eigen::bfloat16> lhs(
+  se::DeviceMemoryHandle lhs(
       stream_exec_,
       stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
-  InitializeBuffer(stream.get(), BF16, &rng_state, *lhs.ptr());
+  InitializeBuffer(stream.get(), BF16, &rng_state, lhs.memory());
 
-  se::ScopedDeviceMemory<Eigen::bfloat16> rhs(
+  se::DeviceMemoryHandle rhs(
       stream_exec_,
       stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
-  InitializeBuffer(stream.get(), BF16, &rng_state, *rhs.ptr());
+  InitializeBuffer(stream.get(), BF16, &rng_state, rhs.memory());
 
   BufferComparator comparator(ShapeUtil::MakeShape(BF16, {element_count}),
                               HloModuleConfig());
-  EXPECT_FALSE(
-      comparator.CompareEqual(stream.get(), *lhs.ptr(), *rhs.ptr()).value());
+  EXPECT_FALSE(comparator.CompareEqual(stream.get(), lhs.memory(), rhs.memory())
+                   .value());
 }
 
 }  // namespace

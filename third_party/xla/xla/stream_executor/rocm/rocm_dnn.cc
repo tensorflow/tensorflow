@@ -322,6 +322,7 @@ namespace wrap {
   __macro(miopenConvolutionBackwardDataGetWorkSpaceSize)             \
   __macro(miopenCreateRNNDescriptor)                                 \
   __macro(miopenSetRNNDescriptor)                                    \
+  __macro(miopenSetRNNDescriptor_V2)                                 \
   __macro(miopenDestroyRNNDescriptor)                                \
   __macro(miopenGetRNNParamsSize)                                    \
   __macro(miopenGetRNNLayerParam)                                    \
@@ -337,6 +338,15 @@ namespace wrap {
   __macro(miopenGetRNNLayerBiasOffset)                               \
   __macro(miopenGetRNNLayerBiasSize)                                 \
   __macro(miopenGetRNNParamsDescriptor)                              \
+  __macro(miopenCreateDropoutDescriptor)                             \
+  __macro(miopenSetDropoutDescriptor)                                \
+  __macro(miopenGetDropoutDescriptor)                                \
+  __macro(miopenDestroyDropoutDescriptor)                            \
+  __macro(miopenRestoreDropoutDescriptor)                            \
+  __macro(miopenDropoutGetReserveSpaceSize)                          \
+  __macro(miopenDropoutGetStatesSize)                                \
+  __macro(miopenDropoutForward)                                      \
+  __macro(miopenDropoutBackward)                                     \
   __macro(miopenCreateActivationDescriptor)                          \
   __macro(miopenSetActivationDescriptor)                             \
   __macro(miopenGetActivationDescriptor)                             \
@@ -435,6 +445,7 @@ namespace wrap {
   __macro(miopenConvolutionBackwardDataGetWorkSpaceSize)             \
   __macro(miopenCreateRNNDescriptor)                                 \
   __macro(miopenSetRNNDescriptor)                                    \
+  __macro(miopenSetRNNDescriptor_V2)                                 \
   __macro(miopenDestroyRNNDescriptor)                                \
   __macro(miopenGetRNNParamsSize)                                    \
   __macro(miopenGetRNNLayerParam)                                    \
@@ -450,6 +461,15 @@ namespace wrap {
   __macro(miopenGetRNNLayerBiasOffset)                               \
   __macro(miopenGetRNNLayerBiasSize)                                 \
   __macro(miopenGetRNNParamsDescriptor)                              \
+  __macro(miopenCreateDropoutDescriptor)                             \
+  __macro(miopenSetDropoutDescriptor)                                \
+  __macro(miopenGetDropoutDescriptor)                                \
+  __macro(miopenDestroyDropoutDescriptor)                            \
+  __macro(miopenRestoreDropoutDescriptor)                            \
+  __macro(miopenDropoutGetReserveSpaceSize)                          \
+  __macro(miopenDropoutGetStatesSize)                                \
+  __macro(miopenDropoutForward)                                      \
+  __macro(miopenDropoutBackward)                                     \
   __macro(miopenCreateActivationDescriptor)                          \
   __macro(miopenSetActivationDescriptor)                             \
   __macro(miopenGetActivationDescriptor)                             \
@@ -1969,6 +1989,68 @@ class MIOpenRnnParamsDescriptor : public MIOpenDescriptorCommon<void> {
   void operator=(const MIOpenRnnParamsDescriptor&) = delete;
 };
 
+class MIOpenDropoutDescriptor {
+ public:
+  MIOpenDropoutDescriptor(miopenHandle_t miopen_handle, float dropout,
+                          uint64_t seed, ScratchAllocator* state_allocator)
+      : dropout_desc_(nullptr) {
+    auto status = wrap::miopenCreateDropoutDescriptor(&dropout_desc_);
+    if (status != miopenStatusSuccess) {
+      LOG(FATAL) << "call to miopenCreateDropoutDescriptor failed: "
+                 << ToString(status);
+    }
+
+    if (dropout > 0.0f) {
+      DeviceMemory<uint8_t> state_memory;
+      if (state_allocator) {
+        size_t state_sizes_in_bytes = 0;
+        status = wrap::miopenDropoutGetStatesSize(miopen_handle,
+                                                  &state_sizes_in_bytes);
+        if (status != miopenStatusSuccess) {
+          LOG(FATAL) << "call to miopenDropoutGetStatesSize failed: "
+                     << ToString(status);
+        }
+        if (state_sizes_in_bytes > 0) {
+          auto allocated = state_allocator->AllocateBytes(state_sizes_in_bytes);
+          if (!allocated.ok() ||
+              (state_memory = allocated.value()) == nullptr) {
+            LOG(FATAL) << "Failed to allocate dropout state space.";
+          }
+        }
+      }
+
+      bool state_evo = false;  // input placeholder, currently not enabled
+      bool use_mask = true;
+      status = wrap::miopenSetDropoutDescriptor(
+          dropout_desc_ /*dropoutDesc*/, miopen_handle /*handle*/,
+          dropout /*dropout*/, state_memory.opaque() /*states*/,
+          state_memory.size() /*stateSizeInBytes*/, seed /*seed*/,
+          use_mask /*use_mask*/, state_evo /*state_evo*/,
+          MIOPEN_RNG_PSEUDO_XORWOW /*rng_mode*/);
+      if (status != miopenStatusSuccess) {
+        LOG(FATAL) << "call to miopenSetDropoutDescriptor failed: "
+                   << ToString(status);
+      }
+    }
+  }
+
+  ~MIOpenDropoutDescriptor() {
+    auto status = wrap::miopenDestroyDropoutDescriptor(dropout_desc_);
+    if (status != miopenStatusSuccess) {
+      LOG(FATAL) << "call to miopenDestroyDropoutDescriptor failed: "
+                 << ToString(status);
+    }
+  }
+
+  miopenDropoutDescriptor_t handle() const { return dropout_desc_; }
+
+ private:
+  miopenDropoutDescriptor_t dropout_desc_;
+
+  MIOpenDropoutDescriptor(const MIOpenDropoutDescriptor&) = delete;
+  void operator=(const MIOpenDropoutDescriptor&) = delete;
+};
+
 class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
  public:
   MIOpenRnnDescriptor(miopenHandle_t miopen_handle, int num_layers,
@@ -1988,15 +2070,19 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
         rnn_mode_(rnn_mode),
         data_type_(data_type),
         algorithm_config_(algorithm_config) {
+    // Create the dropout handle
+    miopen_dropout_desc_.reset(new MIOpenDropoutDescriptor(
+        miopen_handle, dropout, seed, state_allocator));
     // Create the RNN handle
     auto status = wrap::miopenCreateRNNDescriptor(&rnn_desc_);
     RETURN_IF_MIOPEN_ERROR(status, "Unable to create RNN descriptor");
-    status = wrap::miopenSetRNNDescriptor(
+    status = wrap::miopenSetRNNDescriptor_V2(
         rnn_desc_ /*rnnDesc*/, hidden_size /*hiddenSize*/,
-        num_layers /*numLayers*/, input_mode /*inputMode*/,
-        direction_mode /*direction*/, rnn_mode /*mode*/,
-        miopenRNNwithBias /*biasMode*/, miopenRNNdefault /*algo*/,
-        data_type /*dataType*/);
+        num_layers /*numLayers*/,
+        miopen_dropout_desc_->handle() /*dropoutDesc*/,
+        input_mode /*inputMode*/, direction_mode /*direction*/,
+        rnn_mode /*mode*/, miopenRNNwithBias /*biasMode*/,
+        miopenRNNdefault /*algo*/, data_type /*dataType*/);
     RETURN_IF_MIOPEN_ERROR(status, "Unable to update RNN descriptor");
     // Create the params handle.
     miopen_params_desc_.reset(
@@ -2053,8 +2139,7 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
   miopenDataType_t data_type_;
   dnn::AlgorithmConfig algorithm_config_;
   absl::Status status_;
-  // no dropout in MIOpen.
-  // std::unique_ptr<miopenDropoutDescriptor> miopen_dropout_desc_;
+  std::unique_ptr<MIOpenDropoutDescriptor> miopen_dropout_desc_;
   std::unique_ptr<MIOpenRnnParamsDescriptor> miopen_params_desc_;
   MIOpenRnnDescriptor(const MIOpenRnnDescriptor&) = delete;
   void operator=(const MIOpenRnnDescriptor&) = delete;

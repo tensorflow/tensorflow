@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -46,7 +47,7 @@ CoreRTConverter::CoreRTConverter(
   addConversion([](tfrt::corert::TensorHandleType type) { return type; });
   addConversion([=](mlir::TensorType type) -> std::optional<mlir::Type> {
     // Ref types are not supported in both compiler and runtime.
-    if (type.getElementType().isa<mlir::TF::TensorFlowRefType>())
+    if (mlir::isa<mlir::TF::TensorFlowRefType>(type.getElementType()))
       return std::nullopt;
     return tensor_handle_type();
   });
@@ -74,8 +75,8 @@ mlir::ArrayAttr CoreRTConverter::CreateOpFuncAttrs(
     auto attr_key = key_and_value.getName();
     auto attr_value = key_and_value.getValue();
     if (!IsUnusedTfrtAttribute(attr_key) &&
-        attr_value.isa<mlir::FlatSymbolRefAttr, mlir::SymbolRefAttr>()) {
-      auto func_attr = attr_value.dyn_cast<mlir::FlatSymbolRefAttr>();
+        mlir::isa<mlir::FlatSymbolRefAttr, mlir::SymbolRefAttr>(attr_value)) {
+      auto func_attr = mlir::dyn_cast<mlir::FlatSymbolRefAttr>(attr_value);
       auto converted = CanonicalizeTensorflowFunctionName(
           symbol_table, func_attr.getValue().str(), use_mlir_func_name);
       if (!converted) return {};
@@ -126,7 +127,7 @@ std::optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
   }
 
   auto parsed_device_name =
-      ParseDeviceName(device_attr.cast<mlir::StringAttr>().getValue());
+      ParseDeviceName(mlir::cast<mlir::StringAttr>(device_attr).getValue());
   if (!parsed_device_name) op->emitWarning("failed to parse device name.");
   return parsed_device_name;
 }

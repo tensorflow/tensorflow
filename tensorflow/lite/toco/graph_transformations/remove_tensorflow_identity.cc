@@ -32,11 +32,11 @@ namespace toco {
   const auto passthru_it = model->operators.begin() + op_index;
   const auto* passthru_op = passthru_it->get();
   if (passthru_op->type != OperatorType::kIdentity) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

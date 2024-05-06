@@ -102,42 +102,42 @@ func.func @int4() -> tensor<5xi4> {
 
 func.func @qi32_per_axis() -> tensor<3x3x!quant.uniform<i32:f32:1, {1.0, 0.5:1, 0.25:1}>> {
   // CHECK-LABEL: @qi32_per_axis
-  // CHECK: {qtype = tensor<3x3x!quant.uniform<i32:f32:1, {1.000000e+00,5.000000e-01:1,2.500000e-01:1}>>, value = dense<1> : tensor<3x3xi32>} : () -> tensor<3x3x!quant.uniform<i32:f32:1, {1.000000e+00,5.000000e-01:1,2.500000e-01:1}>>
+  // CHECK: <{qtype = tensor<3x3x!quant.uniform<i32:f32:1, {1.000000e+00,5.000000e-01:1,2.500000e-01:1}>>, value = dense<1> : tensor<3x3xi32>}> : () -> tensor<3x3x!quant.uniform<i32:f32:1, {1.000000e+00,5.000000e-01:1,2.500000e-01:1}>>
   %0 = "tfl.pseudo_qconst"() { qtype = tensor<3x3x!quant.uniform<i32:f32:1, {1.0, 0.5:1, 0.25:1}>>, value = dense<1> : tensor<3x3xi32>} : () -> tensor<3x3x!quant.uniform<i32:f32:1, {1.0, 0.5:1, 0.25:1}>>
   func.return %0 : tensor<3x3x!quant.uniform<i32:f32:1, {1.0, 0.5:1, 0.25:1}>>
 }
 
 func.func @qi32_per_axis_zero() -> tensor<3x3x!quant.uniform<i32:f32:0, {1.0, 0.5:1, 0.25:1}>> {
   // CHECK-LABEL: @qi32_per_axis_zero
-  // CHECK: {qtype = tensor<3x3x!quant.uniform<i32:f32:0, {1.000000e+00,5.000000e-01:1,2.500000e-01:1}>>, value = dense<1> : tensor<3x3xi32>} : () -> tensor<3x3x!quant.uniform<i32:f32:0, {1.000000e+00,5.000000e-01:1,2.500000e-01:1}>>
+  // CHECK: <{qtype = tensor<3x3x!quant.uniform<i32:f32:0, {1.000000e+00,5.000000e-01:1,2.500000e-01:1}>>, value = dense<1> : tensor<3x3xi32>}> : () -> tensor<3x3x!quant.uniform<i32:f32:0, {1.000000e+00,5.000000e-01:1,2.500000e-01:1}>>
   %0 = "tfl.pseudo_qconst"() { qtype = tensor<3x3x!quant.uniform<i32:f32:0, {1.0, 0.5:1, 0.25:1}>>, value = dense<1> : tensor<3x3xi32>} : () -> tensor<3x3x!quant.uniform<i32:f32:0, {1.0, 0.5:1, 0.25:1}>>
   func.return %0 : tensor<3x3x!quant.uniform<i32:f32:0, {1.0, 0.5:1, 0.25:1}>>
 }
 
 func.func @qu8() -> tensor<3x!quant.uniform<u8<1:255>:f32, 1.0>> {
   // CHECK-LABEL: @qu8
-  // CHECK: {qtype = tensor<3x!quant.uniform<u8<1:255>:f32, 1.000000e+00>>, value = dense<1> : tensor<3xi8>} : () -> tensor<3x!quant.uniform<u8<1:255>:f32, 1.000000e+00>>
+  // CHECK: <{qtype = tensor<3x!quant.uniform<u8<1:255>:f32, 1.000000e+00>>, value = dense<1> : tensor<3xi8>}> : () -> tensor<3x!quant.uniform<u8<1:255>:f32, 1.000000e+00>>
   %0 = "tfl.pseudo_qconst"() { qtype = tensor<3x!quant.uniform<u8<1:255>:f32, 1.0>>, value = dense<1> : tensor<3xi8>} : () -> tensor<3x!quant.uniform<u8<1:255>:f32, 1.0>>
   func.return %0 : tensor<3x!quant.uniform<u8<1:255>:f32, 1.0>>
 }
 
 func.func @sparse_f32() -> tensor<3x2xf32> {
   // CHECK-LABEL: @sparse_f32
-  // CHECK: {compressed_data = dense<[1.000000e+00, 2.000000e+00, 5.000000e-01, 2.500000e-01, -1.000000e+00, -2.000000e+00, -5.000000e-01, -2.500000e-01]> : tensor<8xf32>, s_param = #tfl.sparsity_parameter<traversal_order = [0, 1, 2, 3], block_map = [3, 1], dim_metadata = <format = DENSE, dense_size = 16, segments = [], indices = []>, <format = DENSE, dense_size = 1, segments = [], indices = []>, <format = DENSE, dense_size = 1, segments = [], indices = []>, <format = SPARSE_CSR, dense_size = 0, segments = [0, 5, 11], indices = [1, 4, 9]>>, value = dense<0.000000e+00> : tensor<3x2xf32>}
+  // CHECK: <{compressed_data = dense<[1.000000e+00, 2.000000e+00, 5.000000e-01, 2.500000e-01, -1.000000e+00, -2.000000e+00, -5.000000e-01, -2.500000e-01]> : tensor<8xf32>, s_param = #tfl.sparsity_parameter<traversal_order = [0, 1, 2, 3], block_map = [3, 1], dim_metadata = <format = DENSE, dense_size = 16, segments = [], indices = []>, <format = DENSE, dense_size = 1, segments = [], indices = []>, <format = DENSE, dense_size = 1, segments = [], indices = []>, <format = SPARSE_CSR, dense_size = 0, segments = [0, 5, 11], indices = [1, 4, 9]>>, value = dense<0.000000e+00> : tensor<3x2xf32>}>
   %0 = "tfl.pseudo_sparse_const"() {compressed_data = dense<[1.0, 2.0, 0.5, 0.25, -1.0, -2.0, -0.5, -0.25]> : tensor<8xf32>, s_param = #tfl.sparsity_parameter<traversal_order = [0, 1, 2, 3], block_map = [3, 1], dim_metadata = #tfl.dimension_metadata<format = DENSE, dense_size = 16, segments = [], indices = []>, #tfl.dimension_metadata<format = DENSE, dense_size = 1, segments = [], indices = []>, #tfl.dimension_metadata<format = DENSE, dense_size = 1, segments = [], indices = []>, #tfl.dimension_metadata<format = SPARSE_CSR, dense_size = 0, segments = [0, 5, 11], indices = [1, 4, 9]>>, value = dense<0.000000e+00> : tensor<3x2xf32>} : () -> tensor<3x2xf32>
   func.return %0: tensor<3x2xf32>
 }
 
 func.func @sparse_f16() -> tensor<3x2xf16> {
   // CHECK-LABEL: @sparse_f16
-  // CHECK: {compressed_data = dense<[1.000000e+00, 2.000000e+00, 5.000000e-01, 2.500000e-01, -1.000000e+00, -2.000000e+00, -5.000000e-01, -2.500000e-01]> : tensor<8xf16>, s_param = #tfl.sparsity_parameter<traversal_order = [0, 1, 2, 3], block_map = [3, 1], dim_metadata = <format = DENSE, dense_size = 16, segments = [], indices = []>, <format = DENSE, dense_size = 1, segments = [], indices = []>, <format = DENSE, dense_size = 1, segments = [], indices = []>, <format = SPARSE_CSR, dense_size = 0, segments = [0, 5, 11], indices = [1, 4, 9]>>, value = dense<0.000000e+00> : tensor<3x2xf16>}
+  // CHECK: <{compressed_data = dense<[1.000000e+00, 2.000000e+00, 5.000000e-01, 2.500000e-01, -1.000000e+00, -2.000000e+00, -5.000000e-01, -2.500000e-01]> : tensor<8xf16>, s_param = #tfl.sparsity_parameter<traversal_order = [0, 1, 2, 3], block_map = [3, 1], dim_metadata = <format = DENSE, dense_size = 16, segments = [], indices = []>, <format = DENSE, dense_size = 1, segments = [], indices = []>, <format = DENSE, dense_size = 1, segments = [], indices = []>, <format = SPARSE_CSR, dense_size = 0, segments = [0, 5, 11], indices = [1, 4, 9]>>, value = dense<0.000000e+00> : tensor<3x2xf16>}>
   %0 = "tfl.pseudo_sparse_const"() {compressed_data = dense<[1.0, 2.0, 0.5, 0.25, -1.0, -2.0, -0.5, -0.25]> : tensor<8xf16>, s_param = #tfl.sparsity_parameter<traversal_order = [0, 1, 2, 3], block_map = [3, 1], dim_metadata = #tfl.dimension_metadata<format = DENSE, dense_size = 16, segments = [], indices = []>, #tfl.dimension_metadata<format = DENSE, dense_size = 1, segments = [], indices = []>, #tfl.dimension_metadata<format = DENSE, dense_size = 1, segments = [], indices = []>, #tfl.dimension_metadata<format = SPARSE_CSR, dense_size = 0, segments = [0, 5, 11], indices = [1, 4, 9]>>, value = dense<0.000000e+00> : tensor<3x2xf16>} : () -> tensor<3x2xf16>
   func.return %0: tensor<3x2xf16>
 }
 
 func.func @sparse_qu8() -> tensor<3x2x!quant.uniform<u8<1:255>:f32, 1.0>> {
   // CHECK-LABEL: @sparse_qu8
-  // CHECK: {compressed_data = dense<[1, 2, 3, 4, -1, -2, -3, -4]> : tensor<8xi8>, qtype = tensor<3x2x!quant.uniform<u8<1:255>:f32, 1.000000e+00>>, s_param = #tfl.sparsity_parameter<traversal_order = [0, 1, 2, 3], block_map = [3, 1], dim_metadata = <format = DENSE, dense_size = 16, segments = [], indices = []>, <format = DENSE, dense_size = 1, segments = [], indices = []>, <format = DENSE, dense_size = 1, segments = [], indices = []>, <format = SPARSE_CSR, dense_size = 0, segments = [0, 5, 11], indices = [1, 4, 9]>>, value = dense<0> : tensor<3x2xi8>}
+  // CHECK: <{compressed_data = dense<[1, 2, 3, 4, -1, -2, -3, -4]> : tensor<8xi8>, qtype = tensor<3x2x!quant.uniform<u8<1:255>:f32, 1.000000e+00>>, s_param = #tfl.sparsity_parameter<traversal_order = [0, 1, 2, 3], block_map = [3, 1], dim_metadata = <format = DENSE, dense_size = 16, segments = [], indices = []>, <format = DENSE, dense_size = 1, segments = [], indices = []>, <format = DENSE, dense_size = 1, segments = [], indices = []>, <format = SPARSE_CSR, dense_size = 0, segments = [0, 5, 11], indices = [1, 4, 9]>>, value = dense<0> : tensor<3x2xi8>}>
   %0 = "tfl.pseudo_sparse_qconst"() {compressed_data = dense<[1, 2, 3, 4, -1, -2, -3, -4]> : tensor<8xi8>, qtype = tensor<3x2x!quant.uniform<u8<1:255>:f32, 1.0>>, s_param = #tfl.sparsity_parameter<traversal_order = [0, 1, 2, 3], block_map = [3, 1], dim_metadata = #tfl.dimension_metadata<format = DENSE, dense_size = 16, segments = [], indices = []>, #tfl.dimension_metadata<format = DENSE, dense_size = 1, segments = [], indices = []>, #tfl.dimension_metadata<format = DENSE, dense_size = 1, segments = [], indices = []>, #tfl.dimension_metadata<format = SPARSE_CSR, dense_size = 0, segments = [0, 5, 11], indices = [1, 4, 9]>>, value = dense<42> : tensor<3x2xi8>} : () -> tensor<3x2x!quant.uniform<u8<1:255>:f32, 1.0>>
   func.return %0: tensor<3x2x!quant.uniform<u8<1:255>:f32, 1.0>>
 }

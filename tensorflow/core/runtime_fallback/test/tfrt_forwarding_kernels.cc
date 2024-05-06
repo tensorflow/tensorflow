@@ -16,6 +16,9 @@ limitations under the License.
 // TFRT kernels for testing tfrt_forwarding delegate.
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/types.h"
 #include "tfrt/host_context/kernel_registry.h"  // from @tf_runtime
 #include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
 

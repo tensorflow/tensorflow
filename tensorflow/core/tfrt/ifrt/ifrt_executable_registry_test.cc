@@ -61,7 +61,7 @@ const tsl::thread::ThreadPool& GetThreadPool() {
 }
 
 absl::StatusOr<std::unique_ptr<IfrtServingExecutable>>
-CreateIfrtServingExecutable(mlir::MLIRContext& context) {
+CreateIfrtServingExecutable(mlir::MLIRContext& context, int64_t program_id) {
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/core/tfrt/ifrt/testdata";
@@ -89,10 +89,11 @@ CreateIfrtServingExecutable(mlir::MLIRContext& context) {
                       CreateTfStaticDeviceMgr());
 
   return std::make_unique<IfrtServingExecutable>(
-      "test", "main", std::move(mlir_module), client, &GetThreadPool(),
-      &ifrt_loaded_variable_registry, &ifrt_restore_tensor_registry,
-      work_queue.get(), device_mgr.get(),
-      tensorflow::IdentityShapeRepresentationFn());
+      program_id, "test", "main", std::move(mlir_module), client,
+      &GetThreadPool(), &ifrt_loaded_variable_registry,
+      &ifrt_restore_tensor_registry, work_queue.get(), device_mgr.get(),
+      tensorflow::IdentityShapeRepresentationFn(),
+      /*ifrt_serving_core_selector=*/nullptr);
 }
 
 TEST(IfrtExecutableRegistry, Basic) {
@@ -102,11 +103,11 @@ TEST(IfrtExecutableRegistry, Basic) {
 
   mlir::MLIRContext context(registry);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<IfrtServingExecutable> executable,
-                          CreateIfrtServingExecutable(context));
-  IfrtServingExecutable* raw_ptr = executable.get();
-
   int64_t program_id = 1234;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<IfrtServingExecutable> executable,
+                          CreateIfrtServingExecutable(context, program_id));
+  IfrtServingExecutable* raw_ptr = executable.get();
 
   TF_ASSERT_OK_AND_ASSIGN(auto handle, ServingExecutableRegistry::Register(
                                            program_id, std::move(executable)));

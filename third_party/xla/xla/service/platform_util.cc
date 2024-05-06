@@ -135,7 +135,7 @@ PlatformUtil::GetSupportedPlatforms() {
 // by XLA.
 static bool IsDeviceSupported(se::StreamExecutor* executor) {
   const auto& description = executor->GetDeviceDescription();
-  if (executor->platform()->id() == se::cuda::kCudaPlatformId) {
+  if (executor->GetPlatform()->id() == se::cuda::kCudaPlatformId) {
     // CUDA devices must have a minimum compute capability.
     se::CudaComputeCapability cc = description.cuda_compute_capability();
     if (!cc.IsAtLeast(kMinCudaComputeCapabilityMajor,
@@ -148,7 +148,7 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
                 << "device is " << cc.ToString();
       return false;
     }
-  } else if (executor->platform()->id() == se::rocm::kROCmPlatformId) {
+  } else if (executor->GetPlatform()->id() == se::rocm::kROCmPlatformId) {
     auto rocm_compute_capability = description.rocm_compute_capability();
     if (!rocm_compute_capability.is_supported_gfx_version()) {
       LOG(INFO) << "StreamExecutor ROCM device (" << executor->device_ordinal()

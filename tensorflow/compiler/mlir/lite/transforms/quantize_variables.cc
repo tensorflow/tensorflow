@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -169,7 +170,7 @@ void QuantizeVariablesPass::QuantizeVariable(
   for (VarHandleOp var_handle_op : var_handle_ops) {
     builder.setInsertionPoint(var_handle_op);
     auto output_type = UnrankedTensorType::get(TF::ResourceType::get(
-        {ref_qtype.cast<TensorType>()}, builder.getContext()));
+        {mlir::cast<TensorType>(ref_qtype)}, builder.getContext()));
     auto new_var_handle_op = builder.create<VarHandleOp>(
         var_handle_op.getLoc(), output_type, var_handle_op.getContainer(),
         var_handle_op.getSharedName());

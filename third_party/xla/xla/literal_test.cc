@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/hash/hash.h"
 #include "absl/random/random.h"
 #include "absl/strings/match.h"
 #include "absl/types/span.h"
@@ -931,6 +932,16 @@ TEST_F(LiteralUtilTest, TestR4RelayoutEquivalence) {
   EXPECT_EQ(literal_r4_2x2x3x3_dim0minor_, dim0major_relaid_to_dim0minor);
 }
 
+template <bool kIsLayoutSensitive>
+struct HashTester {
+  template <typename H>
+  friend H AbslHashValue(H h, const HashTester& key) {
+    return Literal::Hash<H, kIsLayoutSensitive, /*kByteLimit=*/64>(
+        std::move(h), *key.literal);
+  }
+  const Literal* literal;
+};
+
 TEST_F(LiteralUtilTest, TestR2LinearLayout) {
   // Test expected memory layout of R2 dim0-minor (column-major) literal.
   auto mat_dim0minor = LiteralUtil::CreateR2WithLayout<int32_t>(
@@ -942,6 +953,8 @@ TEST_F(LiteralUtilTest, TestR2LinearLayout) {
   auto relaid_mat_to_dim0major = mat_dim0minor.Relayout(layout_r2_dim0major_);
   EXPECT_THAT(relaid_mat_to_dim0major.data<int32_t>(),
               ElementsAre(1, 2, 3, 4, 5, 6));
+  EXPECT_EQ(absl::HashOf(HashTester<false>{&mat_dim0minor}),
+            absl::HashOf(HashTester<false>{&relaid_mat_to_dim0major}));
 
   // Test expected memory layout of R2 created with dim0-major (row-major).
   auto mat_dim0major = LiteralUtil::CreateR2WithLayout<int32_t>(
@@ -953,6 +966,14 @@ TEST_F(LiteralUtilTest, TestR2LinearLayout) {
   auto relaid_mat_to_dim0minor = mat_dim0major.Relayout(layout_r2_dim0minor_);
   EXPECT_THAT(relaid_mat_to_dim0minor.data<int32_t>(),
               ElementsAre(1, 4, 2, 5, 3, 6));
+  EXPECT_EQ(absl::HashOf(HashTester<false>{&mat_dim0major}),
+            absl::HashOf(HashTester<false>{&relaid_mat_to_dim0minor}));
+
+  // Test that layout sensitive hashes are equal.
+  EXPECT_EQ(absl::HashOf(HashTester<true>{&mat_dim0minor}),
+            absl::HashOf(HashTester<true>{&relaid_mat_to_dim0minor}));
+  EXPECT_EQ(absl::HashOf(HashTester<true>{&mat_dim0major}),
+            absl::HashOf(HashTester<true>{&relaid_mat_to_dim0major}));
 }
 
 TEST_F(LiteralUtilTest, TestR3LinearLayout) {
@@ -2016,6 +2037,25 @@ TEST_F(LiteralUtilTest, BorrowingLiteralFromShapeTree) {
   *ptr_tree.mutable_element({1}) = reinterpret_cast<char*>(data.data());
 
   BorrowingLiteral literal(ptr_tree);
+
+  EXPECT_THAT(literal.data<float>({0, 0}), ElementsAre(1.0, 2.0, 3.0));
+  EXPECT_THAT(literal.data<float>({0, 1}), ElementsAre(1.0, 2.0, 3.0));
+  EXPECT_THAT(literal.data<float>({1}), ElementsAre(1.0, 2.0, 3.0));
+}
+
+TEST_F(LiteralUtilTest, MutableBorrowingLiteralFromShapeTree) {
+  std::vector<float> data = {1.0, 2.0, 3.0};
+
+  Shape shape = ShapeUtil::MakeShape(PrimitiveType::F32, {3});
+  Shape tuple = ShapeUtil::MakeTupleShape({shape, shape});
+  Shape nested_tuple = ShapeUtil::MakeTupleShape({tuple, shape});
+
+  ShapeTree<char*> ptr_tree(nested_tuple);
+  *ptr_tree.mutable_element({0, 0}) = reinterpret_cast<char*>(data.data());
+  *ptr_tree.mutable_element({0, 1}) = reinterpret_cast<char*>(data.data());
+  *ptr_tree.mutable_element({1}) = reinterpret_cast<char*>(data.data());
+
+  MutableBorrowingLiteral literal(ptr_tree);
 
   EXPECT_THAT(literal.data<float>({0, 0}), ElementsAre(1.0, 2.0, 3.0));
   EXPECT_THAT(literal.data<float>({0, 1}), ElementsAre(1.0, 2.0, 3.0));

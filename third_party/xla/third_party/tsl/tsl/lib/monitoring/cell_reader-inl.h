@@ -47,9 +47,9 @@ MetricKind GetMetricKind(const CollectedMetrics& metrics,
 // If the metric does not exist, it returns a `NotFound` error. If the number of
 // labels does not match the metric definition, it returns an `InvalidArgument`
 // error.
-StatusOr<std::vector<Point>> GetPoints(const CollectedMetrics& metrics,
-                                       const std::string& metric_name,
-                                       const std::vector<std::string>& labels);
+absl::StatusOr<std::vector<Point>> GetPoints(
+    const CollectedMetrics& metrics, const std::string& metric_name,
+    const std::vector<std::string>& labels);
 
 // Returns the `Point` that corresponds to the latest data point collected for
 // `metric_name`, associated with the `labels`.
@@ -58,9 +58,9 @@ StatusOr<std::vector<Point>> GetPoints(const CollectedMetrics& metrics,
 // exists but no data is collected, it returns an `Unavailable` error. If the
 // number of labels does not match the metric definition, it returns an
 // `InvalidArgument` error.
-StatusOr<Point> GetLatestPoint(const CollectedMetrics& metrics,
-                               const std::string& metric_name,
-                               const std::vector<std::string>& labels);
+absl::StatusOr<Point> GetLatestPoint(const CollectedMetrics& metrics,
+                                     const std::string& metric_name,
+                                     const std::vector<std::string>& labels);
 
 // Returns the value of `point`. Currently, only int64_t (counter) values are
 // supported.
@@ -94,7 +94,8 @@ ValueType GetLatestValueOrDefault(const CollectedMetrics& metrics,
                                   const std::string& metric_name,
                                   const std::vector<std::string>& labels,
                                   const ValueType default_value = ValueType()) {
-  StatusOr<Point> latest_point = GetLatestPoint(metrics, metric_name, labels);
+  absl::StatusOr<Point> latest_point =
+      GetLatestPoint(metrics, metric_name, labels);
   if (absl::IsUnavailable(latest_point.status())) {
     return std::move(default_value);
   }

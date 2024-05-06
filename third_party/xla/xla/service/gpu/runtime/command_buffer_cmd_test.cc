@@ -209,9 +209,8 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 
   CommandBufferCmd::StateManager state;
 
-  Thunk::ExecuteParams params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), {}, nullptr, nullptr);
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
 
   CommandBufferCmd::RecordParams record_params = {state};
 
@@ -278,9 +277,8 @@ TEST(CommandBufferCmdTest, BarrierCmd) {
 
   CommandBufferCmd::StateManager state;
 
-  Thunk::ExecuteParams params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), {}, nullptr, nullptr);
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
 
   CommandBufferCmd::RecordParams record_params = {state};
 
@@ -346,9 +344,8 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   se::StreamExecutorMemoryAllocator allocator(executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), {}, nullptr, nullptr);
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
 
   CommandBufferCmd::RecordParams record_params = {state};
 

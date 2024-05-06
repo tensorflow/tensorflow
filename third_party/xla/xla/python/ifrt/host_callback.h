@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/statusor.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {

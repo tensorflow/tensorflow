@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
@@ -202,11 +203,12 @@ class CoordinationServiceInterface {
   //
   // Possible service errors:
   //   - DeadlineExceeded: Timed out waiting for specified tasks at the barrier.
-  //      Deadline is determined by the server timestamp when it receives the
-  //      first WaitAtBarrier() + timeout duration.
+  //       Deadline is determined by the server timestamp when it receives the
+  //       first WaitAtBarrier() + timeout duration.
   //   - Cancelled: One of the tasks called CancelBarrier().
   //   - Aborted: Service is shutting down.
-  //   - Internal: Any participating task is in ERROR state.
+  //   - Internal: Any participating task is in ERROR state, or coordination
+  //   -   service has shut down.
   //   - InvalidArgument: (1) Conflicting tasks specified by different agents
   //       for the same barrier, (2) one of the participating tasks is not in
   //       the cluster, or (3) task making the request is not included in the

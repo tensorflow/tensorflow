@@ -2700,6 +2700,25 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs,
   }
 }
 
+MutableBorrowingLiteral::MutableBorrowingLiteral(ShapeTree<char*> src_buf_ptrs)
+    : MutableLiteralBase() {
+  shape_ = std::make_unique<Shape>(src_buf_ptrs.shape());
+
+  root_piece_ = new Piece();
+  root_piece_->set_subshape(shape_.get());
+  BuildPieceSubtree(*shape_, root_piece_);
+
+  root_piece_->ForEachMutableSubpiece(
+      [&](const ShapeIndex& index, Piece* piece) {
+        if (ShapeUtil::GetSubshape(*shape_, index).IsTuple()) {
+          DCHECK_EQ(src_buf_ptrs.element(index), nullptr)
+              << "Tuples should not have buffer pointers";
+          return;
+        }
+        piece->set_buffer(const_cast<char*>(src_buf_ptrs.element(index)));
+      });
+}
+
 MutableBorrowingLiteral::~MutableBorrowingLiteral() {
   if (root_piece_ != nullptr) {
     delete root_piece_;
@@ -2749,7 +2768,8 @@ BorrowingLiteral::BorrowingLiteral(ShapeTree<const char*> src_buf_ptrs)
   root_piece_.ForEachMutableSubpiece(
       [&](const ShapeIndex& index, Piece* piece) {
         if (ShapeUtil::GetSubshape(*shape_, index).IsTuple()) {
-          DCHECK_EQ(src_buf_ptrs.element(index), nullptr);
+          DCHECK_EQ(src_buf_ptrs.element(index), nullptr)
+              << "Tuples should not have buffer pointers";
           return;
         }
         piece->set_buffer(const_cast<char*>(src_buf_ptrs.element(index)));

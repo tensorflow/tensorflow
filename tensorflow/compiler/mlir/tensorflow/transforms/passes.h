@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -99,7 +100,8 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 CreateReplicateTensorListInitOpsPass();
 
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass(
+    ArrayRef<ArrayRef<int64_t>> input_shapes = {});
 
 // Performs TF.data optimizations.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTFDataOptimizationPass();
@@ -531,10 +533,6 @@ CreateTPUResourceReadsWritesPartitioningPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUAnnotateDynamicShapeInputsPass();
 
-// Creates a pass that identifies XLASharding ops in launch op for TPU
-// computation.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUShardingIdentificationPass();
-
 // Creates a pass that moves `tf.AssignVariableOp` into a
 // `tf_device.parallel_execute` region if the `tf.AssignVariableOp` is the
 // only consumer of a `tf_device.parallel_execute` result.
@@ -668,7 +666,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUREORDERREPLICATEANDPARTITIONEDINPUTSPASS
 #define GEN_PASS_DECL_TPURESOURCEREADFORWRITEPASS
 #define GEN_PASS_DECL_TPURESOURCEREADSWRITESPARTITIONINGPASS
-#define GEN_PASS_DECL_TPUSHARDINGIDENTIFICATIONPASS
 #define GEN_PASS_DECL_TPUSPACETODEPTHPASS
 #define GEN_PASS_DECL_TPUUPDATEEMBEDDINGENQUEUEOPINPUTSPASS
 #define GEN_PASS_DECL_TPUVALIDATEINPUTSPASS
