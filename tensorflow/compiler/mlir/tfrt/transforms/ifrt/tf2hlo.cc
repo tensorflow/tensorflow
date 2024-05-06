@@ -68,52 +68,15 @@ namespace {
 static constexpr absl::string_view kEntryFuncName = "main";
 }  // namespace
 
-absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
-    mlir::ModuleOp module, absl::Span<const DtypeAndShape> inputs,
-    const xla::ifrt::Client& ifrt_client) {
-  tensorflow::tpu::TPUCompileMetadataProto metadata;
-
-  auto op = module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
-  if (!op) {
-    return absl::InternalError("Could not find entry function in MLIR Module.");
-  }
-
-  if (inputs.size() != op.getNumArguments()) {
-    return absl::InternalError(
-        absl::StrCat("Entry function arguments mismatched! Expected ",
-                     op.getNumArguments(), " got", inputs.size()));
-  }
-
-  auto metadata_text_attr =
-      op->getAttrOfType<mlir::StringAttr>(kMetadataTextAttrName);
-
-  if (metadata_text_attr && !metadata_text_attr.getValue().empty()) {
-    // Try __tpu_compile_metadata_text attribute. This only for debugging
-    // purpose.
-    VLOG(1) << "Parsing from attribute " << kMetadataTextAttrName
-            << metadata_text_attr.getValue().str();
-    if (!tsl::protobuf::TextFormat::ParseFromString(
-            metadata_text_attr.getValue().str(), &metadata)) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Attribute ", kMetadataTextAttrName, ":",
-          metadata_text_attr.getValue().str(), " cannot be parsed"));
-    }
-  } else {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Missing ", kMetadataTextAttrName));
-  }
-
+absl::Status UpdateCompileMetadata(
+    tensorflow::tpu::TPUCompileMetadataProto& metadata,
+    absl::Span<const DtypeAndShape> inputs) {
   VLOG(3) << "TpuCompileMetadata before shape is populated " << metadata;
   if (metadata.num_replicas() < 1 || metadata.num_cores_per_replica() < 1) {
     return absl::InternalError(
         absl::StrCat("Number of replicas ", metadata.num_replicas(),
                      " and number of cores per replica ",
                      metadata.num_cores_per_replica(), " must be >= 1"));
-  }
-  if (op.getNumResults() != metadata.retvals_size()) {
-    return absl::InternalError(
-        absl::StrCat("Number of retvals mismatched! Expected ",
-                     op.getNumResults(), " got ", metadata.retvals_size()));
   }
   if (metadata.args_size() != inputs.size()) {
     return absl::InternalError(
@@ -136,6 +99,36 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
 
     // Update shape.
     *metadata.mutable_args(i)->mutable_shape() = inputs[i].shape.AsProto();
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
+    mlir::ModuleOp module, const xla::ifrt::Client& ifrt_client) {
+  tensorflow::tpu::TPUCompileMetadataProto metadata;
+
+  auto op = module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
+  if (!op) {
+    return absl::InternalError("Could not find entry function in MLIR Module.");
+  }
+
+  auto metadata_text_attr =
+      op->getAttrOfType<mlir::StringAttr>(kMetadataTextAttrName);
+
+  if (metadata_text_attr && !metadata_text_attr.getValue().empty()) {
+    // Try __tpu_compile_metadata_text attribute. This only for debugging
+    // purpose.
+    VLOG(1) << "Parsing from attribute " << kMetadataTextAttrName
+            << metadata_text_attr.getValue().str();
+    if (!tsl::protobuf::TextFormat::ParseFromString(
+            metadata_text_attr.getValue().str(), &metadata)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Attribute ", kMetadataTextAttrName, ":",
+          metadata_text_attr.getValue().str(), " cannot be parsed"));
+    }
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Missing ", kMetadataTextAttrName));
   }
 
   // Create a default device assignment if one is not given by the model.
