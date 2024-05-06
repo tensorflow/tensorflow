@@ -56,15 +56,11 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
 absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(auto plan, GetMatmulPlan(params.stream));
 
-  auto* cuda_cc =
-      std::get_if<se::CudaComputeCapability>(&params.stream->parent()
-                                                  ->GetDeviceDescription()
-                                                  .gpu_compute_capability());
-  int64_t max_workspace = cuda_cc == nullptr ? GemmConfig::kDefaultWorkspace
-                          : cuda_cc->IsAtLeastHopper()
-                              ? GemmConfig::kHopperWorkspace
-                              : GemmConfig::kDefaultWorkspace;
-  TF_ASSIGN_OR_RETURN(auto algorithm, GetMatmulAlgorithm(plan, max_workspace));
+  TF_ASSIGN_OR_RETURN(
+      auto algorithm,
+      GetMatmulAlgorithm(plan, workspace_buffer_.has_value()
+                                   ? workspace_buffer_.value().size()
+                                   : 0));
 
   VLOG(3) << "Running cublas_lt matmul thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
