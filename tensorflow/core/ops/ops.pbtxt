@@ -1,4 +1,4 @@
-go/debugproto    
+go/nodeserialize    
 op {
   name: "Abort"
   attr {
