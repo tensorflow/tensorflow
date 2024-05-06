@@ -977,11 +977,12 @@ absl::Status IrEmitterUnnested::EmitFusedMHAThunk(
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
                       GetAllocationSliceForHlo(instr, {0}));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
-                      GetAllocationSliceForHlo(instr, {1}));
+                      GetAllocationSliceForHlo(
+                          instr, {instr->shape().tuple_shapes_size() - 1}));
   BufferAllocation::Slice activation_slice;
   bool has_activation = xla::ShapeUtil::TupleElementCount(instr->shape()) == 3;
   if (has_activation) {
-    TF_ASSIGN_OR_RETURN(activation_slice, GetAllocationSliceForHlo(instr, {2}));
+    TF_ASSIGN_OR_RETURN(activation_slice, GetAllocationSliceForHlo(instr, {1}));
   }
 
   TF_ASSIGN_OR_RETURN(const xla::gpu::CudnnfMHAKind kind,
@@ -1017,7 +1018,7 @@ absl::Status IrEmitterUnnested::EmitFusedMHAThunk(
   absl::InlinedVector<Shape, 2> output_shapes = {
       ShapeUtil::GetSubshape(instr->shape(), {0})};
   if (has_activation) {
-    output_shapes.push_back(ShapeUtil::GetSubshape(instr->shape(), {2}));
+    output_shapes.push_back(ShapeUtil::GetSubshape(instr->shape(), {1}));
   }
   TF_ASSIGN_OR_RETURN(const auto mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));
@@ -1127,9 +1128,6 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
   BufferAllocation::Slice d_s_slice;
   std::optional<Shape> d_s_shape;
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
-                      GetAllocationSliceForHlo(instr, {output_index++}));
-
   bool has_dbias = instr->shape().tuple_shapes().size() == 5;
   BufferAllocation::Slice d_bias_slice;
   std::optional<Shape> d_bias_shape;
@@ -1138,6 +1136,8 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
                         GetAllocationSliceForHlo(instr, {output_index}));
     d_bias_shape = ShapeUtil::GetSubshape(instr->shape(), {output_index++});
   }
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
+                      GetAllocationSliceForHlo(instr, {output_index++}));
   TF_RET_CHECK(output_index == instr->shape().tuple_shapes().size());
   TF_ASSIGN_OR_RETURN(const auto mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));

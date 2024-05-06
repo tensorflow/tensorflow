@@ -1272,15 +1272,14 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   fmha_config.set_mask_type(is_causal_mask ? CudnnfMHABackendConfig::CAUSAL
                                            : CudnnfMHABackendConfig::NO_MASK);
 
-  // Output Order: {O, scratch, Fwd act*}
   const Shape& output_shape = bmm_2->shape();
 
   Shape call_shape;
   // Activation output is used by backward gemm.
   HloInstruction* activation_output = nullptr;
 
-  std::vector<Shape> output_shapes = {output_shape,
-                                      ShapeUtil::MakeShape(U8, {0})};
+  // Output Order: {O, Fwd act*, workspace}
+  std::vector<Shape> output_shapes = {output_shape};
   if (is_training) {
     activation_output = bmm_2->mutable_operand(0);
     // Sometimes activation output is bitcast, the actual activation is the
@@ -1306,6 +1305,7 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
     output_shapes.push_back(
         ShapeUtil::MakeShape(F32, reduce_sum->shape().dimensions()));
   }
+  output_shapes.push_back(ShapeUtil::MakeShape(U8, {0}));
   call_shape = ShapeUtil::MakeTupleShape(output_shapes);
 
   // Input Order: {Q, K, V, bias*}
@@ -1364,7 +1364,7 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   if (activation_output) {
     HloInstruction* activation_gte =
         comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-            activation_output->shape(), fmha_call, 2));
+            activation_output->shape(), fmha_call, 1));
     TF_RETURN_IF_ERROR(comp->ReplaceInstructionWithDifferentShape(
                                activation_output, activation_gte,
                                /*preserve_sharding=*/false,
@@ -1420,7 +1420,7 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   // Forward activation
   // softmax_stats
   HloInstruction* fwd_act;
-  int64_t fwd_act_index = 2;
+  int64_t fwd_act_index = 1;
   fwd_act = comp->AddInstruction(HloInstruction::CreateGetTupleElement(
       fwd_fmha_call->shape().tuple_shapes(fwd_act_index), fwd_fmha_call,
       fwd_act_index));
@@ -1514,12 +1514,9 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   }
 
   // Output order:
-  // {dQ(bmm_1_grad_2), dK(bmm_1_grad_1), dV(bmm_2_grad_1),
-  // scratch, dbias*}
+  // {dQ(bmm_1_grad_2), dK(bmm_1_grad_1), dV(bmm_2_grad_1), dbias*, workspace}
   std::vector<Shape> output_shapes = {
       bmm_1_grad_2->shape(), bmm_1_grad_1->shape(), bmm_2_grad_1->shape()};
-  // Reserved placeholder for workspace
-  output_shapes.push_back(ShapeUtil::MakeShape(U8, {0}));
 
   if (dbias) {
     // Cudnn kernel only outputs dbias in this shape [1, num_heads, seq, seq],
@@ -1531,6 +1528,8 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
         ShapeUtil::MakeShape(dbias->shape().element_type(), dbias_shape_vector);
     output_shapes.push_back(cudnn_dbias_shape);
   }
+  // Reserved placeholder for workspace
+  output_shapes.push_back(ShapeUtil::MakeShape(U8, {0}));
   Shape call_shape = ShapeUtil::MakeTupleShape(output_shapes);
   HloInstruction* fmha_bwd_call =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
@@ -1562,7 +1561,7 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
     HloInstruction* dbias_user = dbias->users()[0];
     HloInstruction* cudnn_dbias_output =
         comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-            output_shapes.back(), fmha_bwd_call, 4));
+            output_shapes[3], fmha_bwd_call, 3));
     HloInstruction* reshape_dbias = comp->AddInstruction(
         HloInstruction::CreateReshape(original_shape, cudnn_dbias_output));
     TF_RETURN_IF_ERROR(dbias_user->ReplaceOperandWith(
