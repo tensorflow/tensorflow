@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
+#include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/utils.h"
 #include "xla/status.h"
@@ -153,6 +154,32 @@ GlobalTopologyProto BuildGlobalTopology(
     }
   }
   return global_topology;
+}
+
+absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
+    const GlobalTopologyProto& global_topology) {
+  GpuTopologyProto gpu_topology;
+  gpu_topology.set_num_slices(global_topology.nodes_size());
+  gpu_topology.set_num_hosts_per_slice(1);
+
+  std::vector<int> device_ids;
+  for (int i = 0; i < global_topology.nodes_size(); ++i) {
+    const LocalTopologyProto& local_topology = global_topology.nodes(i);
+    if (i == 0) {
+      gpu_topology.set_platform_version((local_topology.devices(0).name()));
+      gpu_topology.set_num_devices_per_host(local_topology.devices_size());
+    } else {
+      CHECK(gpu_topology.num_devices_per_host() ==
+            local_topology.devices_size())
+          << "GPU topology doesn't support multi-host with different number "
+             "of devices per host.";
+    }
+    for (const DeviceProto& device : local_topology.devices()) {
+      device_ids.push_back(device.global_device_id());
+    }
+  }
+  gpu_topology.mutable_device_ids()->Add(device_ids.begin(), device_ids.end());
+  return gpu_topology;
 }
 
 Status ExchangeTopologies(std::string_view platform, int node_id, int num_nodes,

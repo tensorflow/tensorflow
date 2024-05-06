@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_GPU_GPU_TOPOLOGY_H_
 #define XLA_PJRT_GPU_GPU_TOPOLOGY_H_
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -34,7 +35,6 @@ class GpuTopology {
         num_slices_(num_slices),
         num_hosts_per_slice_(num_hosts_per_slice),
         num_devices_per_host_(num_devices_per_host) {}
-
   bool operator==(const GpuTopology& other) const {
     return devices_ids_ == other.devices_ids_ &&
            platform_version_ == other.platform_version_ &&
