@@ -89,6 +89,9 @@ class HloFusionInstructionAdaptor {
   // matches the order of the tuple elements of the tuple root of the fusion
   // computation. We do not deduplicate fusion roots.
   virtual absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const = 0;
+  virtual absl::InlinedVector<const HloInstruction*, 2> GetParameters()
+      const = 0;
+  virtual const HloInstruction& FusionInstruction() const = 0;
   virtual absl::InlinedVector<HloInstructionAdaptor, 2>
   MakeInstructionPostOrder() const = 0;
   virtual std::string ToString() const = 0;
@@ -101,6 +104,7 @@ class HloFusionAdaptor {
   bool ContainsInstruction(HloInstructionAdaptor instruction) const;
   bool ContainsInstruction(const HloInstruction* instruction) const;
   absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const;
+  absl::InlinedVector<const HloInstruction*, 2> GetParameters() const;
   absl::InlinedVector<HloInstructionAdaptor, 2> MakeInstructionPostOrder()
       const;
   std::string ToString() const;

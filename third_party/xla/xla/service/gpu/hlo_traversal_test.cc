@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -24,11 +23,15 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+namespace m = ::xla::match;
 
 using ::testing::ElementsAre;
 using ::testing::IsEmpty;
@@ -520,6 +523,99 @@ TEST_F(HloTraversalTest, MakeInstructionsPostOrder_TwoMultiOutputFusions) {
                                  InstructionAdaptorName("reduce.1"),
                                  InstructionAdaptorName("neg"),
                                  InstructionAdaptorName("reduce.2")));
+}
+
+const char kTwoMultiOutputFusions[] = R"(
+    HloModule mof
+    mof_producer {
+      param0 = f32[10]{0} parameter(0)
+      param1 = f32[10]{0} parameter(1)
+      param2 = f32[10]{0} parameter(2)
+      add = f32[10]{0} add(param0, param1)
+      sub = f32[10]{0} subtract(param0, param1)
+      ROOT res = (f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}) tuple(param1, add, sub, param0, param2)
+    }
+
+    mof_consumer {
+      param0.0 = f32[10]{0} parameter(0)
+      param1.0 = f32[10]{0} parameter(1)
+      param2.0 = f32[10]{0} parameter(2)
+      mul = f32[10]{0} multiply(param0.0, param1.0)
+      div = f32[10]{0} divide(param0.0, param1.0)
+      ROOT res = (f32[10]{0}, f32[10]{0}, f32[10]{0}) tuple(mul, div, param2.0)
+    }
+
+    ENTRY main {
+      p0 = f32[10]{0} parameter(0)
+      p1 = f32[10]{0} parameter(1)
+      p2 = f32[10]{0} parameter(2)
+      producer = (f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}) fusion(p0, p1, p2), kind=kLoop, calls=mof_producer
+      gte0 = f32[10]{0} get-tuple-element(producer), index=0
+      gte1 = f32[10]{0} get-tuple-element(producer), index=1
+      gte2 = f32[10]{0} get-tuple-element(producer), index=2
+      gte3 = f32[10]{0} get-tuple-element(producer), index=3
+      gte4 = f32[10]{0} get-tuple-element(producer), index=4
+      consumer = (f32[10]{0}, f32[10]{0}, f32[10]{0}) fusion(gte1, gte2, gte3), kind=kLoop, calls=mof_consumer
+      gte5 = f32[10]{0} get-tuple-element(consumer), index=0
+      gte6 = f32[10]{0} get-tuple-element(consumer), index=1
+      gte7 = f32[10]{0} get-tuple-element(consumer), index=2
+      ROOT res = tuple(gte0, gte1, gte3, gte4, gte5, gte6, gte7)
+    })";
+
+TEST_F(HloTraversalTest, GetParametersMultiOutputFusion) {
+  auto module = ParseAndReturnVerifiedModule(kTwoMultiOutputFusions).value();
+  auto producer =
+      module->entry_computation()->GetInstructionWithName("producer");
+  auto consumer =
+      module->entry_computation()->GetInstructionWithName("consumer");
+  auto fusion_adaptor =
+      HloFusionAdaptor::ForProducerConsumer(producer, consumer);
+  auto p0 = module->entry_computation()->GetInstructionWithName("p0");
+  auto p1 = module->entry_computation()->GetInstructionWithName("p1");
+  EXPECT_THAT(fusion_adaptor->GetParameters(), ElementsAre(p0, p1));
+  // Double-check that after performing the actual fusion, we get the same
+  // parameters.
+  consumer->MergeFusionInstructionIntoMultiOutput(producer);
+  EXPECT_THAT(consumer->operands(), ElementsAre(p0, p1));
+}
+
+TEST_F(HloTraversalTest, GetRootsMultiOutputFusion) {
+  auto module = ParseAndReturnVerifiedModule(kTwoMultiOutputFusions).value();
+  auto consumer_fusion_instr =
+      module->entry_computation()->GetInstructionWithName("consumer");
+  auto producer_fusion_instr =
+      module->entry_computation()->GetInstructionWithName("producer");
+  auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(
+      producer_fusion_instr, consumer_fusion_instr);
+  auto producer_computation = module->GetComputationWithName("mof_producer");
+  auto producer = HloFusionAdaptor::ForComputation(producer_computation);
+  auto consumer_computation = module->GetComputationWithName("mof_consumer");
+  auto consumer = HloFusionAdaptor::ForComputation(consumer_computation);
+  EXPECT_THAT(fusion_adaptor->GetRoots(),
+              ElementsAre(
+                  HloInstructionAdaptor{
+                      *consumer_computation->GetInstructionWithName("mul"),
+                      consumer.get()},
+                  HloInstructionAdaptor{
+                      *consumer_computation->GetInstructionWithName("div"),
+                      consumer.get()},
+                  HloInstructionAdaptor{
+                      *producer_computation->GetInstructionWithName("param0"),
+                      producer.get()},
+                  HloInstructionAdaptor{
+                      *producer_computation->GetInstructionWithName("add"),
+                      producer.get()}));
+  // Double-check that after performing the actual fusion, we get the same
+  // roots.
+  consumer_fusion_instr->MergeFusionInstructionIntoMultiOutput(
+      producer_fusion_instr);
+  EXPECT_THAT(consumer_fusion_instr->fused_expression_root(),
+              GmockMatch(m::Tuple(
+                  m::Multiply(m::Add(m::Parameter(0), m::Parameter(1)),
+                              m::Subtract(m::Parameter(0), m::Parameter(1))),
+                  m::Divide(m::Add(m::Parameter(0), m::Parameter(1)),
+                            m::Subtract(m::Parameter(0), m::Parameter(1))),
+                  m::Parameter(0), m::Add(m::Parameter(0), m::Parameter(1)))));
 }
 
 TEST_F(HloTraversalTest, HloFindUseChain) {
