@@ -934,11 +934,7 @@ ENTRY bf16gemm {
   )",
                       /*print_operand_shape=*/true);
   } else {
-    MatchOptimizedHlo(hlo_text,
-                      R"(
-; CHECK: {{.*}} custom-call(bf16[12,4]{1,0} [[P0:%[^ ]+]], bf16[4,8]{1,0} [[P1:%[^ ]+]]), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
-  )",
-                      /*print_operand_shape=*/true);
+    GTEST_SKIP() << "Pre-Ampere casts up bf16 to fp32";
   }
 }
 
@@ -962,18 +958,8 @@ ENTRY bf16gemm {
     ; CHECK: {{.*}} custom-call(bf16[3,8,8]{2,1,0} {{.*}}, bf16[3,8,8]{2,1,0} {{.*}}), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
     )",
                       /*print_operand_shape=*/true);
-  } else if (GetParam()) {
-    MatchOptimizedHlo(hlo_text,
-                      R"(
-    ; CHECK: [[OUT:%[^ ]+]] = (bf16[3,4,2]{2,1,0}, s8[{{[0-9]+}}]{0}) custom-call(bf16[3,3,4]{2,1,0} [[A:%[^ ]+]], bf16[3,3,2]{2,1,0} [[B:%[^ ]+]]), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
-    )",
-                      /*print_operand_shape=*/true);
   } else {
-    MatchOptimizedHlo(hlo_text,
-                      R"(
-    ; CHECK: {{.*}} custom-call(bf16[3,3,4]{2,1,0} [[A:%[^ ]+]], bf16[3,3,2]{2,1,0} [[B:%[^ ]+]]), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
-    )",
-                      /*print_operand_shape=*/true);
+    GTEST_SKIP() << "Pre-Ampere casts up bf16 to fp32";
   }
 }
 
@@ -1160,8 +1146,8 @@ TEST_P(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
                            {"bf16", "f32", true}};
 
   if (!IsCuda() ||
-      HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
-    // For compute capabilities before volta, we always do upcasting, so it
+      HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+    // For compute capabilities before Ampere, we may do upcasting, so it
     // would be impossible for this test to fail. That is why we only add these
     // cases when the compute capability is at least Volta.
     std::vector<std::tuple<absl::string_view, absl::string_view, bool>>
@@ -1783,6 +1769,12 @@ ENTRY BF16GemmWithBias {
   )";
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2e-3, 2e-3}));
+
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+    GTEST_SKIP() << "Pre-Ampere casts up bf16 to fp32";
+  }
+
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %BF16GemmWithBias ({{.*}}: bf16[8,8], {{.*}}: bf16[8,8], {{.*}}: bf16[8,8]) -> bf16[8,8] {
@@ -1954,6 +1946,12 @@ ENTRY test {
     replacements["<<DType>>"] = std::get<1>(type_combination);
     const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+
+    if (std::get<0>(type_combination) == "bf16" && IsCuda() &&
+        !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+      continue;
+    }
+
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                             GetOptimizedModule(hlo_text));
     EXPECT_THAT(optimized_module->entry_computation()->root_instruction(),
@@ -1990,6 +1988,11 @@ ENTRY test {
     replacements["<<DType>>"] = std::get<1>(type_combination);
     const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+
+    if (std::get<0>(type_combination) == "bf16" && IsCuda() &&
+        !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+      continue;
+    }
 
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                             GetOptimizedModule(hlo_text));
@@ -2049,6 +2052,12 @@ ENTRY test {
 )";
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+    GTEST_SKIP() << "Pre-Ampere casts up bf16 to fp32";
+  }
+
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(hlo_text));
   MatchOptimizedHlo(hlo_text, R"(
@@ -2311,6 +2320,12 @@ ENTRY BF16GemmWithBias {
   )";
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+    GTEST_SKIP() << "Pre-Ampere casts up bf16 to fp32";
+  }
+
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %BF16GemmWithBias ({{.*}}: bf16[8,8], {{.*}}: bf16[8,8], {{.*}}: bf16[8,8]) -> bf16[8,8] {
@@ -2943,6 +2958,12 @@ ENTRY test {
 )";
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{3e-3, 1e-3}));
+
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+    GTEST_SKIP() << "Pre-Ampere casts up bf16 to fp32";
+  }
+
   MatchOptimizedHlo(hlo_text,
                     R"(
 
@@ -4074,6 +4095,12 @@ ENTRY test {
 )";
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+
+  if (IsCuda() ||
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+    GTEST_SKIP() << "Pre-Ampere casts up bf16 to fp32";
+  }
+
   MatchOptimizedHlo(hlo_text,
                     R"(
 
@@ -4507,6 +4534,12 @@ ENTRY test {
     replacements["<<DType>>"] = std::get<1>(type_combination);
     const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+
+    if (std::get<0>(type_combination) == "bf16" && IsCuda() &&
+        !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+      continue;
+    }
+
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                             GetOptimizedModule(hlo_text));
     EXPECT_THAT(
@@ -4546,6 +4579,12 @@ ENTRY test {
     replacements["<<DType>>"] = std::get<1>(type_combination);
     const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+
+    if (std::get<0>(type_combination) == "bf16" && IsCuda() &&
+        !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+      continue;
+    }
+
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                             GetOptimizedModule(hlo_text));
     EXPECT_THAT(
@@ -4585,6 +4624,12 @@ ENTRY test {
     replacements["<<DType>>"] = std::get<1>(type_combination);
     const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+
+    if (std::get<0>(type_combination) == "bf16" && IsCuda() &&
+        !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+      continue;
+    }
+
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                             GetOptimizedModule(hlo_text));
     EXPECT_THAT(optimized_module->entry_computation()->root_instruction(),
@@ -4613,6 +4658,12 @@ ENTRY test {
 )";
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+    GTEST_SKIP() << "Pre-Ampere casts up bf16 to fp32";
+  }
+
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(hlo_text));
   MatchOptimizedHlo(hlo_text, R"(

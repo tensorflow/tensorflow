@@ -771,6 +771,7 @@ lit_test_suite(
             "add_preds.hlo",
             "calling_convention.hlo",
             "copy.hlo",
+            "dot_bf16.hlo",
             "dynamic_update_slice_inplace.hlo",
             "element_wise_row_vectorization.hlo",
             "fused_scatter.hlo",
