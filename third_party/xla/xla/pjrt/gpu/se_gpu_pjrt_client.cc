@@ -640,66 +640,10 @@ StreamExecutorGpuClient::Compile(const XlaComputation& computation,
   return executable;
 }
 
-namespace {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-absl::StatusOr<std::unique_ptr<StreamExecutorExecutable>> FromProto(
-    const StreamExecutorExecutableProto& proto) {
-  TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
-                      CompileOptions::FromProto(proto.compile_options()));
-  std::vector<std::unique_ptr<xla::AotCompilationResult>>
-      deserialized_aot_executables;
-  for (const auto& executable : proto.executables()) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<xla::AotCompilationResult> deserialized,
-        gpu::GpuCompiler::LoadAotCompilationResultStatic(executable));
-    deserialized_aot_executables.push_back(std::move(deserialized));
-  }
-  return std::make_unique<StreamExecutorExecutable>(
-      compile_options, std::move(deserialized_aot_executables),
-      proto.num_replicas(), proto.num_partitions(), proto.name(),
-      proto.fingerprint());
-}
-#endif
-}  // namespace
-
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 StreamExecutorGpuClient::LoadSerialized(absl::string_view serialized,
                                         std::optional<CompileOptions> options,
                                         const LoadOptions& load_options) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  StreamExecutorExecutableProto proto;
-  if (serialized.size() > std::numeric_limits<int>::max()) {
-    return Internal(
-        "PjRtStreamExecutorClient::DeserializeExecutable proto too large "
-        "(>2GB)");
-  }
-  if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
-    return Internal(
-        "StreamExecutorGpuClient::DeserializeExecutable proto deserialization "
-        "failed");
-  }
-  TF_ASSIGN_OR_RETURN(auto se_executable, FromProto(proto));
-  // TODO(b/296466237): Unify the `Load` method.
-  return Load(std::move(se_executable));
-#endif
-  return absl::InternalError("LoadSerialized only works with cuda or rocm.");
-}
-
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-StreamExecutorGpuClient::DeserializeExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options) {
-  if (serialized.size() > std::numeric_limits<int>::max()) {
-    return Internal(
-        "StreamExecutorGpuClient::DeserializeExecutable proto too large "
-        "(>2GB)");
-  }
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  StreamExecutorExecutableProto proto;
-  if (proto.ParseFromArray(serialized.data(), serialized.size())) {
-    TF_ASSIGN_OR_RETURN(auto se_executable, FromProto(proto));
-    return Load(std::move(se_executable));
-  }
-#endif
   return PjRtStreamExecutorClient::DeserializeExecutable(serialized, options);
 }
 
