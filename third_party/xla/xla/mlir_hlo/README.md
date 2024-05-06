@@ -2,12 +2,15 @@
 
 The code here exists in two places:
 
-*   https://github.com/tensorflow/tensorflow/tree/master/tensorflow/compiler/xla/mlir_hlo;
+*   https://github.com/openxla/xla/tree/main/xla/mlir_hlo:
     this is the canonical location and where contributions should be made using
     GitHub pull-requests.
-*   https://github.com/tensorflow/mlir-hlo; this is a standalone repository with
-    a view to the same code to allow other projects to use this without
-    depending on the entire TF monorepo.
+*   **(DEPRECATED)** https://github.com/tensorflow/mlir-hlo; this is a
+    standalone repository with a view to the same code to allow other projects
+    to use this without depending on the entire XLA monorepo. This repository is
+    [slated for deletion](https://groups.google.com/a/openxla.org/g/openxla-discuss/c/Mppuv1Edv1s).
+    All dependencies on MHLO should go through XLA. Users of MHLO should migrate
+    to [StableHLO](https://github.com/openxla/stablehlo) whenever possible.
 
 This implements a self-contained compiler for a linear algebra set of operations
 inspired by XLA
