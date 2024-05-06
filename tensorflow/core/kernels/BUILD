@@ -7751,6 +7751,7 @@ cc_binary(
     linkstatic = 1,
     tags = [
         "manual",
+        "no_oss",  # TODO(b/339058131): Fix build failure.
         "notap",
     ],
     deps = [
