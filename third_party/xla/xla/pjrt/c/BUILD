@@ -343,7 +343,7 @@ xla_cc_test(
         "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/service:custom_call_target_registry",
         "//xla/service:gpu_plugin",
-        "//xla/stream_executor/gpu:gpu_init_impl",
+        "//xla/stream_executor/gpu:gpu_init",
         "//xla/tests:literal_test_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
