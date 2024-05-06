@@ -1,4 +1,4 @@
-go/debugproto   
+go/debugstr  
 op {
   name: "Abort"
   attr {
