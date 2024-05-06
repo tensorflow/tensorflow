@@ -869,7 +869,43 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(
   return OkStatus();
 }
 
-XlaOp XlaBuilder::DynamicBroadcastInDim(
+XlaOp XlaBuilder::MhloDynamicReshape(XlaOp operand, XlaOp output_shape,
+                                     const Shape& shape) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    if (operand_shape->element_type() != shape.element_type()) {
+      return InvalidArgument(
+          "Element type of operand %s and output %s must match",
+          ShapeUtil::HumanString(*operand_shape),
+          ShapeUtil::HumanString(shape));
+    }
+    if (operand_shape->is_static() && shape.is_static() &&
+        ShapeUtil::ElementsIn(*operand_shape) != ShapeUtil::ElementsIn(shape)) {
+      return InvalidArgument(
+          "MhloDynamicReshape has mismatched element counts: from=%d (%s) "
+          "to=%d (%s)",
+          ShapeUtil::ElementsIn(*operand_shape),
+          ShapeUtil::HumanString(*operand_shape), ShapeUtil::ElementsIn(shape),
+          ShapeUtil::HumanString(shape));
+    }
+    TF_ASSIGN_OR_RETURN(const Shape* output_shape_shape,
+                        GetShapePtr(output_shape));
+    if (output_shape_shape->dimensions(0) != shape.rank()) {
+      return InvalidArgument(
+          "output_shape dimension size=%d (%s) and rank of shape=%d (%s) must "
+          "match",
+          output_shape_shape->dimensions(0),
+          ShapeUtil::HumanString(*output_shape_shape), shape.rank(),
+          ShapeUtil::HumanString(shape));
+    }
+    return xla::CustomCall(operand.builder(), "mhlo.dynamic_reshape",
+                           /*operands=*/{operand, output_shape},
+                           /*shape=*/shape,
+                           /*opaque=*/"");
+  });
+};
+
+XlaOp XlaBuilder::MhloDynamicBroadcastInDim(
     const XlaOp operand, const XlaOp output_dimensions,
     absl::Span<const int64_t> broadcast_dimensions, const Shape& output_shape) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
@@ -1084,7 +1120,7 @@ absl::StatusOr<std::vector<XlaOp>> ExtractDimensionSizesAndPadOnesToLeft(
 // Broadcast `scalar` to `output_shape` with all shapes static at runtime. If a
 // dimension of `output_shape` is dynamic, get the dimension size of the dynamic
 // dimension from `output` and reshape them to `tensor<1xi32>`. This is used as
-// one of the inputs to DynamicBroadcastInDim.
+// one of the inputs to MhloDynamicBroadcastInDim.
 absl::StatusOr<XlaOp> BroadcastScalarToOutputShapeWithUnbounded(
     XlaBuilder* builder, XlaOp scalar, XlaOp output,
     const Shape& output_shape) {
@@ -1100,7 +1136,7 @@ absl::StatusOr<XlaOp> BroadcastScalarToOutputShapeWithUnbounded(
                   /*values=*/{static_cast<int32_t>(output_shape.dimensions(i))})
             : Reshape(GetDimensionSize(output, i), {1});
   }
-  return DynamicBroadcastInDim(
+  return MhloDynamicBroadcastInDim(
       scalar, /*output_dimensions=*/ConcatInDim(builder, output_sizes, 0), {},
       output_shape);
 }
@@ -1117,8 +1153,8 @@ absl::StatusOr<XlaOp> DegenerateBroadcastWithUnbounded(
   std::iota(broadcast_dimensions.begin(), broadcast_dimensions.end(),
             output_shape.rank() - operand_shape->rank());
 
-  return DynamicBroadcastInDim(operand, output_dimensions, broadcast_dimensions,
-                               output_shape);
+  return MhloDynamicBroadcastInDim(operand, output_dimensions,
+                                   broadcast_dimensions, output_shape);
 }
 
 // Helper struct to store the result of `BroadcastToOutputShapeWithUnbounded`.
@@ -4726,10 +4762,16 @@ XlaOp BroadcastInDim(const XlaOp operand,
                                            broadcast_dimensions);
 }
 
-XlaOp DynamicBroadcastInDim(const XlaOp operand, const XlaOp output_dimensions,
-                            absl::Span<const int64_t> broadcast_dimensions,
-                            const Shape& output_shape) {
-  return operand.builder()->DynamicBroadcastInDim(
+XlaOp MhloDynamicReshape(const XlaOp operand, const XlaOp output_shape,
+                         const Shape& shape) {
+  return operand.builder()->MhloDynamicReshape(operand, output_shape, shape);
+}
+
+XlaOp MhloDynamicBroadcastInDim(const XlaOp operand,
+                                const XlaOp output_dimensions,
+                                absl::Span<const int64_t> broadcast_dimensions,
+                                const Shape& output_shape) {
+  return operand.builder()->MhloDynamicBroadcastInDim(
       operand, output_dimensions, broadcast_dimensions, output_shape);
 }
 
