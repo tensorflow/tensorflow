@@ -299,10 +299,6 @@ SimpleOrcJIT::InferTargetMachineForJIT(
     const llvm::TargetOptions& target_options,
     llvm::CodeGenOptLevel opt_level) {
   std::vector<std::string> attrs = DetectMachineAttributes();
-  // Default preference is 256-bit vectorization because of the attribute
-  // `+prefer-256-bit`. Drop `prefer-256-bit` from the attributes by negation
-  // for higher target machine features, for example, avx-512 vectorization.
-  attrs.push_back("-prefer-256-bit");
   llvm::SmallVector<std::string, 0> llvm_attrs(attrs.begin(), attrs.end());
   std::unique_ptr<llvm::TargetMachine> target_machine(
       llvm::EngineBuilder()
