@@ -104,6 +104,10 @@ struct GraphExecutionOptions {
   // This option is experimental.
   bool enable_mlrt = false;
 
+  // If true, the IFRT will be used instead of the TPU Runner.
+  // This option is experimental.
+  bool use_ifrt = false;
+
   tensorflow::TfrtCompileOptions compile_options;
 };
 
