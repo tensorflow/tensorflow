@@ -1130,8 +1130,14 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
                       GetAllocationSliceForHlo(instr, {output_index++}));
 
+  bool has_dbias = instr->shape().tuple_shapes().size() == 5;
   BufferAllocation::Slice d_bias_slice;
   std::optional<Shape> d_bias_shape;
+  if (has_dbias) {
+    TF_ASSIGN_OR_RETURN(d_bias_slice,
+                        GetAllocationSliceForHlo(instr, {output_index}));
+    d_bias_shape = ShapeUtil::GetSubshape(instr->shape(), {output_index++});
+  }
   TF_RET_CHECK(output_index == instr->shape().tuple_shapes().size());
   TF_ASSIGN_OR_RETURN(const auto mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));

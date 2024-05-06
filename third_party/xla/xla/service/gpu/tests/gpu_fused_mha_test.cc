@@ -153,6 +153,16 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
         input_data, LayoutUtil::MakeLayout(minor_to_major));
   }
 
+  template <typename T>
+  Literal GetInput3DLiteral(std::vector<int64_t> dimensions,
+                            std::vector<int64_t> minor_to_major) {
+    Array3D<T> input_data(dimensions[0], dimensions[1], dimensions[2]);
+    input_data.FillRandom(/*stddev=*/static_cast<T>(0.023), 0.001);
+
+    return LiteralUtil::CreateR3FromArray3DWithLayout(
+        input_data, LayoutUtil::MakeLayout(minor_to_major));
+  }
+
   Literal GetMask4DLiteral(std::vector<int64_t> dimensions,
                            std::vector<int64_t> minor_to_major) {
     Array4D<bool> input_data(dimensions[0], dimensions[1], dimensions[2],
@@ -584,6 +594,85 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
   )";
     return hlo_text;
   }
+
+  const std::string  // NOLINT
+  GetModuleFlash_Attention_BMM1_Bias_Softmax_BMM2_Dbias_HloString_BF16() {  // NOLINT
+    const std::string hlo_text = R"(
+      HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[4,1024,1024]{2,1,0})->(bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[4,1024,1024]{2,1,0})}, allow_spmd_sharding_propagation_to_parameters={true,true,true,true,true}, allow_spmd_sharding_propagation_to_output={true,true,true,true,true}
+
+      region_0.14 {
+        Arg_0.15 = bf16[] parameter(0)
+        Arg_1.16 = bf16[] parameter(1)
+        ROOT maximum = bf16[] maximum(Arg_0.15, Arg_1.16)
+      }
+
+      region_1.27 {
+        Arg_0.28 = f32[] parameter(0)
+        Arg_1.29 = f32[] parameter(1)
+        ROOT add = f32[] add(Arg_0.28, Arg_1.29)
+      }
+
+      region_2.56 {
+        Arg_0.57 = bf16[] parameter(0)
+        Arg_1.58 = bf16[] parameter(1)
+        ROOT add.1 = bf16[] add(Arg_0.57, Arg_1.58)
+      }
+
+      ENTRY main.87 {
+        Arg_2.3 = bf16[2,1024,4,64]{3,2,1,0} parameter(2)
+        transpose.12 = bf16[2,4,64,1024]{3,2,1,0} transpose(Arg_2.3), dimensions={0,2,3,1}
+        Arg_0.1 = bf16[2,1024,4,64]{3,2,1,0} parameter(0)
+        transpose.13 = bf16[2,4,1024,64]{3,2,1,0} transpose(Arg_0.1), dimensions={0,2,1,3}
+        Arg_1.2 = bf16[2,1024,4,64]{3,2,1,0} parameter(1)
+        transpose.15 = bf16[2,4,64,1024]{3,2,1,0} transpose(Arg_1.2), dimensions={0,2,3,1}
+        dot = bf16[2,4,1024,1024]{3,2,1,0} dot(transpose.13, transpose.15), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+        Arg_4.5 = bf16[4,1024,1024]{2,1,0} parameter(4)
+        broadcast.9 = bf16[2,4,1024,1024]{3,2,1,0} broadcast(Arg_4.5), dimensions={1,2,3}
+        add.2 = bf16[2,4,1024,1024]{3,2,1,0} add(dot, broadcast.9)
+        constant.10 = bf16[] constant(-inf)
+        reduce.18 = bf16[2,4,1024]{2,1,0} reduce(add.2, constant.10), dimensions={3}, to_apply=region_0.14
+        broadcast.10 = bf16[2,4,1024,1024]{3,2,1,0} broadcast(reduce.18), dimensions={0,1,2}
+        subtract = bf16[2,4,1024,1024]{3,2,1,0} subtract(add.2, broadcast.10)
+        exponential = bf16[2,4,1024,1024]{3,2,1,0} exponential(subtract)
+        convert.5 = f32[2,4,1024,1024]{3,2,1,0} convert(exponential)
+        constant.9 = f32[] constant(0)
+        reduce.31 = f32[2,4,1024]{2,1,0} reduce(convert.5, constant.9), dimensions={3}, to_apply=region_1.27
+        convert.6 = bf16[2,4,1024]{2,1,0} convert(reduce.31)
+        broadcast.11 = bf16[2,4,1024,1024]{3,2,1,0} broadcast(convert.6), dimensions={0,1,2}
+        divide.2 = bf16[2,4,1024,1024]{3,2,1,0} divide(exponential, broadcast.11)
+        dot.1 = bf16[2,4,64,1024]{3,2,1,0} dot(transpose.12, divide.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+        transpose.22 = bf16[2,1024,4,64]{3,2,1,0} transpose(dot.1), dimensions={0,3,1,2}
+        Arg_3.4 = bf16[2,1024,4,64]{3,2,1,0} parameter(3)
+        transpose.17 = bf16[2,4,1024,64]{3,2,1,0} transpose(Arg_3.4), dimensions={0,2,1,3}
+        dot.2 = bf16[2,4,1024,1024]{3,2,1,0} dot(transpose.17, transpose.12), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+        divide.3 = bf16[2,4,1024,1024]{3,2,1,0} divide(dot.2, broadcast.11)
+        constant.0 = bf16[] constant(1)
+        broadcast.13 = bf16[2,4,1024]{2,1,0} broadcast(constant.0), dimensions={}
+        multiply.2 = bf16[2,4,1024]{2,1,0} multiply(convert.6, convert.6)
+        divide.4 = bf16[2,4,1024]{2,1,0} divide(broadcast.13, multiply.2)
+        broadcast.14 = bf16[2,4,1024,1024]{3,2,1,0} broadcast(divide.4), dimensions={0,1,2}
+        multiply.3 = bf16[2,4,1024,1024]{3,2,1,0} multiply(dot.2, broadcast.14)
+        multiply.4 = bf16[2,4,1024,1024]{3,2,1,0} multiply(multiply.3, exponential)
+        constant.8 = bf16[] constant(0)
+        reduce.60 = bf16[2,4,1024]{2,1,0} reduce(multiply.4, constant.8), dimensions={3}, to_apply=region_2.56
+        negate.1 = bf16[2,4,1024]{2,1,0} negate(reduce.60)
+        broadcast.15 = bf16[2,4,1024,1024]{3,2,1,0} broadcast(negate.1), dimensions={0,1,2}
+        add.3 = bf16[2,4,1024,1024]{3,2,1,0} add(divide.3, broadcast.15)
+        multiply.5 = bf16[2,4,1024,1024]{3,2,1,0} multiply(add.3, exponential)
+        transpose.18 = bf16[2,4,1024,64]{3,2,1,0} transpose(Arg_1.2), dimensions={0,2,1,3}
+        dot.4 = bf16[2,4,1024,64]{3,2,1,0} dot(multiply.5, transpose.18), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+        transpose.23 = bf16[2,1024,4,64]{3,2,1,0} transpose(dot.4), dimensions={0,2,1,3}
+        dot.3 = bf16[2,4,1024,64]{3,2,1,0} dot(multiply.5, transpose.13), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+        transpose.24 = bf16[2,1024,4,64]{3,2,1,0} transpose(dot.3), dimensions={0,2,1,3}
+        transpose.20 = bf16[2,4,64,1024]{3,2,1,0} transpose(Arg_3.4), dimensions={0,2,3,1}
+        dot.49 = bf16[2,4,64,1024]{3,2,1,0} dot(transpose.20, divide.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+        transpose.25 = bf16[2,1024,4,64]{3,2,1,0} transpose(dot.49), dimensions={0,3,1,2}
+        reduce.81 = bf16[4,1024,1024]{2,1,0} reduce(multiply.5, constant.8), dimensions={0}, to_apply=region_2.56
+        ROOT tuple = (bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[2,1024,4,64]{3,2,1,0}, bf16[4,1024,1024]{2,1,0}) tuple(transpose.22, transpose.23, transpose.24, transpose.25, reduce.81)
+      } // main.87
+  )";
+    return hlo_text;
+  }
   template <typename T>
   void TestImpl_Flash_Attention_BMM1_Bias_Softmax_BMM2() {
     if (skip_reason_) GTEST_SKIP() << *skip_reason_;
@@ -652,6 +741,30 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
         GetModuleFlash_Attention_BMM1_Bias_Softmax_BMM2_Cross_Attention_HloString_BF16();  // NOLINT
     ExecuteAndCompare(hlo_string, {&lhs_bmm1_literal, &rhs_bmm1_literal,
                                    &rhs_bmm2_literal, &bias_literal});
+  }
+
+  template <typename T>
+  void TestImpl_Flash_Attention_BMM1_Bias_Softmax_BMM2_Dbias() {
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+    if (GetDnnVersionInfo(backend().default_stream_executor()) <
+        se::dnn::VersionInfo(8, 9, 4)) {
+      GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.4.";
+    }
+    XlaBuilder builder(TestName());
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({2, 1024, 4, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({2, 1024, 4, 64}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({2, 1024, 4, 64}, {3, 2, 1, 0});
+    auto bias_literal = GetInput3DLiteral<T>({4, 1024, 1024}, {2, 1, 0});
+    auto do_literal = GetInput4DLiteral<T>({2, 1024, 4, 64}, {3, 2, 1, 0});
+    std::string hlo_string =
+        GetModuleFlash_Attention_BMM1_Bias_Softmax_BMM2_Dbias_HloString_BF16();  // NOLINT
+    ExecuteAndCompare(hlo_string,
+                      {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal,
+                       &do_literal, &bias_literal},
+                      /*expected_num_fmha_calls=*/2);
   }
 };
 
@@ -949,6 +1062,11 @@ XLA_TEST_F(FlashAttentionBMMScaleBiasSoftmaxBMM,
 XLA_TEST_F(FlashAttentionBMMScaleBiasSoftmaxBMM,
            Flash_Attention_BMM1_Bias_Softmax_BMM2_BF16_Cross_Attention) {
   TestImpl_Flash_Attention_BMM1_Bias_Softmax_BMM2_Cross_Attention<bfloat16>();
+}
+
+XLA_TEST_F(FlashAttentionBMMScaleBiasSoftmaxBMM,
+           Flash_Attention_BMM1_Bias_Softmax_BMM2_BF16_Dbias) {
+  TestImpl_Flash_Attention_BMM1_Bias_Softmax_BMM2_Dbias<bfloat16>();
 }
 
 // BMM1 - Scale - Softmax - BMM2

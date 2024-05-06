@@ -5324,6 +5324,11 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   // Setting bias
   if (use_bias) {
     DCHECK(bias_descriptor != std::nullopt);
+    auto bias_dim = bias_descriptor->dimensions();
+    auto q_dim = q_desc.GetCudnnCompatibleDimensions(false);
+    auto b = bias_dim[0];
+    auto n = bias_dim[1];
+    auto q_n = q_dim[1];
     auto bias_tensor =
         graph.tensor(Tensor_attributes()
                          .set_name("bias")
@@ -5331,6 +5336,18 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
                          .set_stride(bias_descriptor->GetLogicalStrides())
                          .set_uid(CudnnfMHAUid::BIAS_ID));
     sdpa_backward_options.set_bias(bias_tensor);
+
+    // shapes [1, 1, s, s], [b, 1, s, s], [b, h, s, s] are not supported for
+    // dbias calculation but they are supported for forward bias calculation
+    if (b == 1 && n == q_n) {
+      auto d_bias_tensor =
+          graph.tensor(Tensor_attributes()
+                           .set_name("dBias")
+                           .set_dim(bias_descriptor->dimensions())
+                           .set_stride(bias_descriptor->GetLogicalStrides())
+                           .set_uid(CudnnfMHAUid::dBIAS_ID));
+      sdpa_backward_options.set_dbias(d_bias_tensor);
+    }
   }
   // Setting actual seqlen
   bool is_padding = mask_type == dnn::FMHAMaskKind::PADDING ||
@@ -7267,8 +7284,7 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
           bmm2_grad_gemm1_lhs_descriptor, bmm2_grad_gemm2_rhs_descriptor,
           d_output_descriptor, d_bmm1_lhs_descriptor, d_bmm1_rhs_descriptor,
           d_bmm2_rhs_descriptor, bias_descriptor, dropout_rate, seed, scale,
-          use_dropout,
-          /*use_bias*/ bias_descriptor != std::nullopt, mask_type));
+          use_dropout, bias_descriptor != std::nullopt, mask_type));
 
   std::vector<int64_t> p_dims =
       bmm2_grad_gemm1_lhs_descriptor.GetCudnnCompatibleDimensions(false);
@@ -7279,10 +7295,21 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
   std::vector<std::optional<int64_t>> uids;
   uids = {CudnnfMHAUid::Q_ID,  CudnnfMHAUid::K_ID,  CudnnfMHAUid::P_ID,
           CudnnfMHAUid::V_ID,  CudnnfMHAUid::dO_ID, CudnnfMHAUid::dQ_ID,
-          CudnnfMHAUid::dK_ID, CudnnfMHAUid::dV_ID, std::nullopt,
-          std::nullopt,        CudnnfMHAUid::O_ID};
+          CudnnfMHAUid::dK_ID, CudnnfMHAUid::dV_ID, std::nullopt};
+  uids.emplace_back(d_bias_descriptor.has_value()
+                        ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::dBIAS_ID)
+                        : std::nullopt);
+  uids.push_back(CudnnfMHAUid::O_ID);
   uids.emplace_back(bias_descriptor.has_value()
                         ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::BIAS_ID)
+                        : std::nullopt);
+  bool is_padding = mask_type == dnn::FMHAMaskKind::PADDING ||
+                    mask_type == dnn::FMHAMaskKind::PADDING_CAUSAL;
+  uids.emplace_back(is_padding
+                        ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::Q_SEQLEN_ID)
+                        : std::nullopt);
+  uids.emplace_back(is_padding
+                        ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::K_SEQLEN_ID)
                         : std::nullopt);
   TF_ASSIGN_OR_RETURN(auto runner,
                       CudnnGraphRunner<dnn::FusedMHABackwardSignature>::Create(
