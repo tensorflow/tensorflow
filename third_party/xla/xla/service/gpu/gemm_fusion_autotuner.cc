@@ -100,6 +100,7 @@ limitations under the License.
 // VLOG(3): Autotuning progress - more frequent
 // VLOG(4): Print all fusions
 // VLOG(5): Profiling information for every tiling
+// VLOG(10): Print fusion computations and each configuration
 
 // TODO(b/317016172): Update usages of TritonGemmConfig to use newly exposed
 // parameters.
@@ -750,8 +751,12 @@ GemmFusionAutotunerImpl::CompileAll(
       const HloFusionInstruction* fusion = key_value.first;
       const std::vector<Config>& gemm_config_set = key_value.second;
 
+      VLOG(10) << "Compiling the fusion: " << fusion->name();
+      VLOG(10) << "Dumping fusion computation: "
+               << fusion->called_computation()->ToString();
       for (const Config& config : gemm_config_set) {
         thread_pool_->Schedule([&, fusion] {
+          VLOG(10) << "Trying configuration: " << ToString(config);
           absl::StatusOr<bool> has_executable =
               compile(fusion, config, gemm_config_set.size() > 1);
           TF_CHECK_OK(has_executable.status())
@@ -779,9 +784,11 @@ GemmFusionAutotunerImpl::CompileAll(
       const HloFusionInstruction* fusion = key_value.first;
       const auto& gemm_config_set = key_value.second;
 
-      VLOG(2) << "Compiling the fusion: " << fusion->name();
+      VLOG(10) << "Compiling the fusion: " << fusion->name();
+      VLOG(10) << "Dumping fusion computation: "
+               << fusion->called_computation()->ToString();
       for (const Config& config : gemm_config_set) {
-        VLOG(5) << "Trying configuration: " << ToString(config);
+        VLOG(10) << "Trying configuration: " << ToString(config);
         TF_ASSIGN_OR_RETURN(
             bool has_executable,
             compile(fusion, config, gemm_config_set.size() > 1));
