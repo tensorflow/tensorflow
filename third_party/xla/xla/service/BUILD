@@ -6088,6 +6088,40 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "host_offloading_prepare",
+    srcs = ["host_offloading_prepare.cc"],
+    hdrs = ["host_offloading_prepare.h"],
+    deps = [
+        ":call_graph",
+        ":hlo_pass",
+        ":host_memory_offload_annotations_hdr",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "host_offloading_prepare_test",
+    srcs = ["host_offloading_prepare_test.cc"],
+    deps = [
+        ":host_memory_offload_annotations_hdr",
+        ":host_offloading_prepare",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "while_util",
     srcs = ["while_util.cc"],
     hdrs = ["while_util.h"],
