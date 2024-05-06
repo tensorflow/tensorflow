@@ -1681,6 +1681,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_use_memcpy_local_p2p),
       debug_options->xla_gpu_use_memcpy_local_p2p(),
       "Whether to use memcpy for local p2p communication."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_dump_autotune_logs_to",
+      string_setter_for(&DebugOptions::set_xla_gpu_dump_autotune_logs_to),
+      debug_options->xla_gpu_dump_autotune_logs_to(),
+      "File to write autotune logs to. It will be a binary file unless the "
+      "name ends with .txt or .textproto."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
