@@ -109,9 +109,9 @@ class StreamExecutor : public StreamExecutorInterface {
   // The value is cached on first use.
   const DeviceDescription& GetDeviceDescription() const;
 
-  // Creates and initializes a Stream.
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
-      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
+      std::optional<std::variant<StreamPriority, int>> priority =
+          std::nullopt) override;
 
  private:
   // Reader/writer lock for mutable data structures on this StreamExecutor.

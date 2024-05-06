@@ -513,6 +513,9 @@ cc_library(
     hdrs = ["command_buffer.h"],
     visibility = ["//visibility:private"],
     deps = [
+        ":device_memory",
+        ":launch_dim",
+        ":platform",
         ":stream_executor_headers",
         ":stream_executor_interface",
         "@com_google_absl//absl/functional:any_invocable",

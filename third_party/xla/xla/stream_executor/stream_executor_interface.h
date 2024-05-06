@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <variant>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -57,6 +58,11 @@ class StreamExecutorInterface {
 
   // Returns the device ordinal.
   virtual int device_ordinal() const { return -1; }
+
+  // Creates and initializes a Stream.
+  virtual absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority =
+          std::nullopt) = 0;
 
   // Retrieves (loads) a kernel, if one exists.
   //

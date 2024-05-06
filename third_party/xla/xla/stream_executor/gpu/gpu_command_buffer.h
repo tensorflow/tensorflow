@@ -77,14 +77,14 @@ class GpuCommandBuffer : public CommandBuffer {
                    bool is_owned_graph = true);
   ~GpuCommandBuffer() override;
 
-  absl::Status Barrier(StreamExecutor* executor,
+  absl::Status Barrier(StreamExecutorInterface* executor,
                        ExecutionScopeId execution_scope_id) override;
 
   absl::Status Barrier(
-      StreamExecutor* executor,
+      StreamExecutorInterface* executor,
       absl::Span<const ExecutionScopeId> execution_scope_ids) override;
 
-  absl::Status Barrier(StreamExecutor* executor,
+  absl::Status Barrier(StreamExecutorInterface* executor,
                        ExecutionScopeId from_execution_scope_id,
                        ExecutionScopeId to_execution_scope_id) override;
 
@@ -104,24 +104,27 @@ class GpuCommandBuffer : public CommandBuffer {
                       DeviceMemoryBase* dst, BitPattern bit_pattern,
                       size_t num_elements) override;
 
-  absl::Status If(ExecutionScopeId execution_scope_id, StreamExecutor* executor,
+  absl::Status If(ExecutionScopeId execution_scope_id,
+                  StreamExecutorInterface* executor,
                   DeviceMemory<bool> predicate, Builder then_builder) override;
 
   absl::Status IfElse(ExecutionScopeId execution_scope_id,
-                      StreamExecutor* executor, DeviceMemory<bool> predicate,
-                      Builder then_builder, Builder else_builder) override;
+                      StreamExecutorInterface* executor,
+                      DeviceMemory<bool> predicate, Builder then_builder,
+                      Builder else_builder) override;
 
   absl::Status Case(ExecutionScopeId execution_scope_id,
-                    StreamExecutor* executor, DeviceMemory<int32_t> index,
+                    StreamExecutorInterface* executor,
+                    DeviceMemory<int32_t> index,
                     std::vector<Builder> branches) override;
 
   absl::Status For(ExecutionScopeId execution_scope_id,
-                   StreamExecutor* executor, int32_t num_iteration,
+                   StreamExecutorInterface* executor, int32_t num_iteration,
                    DeviceMemory<int32_t> loop_counter,
                    Builder body_builder) override;
 
   absl::Status While(ExecutionScopeId execution_scope_id,
-                     StreamExecutor* executor, DeviceMemory<bool> pred,
+                     StreamExecutorInterface* executor, DeviceMemory<bool> pred,
                      ExecutionScopeBuilder cond_builder,
                      Builder body_builder) override;
 
@@ -247,7 +250,7 @@ class GpuCommandBuffer : public CommandBuffer {
       absl::Span<const GpuGraphConditionalHandle> handles);
 
   absl::Status CreateConditionalCommand(
-      ExecutionScopeId execution_scope_id, StreamExecutor* executor,
+      ExecutionScopeId execution_scope_id, StreamExecutorInterface* executor,
       ConditionType type, SetConditionFn set_condition,
       absl::Span<const ConditionBuilder> builders);
 
@@ -256,16 +259,16 @@ class GpuCommandBuffer : public CommandBuffer {
   // Returns loaded auxiliary kernels, or loads them on a given stream executor.
   // Loaded kernels owned by a current command buffer.
   absl::StatusOr<SetIfConditionKernel*> GetSetIfConditionKernel(
-      StreamExecutor* executor);
+      StreamExecutorInterface* executor);
   absl::StatusOr<SetIfElseConditionKernel*> GetSetIfElseConditionKernel(
-      StreamExecutor* executor);
+      StreamExecutorInterface* executor);
   absl::StatusOr<SetCaseConditionKernel*> GetSetCaseConditionKernel(
-      StreamExecutor* executor);
+      StreamExecutorInterface* executor);
   absl::StatusOr<SetForConditionKernel*> GetSetForConditionKernel(
-      StreamExecutor* executor);
+      StreamExecutorInterface* executor);
   absl::StatusOr<SetWhileConditionKernel*> GetSetWhileConditionKernel(
-      StreamExecutor* executor);
-  absl::StatusOr<NoOpKernel*> GetNoOpKernel(StreamExecutor* executor);
+      StreamExecutorInterface* executor);
+  absl::StatusOr<NoOpKernel*> GetNoOpKernel(StreamExecutorInterface* executor);
 
   // Recursively disable all nodes corresponding to barriers (including nested
   // conditional command buffers). This is work around the fact that we can't
@@ -290,7 +293,7 @@ class GpuCommandBuffer : public CommandBuffer {
 
   // Creates a new no-op node acting as a barrier.
   absl::StatusOr<GpuGraphNodeHandle> CreateBarrierNode(
-      StreamExecutor* executor, const Dependencies& dependencies);
+      StreamExecutorInterface* executor, const Dependencies& dependencies);
 
   // Collects a set of dependencies for a new barrier.
   Dependencies GetBarrierDependencies(ExecutionScopeId execution_scope_id);
