@@ -32,7 +32,8 @@ namespace gpu {
 // Reduction fusion. Lowers to LLVM via MLIR. Currently not fully
 // implemented: only single reduction groups, no side outputs, only row
 // reductions.
-class MlirReductionFusion : public ReductionFusionBase<MlirFusionEmitterBase> {
+class MlirReductionFusion
+    : public ReductionFusionBase<MlirFusionEmitterBase, /*is_mlir=*/true> {
  public:
   explicit MlirReductionFusion(const HloFusionAnalysis& analysis);
 

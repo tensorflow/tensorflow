@@ -119,7 +119,7 @@ MlirReductionFusion::MlirReductionFusion(const HloFusionAnalysis& analysis)
 }
 
 bool MlirReductionFusion::IsSupported(const HloFusionAnalysis& analysis) {
-  auto info = ReductionInfo::Create(analysis);
+  auto info = ReductionInfo::Create(analysis, /*for_mlir=*/true);
   return info.GetGroups().grouped_roots.size() == 1 && info.IsRaceFree();
 }
 

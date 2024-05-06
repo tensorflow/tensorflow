@@ -101,7 +101,8 @@ int GetVectorSize(const HloFusionAnalysis& analysis,
   return 1;
 }
 
-ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis) {
+ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
+                                        bool for_mlir) {
   const int num_fusion_outputs = analysis.fusion_root_count();
 
   CHECK_NE(0, num_fusion_outputs);
@@ -143,21 +144,33 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis) {
     }
   }
 
-  std::vector<HloInstructionAdaptor> instructions;
-  HloBfsConsumersFirstTraversal(
-      roots, analysis.fusion(),
-      [&](HloInstructionAdaptor consumer) {
-        auto& consumer_reachable = reachable_outputs[consumer];
-        for (auto producer : consumer.GetOperands()) {
-          reachable_outputs[producer].insert(consumer_reachable.begin(),
-                                             consumer_reachable.end());
-        }
-        instructions.push_back(consumer);
-        return TraversalResult::kAdvance;
-      },
-      [&](HloInstructionAdaptor argument) {
-        instructions.push_back(argument);
-      });
+  absl::flat_hash_set<HloInstructionAdaptor> instructions;
+
+  auto visit = [&](absl::Span<const HloInstructionAdaptor> roots) {
+    HloBfsConsumersFirstTraversal(
+        roots, analysis.fusion(),
+        [&](HloInstructionAdaptor consumer) {
+          auto& consumer_reachable = reachable_outputs[consumer];
+          for (auto producer : consumer.GetOperands()) {
+            reachable_outputs[producer].insert(consumer_reachable.begin(),
+                                               consumer_reachable.end());
+          }
+          instructions.insert(consumer);
+          return TraversalResult::kAdvance;
+        },
+        [&](HloInstructionAdaptor argument) { instructions.insert(argument); });
+  };
+
+  // The legacy emitter grouping is buggy: it does not visit instructions in the
+  // right order. We fix this only for the MLIR emitters, since we are migrating
+  // to them, and we can't rule out that some models rely on the buggy behavior.
+  if (for_mlir) {
+    for (auto root : roots) {
+      visit({root});
+    }
+  } else {
+    visit(roots);
+  }
 
   for (auto instr : instructions) {
     const auto& reachable = reachable_outputs[instr];
@@ -225,7 +238,8 @@ LaunchDimensions ReductionInfo::launch_dimensions() const {
                         /*y=*/1, /*z=*/1)};
 }
 
-ReductionInfo ReductionInfo::Create(const HloFusionAnalysis& analysis) {
+ReductionInfo ReductionInfo::Create(const HloFusionAnalysis& analysis,
+                                    bool for_mlir) {
   auto* hero_reduction = analysis.FindHeroReduction();
   CHECK_NE(hero_reduction, nullptr);
   Shape input_shape = hero_reduction->operand(0)->shape();
@@ -313,7 +327,8 @@ ReductionInfo ReductionInfo::Create(const HloFusionAnalysis& analysis) {
       hero_reduction->GetModule()->config(), reduction_dimensions);
   return ReductionInfo(analysis, tiling, reduction_dimensions.is_row_reduction,
                        reduction_is_race_free,
-                       GroupDisjointReductions(analysis), hero_reduction);
+                       GroupDisjointReductions(analysis, for_mlir),
+                       hero_reduction);
 }
 
 std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
