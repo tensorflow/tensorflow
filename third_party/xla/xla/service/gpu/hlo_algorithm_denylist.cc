@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
-#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/gpu/gpu_autotuning.pb.h"
 #include "xla/stream_executor/dnn.h"
@@ -38,18 +37,16 @@ constexpr char kDefaultDenylist[] = R"pb(
     cc { major: 7 }
     cudnn_version { major: 9 }
     algos { id: 14 }
-    blas_version: "120302"
   }
   entries {
     hlo: "(f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(f32[512,512,7,7]{3,2,1,0}, f32[512,512,3,3]{3,2,1,0}, f32[512]{0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\", backend_config={\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[],\"cudnn_conv_backend_config\":{\"activation_mode\":\"kNone\",\"conv_result_scale\":1,\"side_input_scale\":0,\"leakyrelu_alpha\":0},\"force_earliest_schedule\":false}"
     cc { major: 7 }
     cudnn_version { major: 9 minor: 1 patch: 1 }
     algos { id: 14 }
-    blas_version: "120302"
   }
 )pb";
 
-absl::Span<const stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
+std::vector<stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
     ComputeCapability cc, CudnnVersion cudnn_version,
     const std::string& blas_version, const std::string& hlo) {
   // Key is the tuple of canonicalized hlo, compute capability major/minor,
@@ -82,13 +79,26 @@ absl::Span<const stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
     return list;
   }();
 
-  auto iter = denylist->find(std::make_tuple(
-      hlo, cc.major(), cc.minor(), cudnn_version.major(), cudnn_version.minor(),
-      cudnn_version.patch(), std::string(blas_version)));
-  if (iter != denylist->end()) {
-    return iter->second;
-  }
-  return {};
+  std::vector<stream_executor::dnn::AlgorithmDesc> algorithms;
+  auto add_matching_disabled_algorithms_to_result = [&](const auto& key) {
+    auto iter = denylist->find(key);
+    if (iter != denylist->end()) {
+      algorithms.insert(algorithms.end(), iter->second.begin(),
+                        iter->second.end());
+    }
+  };
+
+  // Exclude algorithms with explicit BLAS version set
+  auto key = std::make_tuple(hlo, cc.major(), cc.minor(), cudnn_version.major(),
+                             cudnn_version.minor(), cudnn_version.patch(),
+                             blas_version);
+  add_matching_disabled_algorithms_to_result(key);
+
+  // Exclude algorithms with no BLAS version set
+  std::get<6>(key) = std::string{};
+  add_matching_disabled_algorithms_to_result(key);
+
+  return algorithms;
 }
 
 }  // namespace gpu

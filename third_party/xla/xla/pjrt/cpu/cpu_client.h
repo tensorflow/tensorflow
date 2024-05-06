@@ -185,7 +185,7 @@ class TfrtCpuTopologyDescription : public PjRtTopologyDescription {
     return attributes_;
   }
 
-  StatusOr<Layout> GetDefaultLayout(
+  absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
 
