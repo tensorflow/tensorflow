@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/image_classification_stage.h"
