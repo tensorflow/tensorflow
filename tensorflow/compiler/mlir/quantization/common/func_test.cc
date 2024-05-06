@@ -28,7 +28,7 @@ namespace {
 using ::testing::IsNull;
 using ::testing::NotNull;
 
-class FindMainFuncOpTest : public QuantizationTestBase {};
+using FindMainFuncOpTest = ::mlir::quant::QuantizationTestBase;
 
 TEST_F(FindMainFuncOpTest, ReturnsMainFuncOp) {
   constexpr absl::string_view kModuleWithMainFunc = R"mlir(

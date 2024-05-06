@@ -19,9 +19,16 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -44,12 +51,12 @@ class WhileLoopExpensiveInvariantCodeMotion : public HloModulePass {
     return "while-loop-expensive-invariant-code-motion";
   }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
+  absl::StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
       HloInstruction* while_instr);
 
   ShapeSizeFunction shape_size_function_;

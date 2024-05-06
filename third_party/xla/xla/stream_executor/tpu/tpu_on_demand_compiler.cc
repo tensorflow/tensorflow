@@ -54,7 +54,7 @@ class TpuCompiler : public Compiler {
     return tensorflow::tpu::GetTpuPlatformId();
   }
 
-  StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+  absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module,
       stream_executor::StreamExecutor* executor,
       const CompileOptions& options) override {
@@ -70,8 +70,7 @@ class TpuCompiler : public Compiler {
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunHloPassesFn(
         compiler_, &hlo_module,
-        static_cast<stream_executor::tpu::TpuExecutor*>(
-            executor->implementation())
+        static_cast<stream_executor::tpu::TpuExecutor*>(executor)
             ->se_executor(),
         &allocator, &result, status.c_status);
     if (!status.ok()) {
@@ -83,7 +82,7 @@ class TpuCompiler : public Compiler {
     return HloModule::CreateFromProto(result_proto, module->config());
   }
 
-  StatusOr<std::unique_ptr<Executable>> RunBackend(
+  absl::StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module,
       stream_executor::StreamExecutor* executor,
       const CompileOptions& options) override {
@@ -100,8 +99,7 @@ class TpuCompiler : public Compiler {
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunBackendFn(
         compiler_, &hlo_module,
-        static_cast<stream_executor::tpu::TpuExecutor*>(
-            executor->implementation())
+        static_cast<stream_executor::tpu::TpuExecutor*>(executor)
             ->se_executor(),
         &allocator, &result, status.c_status);
     if (!status.ok()) {
@@ -113,7 +111,7 @@ class TpuCompiler : public Compiler {
     return exec;
   }
 
-  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+  absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::unique_ptr<HloModuleGroup> module_group,
       std::vector<std::vector<stream_executor::StreamExecutor*>> stream_exec,
       const CompileOptions& options) override {
@@ -141,9 +139,9 @@ class TpuCompiler : public Compiler {
       se_lists_storage.emplace_back(stream_exec[i].size());
       se_lists[i].exec = se_lists_storage.back().data();
       for (int j = 0; j < stream_exec[i].size(); ++j) {
-        se_lists[i].exec[j] = static_cast<stream_executor::tpu::TpuExecutor*>(
-                                  stream_exec[i][j]->implementation())
-                                  ->se_executor();
+        se_lists[i].exec[j] =
+            static_cast<stream_executor::tpu::TpuExecutor*>(stream_exec[i][j])
+                ->se_executor();
       }
     }
 
@@ -188,7 +186,7 @@ class TpuCompiler : public Compiler {
 
   // Compiles the HLO module group for ahead-of-time execution.  This is
   // intended for use in static compilation.
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      const AotCompilationOptions& options) override {
     return Unimplemented("This compiler does not support CompileAheadOfTime.");

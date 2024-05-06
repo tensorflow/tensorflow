@@ -36,6 +36,7 @@ visibility = [
     "//third_party/reverb:__subpackages__",
     "//tensorflow_minigo:__subpackages__",
     "//research/graph/fairness/inproc_fair_reg:__subpackages__",
+    "//third_party/py/scenic:__subpackages__",
 ]
 
 package(
@@ -2071,9 +2072,11 @@ py_strict_library(
         ":array_ops_stack",
         ":bitwise_ops_gen",
         ":data_flow_ops_gen",
+        ":logging_ops_gen",
         ":math_ops_gen",
         ":nn_ops_gen",
         ":sparse_ops_gen",
+        "//tensorflow/python/compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -3110,6 +3113,7 @@ py_strict_library(
         "variables.py",
     ],
     srcs_version = "PY3",
+    visibility = visibility,
     deps = [
         ":array_ops",
         ":array_ops_gen",
@@ -3121,6 +3125,7 @@ py_strict_library(
         ":resource_variable_ops_gen",
         ":state_ops",
         ":state_ops_gen",
+        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",
@@ -3153,6 +3158,7 @@ py_strict_library(
         "//tensorflow/python/util:tf_should_use",
         "//tensorflow/python/util:traceback_utils",
         "//third_party/py/numpy",
+        "@absl_py//absl/logging",
         "@pypi_typing_extensions//:pkg",
     ],
 )

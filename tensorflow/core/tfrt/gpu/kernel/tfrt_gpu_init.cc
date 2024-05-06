@@ -46,7 +46,7 @@ Status InitTfrtGpu(const GpuRunnerOptions& options,
             tensorflow::gpu::kGpuRunnerResourceName,
             serving_device_selector.get());
       });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

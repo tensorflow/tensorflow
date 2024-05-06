@@ -18,23 +18,24 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_HOST_HOST_STREAM_H_
 #define XLA_STREAM_EXECUTOR_HOST_HOST_STREAM_H_
 
-#include <functional>
+#include <cstddef>
 #include <memory>
 #include <queue>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_interface.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
 namespace host {
 
-class HostStream : public internal::StreamInterface {
+class HostStream : public StreamInterface {
  public:
-  // stack_size_in_bytes may be '0', meaning "use the default thread stack
-  // size".
-  explicit HostStream(size_t stack_size_in_bytes);
+  HostStream();
   ~HostStream() override;
 
   // Enqueue a task that reports a status when finished. Tasks that fail do not

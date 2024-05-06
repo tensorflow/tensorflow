@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_UTIL_H_
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_UTIL_H_
 
@@ -26,6 +25,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 
@@ -55,9 +54,12 @@ inline constexpr absl::string_view kIdentityMarker = "identity";
 inline constexpr absl::string_view kPipelineMarkerStartType = "start";
 inline constexpr absl::string_view kPipelineMarkerEndType = "end";
 
-inline bool IsManualShardingBoundaryCustomCall(const HloInstruction* ins) {
-  return ins->IsCustomCall("SPMDFullToShardShape") ||
-         ins->IsCustomCall("SPMDShardToFullShape");
+inline bool IsSPMDFullToShardShapeCustomCall(const HloInstruction* ins) {
+  return ins->IsCustomCall("SPMDFullToShardShape");
+}
+
+inline bool IsSPMDShardToFullShapeCustomCall(const HloInstruction* ins) {
+  return ins->IsCustomCall("SPMDShardToFullShape");
 }
 
 inline std::pair<int, int> ParseMeshDims(const std::string& strategy_name) {
@@ -232,6 +234,12 @@ inline bool IsCustomCallMarker(const HloInstruction* inst) {
 inline bool IsTopKCustomCall(const HloInstruction* inst) {
   return inst->opcode() == HloOpcode::kCustomCall &&
          inst->custom_call_target() == "TopK";
+}
+
+// Return whether this instruction is a TopK custom call.
+inline bool IsPartialReduceCustomCall(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kCustomCall &&
+         inst->custom_call_target() == "PartialReduce";
 }
 
 // Pass through the custom call marker and get the source instruction
@@ -455,30 +463,27 @@ int64_t NumTileDimensions(const HloSharding& spec);
 
 // When fixing mixed mesh resharding (see below), compute the correct
 // intermediate shape in order to insert copies.
-Shape ComputeIntermediateShape(const HloSharding& src_sharding,
-                               const HloSharding& dst_sharding,
-                               const Shape& shape,
-                               const Array<int64_t>& device_mesh);
+absl::StatusOr<Shape> ComputeIntermediateShape(
+    const HloSharding& src_sharding, const HloSharding& dst_sharding,
+    const Shape& shape, const Array<int64_t>& device_mesh);
 
 // Forcibly set the sharding of the operand of inst.
 // Also fix the resharding between 1d and 2d logical mesh.
-void FixMixedMeshShapeReshardingGetTupleElement(
+absl::Status FixMixedMeshShapeReshardingGetTupleElement(
     HloInstruction* inst, const HloSharding& dst_sharding,
     const Array<int64_t>& device_mesh,
-    absl::flat_hash_map<std::string, std::vector<HloSharding>>*
+    absl::flat_hash_map<std::string, std::vector<HloSharding>>&
         preserve_shardings);
 
-void FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
+absl::Status FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
     HloInstruction* inst,
     const std::vector<std::optional<HloSharding>>& dst_sharding,
-    const Array<int64_t>& device_mesh,
-    absl::flat_hash_map<std::string, std::vector<HloSharding>>*
-        preserve_shardings);
+    const Array<int64_t>& device_mesh);
 
-void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
-                                 const HloSharding& dst_sharding,
-                                 const Array<int64_t>& device_mesh,
-                                 ReshardingCache* resharding_cache);
+absl::Status FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
+                                         const HloSharding& dst_sharding,
+                                         const Array<int64_t>& device_mesh,
+                                         ReshardingCache* resharding_cache);
 
 /*
  * Gradient accumulation
@@ -616,14 +621,16 @@ HloInstruction* FindInstruction(
 // total_num_devices should equal to the product of mesh_shape elements.
 absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
+    const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
     const std::vector<int64_t>& mesh_shape, int64_t total_num_devices,
     bool crash_on_error);
 
 inline bool AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
+    const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
     const std::vector<int64_t>& mesh_shape, int64_t total_num_devices) {
-  auto result = AdjustShardingsWithPartialMeshShape(instructions, mesh_shape,
-                                                    total_num_devices, true);
+  absl::StatusOr<bool> result = AdjustShardingsWithPartialMeshShape(
+      instructions, instructions_to_shard, mesh_shape, total_num_devices, true);
   CHECK_OK(result);
   return *result;
 }
@@ -654,6 +661,20 @@ ComputeInstructionExecutionCounts(const HloModule* module,
 std::vector<std::vector<int64_t>> InferOrEnumerateMeshShapesToTry(
     const HloModule& module, int64_t num_devices, int num_mesh_dims,
     bool symmetrical_mesh_dims);
+
+// Check if the sharding is "misaligned" wrt the shape. This is true if there is
+// at least one dimension of the tensor that is sharded over a number of devices
+// that do not complete divide the size of the tensor dimension.
+bool IsShardingMisaligned(const HloSharding& sharding, const Shape& shape);
+
+// In a given tuple sharding, replace certain leaves with
+// HloSharding::Unknown()
+HloSharding ReplaceGivenShardingsWithUnknownForTuple(
+    const HloSharding& sharding, const Shape& shape,
+    absl::Span<const bool> to_replace_sharding_ids);
+
+// Extract the reduction_dim of a PartialReduce custom call
+absl::StatusOr<int64_t> GetPartialReduceReductionDim(const HloInstruction* ins);
 
 }  // namespace spmd
 }  // namespace xla

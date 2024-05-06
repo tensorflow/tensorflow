@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
 #include "xla/statusor.h"
@@ -210,10 +211,13 @@ absl::StatusOr<CustomKernel> GetCutlassGemmKernel(
       return Load<F32xF32ToF32<Default>>(std::move(name), m, n, k, indices,
                                          slices, device);
     case PrimitiveType::BF16:
+#if CUDA_VERSION >= 12000
       if (cuda_cc.IsAtLeastHopper()) {
         return Load<Bf16xBf16ToBf16<Sm90>>(std::move(name), m, n, k, indices,
                                            slices, device);
-      } else if (cuda_cc.IsAtLeastAmpere()) {
+      }
+#endif
+      if (cuda_cc.IsAtLeastAmpere()) {
         return Load<Bf16xBf16ToBf16<Sm80>>(std::move(name), m, n, k, indices,
                                            slices, device);
       }

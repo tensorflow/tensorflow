@@ -89,7 +89,7 @@ class TRTNetworkBuilder {
   };
 
   // Adds an absolute value operation to the network. Note that this unary
-  // operation will do an implict float conversion. For int32 tensors, use
+  // operation will do an implicit float conversion. For int32 tensors, use
   // "AbsInt".
   StatusOr<nvinfer1::IUnaryLayer*> AbsFloat(nvinfer1::ITensor* input) noexcept {
     TRT_ENSURE(input);
@@ -101,7 +101,7 @@ class TRTNetworkBuilder {
     return layer;
   }
 
-  // Performs Abs without implict float conversion. The input should be of type
+  // Performs Abs without implicit float conversion. The input should be of type
   // kInt32. For float datatypes, use "Abs".
   StatusOr<nvinfer1::IElementWiseLayer*> AbsInt(
       nvinfer1::ITensor* input) noexcept {

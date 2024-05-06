@@ -166,12 +166,14 @@ extern const char* const kOneDnnLayerNormSymbolName =
     "__xla_cpu_runtime_OneDnnLayerNorm";
 extern const char* const kOneDnnMatMulReorderSymbolName =
     "__xla_cpu_runtime_OneDnnMatMulReorder";
+extern const char* const kHandleFfiCallSymbolName =
+    "__xla_cpu_runtime_HandleFfiCall";
 
 namespace {
 
 // Inverses the encoding of a Shape protobuf into an LLVM global variable.
-StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                  int32_t size_bytes) {
+absl::StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
+                                                        int32_t size_bytes) {
   ShapeProto shape_proto;
   if (!shape_proto.ParseFromArray(shape_ptr, size_bytes)) {
     return tsl::errors::Internal("Failed parsing the shape proto");
@@ -185,7 +187,7 @@ StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
 }
 
 std::string ShapeString(const void* shape_ptr, int32_t shape_length) {
-  StatusOr<Shape> shape =
+  absl::StatusOr<Shape> shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   if (shape.ok()) {
     return ShapeUtil::HumanStringWithLayout(shape.value());
@@ -237,7 +239,7 @@ void ReleaseInfeedBufferAfterDequeueImpl(
           << device_ordinal;
 
   XfeedManager* xfeed = GetXfeedManager(device_ordinal);
-  StatusOr<Shape> shape =
+  absl::StatusOr<Shape> shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   xfeed->infeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
                                         std::move(shape));
@@ -275,7 +277,7 @@ void ReleaseOutfeedBufferAfterPopulationImpl(
           << device_ordinal;
 
   XfeedManager* xfeed = GetXfeedManager(device_ordinal);
-  StatusOr<Shape> shape =
+  absl::StatusOr<Shape> shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
                                          std::move(shape));
@@ -543,9 +545,14 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int __xla_cpu_runtime_PrintfToStderr(
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int64_t __xla_cpu_runtime_TracingStart(
-    const void* /* ExecutableRunOptions*  run_options_ptr*/, const char* name) {
+    const void* /* ExecutableRunOptions*  run_options_ptr*/, const char* name,
+    const char* type, const char* src_op_type, const char* src_op_name) {
   VLOG(3) << "TracingStart " << name;
-  return tsl::profiler::TraceMe::ActivityStart(name);
+  auto trace_in =
+      tsl::profiler::TraceMeEncode(type, {{"hlo_name", name},
+                                          {"src_opType", src_op_type},
+                                          {"src_opName", src_op_name}});
+  return tsl::profiler::TraceMe::ActivityStart(trace_in);
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TracingEnd(

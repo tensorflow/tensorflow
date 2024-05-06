@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/captured_function.h"
@@ -53,6 +54,10 @@ class MapDatasetOp::Dataset : public DatasetBase {
         output_types_(output_types),
         output_shapes_(output_shapes) {
     input_->Ref();
+    random_indexing_compatible_ = absl::OkStatus();
+    if (input_ != nullptr) {
+      random_indexing_compatible_ = input_->RandomIndexingCompatible();
+    }
   }
 
   ~Dataset() override { input_->Unref(); }
@@ -102,6 +107,10 @@ class MapDatasetOp::Dataset : public DatasetBase {
                                       &instantiated_captured_func_));
     }
     return instantiated_captured_func_->RunInstantiated(args, out_tensors);
+  }
+
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
   }
 
  protected:
@@ -227,6 +236,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
   // This is used for random access provided by Get().
   mutable std::unique_ptr<InstantiatedCapturedFunction>
       instantiated_captured_func_;
+  absl::Status random_indexing_compatible_;
 };
 
 MapDatasetOp::MapDatasetOp(OpKernelConstruction* ctx)

@@ -16,7 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXAMPLES_LABEL_IMAGE_GET_TOP_N_H_
 #define TENSORFLOW_LITE_EXAMPLES_LABEL_IMAGE_GET_TOP_N_H_
 
-#include "tensorflow/lite/examples/label_image/get_top_n_impl.h"
+#include <cstddef>
+#include <utility>
+#include <vector>
+
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/examples/label_image/get_top_n_impl.h"  // IWYU pragma: export
 
 namespace tflite {
 namespace label_image {

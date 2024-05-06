@@ -31,14 +31,23 @@ bool DotOperandConverter::InstructionMatchesPattern(
   HloInstruction* lhs = instruction->mutable_operand(0);
   HloInstruction* rhs = instruction->mutable_operand(1);
 
-  if (lhs->shape().element_type() == rhs->shape().element_type()) {
+  PrimitiveType lhs_type = lhs->shape().element_type();
+  PrimitiveType rhs_type = rhs->shape().element_type();
+
+  if (lhs_type == rhs_type) {
     return false;
   }
+
+  // Exclude conversions between FP8 types.
+  absl::flat_hash_set<PrimitiveType> non_converting = {F8E4M3FN, F8E5M2};
+  if (non_converting.contains(lhs_type) && non_converting.contains(rhs_type)) {
+    return false;
+  }
+
   PrimitiveType desired_type =
       ShapeUtil::HigherPrecisionElementType(lhs->shape(), rhs->shape());
 
-  return desired_type == lhs->shape().element_type() ||
-         desired_type == rhs->shape().element_type();
+  return desired_type == lhs_type || desired_type == rhs_type;
 }
 
 absl::StatusOr<HloInstruction*> DotOperandConverter::ExpandInstruction(

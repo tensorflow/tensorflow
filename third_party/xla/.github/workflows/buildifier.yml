@@ -14,7 +14,7 @@
 # ============================================================================
 name: Buildifier
 on:
-  pull_request_target:
+  pull_request:
 
 env:
   # Have `go install` place binaries in $PATH
@@ -27,9 +27,6 @@ jobs:
       run:
         shell: bash
     timeout-minutes: 1
-    if: |
-      github.event.sender.type == 'User' ||
-      contains(github.event.pull_request.body, 'FORCE_TEST_ACTIONS')
     steps:
       - name: "Checking out repository"
         uses: actions/checkout@e2f20e631ae6d7dd3b768f56a5d2af784dd54791 # v2.5.0

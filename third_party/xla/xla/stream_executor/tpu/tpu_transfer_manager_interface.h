@@ -36,6 +36,8 @@ class TpuTransferManagerInterface : public xla::TransferManager {
       std::deque<tensorflow::tpu::NoncopyableBuffer>* buffers) = 0;
 
   static TpuTransferManagerInterface* GetRegisteredTpuTransferManager();
+
+  bool PackSubbyteTypes() const override { return true; }
 };
 
 }  // namespace xla

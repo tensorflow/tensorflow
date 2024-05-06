@@ -366,6 +366,15 @@ class ConstDoubleValueLessThan<string n> : Constraint<
   "std::abs(*$0.cast<DenseElementsAttr>().getValues<float>().begin()) < "
   # n>>;
 
+// Constraint that the attribute value is negative infinity or negative largest.
+// We use both -inf & flt_min due to the forward compatibility.
+def ConstAPFloatNegLargestOrNegInfinity : Constraint<CPred<
+  "$0.isa<DenseElementsAttr>() && "
+  "$0.cast<DenseElementsAttr>().getNumElements() == 1 && "
+  "(($0.cast<DenseElementsAttr>().getValues<APFloat>()[0].isLargest() && "
+  "$0.cast<DenseElementsAttr>().getValues<APFloat>()[0].isNegative()) || "
+  "$0.cast<DenseElementsAttr>().getValues<APFloat>()[0].isNegInfinity())">>;
+
 def L2NormValidReduceIndex : Constraint<CPred<
   "L2NormalizeReduceAxis($0, $1.cast<DenseElementsAttr>())">>;
 
@@ -740,17 +749,24 @@ def ConvertTrasposeReshapeTransposeToReshape : Pat<
   [(IsPrefixTruncatedShapeEqualTo $first_transpose, $middle_reshape),
    (IsPrefixTruncatedShapeEqualTo $input, $second_transpose)]>;
 
+class AllUsersAreAddOpsAndCanFuseWith<string op_to_fuse_with> : Constraint<CPred<
+  "llvm::all_of($0.getUsers(), [&](Operation *user) {"
+  "  if(!llvm::isa<TFL::AddOp>(user)) return false;"
+  "  if(!user->getOperand(0).getDefiningOp<"#op_to_fuse_with#">()) return false;"
+  "  return true;"
+  "})">, "all users are AddOp and can fuse with "#op_to_fuse_with#"">;
+
 // TODO(b/294385379): This pattern only appears when we convert
 // from shlo due to differences in broadcasting behavior
 def UndoBroadcastFullyConnectedBiasAdd : Pat<
-  (TFL_AddOp $lhs, (Arith_ConstantOp:$const_op $bias), TFL_AF_None),
+  (TFL_AddOp $lhs, (Arith_ConstantOp:$const_value $bias), TFL_AF_None),
   (TFL_AddOp $lhs, (Arith_ConstantOp (FlattenTo1D $bias)), TFL_AF_None),
   [(AnyStaticShapeTensor $lhs),
    (IsLastDimEqualToNumElements $bias, $bias),
-   (HasOneUse $const_op),
    (HasRankAtMost<4> $bias),
    (HasRankAtLeast<2> $bias),
-   (IsDefinedByFullyConnectedOp $lhs)]>;
+   (IsDefinedByFullyConnectedOp $lhs),
+   (AllUsersAreAddOpsAndCanFuseWith<"TFL::FullyConnectedOp"> $const_value)]>;
 
 // TODO(b/294385379): This pattern only appears when we convert
 // from shlo due to differences in broadcasting behavior.
@@ -764,9 +780,13 @@ def UndoBroadcastConvBiasAdd : Pat<
    (HasRankAtLeast<2> $bias),
    (IsDefinedByConv2DOp $lhs)]>;
 
-// Function to map final permutation to initial permutation
-// initial -> permutation1 -> permutation2 -> final
-def RemapPermutation: NativeCodeCall<"RemapPermutation($0, $1)">;
+// Pattern to convert a trivial transpose op to a reshape op.
+def ConvertTrivialTransposeOpToReshapeOp : Pat<
+  (TFL_TransposeOp:$transpose_op $input, (Arith_ConstantOp:$permutation $p1)),
+  (TFL_ReshapeOp $input, (Arith_ConstantOp (GetShape $transpose_op))),
+  [(IsTransposeTrivial $input, $permutation),
+   (AnyStaticShapeTensor $input),
+   (AnyStaticShapeTensor $transpose_op)]>;
 
 // Pattern to fuse redundant tanspose op
 def FoldDoubleTranspose : Pat<
@@ -1003,6 +1023,30 @@ def FoldNormalizationIntoSoftmax : Pat<
   (TFL_SoftmaxOp $input, $beta),
   [(IsSame $input, $max_input),
    (AxesIsLastDimension $axes, $max_input),
+   (HasOneUse $sub),
+   (HasOneUse $max)]>;
+
+// Convert softmax(x-reshape(maximum(max(x), -inf))) into softmax(x) as the softmax op already deals
+// with the max normalization. This comes from upstream Jax (https://github.com/google/jax/pull/15677)
+def FoldNormalizationIntoSoftmaxJaxWithAxisMinus1 : Pat<
+  (TFL_SoftmaxOp
+    (TFL_SubOp:$sub $input,
+    (TFL_ReshapeOp:$reshape
+      (TFL_MaximumOp:$maximum
+        (TFL_ReduceMaxOp:$max $max_input, (Arith_ConstantOp I32ElementsAttr: $axes),
+                              ConstBoolAttrFalse),
+        (Arith_ConstantOp F32ElementsAttr: $threshold)
+      ),
+      (Arith_ConstantOp I32ElementsAttr: $shape)
+    ),
+    TFL_AF_None),
+    $beta),
+  (TFL_SoftmaxOp $input, $beta),
+  [(IsSame $input, $max_input),
+   (AxesIsLastDimension $axes, $max_input),
+   (ConstAPFloatNegLargestOrNegInfinity $threshold),
+   (HasOneUse $maximum),
+   (HasOneUse $reshape),
    (HasOneUse $sub),
    (HasOneUse $max)]>;
 
@@ -1522,7 +1566,8 @@ def FuseReshapesAroundBatchMatMulLHS1: Pat<
       $rhs, $adj_x, $adj_y, $bool_attr),
     (Arith_ConstantOp $s1)),
   (TFL_BatchMatMulOp $input, $rhs, $adj_x, $adj_y, $bool_attr),
-  [(HasRank<3> $rhs),
+  [(HasRankAtLeast<3> $input),
+   (HasRank<3> $rhs),
    (HasRank<3> $initial_shape_change),
    (IsBroadcastDimEqualToOne $rhs),
    (IsBroadcastDimEqualToOne $input),
@@ -1553,6 +1598,20 @@ def FuseTransposeAfterBatchMatmul : Pat<
                      $asymmetric_quantize_inputs
   ),
   [(AreLastTwoDimsTransposed $perm_value)]>;
+
+// Fuse redundant RHS TFL_TransposeOp into TFL_BatchMatMulOp if rhs is constant
+// tensor of rank-2.
+def FuseTransposeIntoBatchMatMulRHS: Pat<
+  (TFL_BatchMatMulOp $lhs,
+    (TFL_TransposeOp (TFL_QConstOp:$input $_, $_), (Arith_ConstantOp:$perm_value $p0)),
+    $adj_x, $adj_y, $asymmetric_quantize_inputs),
+  (TFL_FullyConnectedOp
+    $lhs,
+    $input, (CreateNoneValue $lhs), TFL_AF_None, TFL_FCWO_Default,
+    ConstBoolAttrTrue, $asymmetric_quantize_inputs),
+  [(HasRank<2> $input),
+   (AreLastTwoDimsTransposed $perm_value),
+   (IsBoolAttrEqual<"false"> $adj_y)]>;
 
 // Replace conv-->transpose-->add with conv-->add-->transpose
 // The bias needs only reshape (i.e. ReshapeNCHWBiasToNHWC) and not transpose

@@ -20,20 +20,18 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-
-// Enable Eigen::ThreadPoolDevice structure definition, rather than just
-// declaration.
-#define EIGEN_USE_THREADS
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/python/ifrt/array.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 
-const Eigen::ThreadPoolDevice& IfrtModelContext::GetThreadPoolDevice() const {
-  return thread_pool_device_;
+const tsl::thread::ThreadPool& IfrtModelContext::GetThreadPool() const {
+  return thread_pool_;
 }
+
+void IfrtModelContext::Freeze() { restore_tensor_registry_.Freeze(); }
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

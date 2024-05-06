@@ -108,7 +108,7 @@ def LegalizeHashTablesPass : Pass<"tfl-legalize-hashtables-tf", "mlir::ModuleOp"
 def LegalizeJaxRandomPass : Pass<"tfl-legalize-random", "mlir::func::FuncOp"> {
   let summary = "Replace jax.random.uniform/normal with tfl.custom.";
   let constructor = "CreateLegalizeJaxRandomPass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+  let dependentDialects = ["TFL::TensorFlowLiteDialect", "stablehlo::StablehloDialect"];
 }
 
 def LegalizeTFPass : Pass<"tfl-legalize-tf", "mlir::func::FuncOp"> {
@@ -397,6 +397,9 @@ def QuantizePass : Pass<"tfl-quantize", "mlir::func::FuncOp"> {
              "std::string", "Names of location to blocklist from quantization">,
       Option<"enable_custom_op_weight_only_", "enable-custom-op-weight-only",
              "std::string", "", "Specifies which custom ops are weight-only.">,
+      Option<"enable_float16_quantization_",
+              "enable-float16-quantization", "bool",
+              "false", "Whether apply float16 quantization. If false, int8 quantization is applied.">,
   ];
 }
 
@@ -466,3 +469,10 @@ def ReduceTypePrecisionPass : Pass<"tfl-reduce-type-precision", "mlir::ModuleOp"
   let constructor = "CreateReduceTypePrecisionPass()";
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
 }
+
+def PushTransposeThroughEwisePass : Pass<"push-transpose-through-ewise", "mlir::ModuleOp"> {
+  let summary = "TODO";
+  let constructor = "CreatePushTransposeThroughEwisePass()";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+}
+

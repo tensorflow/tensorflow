@@ -29,12 +29,13 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -80,7 +81,7 @@ Status HandleInputOutputArraysWithModule(
   if (!input_attr) {
     return errors::InvalidArgument("no inputs attribute found");
   }
-  auto input_names = input_attr.cast<mlir::StringAttr>().getValue();
+  auto input_names = mlir::cast<mlir::StringAttr>(input_attr).getValue();
   input_names.split(function_input_names, ",", /*MaxSplit=*/-1,
                     /*KeepEmpty=*/false);
   const int function_input_names_size = function_input_names.size();
@@ -106,7 +107,7 @@ Status HandleInputOutputArraysWithModule(
   if (!output_attr) {
     return errors::InvalidArgument("no outputs attribute found");
   }
-  auto output_names = output_attr.cast<mlir::StringAttr>().getValue();
+  auto output_names = mlir::cast<mlir::StringAttr>(output_attr).getValue();
   output_names.split(function_output_names, ",", /*MaxSplit=*/-1,
                      /*KeepEmpty=*/false);
   const int function_output_names_size = function_output_names.size();
@@ -124,11 +125,11 @@ Status HandleInputOutputArraysWithModule(
                                      ") does not exist in the given graph");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertSavedModelToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
     std::string* result,
     const PyFunctionLibrary* quantization_py_function_lib) {
   mlir::MLIRContext context;
@@ -204,6 +205,8 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   pass_config.legalize_custom_tensor_list_ops =
       toco_flags.legalize_custom_tensor_list_ops();
   pass_config.enable_stablehlo_quantizer = toco_flags.has_quantization_config();
+  pass_config.enable_composite_direct_lowering =
+      toco_flags.enable_composite_direct_lowering();
 
   if (toco_flags.qdq_conversion_mode() == "STATIC") {
     pass_config.quant_specs.qdq_conversion_mode =

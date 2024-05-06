@@ -207,7 +207,7 @@ class ExecutableBuildOptions {
   }
 
   using LayoutCanonicalizationCallback =
-      std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
+      std::function<absl::StatusOr<std::pair<std::vector<Shape>, Shape>>(
           const HloModule& module)>;
   void set_layout_canonicalization_callback(
       LayoutCanonicalizationCallback callback) {
@@ -218,8 +218,8 @@ class ExecutableBuildOptions {
   }
 
   absl::string_view fdo_profile() const { return fdo_profile_; }
-  void set_fdo_profile(const std::string& fdo_profile) {
-    fdo_profile_ = fdo_profile;
+  void set_fdo_profile(std::string fdo_profile) {
+    fdo_profile_ = std::move(fdo_profile);
   }
   std::string* mutable_fdo_profile() { return &fdo_profile_; }
 
@@ -234,7 +234,7 @@ class ExecutableBuildOptions {
   // debugging.
   std::string ToString() const;
 
-  StatusOr<ExecutableBuildOptionsProto> ToProto() const;
+  absl::StatusOr<ExecutableBuildOptionsProto> ToProto() const;
 
  private:
   int device_ordinal_ = -1;
@@ -264,7 +264,7 @@ class ExecutableBuildOptions {
   int64_t device_memory_size_ = 0;
 };
 
-StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
+absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
     const ExecutableBuildOptionsProto& input);
 
 // Creates an ExecutionOptions based on a given ExecutableBuildOptions and

@@ -19,9 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
-#include <optional>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -29,9 +27,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -122,16 +121,29 @@ bool IsCommand<HloOpcode::kConditional>(const HloInstruction* hlo,
 
 static bool IsCommand(const HloCustomCallInstruction* hlo,
                       const CommandBufferConfig& config) {
+  // cuBLAS gemms represented in the HLO as custom call instructions.
   if (config.enabled_commands.contains(DebugOptions::CUBLAS) &&
       IsLegacyCublasMatmul(*hlo)) {
     return true;
   }
 
-  if (config.enabled_commands.contains(DebugOptions::CUSTOM_CALL) &&
-      hlo->custom_call_target() == "triton_kernel_call")
-    return true;
+  if (!config.enabled_commands.contains(DebugOptions::CUSTOM_CALL)) {
+    return false;
+  }
 
-  return false;
+  // A special case for jax-triton kernel while it is not ported to FFI.
+  if (hlo->custom_call_target() == "triton_kernel_call" &&
+      // TODO(b/327718087): This is an ugly hack to prevent capturing triton
+      // custom calls that might do autotuning at run time.
+      !absl::StrContains(hlo->metadata().op_name(), "Autotuner")) {
+    return true;
+  }
+
+  // Check if FFI handler is compatible with command buffers.
+  auto registration = ffi::FindHandler(hlo->custom_call_target(), "gpu");
+  return registration.ok()
+             ? ffi::IsCommandBufferCompatible(registration->traits)
+             : false;
 }
 
 static bool IsCommand(const HloInstruction* hlo,
@@ -141,7 +153,7 @@ static bool IsCommand(const HloInstruction* hlo,
     const FusionBackendConfig& backend_config =
         gpu_config->fusion_backend_config();
     if (backend_config.kind() == kCuDnnFusionKind) {
-      return false;
+      return config.enabled_commands.contains(DebugOptions::CUDNN);
     }
     const auto& custom_config = backend_config.custom_fusion_config();
     if (custom_config.name() == "address_computation") {
@@ -154,6 +166,9 @@ static bool IsCommand(const HloInstruction* hlo,
       const auto* custom_call = static_cast<const HloCustomCallInstruction*>(
           &custom_call_adaptor->instruction());
       return IsCommand(custom_call, config);
+    }
+    if (custom_config.name() == "dynamic_address_computation") {
+      return false;
     }
     return config.enabled_commands.contains(DebugOptions::FUSION);
   }
@@ -700,18 +715,18 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   };
 
   // Check if CUDA/ROCM driver supports required features.
-  auto check_cuda = [&](const se::CudaComputeCapability& cuda_comp) {
-    return std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030;
+  auto erase_cuda = [&](const se::CudaComputeCapability& cuda_comp) {
+    if (std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030) {
+      erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
+      erase(kRequireConditionals);  // on-device control flow
+    }
   };
-  auto check_rocm = [&](const se::RocmComputeCapability& rocm_comp) {
-    return true;  // check for ROCM support
+  auto erase_rocm = [&](const se::RocmComputeCapability& rocm_comp) {
+    erase(kRequireConditionals);  // on-device control flow
   };
 
-  if (std::visit(VariantVisitor{check_cuda, check_rocm},
-                 device_description_.gpu_compute_capability())) {
-    erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
-    erase(kRequireConditionals);  // on-device control flow
-  }
+  std::visit(VariantVisitor{erase_cuda, erase_rocm},
+             device_description_.gpu_compute_capability());
 
   auto order = module->MakeComputationPostOrder();
   std::reverse(order.begin(), order.end());

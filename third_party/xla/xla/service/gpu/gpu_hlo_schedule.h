@@ -16,7 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_HLO_SCHEDULE_H_
 #define XLA_SERVICE_GPU_GPU_HLO_SCHEDULE_H_
 
+#include <cstdint>
+
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {

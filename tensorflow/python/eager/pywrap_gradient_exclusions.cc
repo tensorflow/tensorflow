@@ -50,7 +50,7 @@ auto OpGradientInfoInit(const T &a) {
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 363> a = {{
+  static std::array<OpIndexInfo, 366> a = {{
       {"Acosh"},
       {"AllToAll", 1, {0}},
       {"ApproximateEqual"},
@@ -124,6 +124,9 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"FFT"},
       {"FFT2D"},
       {"FFT3D"},
+      {"FakeQuantWithMinMaxArgsGradient"},
+      {"FakeQuantWithMinMaxVarsGradient"},
+      {"FakeQuantWithMinMaxVarsPerChannelGradient"},
       {"Fill"},
       {"FixedLengthRecordReader"},
       {"Floor"},
@@ -426,7 +429,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 482> a = {{
+  static std::array<OpIndexInfo, 485> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -542,8 +545,11 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"FFT2D"},
       {"FFT3D"},
       {"FakeQuantWithMinMaxArgs"},
+      {"FakeQuantWithMinMaxArgsGradient"},
       {"FakeQuantWithMinMaxVars"},
+      {"FakeQuantWithMinMaxVarsGradient"},
       {"FakeQuantWithMinMaxVarsPerChannel"},
+      {"FakeQuantWithMinMaxVarsPerChannelGradient"},
       {"Fill"},
       {"FixedLengthRecordReader"},
       {"Floor"},

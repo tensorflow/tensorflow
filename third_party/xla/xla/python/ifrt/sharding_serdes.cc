@@ -13,28 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/sharding_serdes.h"
-
 #include <memory>
-#include <string>
-#include <utility>
-#include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/sharding.pb.h"
+#include "xla/python/ifrt/sharding_serdes.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 
-char DeserializeShardingOptions::ID = 0;
-
 namespace {
+
+// TODO(hyeontaek): Rename sharding_serdes.cc once the subclasses of `Sharding`
+// are moved to to a separate file other than sharding.{h,cc}.
 
 // Serialization/deserialization for `SingleDeviceSharding`.
 class SingleDeviceShardingSerDes
@@ -48,7 +47,7 @@ class SingleDeviceShardingSerDes
     const SingleDeviceSharding& sharding =
         llvm::cast<SingleDeviceSharding>(serializable);
     SingleDeviceShardingProto proto;
-    proto.set_device_id(sharding.devices().front()->id());
+    proto.set_device_id(sharding.devices().front()->Id().value());
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }
@@ -58,16 +57,17 @@ class SingleDeviceShardingSerDes
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
-    TF_ASSIGN_OR_RETURN(auto deserialize_sharding_options,
-                        GetDeserializeShardingOptions(std::move(options)));
+    const auto* deserialize_sharding_options =
+        llvm::cast<DeserializeShardingOptions>(options.get());
+
     SingleDeviceShardingProto proto;
     if (!proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError(
           "Failed to parse serialized SimpleDeviceSharding");
     }
-    TF_ASSIGN_OR_RETURN(
-        Device * device,
-        deserialize_sharding_options->lookup_device(proto.device_id()));
+    TF_ASSIGN_OR_RETURN(Device * device,
+                        deserialize_sharding_options->lookup_device(
+                            DeviceId(proto.device_id())));
     MemoryKind memory_kind;
     if (proto.has_memory_kind()) {
       memory_kind = MemoryKind(proto.memory_kind());
@@ -99,8 +99,8 @@ class OpaqueShardingSerDes
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
-    TF_ASSIGN_OR_RETURN(auto deserialize_sharding_options,
-                        GetDeserializeShardingOptions(std::move(options)));
+    const auto* deserialize_sharding_options =
+        llvm::cast<DeserializeShardingOptions>(options.get());
 
     OpaqueShardingProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -155,8 +155,8 @@ class ConcreteShardingSerDes
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
-    TF_ASSIGN_OR_RETURN(auto deserialize_sharding_options,
-                        GetDeserializeShardingOptions(std::move(options)));
+    const auto* deserialize_sharding_options =
+        llvm::cast<DeserializeShardingOptions>(options.get());
 
     ConcreteShardingProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -229,8 +229,8 @@ class ConcreteEvenShardingSerDes
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
-    TF_ASSIGN_OR_RETURN(auto deserialize_sharding_options,
-                        GetDeserializeShardingOptions(std::move(options)));
+    const auto* deserialize_sharding_options =
+        llvm::cast<DeserializeShardingOptions>(options.get());
 
     ConcreteEvenShardingProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -286,15 +286,6 @@ bool register_concrete_even_sharding_serdes = ([]{
 // clang-format on
 
 }  // namespace
-
-StatusOr<std::unique_ptr<DeserializeShardingOptions>>
-GetDeserializeShardingOptions(std::unique_ptr<DeserializeOptions> options) {
-  if (!llvm::isa<DeserializeShardingOptions>(options.get())) {
-    return xla::InvalidArgument("options must be DeserializeShardingOptions");
-  }
-  return std::unique_ptr<DeserializeShardingOptions>(
-      static_cast<DeserializeShardingOptions*>(options.release()));
-}
 
 }  // namespace ifrt
 }  // namespace xla

@@ -52,8 +52,6 @@ add_mlir_library(MhloPasses
   legalize_einsum_to_dot_general/legalize_einsum_to_dot_general.cc
   legalize_gather_to_torch_index_select/legalize_gather_to_torch_index_select.cc
   legalize_shape_computations/legalize_shape_computations.cc
-  legalize_sparse_ops/legalize_sparse_ops.cc
-  legalize_sparse_ops/sparse_ops_to_custom_calls.cc
   legalize_torch_index_select_to_gather/legalize_torch_index_select_to_gather.cc
   legalize_trigonometric_to_approximation/legalize_trigonometric_to_approximation.cc
   lower_complex/lower_complex.cc
@@ -75,7 +73,6 @@ add_mlir_library(MhloPasses
   shape_reification/shape_reification_pass.cc
   shape_simplification/shape_simplification.cc
   sink_constants_to_control_flow/sink_constants_to_control_flow.cc
-  sparse_rewriting/sparse_rewriting.cc
   symbolic_shape_optimization/symbolic_shape_optimization.cc
   test_infer_shaped_type/test_infer_shaped_type_pass.cc
   unfuse_batch_norm/unfuse_batch_norm.cc
@@ -117,7 +114,6 @@ add_mlir_library(MhloQuantToIntConversion
   Core
 
   LINK_LIBS PUBLIC
-  LmhloDialect
   MhloDialect
   MhloTypeConversion
   MLIRIR
@@ -138,7 +134,6 @@ add_mlir_library(MhloToMemrefConversion
   Core
 
   LINK_LIBS PUBLIC
-  LmhloDialect
   MhloDialect
   MhloTypeConversion
   MLIRIR
@@ -176,7 +171,6 @@ add_mlir_library(MhloToStandard
 
   DEPENDS
   MLIRhlo_opsIncGen
-  MLIRlhlo_opsIncGen
   MLIRMhloLegalizeToStandardIncGen
   MLIRMhloPassIncGen
   MhloTypeConversion
@@ -195,14 +189,12 @@ add_mlir_library(MhloToStandard
 )
 
 add_mlir_library(ChloPasses
-  chlo_legalize_to_hlo/chlo_legalize_to_hlo.cc
   chlo_legalize_to_hlo/chlo_legalize_to_hlo_pass.cc
 
   DEPENDS
   MLIRhlo_opsIncGen
   MLIRChloLegalizeToHloIncGen
   MLIRMhloPassIncGen
-  MLIRLmhloPassIncGen
 
   LINK_COMPONENTS
   Core
@@ -229,7 +221,6 @@ add_mlir_library(MhloToLinalg
 
   LINK_LIBS PUBLIC
   HloToLinalgUtils
-  LmhloDialect
   MhloDialect
   MhloRngUtils
   MhloToArithmeticConversion
@@ -255,7 +246,6 @@ add_mlir_library(MhloShapeOpsToStandard
   Core
 
   LINK_LIBS PUBLIC
-  LmhloDialect
   MhloDialect
   MhloTypeConversion
   MLIRComplexDialect

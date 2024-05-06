@@ -84,7 +84,7 @@ class CostAnalysis {
 
   virtual ~CostAnalysis() = default;
 
-  static StatusOr<std::unique_ptr<CostAnalysis>> Create(
+  static absl::StatusOr<std::unique_ptr<CostAnalysis>> Create(
       const HloCostAnalysis& cost_analysis, const CostAnalysisOptions& options,
       const HloModule& module);
 

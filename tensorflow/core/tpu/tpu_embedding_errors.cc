@@ -27,7 +27,7 @@ namespace tensorflow::tpu {
 
 Status AppendTpuEmbeddingErrorPayload(Status obj) {
   if (obj.ok()) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     const std::string error_message =
         absl::StrCat(kTpuEmbeddingErrorMessage, ". ", obj.message());

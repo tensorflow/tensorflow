@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
@@ -125,7 +126,7 @@ struct ScalarHloToArithmeticPattern : public OpConversionPattern<OpTy> {
     if (filterFn && !filterFn(op)) return failure();
 
     auto isScalar = [&](Value v) {
-      return v.getType().cast<ShapedType>().getRank() == 0;
+      return mlir::cast<ShapedType>(v.getType()).getRank() == 0;
     };
 
     if (!llvm::all_of(adaptor.getOperands(), isScalar))
@@ -134,8 +135,8 @@ struct ScalarHloToArithmeticPattern : public OpConversionPattern<OpTy> {
     auto loc = op.getLoc();
 
     std::optional<ShapedType> resultTy;
-    resultTy = this->typeConverter->convertType(op->getResultTypes().front())
-                   .template dyn_cast<ShapedType>();
+    resultTy = mlir::dyn_cast<ShapedType>(
+        this->typeConverter->convertType(op->getResultTypes().front()));
 
     SmallVector<Value> operands;
     for (auto operand : adaptor.getOperands()) {

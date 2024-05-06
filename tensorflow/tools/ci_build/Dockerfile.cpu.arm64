@@ -1,4 +1,4 @@
-FROM linaro/tensorflow-arm64-build:2.16-multipython
+FROM linaro/tensorflow-arm64-build:2.17-multipython
 
 ARG py_major_minor_version='3.10'
 

@@ -107,6 +107,7 @@ TEST(Types, TestTypeNames) {
   EXPECT_EQ(type_name(kTfLiteFloat64), "FLOAT64");
   EXPECT_EQ(type_name(kTfLiteFloat32), "FLOAT32");
   EXPECT_EQ(type_name(kTfLiteFloat16), "FLOAT16");
+  EXPECT_EQ(type_name(kTfLiteBFloat16), "BFLOAT16");
   EXPECT_EQ(type_name(kTfLiteInt16), "INT16");
   EXPECT_EQ(type_name(kTfLiteUInt16), "UINT16");
   EXPECT_EQ(type_name(kTfLiteInt32), "INT32");

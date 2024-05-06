@@ -237,7 +237,7 @@ def MHLO_TypeExtensions : AttrDef<MHLO_Dialect, "TypeExtensions", [
 // A layout attribute (1D tensor of index type)
 def MHLO_LayoutAttr : Attr<
   And<[IndexElementsAttr.predicate,
-       CPred<[{$_self.cast<::mlir::DenseIntElementsAttr>().getType().getRank()
+       CPred<[{mlir::cast<::mlir::DenseIntElementsAttr>($_self).getType().getRank()
                == 1}]>]>,
   "A 1D tensor of index type (layout)"> {
   let storageType = IndexElementsAttr.storageType;
@@ -256,14 +256,34 @@ def MHLO_FlatSymbolRefArrayAttr :
   let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
 }
 
+// Sparsity descriptor attribute
+def MHLO_SparsityDescriptor : AttrDef<MHLO_Dialect, "SparsityDescriptor"> {
+  let mnemonic = "sparsity";
+  let summary = "Describes structured (N:M) sparsity configuration";
+  let description = [{
+    This attribute is defined for a sparse dot operation with a structured
+    sparse input tensor. With (N=2,M=4), every 4 consecutive logical elements
+    have exactly 2 non-zero physical elements in the input tensor.
+
+    $dimension defines the index of the contracting dimension that is sparse
+    (it has to be the most minor dimension). The additional metadata operand
+    in the sparse dot operation defines which logical elements are zeroed out.
+  }];
+  let parameters = (ins
+    "int64_t":$dimension,
+    "int64_t":$n,
+    "int64_t":$m);
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
 //===----------------------------------------------------------------------===//
 // Common convolution attributes
 //===----------------------------------------------------------------------===//
 
 def MHLO_BoolElementsAttr :
     ElementsAttrBase<
-      And<[CPred<"$_self.isa<::mlir::DenseIntOrFPElementsAttr>()">,
-           CPred<"$_self.cast<::mlir::DenseIntOrFPElementsAttr>().getType().getElementType().isInteger(1)">]>,
+      And<[CPred<"mlir::isa<::mlir::DenseIntOrFPElementsAttr>($_self)">,
+           CPred<"mlir::cast<::mlir::DenseIntOrFPElementsAttr>($_self).getType().getElementType().isInteger(1)">]>,
       "constant boolean vector/tensor attribute"> {
   let storageType = [{ ::mlir::DenseElementsAttr }];
   let returnType = [{ ::mlir::DenseElementsAttr }];

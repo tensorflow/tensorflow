@@ -29,11 +29,17 @@ limitations under the License.
 #include <stddef.h>
 
 #include <algorithm>
+#include <atomic>
+#include <cstddef>
+#include <deque>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -42,9 +48,25 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tsl/platform/criticality.h"
 
 namespace tensorflow {
 namespace serving {
+
+const absl::string_view kLowPriorityPaddingWithMaxBatchSizeAttrValue =
+    "low_priority_padding_with_max_batch_size";
+const absl::string_view kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue =
+    "low_priority_padding_with_next_allowed_batch_size";
+const absl::string_view kPriorityIsolationAttrValue = "priority_isolation";
+
+enum class MixedPriorityBatchingPolicy {
+  kLowPriorityPaddingWithMaxBatchSize,
+  kLowPriorityPaddingWithNextAllowedBatchSize,
+  kPriorityIsolation
+};
+
+absl::StatusOr<MixedPriorityBatchingPolicy> GetMixedPriorityBatchingPolicy(
+    absl::string_view attr_value);
 
 // The abstract superclass for a unit of work to be done as part of a batch.
 //
@@ -64,7 +86,164 @@ class BatchTask {
   // Returns the size of the task, in terms of how much it contributes to the
   // size of a batch. (A batch's size is the sum of its task sizes.)
   virtual size_t size() const = 0;
+
+  // Returns the criticality of associated with the task. It defaults to
+  // kCritical.
+  virtual tsl::criticality::Criticality criticality() const {
+    return tsl::criticality::Criticality::kCritical;
+  }
 };
+
+// A thread-safe collection of BatchTasks. Tasks can be either added or removed
+// from the TaskQueue. It is mainly used to hold the registered tasks without
+// forming batches, so that the batches can be formed more flexibly right before
+// they get scheduled for execution.
+//
+// Type parameter TaskType must be a subclass of BatchTask.
+template <typename TaskType>
+class TaskQueue {
+ public:
+  TaskQueue() = default;
+
+  struct TaskWrapper {
+    std::unique_ptr<TaskType> task;
+    uint64 start_time_micros;
+
+    TaskWrapper(std::unique_ptr<TaskType> task, uint64 start_time_micros)
+        : task(std::move(task)), start_time_micros(start_time_micros) {}
+  };
+
+  // Appends a task to the end of the queue with the given start time.
+  void AddTask(std::unique_ptr<TaskType> task, uint64 start_time_micros);
+
+  // Removes a task from the front of the queue, i.e., the oldest task in the
+  // queue.
+  std::unique_ptr<TaskType> RemoveTask();
+
+  // Removes tasks from the front of the queue as many as possible as long as
+  // the sum of sizes of the removed tasks don't exceed the 'size' given as the
+  // argument.
+  std::vector<std::unique_ptr<TaskType>> RemoveTask(int size);
+
+  // Returns the start time of the earliest task in the queue. If the queue is
+  // empty, return the null value.
+  std::optional<uint64> EarliestTaskStartTime() const;
+
+  // Returns true iff the queue contains 0 tasks.
+  bool empty() const;
+
+  // Returns the number of tasks in the queue.
+  int num_tasks() const;
+
+  // Returns the sum of the task sizes.
+  int size() const;
+
+ private:
+  mutable mutex mu_;
+
+  // Tasks in the queue.
+  std::deque<TaskWrapper> tasks_ TF_GUARDED_BY(mu_);
+
+  // The sum of the sizes of the tasks in 'tasks_'.
+  int size_ TF_GUARDED_BY(mu_) = 0;
+
+  // Whether the queue is empty.
+  std::atomic<bool> empty_ TF_GUARDED_BY(mu_){true};
+
+  // The copy constructor and the assign op are deleted.
+  TaskQueue(const TaskQueue&) = delete;
+  void operator=(const TaskQueue&) = delete;
+};
+
+template <typename TaskType>
+void TaskQueue<TaskType>::AddTask(std::unique_ptr<TaskType> task,
+                                  uint64 start_time_micros) {
+  {
+    mutex_lock l(mu_);
+    size_ += task->size();
+    tasks_.emplace_back(std::move(task), start_time_micros);
+    empty_.store(false);
+  }
+}
+
+template <typename TaskType>
+std::unique_ptr<TaskType> TaskQueue<TaskType>::RemoveTask() {
+  {
+    mutex_lock l(mu_);
+    if (tasks_.empty()) {
+      return nullptr;
+    }
+    std::unique_ptr<TaskType> task = std::move(tasks_.front().task);
+    size_ -= task->size();
+    tasks_.pop_front();
+    if (tasks_.empty()) {
+      empty_.store(true);
+    }
+    return task;
+  }
+}
+
+template <typename TaskType>
+std::vector<std::unique_ptr<TaskType>> TaskQueue<TaskType>::RemoveTask(
+    int size) {
+  {
+    mutex_lock l(mu_);
+    if (tasks_.empty()) {
+      return {};
+    }
+
+    int size_lower_bound = size_ - size;
+    std::vector<std::unique_ptr<TaskType>> remove_tasks;
+    while (!tasks_.empty() &&
+           size_ - static_cast<int>(tasks_.front().task->size()) >=
+               size_lower_bound) {
+      size_ -= static_cast<int>(tasks_.front().task->size());
+      remove_tasks.push_back(std::move(tasks_.front().task));
+      tasks_.pop_front();
+      if (tasks_.empty()) {
+        empty_.store(true);
+      }
+    }
+    return remove_tasks;
+  }
+}
+
+template <typename TaskType>
+bool TaskQueue<TaskType>::empty() const {
+  {
+    mutex_lock l(mu_);
+    return empty_.load();
+  }
+}
+
+template <typename TaskType>
+std::optional<uint64> TaskQueue<TaskType>::EarliestTaskStartTime() const {
+  {
+    mutex_lock l(mu_);
+
+    if (tasks_.empty()) {
+      return std::nullopt;
+    }
+
+    return tasks_.front().start_time_micros;
+  }
+}
+
+template <typename TaskType>
+int TaskQueue<TaskType>::num_tasks() const {
+  {
+    mutex_lock l(mu_);
+    return tasks_.size();
+  }
+}
+
+template <typename TaskType>
+int TaskQueue<TaskType>::size() const {
+  {
+    mutex_lock l(mu_);
+    return size_;
+  }
+}
 
 // A thread-safe collection of BatchTasks, to be executed together in some
 // fashion.

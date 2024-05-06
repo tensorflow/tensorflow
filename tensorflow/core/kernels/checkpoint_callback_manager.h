@@ -35,7 +35,8 @@ ABSL_CONST_INIT extern const absl::string_view
     kCheckpointCallbackManagerResourceName;
 
 // StatusOr<std::string> save_callback(absl::string_view checkpoint_id);
-using SaveCallback = std::function<StatusOr<std::string>(absl::string_view)>;
+using SaveCallback =
+    std::function<absl::StatusOr<std::string>(absl::string_view)>;
 
 // Status restore_callback(absl::string_view checkpoint_id,
 //                         absl::string_view content_from_checkpoint);
@@ -58,7 +59,7 @@ class CheckpointCallbackManager : public ResourceBase {
 
   // Infers a checkpoint id and directory from a prefix
   // passed to SaveV2 / RestoreV2 Ops
-  static StatusOr<std::pair<std::string, std::string>>
+  static absl::StatusOr<std::pair<std::string, std::string>>
   GetCheckpointIdAndPathFromPrefix(absl::string_view prefix);
 
   // Register a save callback.

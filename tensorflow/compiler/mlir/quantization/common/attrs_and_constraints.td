@@ -108,7 +108,7 @@ class CreateScalarConst<string value> : NativeCodeCall<
   "CreateScalarConstValue<float>($_builder, $_loc, "# value #")">;
 
 // Creates an 1D array const with integer values.
-// TODO(b/239490133): Make the rule name and function name consistent.
+// TODO: b/239490133 - Make the rule name and function name consistent.
 class Create1DIntegerConst<string type, string values> : NativeCodeCall<
   "Create1DConstValue<"# type #">($_builder, $_loc, "# values #")">;
 

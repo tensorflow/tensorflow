@@ -18,32 +18,45 @@ limitations under the License.
 #ifndef XLA_PYTHON_PY_VALUES_H_
 #define XLA_PYTHON_PY_VALUES_H_
 
-#include <memory>
+#include <cstdint>
 #include <string>
 #include <tuple>
 #include <utility>
 
-#include "pybind11/numpy.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "xla/pjrt/pjrt_client.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
-#include "xla/python/py_client.h"
+#include "xla/python/nb_numpy.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
 struct DevicePutResult {
   explicit DevicePutResult(
       tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type,
-      pybind11::object owning_pybuffer = pybind11::object())
+      nanobind::object owning_pybuffer = nanobind::object())
       : ifrt_array(std::move(ifrt_array)),
         weak_type(weak_type),
         owning_pybuffer(owning_pybuffer) {}
+
+  // Disallow copy since copying `DevicePutResult` without holding GIL may be
+  // dangerous due to `owning_pybuffer`.
+  DevicePutResult(const DevicePutResult&) = delete;
+  DevicePutResult& operator=(const DevicePutResult&) = delete;
+  DevicePutResult(DevicePutResult&&) = default;
+  DevicePutResult& operator=(DevicePutResult&&) = default;
 
   // Points to the on-device array. Not owned.
   tsl::RCReference<ifrt::Array> ifrt_array;
   bool weak_type;
 
-  pybind11::object owning_pybuffer;
+  nanobind::object owning_pybuffer;
 };
 
 // Copies a buffer-like object to be on device.
@@ -53,19 +66,27 @@ struct DevicePutResult {
 // If the value is known to be a PyBuffer object, py_buffer can be passed as
 // an optimization to avoid a Python->C++ cast.
 //
-// May throw exceptions from pybind11 in addition to failing via an error
+// This function performs Python work inline but postpones C++ work until the
+// returned function is called. The returned function must be called after
+// releasing GIL. Useful for batching GIL release when there are many device_put
+// to execute.
+//
+// May throw exceptions from nanobind in addition to failing via an error
 // Status. (We could catch these if needed, but there seems little point.)
 struct DevicePutOptions {
   bool squash_64bit_types = false;
   bool allow_zero_copy = true;
 };
-StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, ifrt::Client* client,
-                                    ifrt::Device* to_device,
-                                    const DevicePutOptions& options,
-                                    ifrt::MemoryKind to_memory_kind);
+using DevicePutResultFn =
+    absl::AnyInvocable<absl::StatusOr<DevicePutResult>() &&>;
+absl::StatusOr<DevicePutResultFn> DevicePut(nanobind::handle arg,
+                                            ifrt::Client* client,
+                                            ifrt::Device* to_device,
+                                            const DevicePutOptions& options,
+                                            ifrt::MemoryKind to_memory_kind);
 
 // Returns `true` if `arg` is a JAX float0 array.
-bool IsFloat0(pybind11::array arg);
+bool IsFloat0(xla::nb_numpy_ndarray arg);
 
 // Describes the abstract shape and dtype of an argument.
 struct PyArgSignature {
@@ -90,8 +111,8 @@ struct PyArgSignature {
 
 // Returns the PyArgSignature associated with an argument. Returns an error if
 // the argument is not supported.
-StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
-                                               bool jax_enable_x64);
+absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nanobind::handle arg,
+                                                     bool jax_enable_x64);
 
 template <typename H>
 H AbslHashValue(H h, const xla::PyArgSignature& s) {

@@ -26,8 +26,8 @@ namespace tfg {
 
 // Export a generic GraphFuncOp into a FunctionDef. This is intended to be a
 // straight serialization, an error is returned in case of failure.
-tensorflow::StatusOr<tensorflow::FunctionDef>
-ConvertGenericFunctionToFunctionDef(GraphFuncOp func);
+absl::StatusOr<tensorflow::FunctionDef> ConvertGenericFunctionToFunctionDef(
+    GraphFuncOp func);
 
 }  // namespace tfg
 }  // namespace mlir

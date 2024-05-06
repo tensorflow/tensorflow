@@ -20,6 +20,8 @@ limitations under the License.
 #error Two different XLA FFI implementations cannot be included together
 #endif  // XLA_FFI_FFI_H_
 
+#include <algorithm>
+#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -53,14 +55,48 @@ enum class DataType : uint8_t {
   F32 = XLA_FFI_DataType_F32,
   F64 = XLA_FFI_DataType_F64,
   BF16 = XLA_FFI_DataType_BF16,
+  C64 = XLA_FFI_DataType_C64,
+  C128 = XLA_FFI_DataType_C128,
+  TOKEN = XLA_FFI_DataType_TOKEN,
 };
 
 inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
-  static constexpr const char* kDataTypeNames[] = {
-      "INVALID", "PRED", "S8",  "S16", "S32", "S64", "U8",
-      "U16",     "U32",  "U64", "F16", "F32", "F64", "BF16",
-  };
-  return os << kDataTypeNames[static_cast<int>(dtype)];
+  switch (dtype) {
+    case DataType::INVALID:
+      return os << "INVALID";
+    case DataType::PRED:
+      return os << "PRED";
+    case DataType::S8:
+      return os << "S8";
+    case DataType::S16:
+      return os << "S16";
+    case DataType::S32:
+      return os << "S32";
+    case DataType::S64:
+      return os << "S64";
+    case DataType::U8:
+      return os << "U8";
+    case DataType::U16:
+      return os << "U16";
+    case DataType::U32:
+      return os << "U32";
+    case DataType::U64:
+      return os << "U64";
+    case DataType::F16:
+      return os << "F16";
+    case DataType::F32:
+      return os << "F32";
+    case DataType::F64:
+      return os << "F64";
+    case DataType::BF16:
+      return os << "BF16";
+    case DataType::C64:
+      return os << "C64";
+    case DataType::C128:
+      return os << "C128";
+    case DataType::TOKEN:
+      return os << "TOKEN";
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -78,6 +114,10 @@ class Span {
       : Span(vec.data(), vec.size()) {}
 
   T& operator[](size_t index) const { return data_[index]; }
+
+  bool operator==(const Span<T>& other) const {
+    return size() == other.size() && std::equal(begin(), end(), other.begin());
+  }
 
   size_t size() const { return size_; }
 
@@ -135,19 +175,22 @@ struct DataTypeToNative {
 };
 
 // clang-format off
-template <> struct DataTypeToNative<DataType::PRED> { using type = bool; };
-template <> struct DataTypeToNative<DataType::U8>   { using type = uint8_t; };
-template <> struct DataTypeToNative<DataType::U16>  { using type = uint16_t; };
-template <> struct DataTypeToNative<DataType::U32>  { using type = uint32_t; };
-template <> struct DataTypeToNative<DataType::U64>  { using type = uint64_t; };
-template <> struct DataTypeToNative<DataType::S8>   { using type = int8_t; };
-template <> struct DataTypeToNative<DataType::S16>  { using type = int16_t; };
-template <> struct DataTypeToNative<DataType::S32>  { using type = int32_t; };
-template <> struct DataTypeToNative<DataType::S64>  { using type = int64_t; };
-template <> struct DataTypeToNative<DataType::F16>  { using type = uint16_t; };
-template <> struct DataTypeToNative<DataType::F32>  { using type = float; };
-template <> struct DataTypeToNative<DataType::F64>  { using type = double; };
-template <> struct DataTypeToNative<DataType::BF16> { using type = uint16_t; };
+template <> struct DataTypeToNative<DataType::PRED>  { using type = bool; };
+template <> struct DataTypeToNative<DataType::U8>    { using type = uint8_t; };
+template <> struct DataTypeToNative<DataType::U16>   { using type = uint16_t; };
+template <> struct DataTypeToNative<DataType::U32>   { using type = uint32_t; };
+template <> struct DataTypeToNative<DataType::U64>   { using type = uint64_t; };
+template <> struct DataTypeToNative<DataType::S8>    { using type = int8_t; };
+template <> struct DataTypeToNative<DataType::S16>   { using type = int16_t; };
+template <> struct DataTypeToNative<DataType::S32>   { using type = int32_t; };
+template <> struct DataTypeToNative<DataType::S64>   { using type = int64_t; };
+template <> struct DataTypeToNative<DataType::F16>   { using type = uint16_t; };
+template <> struct DataTypeToNative<DataType::F32>   { using type = float; };
+template <> struct DataTypeToNative<DataType::F64>   { using type = double; };
+template <> struct DataTypeToNative<DataType::BF16>  { using type = uint16_t; };
+template <> struct DataTypeToNative<DataType::C64>   { using type = std::complex<float>; }; // NOLINT
+template <> struct DataTypeToNative<DataType::C128>  { using type = std::complex<double>; }; // NOLINT
+template <> struct DataTypeToNative<DataType::TOKEN> { using type = void; };
 // clang-format on
 
 inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
@@ -171,6 +214,67 @@ template <DataType dtype> using BufferR3 = Buffer<dtype, 3>;
 template <DataType dtype> using BufferR4 = Buffer<dtype, 4>;
 // clang-format on
 
+using Token = BufferR0<DataType::TOKEN>;
+
+namespace internal {
+
+inline BufferBase DecodeBuffer(XLA_FFI_Buffer* buf) {
+  return BufferBase{static_cast<DataType>(buf->dtype), buf->data,
+                    Span<const int64_t>(buf->dims, buf->rank)};
+}
+
+template <DataType dtype, size_t rank>
+std::optional<Buffer<dtype, rank>> DecodeBuffer(XLA_FFI_Buffer* buf,
+                                                DiagnosticEngine& diagnostic) {
+  if (auto buf_dtype = static_cast<DataType>(buf->dtype);
+      XLA_FFI_PREDICT_FALSE(buf_dtype != dtype)) {
+    return diagnostic.Emit("Wrong buffer dtype: expected ")
+           << dtype << " but got " << buf_dtype;
+  }
+
+  if constexpr (rank != internal::kDynamicRank) {
+    if (XLA_FFI_PREDICT_FALSE(buf->rank != rank)) {
+      return diagnostic.Emit("Wrong buffer rank: expected ")
+             << rank << " but got " << buf->rank;
+    }
+  }
+
+  Buffer<dtype, rank> buffer;
+  buffer.data = static_cast<internal::NativeType<dtype>*>(buf->data);
+  buffer.dimensions = Span<const int64_t>(buf->dims, buf->rank);
+  return buffer;
+}
+
+}  // namespace internal
+
+//===----------------------------------------------------------------------===//
+// Arguments binding
+//===----------------------------------------------------------------------===//
+
+template <>
+struct ArgBinding<BufferBase> {
+  using Arg = BufferBase;
+};
+
+template <DataType dtype, size_t rank>
+struct ArgBinding<Buffer<dtype, rank>> {
+  using Arg = Buffer<dtype, rank>;
+};
+
+//===----------------------------------------------------------------------===//
+// Results binding
+//===----------------------------------------------------------------------===//
+
+template <>
+struct RetBinding<Result<BufferBase>> {
+  using Ret = BufferBase;
+};
+
+template <DataType dtype, size_t rank>
+struct RetBinding<Result<Buffer<dtype, rank>>> {
+  using Ret = Buffer<dtype, rank>;
+};
+
 //===----------------------------------------------------------------------===//
 // Arguments decoding
 //===----------------------------------------------------------------------===//
@@ -184,48 +288,125 @@ inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_ArgType type) {
 
 template <>
 struct ArgDecoding<BufferBase> {
-  XLA_ATTRIBUTE_ALWAYS_INLINE
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<BufferBase> Decode(XLA_FFI_ArgType type, void* arg,
                                           DiagnosticEngine& diagnostic) {
-    if (type != XLA_FFI_ArgType_BUFFER) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_ArgType_BUFFER)) {
       return diagnostic.Emit("Wrong argument type: expected ")
              << XLA_FFI_ArgType_BUFFER << " but got " << type;
     }
-    auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
-    return BufferBase{static_cast<DataType>(buf->dtype), buf->data,
-                      Span<const int64_t>(buf->dims, buf->rank)};
+    return internal::DecodeBuffer(reinterpret_cast<XLA_FFI_Buffer*>(arg));
   }
 };
 
 template <DataType dtype, size_t rank>
 struct ArgDecoding<Buffer<dtype, rank>> {
-  XLA_ATTRIBUTE_ALWAYS_INLINE
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Buffer<dtype, rank>> Decode(
       XLA_FFI_ArgType type, void* arg, DiagnosticEngine& diagnostic) {
-    if (type != XLA_FFI_ArgType_BUFFER) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_ArgType_BUFFER)) {
       return diagnostic.Emit("Wrong argument type: expected ")
              << XLA_FFI_ArgType_BUFFER << " but got " << type;
     }
 
-    auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
+    return internal::DecodeBuffer<dtype, rank>(
+        reinterpret_cast<XLA_FFI_Buffer*>(arg), diagnostic);
+  }
+};
 
-    if (auto actual_dtype = static_cast<DataType>(buf->dtype);
-        actual_dtype != dtype) {
-      return diagnostic.Emit("Wrong buffer dtype: expected ")
-             << dtype << " but got " << actual_dtype;
+//===----------------------------------------------------------------------===//
+// Results decoding
+//===----------------------------------------------------------------------===//
+
+inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_RetType type) {
+  switch (type) {
+    case XLA_FFI_RetType_BUFFER:
+      return os << "buffer";
+  }
+}
+
+template <>
+struct RetDecoding<BufferBase> {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<Result<BufferBase>> Decode(
+      XLA_FFI_RetType type, void* ret, DiagnosticEngine& diagnostic) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_RetType_BUFFER)) {
+      return diagnostic.Emit("Wrong result type: expected ")
+             << XLA_FFI_RetType_BUFFER << " but got " << type;
+    }
+    return internal::DecodeBuffer(reinterpret_cast<XLA_FFI_Buffer*>(ret));
+  }
+};
+
+template <DataType dtype, size_t rank>
+struct RetDecoding<Buffer<dtype, rank>> {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<Result<Buffer<dtype, rank>>> Decode(
+      XLA_FFI_RetType type, void* ret, DiagnosticEngine& diagnostic) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_RetType_BUFFER)) {
+      return diagnostic.Emit("Wrong result type: expected ")
+             << XLA_FFI_RetType_BUFFER << " but got " << type;
     }
 
-    if constexpr (rank != internal::kDynamicRank) {
-      if (buf->rank != rank) {
-        return diagnostic.Emit("Wrong buffer rank: expected ")
-               << rank << " but got " << buf->rank;
-      }
+    return internal::DecodeBuffer<dtype, rank>(
+        reinterpret_cast<XLA_FFI_Buffer*>(ret), diagnostic);
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Attributes decoding
+//===----------------------------------------------------------------------===//
+
+#define XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(T, TYPE)                      \
+  template <>                                                               \
+  struct AttrDecoding<Span<const T>> {                                      \
+    using Type = Span<const T>;                                             \
+    static std::optional<Type> Decode(XLA_FFI_AttrType type, void* attr,    \
+                                      DiagnosticEngine& diagnostic) {       \
+      if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_ARRAY)) {          \
+        return diagnostic.Emit("Wrong attribute type: expected ")           \
+               << XLA_FFI_AttrType_ARRAY << " but got " << type;            \
+      }                                                                     \
+                                                                            \
+      auto* array = reinterpret_cast<XLA_FFI_Array*>(attr);                 \
+      if (XLA_FFI_PREDICT_FALSE(array->dtype != TYPE)) {                    \
+        return diagnostic.Emit("Wrong array data type: expected ")          \
+               << TYPE << " but got " << array->dtype;                      \
+      }                                                                     \
+                                                                            \
+      return Span<const T>(reinterpret_cast<T*>(array->data), array->size); \
+    }                                                                       \
+  }
+
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int8_t, XLA_FFI_DataType_S8);
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int16_t, XLA_FFI_DataType_S16);
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int32_t, XLA_FFI_DataType_S32);
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int64_t, XLA_FFI_DataType_S64);
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(float, XLA_FFI_DataType_F32);
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(double, XLA_FFI_DataType_F64);
+
+#undef XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING
+
+// A type tag to mark i64 attributes as pointers to `T`.
+template <typename T>
+struct Pointer {};
+
+template <typename T>
+struct AttrDecoding<Pointer<T>> {
+  using Type = T*;
+
+  static std::optional<Type> Decode(XLA_FFI_AttrType type, void* attr,
+                                    DiagnosticEngine& diagnostic) {
+    auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_SCALAR ||
+                              scalar->dtype != XLA_FFI_DataType_S64)) {
+      return diagnostic.Emit("Wrong attribute type: ")
+             << "expected i64 scalar for passing pointer but got " << type;
     }
 
-    Buffer<dtype, rank> buffer;
-    buffer.data = static_cast<internal::NativeType<dtype>*>(buf->data);
-    buffer.dimensions = Span<const int64_t>(buf->dims, buf->rank);
-    return buffer;
+    static_assert(sizeof(uintptr_t) == sizeof(int64_t));
+    uintptr_t ptr = *reinterpret_cast<uintptr_t*>(scalar->value);
+    return reinterpret_cast<Type>(ptr);
   }
 };
 
@@ -235,7 +416,7 @@ struct ArgDecoding<Buffer<dtype, rank>> {
 
 template <>
 struct ResultEncoding<Error> {
-  static XLA_FFI_Error* Encode(XLA_FFI_Api* api, Error error) {
+  static XLA_FFI_Error* Encode(const XLA_FFI_Api* api, Error error) {
     if (error.success()) return nullptr;
 
     XLA_FFI_Error_Create_Args args;

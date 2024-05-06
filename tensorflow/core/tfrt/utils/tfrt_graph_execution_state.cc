@@ -96,7 +96,7 @@ absl::flat_hash_set<std::string> FindFunctionsToOptimize(
 
 // Preprocesses `graph_def`, returns the functions to optimize if
 // `run_placer_grappler_on_functions` is true.
-StatusOr<absl::flat_hash_set<std::string>> PreprocessGraph(
+absl::StatusOr<absl::flat_hash_set<std::string>> PreprocessGraph(
     tensorflow::GraphDef& graph_def, bool run_placer_grappler_on_functions) {
   if (VLOG_IS_ON(1)) {
     DumpGraphDefToFile("before_generate_resource_shared_name_graph_def",
@@ -119,7 +119,7 @@ StatusOr<absl::flat_hash_set<std::string>> PreprocessGraph(
 
 }  // namespace
 
-StatusOr<std::unique_ptr<TfrtGraphExecutionState>>
+absl::StatusOr<std::unique_ptr<TfrtGraphExecutionState>>
 TfrtGraphExecutionState::Create(const TfrtGraphExecutionState::Options& options,
                                 tensorflow::GraphDef graph_def,
                                 const FallbackState& fallback_state) {
@@ -172,7 +172,7 @@ tensorflow::GraphDef CreateGraphDefFromGraphAndFlibDef(
 }
 
 // Creates a pruned graph from `graph_def` according to `callable_options`.
-StatusOr<std::unique_ptr<tensorflow::Graph>> CreatePrunedGraph(
+absl::StatusOr<std::unique_ptr<tensorflow::Graph>> CreatePrunedGraph(
     tensorflow::GraphDef graph_def, const CallableOptions& callable_options) {
   // clang-tidy off
   VLOG(1) << "Creating pruned graph: " << callable_options.DebugString();
@@ -228,7 +228,7 @@ NodeDef CreateNewIdentityNode(const NodeDef& node,
 
 }  // namespace
 
-StatusOr<TfrtGraphExecutionState::OptimizationResult>
+absl::StatusOr<TfrtGraphExecutionState::OptimizationResult>
 TfrtGraphExecutionState::CreateOptimizedGraph(
     tensorflow::GraphImportConfig& graph_import_config) {
   OptimizationResult result;
@@ -308,13 +308,13 @@ Status TfrtGraphExecutionState::Extend(const GraphDef& graph) {
       functions_to_optimize_,
       PreprocessGraph(*graph_def, options_.run_placer_grappler_on_functions));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
 
 // Given an "Exit" node, finds its corresponding "LoopCond" node.
-StatusOr<const NodeDef*> FindLoopCondFromExitNode(
+absl::StatusOr<const NodeDef*> FindLoopCondFromExitNode(
     const NodeDef& exit_node,
     const absl::flat_hash_map<std::string, NodeDef*>& name_to_node) {
   const NodeDef* switch_node = nullptr;
@@ -484,7 +484,7 @@ Status PruneGraphDef(GraphDef& graph_def,
     *graph_def.add_node() = std::move(node);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EliminateRefVariablesFromV1ControlFlow(tensorflow::GraphDef& graph_def) {
@@ -561,7 +561,7 @@ Status EliminateRefVariablesFromV1ControlFlow(tensorflow::GraphDef& graph_def) {
   }
 
   graph_def.mutable_node()->Swap(updated_graph_def.mutable_node());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RemoveInputShapesInFunctions(tensorflow::GraphDef& graph_def) {
@@ -643,12 +643,12 @@ Status OptimizeFunctions(
 
     fdef = std::move(new_fdef);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-StatusOr<std::unique_ptr<tensorflow::Graph>>
+absl::StatusOr<std::unique_ptr<tensorflow::Graph>>
 TfrtGraphExecutionState::OptimizeGraph(
     const tensorflow::Graph& graph,
     const tensorflow::BuildGraphOptions& build_graph_options) {

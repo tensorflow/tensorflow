@@ -30,16 +30,21 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
+
+namespace m = ::xla::match;
 
 using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
@@ -1663,6 +1668,35 @@ TEST_F(HloInstructionTest, StringifyDot) {
             "lhs_contracting_dims={1}, rhs_contracting_dims={0}");
 }
 
+TEST_F(HloInstructionTest, StringifySparseDot) {
+  HloComputation::Builder builder("SparseDot");
+  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {5, 16}), "x"));
+  HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {32, 20}), "y"));
+  HloInstruction* meta = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(U16, {5, 2}), "meta"));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  SparsityDescriptor sparsity_descriptor;
+  sparsity_descriptor.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
+  sparsity_descriptor.set_n(2);
+  sparsity_descriptor.set_m(4);
+  sparsity_descriptor.set_index(0);
+  sparsity_descriptor.set_dimension(1);
+  std::vector<HloInstruction*> meta_operands = {meta};
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(F32, {5, 20}), x, y, dot_dnums,
+      DefaultPrecisionConfig(2), {sparsity_descriptor}, meta_operands));
+
+  EXPECT_EQ(dot->ToString(),
+            "%dot = f32[5,20]{1,0} dot(f32[5,16]{1,0} %x, f32[32,20]{1,0} %y, "
+            "u16[5,2]{1,0} %meta), lhs_contracting_dims={1}, "
+            "rhs_contracting_dims={0}, sparsity=L.1@2:4");
+}
+
 TEST_F(HloInstructionTest, StringifyConditional) {
   const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
   const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
@@ -2017,8 +2051,8 @@ TEST_F(HloInstructionTest, StringifyAsyncOpsWithReduceScatter) {
     HloInstruction* param = async_builder.AddInstruction(
         HloInstruction::CreateParameter(0, rs_input_shape, "pasync"));
     async_builder.AddInstruction(HloInstruction::CreateReduceScatter(
-        rs_output_shape, {param}, add_computation.get(), {}, false,
-        std::nullopt, false, 0));
+        rs_output_shape, {param}, add_computation.get(), CollectiveDeviceList(),
+        false, std::nullopt, false, 0));
     async_computation = async_builder.Build();
   }
 
@@ -2538,8 +2572,8 @@ TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToReduceScatter) {
   HloInstruction* param = main_builder.AddInstruction(
       HloInstruction::CreateParameter(0, rs_input_shape, "input"));
   main_builder.AddInstruction(HloInstruction::CreateReduceScatter(
-      rs_output_shape, {param}, add_computation.get(), {}, false, std::nullopt,
-      false, 0));
+      rs_output_shape, {param}, add_computation.get(), CollectiveDeviceList(),
+      false, std::nullopt, false, 0));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(main_builder.Build());
@@ -2576,8 +2610,8 @@ TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToAllReduce) {
   HloInstruction* param = main_builder.AddInstruction(
       HloInstruction::CreateParameter(0, ar_input_shape, "input"));
   main_builder.AddInstruction(HloInstruction::CreateAllReduce(
-      ar_input_shape, {param}, add_computation.get(), {}, false, std::nullopt,
-      false));
+      ar_input_shape, {param}, add_computation.get(), CollectiveDeviceList(),
+      false, std::nullopt, false));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(main_builder.Build());
@@ -2803,6 +2837,148 @@ TEST_F(HloInstructionTest,
     }
   }
   EXPECT_EQ(num_conditional_branch_comp, branch_computations.size());
+}
+
+TEST_F(HloInstructionTest, BackendConfigCopiedToDerived) {
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto p0 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  auto p1 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p1"));
+  auto add = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p1));
+
+  gpu::GpuBackendConfig gpu_config;
+  gpu_config.set_operation_queue_id(2);
+  TF_ASSERT_OK(add->set_backend_config(gpu_config));
+  auto add2 = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p0));
+  add->SetupDerivedInstruction(add2);
+  auto backend_config = add2->backend_config<gpu::GpuBackendConfig>();
+  EXPECT_TRUE(backend_config.ok());
+  EXPECT_EQ(backend_config->operation_queue_id(), 2);
+}
+
+TEST_F(HloInstructionTest, BackendConfigNotCopiedToDerivedWithDiffOpcode) {
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto p0 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  auto p1 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p1"));
+  auto or1 = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kOr, p0, p1));
+
+  gpu::GpuBackendConfig gpu_config;
+  gpu_config.set_operation_queue_id(2);
+  TF_ASSERT_OK(or1->set_backend_config(gpu_config));
+  auto add2 = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p1));
+  or1->SetupDerivedInstruction(add2);
+  EXPECT_FALSE(add2->has_backend_config());
+}
+
+TEST_F(HloInstructionTest,
+       MergeMultiOutputProducerFusionIntoMultiOutputFusion) {
+  const std::string& hlo_string = R"(
+    HloModule mof
+    mof_producer {
+      param0 = f32[10]{0} parameter(0)
+      param1 = f32[10]{0} parameter(1)
+      add = f32[10]{0} add(param0, param1)
+      sub = f32[10]{0} subtract(param0, param1)
+      ROOT res = (f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}) tuple(param1, add, sub, param0)
+    }
+
+    mof_consumer {
+      param0.0 = f32[10]{0} parameter(0)
+      param1.0 = f32[10]{0} parameter(1)
+      param2.0 = f32[10]{0} parameter(2)
+      mul = f32[10]{0} multiply(param0.0, param1.0)
+      div = f32[10]{0} divide(param0.0, param1.0)
+      ROOT res = (f32[10]{0}, f32[10]{0}, f32[10]{0}) tuple(mul, div, param2.0)
+    }
+
+    ENTRY main {
+      p0 = f32[10]{0} parameter(0)
+      p1 = f32[10]{0} parameter(1)
+      producer = (f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}) fusion(p0, p1), kind=kLoop, calls=mof_producer
+      gte0 = f32[10]{0} get-tuple-element(producer), index=0
+      gte1 = f32[10]{0} get-tuple-element(producer), index=1
+      gte2 = f32[10]{0} get-tuple-element(producer), index=2
+      gte3 = f32[10]{0} get-tuple-element(producer), index=3
+      consumer = (f32[10]{0}, f32[10]{0}, f32[10]{0}) fusion(gte1, gte2, gte3), kind=kLoop, calls=mof_consumer
+      gte4 = f32[10]{0} get-tuple-element(consumer), index=0
+      gte5 = f32[10]{0} get-tuple-element(consumer), index=1
+      gte6 = f32[10]{0} get-tuple-element(consumer), index=2
+      ROOT res = tuple(gte0, gte1, gte3, gte4, gte5, gte6)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* producer = FindInstruction(module.get(), "producer");
+  HloInstruction* consumer = FindInstruction(module.get(), "consumer");
+  consumer->MergeFusionInstructionIntoMultiOutput(producer);
+  HloInstruction* fusion = nullptr;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Parameter(1), m::GetTupleElement(m::Fusion(&fusion), 3),
+                  m::Parameter(0), m::GetTupleElement(m::Fusion(), 0),
+                  m::GetTupleElement(m::Fusion(), 1),
+                  m::GetTupleElement(m::Fusion(), 2))));
+  EXPECT_THAT(fusion->fused_instructions_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Multiply(m::Add(m::Parameter(0), m::Parameter(1)),
+                              m::Subtract(m::Parameter(0), m::Parameter(1))),
+                  m::Divide(m::Add(m::Parameter(0), m::Parameter(1)),
+                            m::Subtract(m::Parameter(0), m::Parameter(1))),
+                  m::Parameter(0), m::Add(m::Parameter(0), m::Parameter(1)))));
+}
+
+TEST_F(HloInstructionTest,
+       MergeMultiOutputSiblingFusionsAvoidDuplicateFusionParameters) {
+  const std::string& hlo_string = R"(
+    HloModule mof
+    mof_sibling1 {
+      param0 = f32[10]{0} parameter(0)
+      param1 = f32[10]{0} parameter(1)
+      add = f32[10]{0} add(param0, param1)
+      ROOT res = (f32[10]{0}, f32[10]{0}) tuple(param1, add)
+    }
+
+    mof_sibling2 {
+      param0.0 = f32[10]{0} parameter(0)
+      param1.0 = f32[10]{0} parameter(1)
+      mul = f32[10]{0} multiply(param0.0, param1.0)
+      ROOT res = (f32[10]{0}, f32[10]{0}) tuple(mul, param1.0)
+    }
+
+    ENTRY main {
+      p0 = f32[10]{0} parameter(0)
+      p1 = f32[10]{0} parameter(1)
+      sibling1 = (f32[10]{0}, f32[10]{0}) fusion(p0, p1), kind=kLoop, calls=mof_sibling1
+      gte0 = f32[10]{0} get-tuple-element(sibling1), index=0
+      gte1 = f32[10]{0} get-tuple-element(sibling1), index=1
+      sibling2 = (f32[10]{0}, f32[10]{0}) fusion(p0, p1), kind=kLoop, calls=mof_sibling2
+      gte2 = f32[10]{0} get-tuple-element(sibling2), index=0
+      gte3 = f32[10]{0} get-tuple-element(sibling2), index=1
+      ROOT res = tuple(gte0, gte1, gte2, gte3)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* sibling1 = FindInstruction(module.get(), "sibling1");
+  HloInstruction* sibling2 = FindInstruction(module.get(), "sibling2");
+  sibling2->MergeFusionInstructionIntoMultiOutput(sibling1);
+  HloInstruction* fusion = nullptr;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Parameter(1),
+                                  m::GetTupleElement(m::Fusion(&fusion), 2),
+                                  m::GetTupleElement(m::Fusion(), 0),
+                                  m::GetTupleElement(m::Fusion(), 1))));
+  EXPECT_THAT(fusion->fused_instructions_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Multiply(m::Parameter(0), m::Parameter(1)),
+                                  m::Parameter(1),
+                                  m::Add(m::Parameter(0), m::Parameter(1)))));
 }
 
 }  // namespace

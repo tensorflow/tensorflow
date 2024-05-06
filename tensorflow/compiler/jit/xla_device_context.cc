@@ -229,7 +229,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   if (device_to_host_stream_) {
     device_to_host_stream = device_to_host_stream_;
   } else {
-    tsl::StatusOr<xla::StreamPool::Ptr> ptr_or_status =
+    absl::StatusOr<xla::StreamPool::Ptr> ptr_or_status =
         client_->mutable_backend()->BorrowStream(
             stream_->parent()->device_ordinal());
     if (!ptr_or_status.status().ok()) {
@@ -261,7 +261,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   transfer_manager_->TransferLiteralFromDevice(
       device_to_host_stream.get(), xla_tensor->shaped_buffer(), literal,
       [this, ref, xla_tensor, done, device_to_host_stream,
-       device_allows_sync_on_completion](xla::Status status) {
+       device_allows_sync_on_completion](absl::Status status) {
         Status done_status = status;
         VLOG(2) << "Transfer from device as literal: "
                 << xla_tensor->shaped_buffer().ToString();

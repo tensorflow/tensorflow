@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include <atomic>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,10 +25,12 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_handle.h"
@@ -38,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/random_seed_ops.h"
 #include "tensorflow/core/kernels/random_index_shuffle.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -45,6 +50,7 @@ namespace {
 
 constexpr int32_t kIndexShuffleRounds = 8;
 
+constexpr const char kDatasetType[] = "GlobalShuffle";
 constexpr const char kElementCount[] = "element_count";
 constexpr const char kGlobalShuffleDataset[] = "GlobalShuffleDataset";
 constexpr const char kReshuffleEachIteration[] = "reshuffle_each_iteration";
@@ -103,7 +109,7 @@ class GlobalShuffleDatasetOp::Dataset : public DatasetBase {
   }
 
   std::string DebugString() const override {
-    return name_utils::DatasetDebugString(kGlobalShuffleDataset);
+    return name_utils::DatasetDebugString(kDatasetType);
   }
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {
@@ -150,6 +156,10 @@ class GlobalShuffleDatasetOp::Dataset : public DatasetBase {
         /*attrs=*/
         {std::make_pair(kReshuffleEachIteration, reshuffle_each_iteration)},
         output);
+  }
+
+  absl::Status RandomIndexingCompatible() const override {
+    return absl::OkStatus();
   }
 
  private:
@@ -200,6 +210,38 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     return absl::OkStatus();
   }
 
+  IndexMapperFn GetIndexMapper(IndexMapperFn parent_index_mapper) const override
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    uint32_t seed = static_cast<uint32_t>(seed_);
+    uint32_t seed2 = static_cast<uint32_t>(seed2_);
+    uint32_t seed3 = static_cast<uint32_t>(seed3_);
+    uint64_t max_index =
+        cardinality_ > 0 ? static_cast<uint64_t>(cardinality_ - 1) : 0;
+    return [parent_index_mapper, seed, seed2, seed3,
+            max_index](size_t element_position) -> absl::StatusOr<size_t> {
+      if (parent_index_mapper != nullptr) {
+        TF_ASSIGN_OR_RETURN(element_position,
+                            parent_index_mapper(element_position));
+      }
+      // This could happen if the source dataset generates more elements than
+      // needed by the intermediate transformations. For example, when shuffling
+      // `range(10).batch(3, drop_remainder=True)`, the last element of `range`
+      // has index 9, which maps to the 4th batched element. However, since
+      // `batch` drops remainders, the cardinality is 3. In this case, the
+      // element position exceeds the max index. The caller is responsible to
+      // handle this case properly.
+      if (element_position > max_index) {
+        return element_position;
+      }
+      if (max_index == 0) {
+        return 0;
+      }
+      return static_cast<int64_t>(tensorflow::random::index_shuffle(
+          static_cast<uint64_t>(element_position), {seed, seed2, seed3},
+          max_index, kIndexShuffleRounds));
+    };
+  }
+
   absl::Status SaveInternal(SerializationContext* ctx,
                             IteratorStateWriter* writer) override {
     absl::MutexLock l(&mu_);
@@ -211,14 +253,15 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
   absl::Status RestoreInternal(IteratorContext* ctx,
                                IteratorStateReader* reader) override {
     absl::MutexLock l(&mu_);
-    if (ctx->element_count().has_value()) {
-      element_count_ = *ctx->element_count();
+    if (ctx->restored_element_count().has_value()) {
+      element_count_ = *ctx->restored_element_count();
     } else {
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kElementCount, &element_count_));
     }
     IteratorContext::Params params(ctx);
-    params.element_count = element_count_;
+    params.restored_element_count = element_count_;
+    params.index_mapper = GetIndexMapper(ctx->index_mapper());
     IteratorContext ctx_copy(params);
     TF_RETURN_IF_ERROR(RestoreInput(&ctx_copy, reader, input_impl_));
     ctx->MergeCheckpoint(ctx_copy.checkpoint());
@@ -226,36 +269,6 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
   }
 
  private:
-  std::function<int64_t(int64_t)> GetIndexMapper(
-      std::function<int64_t(int64_t)> parent_index_mapper) const
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    uint32_t seed = static_cast<uint32_t>(seed_);
-    uint32_t seed2 = static_cast<uint32_t>(seed2_);
-    uint32_t seed3 = static_cast<uint32_t>(seed3_);
-    uint64_t max_index =
-        cardinality_ > 0 ? static_cast<uint64_t>(cardinality_ - 1) : 0;
-    return [parent_index_mapper, seed, seed2, seed3,
-            max_index](int64_t element_position) -> int64_t {
-      if (parent_index_mapper != nullptr) {
-        element_position = parent_index_mapper(element_position);
-      }
-      // This could happen if the source dataset generates more elements than
-      // needed by the intermediate transformations. For example, when shuffling
-      // `range(10).batch(3, drop_remainder=True)`, the last element of `range`
-      // has index 9, which maps to the 4th batched element. However, since
-      // `batch` drops remainders, the cardinality is 3. In this case, the
-      // element position exceeds the max index. The caller should check the
-      // return value and return end_of_sequence accordingly.
-      // TODO(b/325112575): Update `index_mapper` to return `std::optional`.
-      if (element_position < 0 || element_position > max_index) {
-        return -1;
-      }
-      return static_cast<int64_t>(tensorflow::random::index_shuffle(
-          static_cast<uint64_t>(element_position), {seed, seed2, seed3},
-          max_index, kIndexShuffleRounds));
-    };
-  }
-
   const int64_t cardinality_;
 
   mutable absl::Mutex mu_;
@@ -285,7 +298,9 @@ void GlobalShuffleDatasetOp::MakeDataset(OpKernelContext* ctx,
                   "compatible with random access. Got: ",
                   input->RandomIndexingCompatible().ToString())));
 
-  int64_t cardinality = input->Cardinality();
+  CardinalityOptions options;
+  options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_MODERATE);
+  int64_t cardinality = input->Cardinality(std::move(options));
   OP_REQUIRES(ctx, cardinality > 0,
               absl::InvalidArgumentError(absl::StrCat(
                   "`global_shuffle` requires the input dataset to have a "
@@ -337,8 +352,7 @@ std::unique_ptr<IteratorBase>
 GlobalShuffleDatasetOp::Dataset::MakeIteratorInternal(
     const std::string& prefix) const {
   return std::make_unique<GlobalShuffleDatasetOp::Dataset::Iterator>(
-      Iterator::Params{
-          this, name_utils::IteratorPrefix(kGlobalShuffleDataset, prefix)},
+      Iterator::Params{this, name_utils::IteratorPrefix(kDatasetType, prefix)},
       seed_generator_->get());
 }
 

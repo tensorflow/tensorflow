@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/statusor.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -64,7 +64,7 @@ class LoadedHostCallback
   //
   // TODO(hyeontaek): Change `Serialize()` to return `HostCallback` instead of a
   // serialized host callback directly.
-  virtual StatusOr<std::string> Serialize() const = 0;
+  virtual absl::StatusOr<std::string> Serialize() const = 0;
 
   static char ID;  // NOLINT
 };

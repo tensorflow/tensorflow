@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
@@ -218,7 +219,7 @@ StatusOr<mlir::Operation*> ReduceSPMDExpander::ExpandOp(mlir::Operation* op) {
   // Generate an error message for TPU int64.
   if (input_layout->mesh().is_tpu_mesh()) {
     if (auto tensor_type =
-            op->getOperand(0).getType().dyn_cast<mlir::TensorType>()) {
+            mlir::dyn_cast<mlir::TensorType>(op->getOperand(0).getType())) {
       if (tensor_type.getElementType().isInteger(64)) {
         return errors::InvalidArgument(
             "ReduceOp on TPU does not support int64 as dtype.");

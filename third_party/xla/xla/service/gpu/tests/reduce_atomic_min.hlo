@@ -149,7 +149,6 @@ ENTRY reduce.1 {
 // CHECK:       loop2.loop_body:                                  ; preds = %[[VAL_107]]
 // CHECK:         %[[VAL_111:.*]] = add nuw nsw i32 %[[VAL_109]], 1
 // CHECK:         store i32 %[[VAL_111]], ptr %[[VAL_43]], align 4
-// CHECK:         %[[VAL_112:.*]] = icmp eq i32 %[[VAL_109]], 0
 // CHECK:         %[[OFFSET_2:.*]] = add i32 %loop2.indvar, %thread.id.2
 // CHECK:         store i32 0, ptr %loop3.invar_address, align 4
 // CHECK:         br label %loop3.loop_header
@@ -189,7 +188,6 @@ ENTRY reduce.1 {
 // CHECK:       loop2.loop_body5:
 // CHECK:         %[[VAL_139:.*]] = add nuw nsw i32 %[[VAL_136]], 1
 // CHECK:         store i32 %[[VAL_139]], ptr %[[LOOP2_I_2]], align 4
-// CHECK:         %[[VAL_140:.*]] = icmp eq i32 %[[VAL_136]], 0
 // CHECK:         %[[VAL_141:.*]] = add i32 %[[VAL_136]], %thread.id.2
 // CHECK:         %[[VAL_144:.*]] = icmp ult i32 %[[VAL_141]], %tile_bound.2
 // CHECK:         br i1 %[[VAL_144]], label %x_in_tile-true, label %x_in_tile-after

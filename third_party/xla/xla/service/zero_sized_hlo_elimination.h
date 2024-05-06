@@ -16,15 +16,19 @@ limitations under the License.
 #ifndef XLA_SERVICE_ZERO_SIZED_HLO_ELIMINATION_H_
 #define XLA_SERVICE_ZERO_SIZED_HLO_ELIMINATION_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/statusor.h"
 
 // HLO pass that replaces zero sized Hlos with a zero sized constant literal.
 namespace xla {
 class ZeroSizedHloElimination : public HloModulePass {
  public:
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
   absl::string_view name() const override {

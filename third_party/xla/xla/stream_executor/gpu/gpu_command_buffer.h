@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 
 namespace stream_executor::gpu {
 
@@ -103,12 +103,6 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status Memset(ExecutionScopeId execution_scope_id,
                       DeviceMemoryBase* dst, BitPattern bit_pattern,
                       size_t num_elements) override;
-
-  absl::StatusOr<DeviceMemoryBase> Allocate(ExecutionScopeId execution_scope_id,
-                                            size_t bytes) override;
-
-  absl::Status Free(ExecutionScopeId execution_scope_id,
-                    DeviceMemoryBase dst) override;
 
   absl::Status If(ExecutionScopeId execution_scope_id, StreamExecutor* executor,
                   DeviceMemory<bool> predicate, Builder then_builder) override;

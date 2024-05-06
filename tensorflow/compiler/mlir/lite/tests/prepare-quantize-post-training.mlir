@@ -29,9 +29,9 @@ func.func @QuantizeLstmCellInput(%arg0: tensor<1x28x28xf32>) -> tensor<1x28x20xf
         none, none, none, none) -> tensor<1x28x20xf32>
     %1 = "quantfork.stats"(%0) {layerStats = dense<[-1.0, 2.0]> : tensor<2xf32>} : (tensor<1x28x20xf32>) -> tensor<1x28x20xf32>
     func.return %1 : tensor<1x28x20xf32>
-// CHECK-DAG: %[[none:.*]] = "tfl.no_value"() {value} : () -> none
+// CHECK-DAG: %[[none:.*]] = "tfl.no_value"() <{value}> : () -> none
 // CHECK-DAG: %[[cell_input:.*]] = arith.constant dense<1.000000e+00> : tensor<1x20xf32>
-// CHECK-DAG: %[[q:.*]] = "tfl.quantize"(%[[cell_input]]) {qtype = tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>} : (tensor<1x20xf32>) -> tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>
+// CHECK-DAG: %[[q:.*]] = "tfl.quantize"(%[[cell_input]]) <{qtype = tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>}> : (tensor<1x20xf32>) -> tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>
 // CHECK-DAG: %[[dq:.*]] = "tfl.dequantize"(%[[q]]) : (tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>) -> tensor<1x20xf32>
 // Checks if input 19 is correctly passed from a dequantize op.
 // CHECK: %[[lstm:.*]] = "tfl.unidirectional_sequence_lstm"(%arg0, {{(%[^%,]+, )+}}%[[dq]], %[[none]], %[[none]], %[[none]], %[[none]])
@@ -113,7 +113,7 @@ func.func @QuantizeWithoutNorm(%arg0: tensor<1x1x5xf32>) -> tensor<*xf32> attrib
 // CHECK-SAME: %[[input_9]], %[[input_10]], %[[input_11]], %[[input_12]], %[[input_13]], %[[input_14]], %[[input_15]], %[[input_16]], %[[input_17]], %[[input_18]], %[[input_19]]
 // CHECK-SAME: effective_hidden_scale_intermediate = tensor<!quant.uniform<i8:f32, 0.0039215686274509803:-1>>
 
-// CHECK: "tfl.quantize"(%[[lstm]]) {qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>, volatile}
+// CHECK: "tfl.quantize"(%[[lstm]]) <{qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>}> {volatile}
 }
 
 // CHECK-LABEL: QuantizeLstmCifg
@@ -166,7 +166,7 @@ func.func @QuantizeLstmCifg(%arg0: tensor<1x5xf32>) -> tensor<*xf32> attributes 
   %24 = "quantfork.stats"(%23) {layerStats = dense<[-1.0, 2.0]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
   func.return %24 : tensor<*xf32>
 
-// CHECK-DAG: %[[none:.*]] = "tfl.no_value"() {value} : () -> none
+// CHECK-DAG: %[[none:.*]] = "tfl.no_value"() <{value}> : () -> none
 // CHECK-DAG: %[[input_0:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x5x!quant.uniform<i8:f32, 0.010588235481112611:-15>>) -> tensor<1x5xf32>
 // CHECK-DAG: %[[input_2:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x5x!quant.uniform<i8<-127:127>:f32, 0.018341723389512912>>) -> tensor<2x5xf32>
 // CHECK-DAG: %[[input_3:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x5x!quant.uniform<i8<-127:127>:f32, 0.011170119751156785>>) -> tensor<2x5xf32>
@@ -190,12 +190,12 @@ func.func @QuantizeLstmCifg(%arg0: tensor<1x5xf32>) -> tensor<*xf32> attributes 
 // CHECK: %[[lstm:.*]] = "tfl.lstm"(%[[input_0]], %[[none]], %[[input_2]], %[[input_3]], %[[input_4]], %[[none]], %[[input_6]], %[[input_7]], %[[input_8]],
 // CHECK-SAME: %[[none]], %[[input_10]], %[[input_11]], %[[none]], %[[input_13]], %[[input_14]], %[[input_15]], %[[input_16]], %[[input_17]], %[[input_18]], %[[input_19]],
 // CHECK-SAME: %[[none]], %[[input_21]], %[[input_22]], %[[input_23]])
-// CHECK-NEXT: effective_hidden_scale_intermediate = tensor<!quant.uniform<i8:f32, 0.0039215686274509803:-1>>
+// CHECK-SAME: effective_hidden_scale_intermediate = tensor<!quant.uniform<i8:f32, 0.0039215686274509803:-1>>
 // CHECK-SAME: input_to_cell_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 1.2207403790398877E-4>>
 // CHECK-SAME: input_to_forget_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 4.8829615161595508E-4>>
 // CHECK-SAME: input_to_output_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 3.0518509475997192E-5>>
 
-// CHECK: "tfl.quantize"(%[[lstm]]) {qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>, volatile}
+// CHECK: "tfl.quantize"(%[[lstm]]) <{qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>}> {volatile}
 }
 
 // CHECK-LABEL: QuantizeUnidirectionalLstmFull
@@ -286,7 +286,7 @@ func.func @QuantizeUnidirectionalLstmFull(%arg0: tensor<1x1x5xf32>) -> tensor<*x
 // CHECK-SAME: input_to_input_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 9.7659230323191015E-4>>
 // CHECK-SAME: input_to_output_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 3.0518509475997192E-5>>
 
-// CHECK: "tfl.quantize"(%[[lstm]]) {qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>, volatile}
+// CHECK: "tfl.quantize"(%[[lstm]]) <{qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>}> {volatile}
 }
 
 // CHECK-LABEL: QuantizeUnidirectionalLstmWithFixedOutputRangedInput
@@ -481,13 +481,13 @@ func.func @QuantizeLstmFull(%arg0: tensor<1x5xf32>) -> tensor<*xf32> attributes 
 // CHECK: %[[lstm:.*]] = "tfl.lstm"(%[[input_0]], %[[input_1]], %[[input_2]], %[[input_3]], %[[input_4]], %[[input_5]], %[[input_6]], %[[input_7]], %[[input_8]],
 // CHECK-SAME: %[[input_9]], %[[input_10]], %[[input_11]], %[[input_12]], %[[input_13]], %[[input_14]], %[[input_15]], %[[input_16]], %[[input_17]], %[[input_18]], %[[input_19]],
 // CHECK-SAME: %[[input_20]], %[[input_21]], %[[input_22]], %[[input_23]])
-// CHECK-NEXT: effective_hidden_scale_intermediate = tensor<!quant.uniform<i8:f32, 0.0039215686274509803:-1>>
+// CHECK-SAME: effective_hidden_scale_intermediate = tensor<!quant.uniform<i8:f32, 0.0039215686274509803:-1>>
 // CHECK-SAME: input_to_cell_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 1.2207403790398877E-4>>
 // CHECK-SAME: input_to_forget_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 4.8829615161595508E-4>>
 // CHECK-SAME: input_to_input_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 9.7659230323191015E-4>>
 // CHECK-SAME: input_to_output_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 3.0518509475997192E-5>>
 
-// CHECK: "tfl.quantize"(%[[lstm]]) {qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>, volatile}
+// CHECK: "tfl.quantize"(%[[lstm]]) <{qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>}> {volatile}
 }
 
 // CHECK-LABEL: QuantizeSVDF
@@ -508,7 +508,7 @@ func.func @QuantizeSVDF(%arg0: tensor<1x3xf32>) -> tensor<1x2xf32>  {
 // CHECK-DAG: %[[input_3:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x!quant.uniform<i32:f32, 1.3900876031311922E-5>>)
 // CHECK-DAG: %[[input_4:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x4x!quant.uniform<i16<-32767:32767>:f32, 0.0037514108011770368>>)
 // CHECK: %[[svdf:.*]] = "tfl.svdf"(%[[input_0]], %[[input_1]], %[[input_2]], %[[input_3]], %[[input_4]])
-// CHECK: %[[q:.*]] = "tfl.quantize"(%[[svdf]]) {qtype = tensor<1x2x!quant.uniform<i8:f32, 0.12954867493872549:-128>>, volatile}
+// CHECK: %[[q:.*]] = "tfl.quantize"(%[[svdf]]) <{qtype = tensor<1x2x!quant.uniform<i8:f32, 0.12954867493872549:-128>>}> {volatile}
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // CHECK: return %[[dq]]
 }

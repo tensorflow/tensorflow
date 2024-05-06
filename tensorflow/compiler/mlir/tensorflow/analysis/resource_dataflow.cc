@@ -15,26 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_dataflow.h"
 
-#include <algorithm>
-#include <vector>
-
-#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/Debug.h"
-#include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"  // from @llvm-project
 #include "mlir/Analysis/DataFlow/SparseAnalysis.h"  // from @llvm-project
+#include "mlir/Analysis/DataFlowFramework.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/analysis/tf_dataflow.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 #define DEBUG_TYPE "resource-dataflow"
 
@@ -49,13 +41,12 @@ ResourceConstructingOps::ResourceConstructingOps(Operation *op) {
   if (op) ops.insert(op);
 }
 
-ResourceConstructingOps ResourceConstructingOps::getPessimisticValueState(
+ResourceConstructingOps ResourceConstructingOps::EntryState(
     MLIRContext *context) {
   return ResourceConstructingOps();
 }
-ResourceConstructingOps ResourceConstructingOps::getPessimisticValueState(
-    Value value) {
-  if (auto barg = value.dyn_cast<BlockArgument>()) {
+ResourceConstructingOps ResourceConstructingOps::EntryState(Value value) {
+  if (auto barg = mlir::dyn_cast<BlockArgument>(value)) {
     if (func::FuncOp func =
             dyn_cast<func::FuncOp>(barg.getOwner()->getParentOp())) {
       SymbolTable symbol_table(func->getParentOfType<ModuleOp>());
@@ -63,9 +54,6 @@ ResourceConstructingOps ResourceConstructingOps::getPessimisticValueState(
           tf_saved_model::GlobalTensorOp>(func, barg.getArgNumber(),
                                           symbol_table);
       ResourceConstructingOps result(global_tensor);
-      if (func.getArgAttr(barg.getArgNumber(), kCompositeDevice)) {
-        result.is_on_composite_device = true;
-      }
       return result;
     }
   } else if (auto vh = dyn_cast<TF::VarHandleOp>(value.getDefiningOp())) {
@@ -83,60 +71,80 @@ ResourceConstructingOps ResourceConstructingOps::join(
   ResourceConstructingOps ret;
   ret.ops.insert(lhs.ops.begin(), lhs.ops.end());
   ret.ops.insert(rhs.ops.begin(), rhs.ops.end());
-  ret.is_on_composite_device =
-      lhs.is_on_composite_device || rhs.is_on_composite_device;
   return ret;
 }
 
 void ResourceConstructingOps::print(raw_ostream &os) const {
   llvm::interleaveComma(ops, os << "[");
-  if (is_on_composite_device) {
-    os << " COMPOSITE";
-  }
   os << "]";
 }
 
-void ResourceDataflowAnalysis::visitOperation(Operation *op,
-                                              ArrayRef<const StateT *> operands,
-                                              ArrayRef<StateT *> results) {
-  LLVM_DEBUG(llvm::dbgs() << "ResAn: Visiting operation: " << *op << "\n");
+IsComposite::IsComposite(Operation *op) {}
 
-  if (auto cast = dyn_cast<TF::CastOp>(op)) {
-    join(results[0], *operands[0]);
-  } else if (auto while_op = dyn_cast<TF::WhileRegionOp>(op)) {
-    for (auto &region : while_op->getRegions()) {
-      for (auto [arg, value] :
-           llvm::zip(region.getArguments(), while_op->getOperands())) {
-        join(getLatticeElement(arg), *getLatticeElement(value));
+IsComposite IsComposite::EntryState(MLIRContext *context) {
+  return IsComposite();
+}
+
+IsComposite IsComposite::EntryState(Value value) {
+  IsComposite result;
+  if (auto barg = mlir::dyn_cast<BlockArgument>(value)) {
+    if (func::FuncOp func =
+            dyn_cast<func::FuncOp>(barg.getOwner()->getParentOp())) {
+      if (func.getArgAttr(barg.getArgNumber(), kCompositeDevice)) {
+        result.is_on_composite_device = true;
       }
+      return result;
     }
-  } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
-    func::FuncOp cond = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
-        while_op, while_op.getCondAttr());
-    func::FuncOp body = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
-        while_op, while_op.getBodyAttr());
-    for (auto &arg : while_op->getOpOperands()) {
-      BlockArgument cond_arg = cond.getArgument(arg.getOperandNumber());
-      join(getLatticeElement(cond_arg), *getLatticeElement(arg.get()));
-      BlockArgument body_arg = body.getArgument(arg.getOperandNumber());
-      join(getLatticeElement(body_arg), *getLatticeElement(arg.get()));
-    }
-  } else if (auto graph = dyn_cast<tf_executor::GraphOp>(op)) {
-    for (auto &arg : graph.GetFetch()->getOpOperands()) {
-      if (arg.getOperandNumber() < graph.getNumResults()) {
-        auto result = graph.getResult(arg.getOperandNumber());
-        join(getLatticeElement(result), *getLatticeElement(arg.get()));
-      }
-    }
-  } else if (auto island = dyn_cast<tf_executor::IslandOp>(op)) {
-    for (auto &arg : island.GetYield()->getOpOperands()) {
-      auto result = island.getResult(arg.getOperandNumber());
-      join(getLatticeElement(result), *getLatticeElement(arg.get()));
-      // getLatticeElement(arg.get())->print(llvm::errs());
-    }
+  }
+  return result;
+}
+
+IsComposite IsComposite::join(const IsComposite &lhs, const IsComposite &rhs) {
+  IsComposite ret;
+  ret.is_on_composite_device =
+      lhs.is_on_composite_device || rhs.is_on_composite_device;
+  return ret;
+}
+
+void IsComposite::print(raw_ostream &os) const {
+  if (is_on_composite_device) {
+    os << "COMPOSITE";
   } else {
+    os << "NOT_COMPOSITE";
+  }
+}
+
+class ResourceDataflowAnalysis
+    : public TensorflowDataflowAnalysis<ResourceConstructingOps> {
+ public:
+  using TensorflowDataflowAnalysis<
+      ResourceConstructingOps>::TensorflowDataflowAnalysis;
+  void visitOperation(Operation *op, ArrayRef<const StateT *> operands,
+                      ArrayRef<StateT *> results) override {
+    if (ForwardThroughTFOperation(op, operands, results)) return;
     setAllToEntryStates(results);
   }
+  ~ResourceDataflowAnalysis() override = default;
+};
+
+class IsCompositeDataflowAnalysis
+    : public TensorflowDataflowAnalysis<IsComposite> {
+ public:
+  using TensorflowDataflowAnalysis<IsComposite>::TensorflowDataflowAnalysis;
+  void visitOperation(Operation *op, ArrayRef<const StateT *> operands,
+                      ArrayRef<StateT *> results) override {
+    if (ForwardThroughTFOperation(op, operands, results)) return;
+    setAllToEntryStates(results);
+  }
+  ~IsCompositeDataflowAnalysis() override = default;
+};
+
+void LoadResourceDataflowAnalysis(DataFlowSolver &solver) {
+  solver.load<ResourceDataflowAnalysis>();
+}
+
+void LoadIsCompositeDataflowAnalysis(DataFlowSolver &solver) {
+  solver.load<IsCompositeDataflowAnalysis>();
 }
 
 }  // namespace TF

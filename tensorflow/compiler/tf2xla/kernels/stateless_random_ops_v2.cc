@@ -92,7 +92,7 @@ class StatelessRandomUniformOp : public XlaOpKernel {
     TensorShape shape;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(
                             0, &shape, xla::ValueInferenceMode::kUpperBound));
-    StatusOr<xla::XlaOp> randoms_or = BuildUniformRandoms(
+    absl::StatusOr<xla::XlaOp> randoms_or = BuildUniformRandoms(
         ctx, dtype_, device_type_string_, shape, xla::Zero, xla::One);
     OP_REQUIRES_OK(ctx, randoms_or.status());
     xla::XlaOp uniform = MaybeConvertF32ToBF16(randoms_or.value(), dtype_);
@@ -155,7 +155,7 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
 
-    StatusOr<xla::XlaOp> result_or = BuildUniformRandoms(
+    absl::StatusOr<xla::XlaOp> result_or = BuildUniformRandoms(
         ctx, dtype_, device_type_string_, xla_shape, minval, maxval);
     OP_REQUIRES_OK(ctx, result_or.status());
     ctx->SetOutput(0, result_or.value());

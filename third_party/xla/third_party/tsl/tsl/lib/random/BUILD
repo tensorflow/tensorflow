@@ -1,18 +1,20 @@
-load("//tsl:tsl.bzl", "internal_visibility")
-load("//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
+load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//tsl/platform:build_config.bzl",
     "tsl_cc_test",
 )
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+
+default_visibility = [
+    "//tsl/lib/io:__pkg__",
+    # tensorflow/core/platform/random aliases this package
+    "//tensorflow/core/lib/random:__pkg__",
+]
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = internal_visibility([
-        "//tsl/lib/io:__pkg__",
-        # tensorflow/core/platform/random aliases this package
-        "//tensorflow/core/lib/random:__pkg__",
-    ]),
+    default_visibility = internal_visibility(default_visibility),
     licenses = ["notice"],
 )
 
@@ -33,6 +35,7 @@ cc_library(
         "random_distributions.h",
         "simple_philox.h",
     ],
+    visibility = internal_visibility(default_visibility),
     deps = [
         ":exact_uniform_int",
         ":philox_random",

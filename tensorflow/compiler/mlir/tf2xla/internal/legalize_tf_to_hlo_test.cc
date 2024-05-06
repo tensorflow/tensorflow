@@ -72,7 +72,7 @@ static constexpr char kBadMlirModuleStr[] = R"(
     }
   })";
 
-tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
+absl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
     const char* module_str) {
   MlirToHloArgs mlir_to_hlo_args;
   mlir_to_hlo_args.rollout_state =
@@ -132,6 +132,19 @@ TEST(LegalizeWithCombinedBridge,
               IncrementedOrFiltered(counts.Delta(kMlirCombinedMlirSuccess), 1));
   EXPECT_THAT(result,
               IncrementedOrFiltered(counts.Delta(kMlirCombinedOldFailure), 1));
+}
+
+TEST(LegalizeWithCombinedBridge, RecordsDynamicOps) {
+  static constexpr char kDynamismFunctionCounterStreamzName[] =
+      "/tensorflow/core/tf2xla/api/v2/dynamism_function_counter";
+  constexpr char kNotDynamicFunctionName[] = "kNotDynamicFunction";
+  CellReader<int64_t> dynamic_function_op_count(
+      kDynamismFunctionCounterStreamzName);
+
+  auto result = CompileMlirModule(kMlirModuleStr);
+
+  ASSERT_TRUE(result.ok());
+  EXPECT_EQ(dynamic_function_op_count.Delta(kNotDynamicFunctionName), 1);
 }
 
 };  // namespace internal

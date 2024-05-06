@@ -92,18 +92,6 @@ class HandlerBase {
                          absl::Span<const HloSharding> input_specs,
                          double compute_cost, double communication_cost);
 
-  bool CheckDims(const HloInstruction* ins, const DimMap& dim_map) const {
-    for (const auto& [tensor_dim, mesh_dim] : dim_map) {
-      auto shape_dim = ins->shape().dimensions().at(tensor_dim);
-      auto device_mesh_dim = device_mesh_.dim(mesh_dim);
-      if (shape_dim < device_mesh_dim) return false;
-      if (option_.only_allow_divisible_intermediate &&
-          !IsDivisible(shape_dim, device_mesh_dim))
-        return false;
-    }
-    return true;
-  }
-
   HloSharding CreateInputSpec(const HloInstruction* ins, const DimMap& dim_map,
                               const Array<int64_t>& device_mesh) const {
     if (dim_map.empty()) return HloSharding::Replicate();
@@ -266,13 +254,17 @@ void HandlerBase::AppendNewStrategy(const std::string& name,
                                     absl::Span<const HloSharding> input_specs,
                                     double compute_cost,
                                     double communication_cost) {
-  std::vector<std::vector<double>> resharding_costs;
+  ReshardingCosts communication_resharding_costs;
+  ReshardingCosts memory_resharding_costs;
 
   for (int i = 0; i < ins_->operand_count(); ++i) {
     const HloInstruction* operand = ins_->operand(i);
-    resharding_costs.push_back(
-        ReshardingCostVector(strategy_map_.at(operand).get(), operand->shape(),
-                             input_specs[i], cluster_env_));
+    communication_resharding_costs.push_back(CommunicationReshardingCostVector(
+        strategy_map_.at(operand).get(), operand->shape(), input_specs[i],
+        cluster_env_));
+    memory_resharding_costs.push_back(MemoryReshardingCostVector(
+        strategy_map_.at(operand).get(), operand->shape(), input_specs[i],
+        cluster_env_));
   }
 
   strategy_group_->strategies.push_back(ShardingStrategy({
@@ -281,7 +273,8 @@ void HandlerBase::AppendNewStrategy(const std::string& name,
       compute_cost,
       communication_cost,
       GetBytes(ins_->shape()) / output_spec.NumTiles(),
-      resharding_costs,
+      communication_resharding_costs,
+      memory_resharding_costs,
       {input_specs.begin(), input_specs.end()},
   }));
 }

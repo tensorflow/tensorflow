@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/topk_splitter.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <string>

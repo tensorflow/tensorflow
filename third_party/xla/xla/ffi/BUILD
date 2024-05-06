@@ -1,5 +1,5 @@
-load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -42,8 +42,7 @@ cc_library(
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:c_api_internal",
         "//xla/hlo/ir:hlo",
-        "//xla/runtime:memref_view",
-        "//xla/service:executable",
+        "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/types:span",
     ],
@@ -78,8 +77,11 @@ xla_cc_test(
         ":ffi_api",
         "//xla:xla_data_proto_cc",
         "//xla/service:executable",
+        "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",

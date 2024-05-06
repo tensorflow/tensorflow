@@ -24,17 +24,11 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.pb.h"
 
 namespace mlir::quant::stablehlo {
-
-// Creates a `QuantizePass` that quantizes ops according to surrounding qcast /
-// dcast ops.
-std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizePass(
-    const quant::QuantizationSpecs& quantization_specs,
-    bool enable_per_channel_quantized_weight = true);
 
 // Creates a pass that quantizes weight component of StableHLO graph.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
@@ -49,6 +43,10 @@ absl::StatusOr<std::string> ConvertSerializedStableHloModuleToBfloat16(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateLiftQuantizableSpotsAsFunctionsPass(
     const ::stablehlo::quantization::QuantizationSpecs& quantization_specs);
+
+// Creates a pass that inserts CalibrationStatisticsSaverOp.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateInsertCalibrationStatisticsSaverPass(StringRef calibration_data_dir);
 
 // Adds generated pass default constructors or options definitions.
 #define GEN_PASS_DECL

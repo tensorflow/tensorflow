@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -709,6 +710,32 @@ TEST_F(HloCseTest, OptimizationBarrier) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(HloCseTest, OnlyScalar) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    ENTRY entry {
+      %const1 = f32[] constant(1)
+      %const2 = f32[] constant(1)
+      %const3 = f32[2] constant({1,2})
+      %const4 = f32[2] constant({1,2})
+      %add.0 = f32[] add(%const1, %const2)
+      %add.1 = f32[2] add(%const3, %const4)
+      ROOT out = (f32[], f32[2]) tuple(%add.0, %add.1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false, /*only_fusion_computations=*/false,
+             /*ignore_control_dependencies=*/false, /*only_scalars=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(absl::c_count_if(m->entry_computation()->instructions(),
+                             [](const HloInstruction* instruction) {
+                               return instruction->IsConstant();
+                             }),
+            3);
+}
+
 class HloCseCustomCallTest
     : public HloCseTest,
       public ::testing::WithParamInterface<std::tuple<
@@ -874,6 +901,40 @@ TEST_F(HloCseTest, IgnoreControlDependencies) {
 
   SCOPED_TRACE(absl::StrCat("Module after CSE:\n", m->ToString()));
   EXPECT_EQ(changed, true);
+}
+
+TEST_F(HloCseTest, MultiOutputFusion) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    f {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add.0 = f32[] add(p0, p1)
+      add.1 = f32[] add(p0, p1)
+      ROOT res = (f32[], f32[]) tuple(add.0, add.1)
+    }
+
+    ENTRY entry {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT root = (f32[], f32[]) fusion(p0, p1), kind=kLoop, calls=f
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+
+  SCOPED_TRACE(absl::StrCat("Module after CSE:\n", m->ToString()));
+  EXPECT_EQ(changed, true);
+  HloInstruction* add0;
+  HloInstruction* add1;
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction()->fused_expression_root(),
+      GmockMatch(m::Tuple(m::Add(&add0, m::Parameter(0), m::Parameter(1)),
+                          m::Add(&add1, m::Parameter(0), m::Parameter(1)))));
+  EXPECT_EQ(add0, add1);
 }
 
 class HloCseCommutativeOpTest

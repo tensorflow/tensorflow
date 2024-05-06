@@ -73,7 +73,7 @@ const ResourceIdSet& UnknownResourceSet() {
 const ResourceIdSet& GetResourceUniqueIdsOrUnknown(
     Value value,
     const ResourceAliasAnalysis::Info& alias_analysis) {
-  if (!getElementTypeOrSelf(value.getType()).isa<TF::ResourceType>() ||
+  if (!mlir::isa<TF::ResourceType>(getElementTypeOrSelf(value.getType())) ||
       alias_analysis.IsUnknownResource(value)) return UnknownResourceSet();
   return alias_analysis.GetResourceUniqueIds(value);
 }
@@ -145,7 +145,7 @@ bool MayHaveSideEffect(Operation* op) {
 bool ShouldUseResourceAliasAnalysis(
     const MemoryEffects::EffectInstance& effect) {
   Value value = effect.getValue();
-  if (value && getElementTypeOrSelf(value.getType()).isa<ResourceType>()) {
+  if (value && mlir::isa<ResourceType>(getElementTypeOrSelf(value.getType()))) {
     // For value-based effects on resource values we can use resource alias
     // analysis.
     return true;

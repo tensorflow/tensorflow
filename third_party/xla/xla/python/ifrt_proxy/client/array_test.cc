@@ -37,7 +37,7 @@
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
@@ -98,8 +98,7 @@ TEST_F(ArrayTest, Destruction) {
 
   MockClient client;
   tsl::MakeRef<Array>(&client, rpc_helper_, DType(DType::Kind::kBF16),
-                      Shape({}), /*sharding=*/nullptr,
-                      ArrayHandle{.handle = 1234});
+                      Shape({}), /*sharding=*/nullptr, ArrayHandle{1234});
 }
 #endif
 
@@ -124,9 +123,9 @@ TEST_F(ArrayTest, FullyReplicatedShard) {
   auto sharding = xla::ifrt::SingleDeviceSharding::Create(
       &mock_device, xla::ifrt::MemoryKind());
 
-  auto array = tsl::MakeRef<Array>(
-      &client, rpc_helper_, DType(DType::Kind::kBF16), Shape({}),
-      std::move(sharding), ArrayHandle{.handle = 1234});
+  auto array =
+      tsl::MakeRef<Array>(&client, rpc_helper_, DType(DType::Kind::kBF16),
+                          Shape({}), std::move(sharding), ArrayHandle{1234});
 
   ASSERT_THAT(array->FullyReplicatedShard(ArrayCopySemantics::kAlwaysCopy),
               IsOk());

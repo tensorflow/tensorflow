@@ -67,7 +67,7 @@ Status ComputeExpectedTableShardShapes(const TPUEmbeddingConfiguration& config,
             << " on shard: " << shard_id << " (of " << num_shards << ").";
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Logs min/max/avg for the specified state_variable array.

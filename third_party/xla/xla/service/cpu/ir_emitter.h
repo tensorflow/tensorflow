@@ -112,7 +112,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   //
   // If 'allow_reassociation' is true, the fast-math reassociation flag will
   // be enabled in the function's body. This is used when emitting reducers.
-  StatusOr<llvm::Function*> EmitComputation(
+  absl::StatusOr<llvm::Function*> EmitComputation(
       HloComputation* computation, absl::string_view function_name_prefix,
       bool is_top_level_computation,
       absl::Span<HloInstruction* const> instruction_order,
@@ -366,12 +366,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // concepts that generalize over other vectorizable operations.  We should
   // consider pulling out these abstractions into a VectorizingIrEmitter or
   // something similar.
-  StatusOr<bool> EmitVectorizedReduce(HloInstruction* reduce,
-                                      HloInstruction* arg,
-                                      HloInstruction* init_value,
-                                      absl::Span<const int64_t> dimensions,
-                                      HloComputation* function,
-                                      std::string* failure_reason);
+  absl::StatusOr<bool> EmitVectorizedReduce(
+      HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
+      absl::Span<const int64_t> dimensions, HloComputation* function,
+      std::string* failure_reason);
 
   // We'd like to keep one or two one cache-line's worth of data in registers
   // without generating IR with illegal (e.g. excessively large or
@@ -417,7 +415,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // Emits the inner loop nest that runs the reduction.  Helper function for
   // EmitVectorizedReduce.
-  StatusOr<ShardedVector> EmitInnerLoopForVectorizedReduction(
+  absl::StatusOr<ShardedVector> EmitInnerLoopForVectorizedReduction(
       const ReductionGenerator& reduction_generator,
       const llvm_ir::IrArray::Index& output_index,
       const ShardedVectorType& accumulator_type, HloInstruction* init_value,
@@ -427,9 +425,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Tries to emit a fast concatenate operation using memcpy.  Returns true if
   // successful, and false on failure.  On failure, sets "failure_reason" to a
   // string describing why it could not emit a fast concatenate.
-  StatusOr<bool> EmitFastConcatenate(HloInstruction* concatenate,
-                                     absl::Span<HloInstruction* const> operands,
-                                     std::string* failure_reason);
+  absl::StatusOr<bool> EmitFastConcatenate(
+      HloInstruction* concatenate, absl::Span<HloInstruction* const> operands,
+      std::string* failure_reason);
 
   // Emits LLVM IR to transfer "element_count" elements of type "primitive_type"
   // from the address "source" to the address "target".
@@ -451,6 +449,16 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       llvm::Type* return_type, bool does_not_throw = true,
       bool only_accesses_arg_memory = false,
       bool only_accesses_inaccessible_mem_or_arg_mem = false);
+
+  template <typename T>
+  llvm::AllocaInst* StoreTypes(std::string_view alloca_name, T&& args);
+  template <typename T>
+  llvm::Value* StoreShapes(std::string_view alloca_name, T&& args);
+
+  // Emits a call to a proxy that builds an FFI call frame for `custom_call`
+  llvm::Value* EmitCallToFfi(HloCustomCallInstruction* custom_call,
+                             llvm::Value* output_address,
+                             llvm::AllocaInst* operands_alloca);
 
   // Assignment of the buffers needed by the computation and their shape
   // information.
@@ -664,7 +672,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   struct LiteralPtrEqualityFunctor {
     bool operator()(const Literal* lhs, const Literal* rhs) const {
-      return *lhs == *rhs;
+      return *lhs == *rhs && lhs->shape().layout() == rhs->shape().layout();
     }
   };
 

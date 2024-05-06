@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -57,11 +58,17 @@ class CallFrameBuilder {
   CallFrameBuilder(CallFrameBuilder&&);
   CallFrameBuilder& operator=(CallFrameBuilder&&);
 
+  using Scalar =
+      std::variant<bool, int8_t, int16_t, int32_t, int64_t, float, double>;
+  using Array = std::variant<std::vector<int8_t>, std::vector<int16_t>,
+                             std::vector<int32_t>, std::vector<int64_t>,
+                             std::vector<float>, std::vector<double>>;
+
   // Declare implementation detail structs for call frame builder storage.
   struct Dictionary;
 
   // Attributes that do not support nested dictionaries.
-  using FlatAttribute = std::variant<int32_t, int64_t, float, std::string>;
+  using FlatAttribute = std::variant<Scalar, Array, std::string>;
   using FlatAttributesMap = absl::flat_hash_map<std::string, FlatAttribute>;
 
   // Attributes that support arbitrary nesting.
@@ -80,6 +87,10 @@ class CallFrameBuilder {
     AttributesBuilder();
     ~AttributesBuilder();
 
+    // This overload is only necessary to support older GCC versions.
+    void Insert(std::string name, const char* attr) {
+      Insert(std::move(name), std::string(attr));
+    }
     void Insert(std::string name, FlatAttribute attr);
     void Insert(std::string name, FlatAttributesMap attrs);
 
@@ -96,6 +107,9 @@ class CallFrameBuilder {
   void AddBufferArg(se::DeviceMemoryBase memory, PrimitiveType type,
                     absl::Span<const int64_t> dims);
 
+  void AddBufferRet(se::DeviceMemoryBase memory, PrimitiveType type,
+                    absl::Span<const int64_t> dims);
+
   void AddAttributes(AttributesMap attrs);
 
  private:
@@ -104,6 +118,7 @@ class CallFrameBuilder {
   struct Buffer;
 
   std::vector<Buffer> args_;
+  std::vector<Buffer> rets_;
   AttributesMap attrs_;
 };
 
@@ -116,31 +131,42 @@ class CallFrame {
   ~CallFrame();
 
   // Builds an XLA_FFI_CallFrame from owned arguments and attributes.
-  XLA_FFI_CallFrame Build(XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx);
+  XLA_FFI_CallFrame Build(const XLA_FFI_Api* api,
+                          XLA_FFI_ExecutionContext* ctx);
 
  private:
   friend class CallFrameBuilder;
 
   // Declare implementation detail structs for call frame storage.
   struct Arguments;
+  struct Array;
   struct Attributes;
   struct Buffer;
   struct Dictionary;
   struct NamedAttribute;
+  struct Results;
+  struct Scalar;
   struct String;
 
-  using Attribute = std::variant<int32_t, int64_t, float, String, Dictionary>;
+  using Attribute = std::variant<Scalar, Array, String, Dictionary>;
 
   CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
+            absl::Span<const CallFrameBuilder::Buffer> rets,
             const CallFrameBuilder::AttributesMap& attrs);
 
   static std::unique_ptr<Arguments> InitArgs(
       absl::Span<const CallFrameBuilder::Buffer> args);
 
+  static std::unique_ptr<Results> InitRets(
+      absl::Span<const CallFrameBuilder::Buffer> rets);
+
   static std::unique_ptr<Attributes> InitAttrs(
       const CallFrameBuilder::AttributesMap& attrs);
 
+  static Buffer ConvertBuffer(const CallFrameBuilder::Buffer& buffer);
+
   std::unique_ptr<Arguments> arguments_;
+  std::unique_ptr<Results> results_;
   std::unique_ptr<Attributes> attributes_;
 
   // Declare implementation detail structs to grant access to private members.

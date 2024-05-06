@@ -313,7 +313,7 @@ remote_tensorrt_configure = repository_rule(
     remotable = True,
     attrs = {
         "environ": attr.string_dict(),
-        "_find_cuda_config": attr.label(default = "@org_tensorflow//third_party/gpus:find_cuda_config.py"),
+        "_find_cuda_config": attr.label(default = "@local_tsl//third_party/gpus:find_cuda_config.py"),
     },
 )
 
@@ -321,7 +321,7 @@ tensorrt_configure = repository_rule(
     implementation = _tensorrt_configure_impl,
     environ = _ENVIRONS + [_TF_TENSORRT_CONFIG_REPO],
     attrs = {
-        "_find_cuda_config": attr.label(default = "@org_tensorflow//third_party/gpus:find_cuda_config.py"),
+        "_find_cuda_config": attr.label(default = "@local_tsl//third_party/gpus:find_cuda_config.py"),
     },
 )
 """Detects and configures the local CUDA toolchain.

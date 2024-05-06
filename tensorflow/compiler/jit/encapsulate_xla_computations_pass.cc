@@ -228,8 +228,8 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
 
 /*static*/ Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
     Graph* graph,
-    const std::function<StatusOr<bool>(const Node&)>& is_xla_launch_node,
-    const std::function<StatusOr<XlaFunctionInfo>(const Node&)>&
+    const std::function<absl::StatusOr<bool>(const Node&)>& is_xla_launch_node,
+    const std::function<absl::StatusOr<XlaFunctionInfo>(const Node&)>&
         get_xla_function_info,
     const bool add_edges_to_output_of_downstream_nodes) {
   // Finds all of the XlaLaunch function calls, to avoid mutating the graph
@@ -360,13 +360,13 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
 
 /*static*/ Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
     Graph* graph) {
-  const auto is_xla_launch_node = [](const Node& node) -> StatusOr<bool> {
+  const auto is_xla_launch_node = [](const Node& node) -> absl::StatusOr<bool> {
     const string& name = GetNodeAttrString(node.attrs(), kXlaClusterIdAttr);
     return !name.empty();
   };
 
   const auto get_xla_function_info =
-      [](const Node& node) -> StatusOr<XlaFunctionInfo> {
+      [](const Node& node) -> absl::StatusOr<XlaFunctionInfo> {
     XlaFunctionInfo result;
     TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), "_variable_start_index",
                                    &result.variable_start_index));

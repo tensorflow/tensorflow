@@ -114,12 +114,13 @@ class GrpcRemoteMaster : public MasterInterface {
 
  private:
   // Start tracing, attaching a unique ID to both the trace and the RPC.
-  profiler::TraceMe* NewTraceRpc(StringPiece name, ::grpc::ClientContext* ctx) {
+  tsl::profiler::TraceMe* NewTraceRpc(StringPiece name,
+                                      ::grpc::ClientContext* ctx) {
     string trace_id = strings::StrCat(tracing::GetUniqueArg());
     ctx->AddMetadata(GrpcIdKey(), trace_id);
-    return new profiler::TraceMe(
+    return new tsl::profiler::TraceMe(
         [&] { return strings::StrCat(name, ":", trace_id); },
-        profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
   }
 
   template <typename Request, typename Response>
@@ -136,7 +137,7 @@ class GrpcRemoteMaster : public MasterInterface {
     Status s;
     for (int num_retries = 0;; ++num_retries) {
       ::grpc::ClientContext ctx;
-      std::unique_ptr<profiler::TraceMe> trace;
+      std::unique_ptr<tsl::profiler::TraceMe> trace;
       if (!trace_string.empty()) {
         trace.reset(NewTraceRpc(trace_string, &ctx));
       }

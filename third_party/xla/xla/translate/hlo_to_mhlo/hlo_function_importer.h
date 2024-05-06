@@ -56,31 +56,34 @@ class HloFunctionImporter {
   // Imports the given computation as a function in the given symbol table and
   // returns the FuncOp. This also imports any computations referred by
   // instructions in this computation.
-  static StatusOr<mlir::func::FuncOp> ImportAsFunc(
+  static absl::StatusOr<mlir::func::FuncOp> ImportAsFunc(
       const HloComputation& computation, mlir::SymbolTable& symbol_table,
       std::unordered_map<const HloComputation*, mlir::func::FuncOp>*
           function_map,
-      mlir::Builder* builder, bool is_main);
+      mlir::Builder* builder, bool is_main,
+      bool flatten_computation_args_result = false);
 
-  // Imports the given hlo computation to the specified region. If
-  // 'flatten_region_arg_tuple' is true, then flatten the tuple-typed region
-  // argument(s) and return value(s).
+  // Imports the given hlo computation to the specified region.
+  //
+  // Flattens the tuple-typed region argument(s) and return value(s).
   static Status ImportAsRegion(const HloComputation& computation,
                                mlir::SymbolTable& symbol_table,
                                mlir::Region* region, mlir::Builder* builder,
-                               bool flatten_region_arg_tuple = false);
+                               bool flatten_computation_args_result = false);
 
   // Imports the given computation to the given place specified by `builder`.
   // `arguments` contains values for all parameters.
-  static StatusOr<mlir::Value> ImportInstructions(
+  static absl::StatusOr<mlir::Value> ImportInstructions(
       const HloComputation& computation,
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
-      mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder);
+      mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder,
+      bool flatten_computation_args_result = false);
 
-  static StatusOr<mlir::Operation*> ImportInstruction(
+  static absl::StatusOr<mlir::Operation*> ImportInstruction(
       const HloInstruction* instr,
       const llvm::SmallVectorImpl<mlir::Value>& operands,
       mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder,
+      bool flatten_computation_args_result = false,
       DynamicShapeHandlingMode mode = DynamicShapeHandlingMode::kDynamic);
 
   static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape,
@@ -111,7 +114,7 @@ class HloFunctionImporter {
                                             mlir::Type type);
 
   // FlattenTupleType flattens the types in (nested) tuple-type 'type' and
-  // stores them in 'types'.
+  // stores them in 'flattened_types'.
   static void FlattenTupleType(
       mlir::Type type, llvm::SmallVectorImpl<mlir::Type>& flattened_types);
 
@@ -120,6 +123,12 @@ class HloFunctionImporter {
   static void FlattenTupleValue(
       mlir::OpBuilder* func_builder, mlir::Location loc, mlir::Value value,
       llvm::SmallVectorImpl<mlir::Value>& flattened_values);
+
+  // FlattenTupleValues flattens the values in (nested) tuple-typed 'values' and
+  // returns the flattened values.
+  static llvm::SmallVector<mlir::Value> FlattenTupleValues(
+      mlir::OpBuilder* func_builder, mlir::Location loc,
+      mlir::ValueRange values, std::optional<int> reserve_size = std::nullopt);
 
   // CreateTupleValue creates a root TupleOp of (nested) tuple-type 'type' using
   // the non-tuple-typed values in 'flatten_values'.
@@ -133,19 +142,22 @@ class HloFunctionImporter {
   //          resp. flatten and create tuples in the exact same order.
   //       2. `flatten_values`, initially storing the flattened values, will be
   //          mutated to a 0-length array by the end of function invocation.
-  static mlir::Value CreateTupleValue(
-      mlir::OpBuilder* func_builder, mlir::Location loc,
-      llvm::MutableArrayRef<mlir::Value>& flatten_values, mlir::Type type);
+  static mlir::Value CreateTupleValue(mlir::OpBuilder* func_builder,
+                                      mlir::Location loc,
+                                      mlir::ValueRange& flatten_values,
+                                      mlir::Type type);
 
  private:
   HloFunctionImporter(mlir::SymbolTable& symbol_table,
                       std::unordered_map<const HloComputation*,
                                          mlir::func::FuncOp>* function_map,
-                      mlir::Builder* builder)
+                      mlir::Builder* builder,
+                      bool flatten_computation_args_result)
       : context_(symbol_table.getOp()->getContext()),
         symbol_table_(symbol_table),
         builder_(builder),
-        function_map_(function_map) {
+        function_map_(function_map),
+        flatten_computation_args_result_(flatten_computation_args_result) {
     context_->loadDialect<mlir::arith::ArithDialect>();
     context_->loadDialect<mlir::func::FuncDialect>();
     context_->loadDialect<mlir::mhlo::MhloDialect>();
@@ -154,41 +166,41 @@ class HloFunctionImporter {
 
   // Imports the given computation as a new function, if it hasn't been already
   // imported.
-  StatusOr<mlir::func::FuncOp> ImportAsFunc(const HloComputation& computation,
-                                            bool is_main);
+  absl::StatusOr<mlir::func::FuncOp> ImportAsFunc(
+      const HloComputation& computation, bool is_main);
 
   // Imports the given computation in the specified region.
-  Status ImportAsRegion(const HloComputation& computation, mlir::Region* region,
-                        bool flatten_region_arg_tuple = false);
+  Status ImportAsRegion(const HloComputation& computation,
+                        mlir::Region* region);
 
   // Imports instructions from the given computation in the specified block.
   // Assumes that the block already has correct arguments populated.
   Status ImportInstructions(const HloComputation& computation,
-                            mlir::Block* block, bool flatten_region_arg_tuple);
-  StatusOr<mlir::Value> ImportInstructionsImpl(
+                            mlir::Block* block);
+  absl::StatusOr<mlir::Value> ImportInstructionsImpl(
       const HloComputation& computation,
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
       mlir::OpBuilder* builder);
 
   // Imports an instruction.
-  StatusOr<mlir::Operation*> ImportInstructionWithLayout(
+  absl::StatusOr<mlir::Operation*> ImportInstructionWithLayout(
       const HloInstruction* instruction,
       const llvm::SmallVectorImpl<mlir::Value>& operands,
       mlir::OpBuilder* func_builder,
       DynamicShapeHandlingMode mode = DynamicShapeHandlingMode::kDynamic);
 
-  StatusOr<mlir::Operation*> ImportInstructionImpl(
+  absl::StatusOr<mlir::Operation*> ImportInstructionImpl(
       const HloInstruction* instruction,
       const llvm::SmallVectorImpl<mlir::Value>& operands,
       mlir::OpBuilder* func_builder,
       DynamicShapeHandlingMode mode = DynamicShapeHandlingMode::kDynamic);
 
   // Gets the MLIR operand values from an HLO Instruction.
-  StatusOr<llvm::SmallVector<mlir::Value, 4>> GetOperands(
+  absl::StatusOr<llvm::SmallVector<mlir::Value, 4>> GetOperands(
       const HloInstruction* instruction);
 
   // Converts xla Tensor type to the corresponding MLIR type.
-  StatusOr<mlir::RankedTensorType> ConvertTensorType(const Shape& shape);
+  absl::StatusOr<mlir::RankedTensorType> ConvertTensorType(const Shape& shape);
 
   // Converts an XLA shape/layout to the corresponding MLIR layout, in
   // flattened_attr, while flattening the tuple layout.
@@ -197,7 +209,7 @@ class HloFunctionImporter {
       llvm::SmallVectorImpl<mlir::Attribute>& flattened_attr);
 
   // Returns the output type of an HloInstruction.
-  StatusOr<mlir::Type> GetReturnType(const HloInstruction* instruction);
+  absl::StatusOr<mlir::Type> GetReturnType(const HloInstruction* instruction);
 
   // Takes a list of HloInstructions and generates the list of types used for
   // input, bypassing tuples to subsets.
@@ -205,7 +217,7 @@ class HloFunctionImporter {
                       llvm::SmallVectorImpl<mlir::Type>* types);
 
   // Returns the Mlir Value for the corresponding HloInstruction.
-  StatusOr<mlir::Value> GetMlirValue(const HloInstruction* instruction);
+  absl::StatusOr<mlir::Value> GetMlirValue(const HloInstruction* instruction);
 
   // Converts an XLA ComparisonDirection to the corresponding MLIR attribute.
   mlir::NamedAttribute ConvertComparisonDirection(
@@ -256,14 +268,14 @@ class HloFunctionImporter {
   // new-style async API.
   // ============
   template <typename SyncOp>
-  StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
+  absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
       llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
       const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
       mlir::Type result_type, mlir::OpBuilder* func_builder,
       std::string func_name, std::function<Status(SyncOp)> mutate_op);
 
   // Imports an old-style async done op
-  StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
+  absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
       llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
       const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
       mlir::Type result_type, mlir::OpBuilder* func_builder);
@@ -280,6 +292,8 @@ class HloFunctionImporter {
 
   // Mapping from HloInstructions to the associative MLIR values.
   std::unordered_map<const HloInstruction*, mlir::Value> instruction_value_map_;
+
+  bool flatten_computation_args_result_;
 };
 
 // Returns a StringAttr that carries a prettyprinted representation of the

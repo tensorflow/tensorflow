@@ -16,13 +16,18 @@ limitations under the License.
 #ifndef XLA_PYTHON_CALLBACK_H_
 #define XLA_PYTHON_CALLBACK_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <utility>
 #include <vector>
 
-#include "pybind11/numpy.h"  // from @pybind11
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/pjrt/transpose.h"
-#include "xla/python/python_ref_manager.h"
+#include "xla/python/nb_numpy.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/xla_data.pb.h"
 
@@ -32,7 +37,7 @@ class CpuCallback {
  public:
   struct Arg {
     xla::PrimitiveType type;               // XLA type
-    pybind11::dtype dtype;                 // NumPy type, for array types.
+    nb_dtype dtype;                        // NumPy type, for array types.
     absl::InlinedVector<int64_t, 4> dims;  // Dimensions, for array types.
     std::vector<int64_t> strides;          // Byte strides, for array types.
     size_t size_in_bytes;                  // Size of the array in bytes.
@@ -50,24 +55,14 @@ class CpuCallback {
     size_t size_in_bytes;
   };
 
-  explicit CpuCallback(pybind11::function callable, std::vector<Arg> args,
+  explicit CpuCallback(nanobind::callable callable, std::vector<Arg> args,
                        std::vector<Result> results)
       : callable_(std::move(callable)),
         args_(std::move(args)),
         results_(std::move(results)),
         transpose_cache_(/*capacity=*/16) {}
 
-  ~CpuCallback() {
-    // The destructor may be called without GIL held. In that case, we defer it
-    // to GlobalPyRefManager.
-    std::vector<pybind11::object> objects;
-    objects.push_back(std::move(callable_));
-    for (auto& arg : args_) {
-      objects.push_back(std::move(arg.dtype));
-    }
-
-    GlobalPyRefManager()->AddGarbage(absl::MakeSpan(objects));
-  }
+  ~CpuCallback();
 
   const std::vector<Arg>& args() const { return args_; }
   size_t num_args() const { return args_.size(); }
@@ -79,17 +74,17 @@ class CpuCallback {
 
   void PrepareAndCall(void* result, void** arg_ptrs,
                       XlaCustomCallStatus* status);
-  Status PrepareAndCall(void* result, void** arg_ptrs);
+  absl::Status PrepareAndCall(void* result, void** arg_ptrs);
 
-  std::optional<pybind11::tuple> Call(pybind11::tuple args,
+  std::optional<nanobind::tuple> Call(nanobind::tuple args,
                                       XlaCustomCallStatus* status);
-  absl::StatusOr<pybind11::tuple> Call(pybind11::tuple args);
+  absl::StatusOr<nanobind::tuple> Call(nanobind::tuple args);
 
  private:
-  Status PrepareAndCallInternal(void* result, void** arg_ptrs);
-  absl::StatusOr<pybind11::tuple> CallInternal(pybind11::tuple args);
+  absl::Status PrepareAndCallInternal(void* result, void** arg_ptrs);
+  absl::StatusOr<nanobind::tuple> CallInternal(nanobind::tuple args);
 
-  pybind11::function callable_;
+  nanobind::callable callable_;
   std::vector<Arg> args_;
   std::vector<Result> results_;
   xla::TransposePlanCache transpose_cache_;

@@ -168,7 +168,7 @@ tensorflow::Status ExportFromTensorflowDialectToExecutor(
 
   tf_dialect_to_executor_dialect_status->GetCell(kExportSuccess)
       ->IncrementBy(1);
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 mlir::PassPipelineRegistration<> tf_dialect_to_executor_pipeline(

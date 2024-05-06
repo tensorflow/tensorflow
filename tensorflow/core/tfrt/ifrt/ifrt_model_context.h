@@ -26,13 +26,17 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
-#include "tsl/concurrency/ref_count.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
+#include "tsl/platform/threadpool.h"
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -52,14 +56,21 @@ struct DeviceConfig {
 class IfrtModelContext {
  public:
   explicit IfrtModelContext(std::shared_ptr<xla::ifrt::Client> client,
-                            const Eigen::ThreadPoolDevice* thread_pool_device)
-      : client_(std::move(client)), thread_pool_device_(*thread_pool_device) {}
+                            IfrtServingCoreSelector* ifrt_serving_core_selector,
+                            const tsl::thread::ThreadPool* thread_pool)
+      : client_(std::move(client)),
+        ifrt_serving_core_selector_(ifrt_serving_core_selector),
+        thread_pool_(*thread_pool) {}
   IfrtModelContext(
       std::shared_ptr<xla::ifrt::Client> client,
-      const Eigen::ThreadPoolDevice* thread_pool_device,
+      IfrtServingCoreSelector* ifrt_serving_core_selector,
+      const tsl::thread::ThreadPool* thread_pool,
+      std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
       : client_(std::move(client)),
-        thread_pool_device_(*thread_pool_device),
+        ifrt_serving_core_selector_(ifrt_serving_core_selector),
+        thread_pool_(*thread_pool),
+        device_mgr_(std::move(device_mgr)),
         shape_representation_fn_(shape_representation_fn) {}
 
   void RegisterHandle(ServingExecutableRegistry::Handle handle) {
@@ -73,7 +84,7 @@ class IfrtModelContext {
     return shape_representation_fn_;
   }
 
-  const Eigen::ThreadPoolDevice& GetThreadPoolDevice() const;
+  const tsl::thread::ThreadPool& GetThreadPool() const;
 
   const IfrtLoadedVariableRegistry& GetLoadedVariableRegistry() const {
     return loaded_variable_registry_;
@@ -82,15 +93,52 @@ class IfrtModelContext {
     return loaded_variable_registry_;
   }
 
+  const IfrtRestoreTensorRegistry& GetRestoreTensorRegistry() const {
+    return restore_tensor_registry_;
+  }
+  IfrtRestoreTensorRegistry& GetRestoreTensorRegistry() {
+    return restore_tensor_registry_;
+  }
+
+  tensorflow::StaticDeviceMgr* GetDeviceMgr() const {
+    return device_mgr_.get();
+  }
+  IfrtServingCoreSelector* GetIfrtServingCoreSelector() const {
+    return ifrt_serving_core_selector_;
+  }
+
+  tfrt::ConcurrentWorkQueue* checkpoint_loader_queue() const {
+    return checkpoint_loader_queue_;
+  }
+  void set_checkpoint_loader_queue(tfrt::ConcurrentWorkQueue* work_queue) {
+    checkpoint_loader_queue_ = work_queue;
+  }
+
+  // Freeze the model: release the resources such as host tensors that are used
+  // by the device only. The caller guarantees all resources released in this
+  // function is no longer in use in regular execution path.
+  // After Freeze() is called, no new model signature will be compiled. Using a
+  // signature or an input shape that wasn't compiled before the freeze will
+  // leads to an error.
+  // TODO(b/337926686): prevent further compilation after freeze.
+  void Freeze();
+
  private:
   std::shared_ptr<xla::ifrt::Client> client_;
-  const Eigen::ThreadPoolDevice& thread_pool_device_;
+  IfrtServingCoreSelector* ifrt_serving_core_selector_;  // May be nullptr
+  const tsl::thread::ThreadPool& thread_pool_;
+
+  std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr_;
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_ =
       tensorflow::IdentityShapeRepresentationFn();
+
+  // Dedicated work queue for heavy task such as variable tensor restoration.
+  tfrt::ConcurrentWorkQueue* checkpoint_loader_queue_ = nullptr;
 
   std::vector<ServingExecutableRegistry::Handle> handles_;
 
   IfrtLoadedVariableRegistry loaded_variable_registry_;
+  IfrtRestoreTensorRegistry restore_tensor_registry_;
 };
 
 }  // namespace ifrt_serving

@@ -1,7 +1,7 @@
 // RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-lower-tensors -xla-gpu-merge-pointers | FileCheck %s
 
 module {
-  func.func @tensorargs(%arg0: tensor<43xf32> {xla.slice_index = 0},
+  func.func private @tensorargs(%arg0: tensor<43xf32> {xla.slice_index = 0},
                         %arg1: tensor<43xf32> {xla.slice_index = 1, xla.invariant},
                         %arg2: tensor<43xf32> {xla.slice_index = 0},
                         %arg3: index) -> f32 {
@@ -23,7 +23,7 @@ module {
   }
 }
 
-// CHECK:      func.func @tensorargs(
+// CHECK:      func.func private @tensorargs(
 // CHECK-SAME:   %[[ARG0:.*]]: !llvm.ptr {llvm.noalias},
 // CHECK-SAME:   %[[ARG1:.*]]: !llvm.ptr {llvm.noalias, xla.invariant},
 // CHECK-SAME:   %[[ARG2:.*]]: index) -> f32 {

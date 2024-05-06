@@ -28,16 +28,16 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
 
 // Converts IFRT `DType` into `xla::PrimitiveType`.
-StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype);
+absl::StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype);
 
 // Converts `xla::PrimitiveType` into IFRT `DType`.
-StatusOr<DType> ToDType(xla::PrimitiveType primitive_type);
+absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type);
 
 // Creates IFRT `MemoryKind` from an XLA `PjRtBuffer`.
 MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer);
@@ -48,7 +48,7 @@ class PjRtCompatibleArray
  public:
   // APIs that allow direct access to `PjRtBuffer` for PjRt-only operations.
   virtual absl::Span<const std::shared_ptr<PjRtBuffer>> pjrt_buffers() = 0;
-  virtual StatusOr<absl::Span<std::shared_ptr<PjRtBuffer>>>
+  virtual absl::StatusOr<absl::Span<std::shared_ptr<PjRtBuffer>>>
   mutable_pjrt_buffers() = 0;
 
   static char ID;  // NOLINT
@@ -63,28 +63,28 @@ class PjRtArray final
       absl::InlinedVector<std::shared_ptr<PjRtBuffer>, kPjRtBufferInlineSize>;
 
   // General array construction (with static shape).
-  static StatusOr<tsl::RCReference<PjRtArray>> Create(
+  static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, DType dtype, Shape shape,
       std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
 
   // General array construction (with dynamic shape).
-  static StatusOr<tsl::RCReference<PjRtArray>> Create(
+  static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, DType dtype, DynamicShape dynamic_shape,
       std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
 
   // Shorthand for a single-shard array construction.
-  static StatusOr<tsl::RCReference<PjRtArray>> Create(
+  static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer);
 
   // Shorthand for a multi-shard array construction using ConcreteSharding.
   // TODO(hyeontaek): Remove this once IFRT Sharding and JAX Sharding is unified
   // so that ConcreteSharding can be replaced with a real Sharding.
-  static StatusOr<tsl::RCReference<PjRtArray>> Create(
+  static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers);
 
   // Shorthand for a multi-shard array construction using ConcreteSharding with
   // DynamicShape.
-  static StatusOr<tsl::RCReference<PjRtArray>> Create(
+  static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, DynamicShape dynamic_shape,
       PjRtBuffers pjrt_buffers);
 
@@ -94,13 +94,13 @@ class PjRtArray final
     DCHECK(this);
     return pjrt_buffers_;
   }
-  StatusOr<absl::Span<std::shared_ptr<PjRtBuffer>>> mutable_pjrt_buffers()
+  absl::StatusOr<absl::Span<std::shared_ptr<PjRtBuffer>>> mutable_pjrt_buffers()
       override {
     DCHECK(this);
     return absl::MakeSpan(pjrt_buffers_);
   }
 
-  StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
+  absl::StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
       ArrayCopySemantics semantics) override;
 
   // Array implementation.
@@ -146,24 +146,26 @@ class PjRtArray final
     return sharding_;
   }
 
-  StatusOr<std::vector<tsl::RCReference<Array>>>
+  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout() const override;
+
+  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
 
   ABSL_MUST_USE_RESULT
-  Future<Status> CopyToHostBuffer(
+  Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;
 
-  StatusOr<tsl::RCReference<Array>> Reshard(
+  absl::StatusOr<tsl::RCReference<Array>> Reshard(
       std::shared_ptr<const Sharding> new_sharding,
       ArrayCopySemantics semantics) override;
 
-  Future<Status> GetReadyFuture() const override;
+  Future<> GetReadyFuture() const override;
 
   std::shared_ptr<PjRtBuffer> GetPjRtBuffer(ArrayCopySemantics semantics,
                                             int index) const;
 
-  Future<Status> Delete() override;
+  Future<> Delete() override;
   bool IsDeleted() const override;
 
   std::string DebugString() const override;

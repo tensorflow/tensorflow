@@ -546,7 +546,8 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
       auto factory = [ctx, this](model::Node::Args args) {
         return CreateNode(ctx, std::move(args));
       };
-      model->AddNode(std::move(factory), name(), parent->model_node(), &node_);
+      model->AddNode(std::move(factory), prefix(), parent->model_node(),
+                     &node_);
       cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
     }
   }
@@ -776,17 +777,10 @@ void DatasetBase::Initialize(const Metadata& metadata) {
     LOG_EVERY_N_SEC(ERROR, 10) << s;
   }
   metadata_ = metadata;
-  if (absl::StrContains(metadata_.name(), ":")) {
-    // Type string is already included in the name, no need to add it.
-    return;
-  }
   if (metadata_.name() == "") {
     static std::atomic<int64_t> id_counter(0);
     *metadata_.mutable_name() =
         strings::StrCat(type_string(), ":", id_counter.fetch_add(1));
-  } else {
-    *metadata_.mutable_name() =
-        strings::StrCat(type_string(), ":", metadata_.name());
   }
 }
 
@@ -837,13 +831,19 @@ Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
 
 Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
                         std::vector<Tensor>* out_tensors) const {
-  return errors::Unimplemented(
-      "Random access is not implemented for this dataset.");
+  return errors::Unimplemented("Random access is not implemented for dataset ",
+                               DebugString());
 }
 
-StatusOr<DatasetBase*> DatasetBase::Finalize(
+Status DatasetBase::Get(AnyContext ctx, int64 index,
+                        std::vector<Tensor>* out_tensors) const {
+  return errors::Unimplemented("Random access is not implemented for dataset ",
+                               DebugString());
+}
+
+absl::StatusOr<DatasetBase*> DatasetBase::Finalize(
     OpKernelContext* ctx,
-    std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
+    std::function<absl::StatusOr<core::RefCountPtr<DatasetBase>>()>
         make_finalized_dataset) const {
   mutex_lock l(mu_);
   if (!finalized_dataset_) {
@@ -920,6 +920,30 @@ Status DatasetBase::MakeSplitProviders(
         "), and no custom implementation of `MakeSplitProvider` is defined.");
   }
   return inputs[0]->MakeSplitProviders(split_providers);
+}
+
+std::optional<int64_t> DatasetBase::GetEstimatedElementSize() const {
+  const auto& shapes = output_shapes();
+  const auto& dtypes = output_dtypes();
+  if (shapes.size() != dtypes.size()) {
+    LOG(ERROR) << "This should not happen because the sizes of output_shapes() "
+                  "and output_dtypes() should always be "
+                  "the same.";
+    return std::nullopt;
+  }
+
+  size_t num_outputs = shapes.size();
+  int64_t element_size = 0;
+  for (int i = 0; i < num_outputs; ++i) {
+    const auto& partial_shape = shapes[i];
+    const auto& dtype = dtypes[i];
+    auto num_elements = partial_shape.num_elements();
+    if (num_elements == -1) {
+      return std::nullopt;
+    }
+    element_size += num_elements * DataTypeSize(dtype);
+  }
+  return element_size;
 }
 
 int64_t DatasetBase::Cardinality() const {

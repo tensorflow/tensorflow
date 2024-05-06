@@ -57,7 +57,7 @@ std::string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
   return repr;
 }
 
-/* static */ StatusOr<std::unique_ptr<HloModuleGroupMetadata>>
+/* static */ absl::StatusOr<std::unique_ptr<HloModuleGroupMetadata>>
 HloModuleGroupMetadata::Build(absl::Span<HloModule* const> modules) {
   auto metadata = std::make_unique<HloModuleGroupMetadata>(modules);
   TF_RETURN_IF_ERROR(metadata->Build());
@@ -78,11 +78,11 @@ Status HloModuleGroupMetadata::Build() {
       return OkStatus();
     }
 
-    if (IsChannelInstruction(hlo) || hlo->IsCrossModuleAllReduce()) {
+    if (IsChannelInstruction(hlo) || IsNonSpmdCrossModuleAllReduce(hlo)) {
       std::vector<HloComputation*> peers;
       if (IsChannelInstruction(hlo)) {
         peers.push_back(PeerComputation(hlo));
-      } else if (hlo->IsCrossModuleAllReduce()) {
+      } else if (IsNonSpmdCrossModuleAllReduce(hlo)) {
         for (HloInstruction* instr : GetAllReduceGroup(*hlo->channel_id())) {
           if (instr == hlo) {
             continue;
@@ -217,10 +217,16 @@ bool HloModuleGroupMetadata::IsCompanionInstruction(HloInstruction* hlo) const {
   return companion_set_index_.contains(hlo);
 }
 
+bool HloModuleGroupMetadata::IsNonSpmdCrossModuleAllReduce(
+    HloInstruction* hlo) const {
+  return hlo->IsCrossModuleAllReduce() &&
+         !hlo->GetModule()->config().use_spmd_partitioning();
+}
+
 bool HloModuleGroupMetadata::InstructionCommunicates(
     HloInstruction* hlo) const {
   return IsChannelInstruction(hlo) || IsCompanionInstruction(hlo) ||
-         hlo->IsCrossModuleAllReduce();
+         IsNonSpmdCrossModuleAllReduce(hlo);
 }
 
 const HloModuleGroupMetadata::Channel& HloModuleGroupMetadata::GetChannel(
@@ -332,7 +338,7 @@ Status HloModuleGroupMetadata::RecordInstructions() {
     }
 
     // Group cross module all-reduce instructions by the channel id.
-    if (hlo->IsCrossModuleAllReduce()) {
+    if (IsNonSpmdCrossModuleAllReduce(hlo)) {
       TF_RET_CHECK(channel_id_map_.find(*hlo->channel_id()) ==
                    channel_id_map_.end())
           << "channel_id " << *hlo->channel_id()

@@ -45,9 +45,8 @@
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
-#include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/status_macros.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -78,9 +77,9 @@ Array::MakeArrayFromHostBuffer(
 
   auto req = std::make_unique<MakeArrayFromHostBufferRequest>();
   req->set_host_buffer_handle(host_buffer_handle);
-  req->set_dtype(ToDTypeProto(dtype));
-  *req->mutable_shape() = ToShapeProto(shape);
-  TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), ToShardingProto(*sharding));
+  *req->mutable_dtype() = dtype.ToProto();
+  *req->mutable_shape() = shape.ToProto();
+  TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), sharding->ToProto());
   if (byte_strides.has_value()) {
     *req->mutable_byte_strides() = ToByteStridesProto(*byte_strides);
   }
@@ -88,7 +87,7 @@ Array::MakeArrayFromHostBuffer(
   TF_ASSIGN_OR_RETURN(
       auto response,
       rpc_helper->MakeArrayFromHostBuffer(std::move(req)).Await());
-  const ArrayHandle handle{.handle = response->array_handle()};
+  const ArrayHandle handle{response->array_handle()};
 
   if (on_done_with_host_buffer != nullptr) {
     std::move(on_done_with_host_buffer)();
@@ -113,26 +112,26 @@ void Array::Destruct(RpcHelper* rpc_helper, ArrayHandle handle) {
           });
 }
 
-Future<absl::Status> Array::GetReadyFuture() const {
+Future<> Array::GetReadyFuture() const {
   auto req = std::make_unique<CheckArrayReadyRequest>();
   req->set_array_handle(handle_.handle);
 
-  auto promise = Future<absl::Status>::CreatePromise();
+  auto promise = Future<>::CreatePromise();
   rpc_helper_->CheckArrayReady(std::move(req))
       .OnReady(
           [promise](absl::StatusOr<std::shared_ptr<CheckArrayReadyResponse>>
-                        resp) mutable -> void { promise.Set(resp.status()); });
-  return Future<absl::Status>(std::move(promise));
+                        resp) mutable { promise.Set(resp.status()); });
+  return Future<>(std::move(promise));
 }
 
-Future<absl::Status> Array::Delete() {
+Future<> Array::Delete() {
   auto req = std::make_unique<DeleteArrayRequest>();
   req->set_array_handle(handle_.handle);
 
   absl::StatusOr<std::shared_ptr<DeleteArrayResponse>> response =
       rpc_helper_->DeleteArray(std::move(req)).Await();
   if (!response.ok()) {
-    return Future<absl::Status>(response.status());
+    return Future<>(response.status());
   }
 
   // TODO(b/266635130): So that the caller is not blocked until the server
@@ -168,8 +167,8 @@ Array::AssembleArrayFromSingleDeviceArrays(
     ArrayCopySemantics semantics) {
   auto req = std::make_unique<AssembleArrayFromSingleDeviceArraysRequest>();
   TF_RET_CHECK(!arrays.empty());
-  *req->mutable_shape() = ToShapeProto(shape);
-  TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), ToShardingProto(*sharding));
+  *req->mutable_shape() = shape.ToProto();
+  TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), sharding->ToProto());
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
   for (const tsl::RCReference<xla::ifrt::Array>& rcref : arrays) {
     Array* array = llvm::dyn_cast<Array>(rcref.get());
@@ -185,7 +184,7 @@ Array::AssembleArrayFromSingleDeviceArrays(
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<AssembleArrayFromSingleDeviceArraysResponse> response,
       rpc_helper->AssembleArrayFromSingleDeviceArrays(std::move(req)).Await());
-  ArrayHandle handle{.handle = response->array_handle()};
+  ArrayHandle handle{response->array_handle()};
 
   return tsl::RCReference<xla::ifrt::Array>(
       tsl::MakeRef<Array>(client, std::move(rpc_helper), arrays[0]->dtype(),
@@ -203,7 +202,7 @@ Array::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
       rpc_helper_->DisassembleIntoSingleDeviceArrays(std::move(req)).Await());
   std::vector<ArrayHandle> handles;
   for (auto& handle : response->single_device_array_handles()) {
-    handles.push_back(ArrayHandle{.handle = handle});
+    handles.push_back(ArrayHandle{handle});
   }
 
   TF_ASSIGN_OR_RETURN(auto shape_and_shardings, sharding_->Disassemble(shape_));
@@ -232,7 +231,7 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Array::FullyReplicatedShard(
       std::shared_ptr<FullyReplicatedShardResponse> response,
       rpc_helper_->FullyReplicatedShard(std::move(req)).Await());
 
-  ArrayHandle handle{.handle = response->array_handle()};
+  ArrayHandle handle{response->array_handle()};
 
   // We are making the assumption the Array returned by the server corresponds
   // to the first device. Revisit this when IFRT supports: (1) an inexpensive
@@ -253,24 +252,24 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Array::Reshard(
     ArrayCopySemantics semantics) {
   auto req = std::make_unique<ReshardRequest>();
   req->set_array_handle(handle_.handle);
-  TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), ToShardingProto(*new_sharding));
+  TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), new_sharding->ToProto());
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
 
   TF_ASSIGN_OR_RETURN(std::shared_ptr<ReshardResponse> response,
                       rpc_helper_->Reshard(std::move(req)).Await());
-  ArrayHandle handle{.handle = response->array_handle()};
+  ArrayHandle handle{response->array_handle()};
 
   return tsl::RCReference<xla::ifrt::Array>(tsl::MakeRef<Array>(
       client_, rpc_helper_, dtype_, shape_, std::move(new_sharding), handle));
 }
 
-Future<absl::Status> Array::CopyToHostBuffer(
+Future<> Array::CopyToHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
   const auto mem_region = ArrayMemRegion::FromZerothElementPointer(
       /*zeroth_element=*/data, dtype_, shape_, byte_strides);
   if (!mem_region.ok()) {
-    return Future<absl::Status>(mem_region.status());
+    return Future<>(mem_region.status());
   }
 
   auto req = std::make_unique<CopyToHostBufferRequest>();
@@ -282,7 +281,7 @@ Future<absl::Status> Array::CopyToHostBuffer(
       rpc_helper_->host_buffer_store()->NextHandle();
   req->set_host_buffer_handle(host_buffer_handle);
 
-  auto promise = Future<absl::Status>::CreatePromise();
+  auto promise = Future<>::CreatePromise();
   auto on_ready = [host_buffer_store = rpc_helper_->host_buffer_store(),
                    promise, host_buffer_handle,
                    mem_region = mem_region->mem_region()](
@@ -326,11 +325,11 @@ Future<absl::Status> Array::CopyToHostBuffer(
           std::memcpy(const_cast<char*>(mem_region.data()),
                       data->Flatten().data(), data->size());
 #endif
-          promise.Set(absl::OkStatus());
+          promise.Set();
         });
   };
   rpc_helper_->CopyToHostBuffer(std::move(req)).OnReady(std::move(on_ready));
-  return Future<absl::Status>(std::move(promise));
+  return Future<>(std::move(promise));
 }
 
 xla::ifrt::Client* Array::client() const { return client_; }

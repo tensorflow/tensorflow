@@ -4,8 +4,12 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load("//tsl:tsl.bzl", "internal_visibility")
-load("//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load(
+    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
+load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
+load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//tsl/platform:build_config.bzl",
     "tsl_cc_test",
@@ -13,10 +17,6 @@ load(
 load(
     "//tsl/platform:build_config_root.bzl",
     "if_static",
-)
-load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
-    "cc_library",
 )
 
 package(
@@ -273,10 +273,10 @@ cc_library(
         "//tsl/platform:status",
         "//tsl/platform:statusor",
         "//tsl/platform:str_util",
-        "//tsl/util:device_name_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/util:device_name_utils",
     ],
 )
 
@@ -382,7 +382,6 @@ cc_library(
     deps = [
         "//tsl/platform:logging",
         "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -397,6 +396,11 @@ cc_library(
         ":serving_device_selector",
         "@com_google_absl//absl/strings:string_view",
     ],
+)
+
+cc_library(
+    name = "real_time_in_memory_metric",
+    hdrs = ["real_time_in_memory_metric.h"],
 )
 
 tsl_cc_test(
@@ -461,6 +465,16 @@ tsl_cc_test(
         "//tsl/platform:status_matchers",
         "//tsl/platform:test_main",
         "//tsl/protobuf:error_codes_proto_impl_cc",
-        "//tsl/util:device_name_utils",
+        "@local_xla//xla/tsl/util:device_name_utils",
+    ],
+)
+
+tsl_cc_test(
+    name = "real_time_in_memory_metric_test",
+    srcs = ["real_time_in_memory_metric_test.cc"],
+    deps = [
+        ":real_time_in_memory_metric",
+        "//tsl/platform:test",
+        "//tsl/platform:test_main",
     ],
 )

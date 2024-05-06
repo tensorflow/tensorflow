@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_PYTHON_PYTHON_REF_MANAGER_H_
 #define XLA_PYTHON_PYTHON_REF_MANAGER_H_
 
+#include <Python.h>
+
 #include <atomic>
 #include <deque>
 #include <memory>
@@ -25,7 +27,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "pybind11/pybind11.h"  // from @pybind11
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 
 namespace xla {
 
@@ -42,13 +44,13 @@ class PythonRefManager {
  public:
   PythonRefManager() = default;
 
-  // Holds references to a set of pybind11::objects, adding the references to
+  // Holds references to a set of nanobind::objects, adding the references to
   // the PythonRefManager on destruction.
   class ManagedPyObjects {
    public:
     ManagedPyObjects() = default;
     ManagedPyObjects(PythonRefManager* manager,
-                     absl::Span<pybind11::object> objects);
+                     absl::Span<nanobind::object> objects);
 
     ~ManagedPyObjects();
 
@@ -59,18 +61,19 @@ class PythonRefManager {
 
    private:
     PythonRefManager* manager_ = nullptr;
-    absl::InlinedVector<pybind11::object, 1> objects_;
+    absl::InlinedVector<nanobind::object, 1> objects_;
   };
 
   // Creates a managed std::shared_ptr to an object. When the shared_ptr is
   // destroyed, the reference to 'object' will be added to python_garbage_,
   // and collected next time CollectGarbage() is called.
-  std::shared_ptr<ManagedPyObjects> ManageReference(pybind11::object object);
+  std::shared_ptr<ManagedPyObjects> ManageReference(nanobind::object object);
   std::shared_ptr<ManagedPyObjects> ManageReferences(
-      absl::Span<pybind11::object> objects);
+      absl::Span<nanobind::object> objects);
 
   // Adds garbage objects to the manager.
-  void AddGarbage(absl::Span<pybind11::object> garbage);
+  void AddGarbage(nanobind::object garbage);
+  void AddGarbage(absl::Span<nanobind::object> garbage);
   void AddGarbage(absl::Span<std::pair<PyCodeObject*, int> const> garbage);
 
   // Releases the contents of python_garbage_. Requires that the GIL is held.
@@ -89,7 +92,7 @@ class PythonRefManager {
 
  private:
   absl::Mutex mu_;
-  std::deque<pybind11::object> python_garbage_ ABSL_GUARDED_BY(mu_);
+  std::deque<nanobind::object> python_garbage_ ABSL_GUARDED_BY(mu_);
 
   // Writes to garbage_count_ are protected by mu_, reads are not protected.
   std::atomic<int> garbage_count_{0};

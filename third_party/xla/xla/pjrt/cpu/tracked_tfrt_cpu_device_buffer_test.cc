@@ -19,13 +19,11 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
-
-using ::xla::runtime::CpuEvent;
 
 TEST(TrackedTfrtCpuDeviceBufferTest, Basic) {
   std::string expected = "tracked_tfrt_cpu_device_buffer_test";

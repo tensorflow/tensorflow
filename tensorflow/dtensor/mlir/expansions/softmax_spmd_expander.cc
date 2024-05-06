@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
@@ -79,10 +80,8 @@ StatusOr<mlir::Value> ComputeGlobalReduce(
                     local_reduce, reduce_op));
 
   if (!keep_dims) {
-    mlir::RankedTensorType output_type =
-        global_reduce->getResult(0)
-            .getType()
-            .dyn_cast<mlir::RankedTensorType>();
+    mlir::RankedTensorType output_type = mlir::dyn_cast<mlir::RankedTensorType>(
+        global_reduce->getResult(0).getType());
     if (!output_type)
       return errors::Internal(
           "output of EmitAllReduce is not a RankedTensorType");
@@ -209,7 +208,8 @@ StatusOr<Layout> GetBroadcastedLayout(llvm::ArrayRef<int64_t> global_shape,
 // value. Assumes builder's insertion point is after input.
 StatusOr<mlir::Value> GetFPConstOfType(mlir::OpBuilder& builder,
                                        const mlir::Value& input, float value) {
-  if (mlir::TensorType type = input.getType().dyn_cast<mlir::TensorType>()) {
+  if (mlir::TensorType type =
+          mlir::dyn_cast<mlir::TensorType>(input.getType())) {
     return builder
         .create<mlir::TF::ConstOp>(
             input.getLoc(),
@@ -239,7 +239,7 @@ StatusOr<mlir::Value> ComputeOneHot(mlir::OpBuilder& builder,
   // Get the number of classes for this onehot. The number of classes is the
   // global size of the last dimension of features.
   mlir::RankedTensorType features_type =
-      features.getType().dyn_cast<mlir::RankedTensorType>();
+      mlir::dyn_cast<mlir::RankedTensorType>(features.getType());
   if (!features_type)
     return errors::InvalidArgument(
         "feature input shape must be statically known");
@@ -297,7 +297,8 @@ StatusOr<mlir::Value> ComputeOneHot(mlir::OpBuilder& builder,
 
   // Note that the type of id_offset (int32) may not match the type of input.
   // So we insert a cast in this case.
-  mlir::TensorType input_type = input.getType().dyn_cast<mlir::TensorType>();
+  mlir::TensorType input_type =
+      mlir::dyn_cast<mlir::TensorType>(input.getType());
   if (!input_type) return errors::InvalidArgument("input is not a TensorType");
   if (!input_type.getElementType().isInteger(32))
     id_offset =

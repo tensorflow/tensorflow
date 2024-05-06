@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "tsl/platform/statusor.h"
 
 namespace tsl {
@@ -34,7 +35,7 @@ class ProfilerLock {
 
   // Acquires the profiler lock if no other profiler session is currently
   // active.
-  static StatusOr<ProfilerLock> Acquire();
+  static absl::StatusOr<ProfilerLock> Acquire();
 
   // Default constructor creates an inactive instance.
   ProfilerLock() = default;

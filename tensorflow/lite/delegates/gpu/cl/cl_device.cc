@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
@@ -465,6 +466,9 @@ absl::Status CreateDefaultGPUDevice(CLDevice* result) {
   }
 
   *result = CLDevice(devices[0], platform_id);
+
+  LoadOpenCLFunctionExtensions(platform_id);
+
   return absl::OkStatus();
 }
 

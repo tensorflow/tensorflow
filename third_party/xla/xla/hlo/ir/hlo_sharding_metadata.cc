@@ -174,7 +174,7 @@ Status ApplyDomainSingleSharding(const DomainMetadata::Domain& domain,
 // If user is a tuple instruction, return the tuple subsharding corresponding to
 // the operand matching the instruction argument, because that is the
 // subsharding corresponding to instruction.
-StatusOr<ShapeTree<HloSharding>> GetShardingTreeFromUser(
+absl::StatusOr<ShapeTree<HloSharding>> GetShardingTreeFromUser(
     const HloInstruction& instruction, const HloInstruction& user) {
   if (user.opcode() == HloOpcode::kTuple) {
     return user.sharding()
@@ -188,8 +188,8 @@ StatusOr<ShapeTree<HloSharding>> GetShardingTreeFromUser(
 // then no assignment is made. Therefore kUnassignedDevice is never propagated.
 // kConflict is returned if lhs is already assigned and rhs is assigned to a
 // different device.
-StatusOr<AssignmentKind> AssignLeafSharding(HloSharding* lhs,
-                                            const HloSharding& rhs) {
+absl::StatusOr<AssignmentKind> AssignLeafSharding(HloSharding* lhs,
+                                                  const HloSharding& rhs) {
   TF_RET_CHECK(!lhs->IsTuple() && !rhs.IsTuple());
   if (rhs.UsesDevice(kUnassignedDevice)) {
     return AssignmentKind::kUnassigned;
@@ -207,7 +207,7 @@ StatusOr<AssignmentKind> AssignLeafSharding(HloSharding* lhs,
 // In case of conflicting assignment AssignmentKind::kConflict is returned. In
 // this case lhs_tree is partially assigned, up to the conflicting leaf. It is
 // up to the caller to discard the partial assignment in case of conflict.
-StatusOr<AssignmentKind> AssignTreeSharding(
+absl::StatusOr<AssignmentKind> AssignTreeSharding(
     ShapeTree<HloSharding>* lhs_tree, ShapeTree<HloSharding>::iterator lhs_it,
     const ShapeTree<HloSharding>& rhs_tree) {
   AssignmentKind assigned = AssignmentKind::kUnassigned;
@@ -233,9 +233,9 @@ StatusOr<AssignmentKind> AssignTreeSharding(
   return assigned;
 }
 
-StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
-                                      const DomainMetadata::Domain& domain,
-                                      const HloSharding& domain_sharding) {
+absl::StatusOr<bool> ApplyShardingFromUsers(
+    HloInstruction* instruction, const DomainMetadata::Domain& domain,
+    const HloSharding& domain_sharding) {
   if (instruction->users().empty()) {
     // No sharding from users, use domain_sharding, after checking
     // compatibility.
@@ -317,8 +317,8 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
 // Tries to propagate the sharding information into the instructions that are
 // part of the domain, in a reverse post order manner (users propagate to
 // instruction).
-StatusOr<int64_t> ApplyDomainShardingPass(const DomainMetadata::Domain& domain,
-                                          const HloSharding& domain_sharding) {
+absl::StatusOr<int64_t> ApplyDomainShardingPass(
+    const DomainMetadata::Domain& domain, const HloSharding& domain_sharding) {
   int64_t assigned = 0;
   // domain.instructions are ordered in a post-order manner. As we do
   // user->operand propagation we process instructions in reverse order. In so
@@ -380,8 +380,8 @@ Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
   return OkStatus();
 }
 
-StatusOr<std::shared_ptr<const HloSharding>> ExtractOriginalCommonSharding(
-    absl::Span<HloInstruction* const> instructions) {
+absl::StatusOr<std::shared_ptr<const HloSharding>>
+ExtractOriginalCommonSharding(absl::Span<HloInstruction* const> instructions) {
   // If we are here, all the instructions being passed had the same sharding
   // (or no sharding), by the means of the ShardingMatches() API.
   // As such, no kDomain was inserted, and here we are asked to extract the
@@ -435,7 +435,7 @@ std::string ShardingMetadata::ToString() const {
   return sharding_ != nullptr ? sharding_->ToString() : "{}";
 }
 
-/*static*/ StatusOr<const ShardingMetadata*>
+/*static*/ absl::StatusOr<const ShardingMetadata*>
 ShardingMetadata::ToShardingMetadata(const DomainMetadata* metadata) {
   if (metadata->Kind() != ShardingMetadata::KindName()) {
     return Status(

@@ -508,4 +508,29 @@ PYBIND11_MODULE(_mlirHlo, m) {
                                        mlirMhloTypeExtensionsGetBoundsSize,
                                        mlirMhloTypeExtensionsGetBoundsElem);
       });
+
+  mlir::python::adaptors::mlir_attribute_subclass(
+      m, "SparsityDescriptor", mlirMhloAttributeIsASparsityDescriptor)
+      .def_classmethod(
+          "get",
+          [](py::object cls, const int64_t dimension, const int64_t n,
+             const int64_t m, MlirContext ctx) {
+            return cls(mlirMhloSparsityDescriptorGet(ctx, dimension, n, m));
+          },
+          py::arg("cls"), py::arg("dimension"), py::arg("n"), py::arg("m"),
+          py::arg("context") = py::none(),
+          "Creates a SparseDescriptor attribute with the given sparsity "
+          "configurations.")
+      .def_property_readonly(
+          "dimension",
+          [](MlirAttribute self) {
+            return mlirMhloSparsityDescriptorGetDimension(self);
+          })
+      .def_property_readonly("n",
+                             [](MlirAttribute self) {
+                               return mlirMhloSparsityDescriptorGetN(self);
+                             })
+      .def_property_readonly("m", [](MlirAttribute self) {
+        return mlirMhloSparsityDescriptorGetM(self);
+      });
 }

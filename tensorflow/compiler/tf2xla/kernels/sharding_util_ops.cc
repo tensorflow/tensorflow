@@ -309,7 +309,7 @@ class XlaConcatNDBaseOp : public XlaOpKernel {
   }
 
  protected:
-  StatusOr<xla::XlaOp> CompileInternal(XlaOpKernelContext* ctx) {
+  absl::StatusOr<xla::XlaOp> CompileInternal(XlaOpKernelContext* ctx) {
     xla::PrimitiveType type;
     TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype_, &type));
 

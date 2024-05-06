@@ -176,6 +176,8 @@ TEST(XlaJitCompiledCpuFunction, Sum) {
       XlaJitCompiledCpuFunction::Compile(graph_def, config,
                                          xla::ExecutableBuildOptions()));
   XlaCompiledCpuFunction function(jit->StaticData());
+  ASSERT_EQ(function.num_args(), 2);
+  ASSERT_EQ(function.num_results(), 1);
 
   // Run the function and check results.
   *static_cast<int32*>(function.arg_data(0)) = 10;
@@ -258,6 +260,8 @@ TEST(XlaJitCompiledCpuFunction, SumVariable) {
       XlaJitCompiledCpuFunction::Compile(graph_def, config,
                                          xla::ExecutableBuildOptions()));
   XlaCompiledCpuFunction function(jit->StaticData());
+  ASSERT_EQ(function.num_args(), 2);
+  ASSERT_EQ(function.num_results(), 2);
 
   // Run the function and check results.
   *static_cast<int32*>(function.arg_data(0)) = 10;
@@ -317,21 +321,22 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
 
     const string& Name() const override { return name_; }
 
-    tsl::StatusOr<std::unique_ptr<se::DeviceDescription>> DescriptionForDevice(
+    absl::StatusOr<std::unique_ptr<se::DeviceDescription>> DescriptionForDevice(
         int ordinal) const override {
       return std::unique_ptr<se::DeviceDescription>(nullptr);
     }
 
-    tsl::StatusOr<se::StreamExecutor*> ExecutorForDevice(int ordinal) override {
+    absl::StatusOr<se::StreamExecutor*> ExecutorForDevice(
+        int ordinal) override {
       return nullptr;
     }
 
-    tsl::StatusOr<se::StreamExecutor*> GetExecutor(
+    absl::StatusOr<se::StreamExecutor*> GetExecutor(
         const se::StreamExecutorConfig& config) override {
       return nullptr;
     }
 
-    tsl::StatusOr<std::unique_ptr<se::StreamExecutor>> GetUncachedExecutor(
+    absl::StatusOr<std::unique_ptr<se::StreamExecutor>> GetUncachedExecutor(
         const se::StreamExecutorConfig& config) override {
       return std::unique_ptr<se::StreamExecutor>(nullptr);
     }

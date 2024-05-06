@@ -86,9 +86,12 @@ class EventPool {
  private:
   const bool allow_reuse_;
 
-  absl::Mutex mu_;
-  std::stack<std::unique_ptr<se::Event>> free_events_ ABSL_GUARDED_BY(mu_);
-  uint64_t next_sequence_number_ ABSL_GUARDED_BY(mu_);
+  absl::Mutex mu_free_events_;
+  std::stack<std::unique_ptr<se::Event>> free_events_
+      ABSL_GUARDED_BY(mu_free_events_);
+
+  absl::Mutex mu_sequence_number_;
+  uint64_t next_sequence_number_ ABSL_GUARDED_BY(mu_sequence_number_);
 };
 
 }  // namespace xla

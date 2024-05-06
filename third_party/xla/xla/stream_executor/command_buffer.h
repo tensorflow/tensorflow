@@ -115,7 +115,7 @@ class CommandBuffer {
   //  synchronization in other direction. For CUDA/ROCM backend it has the same
   //  semantics as stream wait operation.
   //
-  TSL_LIB_GTL_DEFINE_INT_TYPE(ExecutionScopeId, int64_t);
+  TSL_LIB_GTL_DEFINE_INT_TYPE(ExecutionScopeId, uint64_t);
   static constexpr auto kDefaulExecutionScope = ExecutionScopeId(0);
 
   // Builder constructs nested command buffers owned by a parent command buffer.
@@ -283,28 +283,6 @@ class CommandBuffer {
   absl::Status Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
                       size_t num_elements) {
     return Memset(kDefaulExecutionScope, dst, bit_pattern, num_elements);
-  }
-
-  //--------------------------------------------------------------------------//
-  // Command buffer memory allocation API
-  //--------------------------------------------------------------------------//
-
-  // Adds a device memory allocation command.
-  virtual absl::StatusOr<DeviceMemoryBase> Allocate(
-      ExecutionScopeId execution_scope_id, size_t bytes) = 0;
-
-  // Adds a device memory allocation command to the default execution scope.
-  absl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes) {
-    return Allocate(kDefaulExecutionScope, bytes);
-  }
-
-  // Adds a device memory free command.
-  virtual absl::Status Free(ExecutionScopeId execution_scope_id,
-                            DeviceMemoryBase dst) = 0;
-
-  // Adds a device memory free command to the default execution scope.
-  absl::Status Free(DeviceMemoryBase dst) {
-    return Free(kDefaulExecutionScope, dst);
   }
 
   //--------------------------------------------------------------------------//

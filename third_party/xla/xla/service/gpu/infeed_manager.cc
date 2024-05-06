@@ -16,12 +16,23 @@ limitations under the License.
 #include "xla/service/gpu/infeed_manager.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
+#include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/literal.h"
+#include "xla/service/gpu/xfeed_queue.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_memory_handle.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/xla_executor_state.h"
@@ -35,11 +46,9 @@ constexpr int kMaxInfeedsInFlight = 8;
 
 InfeedManager::InfeedManager(se::StreamExecutor* executor)
     : BlockingXfeedQueue(/*max_pending_xfeeds=*/kMaxInfeedsInFlight),
-      stream_(std::make_unique<se::Stream>(executor)) {
-  stream_->Initialize().IgnoreError();
-}
+      stream_(executor->CreateStream().value()) {}
 
-static absl::StatusOr<se::ScopedDeviceMemory<uint8_t>> CopyBufferToDevice(
+static absl::StatusOr<se::DeviceMemoryHandle> CopyBufferToDevice(
     se::Stream* stream, int64_t size, const void* source) {
   if (size > std::numeric_limits<int32_t>::max()) {
     return InvalidArgument("GPU infeed of %d bytes exceeds maximum of %d bytes",
@@ -51,9 +60,9 @@ static absl::StatusOr<se::ScopedDeviceMemory<uint8_t>> CopyBufferToDevice(
   }
 
   se::StreamExecutor* executor = stream->parent();
-  se::ScopedDeviceMemory<uint8_t> buffer(
-      executor, executor->AllocateArray<uint8_t>(size));
-  TF_RETURN_IF_ERROR(stream->Memcpy(buffer.ptr(), source, size));
+  se::DeviceMemoryHandle buffer(executor,
+                                executor->AllocateArray<uint8_t>(size));
+  TF_RETURN_IF_ERROR(stream->Memcpy(buffer.memory_ptr(), source, size));
 
   return std::move(buffer);
 }
@@ -68,7 +77,7 @@ absl::Status InfeedManager::TransferLiteralToInfeed(
 
   // For a tuple, we transfer each of its elements to the device and enqueue the
   // resulting destination device addresses with the infeed manager.
-  ShapeTree<se::ScopedDeviceMemory<uint8_t>> buffer_tree(literal_shape);
+  ShapeTree<se::DeviceMemoryHandle> buffer_tree(literal_shape);
   for (auto& leaf : buffer_tree.leaves()) {
     const Shape& sub_shape = ShapeUtil::GetSubshape(literal_shape, leaf.first);
     CHECK(sub_shape.IsArray()) << ShapeUtil::HumanStringWithLayout(sub_shape);

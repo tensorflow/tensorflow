@@ -794,10 +794,10 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     """Test gather_nd with quantized i8 parameters."""
 
     class GatherNDQI8QDQ(tf.keras.Model):
+
       @tf.function(
           input_signature=[tf.TensorSpec(shape=(2, 2), dtype=tf.float32)]
       )
-
       def func(self, input_tensor):
         x = tf.quantization.fake_quant_with_min_max_args(
             input_tensor, -3.0, 3.0
@@ -1433,7 +1433,11 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
-    interp = interpreter.Interpreter(model_content=quantized_tflite_model)
+    # Do not apply delegates as XNNPack converts per tensor to per channel.
+    interp = interpreter.Interpreter(
+        model_content=quantized_tflite_model,
+        experimental_op_resolver_type=interpreter.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES,
+    )
     interp.allocate_tensors()
     detail = next((
         d
@@ -1625,7 +1629,9 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
     converter.experimental_use_stablehlo_quantizer = True
-    with self.assertRaisesRegex(ValueError, 'only supports static-range PTQ'):
+    with self.assertRaisesRegex(
+        ValueError, 'only supports static-range and weight-only PTQ'
+    ):
       converter.convert()
 
   @test_util.run_v2_only
@@ -3005,7 +3011,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     quantized_tflite_model = converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
-    interp = interpreter.Interpreter(model_content=quantized_tflite_model)
+    # Do not apply delegates as XNNPack converts per tensor to per channel.
+    interp = interpreter.Interpreter(
+        model_content=quantized_tflite_model,
+        experimental_op_resolver_type=interpreter.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES,
+    )
     interp.allocate_tensors()
     quantized_weight = None
     quantized_weight_with_one_postfix = None
@@ -3347,7 +3357,11 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     quantized_tflite_model = converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
-    interp = interpreter.Interpreter(model_content=quantized_tflite_model)
+    # Do not apply delegates as XNNPack converts per tensor to per channel.
+    interp = interpreter.Interpreter(
+        model_content=quantized_tflite_model,
+        experimental_op_resolver_type=interpreter.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES,
+    )
     interp.allocate_tensors()
     quantized_weight = None
     quantized_weight_with_one_postfix = None
@@ -3585,7 +3599,11 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
-    interp = interpreter.Interpreter(model_content=quantized_tflite_model)
+    # Do not apply delegates as XNNPack converts per tensor to per channel.
+    interp = interpreter.Interpreter(
+        model_content=quantized_tflite_model,
+        experimental_op_resolver_type=interpreter.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES,
+    )
     interp.allocate_tensors()
     detail = next(
         (d for d in interp.get_tensor_details() if k_dense_name in d['name'])
@@ -4064,6 +4082,27 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     # Check values from converted model.
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
+
+  @test_util.run_v2_only
+  def testKerasRNNLSTMFloat16Quant(self):
+    input_data = tf.constant(
+        np.array(np.random.random_sample((4, 10, 10)), dtype=np.float32)
+    )
+    # Specify a fixed batch size(4) for the test model.
+    x = tf.keras.layers.Input(batch_shape=(4, 10, 10))
+    y = tf.keras.layers.LSTM(units=10, input_shape=(10, 10))(x)
+    model = tf.keras.Model(inputs=[x], outputs=[y])
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.target_spec.supported_types = [tf.float16]
+    tflite_model = converter.convert()
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
+
+    # Check values from converted model.
+    expected_value = model.predict(input_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-03)
 
   @parameterized.named_parameters(
       ('ForceToUseBatchSizeOne', True), ('DontForceToUseBatchSizeOne', False)

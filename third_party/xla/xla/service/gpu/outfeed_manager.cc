@@ -18,7 +18,9 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/status.h"
-#include "xla/map_util.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "tsl/platform/logging.h"
 

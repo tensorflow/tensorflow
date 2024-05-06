@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -57,13 +58,13 @@ class HloSharding final
 
   ~HloSharding() override = default;
 
-  StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+  absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
-  StatusOr<
+  absl::StatusOr<
       std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
   Disassemble(const DynamicShape& dynamic_shape) const override;
 
-  StatusOr<std::vector<IndexDomain>> IndexDomains(
+  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
   std::string DebugString() const override;

@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 
+#include "absl/log/check.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
+
 namespace mlrt {
 namespace context_internal {
 

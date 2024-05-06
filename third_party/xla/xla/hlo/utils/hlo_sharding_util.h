@@ -75,7 +75,9 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
 // Find a reasonable common sharding for a list of shardings. The reasonable
 // sharding should incur little(the least) amount of total resharding cost when
 // resharding all the shardings to this common sharding.
-HloSharding FindCommonSharding(absl::Span<const HloSharding> shardings);
+HloSharding FindCommonSharding(
+    absl::Span<const HloSharding> shardings,
+    std::optional<HloSharding> default_sharding = std::nullopt);
 
 // Given a map<device, occurrence_count>, selects the device with higher
 // occurrence count (if any). If top_count in not nullptr, it will receive the
@@ -323,8 +325,8 @@ absl::InlinedVector<int64_t, 1> GetScatterParallelUpdateDims(
 
 // Returns the operand pass-through dimensions for gather operand.
 absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOperandDims(
-    const Shape& operand_shape, const HloSharding& operand_sharding,
-    const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes);
+    const Shape& operand_shape, const HloInstruction& hlo,
+    absl::Span<const int64_t> slice_sizes);
 
 // Returns the operand pass-through dimensions for scatter operand(s).
 absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
@@ -333,8 +335,7 @@ absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
 
 absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOutputDims(
     const Shape& output_shape, const Shape& operand_shape,
-    const HloSharding& operand_sharding, const HloInstruction& hlo,
-    absl::Span<const int64_t> slice_sizes);
+    const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes);
 
 absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughUpdateDims(
     const Shape& update_shape, const Shape& operand_shape,
@@ -478,6 +479,13 @@ Shape UntileShape(const HloSharding& sharding, const Shape& shape);
 // Returns the un-tiled shape.
 // REQUIRES: !sharding.IsTuple()
 Shape UntileLeafShape(const HloSharding& sharding, const Shape& shape);
+
+// Returns the tiled shape.
+Shape TileShape(const HloSharding& sharding, const Shape& shape);
+
+// Returns the tiled shape.
+// REQUIRES: !sharding.IsTuple()
+Shape TileLeafShape(const HloSharding& sharding, const Shape& shape);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla

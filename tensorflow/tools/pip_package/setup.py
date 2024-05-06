@@ -55,17 +55,10 @@ _VERSION = '2.17.0'
 # equivalents (tf_nightly_*). The package is controlled from the argument line
 # when building the pip package.
 project_name = 'tensorflow'
-if '--project_name' in sys.argv:
-  project_name_idx = sys.argv.index('--project_name')
-  project_name = sys.argv[project_name_idx + 1]
-  sys.argv.remove('--project_name')
-  sys.argv.pop(project_name_idx)
+if os.environ.get('project_name', None):
+  project_name = os.environ['project_name']
 
-
-collaborator_build = False
-if '--collaborator_build' in sys.argv:
-  sys.argv.remove('--collaborator_build')
-  collaborator_build = True
+collaborator_build = os.environ.get('collaborator_build', False)
 
 
 # Returns standard if a tensorflow-* package is being built, and nightly if a
@@ -85,7 +78,7 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 23.5.26',
+    'flatbuffers >= 24.3.7',
     'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
     'google_pasta >= 0.1.1',
     'h5py >= 3.10.0',
@@ -122,7 +115,7 @@ REQUIRED_PACKAGES = [
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
     'tb-nightly ~= 2.17.0.a',
-    'keras-nightly ~= 3.1.0.dev',
+    'keras-nightly >= 3.2.0.dev',
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
@@ -132,9 +125,6 @@ FAKE_REQUIRED_PACKAGES = [
     # different architectures having different requirements.
     # The entries here should be a simple duplicate of those in the collaborator
     # build section.
-    standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
-    _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
-    'platform_machine=="aarch64")',
     standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
     _VERSION + ';platform_system=="Windows"',
 ]
@@ -146,25 +136,12 @@ if collaborator_build:
   # If this is a collaborator build, then build an "installer" wheel and
   # add the collaborator packages as the only dependencies.
   REQUIRED_PACKAGES = [
-      # Install the TensorFlow package built by AWS if the user is running
-      # Linux on an Aarch64 machine.
-      standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
-      _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
-      'platform_machine=="aarch64")',
       # Install the TensorFlow package built by Intel if the user is on a
       # Windows machine.
-      standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
-      _VERSION + ';platform_system=="Windows"',
-      # Starting with TF 2.16, Apple Silicon packages are uploaded directly
-      # to the "tensorflow" project on PyPI. In order to not break users who
-      # are still using `tensorflow-macos`, we upload an empty installer wheel
-      # to "tensorflow-macos" and add "tensorflow" as its dependency. Please
-      # note that this will go away in TF 2.17 and `tensorflow-macos` will be
-      # considered deprecated. Installer packages are not uploaded to
-      # `tf-nightly-macos`, `tf-nightly` is added below only to avoid breaking
-      # CI builds.
-      standard_or_nightly('tensorflow', 'tf-nightly') + '==' +
-      _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
+      standard_or_nightly('tensorflow-intel', 'tf-nightly-intel')
+      + '=='
+      + _VERSION
+      + ';platform_system=="Windows"',
   ]
 
 # Set up extra packages, which are optional sets of other Python package deps.
@@ -257,8 +234,7 @@ class InstallHeaders(Command):
     install_dir = os.path.join(self.install_dir, os.path.dirname(header))
     # Windows platform uses "\" in path strings, the external header location
     # expects "/" in paths. Hence, we replaced "\" with "/" for this reason
-    if platform.system() == 'Windows':
-      install_dir = install_dir.replace('\\', '/')
+    install_dir = install_dir.replace('\\', '/')
     # Get rid of some extra intervening directories so we can have fewer
     # directories for -I
     install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
@@ -327,7 +303,8 @@ for path in so_lib_paths:
   matches.extend(['../' + x for x in find_files('*', path) if '.py' not in x])
 
 # If building a tpu package, LibTPU for Cloud TPU VM can be installed via:
-# $ pip install <tf-tpu project> -f https://storage.googleapis.com/libtpu-releases/index.html
+# $ pip install <tf-tpu project> -f \
+#  https://storage.googleapis.com/libtpu-releases/index.html
 # libtpu is built and uploaded to this link every night (PST).
 if '_tpu' in project_name:
   # For tensorflow-tpu releases, use a set libtpu version;
@@ -335,7 +312,7 @@ if '_tpu' in project_name:
   # timing of these tests, the UTC date from eight hours ago is expected to be a
   # valid version.
   _libtpu_version = standard_or_nightly(
-      '2.16.0rc0',
+      _VERSION.replace('-', ''),
       '0.1.dev'
       + (
           datetime.datetime.now(tz=datetime.timezone.utc)

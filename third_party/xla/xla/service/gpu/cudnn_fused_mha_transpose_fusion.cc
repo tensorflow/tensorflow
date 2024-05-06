@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -465,13 +465,6 @@ absl::StatusOr<bool> FusePrologueTransposeWithcuDNNFMHA(HloComputation* comp) {
                           fmha->backend_config<GpuBackendConfig>());
       const CudnnfMHABackendConfig config =
           gpu_config.cudnn_fmha_backend_config();
-      if (!config.is_flash_attention()) {
-        TF_ASSIGN_OR_RETURN(changed,
-                            FuseArgPrologueTransposeWithcuDNNFMHA(
-                                fmha, 4, true /*is_lhs=*/,
-                                true /*should_contracting_be_fastest=*/));
-      }
-
       if (changed && VLOG_IS_ON(2)) {
         VLOG(2) << "After CudnnFusedMHATransposeFusion Arg 4: \n"
                 << comp->parent()->ToString();

@@ -16,14 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_CUDNN_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME_CUDNN_THUNK_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/kernel_arguments.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/dnn.h"
 
 namespace xla {
@@ -32,7 +34,7 @@ namespace gpu {
 // Wraps executable cuDNN graph objects.
 class CuDnnThunk : public Thunk {
  public:
-  CuDnnThunk(std::string serialized_graph, ThunkInfo,
+  CuDnnThunk(std::string fingerprint, ThunkInfo,
              absl::Span<const KernelArgument>);
   CuDnnThunk(const CuDnnThunk&) = delete;
   CuDnnThunk& operator=(const CuDnnThunk&) = delete;
@@ -41,10 +43,15 @@ class CuDnnThunk : public Thunk {
   absl::Status Initialize(const InitializeParams&) override;
   absl::Status ExecuteOnStream(const ExecuteParams&) override;
 
+  std::shared_ptr<se::dnn::LazyDnnGraph> graph() const { return graph_; }
+  const std::vector<BufferAllocation::Slice>& arguments() const {
+    return args_;
+  }
+
  private:
   absl::once_flag once_flag_;
-  std::string serialized_graph_;
-  std::unique_ptr<se::dnn::DnnGraph> graph_;
+  std::string fingerprint_;
+  std::shared_ptr<se::dnn::LazyDnnGraph> graph_;
   std::vector<BufferAllocation::Slice> args_;
 };
 

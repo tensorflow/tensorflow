@@ -47,7 +47,7 @@ absl::Status UnfreezeConstantsAndSaveVariables(
       },
       ctx, module_op));
 
-  if (const tsl::Status create_dir_status =
+  if (const absl::Status create_dir_status =
           Env::Default()->CreateDir(std::string(checkpoint_dir));
       !create_dir_status.ok()) {
     LOG(ERROR) << "Failed to create checkpoint directory at: "

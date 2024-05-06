@@ -43,12 +43,12 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/util/determinism.h"
+#include "xla/tsl/util/env_var.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/hash.h"
 #include "tsl/platform/logging.h"
-#include "tsl/util/determinism.h"
-#include "tsl/util/env_var.h"
 
 namespace {
 
@@ -322,6 +322,7 @@ namespace wrap {
   __macro(miopenConvolutionBackwardDataGetWorkSpaceSize)             \
   __macro(miopenCreateRNNDescriptor)                                 \
   __macro(miopenSetRNNDescriptor)                                    \
+  __macro(miopenSetRNNDescriptor_V2)                                 \
   __macro(miopenDestroyRNNDescriptor)                                \
   __macro(miopenGetRNNParamsSize)                                    \
   __macro(miopenGetRNNLayerParam)                                    \
@@ -337,6 +338,15 @@ namespace wrap {
   __macro(miopenGetRNNLayerBiasOffset)                               \
   __macro(miopenGetRNNLayerBiasSize)                                 \
   __macro(miopenGetRNNParamsDescriptor)                              \
+  __macro(miopenCreateDropoutDescriptor)                             \
+  __macro(miopenSetDropoutDescriptor)                                \
+  __macro(miopenGetDropoutDescriptor)                                \
+  __macro(miopenDestroyDropoutDescriptor)                            \
+  __macro(miopenRestoreDropoutDescriptor)                            \
+  __macro(miopenDropoutGetReserveSpaceSize)                          \
+  __macro(miopenDropoutGetStatesSize)                                \
+  __macro(miopenDropoutForward)                                      \
+  __macro(miopenDropoutBackward)                                     \
   __macro(miopenCreateActivationDescriptor)                          \
   __macro(miopenSetActivationDescriptor)                             \
   __macro(miopenGetActivationDescriptor)                             \
@@ -435,6 +445,7 @@ namespace wrap {
   __macro(miopenConvolutionBackwardDataGetWorkSpaceSize)             \
   __macro(miopenCreateRNNDescriptor)                                 \
   __macro(miopenSetRNNDescriptor)                                    \
+  __macro(miopenSetRNNDescriptor_V2)                                 \
   __macro(miopenDestroyRNNDescriptor)                                \
   __macro(miopenGetRNNParamsSize)                                    \
   __macro(miopenGetRNNLayerParam)                                    \
@@ -450,6 +461,15 @@ namespace wrap {
   __macro(miopenGetRNNLayerBiasOffset)                               \
   __macro(miopenGetRNNLayerBiasSize)                                 \
   __macro(miopenGetRNNParamsDescriptor)                              \
+  __macro(miopenCreateDropoutDescriptor)                             \
+  __macro(miopenSetDropoutDescriptor)                                \
+  __macro(miopenGetDropoutDescriptor)                                \
+  __macro(miopenDestroyDropoutDescriptor)                            \
+  __macro(miopenRestoreDropoutDescriptor)                            \
+  __macro(miopenDropoutGetReserveSpaceSize)                          \
+  __macro(miopenDropoutGetStatesSize)                                \
+  __macro(miopenDropoutForward)                                      \
+  __macro(miopenDropoutBackward)                                     \
   __macro(miopenCreateActivationDescriptor)                          \
   __macro(miopenSetActivationDescriptor)                             \
   __macro(miopenGetActivationDescriptor)                             \
@@ -1969,6 +1989,68 @@ class MIOpenRnnParamsDescriptor : public MIOpenDescriptorCommon<void> {
   void operator=(const MIOpenRnnParamsDescriptor&) = delete;
 };
 
+class MIOpenDropoutDescriptor {
+ public:
+  MIOpenDropoutDescriptor(miopenHandle_t miopen_handle, float dropout,
+                          uint64_t seed, ScratchAllocator* state_allocator)
+      : dropout_desc_(nullptr) {
+    auto status = wrap::miopenCreateDropoutDescriptor(&dropout_desc_);
+    if (status != miopenStatusSuccess) {
+      LOG(FATAL) << "call to miopenCreateDropoutDescriptor failed: "
+                 << ToString(status);
+    }
+
+    if (dropout > 0.0f) {
+      DeviceMemory<uint8_t> state_memory;
+      if (state_allocator) {
+        size_t state_sizes_in_bytes = 0;
+        status = wrap::miopenDropoutGetStatesSize(miopen_handle,
+                                                  &state_sizes_in_bytes);
+        if (status != miopenStatusSuccess) {
+          LOG(FATAL) << "call to miopenDropoutGetStatesSize failed: "
+                     << ToString(status);
+        }
+        if (state_sizes_in_bytes > 0) {
+          auto allocated = state_allocator->AllocateBytes(state_sizes_in_bytes);
+          if (!allocated.ok() ||
+              (state_memory = allocated.value()) == nullptr) {
+            LOG(FATAL) << "Failed to allocate dropout state space.";
+          }
+        }
+      }
+
+      bool state_evo = false;  // input placeholder, currently not enabled
+      bool use_mask = true;
+      status = wrap::miopenSetDropoutDescriptor(
+          dropout_desc_ /*dropoutDesc*/, miopen_handle /*handle*/,
+          dropout /*dropout*/, state_memory.opaque() /*states*/,
+          state_memory.size() /*stateSizeInBytes*/, seed /*seed*/,
+          use_mask /*use_mask*/, state_evo /*state_evo*/,
+          MIOPEN_RNG_PSEUDO_XORWOW /*rng_mode*/);
+      if (status != miopenStatusSuccess) {
+        LOG(FATAL) << "call to miopenSetDropoutDescriptor failed: "
+                   << ToString(status);
+      }
+    }
+  }
+
+  ~MIOpenDropoutDescriptor() {
+    auto status = wrap::miopenDestroyDropoutDescriptor(dropout_desc_);
+    if (status != miopenStatusSuccess) {
+      LOG(FATAL) << "call to miopenDestroyDropoutDescriptor failed: "
+                 << ToString(status);
+    }
+  }
+
+  miopenDropoutDescriptor_t handle() const { return dropout_desc_; }
+
+ private:
+  miopenDropoutDescriptor_t dropout_desc_;
+
+  MIOpenDropoutDescriptor(const MIOpenDropoutDescriptor&) = delete;
+  void operator=(const MIOpenDropoutDescriptor&) = delete;
+};
+
 class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
  public:
   MIOpenRnnDescriptor(miopenHandle_t miopen_handle, int num_layers,
@@ -1988,15 +2070,19 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
         rnn_mode_(rnn_mode),
         data_type_(data_type),
         algorithm_config_(algorithm_config) {
+    // Create the dropout handle
+    miopen_dropout_desc_.reset(new MIOpenDropoutDescriptor(
+        miopen_handle, dropout, seed, state_allocator));
     // Create the RNN handle
     auto status = wrap::miopenCreateRNNDescriptor(&rnn_desc_);
     RETURN_IF_MIOPEN_ERROR(status, "Unable to create RNN descriptor");
-    status = wrap::miopenSetRNNDescriptor(
+    status = wrap::miopenSetRNNDescriptor_V2(
         rnn_desc_ /*rnnDesc*/, hidden_size /*hiddenSize*/,
-        num_layers /*numLayers*/, input_mode /*inputMode*/,
-        direction_mode /*direction*/, rnn_mode /*mode*/,
-        miopenRNNwithBias /*biasMode*/, miopenRNNdefault /*algo*/,
-        data_type /*dataType*/);
+        num_layers /*numLayers*/,
+        miopen_dropout_desc_->handle() /*dropoutDesc*/,
+        input_mode /*inputMode*/, direction_mode /*direction*/,
+        rnn_mode /*mode*/, miopenRNNwithBias /*biasMode*/,
+        miopenRNNdefault /*algo*/, data_type /*dataType*/);
     RETURN_IF_MIOPEN_ERROR(status, "Unable to update RNN descriptor");
     // Create the params handle.
     miopen_params_desc_.reset(
@@ -2053,8 +2139,7 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
   miopenDataType_t data_type_;
   dnn::AlgorithmConfig algorithm_config_;
   absl::Status status_;
-  // no dropout in MIOpen.
-  // std::unique_ptr<miopenDropoutDescriptor> miopen_dropout_desc_;
+  std::unique_ptr<MIOpenDropoutDescriptor> miopen_dropout_desc_;
   std::unique_ptr<MIOpenRnnParamsDescriptor> miopen_params_desc_;
   MIOpenRnnDescriptor(const MIOpenRnnDescriptor&) = delete;
   void operator=(const MIOpenRnnDescriptor&) = delete;
@@ -2379,8 +2464,12 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
 
   const bool is_profiling = output_profile_result != nullptr;
 
-  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                      GpuTimer::CreateIfNeeded(stream, is_profiling));
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(
+          stream,
+          output_profile_result && output_profile_result->warmup_run_executed(),
+          is_profiling));
 
   // make the forward call
   if (!is_training) {
@@ -2507,8 +2596,12 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
 
   const bool is_profiling = output_profile_result != nullptr;
 
-  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                      GpuTimer::CreateIfNeeded(stream, is_profiling));
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(
+          stream,
+          output_profile_result && output_profile_result->warmup_run_executed(),
+          is_profiling));
 
   // make the backward data call
   auto status = wrap::miopenRNNBackwardData(
@@ -3188,7 +3281,8 @@ class RocmConvRunner : public dnn::ConvRunner {
     return {{algo_id_, false, workspace_size_}};
   }
 
-  absl::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
+  absl::Status operator()(Stream* stream,
+                          dnn::ProfileResult* output_profile_result,
                           DeviceMemoryBase scratch_memory,
                           DeviceMemoryBase input_data,
                           DeviceMemoryBase filter_data,
@@ -3199,9 +3293,13 @@ class RocmConvRunner : public dnn::ConvRunner {
     // Beta is the scaling factor for output.
     float beta = 0.0;
 
-    const bool is_profiling = profile_result != nullptr;
+    const bool is_profiling = output_profile_result != nullptr;
     TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                        GpuTimer::CreateIfNeeded(stream, is_profiling));
+                        GpuTimer::CreateIfNeeded(
+                            stream,
+                            output_profile_result &&
+                                output_profile_result->warmup_run_executed(),
+                            is_profiling));
 
     miopenStatus_t status = miopenStatusSuccess;
     switch (kind_) {
@@ -3272,11 +3370,11 @@ class RocmConvRunner : public dnn::ConvRunner {
       if (status == miopenStatusSuccess) {
         TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
                             timer->GetElapsedDuration());
-        profile_result->set_elapsed_time_in_ms(
+        output_profile_result->set_elapsed_time_in_ms(
             absl::ToDoubleMilliseconds(elapsed));
         dnn::AlgorithmDesc algotype(algo_id_, false);
-        profile_result->set_algorithm(algotype);
-        profile_result->set_scratch_size(scratch_memory.size());
+        output_profile_result->set_algorithm(algotype);
+        output_profile_result->set_scratch_size(scratch_memory.size());
       }
     }
 
@@ -4253,7 +4351,6 @@ absl::Status MIOpenSupport::DoPoolForward(
   bool do_backward = false;
   uint8* workspace = nullptr;
   size_t workspace_size = 0;
-  ScopedDeviceMemory<uint8> wsp_mem;
   if (m_pooling_cache_enabled && element_type == dnn::DataType::kFloat) {
     do_backward = true;
     auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
@@ -4274,7 +4371,9 @@ absl::Status MIOpenSupport::DoPoolForward(
         // reusing the same buffer
         workspace = reinterpret_cast<uint8*>(pdesc->workspace.ptr()->opaque());
       } else {
-        wsp_mem = stream->parent()->AllocateOwnedArray<uint8>(workspace_size);
+        ScopedDeviceMemory<uint8> wsp_mem(
+            stream->parent(),
+            stream->parent()->AllocateArray<uint8>(workspace_size));
         workspace = reinterpret_cast<uint8*>(wsp_mem.ptr()->opaque());
         m_pooling_cache.insert(input_data.opaque(), input_dimensions,
                                output_dimensions, pooling_dimensions,
@@ -4684,7 +4783,7 @@ void initialize_miopen() {
     absl::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
             rocm::kROCmPlatformId, "MIOpen",
-            [](internal::StreamExecutorInterface* parent) -> dnn::DnnSupport* {
+            [](StreamExecutorInterface* parent) -> dnn::DnnSupport* {
               gpu::GpuExecutor* rocm_executor =
                   dynamic_cast<gpu::GpuExecutor*>(parent);
               if (rocm_executor == nullptr) {

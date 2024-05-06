@@ -787,10 +787,9 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
   return absl::OkStatus();
 }
 
-Status CopyBatch(CopyBatchParams params,
-                 const std::vector<std::vector<Tensor>>& batch_elements,
-                 bool parallel_copy,
-                 std::vector<Tensor>* out_tensors) {
+Status CopyBatch(AnyContext ctx,
+                 std::vector<std::vector<Tensor>>&& batch_elements,
+                 bool parallel_copy, std::vector<Tensor>* out_tensors) {
   const size_t num_tuple_components = batch_elements.at(0).size();
   out_tensors->reserve(num_tuple_components);
   const int64_t num_batch_elements = batch_elements.size();
@@ -800,7 +799,7 @@ Status CopyBatch(CopyBatchParams params,
     TensorShape first_element_shape(first_element.shape());
     TensorShape batch_component_shape({num_batch_elements});
     batch_component_shape.AppendShape(first_element_shape);
-    out_tensors->emplace_back(params.allocator, first_element.dtype(),
+    out_tensors->emplace_back(ctx.allocator, first_element.dtype(),
                               batch_component_shape);
     if (!out_tensors->back().IsInitialized()) {
       return errors::ResourceExhausted(
@@ -838,7 +837,7 @@ Status CopyBatch(CopyBatchParams params,
     if (parallel_copy && total_bytes >= (1 << 20)) {
       Status status;
       mutex status_mu;
-      const auto num_threads = params.runner_threadpool_size;
+      const auto num_threads = ctx.runner_threadpool_size;
       const auto slice_size = num_batch_elements / num_threads;
       int64_t offset = 0;
       BlockingCounter counter(num_threads);
@@ -848,8 +847,8 @@ Status CopyBatch(CopyBatchParams params,
         // evenly, the size of some slices is incremented to guarantee their
         // sizes add up to the total number of elements.
         if (i < num_batch_elements % num_threads) ++length;
-        (*params.runner)([offset, length, &status, &status_mu, &counter,
-                          &copy_element_fn]() {
+        (*ctx.runner)([offset, length, &status, &status_mu, &counter,
+                       &copy_element_fn]() {
           Status s;
           for (size_t j = offset; j < offset + length; ++j) {
             s.Update(copy_element_fn(j));
@@ -1015,7 +1014,7 @@ REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("file_locality", RandomJobSamplePercentage<0>,
                             AllTasks);
-REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<50>,
+REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("no_compression", RandomJobSamplePercentage<0>,
                             AllTasks);
@@ -1024,9 +1023,9 @@ REGISTER_DATASET_EXPERIMENT("no_compression_v2", RandomJobSamplePercentage<50>,
 REGISTER_DATASET_EXPERIMENT("inject_io_prefetch", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("reduce_array_record_dataset_memory_usage",
-                            RandomJobSamplePercentage<0>, AllTasks);
-REGISTER_DATASET_EXPERIMENT("map_fusion", RandomJobSamplePercentage<5>,
-                            IndependentHostTasks);
+                            RandomJobSamplePercentage<50>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("map_fusion", RandomJobSamplePercentage<0>,
+                            AllTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

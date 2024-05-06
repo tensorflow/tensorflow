@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/passes.h"
 #include "mhlo/transforms/rewriters.h"
@@ -32,7 +33,9 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -74,9 +77,8 @@ Value transposeReshape(Value arg, Location loc,
                             rewriter.getIntegerType(64));
 
   auto transposePermutationAttr =
-      DenseIntElementsAttr::get(transposePermutationType,
-                                llvm::ArrayRef(transposePermutation))
-          .cast<DenseIntElementsAttr>();
+      mlir::cast<DenseIntElementsAttr>(DenseIntElementsAttr::get(
+          transposePermutationType, llvm::ArrayRef(transposePermutation)));
 
   // Compute the resulting shape.
   llvm::SmallVector<int64_t, 5> transposedShape;
@@ -142,7 +144,7 @@ Value transposeReshape(Value arg, Location loc,
 
 Value processDotArg(Value arg, Location loc, ArrayRef<int64_t> contractDimsAttr,
                     bool outerDimsFirst, PatternRewriter &rewriter) {
-  auto shape = arg.getType().cast<ShapedType>().getShape();
+  auto shape = mlir::cast<ShapedType>(arg.getType()).getShape();
 
   llvm::SmallVector<bool, 5> isOuterDim;
   isOuterDim.resize(shape.size(), true);
@@ -195,7 +197,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     auto opPrecisionConfig = op.getPrecisionConfig();
     if (opPrecisionConfig.has_value()) precisionConfig = *opPrecisionConfig;
 
-    auto resultTy = op.getType().cast<ShapedType>();
+    auto resultTy = mlir::cast<ShapedType>(op.getType());
 
     auto lhsContractingDims = dotNumbers.getLhsContractingDimensions();
     auto rhsContractingDims = dotNumbers.getRhsContractingDimensions();
@@ -203,8 +205,8 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     auto lhs = op.getLhs();
     auto rhs = op.getRhs();
 
-    RankedTensorType lhsTy = lhs.getType().dyn_cast<RankedTensorType>();
-    RankedTensorType rhsTy = rhs.getType().dyn_cast<RankedTensorType>();
+    RankedTensorType lhsTy = mlir::dyn_cast<RankedTensorType>(lhs.getType());
+    RankedTensorType rhsTy = mlir::dyn_cast<RankedTensorType>(rhs.getType());
     if (!lhsTy || !rhsTy) return failure();
 
     // The MHLO dot operator directly supports a vector dot product
@@ -256,14 +258,14 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     if (sparse_tensor::hasAnySparseOperandOrResult(op)) return failure();
 
     // Compute the, possibly, transposed-reshaped operands.
-    lhs = llvm::cast<mlir::TypedValue<mlir::TensorType>>(processDotArg(
+    lhs = llvm::cast<mlir::TypedValue<mlir::RankedTensorType>>(processDotArg(
         lhs, loc, lhsContractingDims, /*outerDimsFirst=*/true, rewriter));
-    rhs = llvm::cast<mlir::TypedValue<mlir::TensorType>>(processDotArg(
+    rhs = llvm::cast<mlir::TypedValue<mlir::RankedTensorType>>(processDotArg(
         rhs, loc, rhsContractingDims, /*outerDimsFirst=*/false, rewriter));
 
     // Accept only static shaped types.
-    auto lhsShapeType = lhs.getType().dyn_cast_or_null<ShapedType>();
-    auto rhsShapeType = rhs.getType().dyn_cast_or_null<ShapedType>();
+    auto lhsShapeType = mlir::dyn_cast_or_null<ShapedType>(lhs.getType());
+    auto rhsShapeType = mlir::dyn_cast_or_null<ShapedType>(rhs.getType());
     if (!lhsShapeType || !rhsShapeType) return failure();
 
     // Generate new dot operator on expanded types.
@@ -291,7 +293,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
 
     auto getDynamicDims = [&](Value arg,
                               llvm::ArrayRef<int64_t> contractingDims) {
-      RankedTensorType ty = arg.getType().cast<RankedTensorType>();
+      RankedTensorType ty = mlir::cast<RankedTensorType>(arg.getType());
       int index = 0;
       for (auto contractingDim : contractingDims) {
         for (; index < contractingDim; index++) {

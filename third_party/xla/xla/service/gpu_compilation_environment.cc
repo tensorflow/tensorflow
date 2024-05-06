@@ -25,11 +25,11 @@ limitations under the License.
 #include "xla/service/compilation_environments.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace xla {
 

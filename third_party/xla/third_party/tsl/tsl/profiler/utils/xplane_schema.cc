@@ -47,8 +47,8 @@ const absl::string_view kHostCpusPlaneName = "Host CPUs";
 const absl::string_view kSyscallsPlaneName = "Syscalls";
 
 const absl::string_view kStepLineName = "Steps";
-const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
-const absl::string_view kTensorFlowOpLineName = "TensorFlow Ops";
+const absl::string_view kTensorFlowNameScopeLineName = "Framework Name Scope";
+const absl::string_view kTensorFlowOpLineName = "Framework Ops";
 const absl::string_view kXlaModuleLineName = "XLA Modules";
 const absl::string_view kXlaOpLineName = "XLA Ops";
 const absl::string_view kXlaAsyncOpLineName = "Async XLA Ops";
@@ -140,6 +140,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       // Batching related.
       {"BatchingSessionRun", kBatchingSessionRun},
       {"ProcessBatch", kProcessBatch},
+      {"BrainSessionRun", kBrainSessionRun},
       {"ConcatInputTensors", kConcatInputTensors},
       {"MergeInputTensors", kMergeInputTensors},
       {"ScheduleWithoutSplit", kScheduleWithoutSplit},
@@ -552,10 +553,26 @@ const absl::string_view kMegaScaleH2DTransferFinished =
 const absl::string_view kMegaScaleReductionStart = "MegaScale: Reduction";
 const absl::string_view kMegaScaleReductionFinished =
     "MegaScale: Reduction Finished";
+const absl::string_view kMegaScaleCompressionStart = "MegaScale: Compression";
+const absl::string_view kMegaScaleCompressionFinished =
+    "MegaScale: Compression Finished";
+const absl::string_view kMegaScaleDecompressionStart =
+    "MegaScale: Decompression";
+const absl::string_view kMegaScaleDecompressionFinished =
+    "MegaScale: Decompression Finished";
 const char kXProfMetadataKey[] = "key";
 const char kXProfMetadataFlow[] = "flow";
 const char kXProfMetadataTransfers[] = "transfers";
 const char kXProfMetadataBufferSize[] = "buffer_size";
 
+// String constants for threadpool_listener
+const absl::string_view kThreadpoolListenerRecord =
+    "ThreadpoolListener::Record";
+const absl::string_view kThreadpoolListenerStartRegion =
+    "ThreadpoolListener::StartRegion";
+const absl::string_view kThreadpoolListenerStopRegion =
+    "ThreadpoolListener::StopRegion";
+const absl::string_view kThreadpoolListenerRegion =
+    "ThreadpoolListener::Region";
 }  // namespace profiler
 }  // namespace tsl

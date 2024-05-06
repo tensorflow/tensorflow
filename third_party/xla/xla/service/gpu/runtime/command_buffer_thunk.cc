@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -145,7 +145,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // for recording commands.
   Thunk::ExecuteParams execute_params(
       params.buffer_allocations, params.stream,
-      params.command_buffer_trace_stream, {}, params.collective_params,
+      params.command_buffer_trace_stream, params.collective_params,
       params.collective_cliques, /*device_to_host_stream=*/nullptr,
       /*host_to_device_stream=*/nullptr,
       /*send_device_memory_function=*/nullptr,

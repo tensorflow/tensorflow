@@ -28,8 +28,11 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -40,7 +43,8 @@ namespace {
 #include "mhlo/transforms/mhlo_passes.h.inc"
 
 // Given an input tensor, collapse dimensions 1+collapsedSliceDims[...].
-Value collapseSliceDims(ImplicitLocOpBuilder& b, TypedValue<TensorType> input,
+Value collapseSliceDims(ImplicitLocOpBuilder& b,
+                        TypedValue<RankedTensorType> input,
                         ArrayRef<int64_t> collapsedSliceDims) {
   if (collapsedSliceDims.empty()) return input;
 
@@ -59,7 +63,7 @@ Value collapseSliceDims(ImplicitLocOpBuilder& b, TypedValue<TensorType> input,
 // Expands the first dimension of `input` into the shape of `startIndices`,
 // removing the index vector dimension.
 Value expandBatchDimension(ImplicitLocOpBuilder& b,
-                           TypedValue<TensorType> input,
+                           TypedValue<RankedTensorType> input,
                            GatherOp originalGatherOp) {
   llvm::SmallVector<int64_t> newShape{
       originalGatherOp.getStartIndices().getType().getShape()};
@@ -87,7 +91,7 @@ Value expandBatchDimension(ImplicitLocOpBuilder& b,
 }
 
 Value moveOffsetDimensions(ImplicitLocOpBuilder& b,
-                           TypedValue<TensorType> input,
+                           TypedValue<RankedTensorType> input,
                            GatherOp originalGatherOp) {
   const auto& dims = originalGatherOp.getDimensionNumbers();
   int64_t outputRank = input.getType().getRank();
@@ -152,7 +156,7 @@ struct CanonicalizeGatherPattern : public OpRewritePattern<GatherOp> {
         rewriter.getContext(), offsetDims,
         /*collapsedSliceDims=*/{}, startIndexMap,
         /*indexVectorDim=*/1);
-    TypedValue<TensorType> result =
+    TypedValue<RankedTensorType> result =
         b.create<GatherOp>(operand, startIndices, newDims,
                            b.getI64TensorAttr(permute(
                                gatherOp.getSliceSizes().getValues<int64_t>(),
@@ -168,16 +172,16 @@ struct CanonicalizeGatherPattern : public OpRewritePattern<GatherOp> {
         result, b.getI64TensorAttr(operandPermutationInverse));
 
     // Collapse the requested dimensions.
-    result = cast<TypedValue<TensorType>>(
+    result = cast<TypedValue<RankedTensorType>>(
         collapseSliceDims(b, result, dims.getCollapsedSliceDims()));
 
     // Expand the start index dimensions.
-    result =
-        cast<TypedValue<TensorType>>(expandBatchDimension(b, result, gatherOp));
+    result = cast<TypedValue<RankedTensorType>>(
+        expandBatchDimension(b, result, gatherOp));
 
     // Move the offset dims to the final locations.
-    result =
-        cast<TypedValue<TensorType>>(moveOffsetDimensions(b, result, gatherOp));
+    result = cast<TypedValue<RankedTensorType>>(
+        moveOffsetDimensions(b, result, gatherOp));
 
     rewriter.replaceOp(gatherOp.getOperation(), {result});
     return success();

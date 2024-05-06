@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -67,7 +68,7 @@ SmallVector<Value> transposeTensors(OpBuilder& b, Location loc,
 SmallVector<Value> transposeUpdatesAccordingToScatterDimsMap(
     OpBuilder& b, Location loc, SmallVector<Value> updates,
     ArrayRef<int64_t> scatterDimsToOperandDims) {
-  auto updatesType = updates.front().getType().cast<RankedTensorType>();
+  auto updatesType = mlir::cast<RankedTensorType>(updates.front().getType());
   int64_t updatesRank = updatesType.getRank();
   int64_t operandRank = updatesRank - 1;
 
@@ -87,7 +88,7 @@ SmallVector<Value> transposeUpdatesAccordingToScatterDimsMap(
 SmallVector<Value> transposeUpdatesToMoveWindowDimensionsInside(
     OpBuilder& b, Location loc, SmallVector<Value> updates,
     ArrayRef<int64_t> updateWindowDims) {
-  auto updatesType = updates.front().getType().cast<RankedTensorType>();
+  auto updatesType = mlir::cast<RankedTensorType>(updates.front().getType());
   int64_t updatesRank = updatesType.getRank();
 
   // Move update dimensions to the back
@@ -102,7 +103,7 @@ SmallVector<Value> transposeUpdatesToMoveWindowDimensionsInside(
 SmallVector<Value> reshapeUpdatesToEnsureSingleScatterDimension(
     OpBuilder& b, Location loc, ValueRange updates,
     ArrayRef<int64_t> updateWindowDims) {
-  auto updatesType = updates.front().getType().cast<RankedTensorType>();
+  auto updatesType = mlir::cast<RankedTensorType>(updates.front().getType());
   int64_t updatesRank = updatesType.getRank();
 
   // Collapse scatter dimensions to 1D if there are more than 1 or prepend a
@@ -186,7 +187,7 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
         scatterOp.getScatterDimensionNumbers();
 
     auto operandType =
-        scatterOp.getInputs().front().getType().cast<RankedTensorType>();
+        mlir::cast<RankedTensorType>(scatterOp.getInputs().front().getType());
     int64_t operandRank = operandType.getRank();
     auto [operandPermutation, operandPermutationInverse] =
         makeOperandStartIndexPermutations(
@@ -205,7 +206,7 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
         dimsAttrs.getUpdateWindowDims(), dimsAttrs.getInsertedWindowDims());
 
     int64_t scatterIndicesVectorSize =
-        canonicalIndices.getType().cast<TensorType>().getDimSize(1);
+        mlir::cast<TensorType>(canonicalIndices.getType()).getDimSize(1);
     auto canonicalDimsAttrs = ScatterDimensionNumbersAttr::get(
         rewriter.getContext(),
         /*updateWindowDims=*/

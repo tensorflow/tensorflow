@@ -30,13 +30,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
-
-#ifdef GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif
 
 namespace stream_executor {
 namespace gpu {
@@ -175,9 +170,6 @@ class GpuDriver {
   static int GetGpuStreamPriority(
       GpuContext* context, stream_executor::StreamPriority stream_priority);
 
-  // Virtual memory support was added to CUDA in 10.2
-#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 10020
-
   // Reserves a range of virtual device memory addresses via
   // cuMemAddressReserve. bytes must be a multiple of the host page size.
   // Returns nullptr base address in VmemSpan if the reservation fails.
@@ -231,8 +223,6 @@ class GpuDriver {
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1gfb50aac00c848fd7087e858f59bf7e2a
   static void UnmapMemory(GpuContext* context, GpuDevicePtr va, uint64_t bytes);
 
-#endif  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 10020
-
   // Given a device ordinal, returns a device handle into the device outparam,
   // which must not be null.
   //
@@ -253,7 +243,6 @@ class GpuDriver {
   // userspace processes is given here:
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g65dc0012348bc84810e2103a40d8e2cf
   static absl::Status CreateContext(int device_ordinal, GpuDeviceHandle device,
-                                    const DeviceOptions& device_options,
                                     GpuContext** context);
 
   // Destroys the provided context via cuCtxDestroy.
@@ -261,10 +250,6 @@ class GpuDriver {
   // bad things will happen.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g27a365aebb0eb548166309f58a1e8b8e
   static void DestroyContext(GpuContext* context);
-
-  // Returns the context handle (CUcontext for CUDA and hipCtx_t for ROCm) of a
-  // GpuContext.
-  static GpuContextHandle GetContextHandle(GpuContext* context);
 
   // Queries the runtime for the specified attribute of the specified function.
   // cuFuncGetAttribute (the underlying CUDA driver API routine) only operates
@@ -520,6 +505,11 @@ class GpuDriver {
       unsigned int block_dim_x, unsigned int block_dim_y,
       unsigned int block_dim_z, unsigned int shared_mem_bytes,
       void** kernel_params, void** extra);
+
+  // Counts number of nodes in the graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gfa35a8e2d2fc32f48dbd67ba27cf27e5
+  // https://docs.amd.com/projects/HIP/en/docs-5.0.0/doxygen/html/group___graph.html#gaf006701d98164ed3492755bbb19bab83
+  static absl::StatusOr<size_t> GraphGetNodeCount(GpuGraphHandle graph);
 
   // Sets the parameters for a kernel node in the given graph exec.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gd84243569e4c3d6356b9f2eea20ed48c

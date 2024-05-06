@@ -25,6 +25,7 @@
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
@@ -43,7 +44,8 @@
 #include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -136,7 +138,7 @@ TEST_F(LoadedExecutableTest, Metadata) {
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
       /*num_devices=*/2, /*addressable_device_logical_device_ids=*/{},
       /*addressable_devices=*/{}, /*fingerprint=*/"fingerprint",
-      /*ready_future=*/Future<absl::Status>(absl::OkStatus()),
+      /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   EXPECT_THAT(
@@ -151,13 +153,22 @@ TEST_F(LoadedExecutableTest, Metadata) {
                             tile_assignment_dimensions: [ 0, 1 ])pb"))));
   EXPECT_THAT(executable.GetOutputShardings(),
               Optional(ElementsAre(EquivToProto(R"pb(type: REPLICATED)pb"))));
-  EXPECT_THAT(executable.GetParameterLayouts(),
-              IsOkAndHolds(ElementsAre(
-                  xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1),
-                  xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2))));
-  EXPECT_THAT(executable.GetOutputLayouts(),
-              IsOkAndHolds(ElementsAre(
-                  xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2))));
+  ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
+                       executable.GetParameterLayouts());
+  EXPECT_EQ(parameter_layouts.size(), 2);
+  EXPECT_EQ(
+      tensorflow::down_cast<xla::PjRtXlaLayout*>(parameter_layouts[0].get())
+          ->xla_layout(),
+      xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1));
+  EXPECT_EQ(
+      tensorflow::down_cast<xla::PjRtXlaLayout*>(parameter_layouts[1].get())
+          ->xla_layout(),
+      xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
+  ASSERT_OK_AND_ASSIGN(auto output_layouts, executable.GetOutputLayouts());
+  EXPECT_EQ(output_layouts.size(), 1);
+  EXPECT_EQ(tensorflow::down_cast<xla::PjRtXlaLayout*>(output_layouts[0].get())
+                ->xla_layout(),
+            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
   EXPECT_THAT(executable.GetOutputMemoryKinds(),
               IsOkAndHolds(ElementsAre(ElementsAre("foo"))));
 }
@@ -167,17 +178,16 @@ TEST_F(LoadedExecutableTest, Metadata) {
 #if defined(PLATFORM_GOOGLE)
 TEST_F(LoadedExecutableTest, Execute) {
   MockDevice device;
-  ON_CALL(device, global_device_id())
-      .WillByDefault(Return(xla::PjRtGlobalDeviceId(1)));
+  ON_CALL(device, Id()).WillByDefault(Return(DeviceId(1)));
 
   MockClient client;
-  ON_CALL(client, LookupDevice(1)).WillByDefault(Return(&device));
+  ON_CALL(client, LookupDevice(DeviceId(1))).WillByDefault(Return(&device));
 
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
       /*num_devices=*/2, /*addressable_device_logical_device_ids=*/{},
       /*addressable_devices=*/{}, /*fingerprint=*/"fingerprint",
-      /*ready_future=*/Future<absl::Status>(absl::OkStatus()),
+      /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   IfrtResponse response;
@@ -185,13 +195,13 @@ TEST_F(LoadedExecutableTest, Execute) {
                                             loaded_executable_execute_response {
                                               status_handle: 2000
                                               outputs {
-                                                dtype: DTYPE_F32
-                                                shape { dimensions: [ 4, 4 ] }
+                                                dtype { kind: KIND_F32 }
+                                                shape { dims: [ 4, 4 ] }
                                                 array_handle: 3000
                                               }
                                               outputs {
-                                                dtype: DTYPE_F16
-                                                shape { dimensions: [ 8 ] }
+                                                dtype { kind: KIND_F16 }
+                                                shape { dims: [ 8 ] }
                                                 array_handle: 3001
                                               }
                                             }
@@ -202,10 +212,10 @@ TEST_F(LoadedExecutableTest, Execute) {
                         ->mutable_outputs();
     TF_ASSERT_OK_AND_ASSIGN(
         *(*outputs)[0].mutable_sharding(),
-        ToShardingProto(*SingleDeviceSharding::Create(&device, MemoryKind())));
+        SingleDeviceSharding::Create(&device, MemoryKind())->ToProto());
     TF_ASSERT_OK_AND_ASSIGN(
         *(*outputs)[1].mutable_sharding(),
-        ToShardingProto(*SingleDeviceSharding::Create(&device, MemoryKind())));
+        SingleDeviceSharding::Create(&device, MemoryKind())->ToProto());
   }
   EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
                              R"pb(loaded_executable_execute_request {
@@ -236,8 +246,7 @@ TEST_F(LoadedExecutableTest, Execute) {
   for (const uint64_t handle : {1000, 1001}) {
     args.push_back(tsl::MakeRef<Array>(
         &client, rpc_helper_, DType(DType::kF32), Shape({2, 2}),
-        OpaqueSharding::Create(devices, MemoryKind()),
-        ArrayHandle{.handle = handle}));
+        OpaqueSharding::Create(devices, MemoryKind()), ArrayHandle{handle}));
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -270,7 +279,7 @@ TEST_F(LoadedExecutableTest, Delete) {
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
       /*num_devices=*/2, /*addressable_device_logical_device_ids=*/{},
       /*addressable_devices=*/{}, /*fingerprint=*/"fingerprint",
-      /*ready_future=*/Future<absl::Status>(absl::OkStatus()),
+      /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   {
@@ -303,7 +312,7 @@ TEST_F(LoadedExecutableTest, Delete) {
                                                     })pb")))))
         .WillOnce(MockClientSessionReturnResponse(response));
 
-    Future<absl::Status> result = executable.Delete();
+    Future<> result = executable.Delete();
     EXPECT_THAT(result.Await(),
                 StatusIs(absl::StatusCode::kUnknown, StrEq("injected error")));
   }

@@ -188,7 +188,7 @@ int64_t ParallelTaskAssignment::GetTargetParallelTaskCount(
   return 1;
 }
 
-StatusOr<bool> ParallelTaskAssigner::Run(
+absl::StatusOr<bool> ParallelTaskAssigner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(2, "ParallelTaskAssigner ENTRY");

@@ -376,7 +376,7 @@ message HloInstructionProto {
   reserved 84;
 
   // Sparsity descriptor for dot operation.
-  xla.SparsityDescriptor dot_sparsity = 86;
+  repeated xla.SparsityDescriptor dot_sparsity = 86;
 }
 
 // Serialization of HloComputation.

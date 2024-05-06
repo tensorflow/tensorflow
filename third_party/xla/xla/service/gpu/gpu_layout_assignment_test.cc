@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -65,13 +66,10 @@ class LayoutAssignmentTest : public HloTestBase {
   }
 
   se::dnn::VersionInfo GetDnnVersion() {
-    if (auto* dnn = backend().default_stream_executor()->AsDnn()) {
-      return *dnn->GetVersion();
-    }
-
     // GpuLayoutAssignment has a special case heuristic for cudnn <= 7.3, but
     // none of the tests trigger this heuristic.
-    return se::dnn::VersionInfo{8, 3, 0};
+    return GetDnnVersionInfo(backend().default_stream_executor(),
+                             se::dnn::VersionInfo{8, 3, 0});
   }
 };
 
@@ -423,6 +421,62 @@ ENTRY entry {
   expect_layout(call_0->operand(1)->shape(), {1, 2, 0});
 }
 
+TEST_F(LayoutAssignmentTest, MoveToHostCustomCallConstrained) {
+  const char* module_str = R"(
+HloModule TestModule
+
+ENTRY entry {
+  Arg_0 = f32[2,5,5]{2,1,0} parameter(0)
+  custom-call.0 = f32[2,5,5] custom-call(Arg_0), custom_call_target="MoveToHost"
+  ROOT custom-call.1 = f32[2,5,5]{2, 1, 0} custom-call(custom-call.0), custom_call_target="fixed_call", operand_layout_constraints={f32[2,5,5]{1,2,0}}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
+
+  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+
+  const HloInstruction* call_0 = FindInstruction(m.get(), "custom-call.0");
+  const Layout input_layout = call_0->operand(0)->shape().layout();
+  const Layout output_layout = call_0->shape().layout();
+  EXPECT_TRUE(LayoutUtil::Equal(input_layout, output_layout))
+      << "Expected the same input/output layouts.  Input: " << input_layout
+      << ". Output: " << output_layout;
+}
+
+TEST_F(LayoutAssignmentTest, MoveToDeviceCustomCallConstrained) {
+  const char* module_str = R"(
+HloModule TestModule
+
+ENTRY entry {
+  Arg_0 = f32[2,5,5]{2,1,0} parameter(0)
+  custom-call.0 = f32[2,5,5] custom-call(Arg_0), custom_call_target="MoveToDevice"
+  ROOT custom-call.1 = f32[2,5,5]{2, 1, 0} custom-call(custom-call.0), custom_call_target="fixed_call", operand_layout_constraints={f32[2,5,5]{1,2,0}}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
+
+  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+
+  const HloInstruction* call_0 = FindInstruction(m.get(), "custom-call.0");
+  const Layout input_layout = call_0->operand(0)->shape().layout();
+  const Layout output_layout = call_0->shape().layout();
+  EXPECT_TRUE(LayoutUtil::Equal(input_layout, output_layout))
+      << "Expected the same input/output layouts.  Input: " << input_layout
+      << ". Output: " << output_layout;
+}
+
 TEST_F(LayoutAssignmentTest, ConvCuDNNF8) {
   if (!GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::HOPPER)) {
@@ -555,6 +609,67 @@ ENTRY main {
   auto reduce = m->entry_computation()->root_instruction();
   EXPECT_EQ(reduce->operand(0)->shape().layout().minor_to_major(),
             LayoutUtil::MakeLayout({1, 3, 2, 0}).minor_to_major());
+}
+
+TEST_F(LayoutAssignmentTest, SendRcvLayout) {
+  const char* hlo = R"(
+HloModule Module
+
+condition  {
+    p = (f32[100,100], (f32[100,100], u32[], token[])) parameter(0)
+    ROOT lt = pred[] constant(1)
+}
+
+body {
+    p = (f32[100,100], (f32[100,100], u32[], token[])) parameter(0)
+
+    t1 = f32[100,100] get-tuple-element(p), index=0
+    t = (f32[100,100], u32[], token[]) get-tuple-element(p), index=1
+    sdone = token[] send-done(t), channel_id=3, frontend_attributes={
+      _xla_send_recv_pipeline="0"
+    }
+    tk = token[] after-all()
+
+
+    rcvd = (f32[100,100]{0,1}, u32[], token[]) recv(tk), channel_id=2
+    zz = (f32[100,100]{0,1}, token[]) recv-done(rcvd), channel_id=2
+
+    rcvd_d = get-tuple-element(zz), index=0
+
+    snd = (f32[100,100]{0,1}, u32[], token[]) send(t1, tk), channel_id=3, frontend_attributes={
+      _xla_send_recv_pipeline="0"
+    }
+    a = add(t1, t1)
+
+    b = add(rcvd_d, a)
+
+    ROOT tup =  tuple(b, snd)
+}
+
+ENTRY %main {
+    p0 = f32[100,100] parameter(0)
+    tk = token[] after-all()
+    snd = (f32[100,100]{0,1}, u32[], token[]) send(p0, tk), channel_id=1, frontend_attributes={
+      _xla_send_recv_pipeline="0"
+    }
+    t = tuple(p0, snd)
+    ROOT loop = while(t), condition=condition, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+
+  RunAndFilecheckHloRewrite(
+      hlo,
+      GpuLayoutAssignment{&computation_layout, GetGpuComputeCapability(),
+                          GetDnnVersion()},
+      R"(
+// CHECK: (f32[100,100]{1,0}, u32[], token[]) recv
+// CHECK:  (f32[100,100]{1,0}, token[]) recv-done
+// CHECK:  (f32[100,100]{1,0}, u32[], token[]) send
+                                )");
 }
 
 }  // namespace

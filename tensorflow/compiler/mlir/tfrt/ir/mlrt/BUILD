@@ -58,6 +58,8 @@ cc_library(
         ":mlrt_ops_inc_gen",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InliningUtils",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -87,9 +89,7 @@ td_library(
         "tf_mlrt_tpu_ops.td",
     ],
     includes = ["."],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":mlrt_td_files",
         ":tf_mlrt_td_files",
@@ -166,6 +166,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_side_effects",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InliningUtils",
+        "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@tf_runtime//:compiler_tfrt_op_interfaces",
         "@tf_runtime//:compiler_tfrt_traits",
@@ -183,5 +186,6 @@ cc_library(
         ":tf_mlrt_tpu_ops_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SideEffectInterfaces",
     ],
 )

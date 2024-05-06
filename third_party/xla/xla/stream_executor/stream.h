@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -31,15 +32,18 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/thread_annotations.h"
@@ -107,9 +111,8 @@ class Stream {
 
   // Initialize the stream. This must be performed before entraining any other
   // operations.
-  ABSL_DEPRECATED("Use absl::Status Stream::Initialize instead.")
-  Stream &Init() TF_LOCKS_EXCLUDED(mu_);
-  absl::Status Initialize();
+  absl::Status Initialize(
+      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
 
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise
@@ -182,27 +185,17 @@ class Stream {
   // marked as completed.
   // The stream does not take ownership of event - meaning that event's lifetime
   // must extend past the point at which it is marked complete!
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenRecordEvent(Event *event);
   absl::Status RecordEvent(Event *event);
 
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory
-  // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
-  // then registered with StreamExecutor::HostMemoryRegister.
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenMemcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
-                     uint64_t size);
+  // allocated by StreamExecutor::HostMemoryAllocate.
   absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
                       uint64_t size);
 
   // Entrain onto the stream: a memcpy to a GPU destination from a host source
   // of the given target size. host_src must be a pointer to host memory
-  // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
-  // then registered with StreamExecutor::HostMemoryRegister.
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenMemcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
-                     uint64_t size);
+  // allocated by StreamExecutor::HostMemoryAllocate.
   absl::Status Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
                       uint64_t size);
 
@@ -235,9 +228,6 @@ class Stream {
   // Entrain onto the stream: a memcpy to a GPU destination from a GPU source
   // of the given target size. gpu_src/dst must be pointers to GPU memory and
   // peer access must be enabled between their owning StreamExecutors.
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenMemcpy(DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src,
-                     uint64_t size);
   absl::Status Memcpy(DeviceMemoryBase *gpu_dst,
                       const DeviceMemoryBase &gpu_src, uint64_t size);
   absl::Status MemcpyD2D(DeviceMemoryBase *gpu_dst,
@@ -265,7 +255,7 @@ class Stream {
 
   // Returns the (opaque) platform-specific backing object. Ownership is not
   // transferred to the caller.
-  internal::StreamInterface *implementation() { return implementation_.get(); }
+  StreamInterface *implementation() { return implementation_.get(); }
 
   // Entrains onto the stream a callback to the host (from the device).
   // Behaves as DoHostCallbackWithStatus below, but the callback should
@@ -302,12 +292,6 @@ class Stream {
     return parent()->GetDeviceDescription().rocm_compute_capability();
   }
 
-  // Returns a debugging string "[stream=0x...,impl=0x...]".
-  std::string DebugStreamPointers() const;
-
-  void SetPriority(StreamPriority priority);
-  void SetPriority(int priority);
-
   std::variant<StreamPriority, int> priority() const;
 
  private:
@@ -316,24 +300,25 @@ class Stream {
     return !status_.ok();
   }
 
+  // Sets the error state if operation_retcode is false.
+  // This is a useful shorthand for many stream routines.
+  void CheckError(bool operation_retcode) TF_LOCKS_EXCLUDED(mu_);
+
   // Checks the status and logs the error message, if any.
   void CheckStatus(absl::Status status) TF_LOCKS_EXCLUDED(mu_);
+
+  void SetError() { CheckError(false /* = operation_retcode */); }
 
   // The StreamExecutor that supports the operation of this stream.
   StreamExecutor *parent_;
 
   // The platform-dependent implementation that the StreamExecutor interface
   // delegates to.
-  std::unique_ptr<internal::StreamInterface> implementation_;
+  std::unique_ptr<StreamInterface> implementation_;
 
   // mutex that guards the allocation / error state flags.
   // Mutable so that it can be obtained via const reader lock.
   mutable absl::Mutex mu_;
-
-  // Whether Init() was successfully called to allocate this stream on the
-  // underlying platform. It simply flips from 0 to 1 with a sanity check.
-  // See StreamExecutor::AllocateStream.
-  bool allocated_ ABSL_GUARDED_BY(mu_);
 
   // The last error (if any) of all method calls.
   absl::Status status_ ABSL_GUARDED_BY(mu_);

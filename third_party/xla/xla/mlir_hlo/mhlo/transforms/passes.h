@@ -31,9 +31,6 @@ class Pass;
 namespace func {
 class FuncOp;
 }  // namespace func
-namespace lmhlo {
-class FusionOp;
-}  // namespace lmhlo
 
 namespace mhlo {
 
@@ -48,14 +45,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeSortPass();
 
 /// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeToStdPass();
-
-/// Lowers from the CHLO dialect to the HLO dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> createChloLegalizeToHloPass(
-    bool legalizeBroadcasts = true, bool expandCompositions = true);
-
-/// Lowers specific ops from the CHLO dialect to an HLO basis opset
-std::unique_ptr<OperationPass<func::FuncOp>>
-createChloLegalizeToHloBasisOpsPass();
 
 // Lowers from sparse ops in CHLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeSparseOperationsPass(

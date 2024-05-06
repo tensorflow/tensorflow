@@ -129,7 +129,7 @@ bool HoistConstantOperations(
 }
 }  // namespace
 
-StatusOr<bool> InstructionHoister::Run(
+absl::StatusOr<bool> InstructionHoister::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool modified = false;

@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_serving_device_selector.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op.h"
@@ -58,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #include "tsl/framework/device_id_utils.h"
+#include "tsl/framework/serving_device_selector_policies.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -97,7 +99,7 @@ std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx) {
   return inputs;
 }
 
-StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
+absl::StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
     OpKernelContext* ctx) {
   std::vector<int> constant_input_indices;
   TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
@@ -144,7 +146,7 @@ static void PopulateExecutionInputBuffer(xla::ExecutionInput& execution_input,
   }
 }
 
-StatusOr<std::vector<xla::ExecutionInput>>
+absl::StatusOr<std::vector<xla::ExecutionInput>>
 XlaComputationLaunchContext::PopulateInputs(
     OpKernelContext* ctx,
     const XlaCompiler::CompilationResult* compilation_result,
@@ -218,7 +220,7 @@ static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
 // Get aliased tensor from output, or make a new one for the corresponding
 // output operation. Transfers ownership of the buffer from output to the
 // returned tensor.
-static StatusOr<Tensor> GetOrCreateTensorForOutput(
+static absl::StatusOr<Tensor> GetOrCreateTensorForOutput(
     xla::ScopedShapedBuffer& output, int output_num, OpKernelContext* ctx,
     int missing_ctx_input_prefix,
     const xla::HloInputOutputAliasConfig& input_output_alias,
@@ -319,7 +321,7 @@ Status SetOutputForConstant(
   return absl::OkStatus();
 }
 
-static StatusOr<Var*> GetOrCreateResourceVar(
+static absl::StatusOr<Var*> GetOrCreateResourceVar(
     OpKernelContext* ctx, const ResourceHandle& handle,
     const XlaCompiler::ResourceUpdate& write) {
   Var* variable = nullptr;
@@ -331,7 +333,7 @@ static StatusOr<Var*> GetOrCreateResourceVar(
   return variable;
 }
 
-StatusOr<std::vector<VariableInfo>> GatherVariableInfo(
+absl::StatusOr<std::vector<VariableInfo>> GatherVariableInfo(
     OpKernelContext* ctx,
     const XlaCompiler::CompilationResult& compilation_result,
     int missing_ctx_input_prefix) {
@@ -408,7 +410,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   if (output.on_host_shape().is_dynamic()) {
     const se::Platform* platform = nullptr;
     if (stream != nullptr) {
-      platform = stream->parent()->platform();
+      platform = stream->parent()->GetPlatform();
     } else {
       // Stream is not set for the host platform.
       TF_ASSIGN_OR_RETURN(platform,
@@ -509,7 +511,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   return absl::OkStatus();
 }
 
-StatusOr<std::vector<XlaCompiler::Argument>>
+absl::StatusOr<std::vector<XlaCompiler::Argument>>
 XlaComputationLaunchContext::BuildXlaCompilerArguments(
     absl::Span<int const> must_be_constant_idxs,
     absl::Span<const Tensor* const> inputs,
@@ -863,12 +865,35 @@ Status RunPjRtExecutable(
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * device,
                       pjrt_client->LookupAddressableDevice(pjrt_device_id));
 
+  gpu::GpuServingDeviceSelectorResource* device_selector_resource = nullptr;
+  if (device_type == DEVICE_GPU && gpu::kUseGpuServingDeviceSelector) {
+    auto rm = ctx->resource_manager();
+    TF_RETURN_IF_ERROR(rm->LookupOrCreate<
+                       gpu::GpuServingDeviceSelectorResource>(
+        rm->default_container(), gpu::kGpuServingDeviceSelectorResourceName,
+        &device_selector_resource,
+        [&](gpu::GpuServingDeviceSelectorResource** device_selector_resource) {
+          *device_selector_resource = new gpu::GpuServingDeviceSelectorResource(
+              pjrt_client->addressable_device_count(),
+              std::make_unique<tsl::RoundRobinPolicy>());
+          return absl::OkStatus();
+        }));
+    core::ScopedUnref device_selector_resource_ref(device_selector_resource);
+
+    TF_ASSIGN_OR_RETURN(absl::string_view fingerprint,
+                        executable->FingerprintExecutable());
+    device_selector_resource->selector()->Enqueue(pjrt_device_id, fingerprint);
+  }
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs,
       RunPjRtExecutable(num_missing_prefix_ctx_inputs, inputs,
                         variable_snapshots, updated_variables, device_type,
                         use_pjrt_tensor_buffer, compilation_result, device,
                         pjrt_client, executable));
+  if (device_selector_resource != nullptr) {
+    device_selector_resource->selector()->Completed(pjrt_device_id,
+                                                    /*had_error=*/false);
+  }
 
   TF_RETURN_IF_ERROR(PopulateCtxOutputsFromPjRtExecutableOutputs(
       num_missing_prefix_ctx_inputs, inputs, updated_variables,
@@ -876,7 +901,7 @@ Status RunPjRtExecutable(
   return absl::OkStatus();
 }
 
-StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
+absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
     int num_missing_prefix_ctx_inputs, const std::vector<const Tensor*>& inputs,
     const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
     const std::vector<VariableInfo>& updated_variables,
@@ -895,7 +920,7 @@ StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
       &executable_args, &owned_executable_args, &non_donatable_input_indices));
 
   std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs;
-  std::optional<xla::PjRtFuture<Status>> future;
+  std::optional<xla::PjRtFuture<>> future;
   if (executable->num_replicas() != 1 || executable->num_partitions() != 1) {
     TF_ASSIGN_OR_RETURN(
         execute_outputs,

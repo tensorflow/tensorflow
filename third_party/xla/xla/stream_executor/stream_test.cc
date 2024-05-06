@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <gmock/gmock.h>
+#include <memory>
+
 #include "absl/log/check.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/statusor.h"
@@ -31,12 +33,6 @@ class StreamTest : public ::testing::Test {
     return platform->GetUncachedExecutor(config).value();
   }
 };
-
-TEST_F(StreamTest, NoInitNotOk) {
-  std::unique_ptr<StreamExecutor> executor = NewStreamExecutor();
-  Stream stream(executor.get());
-  EXPECT_FALSE(stream.ok());
-}
 
 TEST_F(StreamTest, InitOk) {
   std::unique_ptr<StreamExecutor> executor = NewStreamExecutor();

@@ -131,11 +131,11 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
 
   if (!storage_type) {
     const mlir::Type raw_elem_type = ConvertElementType(tensor.type, builder);
-    if (!raw_elem_type.isa<mlir::IntegerType>()) {
+    if (!mlir::isa<mlir::IntegerType>(raw_elem_type)) {
       return absl::InvalidArgumentError(
           "Quantized tensors must be stored as integers");
     }
-    storage_type = raw_elem_type.cast<mlir::IntegerType>();
+    storage_type = mlir::cast<mlir::IntegerType>(raw_elem_type);
   }
 
   // TFlite uses narrow-range [u]int8 for constant buffers of quantized weights.
@@ -254,11 +254,11 @@ mlir::ElementsAttr GetSplat(RankedTensorType type, int unique_index,
     return DenseElementsAttr::get(
         type, builder.getIntegerAttr(element_ty, unique_index));
 
-  if (element_ty.isa<mlir::FloatType>())
+  if (mlir::isa<mlir::FloatType>(element_ty))
     return DenseElementsAttr::get(
         type, builder.getFloatAttr(element_ty, unique_index));
 
-  if (auto qtype = element_ty.dyn_cast<QuantizedType>()) {
+  if (auto qtype = mlir::dyn_cast<QuantizedType>(element_ty)) {
     mlir::RankedTensorType new_type = tensorflow::GetTypeFromTFTensorShape(
         type.getShape(), qtype.getStorageType());
     return DenseElementsAttr::get(
@@ -272,9 +272,10 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
     bool truncate) {
   mlir::Type elem_type = shaped_type.getElementType();
   unsigned bit_width;
-  if (auto itype = elem_type.dyn_cast<mlir::IntegerType>()) {
+  if (auto itype = mlir::dyn_cast<mlir::IntegerType>(elem_type)) {
     bit_width = itype.getWidth();
-  } else if (auto qtype = elem_type.dyn_cast<mlir::quant::QuantizedType>()) {
+  } else if (auto qtype =
+                 mlir::dyn_cast<mlir::quant::QuantizedType>(elem_type)) {
     bit_width = qtype.getStorageTypeIntegralWidth();
     shaped_type = tensorflow::GetTypeFromTFTensorShape(shaped_type.getShape(),
                                                        qtype.getStorageType());
@@ -345,22 +346,41 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
   switch (elem_type.getIntOrFloatBitWidth()) {
     case 16: {
       assert(bytes_len % 2 == 0);
-      assert(elem_type.isF16());
+      // Supports both BF16 and F16.
+      assert(elem_type.isF16() || elem_type.isBF16());
       int elem_count = bytes_len / 2;
-      std::vector<Eigen::half> values;
-      values.reserve(elem_count);
 
-      const char* data = reinterpret_cast<const char*>(buffer.data());
+      if (elem_type.isF16()) {
+        std::vector<Eigen::half> values;
+        values.reserve(elem_count);
 
-      for (int i = 0; i < elem_count; i++) {
-        uint16_t bit_repr =
-            llvm::support::endian::readNext<uint16_t, llvm::endianness::native,
-                                            llvm::support::unaligned>(data);
-        values.push_back(Eigen::numext::bit_cast<Eigen::half>(bit_repr));
+        const char* data = reinterpret_cast<const char*>(buffer.data());
+
+        for (int i = 0; i < elem_count; i++) {
+          uint16_t bit_repr = llvm::support::endian::readNext<
+              uint16_t, llvm::endianness::native, llvm::support::unaligned>(
+              data);
+          values.push_back(Eigen::numext::bit_cast<Eigen::half>(bit_repr));
+        }
+
+        return mlir::ElementsAttr(
+            DenseElementsAttr::get(shaped_type, ArrayRef<Eigen::half>(values)));
+      } else {
+        std::vector<Eigen::bfloat16> values;
+        values.reserve(elem_count);
+
+        const char* data = reinterpret_cast<const char*>(buffer.data());
+
+        for (int i = 0; i < elem_count; i++) {
+          uint16_t bit_repr = llvm::support::endian::readNext<
+              uint16_t, llvm::endianness::native, llvm::support::unaligned>(
+              data);
+          values.push_back(Eigen::numext::bit_cast<Eigen::bfloat16>(bit_repr));
+        }
+
+        return mlir::ElementsAttr(DenseElementsAttr::get(
+            shaped_type, ArrayRef<Eigen::bfloat16>(values)));
       }
-
-      return mlir::ElementsAttr(
-          DenseElementsAttr::get(shaped_type, ArrayRef<Eigen::half>(values)));
     }
     case 32: {
       assert(bytes_len % 4 == 0);

@@ -33,17 +33,19 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/ffi/api/c_api.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/nccl_api.h"
-#include "xla/service/gpu/nccl_clique_key.h"
-#include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
+#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
@@ -198,10 +200,16 @@ class CommandBufferCmd {
   // Returns true if command implemented as a nested command buffer.
   virtual bool IsNestedCommandBuffer() const { return false; }
 
-  // Returns a command execution scope computed from the command stream id and
-  // the default command buffer execution scope.
+  // Returns a command execution scope created from the specified
+  // 'execution_stream_id'.
   se::CommandBuffer::ExecutionScopeId GetExecutionScope(
-      const RecordParams& record_params) const;
+      const RecordParams& record_params,
+      ExecutionStreamId execution_stream_id) const;
+
+  // Return the execution scope created from the execution stream id of the
+  // thunk which is lowered to current command.
+  virtual se::CommandBuffer::ExecutionScopeId GetExecutionScope(
+      const CommandBufferCmd::RecordParams& record_params) const;
 
   std::string_view profile_annotation() const { return profile_annotation_; }
   void set_profile_annotation(std::string_view profile_annotation) {
@@ -672,47 +680,6 @@ class WhileCmd : public CommandBufferCmd {
 };
 
 //===----------------------------------------------------------------------===//
-// AllocateCmd
-//===----------------------------------------------------------------------===//
-
-class AllocateCmd : public CommandBufferCmd {
- public:
-  AllocateCmd(ExecutionStreamId execution_stream_id,
-              BufferAllocation allocation);
-
-  // After calling this function, the allocated memory is tracked in
-  // CommandBuffer object.
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
-
-  BufferUsageVector buffers() override;
-
- private:
-  BufferAllocation allocation_;
-};
-
-//===----------------------------------------------------------------------===//
-// FreeCmd
-//===----------------------------------------------------------------------===//
-
-class FreeCmd : public CommandBufferCmd {
- public:
-  FreeCmd(ExecutionStreamId execution_stream_id, BufferAllocation allocation);
-
-  // After calling this function, the allocated memory address for dst
-  // BufferAllocation is freed, no update is required.
-  absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer) override;
-
-  BufferUsageVector buffers() override;
-
- private:
-  BufferAllocation allocation_;
-};
-
-//===----------------------------------------------------------------------===//
 // GemmCmd
 //===----------------------------------------------------------------------===//
 
@@ -746,6 +713,32 @@ class GemmCmd : public TracedCommandBufferCmd {
 };
 
 //===----------------------------------------------------------------------===//
+// CuDnnCmd
+//===----------------------------------------------------------------------===//
+
+class CuDnnCmd : public TracedCommandBufferCmd {
+ public:
+  CuDnnCmd(ExecutionStreamId execution_stream_id,
+           absl::Span<const BufferAllocation::Slice> args,
+           std::shared_ptr<se::dnn::LazyDnnGraph> graph);
+
+  absl::Status Initialize(const Thunk::InitializeParams& params,
+                          StateManager& state) override;
+
+  absl::Status Record(const Thunk::ExecuteParams& execute_params,
+                      const RecordParams& record_params,
+                      se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+  bool IsNestedCommandBuffer() const final { return true; }
+
+ private:
+  std::vector<BufferAllocation::Slice> args_;
+  const std::shared_ptr<se::dnn::LazyDnnGraph> graph_;
+};
+
+//===----------------------------------------------------------------------===//
 // CustomCallCmd
 //===----------------------------------------------------------------------===//
 
@@ -754,11 +747,10 @@ class CustomCallCmd : public CommandBufferCmd {
   using Slice = CustomCallThunk::Slice;
   using Stream = CustomCallThunk::Stream;
   using CustomCallTarget = CustomCallThunk::CustomCallTarget;
+  using AttributesMap = CustomCallThunk::AttributesMap;
 
   // This is a legacy custom call API that is discouraged, and will be
   // deprecated once XLA:FFI mechanism is ready.
-  //
-  // TODO(anlunx): Support XLA:FFI calls as commands.
   //
   // TODO(b/323534971): We have an ODR violation somewhere in Tensorflow/XLA and
   // include this header with different set of defines and CustomCallTarget
@@ -772,9 +764,21 @@ class CustomCallCmd : public CommandBufferCmd {
                 absl::string_view opaque)
       : CommandBufferCmd(execution_stream_id),
         call_target_(std::move(call_target)),
+        opaque_(opaque),
         operands_(std::move(operands)),
-        results_(std::move(results)),
-        opaque_(opaque){};
+        results_(std::move(results)) {}
+
+  CustomCallCmd(ExecutionStreamId execution_stream_id, XLA_FFI_Handler* handler,
+                std::vector<std::optional<Slice>> operands,
+                std::vector<std::optional<Slice>> results,
+                AttributesMap attributes,
+                const HloComputation* called_computation)
+      : CommandBufferCmd(execution_stream_id),
+        handler_(handler),
+        attributes_(std::move(attributes)),
+        called_computation_(called_computation),
+        operands_(std::move(operands)),
+        results_(std::move(results)) {}
 
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
@@ -784,10 +788,49 @@ class CustomCallCmd : public CommandBufferCmd {
   bool IsNestedCommandBuffer() const final { return true; }
 
  private:
+  absl::Status RecordLegacyCustomCall(const Thunk::ExecuteParams& execute_param,
+                                      const RecordParams& record_params,
+                                      se::CommandBuffer* command_buffer);
+  absl::Status RecordXlaFfiCall(const Thunk::ExecuteParams& execute_param,
+                                const RecordParams& record_params,
+                                se::CommandBuffer* command_buffer);
+
+  // This is a legacy custom call API that is discouraged, and will be
+  // deprecated once XLA:FFI mechanism is ready.
   CustomCallTarget call_target_;
+  std::string opaque_;
+
+  // XLA FFI provides a right type safe mechanism for registering external
+  // functions with XLA runtime. It's under construction, and still misses
+  // a lot of features. Long term it will replace legacy custom calls.
+  XLA_FFI_Handler* handler_ = nullptr;
+  AttributesMap attributes_;
+  const HloComputation* called_computation_;
+
   std::vector<std::optional<Slice>> operands_;
   std::vector<std::optional<Slice>> results_;
-  std::string opaque_;
+};
+
+//===----------------------------------------------------------------------===//
+// BarrierCmd insert a barrier from the execution scope created from the
+// 'from_stream_id' to the execution scope created from the
+// 'execution_stream_id', e.g. Async operator lowered to command buffer requires
+// a barrier from the launching stream to the async operator's execution stream.
+//===----------------------------------------------------------------------===//
+
+class BarrierCmd : public CommandBufferCmd {
+ public:
+  BarrierCmd(ExecutionStreamId execution_stream_id,
+             ExecutionStreamId from_stream_id);
+
+  absl::Status Record(const Thunk::ExecuteParams& execute_params,
+                      const RecordParams& record_params,
+                      se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+ private:
+  ExecutionStreamId from_stream_id_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -796,7 +839,8 @@ class CustomCallCmd : public CommandBufferCmd {
 
 class CollectiveCmd : public TracedCommandBufferCmd {
  public:
-  CollectiveCmd(ExecutionStreamId execution_stream_id, NcclApi* nccl_api,
+  CollectiveCmd(ExecutionStreamId execution_stream_id,
+                ExecutionStreamId async_from_stream_id, NcclApi* nccl_api,
                 NcclCollectiveConfig config);
 
   absl::Status Prepare(const Thunk::PrepareParams& params,
@@ -806,11 +850,28 @@ class CollectiveCmd : public TracedCommandBufferCmd {
 
   virtual AsyncStreamKind GetAsyncStreamKind() = 0;
 
+  bool IsAsync() const {
+    return async_from_stream_id_ != execution_stream_id();
+  }
+
+  NcclStreamId nccl_stream_id() {
+    return xla::gpu::GetStreamId(IsAsync(), GetAsyncStreamKind());
+  }
+
+  ExecutionStreamId async_from_stream_id() const {
+    return async_from_stream_id_;
+  }
+
+  absl::Status BarrierIfAsync(
+      se::CommandBuffer* command_buffer, se::StreamExecutor* executor,
+      const CommandBufferCmd::RecordParams& record_params);
+
  protected:
   NcclApi* nccl_api() const { return nccl_api_; }
   const NcclCollectiveConfig& config() const { return config_; }
 
  private:
+  ExecutionStreamId async_from_stream_id_;
   NcclApi* nccl_api_;
   NcclCollectiveConfig config_;
 };
@@ -821,7 +882,8 @@ class CollectiveCmd : public TracedCommandBufferCmd {
 
 class AllReduceCmd : public CollectiveCmd {
  public:
-  AllReduceCmd(ExecutionStreamId execution_stream_id, NcclApi* nccl_api,
+  AllReduceCmd(ExecutionStreamId execution_stream_id,
+               ExecutionStreamId async_from_stream_id, NcclApi* nccl_api,
                NcclCollectiveConfig config, ReductionKind reduction_kind,
                absl::Span<const NcclCollectiveThunk::Buffer> buffers);
 
@@ -846,7 +908,8 @@ class AllReduceCmd : public CollectiveCmd {
 
 class ReduceScatterCmd : public CollectiveCmd {
  public:
-  ReduceScatterCmd(ExecutionStreamId execution_stream_id, NcclApi* nccl_api,
+  ReduceScatterCmd(ExecutionStreamId execution_stream_id,
+                   ExecutionStreamId async_from_stream_id, NcclApi* nccl_api,
                    NcclCollectiveConfig config, ReductionKind reduction_kind,
                    absl::Span<const NcclCollectiveThunk::Buffer> buffers);
 
@@ -871,7 +934,8 @@ class ReduceScatterCmd : public CollectiveCmd {
 
 class AllGatherCmd : public CollectiveCmd {
  public:
-  AllGatherCmd(ExecutionStreamId execution_stream_id, NcclApi* nccl_api,
+  AllGatherCmd(ExecutionStreamId execution_stream_id,
+               ExecutionStreamId async_from_stream_id, NcclApi* nccl_api,
                NcclCollectiveConfig config,
                absl::Span<const NcclCollectiveThunk::Buffer> buffers);
 
@@ -884,6 +948,27 @@ class AllGatherCmd : public CollectiveCmd {
   AsyncStreamKind GetAsyncStreamKind() override {
     return AsyncStreamKind::kCollective;
   };
+
+ private:
+  std::vector<NcclCollectiveThunk::Buffer> buffers_;
+};
+
+//===----------------------------------------------------------------------===//
+// CollectiveBroadcastCmd
+//===----------------------------------------------------------------------===//
+
+class CollectiveBroadcastCmd : public CollectiveCmd {
+ public:
+  CollectiveBroadcastCmd(ExecutionStreamId execution_stream_id,
+                         ExecutionStreamId async_from_stream_id,
+                         NcclApi* nccl_api, NcclCollectiveConfig config,
+                         absl::Span<const NcclCollectiveThunk::Buffer> buffers);
+
+  absl::Status Record(const Thunk::ExecuteParams& execute_params,
+                      const RecordParams& record_params,
+                      se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
 
  private:
   std::vector<NcclCollectiveThunk::Buffer> buffers_;

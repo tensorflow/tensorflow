@@ -75,11 +75,10 @@ void TfLiteInterpreterOptionsAddCustomOp(TfLiteInterpreterOptions* options,
 
 void TfLiteInterpreterOptionsSetOpResolverExternal(
     TfLiteInterpreterOptions* options,
-    const TfLiteRegistrationExternal* (*find_builtin_op)(void* user_data,
-                                                         int op, int version),
-    const TfLiteRegistrationExternal* (*find_custom_op)(void* user_data,
-                                                        const char* custom_op,
-                                                        int version),
+    const TfLiteOperator* (*find_builtin_op)(void* user_data, int op,
+                                             int version),
+    const TfLiteOperator* (*find_custom_op)(void* user_data,
+                                            const char* custom_op, int version),
     void* op_resolver_user_data) {
   options->op_resolver_callbacks = {};  // Sets all fields to null.
   options->op_resolver_callbacks.find_builtin_op_external = find_builtin_op;
@@ -89,10 +88,11 @@ void TfLiteInterpreterOptionsSetOpResolverExternal(
 
 void TfLiteInterpreterOptionsSetOpResolverExternalWithFallback(
     TfLiteInterpreterOptions* options,
-    const TfLiteRegistrationExternal* (*find_builtin_op_external)(
-        void* user_data, int op, int version),
-    const TfLiteRegistrationExternal* (*find_custom_op_external)(
-        void* user_data, const char* custom_op, int version),
+    const TfLiteOperator* (*find_builtin_op_external)(void* user_data, int op,
+                                                      int version),
+    const TfLiteOperator* (*find_custom_op_external)(void* user_data,
+                                                     const char* custom_op,
+                                                     int version),
     const TfLiteRegistration* (*find_builtin_op)(void* user_data,
                                                  TfLiteBuiltinOperator op,
                                                  int version),

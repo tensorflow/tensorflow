@@ -64,10 +64,10 @@ class SnappyOutputBuffer : public WritableFile {
   //
   // The input data is buffered internally and will be written to disk at a
   // later time. To immediately write contents to file call `Flush()`.
-  Status Append(StringPiece data) override;
+  absl::Status Append(StringPiece data) override;
 
 #if defined(TF_CORD_SUPPORT)
-  Status Append(const absl::Cord& cord) override;
+  absl::Status Append(const absl::Cord& cord) override;
 #endif
 
   // Compresses any buffered input and writes all output to file. This must be
@@ -78,17 +78,17 @@ class SnappyOutputBuffer : public WritableFile {
   //
   // After calling this, any further calls to `Write()`, `Flush()` or `Close()`
   // will fail.
-  Status Close() override;
+  absl::Status Close() override;
 
   // Returns the name of the underlying file.
-  Status Name(StringPiece* result) const override;
+  absl::Status Name(StringPiece* result) const override;
 
   // Deflates any cached input, writes all output to file and syncs it.
-  Status Sync() override;
+  absl::Status Sync() override;
 
   // Returns the write position in the underlying file. The position does not
   // reflect buffered, un-flushed data.
-  Status Tell(int64_t* position) override;
+  absl::Status Tell(int64_t* position) override;
 
   // Adds `data` to the compression pipeline.
   //
@@ -98,11 +98,11 @@ class SnappyOutputBuffer : public WritableFile {
   // to file when the buffer is full.
   //
   // To immediately write contents to file call `Flush()`.
-  Status Write(StringPiece data);
+  absl::Status Write(StringPiece data);
 
   // Compresses any cached input and writes all output to file. This must be
   // called before the destructor to avoid any data loss.
-  Status Flush() override;
+  absl::Status Flush() override;
 
  private:
   // Appends `data` to `input_buffer_`.
@@ -111,7 +111,7 @@ class SnappyOutputBuffer : public WritableFile {
 
   // Appends `data` to `output_buffer_`. Flushes buffer contents to file when
   // buffer gets full.
-  Status AddToOutputBuffer(const char* data, size_t length);
+  absl::Status AddToOutputBuffer(const char* data, size_t length);
 
   // Returns the total space available in `input_buffer_`.
   int32 AvailableInputSpace() const;
@@ -121,16 +121,16 @@ class SnappyOutputBuffer : public WritableFile {
   //
   // Note: This method does not flush contents to file.
   // Returns non-ok status if writing contents to file fails.
-  Status DeflateBuffered();
+  absl::Status DeflateBuffered();
 
   // Appends contents of `output_buffer_` to `file_`.
   // Returns non-OK status if writing to file fails.
-  Status FlushOutputBufferToFile();
+  absl::Status FlushOutputBufferToFile();
 
   // Compresses `avail_in_` bytes at `next_in_` location in `input_buffer_` and
   // writes the results to output using `AddToOutputBuffer`.
   // Returns non-OK status if writing to file failed.
-  Status Deflate();
+  absl::Status Deflate();
 
   WritableFile* file_;  // Not owned
 

@@ -62,7 +62,7 @@ struct PackedArgs {
       }
 
       auto& target_index = slice_to_operand[static_cast<int>(
-          slice_index.cast<mlir::IntegerAttr>().getInt())];
+          mlir::cast<mlir::IntegerAttr>(slice_index).getInt())];
       if (target_index) {
         replacement_args[idx] = *target_index;
         args_to_erase[idx] = true;

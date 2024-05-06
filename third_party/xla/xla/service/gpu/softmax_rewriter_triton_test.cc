@@ -1,8 +1,11 @@
 /* Copyright 2023 The OpenXLA Authors.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
+
 You may obtain a copy of the License at
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -1072,9 +1076,8 @@ ENTRY main {
               GmockMatch(m::Fusion(m::Parameter())));
 }
 
-TEST_P(
-    SoftmaxRewriterTritonTest,
-    CanOnlyFuseConvertInvolvingBF16InputIntoSoftmaxDiamondWithAtLeastAmpereComputeCapability) {  // NOLINT(whitespace/line_length)
+TEST_P(SoftmaxRewriterTritonTest,
+       CanFuseConvertInvolvingBF16InputIntoSoftmaxDiamond) {
   PrimitiveType data_type = GetParam();
   const std::string hlo_string_template = R"(
 HloModule softmax
@@ -1090,52 +1093,51 @@ ENTRY main {
   reduce = $0[127]{0} reduce(param_0_$0, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = $0[127,125]{1,0} broadcast(reduce), dimensions={0}
   ROOT subtract = $0[127,125]{1,0} subtract(param_0_$0, broadcast)
-}
-)";
+})";
   const std::string hlo_string =
       absl::Substitute(hlo_string_template,
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
-  auto ampere_module = ParseAndReturnVerifiedModule(hlo_string).value();
-  auto volta_module = ampere_module->Clone();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
-  // Ampere
   EXPECT_TRUE(
       SoftmaxRewriterTritonMatchAndRewrite(
           se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0},
-          ampere_module.get())
+          module.get())
           .value());
-  EXPECT_TRUE(verifier().Run(ampere_module.get()).status().ok());
-  VLOG(2) << ampere_module->ToString();
-  EXPECT_THAT(ampere_module->entry_computation()->root_instruction(),
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  VLOG(2) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter())));
+}
 
-  // Volta (pre-Ampere)
-  VLOG(2) << volta_module->ToString();
+TEST_F(SoftmaxRewriterTritonTest, RewriterBailsOutOnPreAmpereGpu) {
+  const std::string hlo_string = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = bf16[127,125]{1,0} parameter(0)
+  param_0_f32 = f32[127,125]{1,0} convert(param_0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0_f32, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[127,125]{1,0} subtract(param_0_f32, broadcast)
+})";
 
-  switch (data_type) {
-    case F32:
-    case F16:
-      EXPECT_TRUE(
-          SoftmaxRewriterTritonMatchAndRewrite(
-              se::CudaComputeCapability{se::CudaComputeCapability::VOLTA, 0},
-              volta_module.get())
-              .value());
-      EXPECT_TRUE(verifier().Run(volta_module.get()).status().ok());
-      EXPECT_THAT(volta_module->entry_computation()->root_instruction(),
-                  GmockMatch(m::Fusion(m::Convert(m::Parameter()))));
-      break;
-    case BF16:
-      // When bf16 is used, no fusion is possible on Volta.
-      EXPECT_FALSE(
-          SoftmaxRewriterTritonMatchAndRewrite(
-              se::CudaComputeCapability{se::CudaComputeCapability::VOLTA, 0},
-              volta_module.get())
-              .value());
-      break;
-    default:
-      ABSL_UNREACHABLE();
-  }
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+
+  EXPECT_THAT(
+      SoftmaxRewriterTriton(
+          se::CudaComputeCapability{se::CudaComputeCapability::VOLTA, 0})
+          .Run(module.get()),
+      tsl::testing::StatusIs(
+          tsl::error::FAILED_PRECONDITION,
+          ::testing::StrEq(
+              "Triton support is only enabled for Ampere GPUs and up.")));
 }
 
 TEST_P(SoftmaxRewriterTritonTest, DoesNotFuseConvertWithC64DataType) {
@@ -1768,10 +1770,11 @@ ENTRY main {
     if (std::holds_alternative<FusionDecision>(decision)) {
       std::string actual_decision =
           std::get<FusionDecision>(decision).Explain();
-      EXPECT_THAT(actual_decision,
-                  AnyOf(HasSubstr("Root is not elementwise binary"),
-                        HasSubstr("Reduce has a non-constant second operand "
-                                  "and/or is variadic")));
+      EXPECT_THAT(
+          actual_decision,
+          AnyOf(HasSubstr("Root is not elementwise binary"),
+                HasSubstr("Reduction init value should be a constant or a "
+                          "convert of a constant.")));
       unmatched++;
     } else {
       matched++;
@@ -1779,6 +1782,259 @@ ENTRY main {
   }
   EXPECT_EQ(unmatched, 5);
   EXPECT_EQ(matched, 0);
+}
+
+TEST_F(
+    SoftmaxRewriterTritonTest,
+    FusesBinaryElementwiseIfIntermediateDiamondOpWithBroadcastAlongReductionDimAsParameter) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_string = R"(
+HloModule h1
+
+add_computation {
+  y = f32[] parameter(1)
+  x = f32[] parameter(0)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[32]{0} parameter(0)
+  p1 = f32[32,16]{1,0} parameter(1)
+  c = f32[] constant(0)
+
+  r0 = f32[32]{0} reduce(p1, c), dimensions={1}, to_apply=add_computation
+  b0 = f32[32,16]{1,0} broadcast(r0), dimensions={0}
+  b1 = f32[32,16]{1,0} broadcast(p0), dimensions={0}
+  add0 = f32[32,16]{1,0} add(b1, p1)
+  ROOT add1 = f32[32,16]{1,0} add(add0, b0)
+})";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
+}
+
+TEST_F(
+    SoftmaxRewriterTritonTest,
+    FusesBinaryElementwiseIfIntermediateDiamondOpWithBroadcastAlongBatchDimAsParameter) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_string = R"(
+HloModule h1
+
+add_computation {
+  y = f32[] parameter(1)
+  x = f32[] parameter(0)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[16]{0} parameter(0)
+  p1 = f32[32,16]{1,0} parameter(1)
+  c = f32[] constant(0)
+
+  r0 = f32[32]{0} reduce(p1, c), dimensions={1}, to_apply=add_computation
+  b0 = f32[32,16]{1,0} broadcast(r0), dimensions={0}
+  b1 = f32[32,16]{1,0} broadcast(p0), dimensions={1}
+  add0 = f32[32,16]{1,0} add(b1, p1)
+  ROOT add1 = f32[32,16]{1,0} add(add0, b0)
+})";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
+}
+
+TEST_F(
+    SoftmaxRewriterTritonTest,
+    FusesBinaryElementwiseIfIntermediateDiamondOpWithMultiDimTensorBroadcastAlongBatchDimAsParameter) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_string = R"(
+HloModule h1
+
+add_computation {
+  y = f32[] parameter(1)
+  x = f32[] parameter(0)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[32,16]{1,0} parameter(0)
+  p1 = f32[64,32,16]{2,1,0} parameter(1)
+  c = f32[] constant(0)
+
+  r0 = f32[64,32]{1,0} reduce(p1, c), dimensions={2}, to_apply=add_computation
+  b0 = f32[64,32,16]{2,1,0} broadcast(r0), dimensions={0,1}
+  b1 = f32[64,32,16]{2,1,0} broadcast(p0), dimensions={1,2}
+  add0 = f32[64,32,16]{2,1,0} add(b1, p1)
+  ROOT add1 = f32[64,32,16]{2,1,0} add(add0, b0)
+})";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
+}
+
+TEST_F(
+    SoftmaxRewriterTritonTest,
+    FusesBinaryElementwiseIfIntermediateDiamondOpWithZeroDimTensorBroadcastAsParameter) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_string = R"(
+HloModule h1
+
+add_computation {
+  y = f32[] parameter(1)
+  x = f32[] parameter(0)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  parameter_0 = f32[] parameter(0)
+  parameter_1 = f32[64,32,16]{2,1,0} parameter(1)
+  c = f32[] constant(0)
+
+  reduce_0 = f32[64,32]{1,0} reduce(parameter_1, c), dimensions={2}, to_apply=add_computation
+  broadcast_0 = f32[64,32,16]{2,1,0} broadcast(reduce_0), dimensions={0,1}
+  broadcast_1 = f32[64,32,16]{2,1,0} broadcast(parameter_0), dimensions={}
+  add_0 = f32[64,32,16]{2,1,0} add(broadcast_1, parameter_1)
+  ROOT add1 = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
+})";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
+}
+
+TEST_F(
+    SoftmaxRewriterTritonTest,
+    FusesBinaryElementwiseIfIntermediateDiamondOpIsBroadcastOf1DParameterAlongNonReductionDimensions) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_string = R"(
+HloModule h1
+
+add_computation {
+  y = f32[] parameter(1)
+  x = f32[] parameter(0)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  parameter_0 = f32[16] parameter(0)
+  parameter_1 = f32[64,32,16]{2,1,0} parameter(1)
+  c = f32[] constant(0)
+
+  reduce_0 = f32[64,32]{1,0} reduce(parameter_1, c), dimensions={2}, to_apply=add_computation
+  broadcast_0 = f32[64,32,16]{2,1,0} broadcast(reduce_0), dimensions={0,1}
+  broadcast_1 = f32[64,32,16]{2,1,0} broadcast(parameter_0), dimensions={2}
+  add_0 = f32[64,32,16]{2,1,0} add(broadcast_1, parameter_1)
+  ROOT add1 = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
+})";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
+}
+
+TEST_F(
+    SoftmaxRewriterTritonTest,
+    DoesNotFuseBinaryElementwiseIfIntermediateDiamondOpIsBroadcastOf1DParameterAlongBothBatchAndReductionDimensions) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_string = R"(
+HloModule h1
+
+add_computation {
+  y = f32[] parameter(1)
+  x = f32[] parameter(0)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  parameter_0 = f32[64] parameter(0)
+  parameter_1 = f32[64,32,16]{2,1,0} parameter(1)
+  c = f32[] constant(0)
+
+  reduce_0 = f32[64,32]{1,0} reduce(parameter_1, c), dimensions={2}, to_apply=add_computation
+  broadcast_0 = f32[64,32,16]{2,1,0} broadcast(reduce_0), dimensions={0,1}
+  broadcast_1 = f32[64,32,16]{2,1,0} broadcast(parameter_0), dimensions={0}
+  add_0 = f32[64,32,16]{2,1,0} add(broadcast_1, parameter_1)
+  ROOT add1 = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
+})";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
+}
+
+TEST_F(
+    SoftmaxRewriterTritonTest,
+    DoesNotFuseBinaryElementwiseIfIntermediateDiamondOpWithBroadcastAlongBatchAndReductionDimAsParameter) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_string = R"(
+HloModule h1
+
+add_computation {
+  y = f32[] parameter(1)
+  x = f32[] parameter(0)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[32,8,16]{2,1,0} parameter(1)
+  c = f32[] constant(0)
+
+  r0 = f32[32,8]{1,0} reduce(p1, c), dimensions={2}, to_apply=add_computation
+  b0 = f32[32,8,16]{2,1,0} broadcast(r0), dimensions={0,1}
+  b1 = f32[32,8,16]{2,1,0} broadcast(p0), dimensions={1}
+  add0 = f32[32,8,16]{2,1,0} add(b1, p1)
+  ROOT add1 = f32[32,8,16]{2,1,0} add(add0, b0)
+})";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
+}
+
+TEST_F(
+    SoftmaxRewriterTritonTest,
+    DoesNotFuseBinaryElementwiseIfIntermediateDiamondOpWithPartialBroadcastToBatchDim) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_string = R"(
+HloModule h1
+
+add_computation {
+  y = f32[] parameter(1)
+  x = f32[] parameter(0)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[16,64]{1,0} parameter(0)
+  p1 = f32[8,16,32,64]{3,2,1,0} parameter(1)
+  c = f32[] constant(0)
+
+  r0 = f32[8,16,32]{2,1,0} reduce(p1, c), dimensions={3}, to_apply=add_computation
+  b0 = f32[8,16,32,64]{3,2,1,0} broadcast(r0), dimensions={0,1,2}
+  b1 = f32[8,16,32,64]{3,2,1,0} broadcast(p0), dimensions={1,3}
+  add0 = f32[8,16,32,64]{3,2,1,0} add(b1, p1)
+  ROOT add1 = f32[8,16,32,64]{3,2,1,0} add(add0, b0)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
+}
+
+TEST_F(
+    SoftmaxRewriterTritonTest,
+    DoesNotFuseBinaryElementwiseIfIntermediateDiamondOpWithMultiDimBroadcastAlongBatchDimAsParameter) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_string = R"(
+HloModule h1
+
+add_computation {
+  y = f32[] parameter(1)
+  x = f32[] parameter(0)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[32,16]{1,0} parameter(0)
+  p1 = f32[128,64,32,16]{3,2,1,0} parameter(1)
+  c = f32[] constant(0)
+
+  r0 = f32[128,64,32]{2,1,0} reduce(p1, c), dimensions={3}, to_apply=add_computation
+  b0 = f32[128,64,32,16]{3,2,1,0} broadcast(r0), dimensions={0,1,2}
+  b1 = f32[128,64,32,16]{3,2,1,0} broadcast(p0), dimensions={2,3}
+  add0 = f32[128,64,32,16]{3,2,1,0} add(b1, p1)
+  ROOT add1 = f32[128,64,32,16]{3,2,1,0} add(add0, b0)
+})";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_FALSE(
+      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
 INSTANTIATE_TEST_SUITE_P(SoftmaxRewriterTritonTestSuite,

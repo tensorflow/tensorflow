@@ -308,7 +308,7 @@ class DenseBincountOp : public OpKernel {
 
     Tensor* out_t;
     functor::SetZeroFunctor<Device, T> fill;
-    if (data.dims() == 1) {
+    if (data.dims() <= 1) {
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({size}), &out_t));
       auto out = out_t->flat<T>();
       fill(ctx->eigen_device<Device>(), out);

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
@@ -115,7 +116,7 @@ class TfrtSessionInterOpThreadPools {
     thread_pools_.at(index) = thread_pool;
   }
 
-  StatusOr<ThreadPoolInterfaceWrapper*> GetThreadPool(int index) {
+  absl::StatusOr<ThreadPoolInterfaceWrapper*> GetThreadPool(int index) {
     if (index < 0 || index >= thread_pools_.size())
       return errors::InvalidArgument("Invalid thread pool index ", index);
     return thread_pools_[index];
@@ -165,7 +166,7 @@ class TfrtSession : public tensorflow::Session {
       TF_EXCLUSIVE_LOCKS_REQUIRED(session_state_lock_) {
     if (graph.node_size() == 0) {
       LOG(ERROR) << "Ignoring empty graph.";
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (session_state_ == SessionState::kCreated) {
       return errors::AlreadyExists(
@@ -214,35 +215,12 @@ class TfrtSession : public tensorflow::Session {
     auto resource_context = std::make_unique<tfrt::ResourceContext>();
     tfrt_stub::ModelRuntimeContext model_context(
         &options, /*export_dir=*/"unknown_export_dir", resource_context.get());
-    MetaGraphDef meta_graph_def;
-    *meta_graph_def.mutable_graph_def() = graph;
-    model_context.set_meta_graph_def(&meta_graph_def);
+    // TODO(b/334641254): Offer a Session option that prunes the graph_def.
+    model_context.set_graph_def(&graph);
     // In the multi-host case, this prevents local Sessions from running
     // global resource creation functions.
     model_context.set_is_local_session(
         !options_.config.experimental().enable_multi_host());
-    // Create mock signature def with all inputs and outputs. This
-    // prevents graph pruning.
-    if (options_.config.experimental().enable_multi_host()) {
-      // Fake a SignatureDef with all inputs and outputs.
-      // TODO(b/303480573): Cleanup ServingContext to not use
-      // MetaGraphDef.
-      SignatureDef& signature_def =
-          (*meta_graph_def.mutable_signature_def())["dummy_signature"];
-      for (const auto& node : graph.node()) {
-        if (node.op() == "Placeholder" || node.op() == "Const") {
-          TensorInfo& tensor_info =
-              (*signature_def.mutable_inputs())[node.name()];
-          tensor_info.set_name(node.name());
-        }
-        if (node.attr().contains("Tout")) {
-          TensorInfo& tensor_info =
-              (*signature_def.mutable_outputs())[node.name()];
-          tensor_info.set_name(node.name());
-        }
-      }
-    }
-
     TF_RETURN_IF_ERROR(options.runtime->CreateRuntimeResources(model_context));
 
     // `GraphExecutor::Create()` will preprocess the graph (e.g., apply
@@ -256,7 +234,7 @@ class TfrtSession : public tensorflow::Session {
             std::move(graph), std::move(kernel_registry)));
 
     session_state_ = SessionState::kCreated;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Extend(const GraphDef& graph) override {
@@ -339,7 +317,7 @@ class TfrtSession : public tensorflow::Session {
       DCHECK(output_tensor_names.empty()) << "No outputs in Run()";
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Run(const std::vector<std::pair<std::string, Tensor>>& inputs,
@@ -387,7 +365,7 @@ class TfrtSession : public tensorflow::Session {
     *out_handle = next_callable_handle_++;
     assert(callables_.find(*out_handle) == callables_.end());
     callables_[*out_handle] = {callable_options};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   /// \brief Invokes the subgraph named by `handle` with the given options and
@@ -453,16 +431,20 @@ class TfrtSession : public tensorflow::Session {
     if (it == callables_.end())
       return errors::InvalidArgument("No such callable handle: ", handle);
     callables_.erase(it);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Close() override {
     absl::MutexLock lock(&session_state_lock_);
     session_state_ = SessionState::kClosed;
-    return OkStatus();
+    return absl::OkStatus();
   }
   Status ListDevices(std::vector<DeviceAttributes>* response) override {
     return errors::Unimplemented("TfrtSession::ListDevices is Unimplemented.");
+  }
+  Status LocalDeviceManager(const DeviceMgr** output) override {
+    *output = &graph_executor_->fallback_state().device_manager();
+    return absl::OkStatus();
   }
 
  private:
@@ -501,7 +483,7 @@ class TfrtSession : public tensorflow::Session {
     if (session_state_ == SessionState::kClosed) {
       return errors::Cancelled("Session has been closed.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   struct Callable {
@@ -580,7 +562,7 @@ class TfrtSessionFactory::ThreadPoolManager {
  public:
   // Updates the thread pools based on the given `SessionOptions`. Returns a
   // `TfrtSessionInterOpThreadPools` that can be used to create a `TfrtSession`.
-  StatusOr<TfrtSessionInterOpThreadPools> UpdateAndGetInterOpThreadPools(
+  absl::StatusOr<TfrtSessionInterOpThreadPools> UpdateAndGetInterOpThreadPools(
       const SessionOptions& options) {
     if (options.config.inter_op_parallelism_threads() > 0) {
       LOG(WARNING) << "TFRT session does not support positive "
@@ -603,15 +585,6 @@ class TfrtSessionFactory::ThreadPoolManager {
         const ThreadPoolOptionProto& pool_options = it.value();
         auto pool_index = it.index();
         auto num_threads = pool_options.num_threads();
-
-        // For the current use cases the first thread pool is always the default
-        // thread pool. We add this check here to verify the assumption. We can
-        // remove this check once the code stablizes, since it is semantically
-        // meaningful to use non-default thread pool as the first thread pool.
-        if (pool_index == 0 && num_threads != 0) {
-          return errors::InvalidArgument(
-              "The first thread pool must have num_threads = 0");
-        }
 
         if (num_threads != 0) {
           TF_ASSIGN_OR_RETURN(
@@ -679,7 +652,7 @@ class TfrtSessionFactory::ThreadPoolManager {
   // Returns a `ThreadPoolInterfaceWrapper` that wraps the thread pool with the
   // name in `pool_options`. Creates and stores a new thread pool if an existing
   // one can't be found.
-  StatusOr<ThreadPoolInterfaceWrapper*> GetOrCreateThreadPool(
+  absl::StatusOr<ThreadPoolInterfaceWrapper*> GetOrCreateThreadPool(
       Env* env, const ThreadPoolOptionProto& pool_options, int pool_index) {
     const int32_t num_threads = pool_options.num_threads();
     CHECK_GT(num_threads, 0);
@@ -745,8 +718,8 @@ class InitializerRegistry {
 
   absl::Status RunInitializer(tfrt_stub::Runtime* runtime) {
     LOG(INFO) << "Running Initializer within TfrtSessionFactory.";
-    TF_RETURN_IF_ERROR(initializer_ ? initializer_(runtime) : OkStatus());
-    return OkStatus();
+    TF_RETURN_IF_ERROR(initializer_ ? initializer_(runtime) : absl::OkStatus());
+    return absl::OkStatus();
   }
 
  private:
@@ -761,7 +734,7 @@ Status TfrtSessionFactory::InitializeLocked(const TfrtSessionOptions& options) {
   mutex_.AssertHeld();
   if (options.use_tpu) {
     DCHECK(!options.backend_compiler);
-    device_target_ = TfrtDeviceInfraTarget::kBridgeFallback;
+    device_target_ = TfrtDeviceInfraTarget::kTpurt;
     tpu_use_tpu_runner_ = true;
   } else if (options.backend_compiler) {
     backend_compiler_ = options.backend_compiler;
@@ -775,7 +748,7 @@ Status TfrtSessionFactory::InitializeLocked(const TfrtSessionOptions& options) {
     runtime_ = owned_runtime_.get();
   }
   enable_mlrt_ = options.enable_mlrt;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool TfrtSessionFactory::AcceptsOptions(const SessionOptions& options) {
@@ -816,7 +789,7 @@ Status TfrtSessionFactory::NewSession(const SessionOptions& options,
   *out_session = new TfrtSession(
       options, runtime_, device_target_, tpu_use_tpu_runner_,
       std::move(inter_op_thread_pools), enable_mlrt_, backend_compiler);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

@@ -76,7 +76,8 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
 
   // TF -> StableHLO legalization.
   AddLegalizeTFToStablehloPasses(pm, /*skip_quantization_ops=*/false,
-                                 skip_resize);
+                                 skip_resize,
+                                 /*skip_partitioned_calls=*/false);
 
   // Wrap disallowed ops in stablehlo.custom_call ops.
   if (smuggle_disallowed_ops) {

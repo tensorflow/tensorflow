@@ -15,17 +15,31 @@ limitations under the License.
 
 #include "xla/service/while_loop_invariant_code_motion.h"
 
+#include <cstdint>
+#include <iterator>
+#include <string>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/map_util.h"
 #include "xla/service/compile_time_cap.h"
 #include "xla/service/hlo_dce.h"
-#include "xla/service/tuple_util.h"
 #include "xla/service/while_loop_analysis.h"
 #include "xla/service/while_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -102,10 +116,14 @@ static void CreateLoopInvariantCopy(
 }
 
 // Returns true if `instruction` is worth hoisting only if it lets us hoist some
-// instruction using it.  The rationale is that hoisting these instructions will
-// prevent simplification and fusion in the while body.
+// instruction using it. The rationale is that hoisting these instructions will
+// prevent simplification, fusion, and sharding annotation in the while body.
 bool WhileLoopInvariantCodeMotion::NotWorthHoistingIndividually(
     const HloInstruction& instruction) {
+  if (instruction.IsCustomCall("Sharding")) {
+    return true;
+  }
+
   switch (instruction.opcode()) {
     default:
       return false;
@@ -127,7 +145,7 @@ bool WhileLoopInvariantCodeMotion::NotWorthHoistingIndividually(
   }
 }
 
-StatusOr<bool>
+absl::StatusOr<bool>
 WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     HloInstruction* while_instr, BoundNonLinearCompilerAnalysis* allowance) {
   auto print_no_metadata = HloPrintOptions{}.set_print_metadata(false);
@@ -318,7 +336,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   return true;
 }
 
-StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
+absl::StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "HLO module before WhileLoopInvariantCodeMotion:";

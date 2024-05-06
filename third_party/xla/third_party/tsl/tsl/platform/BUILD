@@ -5,12 +5,20 @@
 #   to other TF components outside of TSL.
 
 load(
-    "//tsl:tsl.bzl",
+    "@bazel_skylib//:bzl_library.bzl",
+    "bzl_library",
+)
+load(
+    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
+load(
+    "@local_xla//xla/tsl:tsl.bzl",
     "if_not_fuchsia",
     "internal_visibility",
     "tsl_copts",
 )
-load("//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("@local_xla//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tsl/platform:build_config.bzl",
     "tf_cuda_libdevice_path_deps",
@@ -29,14 +37,6 @@ load(
     "tsl_protobuf_deps",
 )
 load("//tsl/platform:build_config_root.bzl", "if_static")
-load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
-    "cc_library",
-)
-load(
-    "@bazel_skylib//:bzl_library.bzl",
-    "bzl_library",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -94,6 +94,7 @@ cc_library(
     deps = [
         ":byte_order",
         ":stringpiece",
+        ":tstring",
         ":types",
     ],
 )
@@ -578,7 +579,7 @@ filegroup(
         "threadpool_interface.h",
         "tracing.h",
     ] + select({
-        "//tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
+        "@local_xla//xla/tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
             "file_system_helper.cc",
             "tracing.cc",
@@ -844,6 +845,7 @@ cc_library(
     srcs = ["resource_loader.cc"],
     textual_hdrs = ["resource_loader.h"],
     deps = [
+        ":logging",
         ":path",
         ":test",
     ],
@@ -1023,7 +1025,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "@ml_dtypes//:float8",
-        "@ml_dtypes//:int4",
+        "@ml_dtypes//:intn",
     ],
 )
 
@@ -1295,7 +1297,7 @@ cc_library(
     srcs = ["test_main.cc"],
     copts = tsl_copts(),
     linkopts = select({
-        "//tsl:windows": [],
+        "@local_xla//xla/tsl:windows": [],
         "//conditions:default": ["-lm"],
     }),
     deps = [

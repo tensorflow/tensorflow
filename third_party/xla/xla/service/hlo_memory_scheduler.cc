@@ -38,6 +38,7 @@ limitations under the License.
 #include "tsl/lib/gtl/map_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace {
@@ -77,7 +78,7 @@ class ListScheduler {
  public:
   // Construct and return a memory-minimizing sequence of HLO instructions
   // containing the given HLO computation.
-  static StatusOr<HloInstructionSequence> Run(
+  static absl::StatusOr<HloInstructionSequence> Run(
       HloComputation* computation,
       const TuplePointsToAnalysis& points_to_analysis,
       const BufferValue::SizeFunction& size_function,
@@ -410,7 +411,7 @@ int64_t SumLogicalBufferSizes(
   return size;
 }
 
-StatusOr<HloInstructionSequence> ScheduleComputationHelper(
+absl::StatusOr<HloInstructionSequence> ScheduleComputationHelper(
     HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
@@ -433,7 +434,7 @@ StatusOr<HloInstructionSequence> ScheduleComputationHelper(
 
 }  // namespace
 
-StatusOr<HloInstructionSequence> DFSMemoryScheduler(
+absl::StatusOr<HloInstructionSequence> DFSMemoryScheduler(
     HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
@@ -532,7 +533,7 @@ ModuleSchedulerAlgorithm ComputationSchedulerToModuleScheduler(
              const HloAliasAnalysis& alias_analysis,
              const LogicalBuffer::SizeFunction& size_func,
              const absl::flat_hash_set<absl::string_view>& execution_threads,
-             int64_t* peak_memory) -> StatusOr<HloSchedule> {
+             int64_t* peak_memory) -> absl::StatusOr<HloSchedule> {
     HloSchedule schedule(module);
     absl::flat_hash_map<const HloComputation*, int64_t> memory_by_computation;
     for (auto* computation :
@@ -555,7 +556,7 @@ ModuleSchedulerAlgorithm ComputationSchedulerToModuleScheduler(
   };
 }
 
-StatusOr<HloInstructionSequence> ListMemoryScheduler(
+absl::StatusOr<HloInstructionSequence> ListMemoryScheduler(
     HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
@@ -578,7 +579,7 @@ StatusOr<HloInstructionSequence> ListMemoryScheduler(
   return sequence;
 }
 
-StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
+absl::StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
     HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
@@ -599,7 +600,7 @@ StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
   return sequence;
 }
 
-StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
+absl::StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
     HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
@@ -660,7 +661,7 @@ StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
   }
 }
 
-StatusOr<HloSchedule> DefaultModuleScheduler(
+absl::StatusOr<HloSchedule> DefaultModuleScheduler(
     const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
     const BufferValue::SizeFunction& size_function,
@@ -720,11 +721,15 @@ StatusOr<HloSchedule> DefaultModuleScheduler(
   }
 }
 
-StatusOr<HloSchedule> ScheduleModule(
+absl::StatusOr<HloSchedule> ScheduleModule(
     const HloModule* module, const BufferValue::SizeFunction& size_function,
     const ModuleSchedulerAlgorithm& algorithm,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     int64_t* peak_memory) {
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaMemoryScheduler:#module=%s,program_id=%d#",
+                           module->name(), module->unique_id());
+  });
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(module));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
@@ -740,7 +745,7 @@ StatusOr<HloSchedule> ScheduleModule(
   return std::move(schedule);
 }
 
-StatusOr<HloInstructionSequence> ScheduleComputation(
+absl::StatusOr<HloInstructionSequence> ScheduleComputation(
     HloComputation* computation, const BufferValue::SizeFunction& size_function,
     const MemorySchedulerPostprocessor& postprocessor) {
   CHECK(!computation->IsFusionComputation());
@@ -760,7 +765,7 @@ HloMemoryScheduler::HloMemoryScheduler(
     const ModuleSchedulerAlgorithm& algorithm)
     : size_function_(size_function), algorithm_(algorithm) {}
 
-StatusOr<bool> HloMemoryScheduler::Run(
+absl::StatusOr<bool> HloMemoryScheduler::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(
@@ -770,7 +775,7 @@ StatusOr<bool> HloMemoryScheduler::Run(
   return true;
 }
 
-StatusOr<bool> HloTrivialScheduler::Run(
+absl::StatusOr<bool> HloTrivialScheduler::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   HloSchedule schedule(module);
@@ -792,7 +797,7 @@ StatusOr<bool> HloTrivialScheduler::Run(
   return true;
 }
 
-StatusOr<bool> HloDescheduler::Run(
+absl::StatusOr<bool> HloDescheduler::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = module->has_schedule();

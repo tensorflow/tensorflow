@@ -18,10 +18,13 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_fused_mha_runner.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 
@@ -43,7 +46,9 @@ class FusedMHAThunk : public Thunk {
                 BufferAllocation::Slice scratch_slice,
                 BufferAllocation::Slice mask_slice, /* may be null */
                 BufferAllocation::Slice bias_slice /* may be null */,
-                BufferAllocation::Slice activation_slice /* may be null */);
+                BufferAllocation::Slice activation_slice /* may be null */,
+                BufferAllocation::Slice seqlen_q_slice /* may be null */,
+                BufferAllocation::Slice seqlen_k_slice /* may be null */);
 
   FusedMHAThunk(const FusedMHAThunk&) = delete;
   FusedMHAThunk& operator=(const FusedMHAThunk&) = delete;
@@ -56,9 +61,10 @@ class FusedMHAThunk : public Thunk {
   BufferAllocation::Slice rhs_bmm2_buffer_;
   BufferAllocation::Slice output_buffer_;
   BufferAllocation::Slice scratch_buffer_;
-  BufferAllocation::Slice mask_buffer_;
   BufferAllocation::Slice bias_buffer_;
   BufferAllocation::Slice activation_buffer_;
+  BufferAllocation::Slice seqlen_q_buffer_;
+  BufferAllocation::Slice seqlen_k_buffer_;
 
   FusedMultiHeadedAttentionRunner& GetOrCreateRunner(
       const stream_executor::Stream* stream);
@@ -85,12 +91,12 @@ class FusedMHABackwardThunk : public Thunk {
                         BufferAllocation::Slice d_bmm1_rhs_slice,
                         BufferAllocation::Slice d_bmm2_rhs_slice,
                         BufferAllocation::Slice d_s_slice,
-                        BufferAllocation::Slice softmax_sum_slice,
-                        BufferAllocation::Slice d_Q_accum_slice,
                         BufferAllocation::Slice mask_slice,
                         BufferAllocation::Slice d_bias_slice,
                         BufferAllocation::Slice fwd_output_slice,
-                        BufferAllocation::Slice bias_slice);
+                        BufferAllocation::Slice bias_slice,
+                        BufferAllocation::Slice seqlen_q_slice,
+                        BufferAllocation::Slice seqlen_k_slice);
 
   FusedMHABackwardThunk(const FusedMHABackwardThunk&) = delete;
   FusedMHABackwardThunk& operator=(const FusedMHABackwardThunk&) = delete;
@@ -108,12 +114,11 @@ class FusedMHABackwardThunk : public Thunk {
   BufferAllocation::Slice d_bmm1_rhs_buffer_;
   BufferAllocation::Slice d_bmm2_rhs_buffer_;
   BufferAllocation::Slice d_s_buffer_;
-  BufferAllocation::Slice softmax_sum_buffer_;
-  BufferAllocation::Slice d_Q_accum_buffer_;
-  BufferAllocation::Slice mask_buffer_;
   BufferAllocation::Slice d_bias_buffer_;
   BufferAllocation::Slice fwd_output_buffer_;
   BufferAllocation::Slice bias_buffer_;
+  BufferAllocation::Slice seqlen_q_buffer_;
+  BufferAllocation::Slice seqlen_k_buffer_;
 
   FusedMultiHeadedAttentionBackwardRunner& GetOrCreateRunner(
       const stream_executor::Stream* stream);

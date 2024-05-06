@@ -45,7 +45,7 @@ using tsl::testing::StatusIs;
 // Required in OSS to prevent string to bool conversion in FieldType variant.
 using namespace std::string_literals;  // NOLINT
 
-tsl::StatusOr<ManyFields> MakeManyFields() {
+absl::StatusOr<ManyFields> MakeManyFields() {
   return ParseTextProto<ManyFields>(
       R"pb(field_one {
              repeated_field {}
@@ -66,7 +66,7 @@ tsl::StatusOr<ManyFields> MakeManyFields() {
            })pb");
 }
 
-tsl::StatusOr<
+absl::StatusOr<
     tsl::protobuf::RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>>
 MakeFieldTags() {
   TF_ASSIGN_OR_RETURN(auto ret, ParseTextProto<ChunkedField>(R"pb(
@@ -78,7 +78,7 @@ MakeFieldTags() {
   return ret.field_tag();
 }
 
-tsl::StatusOr<
+absl::StatusOr<
     tsl::protobuf::RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>>
 MakeFieldTagsTooManyIndices() {
   TF_ASSIGN_OR_RETURN(auto ret, ParseTextProto<ChunkedField>(R"pb(
@@ -91,7 +91,7 @@ MakeFieldTagsTooManyIndices() {
   return ret.field_tag();
 }
 
-tsl::StatusOr<
+absl::StatusOr<
     tsl::protobuf::RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>>
 MakeFieldTagsTooManyMapKeys() {
   TF_ASSIGN_OR_RETURN(auto ret, ParseTextProto<ChunkedField>(R"pb(
@@ -104,7 +104,7 @@ MakeFieldTagsTooManyMapKeys() {
   return ret.field_tag();
 }
 
-tsl::StatusOr<
+absl::StatusOr<
     tsl::protobuf::RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>>
 MakeFieldTagsMisplacedIndex() {
   TF_ASSIGN_OR_RETURN(auto ret, ParseTextProto<ChunkedField>(R"pb(
@@ -117,7 +117,7 @@ MakeFieldTagsMisplacedIndex() {
   return ret.field_tag();
 }
 
-tsl::StatusOr<
+absl::StatusOr<
     tsl::protobuf::RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>>
 MakeFieldTagsMisplacedMapKey() {
   TF_ASSIGN_OR_RETURN(auto ret, ParseTextProto<ChunkedField>(R"pb(

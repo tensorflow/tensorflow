@@ -19,9 +19,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
@@ -33,18 +36,22 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
+#include "tsl/platform/macros.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
 const Shape& GetElementShape(const HloFusionAnalysis& analysis) {
-  const Shape* shape = &analysis.fusion_roots().front()->shape();
+  const Shape* shape = &analysis.fusion_root(0).shape();
   while (shape->IsTuple()) {
     shape = &shape->tuple_shapes(0);
   }
@@ -160,18 +167,18 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   }
   // CHECK that unroll_factor is a power-of-2, as needed by the logic below.
   CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));
-  if (analysis.input_output_info().has_4_bit_output && unroll_factor == 1) {
-    // Ensure a single thread writes to a byte containing two int4 values by
-    // setting unroll_factor to 2. unroll_factor is always a power of 2, so
-    // setting it to 2 here ensures unroll_factor is even when there are 4-bit
-    // outputs. Setting unroll_factor is safe even if there are an odd number of
-    // elements, as the parallel loop emitter will insert a bounds check in this
-    // case to ensure the out-of-bounds element is not computed and written.
-    // Setting unroll_factor is safe even if MayPreventVectorization returns
-    // false, as the MayPreventVectorization check is an optimization, not a
-    // correctness requirement.
-    unroll_factor = 2;
-  }
+  // Ensure a single thread writes to a byte containing multiple values by
+  // setting unroll_factor to an appropriate number. Setting unroll_factor is
+  // safe even if the new unroll_factor doesn't divide the number of elements,
+  // as the parallel loop emitter will insert a bounds check in this case to
+  // ensure the out-of-bounds element is not computed and written. Setting
+  // unroll_factor is safe even if MayPreventVectorization returns false, as
+  // the MayPreventVectorization check is an optimization, not a correctness
+  // requirement.
+  unroll_factor = std::max(
+      unroll_factor,
+      CeilOfRatio(8, analysis.input_output_info().smallest_output_dtype_bits));
+  CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));
   VLOG(2) << "Unroll factor: " << unroll_factor;
 
   bool row_vectorized;
@@ -217,8 +224,8 @@ LoopFusion::LoopFusion(const HloFusionAnalysis& analysis)
 std::optional<IndexingMap> LoopFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
   auto launch_dims = launch_dimensions();
-  return GetDefaultThreadIdToOutputIndexingMap(
-      launch_dims, config_.unroll_factor, GetElementShape(analysis_), ctx);
+  return GetDefaultThreadIdIndexingMap(launch_dims, config_.unroll_factor,
+                                       GetElementShape(analysis_), ctx);
 }
 
 std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(
@@ -229,7 +236,8 @@ std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(
   if (!thread_id_to_output_indexing.has_value()) {
     return std::nullopt;
   }
-  const HloInstruction* fusion_root = analysis_.fusion_roots()[root_index];
+  const HloInstruction* fusion_root =
+      &analysis_.fusion_root(root_index).instruction();
   auto output_to_input_indexing =
       ComputeOutputToInputIndexing(fusion_root, /*output_id=*/0, ctx);
   IndexingMapSet output_to_input_indexing_set =
@@ -239,7 +247,7 @@ std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(
   CHECK_EQ(output_to_input_indexing_set.size(), 1);
   IndexingMap thread_id_to_input_indexing_map = ComposeIndexingMaps(
       *thread_id_to_output_indexing, *output_to_input_indexing_set.begin());
-  thread_id_to_input_indexing_map.Simplify();
+  thread_id_to_input_indexing_map.Simplify(GetIndexingMapForInstruction);
   return thread_id_to_input_indexing_map;
 }
 

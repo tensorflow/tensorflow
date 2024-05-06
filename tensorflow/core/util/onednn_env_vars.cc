@@ -53,6 +53,17 @@ bool ThreadPoolUseCallerThread() {
   return threadpool_use_caller_thread;
 }
 
+bool UseOnednnSpmm() {
+  static bool use_onednn_spmm = [] {
+    bool setting;
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_ONEDNN_SPMM",
+                                   /*default_value*/ false, &setting));
+    return setting;
+  }();
+
+  return use_onednn_spmm;
+}
+
 std::string FPMathModeSetting() {
   static std::string math_mode_setting = [] {
     std::string setting = "";

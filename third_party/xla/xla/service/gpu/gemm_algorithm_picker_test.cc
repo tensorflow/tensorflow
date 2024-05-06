@@ -15,13 +15,21 @@ limitations under the License.
 
 #include "xla/service/gpu/gemm_algorithm_picker.h"
 
-#include <string>
+#include <cstdint>
+#include <variant>
+#include <vector>
 
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gemm_rewriter.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
@@ -127,13 +135,8 @@ ENTRY main {
 
   SCOPED_TRACE(m->ToString());
   HloInstruction* dot;
-  if (module_cfg.debug_options().xla_gpu_enable_cublaslt()) {
-    ASSERT_THAT(m->entry_computation()->root_instruction(),
-                GmockMatch(m::CustomCall(&dot)));
-  } else {
-    ASSERT_THAT(m->entry_computation()->root_instruction(),
-                GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
-  }
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
 
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           dot->backend_config<GpuBackendConfig>());
@@ -216,13 +219,8 @@ ENTRY main {
   SCOPED_TRACE(m->ToString());
   HloInstruction* dot;
 
-  if (module_cfg.debug_options().xla_gpu_enable_cublaslt()) {
-    ASSERT_THAT(m->entry_computation()->root_instruction(),
-                GmockMatch(m::CustomCall(&dot)));
-  } else {
-    ASSERT_THAT(m->entry_computation()->root_instruction(),
-                GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
-  }
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
 
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           dot->backend_config<GpuBackendConfig>());

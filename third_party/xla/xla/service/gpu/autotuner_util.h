@@ -16,22 +16,29 @@ limitations under the License.
 #define XLA_SERVICE_GPU_AUTOTUNER_UTIL_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <variant>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -98,6 +105,17 @@ class AutotuneConfig {
   bool should_crash_on_check_failure() const {
     return should_crash_on_check_failure_;
   }
+  bool should_require_complete_aot_autotune_results() const {
+    return require_complete_aot_autotune_results_;
+  }
+
+  AutotuneConfig(const AutotuneConfig& right)
+      : config_(right.config_),
+        autotune_level_(right.autotune_level_),
+        should_crash_on_check_failure_(right.should_crash_on_check_failure_),
+        exhaustive_tiling_search_(right.exhaustive_tiling_search_),
+        require_complete_aot_autotune_results_(
+            right.require_complete_aot_autotune_results_) {}
 
   AutotuneConfig(const std::variant<DeviceConfig, DevicelessConfig>& config,
                  const DebugOptions& debug_options)
@@ -106,7 +124,9 @@ class AutotuneConfig {
         should_crash_on_check_failure_(
             debug_options.xla_gpu_crash_on_verification_failures()),
         exhaustive_tiling_search_(
-            debug_options.xla_gpu_exhaustive_tiling_search()) {}
+            debug_options.xla_gpu_exhaustive_tiling_search()),
+        require_complete_aot_autotune_results_(
+            debug_options.xla_gpu_require_complete_aot_autotune_results()) {}
 
   absl::string_view GetModelStr() const {
     if (auto deviceless_config = std::get_if<DevicelessConfig>(&config_)) {
@@ -125,7 +145,14 @@ class AutotuneConfig {
   se::DeviceMemoryAllocator* GetAllocator() const {
     CHECK(std::holds_alternative<DeviceConfig>(config_));
     auto& cf = std::get<DeviceConfig>(config_);
-    return cf.allocator ? cf.allocator : GetExecutor()->GetAllocator();
+    if (cf.allocator != nullptr) {
+      return cf.allocator;
+    }
+    if (allocator_ == nullptr) {
+      allocator_ =
+          std::make_unique<se::StreamExecutorMemoryAllocator>(GetExecutor());
+    }
+    return allocator_.get();
   }
 
   absl::StatusOr<se::Stream*> GetStream() const {
@@ -151,6 +178,8 @@ class AutotuneConfig {
   int32_t autotune_level_;
   bool should_crash_on_check_failure_;
   bool exhaustive_tiling_search_;
+  bool require_complete_aot_autotune_results_;
+  mutable std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 };
 
 using AutotuneNoCacheFn = std::function<absl::StatusOr<AutotuneResult>()>;
@@ -184,11 +213,9 @@ struct AutotunerUtil {
   // Normally, we don't have to use this low level method.
   static bool AddResult(const AutotuneCacheKey& key, AutotuneResult result);
 
-  // Creates a RedzoneAllocator from a given config. If `force_stream` is
-  // provided, than it is used for checking redzones.
+  // Creates a RedzoneAllocator from a given config.
   static absl::StatusOr<se::RedzoneAllocator> CreateRedzoneAllocator(
-      const AutotuneConfig& config, const DebugOptions& opts,
-      se::Stream* force_stream = nullptr);
+      const AutotuneConfig& config, const DebugOptions& opts);
 
   // Functions to save/load XLA's autotuning results.
   //
@@ -240,7 +267,9 @@ struct AutotunerUtil {
   // quadratic blow-up when serializing cache for a large number of modules.
   static absl::StatusOr<std::string> SerializeAutotuneResultsForModule(
       const HloModule& module, const AutotuneConfig& autotune_config,
-      bool as_textproto = false);
+      bool as_textproto);
+  static AutotuneResults SerializeAutotuneResultsForModule(
+      const HloModule& module, const AutotuneConfig& autotune_config);
 
   static absl::Status SerializeAutotuneResults(AutotuneResults* results);
   static absl::Status LoadAutotuneResults(absl::string_view data,
@@ -254,6 +283,11 @@ struct AutotunerUtil {
   // is used, otherwise the binary protobuf format.
   static absl::Status SerializeAutotuneResultsToFile(
       absl::string_view file_path);
+
+  // As above, but if you already called SerializeAutotuneResults to get a
+  // proto.
+  static absl::Status SerializeAutotuneResultsToFile(
+      const AutotuneResults& results, absl::string_view file_path);
 
   // Loads autotune results from a file.
   //

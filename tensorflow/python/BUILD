@@ -2,6 +2,10 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
@@ -18,10 +22,6 @@ load(
     "if_static",
     "tf_additional_plugin_deps",
     "tf_additional_profiler_deps",
-)
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
 )
 
 # TODO(mdan): Break into per-directory files.
@@ -798,7 +798,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/kernels:data_service_ops",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/profiler:profiler_impl",
-        "//tensorflow/core/profiler/backends/cpu:python_tracer",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/util:determinism",
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
@@ -835,8 +834,9 @@ pywrap_tensorflow_macro(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/profiler/rpc:profiler_server_impl",
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
-        "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/backends/profiler/cpu:python_tracer",
         "@local_xla//xla/stream_executor:stream_executor_impl",
+        "@local_xla//xla/tsl/python/lib/core:numpy",
     ] + select({
         "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
         "//conditions:default": [
@@ -858,9 +858,9 @@ pywrap_tensorflow_macro(
         # nvidia standalone wheels into pywrap_tensorflow_internal. We might be
         # able to remove this in the future, as these stubs should already
         # be brought in via other dependencies.
-        "@local_tsl//tsl/cuda:cudnn",
-        "@local_tsl//tsl/cuda:cufft",
-        "@local_tsl//tsl/cuda:nccl_rpath",
+        "@local_xla//xla/tsl/cuda:cudnn",
+        "@local_xla//xla/tsl/cuda:cufft",
+        "@local_xla//xla/tsl/cuda:nccl_rpath",
     ])) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
     ]) + tf_monitoring_python_deps() + tf_additional_plugin_deps() + tf_additional_profiler_deps() + tf_additional_binary_deps(),
@@ -918,7 +918,6 @@ filegroup(
         "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
         "//tensorflow/core/platform:cpu_feature_guard",  # cpu_feature_guard
         "//tensorflow/core/platform:statusor",  # tfe
-        "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
         "//tensorflow/core/util:determinism",  # determinism
@@ -948,12 +947,13 @@ filegroup(
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
         "@local_tsl//tsl/platform:tensor_float_32_utils",  # tensor_float_32
+        "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",  # profiler
         "@local_tsl//tsl/profiler/rpc:profiler_server_impl",  # profiler
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
-        "@local_tsl//tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
-        "@local_tsl//tsl/python/lib/core:numpy",  # checkpoint_reader
         "@local_xla//xla/stream_executor",  # stat_summarizer
+        "@local_xla//xla/tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
+        "@local_xla//xla/tsl/python/lib/core:numpy",  # checkpoint_reader
     ] + select({
         "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
         "//conditions:default": [
@@ -1123,7 +1123,7 @@ tf_python_pybind_extension(
     ],
     visibility = [
         "//tensorflow/core/config:__subpackages__",
-        "//tensorflow/tools/pip_package/v2:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         "//tensorflow/core:lib_headers_for_pybind",
@@ -1151,7 +1151,7 @@ cc_library(
     name = "unified_api_pywrap_required_headers",
     textual_hdrs = [
         "//tensorflow/python/lib/core:basic_hdrs",
-        "@local_tsl//tsl/python/lib/core:basic_hdrs",
+        "@local_xla//xla/tsl/python/lib/core:basic_hdrs",
         "//tensorflow/c:headers",
         "//tensorflow/c:safe_ptr_hdr",
         "//tensorflow/c/eager:headers",
@@ -1203,9 +1203,9 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "//tensorflow/python/util:util_hdr",
-        "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
-        "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "@local_tsl//tsl/python/lib/core:numpy_hdr",
+        "@local_xla//xla/tsl/distributed_runtime:pywrap_required_hdrs",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
     ],
     dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
         "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
@@ -1330,7 +1330,7 @@ tf_python_pybind_extension(
     ],
     visibility = [
         "//tensorflow/python/distribute/parallel_device:__pkg__",
-        "//tensorflow/tools/pip_package/v2:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",

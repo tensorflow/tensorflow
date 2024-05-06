@@ -100,7 +100,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
   compile_result->entry_point = aot_opts.entry_point_name();
   compile_result->pointer_size =
       xla::CompileOnlyClient::PointerSizeForTriple(aot_opts.triple());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -182,12 +182,33 @@ static absl::once_flag targets_init;
 
 static void InitializeTargets() {
   // Initialize all LLVM targets so we can cross compile.
+#if TF_LLVM_AARCH32_AVAILABLE
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTargetMC();
+  LLVMInitializeARMAsmParser();
+  LLVMInitializeARMAsmPrinter();
+#endif
 #if TF_LLVM_AARCH64_AVAILABLE
   LLVMInitializeAArch64Target();
   LLVMInitializeAArch64TargetInfo();
   LLVMInitializeAArch64TargetMC();
   LLVMInitializeAArch64AsmParser();
   LLVMInitializeAArch64AsmPrinter();
+#endif
+#if TF_LLVM_HEXAGON_AVAILABLE
+  LLVMInitializeHexagonTarget();
+  LLVMInitializeHexagonTargetInfo();
+  LLVMInitializeHexagonTargetMC();
+  LLVMInitializeHexagonAsmParser();
+  LLVMInitializeHexagonAsmPrinter();
+#endif
+#if TF_LLVM_POWERPC_AVAILABLE
+  LLVMInitializePowerPCTarget();
+  LLVMInitializePowerPCTargetInfo();
+  LLVMInitializePowerPCTargetMC();
+  LLVMInitializePowerPCAsmParser();
+  LLVMInitializePowerPCAsmPrinter();
 #endif
 #if TF_LLVM_S390X_AVAILABLE
   LLVMInitializeSystemZTarget();
@@ -196,21 +217,13 @@ static void InitializeTargets() {
   LLVMInitializeSystemZAsmParser();
   LLVMInitializeSystemZAsmPrinter();
 #endif
-  LLVMInitializeARMTarget();
-  LLVMInitializeARMTargetInfo();
-  LLVMInitializeARMTargetMC();
-  LLVMInitializeARMAsmParser();
-  LLVMInitializeARMAsmPrinter();
-  LLVMInitializePowerPCTarget();
-  LLVMInitializePowerPCTargetInfo();
-  LLVMInitializePowerPCTargetMC();
-  LLVMInitializePowerPCAsmParser();
-  LLVMInitializePowerPCAsmPrinter();
+#if TF_LLVM_X86_AVAILABLE
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();
   LLVMInitializeX86AsmParser();
   LLVMInitializeX86AsmPrinter();
+#endif
 }
 
 // Replaces {{tag.type tag.name}} in the error message with tag_name.
@@ -246,7 +259,7 @@ Status Main(const MainFlags& flags) {
       nodes.insert(fetch.id().node_name());
     }
     std::cout << absl::StrJoin(nodes, ",");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Read and initialize the graph.
@@ -300,7 +313,7 @@ Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
                                     metadata_result, &header));
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_header, header));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tfcompile

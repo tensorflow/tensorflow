@@ -651,6 +651,31 @@ py_strict_test(
     ],
 )
 
+cuda_py_strict_test(
+    name = "mwms_pjrt_gpu_test",
+    srcs = ["mwms_pjrt_gpu_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    xla_enabled = True,
+    deps = [
+        ":multi_process_runner",
+        ":multi_worker_test_base",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:collective_ops",
+    ],
+)
+
 py_strict_library(
     name = "tpu_strategy",
     srcs = ["tpu_strategy.py"],
@@ -761,6 +786,7 @@ tpu_py_strict_test(
     tags = ["no_oss"],
     deps = [
         ":distribute_lib",
+        ":packed_distributed_variable",
         ":reduce_util",
         ":strategy_test_lib",
         ":tpu_strategy",
@@ -798,10 +824,13 @@ tpu_py_strict_test(
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:flags",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
         "//tensorflow/python/tpu:device_assignment",
         "//tensorflow/python/tpu:tpu_hardware_feature",
         "//tensorflow/python/tpu:tpu_replication",
         "//tensorflow/python/tpu:tpu_strategy_util",
+        "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:nest",
         "@absl_py//absl/logging",
@@ -926,7 +955,6 @@ py_strict_library(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/saved_model:nested_structure_coder",
@@ -935,6 +963,7 @@ py_strict_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/types:distribute",
         "//tensorflow/python/types:trace",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -2301,6 +2330,10 @@ py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/trackable:autotrackable",
+        "@absl_py//absl/logging",
     ],
 )
 

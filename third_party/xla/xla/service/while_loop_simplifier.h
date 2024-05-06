@@ -16,11 +16,23 @@ limitations under the License.
 #ifndef XLA_SERVICE_WHILE_LOOP_SIMPLIFIER_H_
 #define XLA_SERVICE_WHILE_LOOP_SIMPLIFIER_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
 
 namespace xla {
+
+// Tries to remove elements in a while loop's tuple that aren't used within the
+// loop.
+//
+// Specifically, if a loop is tuple-shaped, and there exists some element of
+// that tuple that is not used by the loop condition and is not used by the loop
+// body except to pass it to the next iteration of the loop, then we can remove
+// that element from the loop's tuple.
+absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op);
 
 // HLO pass that makes the following transformations on while loops:
 //
@@ -55,7 +67,7 @@ class WhileLoopSimplifier : public HloModulePass {
   ~WhileLoopSimplifier() override = default;
   absl::string_view name() const override { return "simplify-while-loops"; }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

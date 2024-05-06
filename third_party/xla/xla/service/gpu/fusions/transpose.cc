@@ -147,7 +147,7 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
   std::vector<std::pair<int64_t, const HloInstruction*>> extra_outputs;
 
   for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
-    const auto& hero = *analysis_.fusion_heroes()[output_idx];
+    const auto& hero = analysis_.fusion_hero(output_idx).instruction();
     auto transpose_descr = GetDescriptionForTiledTransposeEmitter(*root, hero);
     if (transpose_descr.has_value()) {
       auto iterator_inserted = transposes_to_roots.insert(std::make_pair(
@@ -285,8 +285,8 @@ LaunchDimensions TransposeFusion::launch_dimensions() const {
 
 std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
-  const auto& hero = *analysis_.fusion_heroes()[root_index];
-  const auto& root = *analysis_.fusion_roots()[root_index];
+  const auto& hero = analysis_.fusion_hero(root_index).instruction();
+  const auto& root = analysis_.fusion_root(root_index).instruction();
   if (!GetDescriptionForTiledTransposeEmitter(root, hero)) {
     // Non-transpose roots are elementwise by definition.
     return ComputeThreadIdToInputIndexing(root_index, 0, ctx);
@@ -300,19 +300,26 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
   auto permuted_tiled_shape =
       ShapeUtil::MakeShape(U8, Permute(tiling_.GetShape(), permutation_));
 
-  return ComposeIndexingMaps(
-      GetIndexingMapForTiling(block_offset, thread_offset, tiling_),
+  auto map = ComposeIndexingMaps(
+      GetIndexingMapForTiling(
+          block_offset, thread_offset, tiling_.GetNumThreadsPerBlock(),
+          tiling_.GetNumBlocks(), tiling_.GetThreadTileSize(),
+          permuted_tiled_shape.dimensions()),
       GetBitcastMap(permuted_tiled_shape, hero.shape(), ctx));
+  map.Simplify(GetIndexingMapForInstruction);
+  return map;
 }
 
 std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* ctx) const {
-  const auto& hero = *analysis_.fusion_heroes()[root_index];
+  const auto& hero = analysis_.fusion_hero(root_index).instruction();
 
-  return ComposeIndexingMaps(
+  auto map = ComposeIndexingMaps(
       GetIndexingMapForTiling(tiling_, ctx),
       GetBitcastMap(tiling_.GetXlaShape(), hero.operand(0)->shape(), ctx));
+  map.Simplify(GetIndexingMapForInstruction);
+  return map;
 }
 
 }  // namespace gpu

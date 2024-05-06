@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <cctype>
 #include <cstddef>
-#include <optional>
 #include <string>
 
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
@@ -42,34 +43,28 @@ using ::mlir::AffineExpr;
 using ::mlir::AffineMap;
 using ::mlir::MLIRContext;
 
-HloInstructionIndexing ComputeOutputToInputIndexingForEntryComputation(
-    HloTestBase* test_base, MLIRContext* mlir_context,
-    absl::string_view hlo_string, int output_id, bool use_physical_layout) {
-  auto module = test_base->ParseAndReturnVerifiedModule(hlo_string);
-  EXPECT_TRUE(module.ok());
+HloInstruction* IndexingTestBase::ParseAndGetRoot(
+    absl::string_view hlo_string) {
+  auto module_or = ParseAndReturnVerifiedModule(hlo_string);
+  CHECK_OK(module_or);
+  module_ = std::move(module_or.value());
+  return module_->entry_computation()->root_instruction();
+}
 
-  HloInstruction* root =
-      module.value()->entry_computation()->root_instruction();
-
-  // If there are multiple instructions, they need to be wrapped in a fusion.
-  for (auto* operand : root->operands()) {
-    if (operand->opcode() != HloOpcode::kParameter &&
-        operand->opcode() != HloOpcode::kConstant) {
-      return {};
-    }
-  }
+HloInstructionIndexing IndexingTestBase::GetOutputToInputIndexing(
+    const HloInstruction* instr, int output_id, bool use_physical_layout) {
   HloInstructionIndexing indexing =
-      ComputeOutputToInputIndexing(root, output_id, mlir_context);
+      ComputeOutputToInputIndexing(instr, output_id, &mlir_context_);
 
   if (!use_physical_layout) return indexing;
 
   IndexingMap output_permutation = GetIndexingMapFromPhysicalLayoutToLogical(
-      GetOutputShape(root, output_id), mlir_context);
+      GetOutputShape(instr, output_id), &mlir_context_);
 
   for (const auto& [operand_id, indexing_maps] :
        llvm::enumerate(indexing.indexing_maps)) {
     IndexingMap operand_permutation = GetIndexingMapFromLogicalToPhysicalLayout(
-        root->operand(operand_id)->shape(), mlir_context);
+        instr->operand(operand_id)->shape(), &mlir_context_);
 
     absl::flat_hash_set<IndexingMap> operand_indexing_maps;
     for (const IndexingMap& indexing_map : indexing_maps) {
@@ -89,34 +84,20 @@ HloInstructionIndexing ComputeOutputToInputIndexingForEntryComputation(
   return indexing;
 }
 
-HloInstructionIndexing ComputeInputToOutputIndexingForEntryComputation(
-    HloTestBase* test_base, MLIRContext* mlir_context,
-    absl::string_view hlo_string, int input_id, bool use_physical_layout) {
-  auto module = test_base->ParseAndReturnVerifiedModule(hlo_string);
-  EXPECT_TRUE(module.ok());
-
-  HloInstruction* root =
-      module.value()->entry_computation()->root_instruction();
-
-  // If there are multiple instructions, they need to be wrapped in a fusion.
-  for (auto* operand : root->operands()) {
-    if (operand->opcode() != HloOpcode::kParameter &&
-        operand->opcode() != HloOpcode::kConstant) {
-      return {};
-    }
-  }
+HloInstructionIndexing IndexingTestBase::GetInputToOutputIndexing(
+    const HloInstruction* instr, int input_id, bool use_physical_layout) {
   HloInstructionIndexing indexing =
-      ComputeInputToOutputIndexing(root, input_id, mlir_context);
+      ComputeInputToOutputIndexing(instr, input_id, &mlir_context_);
 
   if (!use_physical_layout) return indexing;
 
   IndexingMap input_permutation = GetIndexingMapFromPhysicalLayoutToLogical(
-      root->operand(input_id)->shape(), mlir_context);
+      instr->operand(input_id)->shape(), &mlir_context_);
 
   for (const auto& [output_id, indexing_maps] :
        llvm::enumerate(indexing.indexing_maps)) {
     IndexingMap operand_permutation = GetIndexingMapFromLogicalToPhysicalLayout(
-        GetOutputShape(root, output_id), mlir_context);
+        GetOutputShape(instr, output_id), &mlir_context_);
 
     absl::flat_hash_set<IndexingMap> operand_indexing_maps;
     for (const IndexingMap& indexing_map : indexing_maps) {
@@ -140,8 +121,8 @@ AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
                          MLIRContext* context) {
   std::string full_affine_map_string =
       absl::StrCat("affine_map<", serialized_affine_map, ">");
-  return mlir::parseAttribute(full_affine_map_string, context)
-      .cast<mlir::AffineMapAttr>()
+  return mlir::cast<mlir::AffineMapAttr>(
+             mlir::parseAttribute(full_affine_map_string, context))
       .getValue();
 }
 
@@ -153,8 +134,8 @@ AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
       "affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9)"
       "[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (",
       serialized_affine_expr, ")>");
-  return mlir::parseAttribute(full_affine_map_string, context)
-      .cast<mlir::AffineMapAttr>()
+  return mlir::cast<mlir::AffineMapAttr>(
+             mlir::parseAttribute(full_affine_map_string, context))
       .getValue()
       .getResult(0);
 }

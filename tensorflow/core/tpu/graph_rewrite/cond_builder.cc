@@ -83,7 +83,7 @@ Status CondBuilder::AddInput(const std::string& input_name,
       graph_->NewName(absl::StrCat(name_, "/", input_name)), type, debug);
   TF_RETURN_IF_ERROR(b.Device(device).Build(graph_, input));
   graph_->AddEdge(pred(), 0, *input, 1);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -13,16 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <optional>
 #include <utility>
-#include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/service/gpu/fusion_merger.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/instruction_fusion.h"
 #include "xla/service/gpu/multi_output_fusion.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_pipeline.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {

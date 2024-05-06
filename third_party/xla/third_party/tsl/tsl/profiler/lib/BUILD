@@ -1,8 +1,8 @@
-load("//tsl:tsl.bzl", "if_not_android", "internal_visibility", "nvtx_headers")
-load("//tsl:tsl.default.bzl", "filegroup")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_xla//xla/tsl:tsl.bzl", "if_not_android", "internal_visibility", "nvtx_headers")
+load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl/platform:build_config_root.bzl", "if_static")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -31,6 +31,8 @@ cc_library(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
+        "nvtx_utils.h",
+        "nvtx_utils_stub.cc",  #Include the stub implementation here since CUDA isn't relevant to Android.
         "scoped_annotation.h",
         "scoped_memory_debug_annotation.cc",
         "scoped_memory_debug_annotation.h",
@@ -124,7 +126,7 @@ cc_library(
     hdrs = ["profiler_interface.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
-        "//tsl:internal",
+        "@local_xla//xla/tsl:internal",
         "//tsl/profiler:internal",
         "//tsl/profiler:xla_profiler_backends",
     ]),
@@ -147,7 +149,8 @@ cc_library(
         "//tsl/platform:errors",
         "//tsl/platform:macros",
         "//tsl/platform:statusor",
-        "//tsl/util:env_var",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_xla//xla/tsl/util:env_var",
     ],
 )
 
@@ -156,6 +159,7 @@ tsl_cc_test(
     srcs = ["profiler_lock_test.cc"],
     deps = [
         ":profiler_lock",
+        "//tsl/platform:statusor",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
     ],
@@ -164,7 +168,7 @@ tsl_cc_test(
 cc_library(
     name = "profiler_session",
     hdrs = ["profiler_session.h"],
-    visibility = internal_visibility(["//tsl:internal"]),
+    visibility = internal_visibility(["@local_xla//xla/tsl:internal"]),
     deps = [
         "//tsl/platform",
         "//tsl/platform:errors",
@@ -267,29 +271,46 @@ cc_library(
 
 cc_library(
     name = "nvtx_utils",
+    srcs = if_cuda_is_configured(
+        ["nvtx_utils.cc"],
+        ["nvtx_utils_stub.cc"],
+    ),
     hdrs = ["nvtx_utils.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
-    deps = [
-        "//tsl/platform:logging",
-        "//tsl/platform:macros",
-        "//tsl/platform:types",
-        "@com_google_absl//absl/strings",
-    ] + if_cuda_is_configured(nvtx_headers()),
+    deps = if_cuda_is_configured(nvtx_headers()),
+)
+
+cc_library(
+    name = "nvtx_utils_libtpu",
+    srcs = ["nvtx_utils_stub.cc"],
+    hdrs = ["nvtx_utils.h"],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "libtpu_on_gce",
+    values = {"copt": "-DLIBTPU_ON_GCE"},
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "scoped_annotation",
-    hdrs = ["scoped_annotation.h"],
+    hdrs = [
+        "nvtx_utils.h",
+        "scoped_annotation.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:macros",
         "//tsl/platform:types",
         "@com_google_absl//absl/strings",
     ] + if_not_android([
-        ":nvtx_utils",
         "//tsl/profiler/backends/cpu:annotation_stack",
-    ]),
+    ]) + select({
+        # Remove this once we clean up all the CUDA specific deps.
+        "libtpu_on_gce": [":nvtx_utils_libtpu"],
+        "//conditions:default": [":nvtx_utils"],
+    }),
 )
 
 tsl_cc_test(
@@ -327,6 +348,7 @@ cc_library(
     visibility = internal_visibility([
         "@local_xla//xla/backends/profiler/plugin:__pkg__",
         "//learning/brain/tfrc/executor/stream_executor:__pkg__",
+        "@local_xla//xla/backends/profiler/cpu:__pkg__",
     ]),
     deps = [
         ":profiler_interface",

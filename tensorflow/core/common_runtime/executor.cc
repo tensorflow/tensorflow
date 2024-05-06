@@ -373,6 +373,7 @@ class ExecutorState {
   // Not owned.
   RendezvousInterface* rendezvous_;
   CollectiveExecutor* collective_executor_ = nullptr;
+  const ConfigProto* const session_config_;
   SessionState* session_state_;
   string session_handle_;
   const SessionMetadata* session_metadata_ = nullptr;
@@ -427,6 +428,7 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       deadline_(args.deadline),
       rendezvous_(args.rendezvous),
       collective_executor_(args.collective_executor),
+      session_config_(args.session_config),
       session_state_(args.session_state),
       session_handle_(args.session_handle),
       session_metadata_(immutable_state.params().session_metadata),
@@ -759,6 +761,7 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
   params->log_memory = log_memory_;
   params->rendezvous = rendezvous_;
   params->collective_executor = collective_executor_;
+  params->session_config = session_config_;
   params->session_state = session_state_;
   params->session_handle = session_handle_;
   params->session_metadata = session_metadata_;

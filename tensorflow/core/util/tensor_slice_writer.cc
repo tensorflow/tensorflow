@@ -201,7 +201,7 @@ Status TensorSliceWriter::SaveData(const tstring* data, int64_t num_elements,
   Fill(data, num_elements, ss->mutable_data());
   DCHECK_GE(ss->ByteSize(), 0);
   DCHECK_LE(ss->ByteSize(), size_bound);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace checkpoint

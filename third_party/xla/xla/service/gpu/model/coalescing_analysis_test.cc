@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -65,6 +66,14 @@ class CoalescingTest : public HloTestBase {
       results.push_back(coalescing_analysis.IsReadCoalesced(operand));
     }
     return results;
+  }
+
+  bool IsReadCoalescedHeuristic(absl::string_view hlo_string) {
+    auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+    HloInstruction* root = module->entry_computation()->root_instruction();
+    auto analysis = AnalyzeFusion(*root, device_info_);
+    return xla::gpu::IsReadCoalescedHeuristic(analysis.GetEmitterFusionKind(),
+                                              root->operand(0), root);
   }
 
  protected:
@@ -169,6 +178,59 @@ TEST_F(CoalescingTest, Transpose) {
   // thread_x to linearized input mapping for thread_x in [0, 31]:
   // Operand 1:  (thread_x)[s0] -> (thread_x + s0 * 128) for s0 in [0, 7]
   EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
+}
+
+TEST_F(CoalescingTest, TransposeOfBroadcastHeuristic) {
+  absl::string_view ir = R"(
+    HloModule module
+
+    fusion {
+      input = f32[32, 100, 64] parameter(0)
+      ROOT slice = f32[32, 100, 1] slice(input), slice={[0:32:1], [0:100:1], [0:1:1]}
+    }
+
+    ENTRY entry {
+      p0 = f32[32] parameter(0)
+      broadcast = f32[100, 64, 32] broadcast(p0), dimensions={2}
+      transpose = f32[32, 100, 64] transpose(broadcast), dimensions={2, 0, 1}
+      ROOT %fusion = f32[32, 100, 1] fusion(transpose), kind=kLoop, calls=fusion
+  })";
+  EXPECT_TRUE(IsReadCoalescedHeuristic(ir));
+}
+
+TEST_F(CoalescingTest, TransposeOfIotaHeuristic) {
+  absl::string_view ir = R"(
+    HloModule module
+
+    fusion {
+      p0 = f32[32, 100, 64] parameter(0)
+      ROOT slice = f32[32, 100, 1] slice(p0), slice={[0:32:1], [0:100:1], [0:1:1]}
+    }
+
+    ENTRY entry {
+      iota = f32[100, 64, 32] iota(), iota_dimension=1
+      transpose = f32[32, 100, 64] transpose(iota), dimensions={2, 0, 1}
+      ROOT %fusion = f32[32, 100, 1] fusion(transpose), kind=kLoop, calls=fusion
+  })";
+  EXPECT_TRUE(IsReadCoalescedHeuristic(ir));
+}
+
+TEST_F(CoalescingTest, TransposeOfAddHeuristic) {
+  absl::string_view ir = R"(
+    HloModule module
+
+    fusion {
+      p0 = f32[32, 100, 64] parameter(0)
+      ROOT slice = f32[32, 100, 1] slice(p0), slice={[0:32:1], [0:100:1], [0:1:1]}
+    }
+
+    ENTRY entry {
+      input = f32[100, 64, 32] parameter(0)
+      add = f32[100, 64, 32] add(input, input)
+      transpose = f32[32, 100, 64] transpose(add), dimensions={2, 0, 1}
+      ROOT %fusion = f32[32, 100, 1] fusion(transpose), kind=kLoop, calls=fusion
+  })";
+  EXPECT_FALSE(IsReadCoalescedHeuristic(ir));
 }
 
 TEST_F(CoalescingTest, TransposeOnlyOuterDims) {
@@ -306,8 +368,11 @@ TEST_F(CoalescingTest, VariadicReduceViaLoopEmitter) {
       ROOT f = (s32[5696,4], s32[5696,4]) fusion(p0, p1, p2, p3),
           kind=kInput, calls=fusion
     })";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  // Operands 1, 2: (d0)[s0] -> ((d0 floordiv 4) * 40 + d0 mod 4 + s0 * 4)
+  //  for s0 in [0, 9].
   EXPECT_THAT(IsReadCoalescedPerOperand(ir),
-              ElementsAre(true, true, true, true));
+              ElementsAre(false, false, true, true));
 }
 
 TEST_F(CoalescingTest, VariadicReduceViaReductionEmitter) {
@@ -339,6 +404,57 @@ TEST_F(CoalescingTest, VariadicReduceViaReductionEmitter) {
       ROOT f = (s32[32], s32[32]) fusion(p0, p1, p2, p3),
           kind=kInput, calls=fusion
     })";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  // Operands 1, 2: (d0)[s0] -> (d0 + s0 * 32)
+  //  for s0 in [0, 1] and d0 + s0 * 32 in [0, 39].
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir),
+              ElementsAre(true, true, true, true));
+}
+
+TEST_F(CoalescingTest, Gather) {
+  absl::string_view ir = R"(
+    HloModule module
+    fusion {
+      operand = f32[33, 76, 70] parameter(0)
+      indices = s32[1806, 2] parameter(1)
+      ROOT gather = f32[1806, 7, 8, 4] gather(operand, indices),
+        offset_dims={1,2,3}, collapsed_slice_dims={}, start_index_map={0,1},
+        index_vector_dim=1, slice_sizes={7,8,4}
+    }
+    ENTRY entry {
+      p0 = f32[33, 76, 70] parameter(0)
+      p1 = s32[1806, 2] parameter(1)
+      ROOT %fusion = f32[1806, 7, 8, 4] fusion(p0, p1), kind=kLoop, calls=fusion
+  })";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  // Operand 1: (d0)[s0] -> (
+  //  (d0 floordiv 8) * 5320 + (d0 mod 8) * 70 + s0 * 70 + 34) for s0 in [0, 3]
+  // Operand 2: (d0)[s0] -> (s0)
+  //  for s0 in [0, 1].
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(false, true));
+}
+
+TEST_F(CoalescingTest, DynamicSlice) {
+  absl::string_view ir = R"(
+    HloModule module
+    fusion {
+      %src = s32[2,2,258] parameter(0)
+      %of1 = s32[] parameter(1)
+      %of2 = s32[] parameter(2)
+      %of3 = s32[] parameter(3)
+      ROOT %ds = s32[1,2,32] dynamic-slice(s32[2,2,258] %src,
+        s32[] %of1, s32[] %of2, s32[] %of3),
+        dynamic_slice_sizes={1, 2, 32}
+    }
+    ENTRY entry {
+      %p0 = s32[2,2,258] parameter(0)
+      %p1 = s32[] parameter(1)
+      %p2 = s32[] parameter(2)
+      %p3 = s32[] parameter(3)
+      ROOT %fusion = s32[1,2,32] fusion(p0, p1, p2, p3), kind=kLoop, calls=fusion
+  })";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  // Operand 1: (d0) -> (d0).
   EXPECT_THAT(IsReadCoalescedPerOperand(ir),
               ElementsAre(true, true, true, true));
 }
@@ -370,6 +486,28 @@ TEST_F(CoalescingTest, UnusedParameter) {
   EXPECT_THAT(IsReadCoalescedPerOperand(
                   module->entry_computation()->root_instruction()),
               ElementsAre(true, true));
+}
+
+TEST_F(CoalescingTest, Param) {
+  absl::string_view ir = R"(
+    HloModule module
+    fusion {
+      %p0 = u32[48,2,1280] parameter(0)
+      %p1 = u32[48,1,1280] parameter(1)
+      %p2 = u32[48,1,1280] parameter(2)
+      %concat = u32[48,2,1280] concatenate(u32[48,1,1280] %p1,
+                                           u32[48,1,1280] %p2), dimensions={1}
+      ROOT %shift = u32[48,2,1280] shift-right-logical(
+        u32[48,2,1280] %concat, u32[48,2,1280] %p0)
+    }
+    ENTRY entry {
+      %p0 = u32[48,2,1280] parameter(0)
+      %p1 = u32[48,1,1280] parameter(1)
+      %p2 = u32[48,1,1280] parameter(2)
+      ROOT %fusion = u32[48,2,1280] fusion(p0, p1, p2), kind=kLoop, calls=fusion
+  })";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true, true, true));
 }
 
 }  // namespace

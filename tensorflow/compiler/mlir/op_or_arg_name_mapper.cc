@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
@@ -123,7 +124,7 @@ std::string OpOrArgLocNameMapper::GetName(OpOrVal op_or_val) {
   // If the location is none of the expected types, then simply use name
   // generated using the op type. Follow TF convention and append the result
   // index unless 0.
-  if (auto result = val.dyn_cast<mlir::OpResult>()) {
+  if (auto result = mlir::dyn_cast<mlir::OpResult>(val)) {
     if (result.getResultNumber() > 0)
       return llvm::formatv("{0}:{1}",
                            result.getOwner()->getName().getStringRef(),
@@ -131,7 +132,7 @@ std::string OpOrArgLocNameMapper::GetName(OpOrVal op_or_val) {
     return std::string(result.getOwner()->getName().getStringRef());
   }
   // Use the ASM syntax for BlockArgument
-  if (auto arg = val.dyn_cast<mlir::BlockArgument>()) {
+  if (auto arg = mlir::dyn_cast<mlir::BlockArgument>(val)) {
     return "arg" + std::to_string(arg.getArgNumber());
   }
   return "";

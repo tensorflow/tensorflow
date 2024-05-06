@@ -64,8 +64,8 @@ void inlineMhloRegionIntoSCFRegion(PatternRewriter& rewriter, Region& mhlo,
 // scalar value when necessary.
 Value extractTensorValue(OpBuilder& b, Value tensor) {
   auto loc = tensor.getLoc();
-  if (tensor.getType().cast<TensorType>().hasRank() &&
-      tensor.getType().cast<TensorType>().getRank() != 0) {
+  if (mlir::cast<TensorType>(tensor.getType()).hasRank() &&
+      mlir::cast<TensorType>(tensor.getType()).getRank() != 0) {
     tensor = b.create<tensor::CollapseShapeOp>(
         loc, tensor, SmallVector<ReassociationIndices>());
   }
@@ -85,9 +85,9 @@ std::optional<ScfForBounds> extractForBounds(mhlo::WhileOp op) {
   if (cond.getOperations().size() != 2) return std::nullopt;
 
   auto matchBbArg = [](Value v, Block& block) -> std::optional<unsigned> {
-    if (!v.isa<BlockArgument>() || v.getParentBlock() != &block)
+    if (!mlir::isa<BlockArgument>(v) || v.getParentBlock() != &block)
       return std::nullopt;
-    return v.cast<BlockArgument>().getArgNumber();
+    return mlir::cast<BlockArgument>(v).getArgNumber();
   };
 
   auto compare = llvm::dyn_cast<mhlo::CompareOp>(cond.front());
@@ -207,10 +207,10 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
 
     // Determine if the current index matches the case index.
     auto scalarType = idxValue.getType();
-    auto shapedType = scalarType.cast<ShapedType>();
+    auto shapedType = mlir::cast<ShapedType>(scalarType);
     auto constAttr = DenseElementsAttr::get(
-        shapedType,
-        {outerBuilder.getI32IntegerAttr(currentIdx).cast<mlir::Attribute>()});
+        shapedType, {mlir::cast<mlir::Attribute>(
+                        outerBuilder.getI32IntegerAttr(currentIdx))});
     Value currentIdxVal = outerBuilder.create<mhlo::ConstantOp>(
         loc, idxValue.getType(), constAttr);
 

@@ -24,7 +24,7 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 
 // Checks if an op is from StableHLO dialect.
-inline bool IsStablehloOp(Operation *op) {
+inline bool IsStablehloOp(Operation* op) {
   return op->getDialect()->getNamespace() ==
          mlir::stablehlo::StablehloDialect::getDialectNamespace();
 }

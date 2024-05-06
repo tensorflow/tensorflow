@@ -33,7 +33,7 @@ namespace tensorflow {
 
 using mlir::MLIRContext;
 
-static tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Import(
+static absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Import(
     const GraphOptimizationPassOptions& options, const Graph& graph,
     MLIRContext* context) {
   // TODO(fengliuai): get debug info at runtime.
@@ -75,7 +75,7 @@ Status MlirRoundtripPass::Run(const GraphOptimizationPassOptions& options) {
     // TODO(jpienaar): Roundtrip results in different failures, investigate.
     TF_RETURN_IF_ERROR(Import(options, *it.second, &context).status());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

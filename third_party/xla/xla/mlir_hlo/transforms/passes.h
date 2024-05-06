@@ -90,12 +90,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createNaiveCopyRemovalPass();
 /// Pass to vectorize `memref.copy`.
 std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
 
-/// Registers the test pass for erasing transform dialect ops.
-void registerTestHloTransformDialectEraseSchedulePass();
-
-/// Registers the test pass for applying transform dialect ops.
-void registerTestHloTransformDialectInterpreterPass();
-
 namespace hlo {
 std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
 

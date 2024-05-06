@@ -34,7 +34,7 @@ REGISTER_OP("TPUCopyWithDynamicShape")
       for (int i = 0; i < c->num_inputs() - n; ++i) {
         c->set_output(i, c->input(i));
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TPUAnnotateTensorsWithDynamicShape")
@@ -46,7 +46,7 @@ REGISTER_OP("TPUAnnotateTensorsWithDynamicShape")
       for (int i = 0; i < c->num_inputs(); ++i) {
         c->set_output(i, c->input(i));
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

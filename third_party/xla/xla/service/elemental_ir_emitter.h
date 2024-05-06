@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
@@ -74,8 +75,6 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   virtual llvm::Value* EmitExtractReal(llvm::Value* value);
   virtual llvm::Value* EmitExtractImag(llvm::Value* value);
-
-  virtual absl::StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value);
 
  private:
   virtual absl::StatusOr<llvm::Value*> EmitUnaryOp(const HloInstruction* op,
@@ -157,6 +156,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   virtual absl::StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
                                                llvm::Value* value);
+
+  virtual absl::StatusOr<llvm::Value*> EmitCosm1(PrimitiveType prim_type,
+                                                 llvm::Value* value);
 
   virtual absl::StatusOr<llvm::Value*> EmitTan(PrimitiveType prim_type,
                                                llvm::Value* value);
@@ -310,6 +312,30 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::IRBuilder<>* const b_;
 
   llvm::Module* module_;
+
+  friend class ElementalIrEmitterForTests;
+};
+
+// Allow to instantiate IR emitter in tests.
+class ElementalIrEmitterForTests : public ElementalIrEmitter {
+ public:
+  ElementalIrEmitterForTests(llvm::Module* module, llvm::IRBuilder<>* builder)
+      : ElementalIrEmitter(module, builder) {}
+
+  absl::Status TestElementalDot(const HloInstruction* hlo,
+                                const llvm_ir::IrArray::Index& index) {
+    return EmitElementalDot(hlo, generator_map_, index).status();
+  }
+
+ private:
+  absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name, bool is_reducer) override {
+    return absl::UnimplementedError("");
+  }
+  bool fast_min_max() override { return false; }
+
+  HloToElementGeneratorMap generator_map_;
 };
 
 }  // namespace xla

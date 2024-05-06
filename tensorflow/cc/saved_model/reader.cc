@@ -130,7 +130,7 @@ Status ReadSavedModel(absl::string_view export_dir,
                       "permissions for accessing it."));
 }
 
-Status ReadMetaGraphDefFromSavedModel(const string& export_dir,
+Status ReadMetaGraphDefFromSavedModel(absl::string_view export_dir,
                                       const std::unordered_set<string>& tags,
                                       MetaGraphDef* const meta_graph_def) {
   SavedModel saved_model_proto;
@@ -142,7 +142,7 @@ Status ReadMetaGraphDefFromSavedModel(const string& export_dir,
 }
 
 Status ReadSavedModelDebugInfoIfPresent(
-    const string& export_dir,
+    absl::string_view export_dir,
     std::unique_ptr<GraphDebugInfo>* debug_info_proto) {
   LOG(INFO) << "Reading SavedModel debug info (if present) from: "
             << export_dir;

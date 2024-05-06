@@ -85,8 +85,8 @@ class HloModuleConfig {
   explicit HloModuleConfig(ComputationLayout entry_computation_layout);
 
   // Convert an HloModuleConfig to or from a proto.
-  StatusOr<HloModuleConfigProto> ToProto() const;
-  static StatusOr<std::unique_ptr<HloModuleConfig>> CreateFromProto(
+  absl::StatusOr<HloModuleConfigProto> ToProto() const;
+  static absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateFromProto(
       const HloModuleConfigProto& proto);
 
   // Assigns the repeated ShardableValueUpdatePairProto field to the given
@@ -169,7 +169,7 @@ class HloModuleConfig {
     return param_requires_broadcast_via_collectives_;
   }
   void set_param_requires_broadcast_via_collectives(
-      const std::vector<bool> require_broadcast) {
+      std::vector<bool> require_broadcast) {
     param_requires_broadcast_via_collectives_ = std::move(require_broadcast);
   }
 
@@ -195,16 +195,16 @@ class HloModuleConfig {
   }
 
   void set_auto_spmd_partitioning_mesh_shape(std::vector<int64_t> mesh_shape) {
-    auto_spmd_partitioning_mesh_shape_ = mesh_shape;
+    auto_spmd_partitioning_mesh_shape_ = std::move(mesh_shape);
   }
-  std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
+  const std::vector<int64_t>& auto_spmd_partitioning_mesh_shape() const {
     return auto_spmd_partitioning_mesh_shape_;
   }
 
   void set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t> mesh_ids) {
-    auto_spmd_partitioning_mesh_ids_ = mesh_ids;
+    auto_spmd_partitioning_mesh_ids_ = std::move(mesh_ids);
   }
-  std::vector<int64_t> auto_spmd_partitioning_mesh_ids() const {
+  const std::vector<int64_t>& auto_spmd_partitioning_mesh_ids() const {
     return auto_spmd_partitioning_mesh_ids_;
   }
 

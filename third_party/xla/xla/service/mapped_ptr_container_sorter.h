@@ -127,7 +127,7 @@ class MappedPtrContainerSorter {
 
     // The result maps each element in the unordered_container to the target
     // index that it will occupy in the sorted result.
-    StatusOr<std::vector<size_t>> Flatten() const;
+    absl::StatusOr<std::vector<size_t>> Flatten() const;
 
    private:
     SortedIndices() = delete;
@@ -152,7 +152,7 @@ class MappedPtrContainerSorter {
   // Returns a mapping in which the element at index i indicates the target
   // index that unordered_container[i] should occupy in the sorted result.
   template <typename OrderedTy, typename UnorderedTy>
-  static StatusOr<std::vector<size_t>> ComputeNewIndices(
+  static absl::StatusOr<std::vector<size_t>> ComputeNewIndices(
       MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
       const OrderedTy& ordered_container,
       const UnorderedTy& unordered_container);
@@ -283,11 +283,11 @@ std::string MappedPtrContainerSorter<PointedToTy>::SortedIndices::ToString()
 }
 
 template <typename PointedToTy>
-StatusOr<std::vector<size_t>>
+absl::StatusOr<std::vector<size_t>>
 MappedPtrContainerSorter<PointedToTy>::SortedIndices::Flatten() const {
   std::vector<size_t> result(unordered_container_size_, InvalidIndex());
   size_t next_available_index = 0;
-  auto next_index_fn = [&]() -> StatusOr<size_t> {
+  auto next_index_fn = [&]() -> absl::StatusOr<size_t> {
     if (next_available_index >= unordered_container_size_) {
       return InternalStrCat(
           "invalid unordered_container index: ", next_available_index,
@@ -350,7 +350,7 @@ MappedPtrContainerSorter<PointedToTy>::SortedIndices::Flatten() const {
 
 template <typename PointedToTy>
 template <typename OrderedTy, typename UnorderedTy>
-StatusOr<std::vector<size_t>>
+absl::StatusOr<std::vector<size_t>>
 MappedPtrContainerSorter<PointedToTy>::ComputeNewIndices(
     MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
     const OrderedTy& ordered_container,

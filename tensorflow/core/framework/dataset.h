@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 #define TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 
+#include <cstdlib>
 #include <deque>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -27,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -58,6 +61,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tsl/framework/allocator.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/thread_annotations.h"
 
@@ -85,6 +89,10 @@ void MergeOptions(const protobuf::MessageLite& source,
 }  // namespace internal
 
 using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
+
+// Maps the index of dataset elements to a globally shuffled index. See the
+// comment for IteratorContext::Params::index_mapper for more details.
+using IndexMapperFn = std::function<absl::StatusOr<size_t>(size_t)>;
 
 constexpr char kTFDataFunction[] = "_tf_data_function";
 
@@ -789,11 +797,12 @@ class IteratorContext {
     // Maps the index of dataset elements to a shuffled index. In other words,
     // given an index i, returns the permuted index p(i) for the iterator. Used
     // to support global shuffling of datasets that support random access.
-    std::function<int64_t(int64_t)> index_mapper = nullptr;
+    IndexMapperFn index_mapper = nullptr;
 
-    // This is set when restoring a globally shuffled iterator. Records the
-    // number of elements that have been produced prior to the checkpoint.
-    std::optional<int64_t> element_count = std::nullopt;
+    // Records the number of elements that have been produced prior to a
+    // checkpoint. This is set by globally shuffled iterators so that upstream
+    // iterators can restore the element counts in the random access mode.
+    std::optional<size_t> restored_element_count = std::nullopt;
   };
 
   explicit IteratorContext(IteratorContext* ctx)
@@ -882,13 +891,17 @@ class IteratorContext {
 
   RunMode run_mode() { return params_.run_mode; }
 
-  std::function<int64_t(int64_t)> index_mapper() const {
-    return params_.index_mapper;
+  IndexMapperFn index_mapper() const { return params_.index_mapper; }
+
+  std::optional<int64_t> restored_element_count() const {
+    return params_.restored_element_count;
   }
 
-  std::optional<int64_t> element_count() const { return params_.element_count; }
-
   void SetModel(std::shared_ptr<model::Model> model) { params_.model = model; }
+
+  void SetIndexMapper(const IndexMapperFn& index_mapper) {
+    params_.index_mapper = index_mapper;
+  };
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
@@ -973,6 +986,26 @@ class IteratorContext {
   MemoryCheckpoint checkpoint_;
 };
 
+// Generic context that can be constructed with either an `OpKernelContext` or
+// `IteratorContext`.
+struct AnyContext {
+  Allocator* allocator;
+  std::function<void(std::function<void()>)>* runner;
+  int64_t runner_threadpool_size;
+
+  explicit AnyContext(IteratorContext* ctx) {
+    allocator = ctx->allocator({});
+    runner = ctx->runner();
+    runner_threadpool_size = ctx->runner_threadpool_size();
+  }
+
+  explicit AnyContext(OpKernelContext* ctx) {
+    allocator = ctx->get_allocator({});
+    runner = ctx->runner();
+    runner_threadpool_size = GetRunnerThreadpoolSizeFromOpKernelContext(ctx);
+  }
+};
+
 // Represents the current position in a range of outputs, where the
 // range of outputs is typically represented by an `DatasetBase`,
 // defined below.
@@ -1019,6 +1052,13 @@ class IteratorBase : public Checkpointable {
     return GetNext(&ctx, out_tensors, end_of_sequence);
   }
 
+  // If a dataset needs to provide its own index mapper behavior to support
+  // global shuffling, implement this method.
+  virtual IndexMapperFn GetIndexMapper(
+      IndexMapperFn parent_index_mapper) const {
+    return parent_index_mapper;
+  }
+
   // Skips the next `num_to_skip` outputs from the range that this iterator
   // is traversing.
   //
@@ -1047,10 +1087,6 @@ class IteratorBase : public Checkpointable {
   // Returns a string that identifies the sequence of iterators leading up to
   // this iterator.
   virtual const string& prefix() const = 0;
-
-  // Returns a string identifying the iterator, e.g. "ParallelMapDatasetV2:<id>"
-  // or "ParallelMapDatasetV2:<user defined name>".
-  virtual const string& name() const = 0;
 
   // Indicates whether the iterator is compatible with symbolic checkpointing.
   virtual bool SymbolicCheckpointCompatible() const { return false; }
@@ -1295,6 +1331,10 @@ class DatasetBase : public core::RefCounted {
   // Returns the number of bytes allocated for tensors of this dataset.
   virtual int64_t AllocatedBytes() const { return 0; }
 
+  // Returns the estimated element size based on `output_shapes()` and
+  // `output_dtypes()`.
+  virtual std::optional<int64_t> GetEstimatedElementSize() const;
+
   // Returns the estimated number of bytes used for tensors of this dataset.
   virtual int64_t TotalBytes() const { return 0; }
 
@@ -1337,6 +1377,12 @@ class DatasetBase : public core::RefCounted {
   virtual Status Get(OpKernelContext* ctx, int64 index,
                      std::vector<Tensor>* out_tensors) const;
 
+  // Same as above, but with an `AnyContext`, which can be constructed from
+  // either an `OpKernelContext` or `IteratorContext`. Used to support datasets
+  // that provide random access through both the dataset and iterator APIs.
+  virtual Status Get(AnyContext ctx, int64 index,
+                     std::vector<Tensor>* out_tensors) const;
+
   // Returns true if the dataset and its inputs support random access.
   virtual absl::Status RandomIndexingCompatible() const {
     return absl::FailedPreconditionError(
@@ -1345,9 +1391,9 @@ class DatasetBase : public core::RefCounted {
 
   // Return a finalized version of the dataset.  The returned DatasetBase is
   // unowned and lives for as long as this dataset.
-  virtual StatusOr<DatasetBase*> Finalize(
+  virtual absl::StatusOr<DatasetBase*> Finalize(
       OpKernelContext* ctx,
-      std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
+      std::function<absl::StatusOr<core::RefCountPtr<DatasetBase>>()>
           make_finalized_dataset) const;
 
   // Wrapper around a GraphDefBuilder which provides support for serializing
@@ -1447,8 +1493,6 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   const string& prefix() const override { return params_.prefix; }
-
-  const string& name() const override { return dataset()->metadata().name(); }
 
   // Returns a name to be used for the TraceMe event.
   //

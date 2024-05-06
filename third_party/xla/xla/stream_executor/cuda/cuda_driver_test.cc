@@ -17,7 +17,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_driver.h"
 
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
@@ -75,5 +74,3 @@ TEST(CudaDriverTest, ScopedActivateContextTest) {
 
 }  // namespace gpu
 }  // namespace stream_executor
-
-#endif  // GOOGLE_CUDA

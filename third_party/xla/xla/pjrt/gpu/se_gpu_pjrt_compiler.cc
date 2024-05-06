@@ -42,20 +42,22 @@ limitations under the License.
 #include "xla/service/hlo_proto_util.h"
 #include "xla/service/local_service.h"
 #include "xla/service/local_service_utils.h"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #endif
 
 #if GOOGLE_CUDA
 #include "xla/service/gpu/nvptx_compiler.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #elif TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/amdgpu_compiler.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
 #endif
 
 namespace xla {
 namespace {
 
 bool IsGpuClient(const PjRtClient& client) {
-  return client.platform_id() == CudaId() || client.platform_id() == RocmId();
+  return client.platform_id() == CudaId() || client.platform_id() == RocmId() ||
+         client.platform_id() == SyclId();
 }
 
 bool IsSameTopology(const PjRtTopologyDescription& topology1,
@@ -147,14 +149,10 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   Compiler::CompileOptions opts;
   opts.target_config = options.target_config;
 
-  if (!options.executable_build_options.run_backend_only()) {
-    TF_ASSIGN_OR_RETURN(
-        hlo_module, gpu_compiler.RunHloPasses(std::move(hlo_module),
-                                              /*stream_exec=*/nullptr, opts));
-  }
-
   AotCompilationOptions aot_options(gpu_compiler.PlatformId());
   aot_options.set_target_config(*options.target_config);
+  aot_options.set_run_backend_only(
+      options.executable_build_options.run_backend_only());
 
   const int num_replicas = hlo_module->config().replica_count();
   const int num_partitions = hlo_module->config().num_partitions();
@@ -197,7 +195,12 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
 }
 
 STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(pjrt_register_se_gpu_compiler, {
-  PjRtRegisterCompiler(CudaName(),
-                       std::make_unique<StreamExecutorGpuCompiler>());
+  PjRtRegisterCompiler(
+#if TENSORFLOW_USE_ROCM
+      RocmName(),
+#else
+                       CudaName(),
+#endif
+      std::make_unique<StreamExecutorGpuCompiler>());
 });
 }  // namespace xla

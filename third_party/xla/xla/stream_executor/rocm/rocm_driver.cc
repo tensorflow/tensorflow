@@ -339,37 +339,12 @@ static absl::Status InternalInit() {
   return absl::OkStatus();
 }
 
-bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
-                                 int* flags) {
-  static_assert(DeviceOptions::kMask == 0xf,
-                "needs update for new device options");
-
-  if (device_options.flags() & DeviceOptions::kDoNotReclaimStackAllocation) {
-    *flags |= hipDeviceLmemResizeToMax;
-  }
-
-  if (device_options.flags() & DeviceOptions::kScheduleSpin) {
-    *flags |= hipDeviceScheduleSpin;
-  }
-  if (device_options.flags() & DeviceOptions::kScheduleYield) {
-    *flags |= hipDeviceScheduleYield;
-  }
-  if (device_options.flags() & DeviceOptions::kScheduleBlockingSync) {
-    *flags |= hipDeviceScheduleBlockingSync;
-  }
-
-  return true;
-}
-
-/* static */ absl::Status GpuDriver::CreateContext(
-    int device_ordinal, hipDevice_t device, const DeviceOptions& device_options,
-    GpuContext** context) {
+/* static */ absl::Status GpuDriver::CreateContext(int device_ordinal,
+                                                   hipDevice_t device,
+                                                   GpuContext** context) {
   *context = nullptr;
 
   int flags = 0;
-  if (!DeviceOptionsToContextFlags(device_options, &flags)) {
-    LOG(WARNING) << "could not convert all device options into context flags";
-  }
 
   hipError_t res;
   hipCtx_t former_context;
@@ -456,10 +431,6 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   }
 
   CreatedContexts::Remove(context->context());
-}
-
-/* static */ hipCtx_t GpuDriver::GetContextHandle(GpuContext* context) {
-  return context->context();
 }
 
 /* static */ absl::Status GpuDriver::FuncGetAttribute(
@@ -643,6 +614,25 @@ static std::string_view StreamCaptureModeToString(
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::vector<GpuGraphNodeHandle>>
+GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
+  VLOG(2) << "Get HIP graph node " << node << " dependencies";
+
+  std::vector<hipGraphNode_t> dependencies;
+
+  size_t num_dependencies = 0;
+  RETURN_IF_ROCM_ERROR(
+      hipGraphNodeGetDependencies(node, nullptr, &num_dependencies),
+      "Failed to get HIP graph node depedencies size");
+
+  dependencies.resize(num_dependencies, nullptr);
+  RETURN_IF_ROCM_ERROR(
+      hipGraphNodeGetDependencies(node, dependencies.data(), &num_dependencies),
+      "Failed to get HIP graph node depedencies");
+
+  return dependencies;
+}
+
 /* static */ absl::Status GpuDriver::DestroyGraphExec(hipGraphExec_t exec) {
   VLOG(2) << "Destroying HIP executable graph" << exec;
   RETURN_IF_ROCM_ERROR(wrap::hipGraphExecDestroy(exec),
@@ -748,6 +738,18 @@ GpuDriver::GraphAddNode(hipGraphNode_t* node, hipGraph_t graph,
   return absl::UnimplementedError("unsupported node type");
 }
 
+/* static */ absl::Status GpuDriver::GraphAddEmptyNode(
+    hipGraphNode_t* node, hipGraph_t graph,
+    absl::Span<const hipGraphNode_t> deps) {
+  VLOG(2) << "Add empty node to a graph " << graph << "; deps: " << deps.size();
+
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipGraphAddEmptyNode(node, graph, deps.data(), deps.size()),
+      "Failed to add empty node to a HIP graph");
+
+  return absl::OkStatus();
+}
+
 /* static */ absl::Status GpuDriver::GraphAddKernelNode(
     hipGraphNode_t* node, hipGraph_t graph,
     absl::Span<const hipGraphNode_t> deps, absl::string_view kernel_name,
@@ -788,6 +790,16 @@ GpuDriver::GraphAddNode(hipGraphNode_t* node, hipGraph_t graph,
                        "Failed to add kernel node to a HIP graph");
 
   return absl::OkStatus();
+}
+
+/* static */ absl::StatusOr<size_t> GpuDriver::GraphGetNodeCount(
+    hipGraph_t graph) {
+  VLOG(2) << "Get node count in graph " << graph;
+  size_t numNodes;
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphGetNodes(graph, nullptr, &numNodes),
+                       "Failed to get HIP graph node count");
+
+  return numNodes;
 }
 
 /*static*/ absl::Status GpuDriver::GraphExecKernelNodeSetParams(
@@ -933,7 +945,7 @@ static hipMemAllocationType ToHipAllocationType(
 
   RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemAllocNode(node, graph, deps.data(),
                                                      deps.size(), &params),
-                       "Failed to add memory allocation node to a CUDA graph");
+                       "Failed to add memory allocation node to a HIP graph");
 
   VLOG(2) << "Add MemAllocNode to a graph " << graph << " size " << size
           << " address " << reinterpret_cast<void*>(params.dptr);
@@ -1039,7 +1051,7 @@ struct BitPatternToValue {
 
   RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemsetNode(node, graph, deps.data(),
                                                    deps.size(), &params),
-                       "Failed to add memset node to a CUDA graph");
+                       "Failed to add memset node to a HIP graph");
 
   return absl::OkStatus();
 }
@@ -1564,7 +1576,7 @@ struct BitPatternToValue {
           "failed to synchronous memcpy from host to device: Gpu dst: %p;"
           " host src: %p; size: %llu=0x%llx",
           absl::bit_cast<void*>(gpu_dst), host_src, size, size));
-  VLOG(2) << "successfully enqueued sync memcpy h2d of " << size << " bytes";
+  VLOG(2) << "successfully sync memcpy'd h2d of " << size << " bytes";
   return absl::OkStatus();
 }
 
@@ -1600,7 +1612,8 @@ struct BitPatternToValue {
   }
   VLOG(2) << "successfully enqueued async memcpy d2h of " << size
           << " bytes from " << absl::bit_cast<void*>(gpu_src) << " to "
-          << host_dst << " on stream " << stream;
+          << host_dst << " on stream " << stream
+          << " device: " << context->device_ordinal();
   return true;
 }
 
@@ -1620,8 +1633,10 @@ struct BitPatternToValue {
         size);
     return false;
   }
-  VLOG(2) << "successfully enqueued async memcpy h2d of " << size << " bytes"
-          << " on stream " << stream;
+  VLOG(2) << "successfully enqueued async memcpy h2d of " << size
+          << " bytes from " << host_src << " to "
+          << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream
+          << " device: " << context->device_ordinal();
   return true;
 }
 
@@ -1648,7 +1663,11 @@ struct BitPatternToValue {
 
     return false;
   }
-  VLOG(2) << "successfully enqueued async memcpy d2d of " << size << " bytes";
+
+  VLOG(2) << "successfully enqueued async memcpy d2d of " << size
+          << " bytes from " << absl::bit_cast<void*>(gpu_src) << " to "
+          << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream
+          << " device: " << context->device_ordinal();
   return true;
 }
 

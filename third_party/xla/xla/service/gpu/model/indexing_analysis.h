@@ -9,6 +9,7 @@ You may obtain a copy of the License at
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
@@ -16,8 +17,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_INDEXING_ANALYSIS_H_
 #define XLA_SERVICE_GPU_MODEL_INDEXING_ANALYSIS_H_
 
-#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -25,7 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -76,6 +77,34 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
 HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
                                                     int input_id,
                                                     mlir::MLIRContext* ctx);
+
+// Computes the indexing for `epilogue_parent`'s epilogue. For example, if
+// `epilogue_parent` is a transpose, computes the input to output indexing for
+// the path from the transpose's output to the root's output.
+//
+//   transpose
+//       |
+//     bitcast
+//       |
+//      ROOT
+//
+// The root must be specified because in HLO, an instruction can both be a hero
+// and part of a side output:
+//
+//          reduce
+//         /      \
+//   broadcast    log
+//        |        |
+//       neg    bitcast
+//         \      /
+//           ROOT
+//
+// Here, the we must use the path through the `log` for the epilogue indexing,
+// since the other path is not actually an epilogue (it's a side output). This
+// fusion does not make much sense, but they are created sometimes.
+IndexingMap ComputeEpilogueInputToOutputIndexing(
+    HloInstructionAdaptor epilogue_parent, HloInstructionAdaptor epilogue_root,
+    mlir::MLIRContext* ctx);
 
 using GroupedByOpIndexingMap =
     absl::flat_hash_map<const HloInstruction*, IndexingMapSet>;
@@ -131,14 +160,37 @@ IndexingMap GetIndexingMapForTiling(const Tiling& tiling,
                                     mlir::MLIRContext* ctx);
 IndexingMap GetIndexingMapForTiling(mlir::AffineMap block_offsets,
                                     mlir::AffineMap thread_offsets,
-                                    const Tiling& tiling);
+                                    int64_t threads_per_block,
+                                    int64_t num_blocks,
+                                    absl::Span<const int64_t> thread_tile_sizes,
+                                    absl::Span<const int64_t> tiled_shape);
 
 // Returns the shape of the output of the instruction.
 const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);
 
+// Computes 1D index given a shape and N-d indexing expressions.
+mlir::AffineExpr LinearizeShape(
+    absl::Span<const int64_t> dims,
+    absl::Span<const mlir::AffineExpr> dimension_exprs,
+    mlir::MLIRContext* mlir_context);
+
+// Computes N-d indexing expressions given a linear index and a shape.
+std::vector<mlir::AffineExpr> DelinearizeIndex(absl::Span<const int64_t> dims,
+                                               mlir::AffineExpr linear_index,
+                                               mlir::MLIRContext* mlir_context);
+
+// Creates an identity indexing map corresponding to the parameter shape.
+IndexingMap CreateIdentityMap(const Shape& shape,
+                              mlir::MLIRContext* mlir_context);
+
 llvm::SmallVector<mlir::AffineExpr, 4> DelinearizeInBoundsIndex(
     mlir::AffineExpr linear, absl::Span<const int64_t> sizes,
     absl::Span<const int64_t> strides);
+
+// Returns the output-to-input indexing map of the first output of `instr`
+IndexingMap GetIndexingMapForInstruction(const HloInstruction* instr,
+                                         int64_t operand_idx,
+                                         mlir::MLIRContext* mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

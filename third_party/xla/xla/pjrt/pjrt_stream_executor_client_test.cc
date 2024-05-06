@@ -33,8 +33,8 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/async_value_ref.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -42,7 +42,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-xla::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
+absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("Host"));
@@ -87,7 +87,8 @@ Status ExecuteWithSameInputBuffer(
     absl::AnyInvocable<void(XlaBuilder&)> set_up_aliases) {
   auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
   TF_ASSIGN_OR_RETURN(auto client, GetClient());
-  TF_ASSIGN_OR_RETURN(auto* device0, client->LookupDevice(0));
+  TF_RET_CHECK(!client->addressable_devices().empty());
+  auto* device0 = client->addressable_devices().front();
   TF_ASSIGN_OR_RETURN(auto buffer,
                       client->CreateUninitializedBuffer(shape, device0));
   TF_ASSIGN_OR_RETURN(auto executable,
@@ -130,8 +131,8 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
 
-  auto avr = tsl::MakeUnconstructedAsyncValueRef<absl::Status>();
-  PjRtFuture<absl::Status> future(avr);
+  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+  PjRtFuture<> future(promise);
   auto blocked_buffer =
       std::move(*(buffer->DonateWithControlDependency(future)));
   EXPECT_TRUE(buffer->IsDeleted());
@@ -150,7 +151,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
 
   EXPECT_FALSE(got_literal);
 
-  avr.emplace(absl::OkStatus());
+  promise.Set();
   EXPECT_TRUE(future.IsReady());
 
   {

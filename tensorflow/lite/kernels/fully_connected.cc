@@ -118,6 +118,19 @@ TfLiteStatus VerifyPerChannelQuantization(TfLiteContext* context,
   return affine_quantization->scale->size > 1 ? kTfLiteOk : kTfLiteError;
 }
 
+TfLiteStatus VerifyQuantizationZeroPoint(const TfLiteTensor* tensor,
+                                         int expected_value) {
+  const auto* params =
+      reinterpret_cast<TfLiteAffineQuantization*>(tensor->quantization.params);
+  if (params && params->zero_point &&
+      std::any_of(params->zero_point->data,
+                  params->zero_point->data + params->zero_point->size,
+                  [expected_value](int v) { return v != expected_value; })) {
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
 }  // namespace
 
 // This file has four implementations of FullyConnected
@@ -639,6 +652,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                 params->activation == kTfLiteActRelu ||
                                 params->activation == kTfLiteActReluN1To1 ||
                                 params->activation == kTfLiteActRelu6);
+  }
+  if (filter->type == kTfLiteInt4) {
+    TF_LITE_ENSURE_MSG(
+        context,
+        kTfLiteOk == VerifyQuantizationZeroPoint(filter, /*expected_value=*/0),
+        "Unsupported filter quantization zero-point value.");
   }
   return PrepareImpl(context, node, kernel_type);
 }

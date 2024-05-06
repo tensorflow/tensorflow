@@ -37,7 +37,19 @@ std::string GetEnvVarOrDie(const char* env_var) {
 
 }  // namespace
 
-std::string TmpDir() { return GetEnvVarOrDie("TEST_TMPDIR"); }
+std::string TmpDir() {
+  const char* tmp_dir = std::getenv("TEST_TMPDIR");
+  if (!tmp_dir) {
+    tmp_dir = std::getenv("TMPDIR");
+  }
+  if (tmp_dir) {
+    return tmp_dir;
+  }
+  LOG(FATAL)  // Crash OK
+      << "Failed to find environment variables: TEST_TMPDIR, TMPDIR";
+
+  return tmp_dir;
+}
 
 int PickUnusedPortOrDie() { return internal::PickUnusedPortOrDie(); }
 

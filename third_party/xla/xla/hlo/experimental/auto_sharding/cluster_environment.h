@@ -51,6 +51,7 @@ class ClusterEnvironment {
         prof_result_(prof_result),
         total_devices_(device_mesh.num_elements()),
         device_mesh_1d_(device_mesh),
+        original_device_mesh_1d_(original_device_mesh),
         auto_sharding_option_(auto_sharding_option) {
     // Build replica group for each dimension.
     non_zero_mesh_dims_ =
@@ -71,6 +72,12 @@ class ClusterEnvironment {
     std::vector<int64_t> device_mesh_1d_shape(device_mesh.num_dimensions(), 1);
     device_mesh_1d_shape[largest_dim_idx] = device_mesh.num_elements();
     device_mesh_1d_.Reshape(device_mesh_1d_shape);
+
+    std::vector<int64_t> original_device_mesh_1d_shape(
+        original_device_mesh.num_dimensions(), 1);
+    original_device_mesh_1d_shape[largest_dim_idx] =
+        original_device_mesh.num_elements();
+    original_device_mesh_1d_.Reshape(original_device_mesh_1d_shape);
   }
 
   size_t NumDevices() const { return total_devices_; }
@@ -124,12 +131,12 @@ class ClusterEnvironment {
   double AllToAllCost(double num_bytes, int mesh_dim) const;
 
   double ReshardingCostMixedMeshShape(
-      const Shape& shape, std::vector<int64_t> src_tensor_dim_to_mesh_dim,
-      std::vector<int64_t> dst_tensor_dim_to_mesh_dim) const;
+      const Shape& shape, absl::Span<const int64_t> src_tensor_dim_to_mesh_dim,
+      absl::Span<const int64_t> dst_tensor_dim_to_mesh_dim) const;
 
   double CollectivePermuteCost(
       double num_bytes,
-      const std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs) const;
+      absl::Span<const std::pair<int64_t, int64_t>> src_dst_pairs) const;
 
   double TryCollectivePermuteForResharding(const Shape& shape,
                                            const HloSharding& src_spec,
@@ -170,6 +177,10 @@ class ClusterEnvironment {
   // Cache a flatten 1d version of the device mesh.
   // Used for mixed mesh shape strategies.
   Array<int64_t> device_mesh_1d_;
+
+  // Cache a flatten 1d version of the original device mesh.
+  // Used for mixed mesh shape strategies.
+  Array<int64_t> original_device_mesh_1d_;
 
   // The option may override the cost of communication primitives
   const AutoShardingOption& auto_sharding_option_;

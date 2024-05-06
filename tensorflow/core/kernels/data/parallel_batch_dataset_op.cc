@@ -249,9 +249,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         }
       }
 
-      profiler::TraceMe traceme([&] {
-        return profiler::TraceMeEncode("ParallelBatchConsume",
-                                       {{"element_id", result->uid}});
+      tsl::profiler::TraceMe traceme([&] {
+        return tsl::profiler::TraceMeEncode("ParallelBatchConsume",
+                                            {{"element_id", result->uid}});
       });
       mutex_lock l(result->mu);
       // Deallocate tensors allocated for the output.
@@ -376,9 +376,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     void CallBatching(std::shared_ptr<IteratorContext> ctx,
                       const std::shared_ptr<BatchResult>& result)
         TF_LOCKS_EXCLUDED(*mu_) {
-      profiler::TraceMe traceme([&] {
-        return profiler::TraceMeEncode("ParallelBatchProduce",
-                                       {{"element_id", result->uid}});
+      tsl::profiler::TraceMe traceme([&] {
+        return tsl::profiler::TraceMeEncode("ParallelBatchProduce",
+                                            {{"element_id", result->uid}});
       });
 
       if (!input_impl_) {
@@ -388,9 +388,8 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
 
       // Each row of `batch_elements` is a tuple of tensors from the input
       // iterator.
-      auto batch_elements =
-          std::make_shared<std::vector<std::vector<Tensor>>>();
-      batch_elements->reserve(dataset()->reserve_size_);
+      std::vector<std::vector<Tensor>> batch_elements;
+      batch_elements.reserve(dataset()->reserve_size_);
 
       bool end_of_input = false;
       for (int i = 0; i < dataset()->batch_size_ && !end_of_input; ++i) {
@@ -405,7 +404,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
           if (result->end_of_input || !result->status.ok()) break;
         }
         if (!end_of_input) {
-          batch_elements->emplace_back(std::move(batch_element_tuple));
+          batch_elements.emplace_back(std::move(batch_element_tuple));
           mutex_lock l(result->mu);
           result->num_elements++;
         } else {
@@ -413,16 +412,18 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         }
       }
 
-      if (batch_elements->empty()) {
+      if (batch_elements.empty()) {
         CallCompleted(ctx, result);
         return;
       }
 
-      auto copy_elements_fn = [this, ctx, result, batch_elements]() {
+      auto copy_elements_fn = [this, ctx, result,
+                               batch_elements =
+                                   std::move(batch_elements)]() mutable {
         Status status;
         {
           mutex_lock l(result->mu);
-          status = CopyBatch(CopyBatchParams(ctx.get()), *batch_elements,
+          status = CopyBatch(AnyContext(ctx.get()), std::move(batch_elements),
                              dataset()->parallel_copy_, &result->output);
           result->status.Update(status);
 
@@ -438,7 +439,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         return status;
       };
 
-      (*ctx->runner())(copy_elements_fn);
+      (*ctx->runner())(std::move(copy_elements_fn));
     }
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {

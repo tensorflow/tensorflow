@@ -513,8 +513,8 @@ void AddCuMemAllocEventUponApiExit(CuptiTraceCollector *collector,
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(dptr);
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "Cuda MemAlloc API exit."
-          << " dptr=" << dptr << " sz=" << params->bytesize;
+  VLOG(3) << "Cuda MemAlloc API exit." << " dptr=" << dptr
+          << " sz=" << params->bytesize;
   collector->AddEvent(std::move(event));
 }
 
@@ -537,8 +537,8 @@ void AddCuMemAllocPitchEventUponApiExit(
   const size_t size_in_bytes = *params->pPitch * params->Height;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(dptr);
   event.memalloc_info.num_bytes = size_in_bytes;
-  VLOG(3) << "Cuda MemAllocPitch API exit."
-          << " dptr=" << dptr << " sz=" << size_in_bytes;
+  VLOG(3) << "Cuda MemAllocPitch API exit." << " dptr=" << dptr
+          << " sz=" << size_in_bytes;
   collector->AddEvent(std::move(event));
 }
 
@@ -560,8 +560,8 @@ void AddCuMemAllocManagedEventUponApiExit(
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(dptr);
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "Cuda MemAllocManaged API exit."
-          << " dptr=" << dptr << " sz=" << params->bytesize;
+  VLOG(3) << "Cuda MemAllocManaged API exit." << " dptr=" << dptr
+          << " sz=" << params->bytesize;
   collector->AddEvent(std::move(event));
 }
 
@@ -584,8 +584,8 @@ void AddCuMemAllocHostEventUponApiExit(CuptiTraceCollector *collector,
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(*params->pp);
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "Cuda MemAllocHost API exit."
-          << " pp=" << *params->pp << " sz=" << params->bytesize;
+  VLOG(3) << "Cuda MemAllocHost API exit." << " pp=" << *params->pp
+          << " sz=" << params->bytesize;
   collector->AddEvent(std::move(event));
 }
 
@@ -608,9 +608,8 @@ void AddCuMemHostAllocEventUponApiExit(CuptiTraceCollector *collector,
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.address = reinterpret_cast<uintptr_t>(*params->pp);
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "Cuda MemHostAlloc API exit."
-          << " pp=" << *params->pp << " sz=" << params->bytesize
-          << " Flags=" << params->Flags;
+  VLOG(3) << "Cuda MemHostAlloc API exit." << " pp=" << *params->pp
+          << " sz=" << params->bytesize << " Flags=" << params->Flags;
   collector->AddEvent(std::move(event));
 }
 
@@ -632,8 +631,7 @@ void AddCuMemFreeEventUponApiExit(CuptiTraceCollector *collector,
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.memfree_info.address = reinterpret_cast<uintptr_t>(dptr);
-  VLOG(3) << "Cuda MemFree API exit."
-          << " dptr=" << dptr;
+  VLOG(3) << "Cuda MemFree API exit." << " dptr=" << dptr;
   collector->AddEvent(std::move(event));
 }
 
@@ -654,8 +652,7 @@ void AddCuMemFreeHostEventUponApiExit(CuptiTraceCollector *collector,
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.memfree_info.address = reinterpret_cast<uintptr_t>(params->p);
-  VLOG(3) << "Cuda MemFreeHost API exit."
-          << " p=" << params->p;
+  VLOG(3) << "Cuda MemFreeHost API exit." << " p=" << params->p;
   collector->AddEvent(std::move(event));
 }
 
@@ -677,9 +674,8 @@ void AddCuMemHostRegisterEventUponApiExit(
   event.host_register_info.address = reinterpret_cast<uintptr_t>(params->p);
   event.host_register_info.num_bytes = params->bytesize;
   event.host_register_info.flags = params->Flags;
-  VLOG(3) << "Cuda HostRegister API exit."
-          << " p=" << params->p << " bytesize=" << params->bytesize
-          << " flags=" << params->Flags;
+  VLOG(3) << "Cuda HostRegister API exit." << " p=" << params->p
+          << " bytesize=" << params->bytesize << " flags=" << params->Flags;
   collector->AddEvent(std::move(event));
 }
 
@@ -699,8 +695,7 @@ void AddCuMemHostUnregisterEventUponApiExit(
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.host_unregister_info.address = reinterpret_cast<uintptr_t>(params->p);
-  VLOG(3) << "Cuda HostUnregister API exit."
-          << " p=" << params->p;
+  VLOG(3) << "Cuda HostUnregister API exit." << " p=" << params->p;
   collector->AddEvent(std::move(event));
 }
 
@@ -718,8 +713,7 @@ void AddGenericEventUponApiExit(CuptiTraceCollector *collector,
   event.device_id = device_id;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
-  VLOG(3) << "Observed generic API exit."
-          << " name=" << cbdata->functionName;
+  VLOG(3) << "Observed generic API exit." << " name=" << cbdata->functionName;
   collector->AddEvent(std::move(event));
 }
 
@@ -1328,6 +1322,12 @@ Status CuptiTracer::EnableActivityTracing() {
   if (!option_->activities_selected.empty()) {
     // Initialize callback functions for Cupti Activity API.
     VLOG(1) << "Registering CUPTI activity callbacks";
+    if (auto err = cupti_interface_->ActivityUsePerThreadBuffer();
+        err != CUPTI_SUCCESS) {
+      LOG(WARNING) << "Fail to use per-thread activity buffer, cupti trace "
+                      "overhead may be big. CUPTI ERROR CODE:"
+                   << err;
+    }
     RETURN_IF_CUPTI_ERROR(cupti_interface_->ActivityRegisterCallbacks(
         RequestCuptiActivityBuffer, ProcessCuptiActivityBuffer));
 

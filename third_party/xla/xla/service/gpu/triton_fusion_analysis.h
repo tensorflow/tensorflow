@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -43,10 +42,19 @@ class TritonFusionAnalysis {
   static absl::StatusOr<TritonFusionAnalysis> Execute(
       const HloComputation& computation, int split_k = 1);
 
+  // Execute the analysis of a produce-consumer fusion. Returns OkStatus, if the
+  // analysis can find a valid tiling for the producer-consumer fusion.
+  // `split_k` indicates whether this operation was converted to the split-K
+  // form and tells the analysis how to interpret the batch dimensions.
+  static absl::Status ExecuteForProducerConsumer(const HloInstruction& producer,
+                                                 const HloInstruction& consumer,
+                                                 int split_k = 1);
+
   // A scope is an HLO graph that can be tiled efficiently using same or
-  // compatible tile shapes on all operations. GEMM fusion has 3 scopes
-  // defined by left operand, right operand and output.
-  enum class Scope { LHS = 0, RHS = 1, OUTPUT = 2 };
+  // compatible tile shapes on all operations. GEMM fusion has 3 or 4 scopes
+  // defined by left operand, right operand, optional meta (third operand) and
+  // output.
+  enum class Scope { LHS = 0, RHS = 1, META = 2, OUTPUT = 3 };
 
   using IterationSpecByInstructionMap =
       ConstHloInstructionMap<TensorIterationSpec>;
@@ -71,6 +79,10 @@ class TritonFusionAnalysis {
     return parameters_.at(scope);
   }
 
+  // Returns the given instruction's scope, if there is no scope, returns
+  // nullopt instead.
+  std::optional<Scope> QueryInstructionScope(const HloInstruction& hlo) const;
+
   std::string ToString() const;
 
  private:
@@ -89,8 +101,9 @@ class FusionContext {
  public:
   // Create fusion context from a dot operand according to
   // the currently supported configurations.
-  static FusionContext FromDotOperand(const HloInstruction& dot,
-                                      int operand_number, int split_k = 1);
+  static absl::StatusOr<FusionContext> FromDotOperand(const HloInstruction& dot,
+                                                      int operand_number,
+                                                      int split_k = 1);
 
   // Create fusion context from dot's output.
   static FusionContext FromDotOutput(const HloInstruction& dot, int split_k,

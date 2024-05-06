@@ -27,6 +27,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -617,7 +618,7 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPairs2) {
     sum = u32[] add(replica, c10)
     sum2 = u32[] add(sum, count)
     conv = f32[] convert(sum2)
-    s1 = f32[1, 1024, 1024] broadcast(conv), dimensions={}
+    bc1 = f32[1, 1024, 1024] broadcast(conv), dimensions={}
 
     after-all-1 = token[] after-all()
     recv-1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all-1), channel_id=2,
@@ -632,10 +633,10 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPairs2) {
     send-done-1 = token[] send-done(send-1), channel_id=2
     recv-data-1 = f32[1, 1024, 1024] get-tuple-element(recv-done-1), index=0
 
-    s2 = f32[1, 1024, 1024] add(recv-data-0, s1)
-    s = f32[1, 1024, 1024] add(recv-data-1, s2)
+    add2 = f32[1, 1024, 1024] add(recv-data-0, bc1)
+    add = f32[1, 1024, 1024] add(recv-data-1, add2)
 
-    ROOT result = (u32[], f32[1, 1024, 1024]) tuple(new_count, s)
+    ROOT result = (u32[], f32[1, 1024, 1024]) tuple(new_count, add)
   }
 
   ENTRY test_computation {
@@ -676,8 +677,8 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPairs2) {
   EXPECT_LT(abs(get_index("send-done-0") - get_index("result")), 2);
 }
 
-// Checks that asynchronous AllReduce is scheduled to interleave with the Send
-// and Recv sequence.
+// Checks that asynchronous AllReduce is scheduled to not interleave with the
+// Send and Recv sequence.
 TEST_F(GpuHloScheduleTest, LHSSendRecvAllReduce) {
   const char* hlo_text = R"(
   HloModule test
@@ -764,39 +765,30 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvAllReduce) {
   EXPECT_LT(get_index("recv"), get_index("send"));
   EXPECT_LT(get_index("send"), get_index("recv-done"));
   EXPECT_GE(get_index("send-done") - get_index("recv-done"), 3);
-  EXPECT_LT(get_index("send-done"), get_index("all-reduce-start"));
+  EXPECT_TRUE(get_index("send-done") < get_index("all-reduce-start") ||
+              get_index("recv") > get_index("all-reduce-start"));
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 // Checks that with the dependence added by the gpu-hlo-scheduler, the
-// pipelined Send and Recv instructions are scheduled correctly.
-TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined) {
+// pipelined one Send-Recv group is scheduled correctly.
+TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined1) {
   const char* hlo_text = R"(
   HloModule test
 
   while_cond {
-    param = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) parameter(0)
+    param = (u32[], (f32[1,1024,1024], token[]), token[]) parameter(0)
     count = get-tuple-element(param), index=0
     ub = u32[] constant(25)
     ROOT cond-result = pred[] compare(count, ub), direction=LT
   }
 
-while_body {
-    param = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) parameter(0)
+  while_body {
+    param = (u32[], (f32[1,1024,1024], token[]), token[]) parameter(0)
     count = get-tuple-element(param), index=0
-    send-data = get-tuple-element(param), index=1
-    recv-data = get-tuple-element(param), index=2
 
-    after-all.1 = token[] after-all()
-    send.1 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all.1),
-      channel_id=1, frontend_attributes={
-      _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
-    }
-    send-done.1 = token[] send-done(send.1), channel_id=1
-    recv.1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.1), channel_id=1,
-      frontend_attributes={
-       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
-    }
+    recv-done.1.q = (f32[1,1024,1024], token[]) get-tuple-element(param), index=1
+    recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.1.q), index=0
 
     c1 = u32[] constant(1)
     new-count = u32[] add(count, c1)
@@ -811,26 +803,29 @@ while_body {
     d = f32[1, 1024, 1024] tan(c)
     s = f32[1, 1024, 1024] dot(c, d), lhs_batch_dims={0},
       lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
-    new-data-0 = f32[1, 1024, 1024] add(c, s)
+    send-data = f32[1, 1024, 1024] add(c, s)
 
-    recv-done.1 = (f32[1, 1024, 1024], token[]) recv-done(recv.1), channel_id=1
-    new-recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
-
-    after-all.4 = token[] after-all()
-    send.4 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all.4),
-      channel_id=4, frontend_attributes={
-      _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
-    }
-    send-done.4 = token[] send-done(send.4), channel_id=4
-    recv.4 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.4), channel_id=4,
+    after-all.1 = token[] after-all()
+    send.1 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all.1),
+      channel_id=1, frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+        _xla_send_recv_pipeline="0"
+      }
+    recv.1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.1), channel_id=1,
       frontend_attributes={
-       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
-    }
-    recv-done.4 = (f32[1, 1024, 1024], token[]) recv-done(recv.4), channel_id=4
-    recv-data-4 = f32[1, 1024, 1024] get-tuple-element(recv-done.4), index=0
-    new-data = f32[1, 1024, 1024] add(new-data-0, recv-data-4)
-
-    ROOT body-result = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) tuple(new-count, new-data, new-recv-data)
+        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+        _xla_send_recv_pipeline="0"
+      }
+    recv-done.1 = (f32[1,1024,1024], token[]) recv-done(recv.1), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    send-done.1 = token[] send-done(send.1), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    ROOT body-result = (u32[], (f32[1,1024,1024], token[]), token[])
+      tuple(new-count, recv-done.1, send-done.1)
   }
 
   ENTRY main {
@@ -841,24 +836,226 @@ while_body {
     after-all.2 = token[] after-all()
     recv.2 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.2), channel_id=1,
       frontend_attributes={
-       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
-    }
-    recv-done.2 = (f32[1, 1024, 1024], token[]) recv-done(recv.2), channel_id=1
-    recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.2), index=0
-
-    while-init =  (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) tuple(c0, init, recv-data)
-    while-result = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) while(while-init),
+        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+        _xla_send_recv_pipeline="0"
+      }
+    send.2 = (f32[1, 1024, 1024], u32[], token[]) send(init, after-all.2), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+        _xla_send_recv_pipeline="0"
+      }
+    recv-done.2 = (f32[1,1024,1024], token[]) recv-done(recv.2), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    send-done.2 = token[] send-done(send.2), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    while-init =  (u32[], (f32[1,1024,1024], token[]), token[])
+      tuple(c0, recv-done.2, send-done.2)
+    while-result = (u32[], (f32[1,1024,1024], token[]), token[])
+      while(while-init),
       body=while_body, condition=while_cond,
       backend_config={"known_trip_count":{"n":"25"}}
 
-    send-data = f32[1, 1024, 1024] get-tuple-element(while-result), index=2
-    send.2 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all.2),
-      channel_id=1, frontend_attributes={
-      _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
-    }
-    send-done.2 = token[] send-done(send.2), channel_id=1
+    recv-done.2.q = (f32[1,1024,1024], token[]) get-tuple-element(while-result), index=1
 
-    ROOT entry-result = f32[1, 1024, 1024] get-tuple-element(while-result), index=1
+    ROOT entry-result = f32[1, 1024, 1024] get-tuple-element(recv-done.2.q), index=0
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
+                                    /*enable_gpu_async_tracker=*/true)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+  const std::vector<HloInstruction*>& while_body =
+      order.SequentialOrder(*module->GetComputationWithName("while_body"))
+          ->instructions();
+  const std::vector<HloInstruction*>& main =
+      order.SequentialOrder(*module->GetComputationWithName("main"))
+          ->instructions();
+  auto get_index =
+      [](absl::string_view hlo_name,
+         const std::vector<HloInstruction*>& instruction_sequence) {
+        return absl::c_find_if(instruction_sequence,
+                               [hlo_name](HloInstruction* instruction) {
+                                 return instruction->name() == hlo_name;
+                               }) -
+               instruction_sequence.begin();
+      };
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
+
+  // The pipelined Send-Recv in the main. A pipelined Recv is scheduled right
+  // after its corresponding Send due to kForceEarly.
+  EXPECT_EQ(get_index("recv.2", main) + 1, get_index("send.2", main));
+  EXPECT_LT(get_index("send.2", main), get_index("recv-done.2", main));
+  EXPECT_LT(get_index("recv-done.2", main), get_index("send-done.2", main));
+  EXPECT_LT(get_index("send-done.2", main), get_index("while-result", main));
+
+  // The pipelined Send-Recv in the while-body. A pipelined Recv is scheduled
+  // right after its corresponding Send due to kForceEarly.
+  EXPECT_EQ(get_index("recv.1", while_body) + 1,
+            get_index("send.1", while_body));
+  EXPECT_LT(get_index("send.1", while_body),
+            get_index("recv-done.1", while_body));
+  EXPECT_LT(get_index("recv-done.1", while_body),
+            get_index("send-done.1", while_body));
+}
+
+// Checks that with the dependence added by the gpu-hlo-scheduler, the
+// pipelined two Send-Recv groups are scheduled correctly.
+TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined2) {
+  const char* hlo_text = R"(
+  HloModule test
+
+  while_cond {
+    param = (u32[], (f32[1,1024,1024],  token[]), token[],
+      (f32[1,1024,1024], token[]), token[]) parameter(0)
+    count = get-tuple-element(param), index=0
+    ub = u32[] constant(25)
+    ROOT cond-result = pred[] compare(count, ub), direction=LT
+  }
+
+  while_body {
+    param = (u32[], (f32[1,1024,1024], token[]), token[],
+      (f32[1,1024,1024], token[]), token[]) parameter(0)
+    count = get-tuple-element(param), index=0
+
+    recv-done.0.q = (f32[1,1024,1024], token[]) get-tuple-element(param), index=1
+    recv-data.0 = f32[1, 1024, 1024] get-tuple-element(recv-done.0.q), index=0
+    recv-done.1.q = (f32[1,1024,1024], token[]) get-tuple-element(param), index=3
+    recv-data.1 = f32[1, 1024, 1024] get-tuple-element(recv-done.1.q), index=0
+
+    replica = u32[] replica-id()
+    constant0 = u32[] constant(0)
+    compare0 = pred[] compare(replica, constant0), direction=EQ
+    compare = pred[1, 1024, 1024] broadcast(compare0), dimensions={}
+    recv-data = f32[1, 1024, 1024] select(compare, recv-data.0, recv-data.1)
+
+    c1 = u32[] constant(1)
+    new-count = u32[] add(count, c1)
+    c10 = u32[] constant(10)
+    sum = u32[] add(replica, c10)
+    sum2 = u32[] add(sum, count)
+    conv = f32[] convert(sum2)
+    p = f32[1, 1024, 1024] broadcast(conv), dimensions={}
+    b = f32[1, 1024, 1024] add(p, recv-data)
+    c = f32[1, 1024, 1024] multiply(b, b)
+    d = f32[1, 1024, 1024] tan(c)
+    s = f32[1, 1024, 1024] dot(c, d), lhs_batch_dims={0},
+      lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+    send-data = f32[1, 1024, 1024] add(c, s)
+
+    after-all.0 = token[] after-all()
+    send.0 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all.0),
+      channel_id=1, frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{3,0}}",
+        _xla_send_recv_pipeline="0"
+      }
+    recv.0 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{3,0}}",
+        _xla_send_recv_pipeline="0"
+      }
+    recv-done.0 = (f32[1,1024,1024], token[]) recv-done(recv.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    send-done.0 = token[] send-done(send.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+
+    after-all.1 = token[] after-all()
+    send.1 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all.1),
+      channel_id=2, frontend_attributes={
+       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}}",
+       _xla_send_recv_pipeline="1"
+      }
+    recv.1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.1), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}}",
+        _xla_send_recv_pipeline="1"
+      }
+    recv-done.1 = (f32[1,1024,1024], token[]) recv-done(recv.1), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_pipeline="1"
+      }
+    send-done.1 = token[] send-done(send.1), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_pipeline="1"
+      }
+
+    ROOT body-result = (u32[], (f32[1,1024,1024], token[]), token[],
+      (f32[1,1024,1024], token[]), token[])
+      tuple(new-count, recv-done.0, send-done.0, recv-done.1, send-done.1)
+  }
+
+  ENTRY main {
+    c0 = u32[] constant(0)
+    f0 = f32[] constant(0.0)
+    init = f32[1, 1024, 1024] broadcast(f0), dimensions={}
+
+    after-all.2 = token[] after-all()
+    recv.2 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.2), channel_id=1,
+      frontend_attributes={
+       _xla_send_recv_source_target_pairs="{{3,0}}",
+       _xla_send_recv_pipeline="0"
+    }
+    send.2 = (f32[1, 1024, 1024], u32[], token[]) send(init, after-all.2), channel_id=1,
+      frontend_attributes={
+       _xla_send_recv_source_target_pairs="{{3,0}}",
+       _xla_send_recv_pipeline="0"
+    }
+    recv-done.2 = (f32[1,1024,1024], token[]) recv-done(recv.2), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    send-done.2 = token[] send-done(send.2), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+
+    after-all.3 = token[] after-all()
+    recv.3 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.3), channel_id=2,
+      frontend_attributes={
+       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}}",
+       _xla_send_recv_pipeline="1"
+    }
+    send.3 = (f32[1, 1024, 1024], u32[], token[]) send(init, after-all.3), channel_id=2,
+      frontend_attributes={
+       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}}",
+       _xla_send_recv_pipeline="1"
+    }
+    recv-done.3 = (f32[1,1024,1024], token[]) recv-done(recv.3), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_pipeline="1"
+      }
+    send-done.3 = token[] send-done(send.3), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_pipeline="1"
+      }
+
+    while-init =  (u32[], (f32[1,1024,1024], token[]), token[],
+      (f32[1,1024,1024], token[]), token[]) tuple(c0, recv-done.2, send-done.2, recv-done.3, send-done.3)
+    while-result = (u32[], (f32[1,1024,1024], token[]), token[],
+      (f32[1,1024,1024], token[]), token[]) while(while-init),
+      body=while_body, condition=while_cond,
+      backend_config={"known_trip_count":{"n":"25"}}
+
+    recv-done.2.q = (f32[1,1024,1024], token[]) get-tuple-element(while-result), index=1
+    recv-data.2 = f32[1, 1024, 1024] get-tuple-element(recv-done.2.q), index=0
+    recv-done.3.q = (f32[1,1024,1024], token[]) get-tuple-element(while-result), index=3
+    recv-data.3 = f32[1, 1024, 1024] get-tuple-element(recv-done.3.q), index=0
+
+    replica = u32[] replica-id()
+    constant0 = u32[] constant(0)
+    compare0 = pred[] compare(replica, constant0), direction=EQ
+    compare = pred[1, 1024, 1024] broadcast(compare0), dimensions={}
+    ROOT entry-result = f32[1, 1024, 1024] select(compare, recv-data.2, recv-data.3)
   }
   )";
 
@@ -885,20 +1082,32 @@ while_body {
       };
 
   EXPECT_TRUE(HasValidFingerprint(module.get()));
+  // The pipelined Send-Recv in the main. A pipelined Recv is scheduled right
+  // after its corresponding Send due to kForceEarly.
+  EXPECT_EQ(get_index("recv.2", main) + 1, get_index("send.2", main));
+  EXPECT_LT(get_index("send.2", main), get_index("recv.3", main));
+  EXPECT_EQ(get_index("recv.3", main) + 1, get_index("send.3", main));
+  EXPECT_LT(get_index("send.3", main), get_index("recv-done.2", main));
+  EXPECT_LT(get_index("recv-done.2", main), get_index("recv-done.3", main));
+  EXPECT_LT(get_index("recv-done.3", main), get_index("send-done.2", main));
+  EXPECT_LT(get_index("send-done.2", main), get_index("send-done.3", main));
+  EXPECT_LT(get_index("send-done.3", main), get_index("while-result", main));
 
-  // The pipelined Send-Recv in the main.
-  EXPECT_LT(get_index("recv-done.2", main), get_index("while-result", main));
-  EXPECT_LT(get_index("while-result", main), get_index("send.2", main));
-
-  // The pipelined Send-Recv in the while-body.
-  EXPECT_LT(get_index("send.1", while_body), get_index("recv.1", while_body));
-
-  // The unpipelined Send-Recv in the while-body is scheduled after the
-  // pipelined Send-Done and before the pipelined Recv.
-  EXPECT_LT(get_index("send-done.1", while_body),
-            get_index("recv.4", while_body));
-  EXPECT_LT(get_index("recv-done.4", while_body),
-            get_index("recv.1", while_body));
+  // The pipelined Send-Recv in the while-body. A pipelined Recv is scheduled
+  // right after its corresponding Send due to kForceEarly.
+  EXPECT_EQ(get_index("recv.0", while_body) + 1,
+            get_index("send.0", while_body));
+  EXPECT_LT(get_index("send.0", while_body), get_index("recv.1", while_body));
+  EXPECT_EQ(get_index("recv.1", while_body) + 1,
+            get_index("send.1", while_body));
+  EXPECT_LT(get_index("send.1", while_body),
+            get_index("recv-done.0", while_body));
+  EXPECT_LT(get_index("recv-done.0", while_body),
+            get_index("recv-done.1", while_body));
+  EXPECT_LT(get_index("recv-done.1", while_body),
+            get_index("send-done.0", while_body));
+  EXPECT_LT(get_index("send-done.0", while_body),
+            get_index("send-done.1", while_body));
 }
 
 TEST_F(GpuHloScheduleTest, SkipAlreadyScheduled) {
@@ -931,6 +1140,77 @@ ENTRY e {
 // CHECK: wrapped_negate = f32[1024,1024]{1,0}
 // CHECK: wrapped_exponential = f32[1024,1024]{1,0}
 )"));
+}
+
+TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelWithForceEarliestSchedule) {
+  const char* hlo_text = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY main {
+    p0 = f32[32] parameter(0)
+    p1 = f32[32, 32] parameter(1)
+    p2 = f32[32, 32] parameter(2)
+    p3 = f32[32] parameter(3)
+
+    // Independent compute
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm", backend_config={"force_earliest_schedule":true}
+    dot1 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    add0 = f32[32,32] add(dot0, dot1)
+
+    // 2 Independent collectives.
+    ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[32] all-reduce-done(ar-start)
+
+    ROOT t = (f32[32], f32[32,32]) tuple(ar-done, add0)
+  })";
+
+  const std::string ar_long_latency_proto_text = R"pb(
+    costs { name: "dot0" cost_us: 100.0 }
+    costs { name: "dot1" cost_us: 100.0 }
+    costs { name: "add0" cost_us: 10.0 }
+    costs { name: "ar-start" cost_us: 1000.0 }
+  )pb";
+
+  tensorflow::profiler::ProfiledInstructionsProto profile;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      ar_long_latency_proto_text, &profile));
+  std::string ar_long_latency_proto_binary = profile.SerializeAsString();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          hlo_text,
+          GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
+                          // Post processing should work even with
+                          // GpuAsyncTrackerBase.
+                          /*enable_gpu_async_tracker=*/false,
+                          /*fdo_profile=*/ar_long_latency_proto_binary)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+  const std::vector<HloInstruction*>& main =
+      order.SequentialOrder(*module->GetComputationWithName("main"))
+          ->instructions();
+  auto get_index =
+      [](absl::string_view hlo_name,
+         const std::vector<HloInstruction*>& instruction_sequence) {
+        return absl::c_find_if(instruction_sequence,
+                               [hlo_name](HloInstruction* instruction) {
+                                 return instruction->name() == hlo_name;
+                               }) -
+               instruction_sequence.begin();
+      };
+  // Using the profile, LHS should schedule all computes between ar pair,
+  // but since dot0 is marked as force delay, it should be scheduled
+  // before ar-start now.
+  EXPECT_LT(get_index("dot0", main), get_index("ar-start", main));
+  // Also verify that dot1 is scheduled between ar start and ar done.
+  EXPECT_GT(get_index("dot1", main), get_index("ar-start", main));
+  EXPECT_LT(get_index("dot1", main), get_index("ar-done", main));
 }
 
 class GpuHloScheduleParameterizedTest
@@ -977,7 +1257,7 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
   HloInstruction* all_reduce_start =
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
           all_reduce_start_shape, {add0}, reduction_computation,
-          /*replica_groups=*/{}, /*constrain_layout=*/false,
+          /*device_list=*/CollectiveDeviceList(), /*constrain_layout=*/false,
           /*channel_id=*/std::nullopt, /*use_global_device_ids=*/true));
   // In addition, add control_dependency: add1->nonblocking_call.
   TF_CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));

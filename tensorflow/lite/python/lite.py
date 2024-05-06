@@ -61,6 +61,8 @@ from tensorflow.lite.python.util import convert_debug_info_func as _convert_debu
 from tensorflow.lite.python.util import freeze_graph as _freeze_graph
 from tensorflow.lite.python.util import get_debug_info as _get_debug_info
 from tensorflow.lite.python.util import get_grappler_config as _get_grappler_config
+from tensorflow.lite.python.util import get_model_hash as _get_model_hash
+from tensorflow.lite.python.util import get_save_spec as _get_save_spec
 from tensorflow.lite.python.util import get_sparsity_modes as _get_sparsity_modes
 from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
 from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
@@ -83,6 +85,7 @@ from tensorflow.python.framework import byte_swap_tensor as bst
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import versions
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
@@ -96,6 +99,7 @@ from tensorflow.python.saved_model.load import load as _load
 from tensorflow.python.saved_model.loader_impl import parse_saved_model_with_debug_info as _parse_saved_model_with_debug_info
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util import keras_deps
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
@@ -636,7 +640,10 @@ class TFLiteConverterBase:
     self._experimental_full_integer_quantization_bias_type = None
     # Provides specs for quantization, whether preset or custom.
     self._experimental_quantization_options = None  # Deprecated
+    # Whether to use StableHLO Quantizer instead of TFLite Quantizer.
     self.experimental_use_stablehlo_quantizer = False
+    # Quantization configuration to pass to StableHLO Quantizer.
+    self.experimental_stablehlo_quantizer_config = None
     # Initializes conversion metadata.
     self.exclude_conversion_metadata = False
     self._metadata = conversion_metadata_fb.ConversionMetadataT()
@@ -664,6 +671,7 @@ class TFLiteConverterBase:
     self._experimental_reduce_type_precision = False
     self._experimental_qdq_conversion_mode = None
     self._experimental_disable_per_channel_quantization_for_dense_layers = False
+    self._experimental_enable_composite_direct_lowering = False
 
     # Debug parameters
     self.ir_dump_dir = None
@@ -814,9 +822,15 @@ class TFLiteConverterBase:
         "use_buffer_offset": self._experimental_use_buffer_offset,
         "reduce_type_precision": self._experimental_reduce_type_precision,
         "use_stablehlo_quantizer": self.experimental_use_stablehlo_quantizer,
+        "stablehlo_quantizer_config": (
+            self.experimental_stablehlo_quantizer_config
+        ),
         "qdq_conversion_mode": self._experimental_qdq_conversion_mode,
         "disable_per_channel_quantization_for_dense_layers": (
             self._experimental_disable_per_channel_quantization_for_dense_layers
+        ),
+        "enable_composite_direct_lowering": (
+            self._experimental_enable_composite_direct_lowering
         ),
     }
 
@@ -837,40 +851,67 @@ class TFLiteConverterBase:
       )
 
     if self.experimental_use_stablehlo_quantizer:
-      if Optimize.DEFAULT in self.optimizations and self.representative_dataset:
-        if len(self._saved_model_exported_names) != 1:
-          raise ValueError(
-              "StableHLO quantizer is only supported when converting from a"
-              " SavedModel with one signature key."
-          )
-
-        signature_key = self._saved_model_exported_names[0]
-
-        # Convert a programmatically provided representative dataset to a
-        # temporary TFRecord file to be used by the StableHLO quantizer.
-        tfrecord_file_path: str = tempfile.mkstemp(
-            suffix=".tfrecord", prefix=signature_key
-        )[1]
-        rd.TfRecordRepresentativeDatasetSaver(
-            {signature_key: tfrecord_file_path}
-        ).save({signature_key: self.representative_dataset()})
-
-        quantization_config = qc.QuantizationConfig(
-            static_range_ptq_preset=qc.StaticRangePtqPreset(
-                representative_datasets=[
-                    qc.RepresentativeDatasetConfig(
-                        tf_record=qc.TfRecordFile(path=tfrecord_file_path)
-                    )
-                ],
-                enable_per_channel_quantized_weight=True,
-            )
-        )
-
-        args["quantization_config"] = quantization_config
-      else:
-        raise ValueError("StableHLO quantizer only supports static-range PTQ.")
+      self._assign_stablehlo_quantization_config_or_populate_default(args)
+    elif self.experimental_stablehlo_quantizer_config is not None:
+      raise ValueError(
+          "QuantizationConfig should be provided only when"
+          " experimental_use_stablehlo_quantizer is set to true."
+      )
 
     return args
+
+  def _assign_stablehlo_quantization_config_or_populate_default(self, args):
+    """Assigns `QuantizationConfig` to `args` or populate default.
+
+    Args:
+      args: Dictionary of argument names and associated values.
+    """
+    if (
+        self.experimental_stablehlo_quantizer_config is not None
+        and Optimize.DEFAULT not in self.optimizations
+    ):
+      args["quantization_config"] = self.experimental_stablehlo_quantizer_config
+    elif Optimize.DEFAULT in self.optimizations and self.representative_dataset:
+      if len(self._saved_model_exported_names) != 1:
+        raise ValueError(
+            "StableHLO quantizer is only supported when converting from a"
+            " SavedModel with one signature key."
+        )
+
+      signature_key = self._saved_model_exported_names[0]
+
+      # Convert a programmatically provided representative dataset to a
+      # temporary TFRecord file to be used by the StableHLO quantizer.
+      tfrecord_file_path = tempfile.mkstemp(
+          suffix=".tfrecord", prefix=signature_key
+      )[1]
+      rd.TfRecordRepresentativeDatasetSaver(
+          {signature_key: tfrecord_file_path}
+      ).save({signature_key: self.representative_dataset()})
+
+      quantization_config = qc.QuantizationConfig(
+          static_range_ptq_preset=qc.StaticRangePtqPreset(
+              representative_datasets=[
+                  qc.RepresentativeDatasetConfig(
+                      tf_record=qc.TfRecordFile(path=tfrecord_file_path)
+                  )
+              ],
+              enable_per_channel_quantized_weight=True,
+              enable_full_int_quantization=True,
+          ),
+          # For ODML use cases, uniform quantized types should be left intact.
+          pipeline_config=qc.PipelineConfig(
+              unpack_quantized_types=False,
+          ),
+      )
+
+      args["quantization_config"] = quantization_config
+      # TODO: b/307626463 - Enable StableHLO quantizer DRQ when Optimize.DEFAULT
+      # is set without representative dataset.
+    else:
+      raise ValueError(
+          "StableHLO quantizer only supports static-range and weight-only PTQ."
+      )
 
   def _contains_function_with_implements_attr(self, saved_model_proto):
     meta_graph = saved_model_proto.meta_graphs[0]
@@ -1148,7 +1189,9 @@ class TFLiteConverterBase:
     # Populates the conversion metadata.
     # TODO(b/202090541): Collects sparsity block size information.
     sparsity_modes = _get_sparsity_modes(model_object)
+    model_hash = _get_model_hash(model_object)
     self._metadata.options.modelOptimizationModes.extend(sparsity_modes)
+    self._metadata.environment.modelHash = model_hash
     model_object = _populate_conversion_metadata(model_object, self._metadata)
     return flatbuffer_utils.convert_object_to_bytearray(model_object)
 
@@ -1540,11 +1583,57 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
       output_tensors: List of output tensors.
     """
     try:
-      _save.save(
-          self._keras_model,
-          output_dir,
-          options=_save_options.SaveOptions(save_debug_info=True),
-      )
+
+      def _is_keras_3():
+        """Returns true if _keras_model is a Keras 3+ model."""
+        try:
+          import keras  # pylint: disable=g-import-not-at-top
+
+          return keras.__version__.startswith("3") and isinstance(
+              self._keras_model, keras.layers.Layer
+          )
+        except ImportError:
+          return False
+
+      if _is_keras_3():
+        import keras  # pylint: disable=g-import-not-at-top
+
+        # Keras 3 model `export` by default saves model.__call__ with
+        # training=True. Need to export the model call with training=False for
+        # inference only and TFLite conversion.
+        export_archive = keras.export.ExportArchive()
+        export_archive.track(self._keras_model)
+        if isinstance(
+            self._keras_model,
+            (keras.src.models.Functional, keras.src.models.Sequential),
+        ):
+          input_signature = nest.map_structure(
+              lambda x: tensor_spec.TensorSpec(
+                  x.shape, dtype=x.dtype, name=x.name
+              ),
+              self._keras_model.inputs,
+          )
+          if isinstance(input_signature, list) and len(input_signature) > 1:
+            input_signature = [input_signature]
+        else:
+          save_spec = _get_save_spec(self._keras_model)
+          if not save_spec:
+            raise ValueError(
+                "The model provided has never been called. "
+                "It must be called at least once before export."
+            )
+          input_signature = [save_spec]
+        inference_fn = functools.partial(
+            self._keras_model.__call__, training=False
+        )
+        export_archive.add_endpoint("serve", inference_fn, input_signature)
+        export_archive.write_out(output_dir)
+      else:
+        _save.save(
+            self._keras_model,
+            output_dir,
+            options=_save_options.SaveOptions(save_debug_info=True),
+        )
     except Exception:  # pylint: disable=broad-except
       # When storing the given keras model to a saved model is failed, let's
       # use original keras model conversion pipeline.

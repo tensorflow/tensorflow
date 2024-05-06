@@ -26,11 +26,11 @@ limitations under the License.
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
 #include "xla/tools/run_hlo_module.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace {
 const char* const kUsage = R"(
@@ -180,7 +180,7 @@ int main(int argc, char** argv) {
     if (iteration_count != 1) {
       std::cerr << "\n=== Iteration " << i << "\n";
     }
-    xla::Status result = xla::RunAndCompare(
+    absl::Status result = xla::RunAndCompare(
         hlo_filename, &test_runner, reference_runner.get(), engine.get(), opts,
         /*iteration_literals_proto=*/nullptr,
         /*reference_module_modifier_hook=*/{},

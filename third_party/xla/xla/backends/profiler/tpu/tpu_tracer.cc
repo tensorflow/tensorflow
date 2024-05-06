@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/stream_executor/tpu/tsl_status_helper.h"
-#include "tsl/c/tsl_status.h"
+#include "xla/tsl/c/tsl_status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
@@ -61,7 +61,7 @@ class ProfilerStatusHelper {
     stream_executor::tpu::ProfilerApiFn()->TpuStatus_FreeFn(c_status);
   }
 
-  static tsl::Status FromC(  // TENSORFLOW_STATUS_OK
+  static absl::Status FromC(  // TENSORFLOW_STATUS_OK
       TF_Status* const c_status) {
     if (stream_executor::tpu::ProfilerApiFn()->TpuStatus_CodeFn(c_status) ==
         TSL_OK) {
@@ -80,7 +80,7 @@ class ProfilerStatusHelper {
            TSL_OK;
   }
 
-  tsl::Status status() const {  // TENSORFLOW_STATUS_OK
+  absl::Status status() const {  // TENSORFLOW_STATUS_OK
     return FromC(c_status);
   }
 

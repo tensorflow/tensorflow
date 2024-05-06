@@ -31,7 +31,7 @@ namespace xla {
 // This is used for ops in MHLO / StableHLO that don't exist in HLO. Many of
 // these ops are needed for XlaBuilder clients that need to raise HLO to
 // StableHLO.
-StatusOr<mlir::Operation*> ImportCustomCallAsOp(
+absl::StatusOr<mlir::Operation*> ImportCustomCallAsOp(
     const HloCustomCallInstruction* instruction, mlir::Location loc,
     mlir::Type result_type, mlir::ValueRange operands,
     mlir::OpBuilder* builder);

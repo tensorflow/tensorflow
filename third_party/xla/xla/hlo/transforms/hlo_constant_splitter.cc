@@ -18,7 +18,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -41,9 +51,9 @@ bool IsSupportedConstantExpression(const HloInstruction* instruction) {
 
 // Perform duplication of a certain constant expression and replace the
 // original expression for a specific user.
-StatusOr<bool> DuplicateConstantExpressionPerUser(HloComputation* computation,
-                                                  HloInstruction* to_clone,
-                                                  HloInstruction* user) {
+absl::StatusOr<bool> DuplicateConstantExpressionPerUser(
+    HloComputation* computation, HloInstruction* to_clone,
+    HloInstruction* user) {
   absl::InlinedVector<std::pair<const HloInstruction*, int>, 8> worklist(
       1, std::make_pair(to_clone, 0));
   absl::InlinedVector<const HloInstruction*, 8> to_clone_vec;
@@ -94,7 +104,7 @@ StatusOr<bool> DuplicateConstantExpressionPerUser(HloComputation* computation,
 
 }  // namespace
 
-StatusOr<bool> HloConstantSplitter::Run(
+absl::StatusOr<bool> HloConstantSplitter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

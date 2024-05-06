@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/layout_assignment.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -75,6 +76,7 @@ HloPassPipeline FusionPipeline(
   // we detect as a tiled transpose fusion.
   fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                          /*only_fusion_computations=*/true);
+  fusion.AddPass<HloDCE>();
   fusion.AddPass<GpuMultiOutputFusion>(gpu_device_info,
                                        shape_size_bytes_function);
   fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,

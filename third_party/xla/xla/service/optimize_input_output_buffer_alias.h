@@ -55,7 +55,7 @@ class OptimizeInputOutputBufferAlias : public HloModulePass {
   ~OptimizeInputOutputBufferAlias() override = default;
 
   absl::string_view name() const override {
-    return "optimize_input_output_buffer_alias.h";
+    return "optimize_input_output_buffer_alias";
   }
 
   using HloPassInterface::Run;

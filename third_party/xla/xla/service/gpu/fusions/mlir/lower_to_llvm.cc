@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -51,7 +52,10 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
 
   void runOnOperation() override {
     // Populate type conversions.
-    mlir::LLVMTypeConverter type_converter(getOperation().getContext());
+    mlir::LowerToLLVMOptions llvm_opts(&getContext(),
+                                       mlir::DataLayout(getOperation()));
+    mlir::LLVMTypeConverter type_converter(getOperation().getContext(),
+                                           llvm_opts);
     mlir::LLVMConversionTarget target(*getOperation().getContext());
 
     // Populate patterns.

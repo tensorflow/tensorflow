@@ -44,7 +44,7 @@ Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
   return absl::OkStatus();
 }
 
-inline StatusOr<std::tuple<Tensor, Tensor, Algorithm> >
+inline absl::StatusOr<std::tuple<Tensor, Tensor, Algorithm>>
 GetKeyCounterAlgFromInputs(OpKernelContext* ctx, int key_input_idx,
                            int counter_input_idx, int alg_input_idx) {
   const Tensor& key_t = ctx->input(key_input_idx);

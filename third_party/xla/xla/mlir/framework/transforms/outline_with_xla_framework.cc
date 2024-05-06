@@ -79,7 +79,7 @@ struct OutlineXLAFunc : public RewritePattern {
     if (!func) return failure();
     if (func.getSymName() != "main") return failure();
     if (llvm::any_of(op->getOperandTypes(),
-                     [](Type t) { return !t.isa<MemRefType>(); }) ||
+                     [](Type t) { return !mlir::isa<MemRefType>(t); }) ||
         op->getNumResults() != 0)
       return failure();
     if (func->hasAttr("outlined")) return failure();

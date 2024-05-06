@@ -78,13 +78,12 @@ class BufferDonationTest : public HloTestBase {
         backend_->compiler()->RunBackend(std::move(hlo_module), executor_,
                                          /*device_allocator=*/nullptr));
 
-    se::Stream stream(executor_);
-    ASSERT_TRUE(stream.Init().ok());
+    TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
 
     se::StreamExecutorMemoryAllocator memory_allocator(
         platform_, backend_->stream_executors());
     ExecutableRunOptions run_options;
-    run_options.set_stream(&stream);
+    run_options.set_stream(stream.get());
     run_options.set_allocator(&memory_allocator);
     ServiceExecutableRunOptions service_run_options(
         run_options, backend_->StreamBorrowerWithPriority());
@@ -106,7 +105,7 @@ class BufferDonationTest : public HloTestBase {
               executor_->device_ordinal()));
       ShapedBuffer shaped_buffer = scoped_shaped_buffer.release();
       TF_CHECK_OK(backend_->transfer_manager()->TransferLiteralToDevice(
-          &stream, argument_literal, shaped_buffer));
+          stream.get(), argument_literal, shaped_buffer));
       ShapeTree<se::DeviceMemoryBase> input_buffers = shaped_buffer.buffers();
       inputs_buffers.push_back(input_buffers);
       ShapeTree<MaybeOwningDeviceMemory> owned_buffers(
@@ -162,7 +161,7 @@ class BufferDonationTest : public HloTestBase {
     TF_ASSERT_OK_AND_ASSIGN(
         Literal result_literal,
         backend_->transfer_manager()->TransferLiteralFromDevice(
-            &stream, output.Result()));
+            stream.get(), output.Result()));
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result_literal));
 
     // Memories are automatically deallocated.

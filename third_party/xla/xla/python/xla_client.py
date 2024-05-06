@@ -43,15 +43,16 @@ from . import xla_extension as _xla
 # Pylint has false positives for type annotations.
 # pylint: disable=invalid-sequence-index
 
+ifrt_programs = _xla.ifrt_programs
 ops = _xla.ops
 profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 239
+_version = 261
 
 # Version number for MLIR:Python components.
-mlir_api_version = 55
+mlir_api_version = 56
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -64,6 +65,7 @@ _NameValueMapping = Mapping[str, Union[str, int, List[int], float, bool]]
 
 
 def make_cpu_client(
+    asynchronous=True,
     distributed_client=None,
     node_id=0,
     num_nodes=1,
@@ -71,7 +73,7 @@ def make_cpu_client(
 ) -> ...:
   register_custom_call_handler('cpu', _xla.register_custom_call_target)
   return _xla.get_tfrt_cpu_client(
-      asynchronous=True,
+      asynchronous=asynchronous,
       distributed_client=distributed_client,
       node_id=node_id,
       num_nodes=num_nodes,
@@ -205,21 +207,14 @@ def make_tpu_client(library_path: Optional[str] = None):
   return make_tfrt_tpu_c_api_client()
 
 
-def generate_pjrt_gpu_plugin_options(
-    visible_devices: str = 'all',
-) -> _NameValueMapping:
+def generate_pjrt_gpu_plugin_options() -> _NameValueMapping:
   """Generates the PjRt GPU plugin options.
-
-  Args:
-    visible_devices: A string of visible cuda devices.
 
   Returns:
     A dictionary of plugin options.
   """
 
   options = {}
-  if visible_devices != 'all':
-    options['visible_devices'] = [int(x) for x in visible_devices.split(',')]
   options['platform_name'] = 'cuda'
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION', '')
@@ -550,6 +545,7 @@ NamedSharding = _xla.NamedSharding
 SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
 GSPMDSharding = _xla.GSPMDSharding
+PjRtLayout = _xla.PjRtLayout
 
 
 def LoadedExecutable_execute(self, arguments, device=None):
@@ -939,5 +935,7 @@ weakref_lru_cache = _xla.weakref_lru_cache
 array_result_handler = _xla.array_result_handler
 copy_array_to_devices_with_sharding = _xla.copy_array_to_devices_with_sharding
 batched_device_put = _xla.batched_device_put
+batched_block_until_ready = _xla.batched_block_until_ready
 check_and_canonicalize_memory_kind = _xla.check_and_canonicalize_memory_kind
 Layout = _xla.Layout
+custom_call_targets = _xla.custom_call_targets

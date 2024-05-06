@@ -46,7 +46,7 @@ class CheckpointCallbackManagerTest : public ::testing::Test {
 
 TEST_F(CheckpointCallbackManagerTest,
        GetCheckpointIdAndPathFromPrefixWithTempDir) {
-  StatusOr<std::pair<std::string, std::string>> pair =
+  absl::StatusOr<std::pair<std::string, std::string>> pair =
       CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
           "/foo/bar/model.ckpt-5_temp/part-00000-of-00001");
   TF_ASSERT_OK(pair.status());
@@ -56,7 +56,7 @@ TEST_F(CheckpointCallbackManagerTest,
 
 TEST_F(CheckpointCallbackManagerTest,
        GetCheckpointIdAndPathFromPrefixWithPartFile) {
-  StatusOr<std::pair<std::string, std::string>> pair =
+  absl::StatusOr<std::pair<std::string, std::string>> pair =
       CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
           "/foo/bar/model.ckpt-5/part-00000-of-00001");
   TF_ASSERT_OK(pair.status());
@@ -66,7 +66,7 @@ TEST_F(CheckpointCallbackManagerTest,
 
 TEST_F(CheckpointCallbackManagerTest,
        GetCheckpointIdAndPathFromPrefixWithoutPartFile) {
-  StatusOr<std::pair<std::string, std::string>> pair =
+  absl::StatusOr<std::pair<std::string, std::string>> pair =
       CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
           "/foo/bar/model.ckpt-5");
   TF_ASSERT_OK(pair.status());
@@ -76,7 +76,7 @@ TEST_F(CheckpointCallbackManagerTest,
 
 TEST_F(CheckpointCallbackManagerTest,
        GetCheckpointIdAndPathFromPrefixForLongerPartName) {
-  StatusOr<std::pair<std::string, std::string>> pair =
+  absl::StatusOr<std::pair<std::string, std::string>> pair =
       CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
           "/foo/bar/ckpt-tensor-1_temp/part-00000-of-00002_dev-0-of-2");
   TF_ASSERT_OK(pair.status());

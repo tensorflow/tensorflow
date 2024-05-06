@@ -41,7 +41,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-tsl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
+absl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
   Type element_type = shaped_type.getElementType();
   if (element_type.isF16()) {
     auto floatType = mlir::FloatType::getF16(element_type.getContext());
@@ -56,7 +56,8 @@ tsl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
   } else if (element_type.isF32()) {
     return DenseElementsAttr::get<float>(shaped_type,
                                          static_cast<float>(value));
-  } else if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
+  } else if (auto complex_type =
+                 mlir::dyn_cast<mlir::ComplexType>(element_type)) {
     auto etype = complex_type.getElementType();
     if (etype.isF32()) {
       tensorflow::TensorProto repr;
@@ -77,7 +78,7 @@ tsl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
       return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                                 "Unsupported type");
     }
-  } else if (auto itype = element_type.dyn_cast<mlir::IntegerType>()) {
+  } else if (auto itype = mlir::dyn_cast<mlir::IntegerType>(element_type)) {
     if (element_type.isSignedInteger()) {
       switch (itype.getWidth()) {
         case 8:
@@ -130,7 +131,7 @@ tsl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
 }
 
 // Returns a Constant op with a splat vector value.
-tsl::StatusOr<arith::ConstantOp> CreateConstOpWithVectorValue(
+absl::StatusOr<arith::ConstantOp> CreateConstOpWithVectorValue(
     PatternRewriter* rewriter, Location loc, ShapedType shaped_type,
     int value) {
   ShapedType dense_type = RankedTensorType::get(shaped_type.getShape(),
@@ -141,7 +142,7 @@ tsl::StatusOr<arith::ConstantOp> CreateConstOpWithVectorValue(
                                              cast<TypedAttr>(*attr));
 }
 
-tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
+absl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
     PatternRewriter* rewriter, Location loc, ShapedType shaped_type,
     int value) {
   ShapedType scalar_type =

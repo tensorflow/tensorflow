@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/types.h"
 #include "tsl/lib/io/buffered_inputstream.h"
 #include "tsl/lib/io/random_inputstream.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
-#include "tsl/util/command_line_flags.h"
 
 using std::string;
 

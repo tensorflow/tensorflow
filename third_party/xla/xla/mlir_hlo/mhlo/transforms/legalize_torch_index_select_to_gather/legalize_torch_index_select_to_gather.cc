@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -68,7 +69,7 @@ struct TorchIndexSelectIsGather : public OpRewritePattern<TorchIndexSelectOp> {
 
     int64_t indexVectorDim = index.getType().getRank();
     auto indexTy = index.getType();
-    auto indexElementTy = indexTy.getElementType().dyn_cast<IntegerType>();
+    auto indexElementTy = mlir::dyn_cast<IntegerType>(indexTy.getElementType());
     if (!indexElementTy) {
       return rewriter.notifyMatchFailure(
           op, "index must have integer element type");

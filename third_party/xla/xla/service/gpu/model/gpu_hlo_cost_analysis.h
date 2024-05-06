@@ -16,8 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_GPU_HLO_COST_ANALYSIS_H_
 #define XLA_SERVICE_GPU_MODEL_GPU_HLO_COST_ANALYSIS_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_cost_analysis.h"

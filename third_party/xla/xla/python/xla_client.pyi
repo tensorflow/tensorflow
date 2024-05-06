@@ -22,6 +22,7 @@ import numpy
 from . import xla_extension as _xla
 from .xla_extension import Shape as Shape
 from .xla_extension import Layout as Layout
+from .xla_extension import ifrt_programs as ifrt_programs
 from .xla_extension import ops as ops
 from .xla_extension import profiler as profiler
 
@@ -42,6 +43,7 @@ from .xla_extension import OpSharding as OpSharding
 from .xla_extension import HloSharding as HloSharding
 from .xla_extension import PrimitiveType as PrimitiveType
 from .xla_extension import Traceback as Traceback
+from .xla_extension import PjRtLayout as PjRtLayout
 from .xla_extension import XlaBuilder as XlaBuilder
 from .xla_extension import XlaComputation as XlaComputation
 from .xla_extension import XlaOp as XlaOp
@@ -82,6 +84,7 @@ def heap_profile(client: Client) -> bytes:
   ...
 
 def make_cpu_client(
+    asynchronous: bool = ...,
     distributed_client: Optional[DistributedRuntimeClient] = ...,
     node_id: int = ...,
     num_nodes: int = ...,
@@ -134,9 +137,7 @@ def pjrt_plugin_initialized(plugin_name: str) -> bool:
 def initialize_pjrt_plugin(plugin_name: str) -> None:
   ...
 
-def generate_pjrt_gpu_plugin_options(
-    visible_devices: str = 'all',
-) -> _NameValueMapping:
+def generate_pjrt_gpu_plugin_options() -> _NameValueMapping:
   ...
 
 class OpMetadata:
@@ -230,6 +231,8 @@ def copy_array_to_devices_with_sharding(self: ArrayImpl, devices: List[Device], 
 
 def batched_device_put(aval: Any, sharding: Any, shards: Sequence[Any], devices: List[Device]) -> ArrayImpl: ...
 
+def batched_block_until_ready(x: Sequence[ArrayImpl]) -> None: ...
+
 def check_and_canonicalize_memory_kind(
     memory_kind: Optional[str], device_list: DeviceList) -> Optional[str]: ...
 
@@ -249,3 +252,5 @@ def register_custom_call_handler(xla_platform_name: str, handler: Any) -> None:
   ...
 
 def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
+
+def custom_call_targets(platform: str) -> dict[str, Any]: ...

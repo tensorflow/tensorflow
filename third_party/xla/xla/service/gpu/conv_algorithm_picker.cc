@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
+#include "xla/service/gpu/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -49,29 +50,33 @@ limitations under the License.
 #include "xla/service/gpu/hlo_algorithm_denylist.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/util/env_var.h"
+#include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
-#include "tsl/util/proto/proto_utils.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
+#include "third_party/gpus/cudnn/cudnn_version.h"
 #if CUDNN_VERSION >= 90000
 #include "third_party/gpus/cudnn/cudnn_ops.h"
 #else
@@ -96,9 +101,16 @@ class ScratchAllocator : public se::ScratchAllocator {
       : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
   int64_t GetMemoryLimitInBytes() override {
-    return 1LL << 32;  // 4GB.  TODO(jlebar): Tune this?
+    return ScratchAllocator::GetDefaultMemoryLimitInBytes();
   }
   int64_t TotalAllocatedBytes() { return total_allocated_bytes_; }
+
+  static int64_t GetDefaultMemoryLimitInBytes() {
+    int64_t value;
+    TF_CHECK_OK(tsl::ReadInt64FromEnvVar("TF_CUDNN_WORKSPACE_LIMIT_IN_MB",
+                                         1LL << 12, &value));
+    return value * (1LL << 20);
+  }
 
   absl::StatusOr<se::DeviceMemory<uint8_t>> AllocateBytes(
       int64_t byte_size) override;
@@ -383,7 +395,6 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
 
 absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
     const HloCustomCallInstruction* instr) {
-  AutotuneCacheKey key(config_.GetModelStr(), *instr);
   if (config_.IsDeviceless()) {
     // Return an autotune result with algo id -1, which means that we autotune
     // at runtime.
@@ -411,31 +422,16 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
         "Failed to synchronize GPU for autotuning conv instruction");
   }
 
-  // allocator either points to this->allocator_ or, if that's null, to a
-  // se::StreamExecutorMemoryAllocator for stream_exec.
-  se::DeviceMemoryAllocator* allocator = config_.GetAllocator();
-
-  TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
   absl::StatusOr<AutotuneResult> result_or(Internal("Unknown platform."));
   // Check StreamExecutor on which platform it is. ROCm and Cuda implementation
   // have diverged. Specifically, we need to make sure redzone allocator related
   // utilities are not used in ROCm routine
-  se::Platform::Id platform_id = stream_exec->platform()->id();
+  se::Platform::Id platform_id = stream_exec->GetPlatform()->id();
   if (platform_id == se::rocm::kROCmPlatformId) {
-    result_or = PickBestAlgorithmNoCacheRocm(instr, allocator, stream);
+    result_or = PickBestAlgorithmNoCacheRocm(instr);
   } else if (platform_id == se::cuda::kCudaPlatformId) {
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-    DebugOptions debug_opts = instr->GetModule()->config().debug_options();
-    TF_ASSIGN_OR_RETURN(
-        se::RedzoneAllocator input_output_allocator,
-        AutotunerUtil::CreateRedzoneAllocator(config_, debug_opts));
-
-    TF_ASSIGN_OR_RETURN(
-        AutotuneRuntimeArguments runtime_arguments,
-        AutotuneRuntimeArguments::FromInstruction(instr, allocator, stream_exec,
-                                                  &input_output_allocator));
-    result_or =
-        PickBestAlgorithmNoCacheCuda(instr, stream, key, runtime_arguments);
+    result_or = PickBestAlgorithmNoCacheCuda(instr);
 #endif
   }
 
@@ -446,67 +442,25 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
 absl::StatusOr<GpuConvAlgorithmPicker::AutotuneRuntimeArguments>
 GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
-    const HloCustomCallInstruction* instr, se::DeviceMemoryAllocator* allocator,
-    se::StreamExecutor* stream_exec,
-    se::RedzoneAllocator* input_output_allocator) {
-  TF_ASSIGN_OR_RETURN(se::Stream* const stream,
-                      allocator->GetStream(stream_exec->device_ordinal()));
-
-  // Construct RedzoneAllocator.
-  int64_t rng_state = 0;
-  auto hlo_module_config = instr->GetModule()->config();
-  const bool init_conv_data = ShouldInitConvData(hlo_module_config);
-  const auto initialize_buffer = [init_conv_data, &stream, &rng_state](
-                                     DeviceMemoryBase buffer,
-                                     const Shape& buffer_shape) {
-    if (init_conv_data) {
-      InitializeBuffer(stream, buffer_shape.element_type(), &rng_state, buffer);
-    }
-  };
-
-  // Construct operand buffers.
-  std::vector<se::DeviceMemoryBase> operand_buffers;
-  for (const auto* operand : instr->operands()) {
-    TF_ASSIGN_OR_RETURN(auto buffer,
-                        input_output_allocator->AllocateBytes(
-                            ShapeUtil::ByteSizeOf(operand->shape())));
-    initialize_buffer(buffer, operand->shape());
-    operand_buffers.push_back(buffer);
-  }
-
-  // Construct the result buffers.
-  Shape result_shape;
-  // Disregard the workspace, which is the final element in the tuple returned
-  // by instr.
-  std::vector<se::DeviceMemoryBase> result_buffers(
-      instr->shape().tuple_shapes_size() - 1);
-  // Set the shape to a tuple when instr returns more than one result.
-  if (instr->shape().tuple_shapes_size() > 2) {
-    result_shape = ShapeUtil::MakeTupleShape(
-        std::vector<Shape>{instr->shape().tuple_shapes().begin(),
-                           instr->shape().tuple_shapes().end() - 1});
-  } else {
-    result_shape = instr->shape().tuple_shapes(0);
-  }
-
-  for (int i = 0; i < instr->shape().tuple_shapes_size() - 1; ++i) {
-    TF_ASSIGN_OR_RETURN(
-        result_buffers[i],
-        input_output_allocator->AllocateBytes(
-            ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(i))));
-    initialize_buffer(result_buffers[i], instr->shape().tuple_shapes(i));
-  }
+    const HloCustomCallInstruction* instr, const AutotuneConfig& config,
+    const DebugOptions& debug_options) {
+  TF_ASSIGN_OR_RETURN(auto rz_buffers,
+                      RedzoneBuffers::FromInstruction(
+                          *instr, config, debug_options,
+                          RedzoneBuffers::kAllInputsOutputsNoScratch));
 
   // Get canonical HLO.
   std::string canonical_hlo(
-      AutotuneCacheKey(stream_exec->GetDeviceDescription().model_str(), *instr)
+      AutotuneCacheKey(config.GetExecutor()->GetDeviceDescription().model_str(),
+                       *instr)
           .GetHlo());
 
   TF_ASSIGN_OR_RETURN(GpuConvConfig gpu_conv_config, GetGpuConvConfig(instr));
 
   GpuConvAlgorithmPicker::AutotuneRuntimeArguments runtime_arguments = {
-      result_shape,   hlo_module_config,      operand_buffers,
-      result_buffers, input_output_allocator, gpu_conv_config,
+      instr->GetModule()->config(),
+      std::move(rz_buffers),
+      std::move(gpu_conv_config),
       {canonical_hlo}};
 
   return runtime_arguments;
@@ -518,7 +472,7 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
 // crash_on_checking_failure is set; and returning a DISQUALIFIED AutotuneResult
 // simply skips the engine/algorithm while recording a reason for skipping it.
 absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
-    se::Stream* stream, GenericConvRunner* const runner,
+    GenericConvRunner* const runner,
     std::optional<ReferenceResult>* reference_result,
     absl::Span<const AlgorithmDesc> disabled_algos,
     std::optional<AutotuneCacheKey> instruction_info,
@@ -543,7 +497,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   AlgorithmDesc alg_key(alg.algo_id(), alg.tensor_ops_enabled(), std::nullopt);
 
   std::string instr_str = instruction_info.has_value()
-                              ? instruction_info->GetHlo().data()
+                              ? std::string(instruction_info->GetHlo())
                               : "<unknown>";
 
   if (absl::c_linear_search(disabled_algos, alg_key)) {
@@ -578,8 +532,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   TF_ASSIGN_OR_RETURN(
       se::RedzoneAllocator scratch_allocator,
       AutotunerUtil::CreateRedzoneAllocator(
-          config_, runtime_arguments.hlo_module_config.debug_options(),
-          stream));
+          config_, runtime_arguments.hlo_module_config.debug_options()));
 
   se::dnn::ProfileResult profile_result;
   VLOG(4) << "Trying algorithm " << alg.ToString() << " for " << instr_str;
@@ -609,28 +562,36 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   // Use assignment instead of brace-list to make GCC 4.9 happy.
   RunConvOptions options;
   options.runner_cache = runner;
-  options.profile_result = &profile_result;
   // The following plan timing code is based on
   // https://github.com/NVIDIA/cudnn-frontend/blob/60496f42fdc7a4ccc059f5934e306e728a756755/include/cudnn_frontend_find_plan.h
   float max_time = 0;
   float min_time = std::numeric_limits<float>::max();
   absl::Status launch_status;
   std::vector<se::DeviceMemoryBase> operand_buffers =
-      runtime_arguments.operand_buffers;
+      runtime_arguments.rz_buffers.input_buffers();
   std::vector<se::DeviceMemoryBase> result_buffers =
-      runtime_arguments.result_buffers;
+      runtime_arguments.rz_buffers.output_buffers();
+
+  TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
+
   // Dry-run to warmup the plan.
   launch_status = RunGpuConv(config, operand_buffers, result_buffers,
                              scratch_memory, stream, options);
+  // Flag that a warm-up run has been executed; this allows the GpuTimer for
+  // the main measurement to safely use the delay kernel pattern, even if lazy
+  // module loading is enabled.
+  options.profile_result = &profile_result;
+  profile_result.set_warmup_run_executed(true);
   constexpr int kMaxIter = 10;
   // Iterate until the new measurement is within kThreshold of the current
   // minimum.
   int num_iters = 0;
-  for (;
-       num_iters < kMaxIter && launch_status.ok() && profile_result.is_valid();
-       num_iters++) {
+  for (; num_iters < kMaxIter && launch_status.ok(); ++num_iters) {
     launch_status = RunGpuConv(config, operand_buffers, result_buffers,
                                scratch_memory, stream, options);
+    if (!profile_result.is_valid()) {
+      break;
+    }
     float old_min_time = min_time;
     min_time = std::min(min_time, profile_result.elapsed_time_in_ms());
     max_time = std::max(max_time, profile_result.elapsed_time_in_ms());
@@ -680,7 +641,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   // Check for writes to redzones.
   TF_ASSIGN_OR_RETURN(
       bool input_output_allocator_redzone_clear,
-      CheckRedzones(*runtime_arguments.input_output_allocator, stream,
+      CheckRedzones(runtime_arguments.rz_buffers.RedzoneAllocator(), stream,
                     "input/output", instr_str, &result));
 
   TF_ASSIGN_OR_RETURN(
@@ -720,7 +681,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
 
   if (reference_result->has_value()) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::CompareEqual", 2);
-    BufferComparator comparator(runtime_arguments.result_shape,
+    BufferComparator comparator(runtime_arguments.rz_buffers.output_shape(),
                                 runtime_arguments.hlo_module_config);
     for (int i = 0; i < result_buffers.size(); ++i) {
       absl::StatusOr<bool> compare_result = comparator.CompareEqual(
@@ -764,7 +725,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     for (int i = 0; i < result_buffers.size(); ++i) {
       TF_ASSIGN_OR_RETURN(
           reference_result_buffers[i],
-          runtime_arguments.input_output_allocator->AllocateBytes(
+          runtime_arguments.rz_buffers.RedzoneAllocator().AllocateBytes(
               result_buffers[i].size()));
       TF_RETURN_IF_ERROR(stream->Memcpy(&reference_result_buffers[i],
                                         result_buffers[i],
@@ -778,30 +739,27 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
 
 absl::StatusOr<AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
-    const HloCustomCallInstruction* instr, se::Stream* stream,
-    std::optional<AutotuneCacheKey> instruction_info,
-    const AutotuneRuntimeArguments& runtime_arguments) {
-  se::StreamExecutor* stream_exec = config_.GetExecutor();
-
-  std::string instr_str = instruction_info.has_value()
-                              ? instruction_info->GetHlo().data()
-                              : "<unknown>";
-
+    const HloCustomCallInstruction* instr) {
+  AutotuneCacheKey instruction_info{config_.GetModelStr(), *instr};
+  std::string instr_str(instruction_info.GetHlo());
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuConvAlgorithmPicker::PickBestAlgorithmImpl for ", instr_str));
 
   const DebugOptions& debug_options =
-      runtime_arguments.hlo_module_config.debug_options();
-
+      instr->GetModule()->config().debug_options();
   const bool crash_on_checking_failure =
       debug_options.xla_gpu_crash_on_verification_failures();
 
   std::string blas_version;
+  se::StreamExecutor* stream_exec = config_.GetExecutor();
   if (auto* blas = stream_exec->AsBlas()) {
     (void)blas->GetVersion(&blas_version);
   }
 
   absl::Span<const AlgorithmDesc> disabled_algos;
+  TF_ASSIGN_OR_RETURN(
+      AutotuneRuntimeArguments runtime_arguments,
+      AutotuneRuntimeArguments::FromInstruction(instr, config_, debug_options));
   if (runtime_arguments.canonical_hlo.has_value()) {
     disabled_algos = GetDisabledConvAlgorithms(
         GetComputeCapability(stream_exec), GetCudnnVersion(stream_exec),
@@ -826,6 +784,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   // this algorithm considered correct, though.
   std::optional<ReferenceResult> reference_result;
 
+  TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
   TF_ASSIGN_OR_RETURN(
       std::vector<GenericConvRunner> runners,
       GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
@@ -835,9 +794,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   std::vector<AutotuneResult> profile_results;
   for (auto& runner_cache : runners) {
     TF_ASSIGN_OR_RETURN(
-        auto result, AutotuneOneConvRunner(
-                         stream, &runner_cache, &reference_result,
-                         disabled_algos, instruction_info, runtime_arguments));
+        auto result,
+        AutotuneOneConvRunner(&runner_cache, &reference_result, disabled_algos,
+                              instruction_info, runtime_arguments));
     profile_results.emplace_back(std::move(result));
   }
 
@@ -858,10 +817,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
     for (auto& runner_cache : fallback_runners) {
       TF_ASSIGN_OR_RETURN(
-          auto result,
-          AutotuneOneConvRunner(stream, &runner_cache, &reference_result,
-                                disabled_algos, instruction_info,
-                                runtime_arguments));
+          auto result, AutotuneOneConvRunner(&runner_cache, &reference_result,
+                                             disabled_algos, instruction_info,
+                                             runtime_arguments));
       profile_results.emplace_back(std::move(result));
     }
   }
@@ -875,10 +833,10 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       for (int i = 0; i < instr->operand_count(); i++) {
         *instr_log.add_operand_shapes() = instr->operand(i)->shape().ToProto();
         instr_log.add_operand_addresses(reinterpret_cast<uint64_t>(
-            runtime_arguments.operand_buffers[i].opaque()));
+            runtime_arguments.rz_buffers.input_buffers()[i].opaque()));
       }
       for (se::DeviceMemoryBase result_buffer :
-           runtime_arguments.result_buffers) {
+           runtime_arguments.rz_buffers.output_buffers()) {
         instr_log.add_result_addresses(
             reinterpret_cast<uint64_t>(result_buffer.opaque()));
       }
@@ -913,38 +871,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 #endif
 
 absl::StatusOr<AutotuneResult>
-GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
-    const AutotuneConfig& config, const GpuConvConfig conv_config,
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions& debug_options,
-    const std::vector<se::DeviceMemoryBase> buffers,
-    std::vector<se::DeviceMemoryBase> result_buffers) {
-#if GOOGLE_CUDA
-  Shape output_shape = conv_config.output_shape;
-  HloModuleConfig hlo_module_config;
-  hlo_module_config.set_debug_options(debug_options);
-  se::Stream* stream = run_options->stream();
-  TF_ASSIGN_OR_RETURN(
-      se::RedzoneAllocator input_output_allocator,
-      AutotunerUtil::CreateRedzoneAllocator(config, debug_options, stream));
-
-  GpuConvAlgorithmPicker::AutotuneRuntimeArguments autotune_runtime_arguments =
-      {output_shape,   hlo_module_config,       buffers,
-       result_buffers, &input_output_allocator, conv_config,
-       std::nullopt};
-
-  return PickBestAlgorithmNoCacheCuda(
-      /*instr=*/nullptr, stream,
-      /*instruction_info=*/std::nullopt, autotune_runtime_arguments);
-#else
-  return Internal("CUDA is not enabled");
-#endif
-}
-
-absl::StatusOr<AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
-    const HloCustomCallInstruction* instr, se::DeviceMemoryAllocator* allocator,
-    se::Stream* stream) {
+    const HloCustomCallInstruction* instr) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuConvAlgorithmPicker::PickBestAlgorithmImpl for ", instr->ToString()));
 
@@ -960,7 +888,11 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
   const auto device_ordinal = stream_exec->device_ordinal();
   std::vector<se::DeviceMemoryBase> operand_buffers;
 
+  // allocator either points to this->allocator_ or, if that's null, to a
+  // se::StreamExecutorMemoryAllocator for stream_exec.
+  se::DeviceMemoryAllocator* allocator = config_.GetAllocator();
   ScratchAllocator input_output_allocator(device_ordinal, allocator);
+  TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
   const auto initialize_buffer = [stream](DeviceMemoryBase buffer) {
     // Although we don't have evidence this matters, zero out the buffers
     // before autotuning.  It's conceivable that using uninitialized memory as

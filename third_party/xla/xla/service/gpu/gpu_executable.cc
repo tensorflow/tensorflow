@@ -36,20 +36,32 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/map_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu/nccl_clique.h"
-#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/annotation.h"
+#include "xla/service/gpu/runtime/nccl_clique.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/hlo_execution_profile.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/service/hlo_value.h"
+#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/rendezvous.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -62,6 +74,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
@@ -70,6 +84,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -153,6 +168,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
     : Executable(std::move(params.debug_module)),
       text_(std::move(params.asm_text)),
       binary_(std::move(params.binary)),
+      dnn_compiled_graphs_(std::move(params.dnn_compiled_graphs)),
       gpu_version_(params.gpu_version),
       thunks_(std::move(params.executable)),
       execution_stream_ids_(has_module()
@@ -191,7 +207,7 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
   se::Stream* main_stream = run_options->stream();
 
   stream_executor::Platform::Id platform_id =
-      main_stream->parent()->platform()->id();
+      main_stream->parent()->GetPlatform()->id();
   if (platform_id == stream_executor::rocm::kROCmPlatformId) {
     auto cc = main_stream->GetRocmComputeCapability();
     std::string stream_arch = cc.gcn_arch_name();
@@ -340,8 +356,8 @@ class ResourceRequests : public Thunk::ResourceRequests {
       if (b.key.devices().size() > a.key.devices().size()) return false;
 
       // If cliques have the same size prefer cliques with smaller stream id.
-      if (a.key.stream_id() < b.key.stream_id()) return true;
-      if (b.key.stream_id() < a.key.stream_id()) return false;
+      if (a.key.stream_id().value() < b.key.stream_id().value()) return true;
+      if (b.key.stream_id().value() < a.key.stream_id().value()) return false;
 
       // Prefer cliques with smaller id (comes earlier in execution order).
       return a.id < b.id;
@@ -424,15 +440,17 @@ absl::Status ExecuteThunks(
   if (ExecutionProfile* profile =
           run_options->run_options().execution_profile();
       profile) {
-    TF_ASSIGN_OR_RETURN(execution_timer,
-                        se::gpu::GpuTimer::Create(main_stream));
+    TF_ASSIGN_OR_RETURN(
+        execution_timer,
+        se::gpu::GpuTimer::Create(main_stream, profile->warmup_run_executed()));
   }
 #endif
 
   // Parameters for executing collective operations.
   TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_params,
                       Thunk::CollectiveExecuteParams::Create(
-                          *run_options, main_stream->parent()->device_ordinal(),
+                          *run_options, async_comms_streams,
+                          main_stream->parent()->device_ordinal(),
                           collective_max_nchannels, p2p_max_nchannels));
 
   ResourceRequests resource_requests;
@@ -473,8 +491,8 @@ absl::Status ExecuteThunks(
   // Prepare parameters for thunks execution.
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       *run_options, buffer_allocations, main_stream,
-      command_buffer_trace_stream, async_comms_streams, &collective_params,
-      &collective_cliques, additional_execution_streams);
+      command_buffer_trace_stream, &collective_params, &collective_cliques,
+      std::move(additional_execution_streams));
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started
@@ -629,7 +647,8 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   // The CUDA driver isn't able to load a PTX and a binary which are both empty.
   // It's okay if we skip loading in this case; if the module isn't loaded, all
   // symbol lookups will fail, just as they should for an empty module.
-  if (!(executor->platform()->id() == stream_executor::cuda::kCudaPlatformId &&
+  if (!(executor->GetPlatform()->id() ==
+            stream_executor::cuda::kCudaPlatformId &&
         binary().empty() && text().empty())) {
     TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
   }
@@ -1001,7 +1020,8 @@ absl::Status GpuExecutable::ExecuteThunksOrXlaRuntime(
   ModuleIdentifier unique_id = has_module() ? module().unique_id() : -1;
 
   if (thunks_) {
-    Thunk::ExecutableSource executable_source = {text_, binary_};
+    Thunk::ExecutableSource executable_source = {text_, binary_,
+                                                 dnn_compiled_graphs_};
     int64_t collective_max_nchannels =
         has_module() ? module_config()
                            .debug_options()
@@ -1065,7 +1085,7 @@ absl::Status GpuExecutable::SetUpMlirAllocation(
         }
       }
       allocations->at(i).set_entry_computation_parameter(
-          param_attr.cast<mlir::IntegerAttr>().getInt(), shape_index,
+          mlir::cast<mlir::IntegerAttr>(param_attr).getInt(), shape_index,
           static_cast<bool>(func.getArgAttr(i, "lmhlo.output_index")));
     }
     // TODO(timshen): this information is redundant. This is here only for
@@ -1079,7 +1099,7 @@ absl::Status GpuExecutable::SetUpMlirAllocation(
       // Reconstruct a shape index from output_index.
       ShapeIndex shape_index;
       for (const llvm::APInt& element :
-           output_index_attr.cast<mlir::DenseIntElementsAttr>()) {
+           mlir::cast<mlir::DenseIntElementsAttr>(output_index_attr)) {
         shape_index.push_back(element.getSExtValue());
       }
       auto& o = (*output_info)[shape_index];
@@ -1090,8 +1110,9 @@ absl::Status GpuExecutable::SetUpMlirAllocation(
         if (func.getArgAttr(i, "lmhlo.must_alias")) {
           kind = HloInputOutputAliasConfig::kMustAlias;
         }
-        o.alias_config.emplace(param_attr.cast<mlir::IntegerAttr>().getInt(),
-                               ShapeIndex{}, kind);
+        o.alias_config.emplace(
+            mlir::cast<mlir::IntegerAttr>(param_attr).getInt(), ShapeIndex{},
+            kind);
       }
       if (func.getArgument(i).use_empty()) {
         o.passthrough = true;

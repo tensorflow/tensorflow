@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/nccl_api.h"
-#include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/runtime/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
@@ -38,25 +38,14 @@ struct NcclAllGatherConfig {
 class NcclAllGatherStartThunk : public NcclCollectiveThunk {
  public:
   NcclAllGatherStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
-                          mlir::lmhlo_gpu::AllGatherStartOp op,
-                          std::vector<Buffer> buffers);
-
-  NcclAllGatherStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                           const HloAllGatherInstruction* inst,
                           std::vector<Buffer> buffers);
 
   static const char* GetHloOpName() { return "all-gather-start"; }
 
-  static absl::Status CheckImplementable(mlir::lmhlo_gpu::AllGatherStartOp op,
-                                         int64_t replica_count,
-                                         int64_t partition_count);
-
   static absl::Status CheckImplementable(const HloAllGatherInstruction* inst,
                                          int64_t replica_count,
                                          int64_t partition_count);
-
-  static CollectiveOpGroupMode GetGroupMode(
-      mlir::lmhlo_gpu::AllGatherStartOp op);
 
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllGatherInstruction* inst);
@@ -67,7 +56,7 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
  protected:
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
-                                 NcclApi::NcclCommHandle comm) override;
+                                 NcclCommHandleWrapper comm_wrapper) override;
 
  private:
   const NcclAllGatherConfig config_;

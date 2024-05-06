@@ -19,6 +19,7 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS
 
 include "mlir/Dialect/Shape/IR/ShapeBase.td"
+include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
@@ -194,8 +195,8 @@ class MHLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
 // Abs supports complex to real, so element type is not guaranteed to match.
 def MHLO_AbsOp: MHLO_UnaryElementwiseOp<"abs",
     [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>],
-     TensorOf<[HLO_SInt, HLO_Float, HLO_Complex, HLO_QuantizedInt]>,
-     TensorOf<[HLO_SInt, HLO_Float, HLO_QuantizedInt]>> {
+     RankedTensorOf<[MHLO_SInt, MHLO_Float, MHLO_Complex, MHLO_QuantizedInt]>,
+     RankedTensorOf<[MHLO_SInt, MHLO_Float, MHLO_QuantizedInt]>> {
   let summary = "Abs operation";
   let description = [{
     Performs element-wise abs operation on `operand` tensor and produces a
@@ -594,7 +595,7 @@ def MHLO_RsqrtOp: MHLO_UnaryElementwiseOp<"rsqrt",
 
 def MHLO_SignOp: MHLO_UnaryElementwiseOp<"sign",
     [Pure, HLO_CompatibleOperandsAndResultType],
-    TensorOf<[MHLO_SInt, MHLO_Float, MHLO_Complex, HLO_QuantizedInt]>> {
+    RankedTensorOf<[MHLO_SInt, MHLO_Float, MHLO_Complex, HLO_QuantizedInt]>> {
   let summary = "Sign operation";
   let description = [{
     Returns the sign of the `operand` element-wise and produces a `result`
@@ -959,7 +960,7 @@ def MHLO_SubtractOp : MHLO_BinaryElementwiseOp<"subtract",
 }
 
 def MHLO_StochasticConvertOp : MHLO_Op<"stochastic_convert",
-      [Pure, AllShapesMatch<["operand", "random", "result"]>]> {
+      [Pure, Elementwise, AllShapesMatch<["operand", "random", "result"]>]> {
   let summary = "StochasticConvert operation";
   let description = [{
     This operation is a work in progress, so it is not yet included in
@@ -970,7 +971,7 @@ def MHLO_StochasticConvertOp : MHLO_Op<"stochastic_convert",
     number passed in.
   }];
 
-  let arguments = (ins MHLO_FpTensor:$operand, TensorOf<[MHLO_UInt]>:$random);
+  let arguments = (ins MHLO_FpTensor:$operand, RankedTensorOf<[MHLO_UInt]>:$random);
   let results = (outs MHLO_Tensor:$result);
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
@@ -1179,7 +1180,7 @@ def MHLO_ReplicaIdOp : MHLO_Op<"replica_id", [Pure,
     %result = mhlo.replica_id : tensor<ui32>
     ```
   }];
-  let results = (outs TensorOf<[UI32]>);
+  let results = (outs UI32RankedTensor);
 
   let assemblyFormat = "attr-dict `:` type(results)";
 }
@@ -1964,17 +1965,17 @@ def MHLO_BatchNormGradOp : MHLO_Op<"batch_norm_grad", [Pure,
   }];
 
   let arguments = (ins
-    RankedTensorOf<[MHLO_Float]>:$operand,
+    MHLO_FpTensor:$operand,
     1DTensorOf<[MHLO_Float]>:$scale,
     1DTensorOf<[MHLO_Float]>:$mean,
     1DTensorOf<[MHLO_Float]>:$variance,
-    RankedTensorOf<[MHLO_Float]>:$grad_output,
+    MHLO_FpTensor:$grad_output,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
 
   let results = (outs
-      RankedTensorOf<[MHLO_Float]>:$grad_operand,
+      MHLO_FpTensor:$grad_operand,
       1DTensorOf<[MHLO_Float]>:$grad_scale,
       1DTensorOf<[MHLO_Float]>:$grad_offset);
 
@@ -2001,7 +2002,7 @@ def MHLO_BatchNormInferenceOp : MHLO_Op<"batch_norm_inference",
   }];
 
   let arguments = (ins
-    RankedTensorOf<[MHLO_Float]>:$operand,
+    MHLO_FpTensor:$operand,
     1DTensorOf<[MHLO_Float]>:$scale,
     1DTensorOf<[MHLO_Float]>:$offset,
     1DTensorOf<[MHLO_Float]>:$mean,
@@ -2010,7 +2011,7 @@ def MHLO_BatchNormInferenceOp : MHLO_Op<"batch_norm_inference",
     I64Attr:$feature_index
   );
 
-  let results = (outs RankedTensorOf<[MHLO_Float]>:$result);
+  let results = (outs MHLO_FpTensor:$result);
 }
 
 def MHLO_BatchNormTrainingOp : MHLO_Op<"batch_norm_training",
@@ -2035,7 +2036,7 @@ def MHLO_BatchNormTrainingOp : MHLO_Op<"batch_norm_training",
   }];
 
   let arguments = (ins
-    RankedTensorOf<[MHLO_Float]>:$operand,
+    MHLO_FpTensor:$operand,
     1DTensorOf<[MHLO_Float]>:$scale,
     1DTensorOf<[MHLO_Float]>:$offset,
     F32Attr:$epsilon,
@@ -2043,7 +2044,7 @@ def MHLO_BatchNormTrainingOp : MHLO_Op<"batch_norm_training",
   );
 
   let results = (outs
-      RankedTensorOf<[MHLO_Float]>:$output,
+      MHLO_FpTensor:$output,
       1DTensorOf<[MHLO_Float]>:$batch_mean,
       1DTensorOf<[MHLO_Float]>:$batch_var);
 
@@ -2331,6 +2332,44 @@ def MHLO_CollectivePermuteOp: MHLO_Op<"collective_permute",
       "::mlir::DenseIntElementsAttr":$source_target_pairs)>];
 }
 
+def MHLO_CompositeOp : MHLO_Op<"composite", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+  let summary = "Composite operation";
+  let description = [{
+    Encapsulates an operation made up (composed) of other StableHLO operations,
+    taking `inputs` and `composite_attributes` and producing `results`. The
+    semantics of the op are implemented by the `decomposition` attribute. The
+    `composite` op can be replaced with its decomposition without changing program
+    semantics. In cases where inlining the decomposition does not provide the same
+    op semantics, prefer using `custom_call`.
+
+    The `version` field (defaults to `0`) is used to denote when a composite's
+    semantics change.
+
+    See:
+    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#composite
+
+    Example:
+    ```mlir
+    %results = mhlo.composite "my.op" %arg0, %arg1 {
+      decomposition = @my_op,
+      composite_attributes = { my_attribute = "my_value" },
+      version = 1 : i32
+    } : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    ```
+  }];
+
+  let arguments = (ins
+    Variadic<MHLO_TensorOrTokenOrTuple>:$inputs,
+    StrAttr:$name,
+    DefaultValuedOptionalAttr<DictionaryAttr, "{}">:$composite_attributes,
+    FlatSymbolRefAttr:$decomposition,
+    DefaultValuedOptionalAttr<I32Attr, "0">:$version
+  );
+  let results = (outs Variadic<MHLO_TensorOrTokenOrTuple>);
+  let hasCustomHLOConverter = 1;
+  let assemblyFormat = "$name $inputs attr-dict `:` functional-type(operands, results)";
+}
+
 def MHLO_ConvolutionOp : MHLO_Op<"convolution", [Pure]> {
   let summary = "Convolution operation";
   let description = [{
@@ -2384,7 +2423,8 @@ def MHLO_ConvolutionOp : MHLO_Op<"convolution", [Pure]> {
   }];
 }
 
-def MHLO_CopyOp: MHLO_Op<"copy", [Pure, HLO_CompatibleOperandsAndResultType]> {
+def MHLO_CopyOp: MHLO_Op<"copy",
+      [Pure, Elementwise, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Copy operation";
   let description = [{
     This operation is private to the XLA compiler, so it is does not yet have
@@ -2487,7 +2527,7 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
     ```
   }];
   let arguments = (ins
-    Variadic<MHLO_TensorOrTokenOrTuple>:$inputs,
+    Variadic<MHLO_CustomCallValue>:$inputs,
     StrAttr:$call_target_name,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$has_side_effect,
     OptionalAttr<AnyAttrOf<[StrAttr, DictionaryAttr]>>:$backend_config,
@@ -2507,7 +2547,7 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
             "Aliasing attribute for outputs and operands of CustomCall">,
         "{}">:$output_operand_aliases
   );
-  let results = (outs Variadic<MHLO_TensorOrTokenOrTuple>);
+  let results = (outs Variadic<MHLO_CustomCallValue>);
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 
@@ -2587,6 +2627,29 @@ def MHLO_DotGeneralOp: MHLO_ShapedInterfaceOp<"dot_general", [Pure]> {
 
   let results = (outs MHLO_Tensor);
   // DotGeneral op required custom exporter to pass the preferred element type
+  // to Xla builder.
+  let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
+}
+
+def MHLO_SparseDotOp: MHLO_Op<"sparse_dot", [Pure]> {
+  let summary = "Sparse dot operation";
+  let description = [{
+    Similar to `dot_general` operation, with one or both of the operands being
+    sparse. An additional argument provides sparsity meta information.
+    Disclaimer: this op is experimental / a work in progress.
+  }];
+  let arguments = (ins
+    MHLO_Tensor:$lhs,
+    MHLO_Tensor:$rhs,
+    Variadic<MHLO_Tensor>:$meta,
+    OptionalAttr<MHLO_SparsityDescriptor>:$lhs_sparsity,
+    OptionalAttr<MHLO_SparsityDescriptor>:$rhs_sparsity,
+    MHLO_DotDimensionNumbers:$dot_dimension_numbers,
+    MHLO_PrecisionConfigAttr:$precision_config
+  );
+  let results = (outs MHLO_Tensor);
+  // SparseDot op required custom exporter to pass the preferred element type
   // to Xla builder.
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
@@ -2784,7 +2847,7 @@ def MHLO_ReshapeOp: MHLO_Op<"reshape",
     ```
   }];
 
-  let arguments = (ins MHLO_Tensor:$operand);
+  let arguments = (ins MHLO_AnyTensor:$operand);
 
   let results = (outs MHLO_StaticShapeTensor);
   let hasFolder = 1;
@@ -2812,8 +2875,8 @@ def MHLO_DynamicReshapeOp: MHLO_ShapedInterfaceOp<"dynamic_reshape", [Pure]> {
     ```
   }];
 
-  let arguments = (ins MHLO_Tensor:$operand, MHLO_DimensionTensor:$output_shape);
-  let results = (outs MHLO_Tensor:$result);
+  let arguments = (ins MHLO_AnyTensor:$operand, MHLO_DimensionTensor:$output_shape);
+  let results = (outs MHLO_AnyTensor:$result);
 
   let hasCanonicalizer = 1;
   // Cannot be exported to legacy formats.
@@ -2854,7 +2917,7 @@ def MHLO_ScatterOp: MHLO_Op<"scatter",
   }];
   let arguments = (ins
     Variadic<MHLO_Tensor>:$inputs,
-    TensorOf<[AnyInteger, Index]>:$scatter_indices,
+    RankedTensorOf<[AnyInteger, Index]>:$scatter_indices,
     Variadic<MHLO_Tensor>:$updates,
     MHLO_ScatterDimensionNumbers:$scatter_dimension_numbers,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$indices_are_sorted,
@@ -3097,8 +3160,8 @@ def MHLO_PartitionIdOp : MHLO_Op<"partition_id", [
     %result = mhlo.partition_id : tensor<ui32>
     ```
   }];
-  let results = (outs TensorOf<[UI32]>);
-  let results = (outs TensorOf<[UI32]>);
+  let results = (outs UI32RankedTensor);
+  let results = (outs UI32RankedTensor);
   let hasCustomHLOConverter = 1;
 
   let assemblyFormat = "attr-dict `:` type(results)";
@@ -3506,7 +3569,7 @@ def MHLO_XlaRngGetAndUpdateStateOp: MHLO_Op<"xla.rng_get_and_update_state", [Dec
 
 // TODO(b/230662142): Implement unknown scales/zero_point cases.
 def MHLO_UniformQuantizeOp : MHLO_UnaryElementwiseOp<"uniform_quantize",
-      [Pure], TensorOf<[HLO_Float, MHLO_QuantizedInt]>,
+      [Pure], RankedTensorOf<[MHLO_Float, MHLO_QuantizedInt]>,
       MHLO_QuantizedIntTensor> {
   let summary = "UniformQuantize operation";
   let description = [{
@@ -3610,8 +3673,8 @@ def MHLO_BitcastOp : MHLO_Op<"bitcast", [Pure]> {
   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
-def MHLO_ReducePrecisionOp :
-    MHLO_Op<"reduce_precision", [HLO_CompatibleOperandsAndResultType, Pure]> {
+def MHLO_ReducePrecisionOp : MHLO_Op<"reduce_precision",
+      [HLO_CompatibleOperandsAndResultType, Pure, Elementwise]> {
   let summary = "ReducePrecision operation";
   let description = [{
     Performs element-wise conversion of `operand` to another floating-point type

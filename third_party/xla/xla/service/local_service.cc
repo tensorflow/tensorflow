@@ -46,8 +46,8 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ StatusOr<std::unique_ptr<LocalService>> LocalService::NewService(
-    const ServiceOptions& options) {
+/* static */ absl::StatusOr<std::unique_ptr<LocalService>>
+LocalService::NewService(const ServiceOptions& options) {
   se::Platform* platform = options.platform();
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
@@ -70,7 +70,7 @@ LocalService::LocalService(const ServiceOptions& options,
                            std::unique_ptr<Backend> execute_backend)
     : Service(options, std::move(execute_backend)) {}
 
-StatusOr<std::vector<std::unique_ptr<Executable>>>
+absl::StatusOr<std::vector<std::unique_ptr<Executable>>>
 LocalService::CompileExecutables(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
@@ -121,7 +121,7 @@ LocalService::CompileExecutables(
   }
 }
 
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 LocalService::CompileAotResults(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
@@ -150,13 +150,14 @@ LocalService::CompileAotResults(
       build_options.run_backend_only());
 }
 
-StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {
+absl::StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(
+    int replica_number) {
   return backend().computation_placer()->DeviceId(
       replica_number, /*computation=*/0, options_.number_of_replicas(),
       /*computation_count=*/1);
 }
 
-StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
+absl::StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
     const GlobalDataHandle& data, int replica_number) {
   TF_ASSIGN_OR_RETURN(auto buffers, allocation_tracker_.Resolve(data));
   if (replica_number >= buffers.size()) {
@@ -167,7 +168,7 @@ StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
   return buffers[replica_number];
 }
 
-StatusOr<GlobalDataHandle> LocalService::RegisterReplicatedBuffers(
+absl::StatusOr<GlobalDataHandle> LocalService::RegisterReplicatedBuffers(
     std::vector<ScopedShapedBuffer> replicated_buffers,
     const std::string& tag) {
   return allocation_tracker_.RegisterReplicatedBuffers(

@@ -16,35 +16,35 @@ limitations under the License.
 #ifndef XLA_PJRT_CPU_TRACKED_TFRT_CPU_DEVICE_BUFFER_H_
 #define XLA_PJRT_CPU_TRACKED_TFRT_CPU_DEVICE_BUFFER_H_
 
-#include <functional>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/cpu_function_runtime.h"
-#include "xla/runtime/cpu_event.h"
+#include "xla/service/cpu/cpu_event.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
 class MaybeOwningCpuMemory {
  public:
+  using OwnedDataPtr = std::unique_ptr<uint8_t[], void (*)(void*)>;
+
   MaybeOwningCpuMemory() = default;
 
   // Non-owning.
-  explicit MaybeOwningCpuMemory(void* buf, size_t size)
-      : buf_(buf), size_(size) {}
+  MaybeOwningCpuMemory(void* buf, size_t size) : buf_(buf), size_(size) {}
 
   // Owning.
-  using OwnedDataPtr =
-      std::unique_ptr<uint8_t[], decltype(tsl::port::AlignedFree)*>;
-  explicit MaybeOwningCpuMemory(OwnedDataPtr data, size_t size)
+  MaybeOwningCpuMemory(OwnedDataPtr data, size_t size)
       : buf_(data.get()), data_(std::move(data)), size_(size) {}
 
   // Move-only.
@@ -54,7 +54,7 @@ class MaybeOwningCpuMemory {
   MaybeOwningCpuMemory& operator=(const MaybeOwningCpuMemory&) = delete;
 
   // Owning.
-  static StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> AllocateShared(
+  static absl::StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> AllocateShared(
       size_t size) {
     uint8_t* data = static_cast<uint8_t*>(
         tsl::port::AlignedMalloc(size, cpu_function_runtime::MinAlign()));
@@ -86,14 +86,13 @@ class TrackedTfrtCpuDeviceBuffer {
   TrackedTfrtCpuDeviceBuffer(
       bool is_tuple,
       absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
-      absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4>
-          definition_events,
+      absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   TrackedTfrtCpuDeviceBuffer(
       bool is_tuple,
       absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
-      tsl::AsyncValueRef<runtime::CpuEvent> definition_event,
+      tsl::AsyncValueRef<CpuEvent> definition_event,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   // Move-only.
@@ -111,19 +110,19 @@ class TrackedTfrtCpuDeviceBuffer {
 
   std::shared_ptr<MaybeOwningCpuMemory> Buffer(const ShapeIndex& shape_index);
 
-  const tsl::AsyncValueRef<runtime::CpuEvent>& definition_event() const {
+  const tsl::AsyncValueRef<CpuEvent>& definition_event() const {
     return definition_event_;
   }
 
-  absl::Span<const tsl::AsyncValueRef<runtime::CpuEvent>> UsageEvents() const {
+  absl::Span<const tsl::AsyncValueRef<CpuEvent>> UsageEvents() const {
     return usage_events_;
   }
 
-  void AddUsageEvents(absl::Span<tsl::AsyncValueRef<runtime::CpuEvent>> events);
+  void AddUsageEvents(absl::Span<tsl::AsyncValueRef<CpuEvent>> events);
 
   // Return the usage events for the buffers. After
   // LockUseAndTransferUsageEvents is called, it is illegal to AddUsageEvent.
-  absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4>
+  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>
   LockUseAndTransferUsageEvents();
 
   // Relinquishes ownership of the buffer's device memory, e.g., after the
@@ -138,10 +137,10 @@ class TrackedTfrtCpuDeviceBuffer {
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers_;
   // The definition event are associated with CPU operations that write to the
   // buffers.
-  tsl::AsyncValueRef<runtime::CpuEvent> definition_event_;
+  tsl::AsyncValueRef<CpuEvent> definition_event_;
 
   // Usage events are associated with CPU operations that read from the buffers.
-  absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4> usage_events_;
+  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> usage_events_;
   // A callback to call when the TrackedTfrtCpuDeviceBuffer is about to be
   // destroyed.
   absl::AnyInvocable<void() &&> on_delete_callback_;

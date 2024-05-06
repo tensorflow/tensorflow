@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
-#include <string>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -26,15 +26,18 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -47,7 +50,7 @@ constexpr std::array<HloOpcode, 2> kUsersOpcodes = {HloOpcode::kSlice,
                                                     HloOpcode::kDynamicSlice};
 
 // Find an annotation moving up. Meant to find an annotation from a DUS operand.
-HloInstruction* FindAnnotationToUpdate(HloInstruction* instr) {
+HloInstruction* FindToHostAnnotationToUpdate(HloInstruction* instr) {
   while (!instr->IsCustomCall(
       host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
     if ((instr->opcode() != HloOpcode::kBitcast &&
@@ -61,7 +64,8 @@ HloInstruction* FindAnnotationToUpdate(HloInstruction* instr) {
   return instr;
 }
 
-// Find an annotation moving up. Meant to find an annotation from a DUS operand.
+// Find an annotation moving up. Meant to find an annotation from a DUS
+// instruction.
 HloInstruction* FindToDeviceAnnotationToUpdate(HloInstruction* instr) {
   while (!instr->IsCustomCall(
       host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
@@ -90,7 +94,7 @@ HloInstruction* FindDUSFromAnnotation(HloInstruction* instr) {
 }
 
 // Make sure that broadcasts are duplicated for each use.
-StatusOr<bool> DuplicateBroadcastForEachUse(HloModule* module) {
+absl::StatusOr<bool> DuplicateBroadcastForEachUse(HloModule* module) {
   bool split_at_least_one = false;
   for (HloComputation* computation : module->computations()) {
     std::vector<HloInstruction*> broadcasts;
@@ -143,7 +147,7 @@ StatusOr<bool> DuplicateBroadcastForEachUse(HloModule* module) {
 // Walk up in the chain of memory offloaded instructions. Status not-ok when
 // an instructions not supported or end of chain reached.
 // Walks one instruction at a time.
-StatusOr<std::pair<HloInstruction*, int>> WalkUpMemoryOffload(
+absl::StatusOr<std::pair<HloInstruction*, int>> WalkUpMemoryOffload(
     std::pair<HloInstruction*, int> current_value,
     const CallGraph& call_graph) {
   // TODO(maggioni): Verify that set of instructions supported in chain by
@@ -220,9 +224,9 @@ StatusOr<std::pair<HloInstruction*, int>> WalkUpMemoryOffload(
 // an instructions not supported or end of chain reached.
 // Walks one instruction at a time, but returns multiple instructions for each
 // conforming user.
-StatusOr<std::vector<std::pair<HloInstruction*, int>>> WalkDownMemoryOffload(
-    const std::pair<HloInstruction*, int64_t>& current_value,
-    const CallGraph& call_graph) {
+absl::StatusOr<std::vector<std::pair<HloInstruction*, int>>>
+WalkDownMemoryOffload(const std::pair<HloInstruction*, int64_t>& current_value,
+                      const CallGraph& call_graph) {
   // TODO(maggioni): Verify that set of instructions supported in chain by
   // legalization is in sync with host_offloader.
   VLOG(5) << "Current value in progress: " << current_value.first->ToString()
@@ -326,12 +330,23 @@ StatusOr<std::vector<std::pair<HloInstruction*, int>>> WalkDownMemoryOffload(
   return results;
 }
 
-StatusOr<bool> ProcessAnnotationForCopyMovement(
+absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
     HloInstruction* instruction, const CallGraph* call_graph,
     absl::flat_hash_set<HloInstruction*>& processed_annotations,
     std::vector<HloInstruction*>& to_remove) {
+  auto is_entry_computation_parameter = [](HloInstruction* instruction) {
+    return instruction->opcode() == HloOpcode::kParameter &&
+           instruction->parent()->IsEntryComputation();
+  };
+
+  if (instruction->IsRoot()) {
+    return false;
+  }
+  if (instruction->user_count() == 0) {
+    return false;
+  }
   HloInstruction* starting_instr =
-      FindDUSFromAnnotation(instruction->users()[0]);
+      FindDUSFromAnnotation(instruction->users().at(0));
   // If it's the pure copy case reset instruction.
   if (starting_instr->opcode() != HloOpcode::kDynamicUpdateSlice) {
     starting_instr = instruction;
@@ -343,7 +358,8 @@ StatusOr<bool> ProcessAnnotationForCopyMovement(
   // to update (required in case there are multiple insertions in the buffer).
   processed_annotations.insert(current_value.first);
   if (!current_value.first->IsCustomCall(
-          host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
+          host_memory_offload_annotations::kMoveToHostCustomCallTarget) &&
+      !is_entry_computation_parameter(current_value.first)) {
     CHECK_EQ(current_value.first->opcode(), HloOpcode::kDynamicUpdateSlice);
     while (true) {
       VLOG(10) << "Current value before: " << current_value.first->ToString();
@@ -361,7 +377,7 @@ StatusOr<bool> ProcessAnnotationForCopyMovement(
       HloInstruction* annotation = current_value.first;
       if (annotation->opcode() == HloOpcode::kDynamicUpdateSlice) {
         HloInstruction* real_annotation =
-            FindAnnotationToUpdate(annotation->mutable_operand(1));
+            FindToHostAnnotationToUpdate(annotation->mutable_operand(1));
         // Check if this dynamic-update-slice doesn't have an annotation
         // attached.
         if (!real_annotation->IsCustomCall(
@@ -388,6 +404,42 @@ StatusOr<bool> ProcessAnnotationForCopyMovement(
         VLOG(5) << "Couldn't find annotation for consumer instruction in chain";
         return false;
       }
+
+      // Fix up while body's root instruction shape along the way.
+      if (annotation->IsCustomCall(
+              host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
+        for (HloInstruction* user : annotation->users()) {
+          HloInstruction* root_instruction =
+              annotation->parent()->root_instruction();
+          if (root_instruction == user &&
+              root_instruction->opcode() == HloOpcode::kTuple) {
+            auto callers =
+                call_graph->GetComputationCallers(annotation->parent());
+            if (callers.size() != 1 ||
+                callers[0]->opcode() != HloOpcode::kWhile) {
+              return absl::InvalidArgumentError(
+                  "Expected to be called only by one caller and caller be a "
+                  "While");
+            }
+            for (int i = 0; i < user->operands().size(); i++) {
+              if (user->operands()[i] == annotation &&
+                  annotation->operand(0)->opcode() ==
+                      HloOpcode::kGetTupleElement &&
+                  annotation->operand(0)->operand(0)->opcode() ==
+                      HloOpcode::kParameter &&
+                  annotation->operand(0)->tuple_index() == i) {
+                // A special case where move-to-device is put into the result
+                // tuple element at the same index as where the move-to-device
+                // gets the data from. In this case, while loop's result tuple
+                // should not use move-to-device since at loop entry it's still
+                // on host.
+                user->ReplaceOperandWith(i, annotation->mutable_operand(0))
+                    .IgnoreError();
+              }
+            }
+          }
+        }
+      }
       stack.pop_back();
       continue;
     }
@@ -406,9 +458,12 @@ StatusOr<bool> ProcessAnnotationForCopyMovement(
       }
     }
   }
+
   auto update_shape_layout =
       [&](const std::pair<HloInstruction*, int>& instruction,
           HloInstruction* copy_to_move) {
+        VLOG(5) << "Update shape layout: " << instruction.first->ToString()
+                << " " << instruction.second;
         // Update shape. Tuple shape vs array shape.
         if (instruction.second != -1) {
           *instruction.first->mutable_shape()
@@ -418,7 +473,24 @@ StatusOr<bool> ProcessAnnotationForCopyMovement(
           *instruction.first->mutable_shape()->mutable_layout() =
               copy_to_move->operand(0)->shape().layout();
         }
+
+        if (instruction.first->opcode() == HloOpcode::kWhile) {
+          // Fix up while body's root instruction shape and condition's
+          // parameter shape for while loops.
+          Shape new_shape = copy_to_move->operand(0)->shape();
+          *instruction.first->while_body()
+               ->root_instruction()
+               ->mutable_shape()
+               ->mutable_tuple_shapes(instruction.second)
+               ->mutable_layout() = new_shape.layout();
+          *instruction.first->while_condition()
+               ->parameter_instruction(0)
+               ->mutable_shape()
+               ->mutable_tuple_shapes(instruction.second)
+               ->mutable_layout() = new_shape.layout();
+        }
       };
+
   // Process all copies one at a time from the last to the first and push it to
   // its specific user.
   while (!copies_to_move.empty()) {
@@ -427,8 +499,8 @@ StatusOr<bool> ProcessAnnotationForCopyMovement(
     stack.clear();
     stack.push_back(copy_to_move);
     while (!stack.empty()) {
-      VLOG(5) << "Current value before down: "
-              << stack.back().first->ToString();
+      VLOG(5) << "Current value before down: " << stack.back().first->ToString()
+              << " " << stack.back().second;
       auto current_value_down =
           WalkDownMemoryOffload(stack.back(), *call_graph);
       if (!current_value_down.ok()) {
@@ -473,8 +545,11 @@ StatusOr<bool> ProcessAnnotationForCopyMovement(
           }
           update_shape_layout(std::make_pair(new_annotation, -1),
                               copy_to_move.first);
+          Shape new_copy_shape = new_annotation->shape();
+          *new_copy_shape.mutable_layout() =
+              copy_to_move.first->shape().layout();
           HloInstruction* new_copy = instruction.first->AddInstruction(
-              copy_to_move.first->CloneWithNewOperands(new_annotation->shape(),
+              copy_to_move.first->CloneWithNewOperands(new_copy_shape,
                                                        {new_annotation}));
           std::vector<HloInstruction*> users = instruction.first->users();
           for (auto* use : users) {
@@ -495,8 +570,8 @@ StatusOr<bool> ProcessAnnotationForCopyMovement(
         // Move the annotation first just before dynamic-update-slice to avoid
         // shape changes.
         if (instruction.first->opcode() == HloOpcode::kDynamicUpdateSlice) {
-          HloInstruction* annotation =
-              FindAnnotationToUpdate(instruction.first->mutable_operand(1));
+          HloInstruction* annotation = FindToHostAnnotationToUpdate(
+              instruction.first->mutable_operand(1));
           if (annotation == nullptr) {
             CHECK(false);
             return false;
@@ -528,14 +603,14 @@ StatusOr<bool> ProcessAnnotationForCopyMovement(
 }
 
 // Fixes layout changing copies in between on the path to users.
-StatusOr<bool> FixupInterveningCopies(
+absl::StatusOr<bool> FixupInterveningCopies(
     const std::vector<HloInstruction*>& copy_to_host_annotations,
     const CallGraph* call_graph) {
   absl::flat_hash_set<HloInstruction*> processed_annotations;
   std::vector<HloInstruction*> annotations_to_remove;
   bool changed = false;
   for (HloInstruction* instruction : copy_to_host_annotations) {
-    if (processed_annotations.count(instruction)) {
+    if (processed_annotations.contains(instruction)) {
       continue;
     }
     TF_ASSIGN_OR_RETURN(bool changed_annotation_for_copy_movement,
@@ -552,7 +627,7 @@ StatusOr<bool> FixupInterveningCopies(
 
 }  // namespace
 
-StatusOr<bool> HostOffloadLegalize::Run(
+absl::StatusOr<bool> HostOffloadLegalize::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -576,11 +651,22 @@ StatusOr<bool> HostOffloadLegalize::Run(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() != HloOpcode::kCustomCall) {
-        continue;
+      if (instruction->opcode() == HloOpcode::kParameter &&
+          instruction->parent()->IsEntryComputation()) {
+        Shape param_shape =
+            module->entry_computation_layout()
+                .parameter_layout(instruction->parameter_number())
+                .shape();
+        // TODO(mingyao): Add support for tuple parameter.
+        if (param_shape.has_layout() &&
+            param_shape.layout().memory_space() == kHostMemorySpaceColor) {
+          copy_to_host_annotations.push_back(instruction);
+          continue;
+        }
       }
-      if (instruction->custom_call_target() ==
-          host_memory_offload_annotations::kMoveToHostCustomCallTarget) {
+
+      if (instruction->IsCustomCall(
+              host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
         copy_to_host_annotations.push_back(instruction);
       }
     }

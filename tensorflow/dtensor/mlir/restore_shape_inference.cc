@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/mlir/dtensor_send_recv.h"
@@ -81,9 +82,7 @@ mlir::LogicalResult BackwardShapeInferenceToRestoreOp(mlir::ModuleOp module,
     // the type to the operand element type.
     mlir::RankedTensorType new_type = mlir::RankedTensorType::get(
         GetShapeOfValue(new_cast_op.getResult()).value(),
-        new_cast_op.getOperand()
-            .getType()
-            .cast<mlir::TensorType>()
+        mlir::cast<mlir::TensorType>(new_cast_op.getOperand().getType())
             .getElementType());
 
     // Recursively shape inference to the input of the cast op with the
@@ -120,7 +119,7 @@ mlir::LogicalResult BackwardShapeInferenceToRestoreOp(mlir::ModuleOp module,
     auto new_recv_op = builder->create<mlir::TF::DTensorRecv>(
         recv_op.getLoc(), type, builder->getStringAttr(recv_op.getKey()),
         mlir::TF::ShapeAttr::get(builder->getContext(),
-                                 type.dyn_cast<mlir::TensorType>()),
+                                 mlir::dyn_cast<mlir::TensorType>(type)),
         mlir::dtensor::MeshAttr::get(builder->getContext(), recv_op.getMesh()));
 
     recv_op.replaceAllUsesWith(new_recv_op.getOutput());

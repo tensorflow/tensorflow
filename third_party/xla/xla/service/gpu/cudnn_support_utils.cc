@@ -23,11 +23,11 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -210,6 +210,13 @@ CudnnInferTransposeForBiasReordering(const Shape& shape) {
   // Build the transposition permutation: [O/32, 2, 4, 4]
   std::vector<int64_t> permutation = {0, 2, 1, 3};
   return CudnnReorderTransposeConfig{split_shape, shape, permutation};
+}
+
+bool IsWorkspaceAllocationRoot(const HloInstruction& root) {
+  return root.IsRoot() && root.opcode() == HloOpcode::kTuple &&
+         root.operand_count() == 2 &&
+         root.operand(1)->IsCustomCall(kWorkspaceAllocationCustomCallTarget) &&
+         root.operand(1)->operand_count() == 0;
 }
 
 }  // namespace gpu

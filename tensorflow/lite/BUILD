@@ -1,11 +1,16 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_not_windows", "if_oss", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts_no_undefined", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_internal_cc_3p_api_deps_src_all_visibility_allowlist", "tflite_portable_test_suite")
-load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite")
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite", "cc_test_with_tflite")
+
+package_group(
+    name = "tf_lite_runtime",
+    packages = ["//tensorflow/lite/..."],
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
@@ -413,6 +418,7 @@ cc_library(
 #         "//tensorflow/core/profiler/lib:traceme",
 #         "//tensorflow/lite/core/c:common",
 #         "//tensorflow/lite/kernels:kernel_util",
+#         "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder",
 #         "@com_google_absl//absl/base",
 #         "@com_google_absl//absl/debugging:stacktrace",
 #         "@com_google_absl//absl/debugging:symbolize",
@@ -489,9 +495,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    deps = [
-        "//tensorflow/lite/core/api:error_reporter",
-    ],
+    deps = ["//tensorflow/lite/core/api:error_reporter"],
 )
 
 cc_library(
@@ -538,6 +542,7 @@ cc_library_with_tflite(
     ],
     deps = [
         ":allocation",
+        ":array",
         ":external_cpu_backend_context",
         ":graph_info",
         ":kernel_api",
@@ -584,6 +589,7 @@ cc_library_with_tflite(
     ],
     deps = [
         ":allocation",
+        ":array",
         ":external_cpu_backend_context",
         ":graph_info",
         ":kernel_api",
@@ -654,6 +660,7 @@ cc_library_with_tflite(
     ],
     deps = [
         ":allocation",
+        ":array",
         ":external_cpu_backend_context",
         ":graph_info",
         ":logger",
@@ -736,6 +743,7 @@ cc_library_with_tflite(
     ],
     deps = [
         ":allocation",
+        ":array",
         ":builtin_ops",
         ":external_cpu_backend_context",
         ":macros",
@@ -852,6 +860,27 @@ cc_library(
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/api:op_resolver_internal",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+cc_library_with_tflite(
+    name = "mutable_op_resolver_utils",
+    srcs = ["mutable_op_resolver_utils.cc"],
+    hdrs = ["mutable_op_resolver_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + tflite_copts_warnings(),
+    tflite_deps = [
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_opaque",
+        "//tensorflow/lite/c:common",
+    ],
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        ":builtin_ops",
+        ":mutable_op_resolver",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -1137,6 +1166,26 @@ cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test_with_tflite(
+    name = "mutable_op_resolver_utils_test",
+    srcs = ["mutable_op_resolver_utils_test.cc"],
+    tags = ["tflite_disable_mobile_test"],  # Due to b/144306101 and b/329899620.
+    tflite_deps = [
+        ":mutable_op_resolver_utils",
+        ":test_util",
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_opaque",
+        "//tensorflow/lite/c:common",
+    ],
+    deps = [
+        ":builtin_ops",
+        ":mutable_op_resolver",
+        "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],
 )

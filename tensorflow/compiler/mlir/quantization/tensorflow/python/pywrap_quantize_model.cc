@@ -30,10 +30,6 @@ limitations under the License.
 #include "pybind11_abseil/import_status_module.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/assign_ids.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/debugger.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model.h"
@@ -46,18 +42,13 @@ namespace py = pybind11;
 
 namespace {
 
-using ::stablehlo::quantization::AddCalibrationStatistics;
-using ::stablehlo::quantization::AssignIdsToCustomAggregatorOps;
-using ::stablehlo::quantization::EnableDebugging;
-using ::stablehlo::quantization::io::CreateTmpDir;
 using ::tensorflow::SignatureDef;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 using ::tensorflow::quantization::QuantizationOptions;
-using ::tensorflow::quantization::QuantizePtqDynamicRange;
-using ::tensorflow::quantization::QuantizePtqModelPostCalibration;
-using ::tensorflow::quantization::QuantizePtqModelPreCalibration;
+using ::tensorflow::quantization::QuantizeDynamicRangePtq;
 using ::tensorflow::quantization::QuantizeQatModel;
+using ::tensorflow::quantization::QuantizeStaticRangePtq;
 using ::tensorflow::quantization::QuantizeWeightOnly;
 using ::tensorflow::quantization::RepresentativeDatasetFile;
 
@@ -79,21 +70,19 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const std::vector<std::string>& signature_keys,
          const absl::flat_hash_map<std::string, SignatureDef>&
              signature_def_map,
-         const absl::flat_hash_map<std::string, std::string>& function_aliases,
          const PyFunctionLibrary& py_function_library) -> absl::Status {
         // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_qat_model)
         std::unordered_set<std::string> tags;
         tags.insert(quantization_options.tags().begin(),
                     quantization_options.tags().end());
-        const absl::StatusOr<ExportedModel> exported_model =
-            QuantizeQatModel(src_saved_model_path, signature_keys, tags,
-                             quantization_options, function_aliases);
+        const absl::StatusOr<ExportedModel> exported_model = QuantizeQatModel(
+            src_saved_model_path, signature_keys, tags, quantization_options);
         if (!exported_model.ok()) return exported_model.status();
 
         // Remove the `tpu` tag from the debug quantized saved model as it is
         // for CPU. Note the 'tpu' value should be the same as `TPU` defined in
         // tensorflow/python/saved_model/tag_constants.py.
-        if (quantization_options.has_debugger_options()) {
+        if (quantization_options.has_debugger_config()) {
           tags.erase("tpu");
         }
         py_function_library.SaveExportedModel(
@@ -112,15 +101,11 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       `quantization_options_serialized` argument, and a signature key ->
       serialized `SignatureDef` mapping for the `signature_def_map_serialized`
       argument.
-
-      `function_aliases` maps actual function names to the function aliases, as
-      defined by the `MetaGraphDef::MetaInfoDef::function_aliases` from the
-      input SavedModel.
       )pbdoc",
       py::arg("src_saved_model_path"), py::arg("dst_saved_model_path"),
       py::arg("quantization_options_serialized"), py::kw_only(),
       py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
-      py::arg("function_aliases"), py::arg("py_function_library"));
+      py::arg("py_function_library"));
 
   m.def(
       // If the function signature changes, likely its corresponding .pyi type
@@ -133,7 +118,6 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const std::vector<std::string>& signature_keys,
          const absl::flat_hash_map<std::string, SignatureDef>&
              signature_def_map,
-         const absl::flat_hash_map<std::string, std::string>& function_aliases,
          const PyFunctionLibrary& py_function_library) -> absl::Status {
         // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_ptq_dynamic_range)
         std::unordered_set<std::string> tags;
@@ -141,13 +125,13 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
                     quantization_options.tags().end());
 
         const absl::StatusOr<ExportedModel> exported_model =
-            QuantizePtqDynamicRange(src_saved_model_path, signature_keys, tags,
-                                    quantization_options, function_aliases);
+            QuantizeDynamicRangePtq(src_saved_model_path, signature_keys, tags,
+                                    quantization_options);
 
         // Remove the `tpu` tag from the debug quantized saved model as it is
         // for CPU. Note the 'tpu' value should be the same as `TPU` defined in
         // tensorflow/python/saved_model/tag_constants.py.
-        if (quantization_options.has_debugger_options()) {
+        if (quantization_options.has_debugger_config()) {
           tags.erase("tpu");
         }
         py_function_library.SaveExportedModel(
@@ -166,15 +150,11 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       `quantization_options_serialized` argument, and a signature key ->
       serialized `SignatureDef` mapping for the `signature_def_map_serialized`
       argument.
-
-      `function_aliases` maps actual function names to the function aliases, as
-      defined by the `MetaGraphDef::MetaInfoDef::function_aliases` from the
-      input SavedModel.
       )pbdoc",
       py::arg("src_saved_model_path"), py::arg("dst_saved_model_path"),
       py::arg("quantization_options_serialized"), py::kw_only(),
       py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
-      py::arg("function_aliases"), py::arg("py_function_library"));
+      py::arg("py_function_library"));
 
   m.def(
       // If the function signature changes, likely its corresponding .pyi type
@@ -186,11 +166,10 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const QuantizationOptions& quantization_options,
          const absl::flat_hash_map<std::string, SignatureDef>&
              signature_def_map,
-         const absl::flat_hash_map<std::string, std::string>& function_aliases,
          const PyFunctionLibrary& py_function_library) -> absl::Status {
         // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_weight_only)
-        const absl::StatusOr<ExportedModel> exported_model = QuantizeWeightOnly(
-            src_saved_model_path, quantization_options, function_aliases);
+        const absl::StatusOr<ExportedModel> exported_model =
+            QuantizeWeightOnly(src_saved_model_path, quantization_options);
         if (!exported_model.ok()) return exported_model.status();
 
         std::unordered_set<std::string> tags;
@@ -213,15 +192,10 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       `quantization_options_serialized` argument, and a signature key ->
       serialized `SignatureDef` mapping for the `signature_def_map_serialized`
       argument.
-
-      `function_aliases` maps actual function names to the function aliases, as
-      defined by the `MetaGraphDef::MetaInfoDef::function_aliases` from the
-      input SavedModel.
       )pbdoc",
       py::arg("src_saved_model_path"), py::arg("dst_saved_model_path"),
       py::arg("quantization_options_serialized"), py::kw_only(),
-      py::arg("signature_def_map_serialized"), py::arg("function_aliases"),
-      py::arg("py_function_library"));
+      py::arg("signature_def_map_serialized"), py::arg("py_function_library"));
 
   m.def(
       // If the function signature changes, likely its corresponding .pyi type
@@ -234,7 +208,6 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
          const std::vector<std::string>& signature_keys,
          const absl::flat_hash_map<std::string, SignatureDef>&
              signature_def_map,
-         const absl::flat_hash_map<std::string, std::string>& function_aliases,
          const PyFunctionLibrary& py_function_library,
          const absl::flat_hash_map<std::string, RepresentativeDatasetFile>&
              representative_dataset_file_map_serialized) -> absl::Status {
@@ -242,81 +215,22 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         std::unordered_set<std::string> tags;
         tags.insert(quantization_options.tags().begin(),
                     quantization_options.tags().end());
-
-        absl::StatusOr<ExportedModel> exported_model =
-            QuantizePtqModelPreCalibration(src_saved_model_path, signature_keys,
-                                           tags, quantization_options,
-                                           function_aliases);
+        const absl::StatusOr<ExportedModel> exported_model =
+            QuantizeStaticRangePtq(src_saved_model_path, signature_keys, tags,
+                                   quantization_options, signature_def_map,
+                                   py_function_library,
+                                   representative_dataset_file_map_serialized);
         if (!exported_model.ok()) return exported_model.status();
 
-        AssignIdsToCustomAggregatorOps(*exported_model->mutable_graph_def());
-
-        const absl::StatusOr<std::string> precalibrated_saved_model_dir =
-            CreateTmpDir();
-        if (!precalibrated_saved_model_dir.ok()) {
-          throw py::value_error(
-              precalibrated_saved_model_dir.status().ToString());
-        }
-
-        py_function_library.SaveExportedModel(
-            *precalibrated_saved_model_dir, *exported_model,
-            src_saved_model_path, tags, signature_def_map);
-
-        py_function_library.RunCalibration(
-            *precalibrated_saved_model_dir, signature_keys, tags,
-            quantization_options.calibration_options(),
-            quantization_options.force_graph_mode_calibration(),
-            representative_dataset_file_map_serialized);
-
-        if (absl::Status status = AddCalibrationStatistics(
-                *exported_model->mutable_graph_def(),
-                quantization_options.calibration_options(),
-                py_function_library);
-            !status.ok()) {
-          LOG(WARNING) << "Some CustomAggregator ops do not have min or max "
-                          "values. Parts of the graph are not quantized. "
-                       << status;
-        }
-
-        if (quantization_options.has_debugger_options()) {
-          EnableDebugging(*exported_model,
-                          quantization_options.debugger_options(),
-                          py_function_library, src_saved_model_path, tags,
-                          signature_def_map);
-        }
-
-        const absl::StatusOr<std::string> calibrated_saved_model_path =
-            CreateTmpDir();
-        if (!calibrated_saved_model_path.ok()) {
-          throw py::value_error(
-              calibrated_saved_model_path.status().ToString());
-        }
-
-        py_function_library.SaveExportedModel(
-            *calibrated_saved_model_path, *exported_model, src_saved_model_path,
-            tags, signature_def_map);
-
-        const absl::flat_hash_map<std::string, std::string>
-            function_aliases_after_calibration(
-                exported_model->function_aliases().begin(),
-                exported_model->function_aliases().end());
-
-        const absl::StatusOr<ExportedModel> post_calibrated_exported_model =
-            QuantizePtqModelPostCalibration(
-                *calibrated_saved_model_path, signature_keys, tags,
-                quantization_options, function_aliases_after_calibration);
-        if (!post_calibrated_exported_model.ok())
-          return post_calibrated_exported_model.status();
-
         // Remove the `tpu` tag from the debug quantized saved model as it is
-        // for CPU. Note the 'tpu' value should be the same as `TPU` defined in
-        // tensorflow/python/saved_model/tag_constants.py.
-        if (quantization_options.has_debugger_options()) {
+        // for CPU. Note the 'tpu' value should be the same as `TPU` defined
+        // in tensorflow/python/saved_model/tag_constants.py.
+        if (quantization_options.has_debugger_config()) {
           tags.erase("tpu");
         }
         py_function_library.SaveExportedModel(
-            dst_saved_model_path, *post_calibrated_exported_model,
-            *calibrated_saved_model_path, tags, signature_def_map);
+            dst_saved_model_path, *exported_model, src_saved_model_path, tags,
+            signature_def_map);
 
         return absl::OkStatus();
       },
@@ -330,10 +244,6 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       serialized `SignatureDef` mapping for the `signature_def_map_serialized`
       argument.
 
-      `function_aliases` maps actual function names to the function aliases, as
-      defined by the `MetaGraphDef::MetaInfoDef::function_aliases` from the
-      input SavedModel.
-
       `representative_dataset_file_map_serialized` is a signature key ->
       `RepresentativeDatasetFile` (serialized) mapping for running the
       calibration step. Each dataset file stores the representative dataset for
@@ -344,6 +254,6 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       py::arg("saved_model_path"), py::arg("dst_saved_model_path"),
       py::arg("quantization_options_serialized"), py::kw_only(),
       py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
-      py::arg("function_aliases"), py::arg("py_function_library"),
+      py::arg("py_function_library"),
       py::arg("representative_dataset_file_map_serialized"));
 }

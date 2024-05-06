@@ -63,17 +63,14 @@ class MixedTypeTest : public GpuCodegenTest,
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // We are testing Triton, remove cuBLAS fallback for these tests.
     debug_options.set_xla_gpu_cublas_fallback(false);
+    // Always rewrite Gemms with Triton regardless of size.
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     return debug_options;
   }
 };
 
 TEST_P(MixedTypeTest, MixedTypeDotProducesCorrectResult) {
   MixTypeParams params = GetParam();
-  if ((params.lhs_ty == BF16 || params.rhs_ty == BF16) &&
-      !GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
-  }
   const std::string hlo_string_template = R"(
 HloModule m
 
@@ -134,7 +131,9 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, MixedTypeTest,
                              //  TritonRewriteTest2Params{F32, F16},
                              //  TritonRewriteTest2Params{F32, BF16},
                              MixTypeParams{S8, BF16, 24, 40, 8},
-                             MixTypeParams{S8, F16, 80, 16, 32},
+                             // Modify the case below to use k = 32 instead of
+                             // 16 once b/331362083 is fixed.
+                             MixTypeParams{S8, F16, 80, 32, 32, 1e-3, 1e-6},
                              MixTypeParams{F16, F32, 127, 3, 300, 1e-2, 1e-2},
                              MixTypeParams{F16, BF16, 544, 96, 16, 1e-3, 1e-3},
                              MixTypeParams{BF16, F32, 77, 500, 333, 3e-3, 3e-3},
@@ -147,6 +146,8 @@ class TritonTest : public GpuCodegenTest {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_any(true);
     debug_options.set_xla_gpu_cublas_fallback(false);
+    // Always rewrite Gemms with Triton regardless of size.
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     return debug_options;
   }
 
@@ -795,10 +796,6 @@ TEST_P(TritonSoftmaxTest, CanFuseAndEmitExactSoftmax) {
 
   if (data_type == F16) {
     GTEST_SKIP() << "Exponential op does not support F16.";
-  } else if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                                      se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
   }
 
   const std::string hlo_text_template = R"(
@@ -883,14 +880,7 @@ ENTRY main {
   const std::string hlo_text = absl::Substitute(
       hlo_text_template, primitive_util::LowercasePrimitiveTypeName(data_type));
 
-  std::string hlo_ref_template;
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    hlo_ref_template = R"(
-; CHECK-NOT: triton
-)";
-  } else {
-    hlo_ref_template = R"(
+  std::string hlo_ref_template = R"(
 ; CHECK:    ENTRY
 ; CHECK:      %[[P0:.*]] = $0[127,125]{1,0} parameter(0)
 ; CHECK:      ROOT
@@ -898,7 +888,6 @@ ENTRY main {
 ; CHECK-SAME:   kind=kCustom
 ; CHECK-SAME:   __triton_softmax
 )";
-  }
 
   const std::string hlo_ref = absl::Substitute(
       hlo_ref_template, primitive_util::LowercasePrimitiveTypeName(data_type));
@@ -923,12 +912,6 @@ ENTRY main {
 
 TEST_P(TritonSoftmaxTest, CanFuseAndEmitSoftmaxDiamondWithSmallRows) {
   PrimitiveType data_type = GetParam();
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   constexpr absl::string_view kHloTextTemplate = R"(
 HloModule softmax
 min_computation {
@@ -965,12 +948,6 @@ ENTRY main {
 }
 
 TEST_F(TritonSoftmaxTest, CanFuseAndEmitDiamondWithBF16Converts) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text = R"(
 HloModule softmax
 max_computation {
@@ -1012,10 +989,6 @@ TEST_P(
 
   if (data_type == F16) {
     GTEST_SKIP() << "Exponential op does not support F16.";
-  } else if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                                      se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
   }
 
   const std::string hlo_text_template = R"(
@@ -1085,12 +1058,6 @@ TEST_P(TritonSoftmaxTest,
        CanFuseAndEmitDiamondWithMultipleBroadcastDimensions) {
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule softmax
 max_computation {
@@ -1147,12 +1114,7 @@ TEST_P(TritonSoftmaxTest,
 
   if (data_type == F16) {
     GTEST_SKIP() << "Exponential op does not support F16.";
-  } else if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                                      se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
   }
-
   const std::string hlo_text_template = R"(
 HloModule softmax
 max_computation {
@@ -1215,12 +1177,6 @@ TEST_P(
     TritonSoftmaxTest,
     CanFuseAndEmitTwoDiamondsWithSecondDiamondProducerEqualToFirstDiamondRoot) {
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule softmax
@@ -1285,12 +1241,6 @@ TEST_P(TritonSoftmaxTest,
        CanFuseAndEmitDiamondWithTrailingUnaryElementwiseAtTheRoot) {
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule softmax
 max_computation {
@@ -1344,12 +1294,6 @@ ENTRY main {
 
 TEST_P(TritonSoftmaxTest, CanFuseAndEmitDiamondWithUnaryElementwisePrefix) {
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule softmax
@@ -1406,12 +1350,6 @@ TEST_P(TritonSoftmaxTest,
        CanFuseAndEmitSoftmaxDiamondWithLastDimensionBitcastAfterReduce) {
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule softmax
 max_computation {
@@ -1465,16 +1403,9 @@ ENTRY main {
                             ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
 }
 
-TEST_P(
-    TritonSoftmaxTest,
-    CanFuseAndEmitConvertInvolvingBF16InputIntoSoftmaxDiamondCorrectlyForAmpereAndVoltaComputeCapability) {  // NOLINT(whitespace/line_length)
+TEST_P(TritonSoftmaxTest,
+       CanFuseAndEmitConvertInvolvingBF16InputIntoSoftmaxDiamondCorrectly) {
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule softmax
@@ -1495,8 +1426,7 @@ ENTRY main {
   const std::string hlo_text = absl::Substitute(
       hlo_text_template, primitive_util::LowercasePrimitiveTypeName(data_type));
 
-  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    const std::string hlo_ref = R"(
+  const std::string hlo_ref = R"(
 ; CHECK:    ENTRY
 ; CHECK:      %[[P0:.*]] = bf16[127,125]{1,0} parameter(0)
 ; CHECK:      ROOT
@@ -1505,23 +1435,7 @@ ENTRY main {
 ; CHECK-SAME:   __triton_softmax
 )";
 
-    MatchOptimizedHlo(hlo_text, hlo_ref);
-  } else {
-    const std::string hlo_ref_template = R"(
-; CHECK:    ENTRY
-; CHECK:      %[[P0:.*]] = bf16[127,125]{1,0} parameter(0)
-; CHECK:      %[[CONVERT:.*]] = $0[127,125]{1,0} convert(%[[P0]])
-; CHECK:      ROOT
-; CHECK-SAME: fusion(%[[CONVERT]])
-; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
-)";
-
-    const std::string hlo_ref =
-        absl::Substitute(hlo_ref_template,
-                         primitive_util::LowercasePrimitiveTypeName(data_type));
-    MatchOptimizedHlo(hlo_text, hlo_ref);
-  }
+  MatchOptimizedHlo(hlo_text, hlo_ref);
 
   float tolerance;
   switch (data_type) {
@@ -1545,12 +1459,6 @@ TEST_P(
     TritonSoftmaxTest,
     CanFuseAndEmitBinaryElementwiseProducerIntoDiamondWhenBothOperandsAreTheSame) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule fusible_diamond
@@ -1608,12 +1516,6 @@ TEST_P(
     CanFuseAndEmitIntermediateBinaryElementwiseWithinDiamondWhenBothOperandsAreTheSame) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule fusible_diamond
 max_computation {
@@ -1670,12 +1572,6 @@ TEST_P(
     CanFuseAndEmitBinaryElementwiseWhenBothOperandsAreTheSameBetweenDiamonds) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule fusible_diamonds
 max_computation {
@@ -1683,22 +1579,16 @@ max_computation {
   arg_1 = $0[] parameter(1)
   ROOT maximum = $0[] maximum(arg_0, arg_1)
 }
-add_computation {
-  arg_0.1 = $0[] parameter(0)
-  arg_1.1 = $0[] parameter(1)
-  ROOT add = $0[] add(arg_0.1, arg_1.1)
-}
 ENTRY main {
   param_0 = $0[127,125]{1,0} parameter(0)
-  constant_neg_inf = $0[] constant(0)
-  reduce = $0[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=add_computation
+  constant_neg_inf = $0[] constant(-inf)
+  reduce = $0[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = $0[127,125]{1,0} broadcast(reduce), dimensions={0}
   subtract = $0[127,125]{1,0} subtract(param_0, broadcast)
-  multiply = $0[127,125]{1,0} multiply(subtract, subtract)
-  constant_zero = $0[] constant(0)
-  second_reduce = $0[127]{0} reduce(multiply, constant_zero), dimensions={1}, to_apply=add_computation
+  add = $0[127,125]{1,0} add(subtract, subtract)
+  second_reduce = $0[127]{0} reduce(add, constant_neg_inf), dimensions={1}, to_apply=max_computation
   second_broadcast = $0[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT multiply_root = $0[127,125]{1,0} multiply(multiply, second_broadcast)
+  ROOT add_root = $0[127,125]{1,0} add(add, second_broadcast)
 }
 )";
   const std::string hlo_text = absl::Substitute(
@@ -1718,34 +1608,35 @@ ENTRY main {
 
   MatchOptimizedHlo(hlo_text, hlo_ref);
 
-  float tolerance;
+  // The precision-changing ops in the kernel above are add & subtract, meaning
+  // a value can be X*2(first add)*2(subtract)*2(second add) larger than it was
+  // originally. In order to fit this into a datatype, we do:
+  // X*2^3 <= 2^(fraction bits of the data type)
+  // 2^(max_bits_of_precision)*2^3 <= 2^(fraction bits of the data type)
+  // max_bits_of_precision = fraction_bits - 3.
+  uint max_bits_of_precision;
   switch (data_type) {
     case F32:
-      tolerance = 1e-6;
+      max_bits_of_precision = 20;
       break;
     case F16:
-      tolerance = 2e-4;
+      max_bits_of_precision = 7;
       break;
     case BF16:
-      tolerance = 2e-2;
+      max_bits_of_precision = 4;
       break;
     default:
       ABSL_UNREACHABLE();
   }
-  EXPECT_TRUE(RunAndCompare(hlo_text,
-                            ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(/*aabs=*/0, /*arel=*/0),
+                            /*reference_preprocessor=*/nullptr,
+                            max_bits_of_precision));
 }
 
 TEST_P(
     TritonSoftmaxTest,
     CanFuseAndEmitBinaryElementwiseConsumerWhereBothOperandsAreTheSameIntoDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule fusible_diamond
@@ -1808,12 +1699,6 @@ TEST_P(
     TritonSoftmaxTest,
     CanFuseAndEmitTwoBinaryElementwiseWhereBothOperandsAreTheSameBetweenDiamonds) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule fusible_diamonds
@@ -1915,10 +1800,6 @@ TEST_P(TritonSoftmaxTest, CanFuseAndEmitRMSNormDiamond) {
 
   if (data_type == F16) {
     GTEST_SKIP() << "rsqrt op does not support F16.";
-  } else if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                                      se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
   }
 
   const std::string hlo_text_template = R"(
@@ -1985,12 +1866,6 @@ TEST_P(
     CanFuseAndEmitBinaryElementwiseWhereTheFirstOperandIsASplatConstantBetweenDiamonds) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule fusible_diamonds
 add_computation {
@@ -2053,12 +1928,6 @@ TEST_P(
     TritonSoftmaxTest,
     CanFuseAndEmitBinaryElementwiseWhereTheSecondOperandIsASplatConstantBetweenDiamonds) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule fusible_diamonds
@@ -2123,12 +1992,6 @@ TEST_P(
     CanFuseAndEmitBinaryElementwiseWhereTheFirstOperandIsASplatConstantWithinDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule fusible_diamond
 max_computation {
@@ -2188,12 +2051,6 @@ TEST_P(
     CanFuseAndEmitBinaryElementwiseConsumerWhereTheFirstOperandIsASplatConstantIntoDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule fusible_diamond
 add_computation {
@@ -2251,12 +2108,6 @@ TEST_P(
     TritonSoftmaxTest,
     CanFuseAndEmitBinaryElementwiseProducerWhereTheFirstOperandIsASplatConstantIntoDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule fusible_diamond
@@ -2316,12 +2167,6 @@ TEST_P(
     TritonSoftmaxTest,
     CanFuseAndEmitBinaryElementwiseOperationWhereOneOperandIsASharedSplatProducerIntoDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule nonfusible_diamond
@@ -2389,17 +2234,16 @@ ENTRY main {
 }
 )";
 
-  // Param order is arbitrary. We test that only param_1 is in the fused root
-  // instruction below.
   const std::string hlo_ref = R"(
 ; CHECK:    ENTRY
 ; CHECK-DAG:    %[[param_0:.*]] = f32[125,127]{1,0} parameter(0)
 ; CHECK-DAG:    %[[param_1:.*]] = f32[127]{0} parameter(1)
 ; CHECK:      ROOT
 ; CHECK-SAME:   f32[125,127]{1,0} fusion
-; CHECK-SAME:   %[[param_1]]
-; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   triton_softmax
+; CHECK-SAME:    %[[param_0]]
+; CHECK-SAME:    %[[param_1]]
+; CHECK-SAME:          kind=kCustom
+; CHECK-SAME:          triton_softmax
 )";
   MatchOptimizedHlo(hlo_text, hlo_ref);
 

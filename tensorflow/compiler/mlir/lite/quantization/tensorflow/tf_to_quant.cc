@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -133,7 +133,7 @@ struct InsertQuantOpsAfterTFFakeQuantOp
     if (PerAxis) {
       // This is a special case that the quant_dim is the last dimensions
       // according to the tf.FakeQuantWithMinMaxPerChannel.
-      quant_dim = res.getType().template cast<ShapedType>().getRank() - 1;
+      quant_dim = mlir::cast<ShapedType>(res.getType()).getRank() - 1;
     }
     // Use the min/max from the operands and the num_bits and narrow_range
     // attribute to create the quantization parameter for the new quantize op.

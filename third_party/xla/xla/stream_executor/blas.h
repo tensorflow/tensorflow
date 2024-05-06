@@ -1,4 +1,3 @@
-#include "tsl/platform/errors.h"
 /* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,9 +22,11 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_BLAS_H_
 
 #include <complex>
+#include <cstdint>
 #include <limits>
 #include <ostream>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/port.h"
+#include "tsl/platform/errors.h"
 #include "tsl/protobuf/dnn.pb.h"
 
 namespace Eigen {
@@ -156,13 +158,15 @@ class ProfileResult {
  public:
   bool is_valid() const { return is_valid_; }
   void set_is_valid(bool val) { is_valid_ = val; }
+  bool warmup_run_executed() const { return warmup_run_executed_; }
+  void set_warmup_run_executed(bool val) { warmup_run_executed_ = val; }
   AlgorithmType algorithm() const { return algorithm_; }
   void set_algorithm(AlgorithmType val) { algorithm_ = val; }
   float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
   void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
 
  private:
-  bool is_valid_ = false;
+  bool is_valid_ = false, warmup_run_executed_ = false;
   AlgorithmType algorithm_ = kDefaultAlgorithm;
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
 };

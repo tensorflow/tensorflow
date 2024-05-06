@@ -93,7 +93,7 @@ TpuExecutable::~TpuExecutable() {
   ExecutorApiFn()->TpuExecutable_FreeFn(se_executable_);
 }
 
-StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
+absl::StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -151,7 +151,7 @@ StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
 
   xla::ScopedShapedBuffer result(
       ApiConverter::FromC(&se_execution_output.result),
-      run_options->stream()->parent()->GetAllocator());
+      ApiConverter::FromC(se_run_options.allocator));
   ApiConverter::Destroy(&se_execution_output.result);
 
   ExecutionOutput output(std::move(result));
@@ -165,7 +165,7 @@ StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
   for (int i = 0; i < se_execution_output.to_be_released_size; ++i) {
     output.AddToBeReleased(
         ApiConverter::FromC(&se_execution_output.to_be_released[i],
-                            run_options->stream()->parent()->GetAllocator())
+                            ApiConverter::FromC(se_run_options.allocator))
             .Release()
             .value());
   }
@@ -182,7 +182,7 @@ absl::string_view TpuExecutable::fingerprint() const {
   return absl::string_view(data, size);
 }
 
-StatusOr<std::string> TpuExecutable::Serialize() const {
+absl::StatusOr<std::string> TpuExecutable::Serialize() const {
   SE_ExecutableSerializationHandle* handle = nullptr;
   absl::Cleanup cleanup = [&handle]() {
     ExecutorApiFn()->TpuExecutableSerialize_FreeHandleFn(handle);
@@ -210,7 +210,7 @@ StatusOr<std::string> TpuExecutable::Serialize() const {
   return serialized;
 }
 
-StatusOr<std::unique_ptr<TpuExecutable>> TpuExecutable::Deserialize(
+absl::StatusOr<std::unique_ptr<TpuExecutable>> TpuExecutable::Deserialize(
     absl::string_view serialized) {
   SE_Executable* se_executable;
   StatusHelper status;

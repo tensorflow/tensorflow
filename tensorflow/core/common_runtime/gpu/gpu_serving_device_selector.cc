@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_scheduling_metrics_storage.h"
 #include "tsl/framework/serving_device_selector.h"
 
 namespace tensorflow {
@@ -89,7 +90,9 @@ void GpuServingDeviceSelector::Enqueue(int32_t index_on_host,
                                        /*priority_queue_count=*/1,
                                        /*prefetch_results=*/0, NowNs());
 
-  // TODO(xiangll): Metric estimated execution time.
+  int64_t total_estimated_time_ns = TotalEstimatedTimeTillIdleNs();
+  GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Set(
+      total_estimated_time_ns);
 }
 
 void GpuServingDeviceSelector::Completed(int32_t index_on_host,
@@ -99,11 +102,12 @@ void GpuServingDeviceSelector::Completed(int32_t index_on_host,
   ServingDeviceSelector::CompletedHelper(device_state, index_on_host, 0,
                                          min_exec_time_, had_error, NowNs());
 
-  // TODO(xiangll): Metric estimated execution time.
+  int64_t total_estimated_time_ns = TotalEstimatedTimeTillIdleNs();
+  GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Set(
+      total_estimated_time_ns);
 }
 
-int64_t GpuServingDeviceSelector::TotalGpuLoadNsForTest() {
-  absl::MutexLock lock(&mu_);
+int64_t GpuServingDeviceSelector::TotalEstimatedTimeTillIdleNs() {
   int64_t total_gpu_load_ns = 0;
   for (const auto& device_state : device_states_) {
     total_gpu_load_ns += ServingDeviceSelector::EstimateTimeTillIdleNs(

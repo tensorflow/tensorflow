@@ -51,8 +51,6 @@ namespace tensorflow {
 namespace tf2xla {
 namespace v2 {
 
-using metrics::IncrementTfMlirBridgeSecondPhaseCounter;
-using metrics::MlirBridgeSecondPhaseMetric;
 using tpu::FunctionToHloArgs;
 using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
@@ -110,7 +108,7 @@ Status DumpHloCompilationResult(std::string_view name,
                                 XlaCompilationResult* compilation_result) {
   if (!VLOG_IS_ON(2) &&
       !DEBUG_DATA_DUMPER()->ShouldDump(std::string(name), kDebugGroupMain)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -130,12 +128,12 @@ Status DumpHloCompilationResult(std::string_view name,
 
   tensorflow::DumpRawStringToFile(name, all_computations);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
+absl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>& computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     llvm::StringRef device_type,
@@ -185,7 +183,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
   }
 
   VLOG(1) << "Failed to compile MLIR computation to XLA HLO using Combined "
-             "MLIR and XlaBuilder Bridge. Falling back to MLIR tf2xla Bridge. "
+             "MLIR and XlaBuilder Bridge. Failed to lower to hlo."
           << combined_bridge_status.status();
   tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_COMBINED_BRIDGE",
                           combined_bridge_status.status().ToString())
@@ -201,7 +199,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using MLIR "
                "tf2xla Bridge";
     IncrementTfMlirBridgeSecondPhaseCounter(
-        MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeSuccess);
+        metrics::MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeSuccess);
 
     DumpHloCompilationResult("legalize_tf_mlir_bridge.hlo",
                              compilation_result.get())
@@ -219,7 +217,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
                             mlir_bridge_status.status().ToString())
         .IgnoreError();
     IncrementTfMlirBridgeSecondPhaseCounter(
-        MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeFailure);
+        metrics::MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeFailure);
   }
 
   return mlir_bridge_status.status();

@@ -169,18 +169,16 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
     params.mode = mode;
 
     {
-      tensorflow::profiler::TraceMe enqueue_batch_trace(
-          [] { return "EnqueueBatch"; },
-          tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMe enqueue_batch_trace(
+          [] { return "EnqueueBatch"; }, tsl::profiler::TraceMeLevel::kInfo);
       stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_EnqueueTensorBatchFn(
           &params);
       OP_REQUIRES_OK(ctx, status.status());
     }
 
     {
-      tensorflow::profiler::TraceMe delete_tensors_trace(
-          [] { return "DeleteTensors"; },
-          tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMe delete_tensors_trace(
+          [] { return "DeleteTensors"; }, tsl::profiler::TraceMeLevel::kInfo);
 
       DeleteTensors(sample_indices_or_row_splits_tensors);
       DeleteTensors(embedding_indices_tensors);

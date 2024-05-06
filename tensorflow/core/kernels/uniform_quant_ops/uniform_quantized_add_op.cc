@@ -27,8 +27,8 @@ namespace {
 
 using errors::InvalidArgument;
 
-StatusOr<TensorShape> CalculateOutputShape(const TensorShape& lhs_shape,
-                                           const TensorShape& rhs_shape) {
+absl::StatusOr<TensorShape> CalculateOutputShape(const TensorShape& lhs_shape,
+                                                 const TensorShape& rhs_shape) {
   if (lhs_shape.dims() == 0) {
     return rhs_shape;
   } else if (rhs_shape.dims() == 0) {

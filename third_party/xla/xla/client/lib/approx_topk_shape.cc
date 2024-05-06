@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <utility>
 
 #include "xla/util.h"
@@ -37,7 +38,7 @@ inline uint32_t log2_ceil(uint64_t value) {
 }
 
 // LINT.IfChange
-StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
+absl::StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
     int64_t input_size, int64_t rank, int64_t top_k, float recall_target,
     bool aggregate_to_topk, int64_t input_size_override) {
   if (aggregate_to_topk) {
@@ -97,7 +98,7 @@ StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
           static_cast<uint64_t>((1.0 - top_k) /
                                 std::log(static_cast<double>(recall_target))),
           tpu_tiling),
-      input_size);
+      logical_input_size);
   uint32_t log2_reduction = log2_floor(logical_input_size / m);
   if (log2_reduction == 0) {
     return std::pair<int64_t, int64_t>(input_size, 0);

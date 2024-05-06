@@ -1,14 +1,14 @@
 # Platform-specific build configurations.
 
 load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
+load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
 load(
-    "//tsl:tsl.bzl",
+    "@local_xla//xla/tsl:tsl.bzl",
     "clean_dep",
     "if_not_windows",
     "if_tsl_link_protobuf",
 )
 load("//tsl/platform:build_config_root.bzl", "if_static")
-load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
 
 def well_known_proto_libs():
     """Set of standard protobuf protos, like Any and Timestamp.
@@ -665,7 +665,7 @@ def tf_additional_lib_hdrs():
         clean_dep("//tsl/platform/default:tracing_impl.h"),
         clean_dep("//tsl/platform/default:unbounded_work_queue.h"),
     ] + select({
-        clean_dep("//tsl:windows"): [
+        clean_dep("@local_xla//xla/tsl:windows"): [
             clean_dep("//tsl/platform/windows:intrinsics_port.h"),
             clean_dep("//tsl/platform/windows:stacktrace.h"),
             clean_dep("//tsl/platform/windows:subprocess.h"),
@@ -720,9 +720,9 @@ def tf_additional_lib_deps():
 
 def tf_additional_core_deps():
     return select({
-        clean_dep("//tsl:android"): [],
-        clean_dep("//tsl:ios"): [],
-        clean_dep("//tsl:linux_s390x"): [],
+        clean_dep("@local_xla//xla/tsl:android"): [],
+        clean_dep("@local_xla//xla/tsl:ios"): [],
+        clean_dep("@local_xla//xla/tsl:linux_s390x"): [],
         "//conditions:default": [
             clean_dep("//tsl/platform/cloud:gcs_file_system"),
         ],
@@ -807,7 +807,7 @@ def tf_protobuf_compiler_deps():
 
 def tf_windows_aware_platform_deps(name):
     return select({
-        clean_dep("//tsl:windows"): [
+        clean_dep("@local_xla//xla/tsl:windows"): [
             clean_dep("//tsl/platform/windows:" + name),
         ],
         "//conditions:default": [
@@ -850,15 +850,6 @@ def tf_google_mobile_srcs_no_runtime():
 
 def tf_google_mobile_srcs_only_runtime():
     return []
-
-def if_llvm_aarch64_available(then, otherwise = []):
-    return then
-
-def if_llvm_system_z_available(then, otherwise = []):
-    return select({
-        clean_dep("//tsl:linux_s390x"): then,
-        "//conditions:default": otherwise,
-    })
 
 def tf_cuda_libdevice_path_deps():
     return tf_platform_deps("cuda_libdevice_path")

@@ -17,7 +17,10 @@ limitations under the License.
 #define XLA_SERVICE_GPU_ELEMENTAL_IR_EMITTER_H_
 
 #include <string>
+#include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
@@ -26,8 +29,7 @@ limitations under the License.
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/target_util.h"
-#include "xla/service/hlo_module_config.h"
-#include "xla/statusor.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -97,8 +99,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view, bool /*is_reducer*/) override;
-
-  absl::StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value) override;
 
   bool fast_min_max() override {
     return ir_emitter_context_.debug_options().xla_gpu_enable_fast_min_max();

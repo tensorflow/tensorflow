@@ -15,36 +15,52 @@ limitations under the License.
 
 #include "xla/service/spmd/custom_call_handler.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/client/lib/comparators.h"
 #include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/hlo_lexer.h"
-#include "xla/service/shape_inference.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
-#include "xla/window_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
 
 namespace {
 
-StatusOr<absl::flat_hash_map<std::string, int64_t>> ParseOpaqueAsAttributes(
-    const HloInstruction* hlo) {
+absl::StatusOr<absl::flat_hash_map<std::string, int64_t>>
+ParseOpaqueAsAttributes(const HloInstruction* hlo) {
   absl::string_view opaque = Cast<HloCustomCallInstruction>(hlo)->opaque();
   HloLexer lexer(opaque);
   absl::flat_hash_map<std::string, int64_t> result;
@@ -82,8 +98,11 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
 
   const int64_t batch_dim = 0;
   const int64_t sort_dim = 1;
+
+  CHECK(sharding.IsTiled());
   const int64_t shard_count = sharding.tile_assignment().dim(sort_dim);
   const int64_t batch_dim_partition = sharding.tile_assignment().dim(batch_dim);
+
   const int64_t input_size = hlo->operand(0)->shape().dimensions(sort_dim);
   const int64_t batch_size = hlo->shape().tuple_shapes(0).dimensions(batch_dim);
   const int64_t k = hlo->shape().tuple_shapes(0).dimensions(sort_dim);
@@ -403,10 +422,6 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     return OkStatus();
   }
 
-  if (hlo->custom_call_target() == "TopK") {
-    return HandleCustomCallTopK(hlo);
-  }
-
   if (hlo->custom_call_target() == kSPMDOpRotateRight) {
     return HandleCustomCallSPMDInternal_RotateRight(hlo);
   }
@@ -436,6 +451,31 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
       }
       return instr;
     });
+    return OkStatus();
+  }
+
+  if (hlo->custom_call_target() == "TopK") {
+    return HandleCustomCallTopK(hlo);
+  }
+
+  if (hlo->custom_call_target() ==
+      host_memory_offload_annotations::kMoveToHostCustomCallTarget) {
+    return HandleElementwise(hlo);
+  }
+
+  if (hlo->custom_call_target() ==
+      host_memory_offload_annotations::kMoveToDeviceCustomCallTarget) {
+    // Use the operand's sharding to shard the move-to-device op. This avoids
+    // inserting any resharding before the custom call so that the
+    // host-offloader pass can pattern match the offloading sequences correctly.
+    const HloSharding& sharding = hlo->operand(0)->sharding();
+    HloInstruction* move_to_device = b_.AddInstruction(
+        hlo->CloneWithNewOperands(MakePartitionedShape(hlo->shape(), sharding),
+                                  {GetPartitionedHlo(hlo->operand(0)).hlo()}));
+    move_to_device->set_sharding(sharding);
+    SetPartitionedHlo(hlo, PartitionedHlo(move_to_device, hlo->shape(),
+                                          MakePartitioningState())
+                               .Reshard(hlo->sharding()));
     return OkStatus();
   }
 

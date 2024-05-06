@@ -24,10 +24,35 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tsl/framework/serving_device_selector.h"
 
 namespace tensorflow {
 namespace gpu {
+class GpuServingDeviceSelector;
+const char kGpuServingDeviceSelectorResourceName[] =
+    "gpu_serving_device_selector";
+// TODO(b/335729939): Disable GPU load tracker for performance regression
+// investigation. Remove when fixed.
+const bool kUseGpuServingDeviceSelector = false;
+
+class GpuServingDeviceSelectorResource : public ResourceBase {
+ public:
+  explicit GpuServingDeviceSelectorResource(
+      int num_devices, std::unique_ptr<tsl::ServingDeviceSelector::Policy>
+                           device_selector_policy)
+      : selector_(std::make_unique<GpuServingDeviceSelector>(
+            num_devices, std::move(device_selector_policy))) {}
+
+  std::string DebugString() const override {
+    return "GpuServingDeviceSelectorResource";
+  };
+
+  GpuServingDeviceSelector* selector() const { return selector_.get(); }
+
+ private:
+  std::unique_ptr<GpuServingDeviceSelector> selector_;
+};
 
 class GpuServingDeviceSelector : public tsl::ServingDeviceSelector {
  public:
@@ -46,14 +71,15 @@ class GpuServingDeviceSelector : public tsl::ServingDeviceSelector {
   // time stats to avoid incorrect estimates.
   void Completed(int32_t index_on_host, bool had_error = false);
 
-  int64_t TotalGpuLoadNsForTest();
-
  private:
   friend class ServingDeviceSelectorTestHelper;
   static void OverwriteNowNsFunctionForTest(int64_t (*now_ns)());
 
   void FreeDeviceReservation(
       const tsl::DeviceReservation& reservation) override;
+
+  // Only for metrics reporting purposes.
+  int64_t TotalEstimatedTimeTillIdleNs() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   absl::Mutex mu_;
   absl::FixedArray<DeviceState, 8> device_states_ ABSL_GUARDED_BY(mu_);

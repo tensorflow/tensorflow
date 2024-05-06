@@ -369,8 +369,8 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
 #if TENSORFLOW_USE_ROCM
       nccl_stream->stream = collective->participants[i]->context->nccl_stream();
 #else
-      nccl_stream->stream.reset(new se::Stream(executor));
-      nccl_stream->stream->Init();
+      TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+      nccl_stream->stream = std::move(stream);
 #endif
 
       streams.emplace_back(nccl_stream);

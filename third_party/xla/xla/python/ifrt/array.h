@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_ARRAY_H_
 #define XLA_PYTHON_IFRT_ARRAY_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,18 +24,21 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/status.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
 
 class Client;
+
+using Layout = ::xla::PjRtLayout;
 
 // Semantics for operations that may copy or move sharded buffers in an array.
 enum class ArrayCopySemantics : int {
@@ -69,16 +73,20 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   virtual const Shape& shape() const = 0;
   virtual const Sharding& sharding() const = 0;
   virtual std::shared_ptr<const Sharding> shared_ptr_sharding() const = 0;
+  // The device memory layout for each shard of the Array. All shards are
+  // assumed to have the same layout. Cannot be nullptr; implementations should
+  // return UNIMPLEMENTED instead.
+  virtual absl::StatusOr<std::unique_ptr<PjRtLayout>> layout() const = 0;
 
   // Breaks an array up into per-device arrays. This is the elimination
   // counterpart of `Client::AssembleArrayFromSingleDeviceArrays()`.
-  virtual StatusOr<std::vector<tsl::RCReference<Array>>>
+  virtual absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) = 0;
   // Returns a shard of an Array which is fully replicated. This is an
   // optimization so that instead of disassembling into all the shards when
   // the Array is fully replicated, we can just get 1 shard out and create an
   // Array from it.
-  virtual StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
+  virtual absl::StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
       ArrayCopySemantics semantics) = 0;
 
   // Fetches the array to host and stores it as unreplicated, unsharded data.
@@ -109,7 +117,7 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   // an API that lets users query the alignment requirement of the specific
   // implementation.
   ABSL_MUST_USE_RESULT
-  virtual Future<Status> CopyToHostBuffer(
+  virtual Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) = 0;
 
@@ -129,7 +137,7 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   //
   // It may fail if the buffer data would be sent from/to an unaddressable
   // device.
-  virtual StatusOr<tsl::RCReference<Array>> Reshard(
+  virtual absl::StatusOr<tsl::RCReference<Array>> Reshard(
       std::shared_ptr<const Sharding> new_sharding,
       ArrayCopySemantics semantics) = 0;
 

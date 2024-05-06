@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/variadic_op_splitter.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"

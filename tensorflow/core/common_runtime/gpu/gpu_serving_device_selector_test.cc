@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/time/clock.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_scheduling_metrics_storage.h"
 #include "tsl/framework/serving_device_selector.h"
 #include "tsl/framework/serving_device_selector_policies.h"
 
@@ -97,25 +98,41 @@ TEST(GpuServingDeviceSelector, DefaultPolicyOnlyEnqueueCall) {
   serving_device_selector->Completed(3);
 
   serving_device_selector->Enqueue(3, "16ms");
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 16e6);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      16e6);
   serving_device_selector->Enqueue(2, "8ms");
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 24e6);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      24e6);
   serving_device_selector->Enqueue(1, "4ms");
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 28e6);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      28e6);
   serving_device_selector->Enqueue(0, "2ms");
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 30e6);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      30e6);
   helper.ElapseNs(2e6);
   serving_device_selector->Completed(0);
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 22e6);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      22e6);
   helper.ElapseNs(2e6);
   serving_device_selector->Completed(1);
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 16e6);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      16e6);
   helper.ElapseNs(4e6);
   serving_device_selector->Completed(2);
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 8e6);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      8e6);
   helper.ElapseNs(8e6);
   serving_device_selector->Completed(3);
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 0e6);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      0e6);
 }
 
 }  // namespace

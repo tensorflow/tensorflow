@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
 
   // Execute and transfer result of computation.
   xla::ExecutionProfile profile;
-  xla::StatusOr<xla::Literal> result = client->ExecuteAndTransfer(
+  absl::StatusOr<xla::Literal> result = client->ExecuteAndTransfer(
       computation,
       /*arguments=*/{param0_data.get(), param1_data.get()},
       /*execution_options=*/nullptr,

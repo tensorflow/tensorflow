@@ -17,39 +17,30 @@ limitations under the License.
 
 #include <functional>
 #include <optional>
-#include <string>
 #include <string_view>
-#include <variant>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #endif
 
 namespace xla {
 namespace gpu {
-
-absl::StatusOr<AutotuneResult> GetBestBlasAlgorithm(
-    se::Stream* stream, se::RedzoneAllocator& allocator,
-    std::optional<std::string_view> gemm_str,
-    const AutotuneConfig& autotune_config, se::DeviceMemoryBase lhs_buffer,
-    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
-    absl::Span<const se::blas::AlgorithmType> algorithms,
-    const Shape& output_shape, const HloModuleConfig& hlo_module_config,
-    double beta,
-    const std::function<absl::StatusOr<se::blas::ProfileResult>(
-        const se::blas::AlgorithmType&)>& run_benchmark);
 
 // GemmAlgorithmPicker supports two modes: device and deviceless.
 // In device mode, we run autotuning on the device and store autotune results.

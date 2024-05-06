@@ -28,7 +28,7 @@ namespace xla {
 class ConditionalCanonicalizer : public HloModulePass {
  public:
   absl::string_view name() const override {
-    return "conditional canonicalizer";
+    return "conditional-canonicalizer";
   }
 
   using HloPassInterface::Run;

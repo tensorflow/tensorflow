@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {

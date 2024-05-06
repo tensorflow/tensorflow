@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
@@ -64,7 +65,7 @@ std::optional<Value> FindOpKernelContext(Operation *op) {
     return std::nullopt;
   }
   Value ctx = func.getArgument(0);
-  if (!ctx.getType().isa<OpKernelContextType>()) {
+  if (!mlir::isa<OpKernelContextType>(ctx.getType())) {
     return std::nullopt;
   }
   return ctx;
@@ -114,7 +115,8 @@ struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
     if (!ctx) return failure();
 
     // Operand with no layout is expected.
-    auto operand_memref_type = dealloc.getMemref().getType().cast<MemRefType>();
+    auto operand_memref_type =
+        mlir::cast<MemRefType>(dealloc.getMemref().getType());
     if (!operand_memref_type.getLayout().isIdentity()) {
       return failure();
     }

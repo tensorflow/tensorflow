@@ -33,8 +33,8 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
@@ -123,6 +123,10 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   std::optional<se::ClusterDim> cluster_dim;
   const se::Kernel* kernel = nullptr;
 
+  TF_ASSIGN_OR_RETURN(
+      se::Stream * stream,
+      GetStreamForExecution(Thunk::execution_stream_id(), params));
+
   {
     absl::MutexLock lock(&mutex_);
     auto it = kernel_cache_.find(executor);
@@ -143,15 +147,15 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   if (VLOG_IS_ON(100)) {
-    PrintBufferContents(params.stream, buffer_args);
+    PrintBufferContents(stream, buffer_args);
   }
 
   if (cluster_dim.has_value()) {
     return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
-                                 cluster_dim.value(), params.stream);
+                                 cluster_dim.value(), stream);
   } else {
     return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
-                                 params.stream);
+                                 stream);
   }
 }
 

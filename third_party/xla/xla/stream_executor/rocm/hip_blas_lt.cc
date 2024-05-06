@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/rocm/hip_blas_lt.h"
 #include "xla/stream_executor/rocm/rocm_blas.h"
-#include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 
 #define SET_ATTR(setter, handle, attr, value) \
@@ -287,9 +286,10 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
 
   auto compute_type = cfg.compute_type;
   if (!compute_type) {  // obtain compute_type unless provided by the user
-    TF_ASSIGN_OR_RETURN(compute_type, gpu::GetBlasComputationType(
-                                          lhs_layout.dtype, output_layout.dtype,
-                                          cfg.compute_precision));
+    TF_ASSIGN_OR_RETURN(compute_type,
+                        gpu::GetBlasComputationType(
+                            cfg.precision_algorithm, lhs_layout.dtype,
+                            output_layout.dtype, cfg.compute_precision));
   }
 
   if (lhs_layout.order == gpu::MatrixLayout::Order::kRowMajor) {
@@ -311,6 +311,30 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
   TF_ASSIGN_OR_RETURN(auto b_desc, MatrixLayout::Create(rhs_layout));
   TF_ASSIGN_OR_RETURN(auto c_desc, MatrixLayout::Create(c_layout));
   TF_ASSIGN_OR_RETURN(auto d_desc, MatrixLayout::Create(output_layout));
+
+#if TF_ROCM_VERSION >= 60000
+  // Currently, the default bias data type in hipblasLt is the same with output
+  // data type for fp8 matmul, which is different from cublasLt. This is a
+  // workaround to match cublasLt behavior.
+  if (epilogue == gpu::BlasLt::Epilogue::kBias) {
+    auto a_dtype = a_desc.type();
+    auto b_dtype = b_desc.type();
+
+    auto bias_dtype = d_desc.type();
+    if ((a_dtype == HIP_R_8F_E4M3_FNUZ || a_dtype == HIP_R_8F_E5M2_FNUZ) &&
+        (b_dtype == HIP_R_8F_E4M3_FNUZ || b_dtype == HIP_R_8F_E5M2_FNUZ)) {
+      auto d_dtype = d_desc.type();
+      if (d_dtype == HIP_R_32F) {
+        bias_dtype = HIP_R_16BF;
+      }
+
+      if (bias_dtype != d_dtype) {
+        TF_RETURN_IF_ERROR(SetAttr(
+            op_desc.get(), HIPBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, bias_dtype));
+      }
+    }
+  }
+#endif  // TF_ROCM_VERSION >= 60000
 
   // std::make_unique won't work with brace initialization in C++17 ;(
   return std::make_unique<MatmulPlan>(*this, std::move(op_desc),
@@ -360,20 +384,59 @@ absl::Status BlasLt::MatmulPlan::ValidateInputs(
 absl::Status BlasLt::MatmulPlan::DoMatmul(
     Stream* stream, const void* alpha, DeviceMemoryBase a, DeviceMemoryBase b,
     const void* beta, DeviceMemoryBase c, DeviceMemoryBase d,
+    const MatmulAlgorithm& algorithm, DeviceMemoryBase bias,
+    DeviceMemoryBase aux, DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
+    DeviceMemoryBase c_scale, DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
+    std::optional<DeviceMemoryBase> workspace,
+    blas::ProfileResult* profile_result) const {
+  return DoMatmul(stream, alpha, a, b, beta, c, d, algorithm, bias, aux,
+                  a_scale, b_scale, c_scale, d_scale, d_amax, workspace,
+                  std::nullopt, profile_result);
+}
+
+// Tensorflow use this API
+absl::Status BlasLt::MatmulPlan::DoMatmul(
+    Stream* stream, const void* alpha, DeviceMemoryBase a, DeviceMemoryBase b,
+    const void* beta, DeviceMemoryBase c, DeviceMemoryBase d,
     const MatmulAlgorithm& algorithm, ScratchAllocator& scratch_allocator,
     DeviceMemoryBase bias, DeviceMemoryBase aux, DeviceMemoryBase a_scale,
     DeviceMemoryBase b_scale, DeviceMemoryBase c_scale,
     DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
+    ScratchAllocator& scratch_allocator,
     blas::ProfileResult* profile_result) const {
-  TF_ASSIGN_OR_RETURN(std::optional<gpu::GpuTimer> timer,
-                      gpu::GpuTimer::CreateIfNeeded(stream, profile_result));
+  return DoMatmul(stream, alpha, a, b, beta, c, d, algorithm, bias, aux,
+                  a_scale, b_scale, c_scale, d_scale, d_amax, std::nullopt,
+                  &scratch_allocator, profile_result);
+}
 
-  void* workspace = nullptr;
-  if (algorithm.workspace_size > 0) {
+absl::Status BlasLt::MatmulPlan::DoMatmul(
+    Stream* stream, const void* alpha, DeviceMemoryBase a, DeviceMemoryBase b,
+    const void* beta, DeviceMemoryBase c, DeviceMemoryBase d,
+    const MatmulAlgorithm& algorithm, DeviceMemoryBase bias,
+    DeviceMemoryBase aux, DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
+    DeviceMemoryBase c_scale, DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
+    std::optional<DeviceMemoryBase> workspace,
+    std::optional<ScratchAllocator*> scratch_allocator,
+    blas::ProfileResult* profile_result) const {
+  TF_ASSIGN_OR_RETURN(
+      std::optional<gpu::GpuTimer> timer,
+      gpu::GpuTimer::CreateIfNeeded(
+          stream, profile_result && profile_result->warmup_run_executed(),
+          profile_result));
+
+  void* workspace_addr = nullptr;
+  uint64_t workspace_size = 0;
+  if (workspace.has_value()) {
+    workspace_addr = workspace.value().opaque();
+    workspace_size = workspace.value().size();
+    TF_RET_CHECK(workspace_size >= algorithm.workspace_size);
+  } else if (algorithm.workspace_size > 0) {
+    TF_RET_CHECK(scratch_allocator.has_value())
     TF_ASSIGN_OR_RETURN(
         DeviceMemory<uint8_t> alloc,
-        scratch_allocator.AllocateBytes(algorithm.workspace_size));
-    workspace = gpu::GpuMemoryMutable(&alloc);
+        scratch_allocator.value()->AllocateBytes(algorithm.workspace_size));
+    workspace_addr = gpu::GpuMemoryMutable(&alloc);
+    workspace_size = algorithm.workspace_size;
   }
 
   auto palgo = std::any_cast<hipblasLtMatmulAlgo_t>(&algorithm.opaque_algo);
@@ -387,10 +450,27 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
           op_desc_.get(), HIPBLASLT_MATMUL_DESC_BIAS_POINTER, bias.opaque()));
     }
 
+#if TF_ROCM_VERSION >= 60000
+    if (a_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+                                 HIPBLASLT_MATMUL_DESC_A_SCALE_POINTER,
+                                 a_scale.opaque()));
+    }
+    if (b_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+                                 HIPBLASLT_MATMUL_DESC_B_SCALE_POINTER,
+                                 b_scale.opaque()));
+    }
+    if (c_scale != nullptr || d_scale != nullptr) {
+      return absl::InternalError(
+          "hipblaslt does not support c_scale or d_scale.");
+    }
+#else
     if ((a_scale != nullptr) || (b_scale != nullptr) || (c_scale != nullptr) ||
         (d_scale != nullptr)) {
       return absl::InternalError("hipblaslt does not support scale");
     }
+#endif
 
     if (d_amax != nullptr) {
       return absl::InternalError("hipblaslt does not support amax");
@@ -407,17 +487,25 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
       SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatmul(
           blas_lt_ref_.blas_lt_.get(), op_desc_.get(), alpha, a.opaque(),
           a_desc_.get(), b.opaque(), b_desc_.get(), beta, c.opaque(),
-          c_desc_.get(), d.opaque(), d_desc_.get(), palgo, workspace,
-          algorithm.workspace_size, gpu::AsGpuStreamValue(stream)));
+          c_desc_.get(), d.opaque(), d_desc_.get(), palgo, workspace_addr,
+          workspace_size, gpu::AsGpuStreamValue(stream)));
     } else {
       return absl::InternalError("hipblaslt: Invalid algorithm type");
     }
   }
 
+  typedef struct __attribute__((packed, aligned(8))) _rocblaslt_matmul_algo {
+    uint8_t data[8] = {0};
+    bool fallback = false;
+    size_t max_workspace_bytes = 0;
+  } rocblaslt_matmul_algo;
+
   if (profile_result != nullptr) {
     TF_ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
     // set algorithm ID to be unique (otherwise it gets kDefaultAlgorithm ID)
-    profile_result->set_algorithm(reinterpret_cast<blas::AlgorithmType>(palgo));
+    auto roc_algo = (const rocblaslt_matmul_algo*)palgo;
+    auto pindex = (int*)roc_algo->data;
+    profile_result->set_algorithm(static_cast<blas::AlgorithmType>(*pindex));
     profile_result->set_is_valid(true);
     profile_result->set_elapsed_time_in_ms(absl::ToDoubleMilliseconds(elapsed));
   }
@@ -428,6 +516,17 @@ namespace {
 
 template <hipDataType>
 struct HipToNativeT;
+
+#if TF_ROCM_VERSION >= 60000
+template <>
+struct HipToNativeT<HIP_R_8F_E4M3_FNUZ> {
+  using type = tsl::float8_e4m3fnuz;
+};
+template <>
+struct HipToNativeT<HIP_R_8F_E5M2_FNUZ> {
+  using type = tsl::float8_e5m2fnuz;
+};
+#endif  // TF_ROCM_VERSION >= 60000
 
 template <>
 struct HipToNativeT<HIP_R_16BF> {
@@ -461,7 +560,8 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
     DeviceMemoryBase d, DeviceMemoryBase bias, DeviceMemoryBase aux,
     DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
     DeviceMemoryBase c_scale, DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
-    const MatmulAlgorithm& algorithm, ScratchAllocator& scratch_allocator,
+    const MatmulAlgorithm& algorithm, std::optional<DeviceMemoryBase> workspace,
+    std::optional<ScratchAllocator*> scratch_allocator,
     blas::ProfileResult* profile_result) const {
   if (must_swap_operands_) {
     std::swap(a, b);
@@ -470,29 +570,135 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
   std::tuple operand_types{a_desc_.type(), b_desc_.type(), c_desc_.type(),
                            d_desc_.type()};
 
-#define TYPED_MATMUL(SCALENTYPE, ATYPE, BTYPE, CTYPE, DTYPE)              \
+#define TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(SCALENTYPE, ATYPE, BTYPE, CTYPE, \
+                                            DTYPE)                           \
+  if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE, DTYPE)) {        \
+    return gpu::BlasLt::MatmulPlan::DoMatmul<                                \
+        SCALENTYPE, HipToNativeT<ATYPE>::type, HipToNativeT<BTYPE>::type,    \
+        HipToNativeT<CTYPE>::type, HipToNativeT<DTYPE>::type>(               \
+        stream, alpha_, a, b, beta_, c, d, bias, aux, a_scale, b_scale,      \
+        c_scale, d_scale, d_amax, algorithm, scratch_allocator,              \
+        profile_result);                                                     \
+  }
+
+#define TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(SCALENTYPE, ATYPE, BTYPE, \
+                                                CTYPE, DTYPE)             \
   if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE, DTYPE)) {     \
     return gpu::BlasLt::MatmulPlan::DoMatmul<                             \
         SCALENTYPE, HipToNativeT<ATYPE>::type, HipToNativeT<BTYPE>::type, \
         HipToNativeT<CTYPE>::type, HipToNativeT<DTYPE>::type>(            \
         stream, alpha_, a, b, beta_, c, d, bias, aux, a_scale, b_scale,   \
-        c_scale, d_scale, d_amax, algorithm, scratch_allocator,           \
-        profile_result);                                                  \
+        c_scale, d_scale, d_amax, algorithm, workspace, profile_result);  \
   }
 
-  // Other data types:
-  TYPED_MATMUL(float, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF)
-  TYPED_MATMUL(float, HIP_R_16F, HIP_R_16F, HIP_R_16F, HIP_R_16F)
-  TYPED_MATMUL(float, HIP_R_16BF, HIP_R_16BF, HIP_R_32F, HIP_R_32F)
-  TYPED_MATMUL(float, HIP_R_16F, HIP_R_16F, HIP_R_32F, HIP_R_32F)
-  TYPED_MATMUL(float, HIP_R_32F, HIP_R_32F, HIP_R_32F, HIP_R_32F)
-  TYPED_MATMUL(double, HIP_R_64F, HIP_R_64F, HIP_R_64F, HIP_R_64F)
-  TYPED_MATMUL(complex64, HIP_C_32F, HIP_C_32F, HIP_C_32F, HIP_C_32F)
-  TYPED_MATMUL(complex128, HIP_C_64F, HIP_C_64F, HIP_C_64F, HIP_C_64F)
+  if (workspace.has_value()) {
+#if TF_ROCM_VERSION >= 60000
+    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
+        float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16F, HIP_R_16F)
+    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
+        float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_32F, HIP_R_32F)
 
-#undef TYPED_MATMUL
+    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
+        float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_16F, HIP_R_16F)
+    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
+        float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_32F, HIP_R_32F)
+
+    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
+        float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16F, HIP_R_16F)
+    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(
+        float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_32F, HIP_R_32F)
+#endif
+
+    // Other data types:
+    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(float, HIP_R_16BF, HIP_R_16BF,
+                                            HIP_R_16BF, HIP_R_16BF)
+    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(float, HIP_R_16F, HIP_R_16F,
+                                            HIP_R_16F, HIP_R_16F)
+    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(float, HIP_R_16BF, HIP_R_16BF,
+                                            HIP_R_32F, HIP_R_32F)
+    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(float, HIP_R_16F, HIP_R_16F,
+                                            HIP_R_32F, HIP_R_32F)
+    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(float, HIP_R_32F, HIP_R_32F,
+                                            HIP_R_32F, HIP_R_32F)
+    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(double, HIP_R_64F, HIP_R_64F,
+                                            HIP_R_64F, HIP_R_64F)
+    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(complex64, HIP_C_32F, HIP_C_32F,
+                                            HIP_C_32F, HIP_C_32F)
+    TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE(complex128, HIP_C_64F, HIP_C_64F,
+                                            HIP_C_64F, HIP_C_64F)
+  } else if (scratch_allocator.has_value()) {
+    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(
+        float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16F, HIP_R_16F)
+    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(
+        float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_32F, HIP_R_32F)
+
+    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(
+        float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_16F, HIP_R_16F)
+    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(
+        float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_32F, HIP_R_32F)
+
+    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(
+        float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16F, HIP_R_16F)
+    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(
+        float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_32F, HIP_R_32F)
+#endif
+
+    // Other data types:
+    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, HIP_R_16BF, HIP_R_16BF,
+                                        HIP_R_16BF, HIP_R_16BF)
+    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, HIP_R_16F, HIP_R_16F, HIP_R_16F,
+                                        HIP_R_16F)
+    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, HIP_R_16BF, HIP_R_16BF,
+                                        HIP_R_32F, HIP_R_32F)
+    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, HIP_R_16F, HIP_R_16F, HIP_R_32F,
+                                        HIP_R_32F)
+    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, HIP_R_32F, HIP_R_32F, HIP_R_32F,
+                                        HIP_R_32F)
+    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(double, HIP_R_64F, HIP_R_64F, HIP_R_64F,
+                                        HIP_R_64F)
+    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(complex64, HIP_C_32F, HIP_C_32F,
+                                        HIP_C_32F, HIP_C_32F)
+    TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(complex128, HIP_C_64F, HIP_C_64F,
+                                        HIP_C_64F, HIP_C_64F)
+  }
+
+#undef TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR
+#undef TYPED_MATMUL_WITH_PREALLOCATE_WORKSPACE
 
   return xla::Internal("Unexpected dtype");
+}
+
+absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
+    Stream* stream, DeviceMemoryBase a_buffer, DeviceMemoryBase b_buffer,
+    DeviceMemoryBase c_buffer, DeviceMemoryBase d_buffer,
+    DeviceMemoryBase bias_buffer,  // may be null
+    DeviceMemoryBase aux_buffer,   // may be null
+    DeviceMemoryBase a_scale_buffer, DeviceMemoryBase b_scale_buffer,
+    DeviceMemoryBase c_scale_buffer, DeviceMemoryBase d_scale_buffer,
+    DeviceMemoryBase d_amax_buffer, const MatmulAlgorithm& algorithm,
+    ScratchAllocator& scratch_allocator,
+    blas::ProfileResult* profile_result) const {
+  return ExecuteOnStream(stream, a_buffer, b_buffer, c_buffer, d_buffer,
+                         bias_buffer, aux_buffer, a_scale_buffer,
+                         b_scale_buffer, c_scale_buffer, d_scale_buffer,
+                         d_amax_buffer, algorithm, std::nullopt,
+                         &scratch_allocator, profile_result);
+}
+
+absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
+    Stream* stream, DeviceMemoryBase a_buffer, DeviceMemoryBase b_buffer,
+    DeviceMemoryBase c_buffer, DeviceMemoryBase d_buffer,
+    DeviceMemoryBase bias_buffer,  // may be null
+    DeviceMemoryBase aux_buffer,   // may be null
+    DeviceMemoryBase a_scale_buffer, DeviceMemoryBase b_scale_buffer,
+    DeviceMemoryBase c_scale_buffer, DeviceMemoryBase d_scale_buffer,
+    DeviceMemoryBase d_amax_buffer, const MatmulAlgorithm& algorithm,
+    std::optional<DeviceMemoryBase> workspace,
+    blas::ProfileResult* profile_result) const {
+  return ExecuteOnStream(
+      stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer, aux_buffer,
+      a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,
+      d_amax_buffer, algorithm, workspace, std::nullopt, profile_result);
 }
 
 }  // namespace rocm

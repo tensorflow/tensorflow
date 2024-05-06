@@ -166,7 +166,7 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
   // corresponding to the flattened memref with just the 'base' pointer.
   for (auto arguments = funcOp.getArguments(); !arguments.empty();
        operands = operands.drop_front()) {
-    auto memref = operands.getTypes().front().dyn_cast<MemRefType>();
+    auto memref = mlir::dyn_cast<MemRefType>(operands.getTypes().front());
     if (!memref) {
       // Scalar argument, advance by one.
       arguments = arguments.drop_front();
@@ -176,10 +176,10 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
     // memref is flattened to base, align, offset, strides and sizes.
     int64_t numArgs = 3 + memref.getRank() * 2;
     auto isPtr = [](BlockArgument arg) {
-      return arg.getType().isa<LLVM::LLVMPointerType>();
+      return mlir::isa<LLVM::LLVMPointerType>(arg.getType());
     };
     auto isInt = [](BlockArgument arg) {
-      return arg.getType().isa<IntegerType>();
+      return mlir::isa<IntegerType>(arg.getType());
     };
     // Bail out if the next num_args are not the expected type.
     if (static_cast<int64_t>(arguments.size()) < numArgs) break;

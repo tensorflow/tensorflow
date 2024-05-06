@@ -21,7 +21,11 @@ limitations under the License.
 #include <stack>
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"
@@ -45,16 +49,21 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/stablehlo_type_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace mlir::quant {
+
+using ::stablehlo::quantization::Method;
+using ::tsl::protobuf::TextFormat;
 
 // Default version number for native serialization.
 constexpr int64_t kDefaultVersion = 9;
@@ -62,30 +71,34 @@ constexpr int64_t kDefaultVersion = 9;
 constexpr StringRef kPlatformCpu = "CPU";
 // Name of `tf.XlaCallModule`'s dictionary attribute for keeping the
 // deserialized stablehlo module's attributes.
-constexpr llvm::StringRef kStablehloModuleAttrsAttrName =
-    "_stablehlo_module_attrs";
+constexpr StringRef kStablehloModuleAttrsAttrName = "_stablehlo_module_attrs";
 // Attribute required for running shape refinement pass enabled in XlaCallModule
 // version 8 and above.
-constexpr llvm::StringRef kUsesShapePolymorphismAttr =
-    "jax.uses_shape_polymorphism";
+constexpr StringRef kUsesShapePolymorphismAttr = "jax.uses_shape_polymorphism";
 
-// Checks if the op is inside a lifted function.
-bool IsInLiftedFunc(Operation& op) {
-  return op.getParentOfType<func::FuncOp>()->hasAttr(kFusedFunctionAttr);
+bool IsInLiftedFunc(Operation* op) {
+  if (op == nullptr) return false;
+  return op->getParentOfType<func::FuncOp>()->hasAttr(kFusedFunctionAttr);
+}
+
+bool IsInStableHloOpRegion(Operation* op) {
+  if (op == nullptr) return false;
+  auto parent_op = op->getParentOp();
+  return parent_op != nullptr && stablehlo::IsStablehloOp(parent_op);
 }
 
 // Inserts the function to the symbol table of the module thread-safely.
 StringAttr InsertToSymbolTable(Operation& module, Operation& function,
-                               const std::string& func_name) {
+                               const StringRef func_name) {
   static tensorflow::mutex* mtx = new tensorflow::mutex();
   tensorflow::mutex_lock lock(*mtx);
 
   SymbolTable symbol_table(&module);
-  std::string unique_name = func_name;
+  std::string unique_name = func_name.str();
   int32_t uniquing_counter = 0;
   while (symbol_table.lookup(unique_name) != nullptr) {
     ++uniquing_counter;
-    unique_name = func_name + "_" + std::to_string(uniquing_counter);
+    unique_name = absl::StrCat(func_name.str(), "_", uniquing_counter);
   }
   function.setAttr("sym_name",
                    StringAttr::get(module.getContext(), unique_name));
@@ -94,9 +107,11 @@ StringAttr InsertToSymbolTable(Operation& module, Operation& function,
 
 // Creates the TF::PartitionedCallOp with the given arguments and output types.
 // This function call op is for invoking the TF subgraphs.
-ValueRange createTFPartitionedCallOp(OpBuilder builder, Location location,
-                                     StringRef func_name,
-                                     TypeRange output_types, ValueRange args) {
+ValueRange CreateTFPartitionedCallOp(OpBuilder& builder,
+                                     const Location location,
+                                     const StringRef func_name,
+                                     const TypeRange output_types,
+                                     const ValueRange args) {
   TF::PartitionedCallOp call_op = builder.create<TF::PartitionedCallOp>(
       location, output_types, args,
       FlatSymbolRefAttr::get(builder.getStringAttr(func_name)),
@@ -105,7 +120,7 @@ ValueRange createTFPartitionedCallOp(OpBuilder builder, Location location,
   // Set the attribute to annotate this function call op as a quantizable spot.
   call_op->setAttr(
       kQuantTraitAttrName,
-      builder.getStringAttr(llvm::StringRef(
+      builder.getStringAttr(StringRef(
           std::string(QuantTraitValues[QuantizationTrait::FullyQuantizable]))));
 
   return call_op.getOutput();
@@ -113,20 +128,21 @@ ValueRange createTFPartitionedCallOp(OpBuilder builder, Location location,
 
 // Creates the TF::XlaCallModuleOp with the given arguments and output types.
 // This function call op is for invoking the StableHLO subgraphs.
-ValueRange createTFXlaCallModuleOp(OpBuilder builder, Location location,
-                                   StringRef func_name, TypeRange output_types,
-                                   ValueRange args) {
-  auto ctx = builder.getContext();
+ValueRange CreateTFXlaCallModuleOp(OpBuilder& builder, const Location location,
+                                   const StringRef func_name,
+                                   const TypeRange output_types,
+                                   const ValueRange args) {
+  MLIRContext* ctx = builder.getContext();
   // Collect the shapes of the output to fill up the Sout attribute.
   SmallVector<Attribute> shape_attrs;
   for (const Type result_type : output_types) {
     shape_attrs.push_back(
-        tf_type::ShapeAttr::get(ctx, result_type.cast<ShapedType>()));
+        tf_type::ShapeAttr::get(ctx, mlir::cast<ShapedType>(result_type)));
   }
   auto empty_array_attr = ArrayAttr::get(ctx, {});
   auto platforms = ArrayAttr::get(ctx, {StringAttr::get(ctx, kPlatformCpu)});
 
-  TF::XlaCallModuleOp call_op = builder.create<TF::XlaCallModuleOp>(
+  auto call_op = builder.create<TF::XlaCallModuleOp>(
       location,
       /*output=*/output_types,
       /*args=*/args,
@@ -152,7 +168,7 @@ ValueRange createTFXlaCallModuleOp(OpBuilder builder, Location location,
   // Set the attribute to annotate this function call op as a quantizable spot.
   call_op->setAttr(
       kQuantTraitAttrName,
-      builder.getStringAttr(llvm::StringRef(
+      builder.getStringAttr(StringRef(
           std::string(QuantTraitValues[QuantizationTrait::FullyQuantizable]))));
 
   // Set jax.uses_shape_polymorphism=true to enable shape refinement at runtime.
@@ -165,27 +181,25 @@ ValueRange createTFXlaCallModuleOp(OpBuilder builder, Location location,
 }
 
 // Creates the function call op based on the given call_op_type argument.
-ValueRange createFunctionCallOp(OpBuilder builder, Location location,
-                                FunctionCallOpType call_op_type,
-                                StringRef func_name, TypeRange output_types,
-                                ValueRange args) {
+ValueRange CreateFunctionCallOp(OpBuilder& builder, const Location location,
+                                const FunctionCallOpType call_op_type,
+                                const StringRef func_name,
+                                const TypeRange output_types,
+                                const ValueRange args) {
   switch (call_op_type) {
     case FunctionCallOpType::TFXlaCallModuleOp:
-      return createTFXlaCallModuleOp(builder, location, func_name, output_types,
+      return CreateTFXlaCallModuleOp(builder, location, func_name, output_types,
                                      args);
     case FunctionCallOpType::TFPartitionedCallOp:
-      return createTFPartitionedCallOp(builder, location, func_name,
+      return CreateTFPartitionedCallOp(builder, location, func_name,
                                        output_types, args);
-    default:
-      llvm_unreachable("unhandled call op type");
   }
 }
 
 // Finds ops in the paths from arguments to results. The ops is listed in an
 // order that the former ops shouldn't have any dependencies on the later ones.
-llvm::SmallVector<Operation*> FindOpsFromArgumentsToResults(
-    const llvm::SmallVector<Value>& arguments,
-    const llvm::SmallVector<Value>& results) {
+SmallVector<Operation*> FindOpsFromArgumentsToResults(
+    const ArrayRef<Value> arguments, const ArrayRef<Value> results) {
   std::queue<Value> value_queue;
   for (Value result : results) {
     value_queue.push(result);
@@ -206,7 +220,7 @@ llvm::SmallVector<Operation*> FindOpsFromArgumentsToResults(
     Operation* defining_node = current_value.getDefiningOp();
     if (defining_node == nullptr) continue;
     op_stack.push(defining_node);
-    for (const auto& arg : defining_node->getOperands()) {
+    for (Value arg : defining_node->getOperands()) {
       if (!argument_set.contains(arg.getImpl())) {
         value_queue.push(arg);
       }
@@ -214,7 +228,7 @@ llvm::SmallVector<Operation*> FindOpsFromArgumentsToResults(
   }
 
   // Remove duplicate ops from the op stack.
-  llvm::SmallVector<Operation*> sorted_ops;
+  SmallVector<Operation*> sorted_ops;
   absl::flat_hash_set<Operation*> unique_ops;
   while (!op_stack.empty()) {
     Operation* current_op = op_stack.top();
@@ -236,9 +250,9 @@ llvm::SmallVector<Operation*> FindOpsFromArgumentsToResults(
 // "0:transpose_a,1:transpose_b", where 0 and 1 are the respective attribute
 // identifiers.
 // This function returns success if all attributes could be found.
-LogicalResult SetAttributeMap(
-    MLIRContext& context, const llvm::SmallVector<NamedAttribute>& attributes,
-    const llvm::SmallVector<Operation*>& ops) {
+LogicalResult SetAttributeMap(MLIRContext& context,
+                              const ArrayRef<NamedAttribute> attributes,
+                              const ArrayRef<Operation*> ops) {
   // A map to find which operation an attribute belongs to.
   // The key for this map uses the entire NamedAttribute object, i.e. the
   // {attribute_name, attribute_value} pair.
@@ -253,7 +267,7 @@ LogicalResult SetAttributeMap(
     const NamedAttribute& attribute = attributes[idx];
     // Skip the following steps if the attribute value is `NullAttribute`.
     if (const auto string_attr =
-            attribute.getValue().dyn_cast_or_null<StringAttr>();
+            mlir::dyn_cast_or_null<StringAttr>(attribute.getValue());
         string_attr != nullptr &&
         string_attr.getValue().equals(kNullAttributeValue)) {
       continue;
@@ -263,8 +277,8 @@ LogicalResult SetAttributeMap(
             attr_to_op_map.begin(), attr_to_op_map.end(), [&](auto attr_op) {
               return std::get<0>(attr_op).getName() == attribute.getName();
             }) == attr_to_op_map.end()) {
-      mlir::emitError(UnknownLoc::get(&context),
-                      "Could not find attribute: " + attribute.getName().str());
+      emitError(UnknownLoc::get(&context),
+                "Could not find attribute: " + attribute.getName().str());
       return failure();
     }
 
@@ -286,7 +300,7 @@ LogicalResult SetAttributeMap(
 
       // Append "<identifier>:<attribute_name>". Ex) "0:transpose_a".
       const std::string identifier = std::to_string(idx);
-      const mlir::StringAttr attribute_name = attribute.getName();
+      const StringAttr attribute_name = attribute.getName();
       absl::StrAppend(&new_attr_map_str, identifier, ":", attribute_name.str());
       owner_op->setAttr(kAttrMapAttribute,
                         StringAttr::get(&context, new_attr_map_str));
@@ -296,14 +310,14 @@ LogicalResult SetAttributeMap(
 }
 
 // Creates a function to wrap the section between arguments and results.
-llvm::SmallVector<Value, 4> LiftAsFunctionCall(
-    OpBuilder builder, Location location, FunctionCallOpType call_op_type,
-    StringRef func_name, const llvm::SmallVector<Value>& arguments,
-    const llvm::SmallVector<Value>& results,
-    const llvm::SmallVector<NamedAttribute>& attributes) {
+SmallVector<Value, 4> LiftAsFunctionCall(
+    OpBuilder& builder, const Location location,
+    const FunctionCallOpType call_op_type, const StringRef func_name,
+    const ArrayRef<Value> arguments, const ArrayRef<Value> results,
+    const ArrayRef<NamedAttribute> attributes) {
   MLIRContext* context = builder.getContext();
   if (results.empty()) {
-    mlir::emitError(UnknownLoc::get(context), "No result values specified");
+    emitError(UnknownLoc::get(context), "No result values specified");
     return {};
   }
   Operation* result_op = results[0].getDefiningOp();
@@ -317,10 +331,11 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   TypeRange result_types{ValueRange{results}};
   auto func_type = FunctionType::get(context, arg_types, result_types);
 
-  llvm::SmallVector<Location> arg_locs;
-  for (const auto& arg : arguments) {
+  SmallVector<Location> arg_locs;
+  for (Value arg : arguments) {
     arg_locs.push_back(arg.getLoc());
   }
+
   auto wrap_func = builder.create<func::FuncOp>(location, func_name, func_type);
   wrap_func.setVisibility(SymbolTable::Visibility::Private);
   // The callee function for TF::XlaCallModuleOp must have this attribute.
@@ -354,34 +369,36 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
     builder.clone(*op, mapping);
   }
 
-  llvm::SmallVector<Value> return_values;
+  SmallVector<Value> return_values;
   for (Value result : results) {
     return_values.push_back(mapping.lookupOrNull(result));
   }
-  builder.create<mlir::func::ReturnOp>(location, return_values);
+  builder.create<func::ReturnOp>(location, return_values);
 
   // Create a function call to the newly created function.
   StringAttr new_func_name =
-      InsertToSymbolTable(*module, *wrap_func, func_name.str());
+      InsertToSymbolTable(*module, *wrap_func, func_name);
   builder.setInsertionPointAfter(result_op);
   ValueRange new_results =
-      createFunctionCallOp(builder, call_op_loc, call_op_type,
+      CreateFunctionCallOp(builder, call_op_loc, call_op_type,
                            new_func_name.getValue(), result_types, arguments);
-  return llvm::SmallVector<Value, 4>(new_results.begin(), new_results.end());
+  return SmallVector<Value, 4>(new_results.begin(), new_results.end());
 }
 
-llvm::SmallVector<Value, 4> LiftAsFunctionCall(
-    OpBuilder builder, Location location, FunctionCallOpType call_op_type,
-    StringRef func_name, const llvm::SmallVector<Value>& arguments,
-    const llvm::SmallVector<Value>& results) {
-  llvm::SmallVector<NamedAttribute> attributes;
+SmallVector<Value, 4> LiftAsFunctionCall(OpBuilder& builder,
+                                         const Location location,
+                                         const FunctionCallOpType call_op_type,
+                                         const StringRef func_name,
+                                         const ArrayRef<Value> arguments,
+                                         const ArrayRef<Value> results) {
+  SmallVector<NamedAttribute> attributes;
   return LiftAsFunctionCall(builder, location, call_op_type, func_name,
                             arguments, results, attributes);
 }
 
-llvm::SmallVector<Value> AppendToVector(
-    const llvm::SmallVector<Value>& arguments, Value append) {
-  llvm::SmallVector<Value> ret(arguments);
+SmallVector<Value> AppendToVector(const ArrayRef<Value> arguments,
+                                  Value append) {
+  SmallVector<Value> ret(arguments);
   ret.push_back(append);
   return ret;
 }
@@ -395,7 +412,7 @@ llvm::SmallVector<Value> AppendToVector(
 //    could process the following equation by setting the attributes properly:
 //    abc,cd->abd.
 // 4. The output should be in the form: [batch dims][lhs dims][rhs dims]
-bool IsEinsumSupportedByXlaDotV2(mlir::StringAttr equation_attr) {
+bool IsEinsumSupportedByXlaDotV2(StringAttr equation_attr) {
   StringRef equation = equation_attr.getValue();
 
   if (!absl::StrContains(equation, "->") || !absl::StrContains(equation, ",") ||
@@ -461,6 +478,50 @@ bool IsEinsumSupportedByXlaDotV2(mlir::StringAttr equation_attr) {
   int batch_dim_size = std::max(rhs_batch_dim_size, lhs_batch_dim_size);
   return lhs_out_idx_start >= batch_dim_size &&
          rhs_out_idx_start >= batch_dim_size;
+}
+
+absl::StatusOr<Method> GetQuantizationMethod(absl::Nonnull<Operation*> op) {
+  const auto quantization_method_attr =
+      op->getAttrOfType<StringAttr>(kQuantizationMethodAttr);
+  if (!quantization_method_attr) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Attribute ", kQuantizationMethodAttr.str(), " is not found."));
+  }
+
+  Method quantization_method;
+  const std::string method_txtpb = quantization_method_attr.getValue().str();
+  if (!TextFormat::ParseFromString(method_txtpb, &quantization_method)) {
+    return absl::InternalError(
+        absl::StrCat("Failed to parse Method from textproto: ", method_txtpb));
+  }
+
+  return quantization_method;
+}
+
+Method GetQuantizationMethodOrDefault(absl::Nonnull<Operation*> op) {
+  absl::StatusOr<Method> method = GetQuantizationMethod(op);
+  if (method.status().code() == absl::StatusCode::kInternal) {
+    // This indicates that the `Method` protobuf string is corrupt, but this
+    // function ignores it and returns the default instance.
+    op->emitError(absl::StrCat("Failed to get quantization method: ",
+                               method.status().ToString()));
+  }
+  return method.ok() ? *method : Method::default_instance();
+}
+
+bool HasWeightOnlyPtqMethod(TF::XlaCallModuleOp xla_call_module_op) {
+  Method method = GetQuantizationMethodOrDefault(xla_call_module_op);
+  return method.has_weight_only_ptq();
+}
+
+bool IsWeightOnlyQuantizableOp(const Operation& op) {
+  if (auto call_op = dyn_cast<TF::XlaCallModuleOp>(op)) {
+    StringRef entry_function_name = GetEntryFunctionName(call_op);
+    absl::StatusOr<Method> quantization_method = GetQuantizationMethod(call_op);
+    return ContainsConvOrDot(entry_function_name) && quantization_method.ok() &&
+           quantization_method->has_weight_only_ptq();
+  }
+  return false;
 }
 
 }  // namespace mlir::quant

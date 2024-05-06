@@ -53,8 +53,9 @@ namespace {
 static Status PopulateResultTupleBuffers(const ShapedBuffer& result,
                                          se::Stream* stream,
                                          se::Stream* transfer_stream) {
-  TF_ASSIGN_OR_RETURN(auto transfer_manager, TransferManager::GetForPlatform(
-                                                 stream->parent()->platform()));
+  TF_ASSIGN_OR_RETURN(
+      auto transfer_manager,
+      TransferManager::GetForPlatform(stream->parent()->GetPlatform()));
   if (transfer_manager->CanShapedBufferBeAccessedNow(stream->parent(),
                                                      result)) {
     TF_RETURN_IF_ERROR(transfer_manager->WriteTupleIndexTablesAsync(
@@ -70,14 +71,14 @@ static Status PopulateResultTupleBuffers(const ShapedBuffer& result,
 
 }  // namespace
 
-StatusOr<ExecutionOutput>
+absl::StatusOr<ExecutionOutput>
 TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
     const Shape& shape, const HloInputOutputAliasConfig& alias_config,
     se::DeviceMemoryAllocator* allocator,
     std::vector<ExecutionInput>* arguments, se::Stream* stream,
     se::Stream* transfer_stream) {
   auto stream_exec = stream->parent();
-  auto platform = stream_exec->platform();
+  auto platform = stream_exec->GetPlatform();
   TF_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
@@ -101,7 +102,8 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
 
   TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
-          std::optional<HloInputOutputAliasConfig::Alias> alias) {
+          std::optional<HloInputOutputAliasConfig::Alias> alias)
+          -> absl::Status {
         if (alias && alias->must_alias()) {
           VLOG(1) << alias->ToString();
           const MaybeOwningDeviceMemory& original_input =
@@ -204,7 +206,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
   return std::move(result);
 }
 
-StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
+absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments,
     HloExecutionProfile* /*hlo_execution_profile*/) {

@@ -16,7 +16,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir::quant {

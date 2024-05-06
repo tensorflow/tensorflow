@@ -69,7 +69,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
       : platform_id_(platform_id),
         platform_name_(platform_name),
         platform_version_(platform_version),
-        gpu_topology_(gpu_device_ids),
+        gpu_topology_(gpu_device_ids, platform_version),
         attributes_(attributes) {}
 
   bool operator==(const StreamExecutorGpuTopologyDescription& other) const {
@@ -132,6 +132,10 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
     return attributes_;
   }
 
+  StatusOr<Layout> GetDefaultLayout(
+      PrimitiveType element_type,
+      absl::Span<const int64_t> dims) const override;
+
  private:
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
@@ -145,6 +149,7 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
   StreamExecutorGpuDevice(int id,
                           std::unique_ptr<LocalDeviceState> local_device_state,
                           std::string device_kind, std::string device_vendor,
+                          std::string compute_capability, int core_count,
                           int node_id, int slice_index = 0);
 
   int slice_index() const;
@@ -191,9 +196,9 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtDevice* device) override;
 
-  PjRtFuture<Status> CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
-                                            int64_t offset,
-                                            int64_t transfer_size) override;
+  PjRtFuture<> CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
+                                      int64_t offset,
+                                      int64_t transfer_size) override;
 
   absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
       const override {
@@ -233,6 +238,18 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
     int node_id);
+
+std::string MakeComputeCapabilityString(const se::DeviceDescription* desc);
+
+Status BuildDistributedDevices(
+    std::string_view platform_name,
+    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
+    int node_id, int num_nodes,
+    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>* devices,
+    gpu::GpuExecutableRunOptions* gpu_executable_run_options,
+    std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
+    absl::Duration get_local_topology_timeout = absl::Minutes(2),
+    absl::Duration get_global_topology_timeout = absl::Minutes(5));
 
 struct GpuClientOptions {
   GpuAllocatorConfig allocator_config;

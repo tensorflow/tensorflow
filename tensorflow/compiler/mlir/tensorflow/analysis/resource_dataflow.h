@@ -32,6 +32,10 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace TF {
@@ -39,11 +43,10 @@ namespace TF {
 // Used as a lattice value.
 struct ResourceConstructingOps {
   explicit ResourceConstructingOps(Operation *op = nullptr);
-  static ResourceConstructingOps getPessimisticValueState(MLIRContext *context);
-  static ResourceConstructingOps getPessimisticValueState(Value value);
+  static ResourceConstructingOps EntryState(MLIRContext *context);
+  static ResourceConstructingOps EntryState(Value value);
   bool operator==(const ResourceConstructingOps &rhs) const {
-    return ops == rhs.ops &&
-           is_on_composite_device == rhs.is_on_composite_device;
+    return ops == rhs.ops;
   }
 
   static ResourceConstructingOps join(const ResourceConstructingOps &lhs,
@@ -53,29 +56,27 @@ struct ResourceConstructingOps {
   // The operation(s) which created the resource value.
   // IR constructs (i.e., GlobalTensorOp) are not const-correct.
   mutable DenseSet<Operation *> ops;
+};
+
+struct IsComposite {
+  explicit IsComposite(Operation *op = nullptr);
+  static IsComposite EntryState(MLIRContext *context);
+  static IsComposite EntryState(Value value);
+  bool operator==(const IsComposite &rhs) const {
+    return is_on_composite_device == rhs.is_on_composite_device;
+  }
+
+  static IsComposite join(const IsComposite &lhs, const IsComposite &rhs);
+  void print(raw_ostream &os) const;
 
   bool is_on_composite_device = false;
 };
 
-class ResourceDataflowAnalysis
-    : public dataflow::SparseForwardDataFlowAnalysis<
-          dataflow::Lattice<ResourceConstructingOps>> {
- public:
-  using StateT = dataflow::Lattice<ResourceConstructingOps>;
-  using dataflow::SparseForwardDataFlowAnalysis<
-      StateT>::SparseForwardDataFlowAnalysis;
-  ~ResourceDataflowAnalysis() override = default;
+typedef dataflow::Lattice<ResourceConstructingOps> ResourceDataflowState;
+typedef dataflow::Lattice<IsComposite> IsCompositeDataflowState;
 
-  void visitOperation(Operation *op, ArrayRef<const StateT *> operands,
-                      ArrayRef<StateT *> results) override;
-
-  void setToEntryState(StateT *lattice) override {
-    propagateIfChanged(
-        lattice,
-        lattice->join(ResourceConstructingOps::getPessimisticValueState(
-            lattice->getPoint())));
-  }
-};
+void LoadResourceDataflowAnalysis(DataFlowSolver &solver);
+void LoadIsCompositeDataflowAnalysis(DataFlowSolver &solver);
 
 }  // namespace TF
 }  // namespace mlir

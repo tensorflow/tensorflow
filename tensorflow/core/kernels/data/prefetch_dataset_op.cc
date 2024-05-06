@@ -297,7 +297,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      if (ctx->element_count().has_value()) {
+      if (ctx->restored_element_count().has_value()) {
         tsl::mutex_lock l(input_mu_);
         return RestoreInput(ctx, reader, input_impl_);
       }
@@ -447,9 +447,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       Status s = buffer_.front().status;
       if (s.ok()) {
         int64_t buffer_element_id = buffer_.front().uid;
-        profiler::TraceMe traceme(
+        tsl::profiler::TraceMe traceme(
             [&] {
-              return profiler::TraceMeEncode(
+              return tsl::profiler::TraceMeEncode(
                   "PrefetchConsume", {{"element_id", buffer_element_id}});
             },
             profiler::kInfo);
@@ -552,9 +552,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         bool end_of_sequence = false;
         BufferElement buffer_element(ctx.get());
         {
-          profiler::TraceMe traceme(
+          tsl::profiler::TraceMe traceme(
               [&] {
-                return profiler::TraceMeEncode(
+                return tsl::profiler::TraceMeEncode(
                     "PrefetchProduce", {{"element_id", buffer_element.uid}});
               },
               profiler::kInfo);

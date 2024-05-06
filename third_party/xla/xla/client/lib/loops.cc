@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<std::vector<XlaOp>> WhileLoopHelper(
+absl::StatusOr<std::vector<XlaOp>> WhileLoopHelper(
     const WhileLoopHelperConditionFunction& condition_function,
     const WhileLoopHelperBodyFunction& body_function,
     absl::Span<const XlaOp> initial_values, absl::string_view name,
@@ -83,19 +83,19 @@ StatusOr<std::vector<XlaOp>> WhileLoopHelper(
   return unpack_tuple(outputs, arity, builder);
 }
 
-StatusOr<std::vector<XlaOp>> ForEachIndex(
+absl::StatusOr<std::vector<XlaOp>> ForEachIndex(
     int64_t num_iterations, PrimitiveType num_iterations_type,
     const ForEachIndexBodyFunction& body_function,
     absl::Span<const XlaOp> initial_values, absl::string_view name,
     XlaBuilder* builder) {
   auto while_cond_fn = [&](absl::Span<const XlaOp> values,
-                           XlaBuilder* cond_builder) -> StatusOr<XlaOp> {
+                           XlaBuilder* cond_builder) -> absl::StatusOr<XlaOp> {
     return Lt(values[0], ConstantR0WithType(cond_builder, num_iterations_type,
                                             num_iterations));
   };
   auto while_body_fn =
       [&](absl::Span<const XlaOp> values,
-          XlaBuilder* body_builder) -> StatusOr<std::vector<XlaOp>> {
+          XlaBuilder* body_builder) -> absl::StatusOr<std::vector<XlaOp>> {
     XlaOp iteration = values[0];
 
     std::vector<XlaOp> updated_values;

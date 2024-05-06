@@ -18,11 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
-#include <vector>
 
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
@@ -37,14 +34,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/compilation_environments.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -58,6 +53,14 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
+
+// Bump this version whenever you change the structure of the results.
+// LINT.IfChange(version)
+constexpr int kVersion = 3;
+// LINT.ThenChange()
+
+}  // namespace
 
 using AutotuneCacheMap = absl::flat_hash_map<AutotuneCacheKey, AutotuneResult>;
 
@@ -108,6 +111,7 @@ static void SerializeAutotuneEntry(AutotuneResults* results,
     SerializeAutotuneEntry(results, k, &result);
   }
 
+  results->set_version(kVersion);
   SortAutotuneResults(results);
 
   return absl::OkStatus();
@@ -167,8 +171,19 @@ static AutotuneResult* TryFindInCache(const AutotuneCacheKey& key) {
   absl::MutexLock lock(&autotune_cache_mu);
   auto it = autotune_cache.find(key);
   if (it != autotune_cache.end()) {
-    VLOG(1) << "Autotune cache hit";
+    // Cache hit.
+    if (VLOG_IS_ON(1)) {
+      LOG(INFO) << "Autotune cache hit";
+    } else if (VLOG_IS_ON(2)) {
+      LOG(INFO) << "Autotune cache hit: key = " << key.ToString();
+    }
     return &it->second;
+  }
+
+  if (VLOG_IS_ON(1)) {
+    LOG(INFO) << "Autotune cache miss";
+  } else if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "Autotune cache miss: key = " << key.ToString();
   }
   return nullptr;
 }
@@ -192,9 +207,17 @@ static AutotuneResult* TryFindInCache(const AutotuneCacheKey& key) {
 /*static*/ absl::StatusOr<AutotuneResult> AutotunerUtil::Autotune(
     const HloInstruction* instr, const AutotuneConfig& config,
     const AutotuneNoCacheFn& autotune_fn) {
-  AutotuneCacheKey key = GetKey(instr, config);
+  const AutotuneCacheKey key = GetKey(instr, config);
   if (AutotuneResult* res = TryFindInCache(key)) {
     return *res;
+  }
+
+  // Cache miss.
+  if (config.should_require_complete_aot_autotune_results()) {
+    return NotFound(
+        "Complete XLA AOT autotuning results are required, but no AOT result "
+        "was found for key: %s",
+        key.ToString());
   }
 
   TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result, autotune_fn());
@@ -205,11 +228,6 @@ static AutotuneResult* TryFindInCache(const AutotuneCacheKey& key) {
 }
 
 namespace {
-
-// Bump this version whenever you change the structure of the results.
-// LINT.IfChange(version)
-constexpr int kVersion = 3;
-// LINT.ThenChange()
 
 bool IsTextProtoPath(absl::string_view file_path) {
   return absl::EndsWith(file_path, ".txt") ||
@@ -245,27 +263,36 @@ bool IsTextProtoPath(absl::string_view file_path) {
 /*static*/ absl::StatusOr<std::string> AutotunerUtil::SerializeAutotuneResults(
     bool as_textproto) {
   AutotuneResults results;
-  results.set_version(kVersion);
   TF_RETURN_IF_ERROR(SerializeAutotuneResults(&results));
   return AutotuneResultsToString(results, as_textproto);
 }
 
-/*static*/ absl::Status AutotunerUtil::SerializeAutotuneResultsToFile(
-    absl::string_view file_path) {
+/* static */ absl::Status AutotunerUtil::SerializeAutotuneResultsToFile(
+    const AutotuneResults& results, absl::string_view file_path) {
   TF_RET_CHECK(!file_path.empty());
+  TF_RET_CHECK(results.version() > 0)
+      << "Did you call SerializeAutotuneResults to get this AutotuneResults?";
 
   std::string resolved_path;
   if (!tsl::io::ResolveTestPrefixes(file_path, resolved_path)) {
     return FailedPrecondition("File path can not be resolved: %s", file_path);
   }
 
-  TF_ASSIGN_OR_RETURN(std::string autotune_results_str,
-                      SerializeAutotuneResults(IsTextProtoPath(resolved_path)));
+  TF_ASSIGN_OR_RETURN(
+      std::string autotune_results_str,
+      AutotuneResultsToString(results, IsTextProtoPath(resolved_path)));
   TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), resolved_path,
                                             autotune_results_str));
   LOG(INFO) << "Autotune results serialized to file: " << resolved_path;
 
   return absl::OkStatus();
+}
+
+/*static*/ absl::Status AutotunerUtil::SerializeAutotuneResultsToFile(
+    absl::string_view file_path) {
+  AutotuneResults results;
+  TF_RETURN_IF_ERROR(SerializeAutotuneResults(&results));
+  return SerializeAutotuneResultsToFile(results, file_path);
 }
 
 /*static*/ absl::Status AutotunerUtil::LoadAutotuneResultsFromFile(
@@ -295,12 +322,8 @@ bool IsTextProtoPath(absl::string_view file_path) {
 
 /*static*/ absl::StatusOr<se::RedzoneAllocator>
 AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
-                                      const DebugOptions& opts,
-                                      se::Stream* force_stream) {
-  se::Stream* stream = force_stream;
-  if (stream == nullptr) {
-    TF_ASSIGN_OR_RETURN(stream, config.GetStream());
-  }
+                                      const DebugOptions& opts) {
+  TF_ASSIGN_OR_RETURN(se::Stream * stream, config.GetStream());
   return se::RedzoneAllocator(
       stream, config.GetAllocator(), PtxOptsFromDebugOptions(opts),
       /*memory_limit=*/std::numeric_limits<int64_t>::max(),
@@ -313,6 +336,13 @@ AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
 AutotunerUtil::SerializeAutotuneResultsForModule(
     const HloModule& module, const AutotuneConfig& autotune_config,
     bool as_textproto) {
+  AutotuneResults results =
+      SerializeAutotuneResultsForModule(module, autotune_config);
+  return AutotuneResultsToString(results, as_textproto);
+}
+
+/*static*/ AutotuneResults AutotunerUtil::SerializeAutotuneResultsForModule(
+    const HloModule& module, const AutotuneConfig& autotune_config) {
   AutotuneResults results;
   results.set_version(kVersion);
 
@@ -325,7 +355,7 @@ AutotunerUtil::SerializeAutotuneResultsForModule(
   }
 
   SortAutotuneResults(&results);
-  return AutotuneResultsToString(results, as_textproto);
+  return results;
 }
 
 }  // namespace gpu

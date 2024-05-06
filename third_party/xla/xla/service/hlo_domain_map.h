@@ -41,14 +41,14 @@ class HloDomainMap {
   // computation, of the given kind. If domain_kind is not empty, only the
   // kDomain instructions of domain_kind will be considered as separators.
   // Otherwise every kDomain instruction will be splitting domains.
-  static StatusOr<std::unique_ptr<HloDomainMap>> Create(
+  static absl::StatusOr<std::unique_ptr<HloDomainMap>> Create(
       HloComputation* computation, std::string domain_kind);
 
   // Creates a new HloDomainMap, creating all the domains within the input
   // module, of the given kind. If domain_kind is not empty, only the
   // kDomain instructions of domain_kind will be considered as separators.
   // Otherwise every kDomain instruction will be splitting domains.
-  static StatusOr<std::unique_ptr<HloDomainMap>> Create(
+  static absl::StatusOr<std::unique_ptr<HloDomainMap>> Create(
       HloModule* module, std::string domain_kind);
 
   // Retrieves all the domains the input module or computation are composed by.
@@ -105,7 +105,7 @@ class HloDomainMap {
                       DomainMetadata::Domain* domain) const;
 
   // Creates a domain data structure using the ExpandDomain() API.
-  StatusOr<std::unique_ptr<DomainMetadata::Domain>> CreateDomain(
+  absl::StatusOr<std::unique_ptr<DomainMetadata::Domain>> CreateDomain(
       HloInstruction* instruction,
       const InstructionOrderMap& instructions_order) const;
 

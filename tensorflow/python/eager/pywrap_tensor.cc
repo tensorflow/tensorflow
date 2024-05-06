@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 // Must be included first
 // clang-format off
-#include "tsl/python/lib/core/numpy.h" //NOLINT
+#include "xla/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
 #include "tensorflow/python/eager/pywrap_tensor.h"
 
+#include <Python.h>  // NOLINT
 #include <stdlib.h>  // NOLINT
 #include <string.h>  // NOLINT
 
@@ -419,6 +420,9 @@ extern "C" {
 
 static const int kMaxEagerTensorParentSize = 64;
 
+// Type object for EagerTensor. This is set by TFE_Py_InitEagerTensor.
+PyTypeObject* EagerTensorType = nullptr;
+
 // TODO(agarwal): store context handle in EagerTensor.
 typedef struct EagerTensor {
   PyObject_HEAD;
@@ -435,8 +439,6 @@ typedef struct EagerTensor {
   // tensors, this will contain a serialized HandleData proto with shape
   // inference metadata about shapes and dtypes of resources accessible from
   // this handle.
-  // Note that we assume that handle_data cannot participate in reference
-  // cycles, and hence don't provide GC support for it.
   PyObject* handle_data;
 
   // This stores `_tensor_shape`, a cached `TensorShape` object, and is set the
@@ -458,9 +460,7 @@ typedef struct EagerTensor {
   // Per-instance attribute dictionary, to support monkey patching
   // (e.g. EagerTensor.assign when slicing variables). This dictionary is
   // created by CPython the first time an attribute is assigned, pointed to by
-  // tp_dictoffset. Note that garbage collection is not enabled for
-  // EagerTensors, so assigning objects to EagerTensor attributes which require
-  // garbage collection is likely to cause issues.
+  // tp_dictoffset.
   PyObject* dict;
 } EagerTensor;
 
@@ -508,7 +508,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   self->handle_data = Py_None;
   Py_INCREF(Py_None);
   self->tensor_shape = Py_None;
-  new (&self->status.status) auto(::tensorflow::OkStatus());
+  new (&self->status.status) auto(absl::OkStatus());
   self->dict = nullptr;
   self->weakreflist = nullptr;
   self->context = nullptr;
@@ -548,28 +548,31 @@ void EagerTensor_dealloc(EagerTensor* self) {
   // Needs to happen before any actual destruction.
   PyObject_ClearWeakRefs((PyObject*)self);
 
-  Py_DECREF(self->handle_data);
-  Py_DECREF(self->tensor_shape);
-  // If an attribute dictionary has been created, release it. Note that this
-  // is only ever created by CPython's attribute setting methods; we don't
-  // create it ourselves.
-  Py_CLEAR(self->dict);
+  PyObject* context = self->context;
+
+  // Ensure context is alive during Destructor calls.
+  Py_XINCREF(context);
+
+  Py_TYPE(self)->tp_clear((PyObject*)self);
+
   if (self->handle != nullptr) {
     // Destructor may call arbitrary functions that end up calling into
     // Python from another thread.
-    Py_BEGIN_ALLOW_THREADS;
-    TFE_DeleteTensorHandle(self->handle);
-    Py_END_ALLOW_THREADS;
+    TFE_TensorHandle* handle = self->handle;
     self->handle = nullptr;
+    Py_BEGIN_ALLOW_THREADS;
+    TFE_DeleteTensorHandle(handle);
+    Py_END_ALLOW_THREADS;
   }
 
   // Decref context after deleting the tensor handle.
-  Py_XDECREF(self->context);
+  Py_XDECREF(context);
 
   // We have the global interpreter lock, so use this chance to perform delayed
   // refcount decrements.
   tensorflow::ClearDecrefCache();
   auto id = self->id;
+  self->id = -1;  // get_uid() starts from 0.
   Py_TYPE(self)->tp_free(self);
   TFE_Py_TapeSetDeleteTrace(id);
 }
@@ -592,7 +595,7 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   if (code != TF_OK) {
     RaiseExceptionTypeFromTFStatus(&self->status);
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return nullptr;
   }
   PyObject* shape = PyTuple_New(n);
@@ -618,7 +621,7 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
         PyErr_SetString(PyExc_RuntimeError, "Error while creating shape");
       }
       // Cleanup self->status before returning.
-      self->status.status = ::tensorflow::OkStatus();
+      self->status.status = absl::OkStatus();
       Py_DECREF(shape);
       if (dim != nullptr) Py_DECREF(dim);
       return nullptr;
@@ -632,7 +635,7 @@ static PyObject* EagerTensor_rank(EagerTensor* self) {
   int num_dims = TFE_TensorHandleNumDims(self->handle, &self->status);
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return nullptr;
   }
 #if PY_MAJOR_VERSION < 3
@@ -648,7 +651,7 @@ static PyObject* EagerTensor_num_elements(EagerTensor* self) {
   int n = TFE_TensorHandleNumElements(handle, &self->status);
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return nullptr;
   }
   return PyLong_FromLongLong(n);
@@ -699,7 +702,7 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
                                                   PyExc_RuntimeError)) {
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return nullptr;
   }
 
@@ -716,7 +719,7 @@ static PyObject* EagerTensor_numpy_internal(EagerTensor* self) {
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
     Py_XDECREF(py_array);
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return nullptr;
   } else {
     return PyArray_Return(reinterpret_cast<PyArrayObject*>(py_array));
@@ -755,7 +758,7 @@ static PyObject* EagerTensor_device(EagerTensor* self) {
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
                                                   PyExc_ValueError)) {
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return nullptr;
   }
 #if PY_MAJOR_VERSION >= 3
@@ -772,7 +775,7 @@ static PyObject* EagerTensor_backing_device(EagerTensor* self) {
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
                                                   PyExc_ValueError)) {
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return nullptr;
   }
 #if PY_MAJOR_VERSION >= 3
@@ -854,13 +857,53 @@ static int EagerTensor_getbuffer(EagerTensor* self, Py_buffer* view,
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
                                                   PyExc_BufferError)) {
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return -1;
   }
   if (PyObject_GetBuffer(py_array.get(), view, flags) < 0) {
     return -1;
   }
   view->readonly = 1;
+  return 0;
+}
+
+// dynamic_attr: Allow the garbage collector to traverse the internal instance
+// `__dict__`.
+static int EagerTensor_traverse(PyObject* self, visitproc visit, void* arg) {
+#if PY_VERSION_HEX < 0x030C0000  // < Python 3.12
+  PyObject*& dict = *_PyObject_GetDictPtr(self);
+  Py_VISIT(dict);
+#else
+  _PyObject_VisitManagedDict(self, visit, arg);
+#endif  // PY_VERSION_HEX < 0x030C0000
+  Py_VISIT(((EagerTensor*)self)->handle_data);
+  Py_VISIT(((EagerTensor*)self)->tensor_shape);
+  if (((EagerTensor*)self)->context) {
+    Py_VISIT(((EagerTensor*)self)->context);
+  }
+#if PY_VERSION_HEX >= 0x03090000  // >= Python 3.9
+  // https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_traverse
+  Py_VISIT(Py_TYPE(self));
+#endif  // PY_VERSION_HEX >= 0x03090000
+  return 0;
+}
+
+// dynamic_attr: Allow the GC to clear the dictionary.
+extern int EagerTensor_clear(PyObject* self) {
+  // If an attribute dictionary has been created, release it. Note that this
+  // is only ever created by CPython's attribute setting methods; we don't
+  // create it ourselves.
+#if PY_VERSION_HEX < 0x030C0000  // < Python 3.12
+  PyObject*& dict = *_PyObject_GetDictPtr(self);
+  Py_CLEAR(dict);
+#else
+  _PyObject_ClearManagedDict(self);
+#endif  // PY_VERSION_HEX < 0x030C0000
+
+  Py_CLEAR(((EagerTensor*)self)->handle_data);
+  Py_CLEAR(((EagerTensor*)self)->tensor_shape);
+  Py_CLEAR(((EagerTensor*)self)->context);
+
   return 0;
 }
 
@@ -887,15 +930,15 @@ static PyBufferProcs EagerTensor_as_buffer = {
 // However it provides a new function, PyType_FromSpecWithBases, to create
 // types dynamically.
 
-// Type object for EagerTensor. This is set by TFE_Py_InitEagerTensor.
-PyTypeObject* EagerTensorType = nullptr;
-
 #if PY_MAJOR_VERSION >= 3
 static PyType_Slot EagerTensor_Type_slots[] = {
     {Py_tp_dealloc, reinterpret_cast<void*>(EagerTensor_dealloc)},
     {Py_tp_methods, reinterpret_cast<void*>(EagerTensor_methods)},
     {Py_tp_getset, reinterpret_cast<void*>(EagerTensor_getsetters)},
     {Py_tp_init, reinterpret_cast<void*>(EagerTensor_init)},
+    {Py_tp_clear, reinterpret_cast<void*>(EagerTensor_clear)},
+    {Py_tp_traverse, reinterpret_cast<void*>(EagerTensor_traverse)},
+    {Py_tp_free, reinterpret_cast<void*>(PyObject_GC_Del)},
     {0, nullptr},
 };
 #else
@@ -977,7 +1020,7 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
     Py_INCREF(Py_None);
     t->tensor_shape = Py_None;
     t->handle = handle;
-    new (&t->status.status) auto(::tensorflow::OkStatus());
+    new (&t->status.status) auto(absl::OkStatus());
     t->weakreflist = nullptr;
     PyObject* py_context = GetPyEagerContext();
     if (py_context == nullptr) {
@@ -1014,7 +1057,7 @@ int64_t PyEagerTensor_NumElements(PyObject* tensor) {
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&as_c_eager_tensor->status,
                                                   PyExc_ValueError)) {
     // Cleanup status before returning.
-    as_c_eager_tensor->status.status = ::tensorflow::OkStatus();
+    as_c_eager_tensor->status.status = absl::OkStatus();
     return -1;
   }
 
@@ -1095,16 +1138,12 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
     PyErr_SetString(PyExc_RuntimeError, "Error while creating EagerTensorType");
     return nullptr;
   }
-#if PY_VERSION_HEX >= 0x030B0000
-  // Py_TPFLAGS_MANAGED_DICT is turned on by PyType_FromSpecWithBases by
-  // default. It tells Python that the class's __dict__ should be managed by VM,
-  // but EagerTensor sets a `tp_dictoffset` (below) to explicitly manage the
-  // dict. See:
-  // - https://docs.python.org/3/c-api/typeobj.html#c.Py_TPFLAGS_MANAGED_DICT
-  // - https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_dictoffset
-  EagerTensorType->tp_flags &= ~Py_TPFLAGS_MANAGED_DICT;
-#endif
+  EagerTensorType->tp_flags |= Py_TPFLAGS_HAVE_GC;
+#if PY_VERSION_HEX < 0x030B0000  // < Python 3.11
+  // After Python 3.11, Py_TPFLAGS_MANAGED_DICT is enabled by default from
+  // subclasses of classes defined in Python.
   EagerTensorType->tp_dictoffset = offsetof(EagerTensor, dict);
+#endif  // PY_VERSION_HEX < 0x030B0000
   EagerTensorType->tp_as_buffer = &EagerTensor_as_buffer;
 #else
   _EagerTensorType.tp_base = base_class_type;

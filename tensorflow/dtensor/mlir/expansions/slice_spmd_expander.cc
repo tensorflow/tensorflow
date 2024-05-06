@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
@@ -116,7 +117,7 @@ StatusOr<mlir::Operation*> SliceSPMDExpander::ExpandOp(mlir::Operation* op) {
   // The dyn_cast will never be nullptr as it is checked in
   // GetLayoutFromOperands.
   auto input_type =
-      slice_op.getInput().getType().dyn_cast<mlir::RankedTensorType>();
+      mlir::dyn_cast<mlir::RankedTensorType>(slice_op.getInput().getType());
   if (!input_type)
     return errors::InvalidArgument(
         "rank of input tensor must be statically known for slice op.");
@@ -172,10 +173,10 @@ StatusOr<mlir::Operation*> SliceSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto loc = op->getLoc();
   // Both begin and size need to be the same type, so we must match the new
   // size input with the type of begin.
-  if (!slice_op.getBegin().getType().isa<mlir::ShapedType>())
+  if (!mlir::isa<mlir::ShapedType>(slice_op.getBegin().getType()))
     return errors::Internal("type of begin is not a ShapedType");
   mlir::ShapedType type =
-      slice_op.getBegin().getType().cast<mlir::ShapedType>();
+      mlir::cast<mlir::ShapedType>(slice_op.getBegin().getType());
   if (type.getElementType().isInteger(32))
     new_size = IntConst(
         builder, loc, llvm::SmallVector<int32, 4>(sizes.begin(), sizes.end()));

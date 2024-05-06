@@ -14,12 +14,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     // CHECK: %[[CALL:.*]] = call @quantized_dot_general_fn_1(%[[Q2]], %[[Q1]])
 
     // CHECK: %[[REDUCE:.*]] = "stablehlo.reduce_window"(%[[CALL]], %[[Q0]])
+    // CHECK{LITERAL}: padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>
+    // CHECK-SAME: window_dimensions = array<i64: 1, 3, 3, 1>
     // CHECK: %[[ARG1:.*]]: tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>, %[[ARG2:.*]]: tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>
     // CHECK: %[[MAX:.*]] = stablehlo.maximum %[[ARG1]], %[[ARG2]] : tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>
     // CHECK: stablehlo.return %[[MAX]] : tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>
-    // CHECK{LITERAL}: padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>
-    // CHECK-SAME: window_dimensions = array<i64: 1, 3, 3, 1>
-    // CHECK-SAME: (tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>, tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>) -> tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>
+    // CHECK: (tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>, tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>) -> tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>
 
     // CHECK: %[[DQ:.*]] = "quantfork.dcast"(%[[REDUCE]])
     // CHECK: return %[[DQ]]
@@ -32,7 +32,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     %5 = "quantfork.dcast"(%4) : (tensor<2x3x1024x3x!quant.uniform<i8<-127:127>:f32, 4.000000e-01>>) -> tensor<2x3x1024x3xf32>
     %6 = "quantfork.qcast"(%arg0) {volatile} : (tensor<2x3x1x1024xf32>) -> tensor<2x3x1x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>
     %7 = "quantfork.dcast"(%6) : (tensor<2x3x1x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>) -> tensor<2x3x1x1024xf32>
-    %8 = "tf.XlaCallModule"(%7, %5) <{Sout = [#tf_type.shape<2x3x1x3>], dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}, _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<2x3x1x1024xf32>, tensor<2x3x1024x3xf32>) -> tensor<2x3x1x3xf32>
+    %8 = "tf.XlaCallModule"(%7, %5) <{Sout = [#tf_type.shape<2x3x1x3>], dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "static_range_ptq {}", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}, _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<2x3x1x1024xf32>, tensor<2x3x1024x3xf32>) -> tensor<2x3x1x3xf32>
     %9 = "quantfork.qcast"(%8) {volatile} : (tensor<2x3x1x3xf32>) -> tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>
     %10 = "quantfork.dcast"(%9) : (tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>) -> tensor<2x3x1x3xf32>
     %11 = "stablehlo.reduce_window"(%10, %3) ({
@@ -70,12 +70,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     // CHECK: %[[Q1:.*]] = "quantfork.qcast"(%[[ARG0]])
 
     // CHECK: %[[REDUCE:.*]] = "stablehlo.reduce_window"(%[[Q1]], %[[Q0]])
+    // CHECK{LITERAL}: padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>
+    // CHECK-SAME: window_dimensions = array<i64: 1, 3, 3, 1>
     // CHECK: %[[ARG1:.*]]: tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>, %[[ARG2:.*]]: tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>
     // CHECK: %[[MAX:.*]] = stablehlo.maximum %[[ARG1]], %[[ARG2]] : tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>
     // CHECK: stablehlo.return %[[MAX]] : tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>
-    // CHECK{LITERAL}: padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>
-    // CHECK-SAME: window_dimensions = array<i64: 1, 3, 3, 1>
-    // CHECK-SAME: (tensor<2x3x1x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>, tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>) -> tensor<2x3x1x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>
+    // CHECK: (tensor<2x3x1x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>, tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>) -> tensor<2x3x1x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>
 
     // CHECK: %[[Q2:.*]] = "quantfork.qcast"(%[[CST1]])
     // CHECK: %[[CALL:.*]] = call @quantized_dot_general_fn_1(%[[REDUCE]], %[[Q2]])
@@ -98,7 +98,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     %8 = "quantfork.dcast"(%7) : (tensor<2x3x1x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>) -> tensor<2x3x1x1024xf32>
     %9 = "quantfork.qcast"(%1) {volatile} : (tensor<2x3x1024x3xf32>) -> tensor<2x3x1024x3x!quant.uniform<i8<-127:127>:f32, 4.000000e-01>>
     %10 = "quantfork.dcast"(%9) : (tensor<2x3x1024x3x!quant.uniform<i8<-127:127>:f32, 4.000000e-01>>) -> tensor<2x3x1024x3xf32>
-    %11 = "tf.XlaCallModule"(%8, %10) <{Sout = [#tf_type.shape<2x3x1x3>], dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}, _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<2x3x1x1024xf32>, tensor<2x3x1024x3xf32>) -> tensor<2x3x1x3xf32>
+    %11 = "tf.XlaCallModule"(%8, %10) <{Sout = [#tf_type.shape<2x3x1x3>], dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "static_range_ptq {}", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}, _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<2x3x1x1024xf32>, tensor<2x3x1024x3xf32>) -> tensor<2x3x1x3xf32>
     %12 = "quantfork.qcast"(%11) {volatile} : (tensor<2x3x1x3xf32>) -> tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>
     %13 = "quantfork.dcast"(%12) : (tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>) -> tensor<2x3x1x3xf32>
     return %13 : tensor<2x3x1x3xf32>
@@ -132,12 +132,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     // CHECK: %[[RESHAPE:.*]] = stablehlo.reshape %[[CALL]]
 
     // CHECK: %[[REDUCE:.*]] = "stablehlo.reduce_window"(%[[RESHAPE]], %[[Q0]])
+    // CHECK{LITERAL}: padding = dense<[[0, 0], [1, 1], [0, 0]]> : tensor<3x2xi64>
+    // CHECK-SAME: window_dimensions = array<i64: 1, 3, 1>
     // CHECK: %[[ARG1:.*]]: tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>, %[[ARG2:.*]]: tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>
     // CHECK: %[[MAX:.*]] = stablehlo.maximum %[[ARG1]], %[[ARG2]] : tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>
     // CHECK: stablehlo.return %[[MAX]] : tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>
-    // CHECK{LITERAL}: padding = dense<[[0, 0], [1, 1], [0, 0]]> : tensor<3x2xi64>
-    // CHECK-SAME: window_dimensions = array<i64: 1, 3, 1>
-    // CHECK-SAME: (tensor<2x3x3x!quant.uniform<i8:f32, 3.000000e-01:1>>, tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>) -> tensor<2x3x3x!quant.uniform<i8:f32, 3.000000e-01:1>>
+    // CHECK: (tensor<2x3x3x!quant.uniform<i8:f32, 3.000000e-01:1>>, tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>) -> tensor<2x3x3x!quant.uniform<i8:f32, 3.000000e-01:1>>
 
     // CHECK: %[[DQ:.*]] = "quantfork.dcast"(%[[REDUCE]])
     // CHECK: return %[[DQ]]
@@ -150,7 +150,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     %5 = "quantfork.dcast"(%4) : (tensor<2x3x1024x3x!quant.uniform<i8<-127:127>:f32, 4.000000e-01>>) -> tensor<2x3x1024x3xf32>
     %6 = "quantfork.qcast"(%arg0) {volatile} : (tensor<2x3x1x1024xf32>) -> tensor<2x3x1x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>
     %7 = "quantfork.dcast"(%6) : (tensor<2x3x1x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>) -> tensor<2x3x1x1024xf32>
-    %8 = "tf.XlaCallModule"(%7, %5) <{Sout = [#tf_type.shape<2x3x1x3>], dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}, _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<2x3x1x1024xf32>, tensor<2x3x1024x3xf32>) -> tensor<2x3x1x3xf32>
+    %8 = "tf.XlaCallModule"(%7, %5) <{Sout = [#tf_type.shape<2x3x1x3>], dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "static_range_ptq {}", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}, _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<2x3x1x1024xf32>, tensor<2x3x1024x3xf32>) -> tensor<2x3x1x3xf32>
     %9 = "quantfork.qcast"(%8) {volatile} : (tensor<2x3x1x3xf32>) -> tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>
     %10 = "quantfork.dcast"(%9) : (tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>) -> tensor<2x3x1x3xf32>
     %11 = stablehlo.reshape %10 : (tensor<2x3x1x3xf32>) -> tensor<2x3x3xf32>
@@ -191,12 +191,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     // CHECK: %[[Q1:.*]] = "quantfork.qcast"(%[[ARG0]])
 
     // CHECK: %[[REDUCE:.*]] = "stablehlo.reduce_window"(%[[Q1]], %[[Q0]])
+    // CHECK{LITERAL}: padding = dense<[[0, 0], [1, 1], [0, 0]]> : tensor<3x2xi64>
+    // CHECK-SAME: window_dimensions = array<i64: 1, 3, 1>
     // CHECK: %[[ARG1:.*]]: tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>, %[[ARG2:.*]]: tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>
     // CHECK: %[[MAX:.*]] = stablehlo.maximum %[[ARG1]], %[[ARG2]] : tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>
     // CHECK: stablehlo.return %[[MAX]] : tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>
-    // CHECK{LITERAL}: padding = dense<[[0, 0], [1, 1], [0, 0]]> : tensor<3x2xi64>
-    // CHECK-SAME: window_dimensions = array<i64: 1, 3, 1>
-    // CHECK-SAME: (tensor<2x3x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>, tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>) -> tensor<2x3x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>
+    // CHECK: (tensor<2x3x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>, tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>) -> tensor<2x3x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>
 
     // CHECK: %[[RESHAPE:.*]] = stablehlo.reshape %[[REDUCE]]
     // CHECK: %[[Q2:.*]] = "quantfork.qcast"(%[[CST1]])
@@ -223,7 +223,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     %11 = "quantfork.dcast"(%10) : (tensor<2x3x1x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>) -> tensor<2x3x1x1024xf32>
     %12 = "quantfork.qcast"(%1) {volatile} : (tensor<2x3x1024x3xf32>) -> tensor<2x3x1024x3x!quant.uniform<i8<-127:127>:f32, 4.000000e-01>>
     %13 = "quantfork.dcast"(%12) : (tensor<2x3x1024x3x!quant.uniform<i8<-127:127>:f32, 4.000000e-01>>) -> tensor<2x3x1024x3xf32>
-    %14 = "tf.XlaCallModule"(%11, %13) <{Sout = [#tf_type.shape<2x3x1x3>], dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}, _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<2x3x1x1024xf32>, tensor<2x3x1024x3xf32>) -> tensor<2x3x1x3xf32>
+    %14 = "tf.XlaCallModule"(%11, %13) <{Sout = [#tf_type.shape<2x3x1x3>], dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "static_range_ptq {}", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}, _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<2x3x1x1024xf32>, tensor<2x3x1024x3xf32>) -> tensor<2x3x1x3xf32>
     %15 = "quantfork.qcast"(%14) {volatile} : (tensor<2x3x1x3xf32>) -> tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>
     %16 = "quantfork.dcast"(%15) : (tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>) -> tensor<2x3x1x3xf32>
     return %16 : tensor<2x3x1x3xf32>

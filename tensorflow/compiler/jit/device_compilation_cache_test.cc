@@ -36,7 +36,7 @@ struct FakeExecutable {
 using Cache = DeviceCompilationCache<FakeExecutable>;
 using Signature = DeviceCompilationClusterSignature;
 
-StatusOr<Signature> BuildSampleSignature(const std::string& fn_name) {
+absl::StatusOr<Signature> BuildSampleSignature(const std::string& fn_name) {
   NameAttrList fn;
   fn.set_name(fn_name);
   std::vector<XlaCompiler::Argument> args(1);

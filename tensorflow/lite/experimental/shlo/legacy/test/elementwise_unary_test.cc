@@ -101,23 +101,8 @@ TEST(ElementwiseBinary, AbsQuantized) {
   test<ElementType::kSI8, ElementType::kF32>(
       Abs, {5}, {.scale = 1e-1, .zero_point = -1}, {0, 1, -2, 3, -4},
       {0, 1, 2, 3, 4});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      Abs, {5}, {.scale = 1, .zero_point = 0}, {0, 1, -2, 3, -4},
-      {0, 1, 2, 3, 4});
-  test<ElementType::kSI16, ElementType::kF16>(
-      Abs, {5}, {.scale = 1e-2, .zero_point = 1}, {0, 1, -2, 3, -4},
-      {0, 1, 2, 3, 4});
   test<ElementType::kSI16, ElementType::kF32>(
       Abs, {5}, {.scale = 1e-3, .zero_point = -1}, {0, 1, -2, 3, -4},
-      {0, 1, 2, 3, 4});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      Abs, {5}, {.scale = 1, .zero_point = 0}, {0, 1, -2, 3, -4},
-      {0, 1, 2, 3, 4});
-  test<ElementType::kSI32, ElementType::kF16>(
-      Abs, {5}, {.scale = 1e-1, .zero_point = 1}, {0, 1, -2, 3, -4},
-      {0, 1, 2, 3, 4});
-  test<ElementType::kSI32, ElementType::kF32>(
-      Abs, {5}, {.scale = 1e-2, .zero_point = -1}, {0, 1, -2, 3, -4},
       {0, 1, 2, 3, 4});
 }
 
@@ -143,22 +128,7 @@ TEST(ElementwiseUnary, CbrtQuantized) {
   test<ElementType::kSI8, ElementType::kF32>(
       Cbrt, {4}, {.scale = 1e-1, .zero_point = 4}, {0, 1, -2, 3},
       {0, 1, -1.25992104989487316476f, 1.44224957030740838232f});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      Cbrt, {4}, {.scale = 1e-1, .zero_point = 0}, {0, 1, -2, 3},
-      {0, 1, -1.25992104989487316476f, 1.44224957030740838232f});
-  test<ElementType::kSI16, ElementType::kF16>(
-      Cbrt, {4}, {.scale = 1e-1, .zero_point = -2}, {0, 1, -2, 3},
-      {0, 1, -1.25992104989487316476f, 1.44224957030740838232f});
   test<ElementType::kSI16, ElementType::kF32>(
-      Cbrt, {4}, {.scale = 1e-1, .zero_point = 4}, {0, 1, -2, 3},
-      {0, 1, -1.25992104989487316476f, 1.44224957030740838232f});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      Cbrt, {4}, {.scale = 1e-1, .zero_point = 0}, {0, 1, -2, 3},
-      {0, 1, -1.25992104989487316476f, 1.44224957030740838232f});
-  test<ElementType::kSI32, ElementType::kF16>(
-      Cbrt, {4}, {.scale = 1e-1, .zero_point = -2}, {0, 1, -2, 3},
-      {0, 1, -1.25992104989487316476f, 1.44224957030740838232f});
-  test<ElementType::kSI32, ElementType::kF32>(
       Cbrt, {4}, {.scale = 1e-1, .zero_point = 4}, {0, 1, -2, 3},
       {0, 1, -1.25992104989487316476f, 1.44224957030740838232f});
 }
@@ -179,23 +149,8 @@ TEST(ElementwiseUnary, CeilQuantized) {
   test<ElementType::kSI8, ElementType::kF32>(
       Ceil, {4}, {.scale = 1e-1, .zero_point = -4}, {0, 1.1, -2.7, 3.5},
       {0, 2, -2, 4});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      Ceil, {4}, {.scale = 1e-2, .zero_point = 0}, {0, 1.11, -2.77, 3.55},
-      {0, 2, -2, 4});
-  test<ElementType::kSI16, ElementType::kF16>(
-      Ceil, {4}, {.scale = 1e-2, .zero_point = 4}, {0, 1.11, -2.77, 3.55},
-      {0, 2, -2, 4});
   test<ElementType::kSI16, ElementType::kF32>(
       Ceil, {4}, {.scale = 1e-2, .zero_point = -4}, {0, 1.11, -2.77, 3.55},
-      {0, 2, -2, 4});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      Ceil, {4}, {.scale = 1e-3, .zero_point = 0}, {0, 1.11, -2.77, 3.55},
-      {0, 2, -2, 4});
-  test<ElementType::kSI32, ElementType::kF16>(
-      Ceil, {4}, {.scale = 1e-3, .zero_point = 4}, {0, 1.11, -2.77, 3.55},
-      {0, 2, -2, 4});
-  test<ElementType::kSI32, ElementType::kF32>(
-      Ceil, {4}, {.scale = 1e-3, .zero_point = -4}, {0, 1.11, -2.77, 3.55},
       {0, 2, -2, 4});
 }
 
@@ -224,27 +179,7 @@ TEST(ElementwiseUnary, CosineQuantized) {
       Cosine, {4}, {.scale = 1e-1, .zero_point = 0}, {0, 1.1, -1.1, 2.3},
       {1, 0.45359612142557738777f, 0.45359612142557738777f,
        -0.66627602127982419331f});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      Cosine, {4}, {.scale = 1e-2, .zero_point = 0}, {0, 1.1, -1.1, 2.3},
-      {1, 0.45359612142557738777f, 0.45359612142557738777f,
-       -0.66627602127982419331f});
-  test<ElementType::kSI16, ElementType::kF16>(
-      Cosine, {4}, {.scale = 1e-2, .zero_point = 0}, {0, 1.1, -1.1, 2.3},
-      {1, 0.45359612142557738777f, 0.45359612142557738777f,
-       -0.66627602127982419331f});
   test<ElementType::kSI16, ElementType::kF32>(
-      Cosine, {4}, {.scale = 1e-4, .zero_point = 0}, {0, 1.1, -1.1, 2.3},
-      {1, 0.45359612142557738777f, 0.45359612142557738777f,
-       -0.66627602127982419331f});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      Cosine, {4}, {.scale = 1e-2, .zero_point = 0}, {0, 1.1, -1.1, 2.3},
-      {1, 0.45359612142557738777f, 0.45359612142557738777f,
-       -0.66627602127982419331f});
-  test<ElementType::kSI32, ElementType::kF16>(
-      Cosine, {4}, {.scale = 1e-2, .zero_point = 0}, {0, 1.1, -1.1, 2.3},
-      {1, 0.45359612142557738777f, 0.45359612142557738777f,
-       -0.66627602127982419331f});
-  test<ElementType::kSI32, ElementType::kF32>(
       Cosine, {4}, {.scale = 1e-4, .zero_point = 0}, {0, 1.1, -1.1, 2.3},
       {1, 0.45359612142557738777f, 0.45359612142557738777f,
        -0.66627602127982419331f});
@@ -284,28 +219,8 @@ TEST(ElementwiseUnary, ExponentialQuantized) {
       Exponential, {4}, {.scale = 1e-1, .zero_point = 0}, {0, 0.5, 1, 1.5},
       {1, 1.64872127070012814684f, 2.71828182845904523536f,
        4.48168907033806482260f});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      Exponential, {4}, {.scale = 1e-2, .zero_point = 0}, {0, 0.5, 1, 1.5},
-      {1, 1.64872127070012814684f, 2.71828182845904523536f,
-       4.48168907033806482260f});
-  test<ElementType::kSI16, ElementType::kF16>(
-      Exponential, {4}, {.scale = 1e-2, .zero_point = 0}, {0, 0.5, 1, 1.5},
-      {1, 1.64872127070012814684f, 2.71828182845904523536f,
-       4.48168907033806482260f});
   test<ElementType::kSI16, ElementType::kF32>(
       Exponential, {4}, {.scale = 1e-2, .zero_point = 0}, {0, 0.5, 1, 1.5},
-      {1, 1.64872127070012814684f, 2.71828182845904523536f,
-       4.48168907033806482260f});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      Exponential, {4}, {.scale = 1e-4, .zero_point = 0}, {0, 0.5, 1, 1.5},
-      {1, 1.64872127070012814684f, 2.71828182845904523536f,
-       4.48168907033806482260f});
-  test<ElementType::kSI32, ElementType::kF16>(
-      Exponential, {4}, {.scale = 1e-4, .zero_point = 0}, {0, 0.5, 1, 1.5},
-      {1, 1.64872127070012814684f, 2.71828182845904523536f,
-       4.48168907033806482260f});
-  test<ElementType::kSI32, ElementType::kF32>(
-      Exponential, {4}, {.scale = 1e-4, .zero_point = 0}, {0, 0.5, 1, 1.5},
       {1, 1.64872127070012814684f, 2.71828182845904523536f,
        4.48168907033806482260f});
 }
@@ -338,33 +253,8 @@ TEST(ElementwiseUnary, ExponentialMinusOneQuantized) {
       {0, 0.5, 1, 1.5},
       {0, 0.64872127070012814684f, 1.71828182845904523536f,
        3.48168907033806482260f});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      ExponentialMinusOne, {4}, {.scale = 1e-2, .zero_point = 0},
-      {0, 0.5, 1, 1.5},
-      {0, 0.64872127070012814684f, 1.71828182845904523536f,
-       3.48168907033806482260f});
-  test<ElementType::kSI16, ElementType::kF16>(
-      ExponentialMinusOne, {4}, {.scale = 1e-2, .zero_point = 0},
-      {0, 0.5, 1, 1.5},
-      {0, 0.64872127070012814684f, 1.71828182845904523536f,
-       3.48168907033806482260f});
   test<ElementType::kSI16, ElementType::kF32>(
       ExponentialMinusOne, {4}, {.scale = 1e-2, .zero_point = 0},
-      {0, 0.5, 1, 1.5},
-      {0, 0.64872127070012814684f, 1.71828182845904523536f,
-       3.48168907033806482260f});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      ExponentialMinusOne, {4}, {.scale = 1e-4, .zero_point = 0},
-      {0, 0.5, 1, 1.5},
-      {0, 0.64872127070012814684f, 1.71828182845904523536f,
-       3.48168907033806482260f});
-  test<ElementType::kSI32, ElementType::kF16>(
-      ExponentialMinusOne, {4}, {.scale = 1e-4, .zero_point = 0},
-      {0, 0.5, 1, 1.5},
-      {0, 0.64872127070012814684f, 1.71828182845904523536f,
-       3.48168907033806482260f});
-  test<ElementType::kSI32, ElementType::kF32>(
-      ExponentialMinusOne, {4}, {.scale = 1e-4, .zero_point = 0},
       {0, 0.5, 1, 1.5},
       {0, 0.64872127070012814684f, 1.71828182845904523536f,
        3.48168907033806482260f});
@@ -386,23 +276,8 @@ TEST(ElementwiseUnary, FloorQuantized) {
   test<ElementType::kSI8, ElementType::kF32>(
       Floor, {4}, {.scale = 1e-1, .zero_point = -4}, {0, 1.1, -2.7, 3.5},
       {0, 1, -3, 3});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      Floor, {4}, {.scale = 1e-2, .zero_point = 0}, {0, 1.11, -2.77, 3.55},
-      {0, 1, -3, 3});
-  test<ElementType::kSI16, ElementType::kF16>(
-      Floor, {4}, {.scale = 1e-2, .zero_point = 4}, {0, 1.11, -2.77, 3.55},
-      {0, 1, -3, 3});
   test<ElementType::kSI16, ElementType::kF32>(
       Floor, {4}, {.scale = 1e-2, .zero_point = -4}, {0, 1.11, -2.77, 3.55},
-      {0, 1, -3, 3});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      Floor, {4}, {.scale = 1e-3, .zero_point = 0}, {0, 1.11, -2.77, 3.55},
-      {0, 1, -3, 3});
-  test<ElementType::kSI32, ElementType::kF16>(
-      Floor, {4}, {.scale = 1e-3, .zero_point = 4}, {0, 1.11, -2.77, 3.55},
-      {0, 1, -3, 3});
-  test<ElementType::kSI32, ElementType::kF32>(
-      Floor, {4}, {.scale = 1e-3, .zero_point = -4}, {0, 1.11, -2.77, 3.55},
       {0, 1, -3, 3});
 }
 
@@ -431,27 +306,7 @@ TEST(ElementwiseUnary, LogQuantized) {
       Log, {4}, {.scale = 1e-1, .zero_point = -4}, {0.1, 0.5, 1, 1.5},
       {-2.30258509299404568401f, -0.69314718055994530941f, 0,
        0.40546510810816438197f});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      Log, {4}, {.scale = 1e-2, .zero_point = -4}, {0.1, 0.5, 1, 1.5},
-      {-2.30258509299404568401f, -0.69314718055994530941f, 0,
-       0.40546510810816438197f});
-  test<ElementType::kSI16, ElementType::kF16>(
-      Log, {4}, {.scale = 1e-2, .zero_point = -4}, {0.1, 0.5, 1, 1.5},
-      {-2.30258509299404568401f, -0.69314718055994530941f, 0,
-       0.40546510810816438197f});
   test<ElementType::kSI16, ElementType::kF32>(
-      Log, {4}, {.scale = 1e-3, .zero_point = -4}, {0.1, 0.5, 1, 1.5},
-      {-2.30258509299404568401f, -0.69314718055994530941f, 0,
-       0.40546510810816438197f});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      Log, {4}, {.scale = 1e-2, .zero_point = -4}, {0.1, 0.5, 1, 1.5},
-      {-2.30258509299404568401f, -0.69314718055994530941f, 0,
-       0.40546510810816438197f});
-  test<ElementType::kSI32, ElementType::kF16>(
-      Log, {4}, {.scale = 1e-2, .zero_point = -4}, {0.1, 0.5, 1, 1.5},
-      {-2.30258509299404568401f, -0.69314718055994530941f, 0,
-       0.40546510810816438197f});
-  test<ElementType::kSI32, ElementType::kF32>(
       Log, {4}, {.scale = 1e-3, .zero_point = -4}, {0.1, 0.5, 1, 1.5},
       {-2.30258509299404568401f, -0.69314718055994530941f, 0,
        0.40546510810816438197f});
@@ -482,27 +337,7 @@ TEST(ElementwiseUnary, LogPlusOneQuantized) {
       LogPlusOne, {4}, {.scale = 1e-1, .zero_point = 0}, {-0.9, -0.5, 0, 0.5},
       {-2.30258509299404568401f, -0.69314718055994530941f, 0,
        0.40546510810816438197f});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      LogPlusOne, {4}, {.scale = 1e-1, .zero_point = 0}, {-0.9, -0.5, 0, 0.5},
-      {-2.30258509299404568401f, -0.69314718055994530941f, 0,
-       0.40546510810816438197f});
-  test<ElementType::kSI16, ElementType::kF16>(
-      LogPlusOne, {4}, {.scale = 1e-1, .zero_point = 0}, {-0.9, -0.5, 0, 0.5},
-      {-2.30258509299404568401f, -0.69314718055994530941f, 0,
-       0.40546510810816438197f});
   test<ElementType::kSI16, ElementType::kF32>(
-      LogPlusOne, {4}, {.scale = 1e-4, .zero_point = 0}, {-0.9, -0.5, 0, 0.5},
-      {-2.30258509299404568401f, -0.69314718055994530941f, 0,
-       0.40546510810816438197f});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      LogPlusOne, {4}, {.scale = 1e-1, .zero_point = 0}, {-0.9, -0.5, 0, 0.5},
-      {-2.30258509299404568401f, -0.69314718055994530941f, 0,
-       0.40546510810816438197f});
-  test<ElementType::kSI32, ElementType::kF16>(
-      LogPlusOne, {4}, {.scale = 1e-1, .zero_point = 0}, {-0.9, -0.5, 0, 0.5},
-      {-2.30258509299404568401f, -0.69314718055994530941f, 0,
-       0.40546510810816438197f});
-  test<ElementType::kSI32, ElementType::kF32>(
       LogPlusOne, {4}, {.scale = 1e-4, .zero_point = 0}, {-0.9, -0.5, 0, 0.5},
       {-2.30258509299404568401f, -0.69314718055994530941f, 0,
        0.40546510810816438197f});
@@ -533,27 +368,7 @@ TEST(ElementwiseUnary, LogisticQuantized) {
       Logistic, {4}, {.scale = 1e-1, .zero_point = 0}, {-1, -0.5, 0, 0.5},
       {0.26894142136999512074f, 0.37754066879814543536f, 0.5,
        0.62245933120185456464f});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      Logistic, {4}, {.scale = 1e-2, .zero_point = 0}, {-1, -0.5, 0, 0.5},
-      {0.26894142136999512074f, 0.37754066879814543536f, 0.5,
-       0.62245933120185456464f});
-  test<ElementType::kSI16, ElementType::kF16>(
-      Logistic, {4}, {.scale = 1e-2, .zero_point = 0}, {-1, -0.5, 0, 0.5},
-      {0.26894142136999512074f, 0.37754066879814543536f, 0.5,
-       0.62245933120185456464f});
   test<ElementType::kSI16, ElementType::kF32>(
-      Logistic, {4}, {.scale = 1e-3, .zero_point = 0}, {-1, -0.5, 0, 0.5},
-      {0.26894142136999512074f, 0.37754066879814543536f, 0.5,
-       0.62245933120185456464f});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      Logistic, {4}, {.scale = 1e-2, .zero_point = 0}, {-1, -0.5, 0, 0.5},
-      {0.26894142136999512074f, 0.37754066879814543536f, 0.5,
-       0.62245933120185456464f});
-  test<ElementType::kSI32, ElementType::kF16>(
-      Logistic, {4}, {.scale = 1e-2, .zero_point = 0}, {-1, -0.5, 0, 0.5},
-      {0.26894142136999512074f, 0.37754066879814543536f, 0.5,
-       0.62245933120185456464f});
-  test<ElementType::kSI32, ElementType::kF32>(
       Logistic, {4}, {.scale = 1e-3, .zero_point = 0}, {-1, -0.5, 0, 0.5},
       {0.26894142136999512074f, 0.37754066879814543536f, 0.5,
        0.62245933120185456464f});
@@ -578,23 +393,8 @@ TEST(ElementwiseBinary, NegateQuantized) {
   test<ElementType::kSI8, ElementType::kF32>(
       Negate, {5}, {.scale = 1e-1, .zero_point = -1}, {0, 1, -2, 3, -4},
       {0, -1, 2, -3, 4});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      Negate, {5}, {.scale = 1, .zero_point = 0}, {0, 1, -2, 3, -4},
-      {0, -1, 2, -3, 4});
-  test<ElementType::kSI16, ElementType::kF16>(
-      Negate, {5}, {.scale = 1e-2, .zero_point = 1}, {0, 1, -2, 3, -4},
-      {0, -1, 2, -3, 4});
   test<ElementType::kSI16, ElementType::kF32>(
       Negate, {5}, {.scale = 1e-3, .zero_point = -1}, {0, 1, -2, 3, -4},
-      {0, -1, 2, -3, 4});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      Negate, {5}, {.scale = 1, .zero_point = 0}, {0, 1, -2, 3, -4},
-      {0, -1, 2, -3, 4});
-  test<ElementType::kSI32, ElementType::kF16>(
-      Negate, {5}, {.scale = 1e-1, .zero_point = 1}, {0, 1, -2, 3, -4},
-      {0, -1, 2, -3, 4});
-  test<ElementType::kSI32, ElementType::kF32>(
-      Negate, {5}, {.scale = 1e-2, .zero_point = -1}, {0, 1, -2, 3, -4},
       {0, -1, 2, -3, 4});
 }
 
@@ -635,23 +435,8 @@ TEST(ElementwiseBinary, RoundNearestAfzQuantized) {
   test<ElementType::kSI8, ElementType::kF32>(
       RoundNearestAfz, {5}, {.scale = 1e-1, .zero_point = 0},
       {-2.5, 0.4, 0.5, 0.6, 2.5}, {-3.0, 0.0, 1.0, 1.0, 3.0});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      RoundNearestAfz, {5}, {.scale = 1e-2, .zero_point = 0},
-      {-2.5, 0.4, 0.5, 0.6, 2.5}, {-3.0, 0.0, 1.0, 1.0, 3.0});
-  test<ElementType::kSI16, ElementType::kF16>(
-      RoundNearestAfz, {5}, {.scale = 1e-2, .zero_point = 0},
-      {-2.5, 0.4, 0.5, 0.6, 2.5}, {-3.0, 0.0, 1.0, 1.0, 3.0});
   test<ElementType::kSI16, ElementType::kF32>(
       RoundNearestAfz, {5}, {.scale = 1e-2, .zero_point = 0},
-      {-2.5, 0.4, 0.5, 0.6, 2.5}, {-3.0, 0.0, 1.0, 1.0, 3.0});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      RoundNearestAfz, {5}, {.scale = 1e-2, .zero_point = 0},
-      {-2.5, 0.4, 0.5, 0.6, 2.5}, {-3.0, 0.0, 1.0, 1.0, 3.0});
-  test<ElementType::kSI32, ElementType::kF16>(
-      RoundNearestAfz, {5}, {.scale = 1e-2, .zero_point = 0},
-      {-2.5, 0.4, 0.5, 0.6, 2.5}, {-3.0, 0.0, 1.0, 1.0, 3.0});
-  test<ElementType::kSI32, ElementType::kF32>(
-      RoundNearestAfz, {5}, {.scale = 1e-3, .zero_point = 0},
       {-2.5, 0.4, 0.5, 0.6, 2.5}, {-3.0, 0.0, 1.0, 1.0, 3.0});
 }
 
@@ -674,23 +459,8 @@ TEST(ElementwiseBinary, RoundNearestEvenQuantized) {
   test<ElementType::kSI8, ElementType::kF32>(
       RoundNearestEven, {5}, {.scale = 1e-1, .zero_point = 0},
       {-2.5, 0.4, 0.5, 0.6, 2.5}, {-2.0, 0.0, 0.0, 1.0, 2.0});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      RoundNearestEven, {5}, {.scale = 1e-2, .zero_point = 0},
-      {-2.5, 0.4, 0.5, 0.6, 2.5}, {-2.0, 0.0, 0.0, 1.0, 2.0});
-  test<ElementType::kSI16, ElementType::kF16>(
-      RoundNearestEven, {5}, {.scale = 1e-2, .zero_point = 0},
-      {-2.5, 0.4, 0.5, 0.6, 2.5}, {-2.0, 0.0, 0.0, 1.0, 2.0});
   test<ElementType::kSI16, ElementType::kF32>(
       RoundNearestEven, {5}, {.scale = 1e-2, .zero_point = 0},
-      {-2.5, 0.4, 0.5, 0.6, 2.5}, {-2.0, 0.0, 0.0, 1.0, 2.0});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      RoundNearestEven, {5}, {.scale = 1e-2, .zero_point = 0},
-      {-2.5, 0.4, 0.5, 0.6, 2.5}, {-2.0, 0.0, 0.0, 1.0, 2.0});
-  test<ElementType::kSI32, ElementType::kF16>(
-      RoundNearestEven, {5}, {.scale = 1e-2, .zero_point = 0},
-      {-2.5, 0.4, 0.5, 0.6, 2.5}, {-2.0, 0.0, 0.0, 1.0, 2.0});
-  test<ElementType::kSI32, ElementType::kF32>(
-      RoundNearestEven, {5}, {.scale = 1e-3, .zero_point = 0},
       {-2.5, 0.4, 0.5, 0.6, 2.5}, {-2.0, 0.0, 0.0, 1.0, 2.0});
 }
 
@@ -704,22 +474,7 @@ TEST(ElementwiseUnary, Rsqrt) {
 }
 
 TEST(ElementwiseUnary, RsqrtQuantized) {
-  test<ElementType::kSI16, ElementType::kBF16>(
-      Rsqrt, {4}, {.scale = 1e-3, .zero_point = 0}, {1.0, 4.0, 9.0, 25.0},
-      {1.0, 1.0 / 2.0, 1.0 / 3.0, 1.0 / 5.0});
-  test<ElementType::kSI16, ElementType::kF16>(
-      Rsqrt, {4}, {.scale = 1e-3, .zero_point = 0}, {1.0, 4.0, 9.0, 25.0},
-      {1.0, 1.0 / 2.0, 1.0 / 3.0, 1.0 / 5.0});
   test<ElementType::kSI16, ElementType::kF32>(
-      Rsqrt, {4}, {.scale = 1e-3, .zero_point = 0}, {1.0, 4.0, 9.0, 25.0},
-      {1.0, 1.0 / 2.0, 1.0 / 3.0, 1.0 / 5.0});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      Rsqrt, {4}, {.scale = 1e-3, .zero_point = 0}, {1.0, 4.0, 9.0, 25.0},
-      {1.0, 1.0 / 2.0, 1.0 / 3.0, 1.0 / 5.0});
-  test<ElementType::kSI32, ElementType::kF16>(
-      Rsqrt, {4}, {.scale = 1e-3, .zero_point = 0}, {1.0, 4.0, 9.0, 25.0},
-      {1.0, 1.0 / 2.0, 1.0 / 3.0, 1.0 / 5.0});
-  test<ElementType::kSI32, ElementType::kF32>(
       Rsqrt, {4}, {.scale = 1e-3, .zero_point = 0}, {1.0, 4.0, 9.0, 25.0},
       {1.0, 1.0 / 2.0, 1.0 / 3.0, 1.0 / 5.0});
 }
@@ -749,23 +504,8 @@ TEST(ElementwiseUnary, SignQuantized) {
   test<ElementType::kSI8, ElementType::kF32>(
       Sign, {4}, {.scale = 1e-1, .zero_point = 0}, {-2.0, -0.0, +0.0, 2.0},
       {-1, 0, 0, 1});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      Sign, {4}, {.scale = 1e-2, .zero_point = 0}, {-2.0, -0.0, +0.0, 2.0},
-      {-1, 0, 0, 1});
-  test<ElementType::kSI16, ElementType::kF16>(
-      Sign, {4}, {.scale = 1e-2, .zero_point = 0}, {-2.0, -0.0, +0.0, 2.0},
-      {-1, 0, 0, 1});
   test<ElementType::kSI16, ElementType::kF32>(
       Sign, {4}, {.scale = 1e-2, .zero_point = 0}, {-2.0, -0.0, +0.0, 2.0},
-      {-1, 0, 0, 1});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      Sign, {4}, {.scale = 1e-3, .zero_point = 0}, {-2.0, -0.0, +0.0, 2.0},
-      {-1, 0, 0, 1});
-  test<ElementType::kSI32, ElementType::kF16>(
-      Sign, {4}, {.scale = 1e-3, .zero_point = 0}, {-2.0, -0.0, +0.0, 2.0},
-      {-1, 0, 0, 1});
-  test<ElementType::kSI32, ElementType::kF32>(
-      Sign, {4}, {.scale = 1e-3, .zero_point = 0}, {-2.0, -0.0, +0.0, 2.0},
       {-1, 0, 0, 1});
 }
 
@@ -788,23 +528,8 @@ TEST(ElementwiseUnary, SineQuantized) {
   test<ElementType::kSI8, ElementType::kF32>(
       Sine, {5}, {.scale = 1e-1, .zero_point = 0},
       {0, M_PI_2, M_PI, 3 * M_PI_2, 2 * M_PI}, {0, 1, 0, -1, 0});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      Sine, {5}, {.scale = 1e-2, .zero_point = 0},
-      {0, M_PI_2, M_PI, 3 * M_PI_2, 2 * M_PI}, {0, 1, 0, -1, 0});
-  test<ElementType::kSI16, ElementType::kF16>(
-      Sine, {5}, {.scale = 1e-2, .zero_point = 0},
-      {0, M_PI_2, M_PI, 3 * M_PI_2, 2 * M_PI}, {0, 1, 0, -1, 0});
   test<ElementType::kSI16, ElementType::kF32>(
       Sine, {5}, {.scale = 1e-2, .zero_point = 0},
-      {0, M_PI_2, M_PI, 3 * M_PI_2, 2 * M_PI}, {0, 1, 0, -1, 0});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      Sine, {5}, {.scale = 1e-3, .zero_point = 0},
-      {0, M_PI_2, M_PI, 3 * M_PI_2, 2 * M_PI}, {0, 1, 0, -1, 0});
-  test<ElementType::kSI32, ElementType::kF16>(
-      Sine, {5}, {.scale = 1e-3, .zero_point = 0},
-      {0, M_PI_2, M_PI, 3 * M_PI_2, 2 * M_PI}, {0, 1, 0, -1, 0});
-  test<ElementType::kSI32, ElementType::kF32>(
-      Sine, {5}, {.scale = 1e-3, .zero_point = 0},
       {0, M_PI_2, M_PI, 3 * M_PI_2, 2 * M_PI}, {0, 1, 0, -1, 0});
 }
 
@@ -821,18 +546,8 @@ TEST(ElementwiseUnary, SqrtQuantized) {
       Sqrt, {4}, {.scale = 1e-1, .zero_point = 0}, {0, 1, 4, 9}, {0, 1, 2, 3});
   test<ElementType::kSI8, ElementType::kF32>(
       Sqrt, {4}, {.scale = 1e-1, .zero_point = 0}, {0, 1, 4, 9}, {0, 1, 2, 3});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      Sqrt, {4}, {.scale = 1e-2, .zero_point = 0}, {0, 1, 4, 9}, {0, 1, 2, 3});
-  test<ElementType::kSI16, ElementType::kF16>(
-      Sqrt, {4}, {.scale = 1e-2, .zero_point = 0}, {0, 1, 4, 9}, {0, 1, 2, 3});
   test<ElementType::kSI16, ElementType::kF32>(
       Sqrt, {4}, {.scale = 1e-2, .zero_point = 0}, {0, 1, 4, 9}, {0, 1, 2, 3});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      Sqrt, {4}, {.scale = 1e-3, .zero_point = 0}, {0, 1, 4, 9}, {0, 1, 2, 3});
-  test<ElementType::kSI32, ElementType::kF16>(
-      Sqrt, {4}, {.scale = 1e-3, .zero_point = 0}, {0, 1, 4, 9}, {0, 1, 2, 3});
-  test<ElementType::kSI32, ElementType::kF32>(
-      Sqrt, {4}, {.scale = 1e-3, .zero_point = 0}, {0, 1, 4, 9}, {0, 1, 2, 3});
 }
 
 TEST(ElementwiseUnary, Tanh) {
@@ -844,7 +559,7 @@ TEST(ElementwiseUnary, Tanh) {
                           {-0.76159416, 0.0, 0.76159416});
 }
 
-TEST(ElementwiseUnary, TanhQuantize) {
+TEST(ElementwiseUnary, TanhQuantized) {
   test<ElementType::kSI8, ElementType::kBF16>(
       Tanh, {3}, {.scale = 1e-1, .zero_point = 0}, {-1, 0, 1},
       {-0.76159416, 0.0, 0.76159416});
@@ -854,23 +569,8 @@ TEST(ElementwiseUnary, TanhQuantize) {
   test<ElementType::kSI8, ElementType::kF32>(
       Tanh, {3}, {.scale = 1e-1, .zero_point = 0}, {-1, 0, 1},
       {-0.76159416, 0.0, 0.76159416});
-  test<ElementType::kSI16, ElementType::kBF16>(
-      Tanh, {3}, {.scale = 1e-2, .zero_point = 0}, {-1, 0, 1},
-      {-0.76159416, 0.0, 0.76159416});
-  test<ElementType::kSI16, ElementType::kF16>(
-      Tanh, {3}, {.scale = 1e-2, .zero_point = 0}, {-1, 0, 1},
-      {-0.76159416, 0.0, 0.76159416});
   test<ElementType::kSI16, ElementType::kF32>(
       Tanh, {3}, {.scale = 1e-2, .zero_point = 0}, {-1, 0, 1},
-      {-0.76159416, 0.0, 0.76159416});
-  test<ElementType::kSI32, ElementType::kBF16>(
-      Tanh, {3}, {.scale = 1e-3, .zero_point = 0}, {-1, 0, 1},
-      {-0.76159416, 0.0, 0.76159416});
-  test<ElementType::kSI32, ElementType::kF16>(
-      Tanh, {3}, {.scale = 1e-3, .zero_point = 0}, {-1, 0, 1},
-      {-0.76159416, 0.0, 0.76159416});
-  test<ElementType::kSI32, ElementType::kF32>(
-      Tanh, {3}, {.scale = 1e-3, .zero_point = 0}, {-1, 0, 1},
       {-0.76159416, 0.0, 0.76159416});
 }
 

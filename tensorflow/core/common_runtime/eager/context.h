@@ -89,6 +89,11 @@ namespace eager {
 class RemoteMgr;
 }  // namespace eager
 
+// Check the value of the environment variable,
+// `TF_REMOTE_HANDLE_SKIP_WAIT_FOR_READY` from its cached copy in memory and if
+// not cached, reads from the environment variable.
+bool SkipRemoteHandleWaitReady();
+
 class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
  public:
   static constexpr uint64 kInvalidContextId = 0;
@@ -251,6 +256,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                         bool add_to_local_only = false,
                         const StackTracesMap& stack_traces = {});
 
+  // `library` contains all FunctionDefs and GradientDefs to expand `fdef`. Add
+  // it to the local FunctionLibraryDefinition as well, but no need to add it
+  // to the KernelAndDevice cache since they won't be executed as
+  // KernelAndDevices.
+  Status AddFunctionRecord(core::RefCountPtr<FunctionRecord> func_record,
+                           const FunctionDefLibrary& library,
+                           bool add_to_local_only = false);
+
   // Adds a component function (i.e. containing a subgraph of a multi-process
   // function) implemented as `fdef`.
   //
@@ -342,7 +355,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                                         tsl::core::RefCountPtr<Rendezvous>* r) {
         mutex_lock l(global_rendezvous_mu_);
         *r = global_rendezvous_for_functions_.GetNewRef();
-        return OkStatus();
+        return absl::OkStatus();
       }};
     } else {
       return CreateRendezvousFactory();
@@ -625,7 +638,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                                         tsl::core::RefCountPtr<Rendezvous>* r) {
         VLOG(6) << "Creating rendezvous using the rendezvous_creator_.";
         *r = rendezvous_creator_(step_id);
-        return OkStatus();
+        return absl::OkStatus();
       }};
     }
 
@@ -639,7 +652,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
         auto remote_r = worker_env_->rendezvous_mgr->Find(step_id);
         remote_r->Initialize(worker_session_.get()).IgnoreError();
         *r = std::move(remote_r);
-        return OkStatus();
+        return absl::OkStatus();
       }};
     }
 #endif
@@ -650,7 +663,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                                         tsl::core::RefCountPtr<Rendezvous>* r) {
         VLOG(6) << "Creating rendezvous using local_device_mgr.";
         *r = local_rendezvous_cache_.FindOrCreate(step_id, local_device_mgr());
-        return OkStatus();
+        return absl::OkStatus();
       }};
     }
 

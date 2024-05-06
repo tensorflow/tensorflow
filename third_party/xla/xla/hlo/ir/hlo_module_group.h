@@ -44,6 +44,11 @@ class HloModuleGroup {
   HloModuleGroup(absl::string_view name,
                  std::vector<std::unique_ptr<HloModule>>&& modules);
 
+  HloModuleGroup(const HloModuleGroup& other) = delete;
+  HloModuleGroup(HloModuleGroup&& other) = default;
+  HloModuleGroup& operator=(const HloModuleGroup& other) = delete;
+  HloModuleGroup& operator=(HloModuleGroup&& other) = default;
+
   // Returns the modules contained in the group.
   const std::vector<HloModule*>& modules() const { return module_ptrs_; }
 
@@ -82,7 +87,7 @@ class HloModuleGroup {
 
   // Serialize the module group to/from a proto.
   HloModuleGroupProto ToProto() const;
-  static StatusOr<HloModuleGroup> CreateFromProto(
+  static absl::StatusOr<HloModuleGroup> CreateFromProto(
       const HloModuleGroupProto& proto,
       absl::Span<const HloModuleConfig> module_configs);
 

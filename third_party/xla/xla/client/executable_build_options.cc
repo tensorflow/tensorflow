@@ -110,14 +110,14 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_use_auto_spmd_partitioning(
 ExecutableBuildOptions&
 ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_shape(
     std::vector<int64_t> mesh_shape) {
-  auto_spmd_partitioning_mesh_shape_ = mesh_shape;
+  auto_spmd_partitioning_mesh_shape_ = std::move(mesh_shape);
   return *this;
 }
 
 ExecutableBuildOptions&
 ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids(
     std::vector<int64_t> mesh_ids) {
-  auto_spmd_partitioning_mesh_ids_ = mesh_ids;
+  auto_spmd_partitioning_mesh_ids_ = std::move(mesh_ids);
   return *this;
 }
 
@@ -144,7 +144,8 @@ std::string ExecutableBuildOptions::ToString() const {
       device_ordinal_, result_layout, num_replicas_);
 }
 
-StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
+absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
+    const {
   ExecutableBuildOptionsProto output;
   output.set_device_ordinal(device_ordinal());
   if (result_layout()) {
@@ -199,7 +200,7 @@ StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
   return output;
 }
 
-StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
+absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
     const ExecutableBuildOptionsProto& input) {
   xla::ExecutableBuildOptions output;
   if (input.device_ordinal() != -1) {

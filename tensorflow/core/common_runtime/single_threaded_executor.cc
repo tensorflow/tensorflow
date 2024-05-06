@@ -315,6 +315,7 @@ class SingleThreadedExecutorImpl : public Executor {
     params.session_metadata = params_.session_metadata;
     params.tensor_store = args.tensor_store;
     params.cancellation_manager = args.cancellation_manager;
+    params.session_config = args.session_config;
     params.call_frame = args.call_frame;
     params.function_library = params_.function_library;
     params.resource_manager = device->resource_manager();

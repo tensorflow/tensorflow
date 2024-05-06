@@ -563,7 +563,7 @@ class Graph {
   Node* AddNode(NodeDef node_def, Status* status);
 
   // Same as above, but using StatusOr. This method is always preferred.
-  StatusOr<Node*> AddNode(NodeDef node_def);
+  absl::StatusOr<Node*> AddNode(NodeDef node_def);
 
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the

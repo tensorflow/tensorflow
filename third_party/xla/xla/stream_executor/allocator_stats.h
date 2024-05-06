@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ALLOCATOR_STATS_H_
 #define XLA_STREAM_EXECUTOR_ALLOCATOR_STATS_H_
 
+#include <cstdint>
+#include <optional>
 #include <string>
 
-#include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 

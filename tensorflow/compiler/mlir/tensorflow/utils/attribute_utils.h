@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 
 namespace mlir {
@@ -121,6 +122,18 @@ inline constexpr llvm::StringRef kDynamicArgIndexAttr = "_dynamic_arg_index";
 inline constexpr llvm::StringRef kParallelExecAnnotation =
     "_parallel_execution_ids";
 
+// Logging
+
+// Name of component for error logging. This name is fixed and required to
+// enable logging.
+inline const char kBridgeComponent[] = "TFXLABridge";
+inline const char kMlirPh1BridgeCounterReplicated[] = "replicated";
+inline const char kMlirPh1BridgeCounterNonReplicated[] = "nonreplicated";
+inline const char kMlirPh1BridgeCounterV1[] = "v1";
+inline const char kMlirPh1BridgeCounterV2[] = "v2";
+inline const char kMlirPh1BridgeCounterTpu[] = "tpu";
+inline const char kMlirPh1BridgeCounterNonTpu[] = "cpu/gpu";
+
 // Copies attributes that satisfy the given predicate from `from` to `to`.
 template <typename Predicate>
 void CopyAttributes(Operation *from, Operation *to, Predicate P) {
@@ -155,7 +168,7 @@ class IdentityNOp;
 // as an attribute.
 template <typename AttrT>
 bool GetValueAsConstant(Value val, AttrT &attr) {
-  while (auto result = val.dyn_cast<OpResult>()) {
+  while (auto result = mlir::dyn_cast<OpResult>(val)) {
     Operation *op = result.getOwner();
     if (!isa<IdentityOp>(op) && !isa<IdentityNOp>(op)) break;
     val = op->getOperand(result.getResultNumber());

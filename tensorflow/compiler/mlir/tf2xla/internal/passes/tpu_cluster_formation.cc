@@ -51,6 +51,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
@@ -59,7 +60,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/string_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
-#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -91,12 +91,9 @@ constexpr llvm::StringRef kNumCoresPerReplicaAttr = "num_cores_per_replica";
 constexpr llvm::StringRef kNumReplicasAttr = "num_replicas";
 constexpr llvm::StringRef kMirroredVariableIndicesAttr =
     "_mirrored_variable_indices";
-constexpr llvm::StringRef kNoReplicationCluster = "__no_replication_cluster";
 
 constexpr llvm::StringRef kBadReplicateInfoAttrMsg =
     "requires '_replication_info' string attribute";
-
-constexpr char kUseMlirBridge[] = "kUseMlirBridge";
 
 // Mapping for `_replication_info` attribute to TPUReplicateMetadata attributes.
 using MetadataMap = llvm::SmallDenseMap<llvm::StringRef, NamedAttrList, 8>;
@@ -107,15 +104,6 @@ using OpSetVector = llvm::SmallSetVector<Operation*, 8>;
 
 // Mapping for `_replication_info` attribute to ops of a cluster.
 using ClusterMap = llvm::SmallDenseMap<llvm::StringRef, OpSetVector, 8>;
-
-auto* jit_compile_single_core_tpu_count =
-    tensorflow::monitoring::Counter<1>::New(
-        /* metric name */
-        "/tensorflow/core/jit_compile_single_core_tpu_count",
-        /* metric description */
-        "Tracks if single core tpu support goes through the first "
-        "phase of the MLIR bridge",
-        /* metric field */ "use_mlir_bridge");
 
 #define GEN_PASS_DEF_TPUCLUSTERFORMATIONPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
@@ -154,7 +142,7 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
       return metadata_op.emitError() << kBadReplicateInfoAttrMsg;
 
     auto replication_info_attr_str =
-        replication_info_attr.dyn_cast<StringAttr>();
+        mlir::dyn_cast<StringAttr>(replication_info_attr);
     if (!replication_info_attr_str ||
         replication_info_attr_str.getValue().empty())
       return metadata_op.emitError() << kBadReplicateInfoAttrMsg;
@@ -183,39 +171,50 @@ struct OpDevice {
   std::string device;
 };
 
-// Collects and clusters ops either based on `_replication_info` attribute
-// (replicated case) or using one single cluster (non-replicated case). Also
-// sets `device_type` if there is any cluster (note that the device type must be
-// unique, otherwise we emit an error).
-// Returns an error in case of invalid compilation or replication attribute(s).
-LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
-                                        std::string& device_type,
-                                        std::string& device) {
-  bool has_replicated_compiled_op = false;
-  bool has_non_replicated_compiled_op = false;
-  bool has_local_device_name_collisions = false;
+LogicalResult HasValidDeviceTypeAttribute(Block* block) {
   // Use ordered set here to make error message below deterministic.
   std::set<llvm::StringRef> device_types;
-  absl::flat_hash_map<std::string, OpDevice> devices;
+  for (Operation& op : *block) {
+    // Collect device types which currently must be consistent per block
+    // (checked later).
+    if (auto device_type_attr =
+            op.getAttrOfType<StringAttr>(mlir::TF::kCompileDeviceTypeAttr)) {
+      // tf.StatefulPartitionedCall ops with and without
+      // _tpu_replicate attributes may exist in the same graph. Ops without
+      // the attribute but with _XlaMustCompile=true would have
+      // _xla_compile_device_type="" after
+      // CanonicalizeCompileAndReplicateAttributesPass. Skip empty value here.
+      if (!device_type_attr.getValue().empty()) {
+        device_types.insert(device_type_attr);
+      }
+    }
+  }
+
+  if (device_types.size() > 1) {
+    return block->getParentOp()->emitError()
+           << "found different '" << mlir::TF::kCompileDeviceTypeAttr
+           << "' attribute values (" << llvm::join(device_types, ",")
+           << ") in same block which is not supported";
+  }
+  return success();
+}
+
+// Collects and clusters ops based on `_replication_info` attribute. Returns
+// an error in case of invalid compilation or replication attribute(s).
+LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters) {
+  LogicalResult result = HasValidDeviceTypeAttribute(block);
+  if (failed(result)) return result;
+
   for (Operation& op : *block) {
     LogicalResult result =
         mlir::TF::HasValidCompilationAndReplicationAttributes(op);
     if (failed(result)) return result;
 
-    // Collect device types which currently must be consistent per block
-    // (checked later).
+    // Skip ops with non-TPU device type, they are handled elsewhere.
     auto device_type_attr =
         op.getAttrOfType<StringAttr>(mlir::TF::kCompileDeviceTypeAttr);
     if (device_type_attr) {
-      // Some graphs in TPU bridge may have both tf.StatefulPartitionedCall
-      // ops with and without _tpu_replicate attributes. As a result, the ops
-      // without such attribute would have _xla_compile_device_type="" after
-      // CanonicalizeCompileAndReplicateAttributesPass, if they also had
-      // _XlaMustCompile = true before the pass. We should filter out such
-      // unspecified device type here.
       if (device_type_attr.getValue().empty()) continue;
-      device_types.insert(device_type_attr);
-      // Stop here for ops with non-TPU devices, they are handled elsewhere.
       if (device_type_attr.getValue() != mlir::TF::kTpuDevice) continue;
     }
 
@@ -225,105 +224,10 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
       // `HasValidCompilationAndReplicationAttributes` above, assert here for
       // documentation and to avoid breakage when that function is changed.
       assert(op.hasAttr(mlir::TF::kCompileDeviceTypeAttr));
-      has_replicated_compiled_op = true;
       auto attr = op.getAttrOfType<StringAttr>(mlir::TF::kReplicationInfoAttr);
       auto it = clusters->try_emplace(attr.getValue());
       it.first->getSecond().insert(&op);
-    } else if (op.hasAttr(mlir::TF::kCompileDeviceTypeAttr)) {
-      // For non-replicated case, assume one cluster per block (in line with
-      // Framework behavior).
-      has_non_replicated_compiled_op = true;
-      auto it = clusters->try_emplace(kNoReplicationCluster);
-      it.first->getSecond().insert(&op);
     }
-    auto device_attr = op.getAttrOfType<StringAttr>(kDeviceAttr);
-    std::string device_local_name;
-    bool is_tpu_device = false;
-    if (device_attr && !device_attr.str().empty()) {
-      tensorflow::DeviceNameUtils::ParsedName parsed;
-      if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(device_attr.str(),
-                                                             &parsed)) {
-        op.emitWarning() << "Invalid device name " << device_attr.str();
-        return mlir::failure();
-      }
-
-      device_local_name =
-          tensorflow::DeviceNameUtils::LocalName(parsed.type, parsed.id);
-      is_tpu_device = parsed.type == "TPU";
-    }
-
-    // Ignore non-TPU devices when clustering.
-    if (!is_tpu_device) {
-      continue;
-    }
-
-    if (!has_replicated_compiled_op && !device_local_name.empty()) {
-      // It is possible that a device may be same Local Name but
-      // different fullname. Devices with same Local name are identical
-      // so they should only be added once in 'devices'.
-      // and we need the fullname which is longer since longer name has more
-      // information such as task, replica, job etc. An example fullname is
-      // "/job:foo_bar/replica:1/task:2/device:GPU:3"
-      if (devices.count(device_local_name)) {
-        std::string device1 = devices[device_local_name].device;
-        std::string device2 = device_attr.str();
-        // Is either of the two devices just a substring of the other? If
-        // not, we treat them as different devices, and we have a collision.
-        if (device1.find(device2) == std::string::npos &&
-            device2.find(device1) == std::string::npos) {
-          Operation* previous_op = devices[device_local_name].op;
-          has_local_device_name_collisions = true;
-
-          LOG_FIRST_N(WARNING, 1)
-              << "Found two devices with same local name " << device_local_name
-              << " but conflicting fullname: " << device1 << " and " << device2
-              << ".";
-          LOG_FIRST_N(WARNING, 1)
-              << "Previous assignment came from op: "
-              << tensorflow::OpAsString(*previous_op)
-              << ". Current op is: " << tensorflow::OpAsString(op);
-        }
-        // Always keep the longer name.
-        if (devices[device_local_name].device.size() <
-            device_attr.str().size()) {
-          devices[device_local_name] = {&op, device_attr.str()};
-        }
-      } else {
-        devices.insert({device_local_name, {&op, device_attr.str()}});
-      }
-    }
-  }
-  // Do some checks for unsupported cases.
-  if (has_replicated_compiled_op && has_non_replicated_compiled_op) {
-    return block->getParentOp()->emitError()
-           << "found mixed replicated and non-replicated compiled ops in same "
-              "block which is not supported";
-  }
-  if (device_types.size() > 1) {
-    return block->getParentOp()->emitError()
-           << "found different '" << mlir::TF::kCompileDeviceTypeAttr
-           << "' attribute values (" << llvm::join(device_types, ",")
-           << ") in same block which is not supported";
-  }
-  if (!has_replicated_compiled_op) {
-    if (devices.size() > 1) {
-      LOG(WARNING) << "found different devices for no replication: ";
-      for (const auto& device_names : devices) {
-        LOG(WARNING) << device_names.first << ", "
-                     << device_names.second.device;
-      }
-    } else if (has_local_device_name_collisions) {
-      LOG(WARNING) << "Not assigning device because of conflicting fullnames.";
-    } else if (devices.size() == 1 &&
-               absl::StrContains(devices.begin()->second.device, "TPU:")) {
-      device = devices.begin()->second.device;
-    }
-  }
-  if (!clusters->empty()) {
-    // Note that for size < 1 we shouldn't have any cluster while for size > 1
-    // we should have returned with an error above.
-    assert(device_types.size() == 1);
-    device_type = device_types.begin()->str();
   }
   return success();
 }
@@ -649,7 +553,7 @@ Operation* BuildPartitionedOutputs(
   builder.create<mlir::tf_device::ReturnOp>(result_op->getLoc(), results);
 
   // Then erase all the identity and partitioned output ops.
-  for (auto [_, ops] : partitioned_outputs) {
+  for (const auto& [_, ops] : partitioned_outputs) {
     for (mlir::TF::TPUPartitionedOutputV2Op op : ops) {
       op->erase();
     }
@@ -897,39 +801,14 @@ LogicalResult ReplicateCluster(mlir::tf_device::ClusterOp cluster,
   return success();
 }
 
-void SetNoReplicationClusterAttrs(mlir::tf_device::ClusterOp cluster,
-                                  llvm::StringRef device_type,
-                                  llvm::StringRef device) {
-  OpBuilder builder(cluster);
-  cluster->setAttr(mlir::TF::kReplicationInfoAttr,
-                   builder.getStringAttr(kNoReplicationCluster));
-  cluster->setAttr(mlir::TF::kCompileDeviceTypeAttr,
-                   builder.getStringAttr(device_type));
-
-  if (!device.empty()) {
-    cluster->setAttr(kDeviceAttr, builder.getStringAttr(device));
-  }
-  // TODO(b/229992058) Propagate `allow_soft_placement` (and other attributes?)
-  // instead of hard-coding.
-  cluster->setAttr("allow_soft_placement", builder.getBoolAttr(true));
-  cluster->setAttr("topology", builder.getStringAttr(""));
-  cluster->setAttr("num_cores_per_replica",
-                   builder.getIntegerAttr(builder.getI32Type(), 1));
-  cluster->setAttr("device_assignment", builder.getArrayAttr({}));
-  cluster->setAttr("use_spmd_for_xla_partitioning", builder.getBoolAttr(false));
-  cluster->setAttr("step_marker_location", builder.getStringAttr(""));
-}
-
-// Forms compilation clusters in `block`. If the block contains a
-// `TPUReplicateMetadata` op, then we form clusters according to
-// `_replication_info` values (ops with same value go to same cluster).
-// Otherwise, in the non-replicated case, we build one compilation cluster per
+// Forms clusters with ops of the same `_replication_info` attribute under a
 // block.
 //
-// We do this in following steps:
-//   1. Find `TPUReplicateMetadata` op in `block` (might not exist).
-//   2. Collect and group cluster ops (either based on `_replication_info`
-//      attributes or forming one single cluster).
+// For a given block, clusters are formed via grouping ops by
+// `_replication_info` attributes. For every cluster formed:
+//   1. Find associated TPUReplicateMetadata attributes with the same
+//      `_replication_info` attribute.
+//   2. Find users not in cluster that are interleaved between cluster ops.
 //   3. Find external uses of cluster ops.
 //   4. Create `tf_device.cluster` with results consisting of the external uses
 //      of cluster ops determined at 3.
@@ -943,7 +822,7 @@ void SetNoReplicationClusterAttrs(mlir::tf_device::ClusterOp cluster,
 LogicalResult FormClustersInBlock(
     Block* block,
     const mlir::TF::SideEffectAnalysis::Info& side_effect_analysis,
-    bool strict_clusters, bool& has_replication_in_module) {
+    bool strict_clusters) {
   MetadataMap metadata_map;
   LogicalResult result = CollectMetadata(block, &metadata_map);
   if (failed(result)) return result;
@@ -956,29 +835,26 @@ LogicalResult FormClustersInBlock(
         if (!llvm::hasSingleElement(region))
           return op.emitOpError("Expected single block region");
         if (failed(FormClustersInBlock(&region.front(), side_effect_analysis,
-                                       strict_clusters,
-                                       has_replication_in_module)))
+                                       strict_clusters)))
           return mlir::failure();
       }
     }
+    return success();
   }
 
   ClusterMap clusters;
-  std::string device_type;
-  std::string device;
-  result = CollectAndGroupClusterOps(block, &clusters, device_type, device);
+  result = CollectAndGroupClusterOps(block, &clusters);
   if (failed(result)) return result;
 
   for (const auto& cluster_metadata_and_ops : clusters) {
     const auto& cluster_ops = cluster_metadata_and_ops.getSecond();
 
-    bool has_replication =
-        cluster_metadata_and_ops.getFirst() != kNoReplicationCluster;
     auto cluster_metadata =
         metadata_map.find(cluster_metadata_and_ops.getFirst());
 
-    // No TPUReplicateMetadata for a `_replication_info` attribute.
-    if (has_replication && cluster_metadata == metadata_map.end()) {
+    // llvm::errs() << __func__ << "\n";
+    //  No TPUReplicateMetadata for a `_replication_info` attribute.
+    if (cluster_metadata == metadata_map.end()) {
       block->getParentOp()->emitWarning()
           << "TPUReplicateMetadata for associated '"
           << mlir::TF::kReplicationInfoAttr << "' attribute '"
@@ -997,28 +873,19 @@ LogicalResult FormClustersInBlock(
     mlir::tf_device::ClusterOp cluster = CreateClusterOp(
         block, cluster_ops, results, cluster_successor_ops.getArrayRef());
 
-    if (!has_replication) {
-      has_replication_in_module = false;
-      SetNoReplicationClusterAttrs(cluster, device_type, device);
-      continue;
-    }
-    // Determine `num_replicas`.
-    auto num_replicas_attr =
-        cluster_metadata->getSecond().get(kNumReplicasAttr);
-    if (!num_replicas_attr || !num_replicas_attr.isa<mlir::IntegerAttr>())
+    auto num_replicas = cluster_metadata->getSecond().get(kNumReplicasAttr);
+    if (!num_replicas || !num_replicas.isa<mlir::IntegerAttr>())
       return cluster.emitError()
              << "requires '" << kNumReplicasAttr << "' int attribute";
-    int num_replicas = num_replicas_attr.cast<mlir::IntegerAttr>().getInt();
 
-    // Determine `num_cores_per_replica`.
     int num_cores_per_replica = 1;
-    auto num_cores_per_replica_attr =
-        cluster_metadata->getSecond()
-            .get(kNumCoresPerReplicaAttr)
-            .dyn_cast_or_null<mlir::IntegerAttr>();
+    auto num_cores_per_replica_attr = mlir::dyn_cast_or_null<mlir::IntegerAttr>(
+        cluster_metadata->getSecond().get(kNumCoresPerReplicaAttr));
     if (num_cores_per_replica_attr)
       num_cores_per_replica = num_cores_per_replica_attr.getInt();
-    if (failed(ReplicateCluster(cluster, num_replicas, num_cores_per_replica)))
+    if (failed(ReplicateCluster(cluster,
+                                num_replicas.cast<mlir::IntegerAttr>().getInt(),
+                                num_cores_per_replica)))
       return mlir::failure();
 
     // Copy TPUReplicateMetadata attributes to `tf_device.cluster`.
@@ -1034,12 +901,12 @@ LogicalResult FormClustersInBlock(
 LogicalResult FormClustersInFunction(
     mlir::func::FuncOp func,
     const mlir::TF::SideEffectAnalysis::Info& side_effect_analysis,
-    bool strict_clusters, bool& has_replication_in_module) {
+    bool strict_clusters) {
   if (!llvm::hasSingleElement(func))
     return func.emitOpError("Expecting a single block function");
 
   if (failed(FormClustersInBlock(&func.front(), side_effect_analysis,
-                                 strict_clusters, has_replication_in_module)))
+                                 strict_clusters)))
     return mlir::failure();
 
   // Remove TPUReplicatedInput and TPUReplicatedOutput nodes.
@@ -1091,17 +958,12 @@ void TPUClusterFormationPass::runOnOperation() {
   });
 
   auto& side_effect_analysis = getAnalysis<mlir::TF::SideEffectAnalysis>();
-  bool has_replication_in_module = true;
   for (auto func : getOperation().getOps<mlir::func::FuncOp>())
     if (!func.isExternal() &&
         failed(FormClustersInFunction(
             func, side_effect_analysis.GetAnalysisForFunc(func),
-            strict_clusters_, has_replication_in_module)))
+            strict_clusters_)))
       return signalPassFailure();
-
-  if (!has_replication_in_module) {
-    jit_compile_single_core_tpu_count->GetCell(kUseMlirBridge)->IncrementBy(1);
-  }
 }
 }  // anonymous namespace
 

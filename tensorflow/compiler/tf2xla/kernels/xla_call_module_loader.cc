@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "xla/client/xla_computation.h"
+#include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/python/refine_polymorphic_shapes.h"
@@ -115,15 +116,17 @@ constexpr llvm::StringRef kCustomCallShimTarget =
 }  // namespace
 
 bool IsTokenType(mlir::Type type) {
-  return type.isa<mlir::stablehlo::TokenType>() ||
-         type.isa<mlir::mhlo::TokenType>();
+  return mlir::isa<mlir::stablehlo::TokenType>(type) ||
+         mlir::isa<mlir::mhlo::TokenType>(type);
 }
 
-tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
-    mlir::MLIRContext *context, int version, std::string module_str,
-    std::vector<std::string> disabled_checks,
-    std::vector<std::string> platforms, int num_invocation_args,
-    bool main_has_token_input_output) {
+absl::StatusOr<std::unique_ptr<XlaCallModuleLoader>>
+XlaCallModuleLoader::Create(mlir::MLIRContext *context, int version,
+                            std::string module_str,
+                            std::vector<std::string> disabled_checks,
+                            std::vector<std::string> platforms,
+                            int num_invocation_args,
+                            bool main_has_token_input_output) {
   std::unique_ptr<XlaCallModuleLoader> loader(new XlaCallModuleLoader);
   TF_RETURN_IF_ERROR(loader->LoadModule(
       context, version, std::move(module_str), std::move(disabled_checks),
@@ -157,7 +160,7 @@ absl::Status XlaCallModuleLoader::SetPlatformIndex(
     }
   }
 
-  if (platform_index < 0) return tsl::OkStatus();
+  if (platform_index < 0) return absl::OkStatus();
   VLOG(3) << "XlaCallModule setting the platform_index to " << platform_index
           << " for platform " << compilation_platform << ".";
   mlir::Block &main_body = main_.front();
@@ -171,7 +174,7 @@ absl::Status XlaCallModuleLoader::SetPlatformIndex(
   op_builder.setInsertionPointToStart(&main_body);
   mlir::BlockArgument platform_index_arg = main_body.getArgument(0);
   mlir::RankedTensorType arg_ranked_type =
-      platform_index_arg.getType().dyn_cast<mlir::RankedTensorType>();
+      mlir::dyn_cast<mlir::RankedTensorType>(platform_index_arg.getType());
   if (!arg_ranked_type || arg_ranked_type.getRank() != 0 ||
       !(arg_ranked_type.getElementType().isSignlessInteger(32) ||
         arg_ranked_type.getElementType().isSignlessInteger(64))) {
@@ -190,7 +193,7 @@ absl::Status XlaCallModuleLoader::SetPlatformIndex(
 
   main_.eraseArgument(0);
   platform_index_arg_set_ = true;
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 static mlir::stablehlo::CustomCallOp MakeShapeRefinementOperandWrapper(
@@ -229,13 +232,13 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
         VLOG(3) << "XlaCallModule skipping shape refinement due to module "
                 << " attribute " << kUsesShapePolymorphismAttr.str() << "="
                 << mlir::debugString(uses_shape_poly_attr);
-        return tsl::OkStatus();
+        return absl::OkStatus();
       }
     } else {
       VLOG(3) << "XlaCallModule skipping shape refinement due to module "
               << " attribute " << kUsesShapePolymorphismAttr.str()
               << " missing";
-      return tsl::OkStatus();
+      return absl::OkStatus();
     }
   }
   // Add the tokens to the input_shapes. Starting with version 9, the main
@@ -287,7 +290,7 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
                                           xla_shape.dimensions().end());
       TF_ASSIGN_OR_RETURN(
           mlir::Type element_type,
-          ConvertPrimitiveTypeToMLIRType(xla_shape.element_type(), builder));
+          ConvertPrimitiveTypeToMlirType(xla_shape.element_type(), builder));
       mlir::RankedTensorType type =
           mlir::RankedTensorType::get(xla_dimensions, element_type);
       // TODO(burmako): This fails with an obscure compilation error on Windows.
@@ -298,7 +301,7 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
               << mlir::debugString(type) << " for argument type "
               << mlir::debugString(arg_type);
       mlir::TensorType arg_type =
-          main_body.getArgument(i).getType().dyn_cast<mlir::TensorType>();
+          mlir::dyn_cast<mlir::TensorType>(main_body.getArgument(i).getType());
       if (arg_type == nullptr) {
         return absl::InvalidArgumentError(absl::StrCat(
             "Argument ", i, " passed to XlaCallModule is not a tensor, ",
@@ -313,7 +316,8 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
             mlir::debugString(arg_type), ", got ", mlir::debugString(type)));
       }
 
-      if (auto ranked_arg_type = arg_type.dyn_cast<mlir::RankedTensorType>()) {
+      if (auto ranked_arg_type =
+              mlir::dyn_cast<mlir::RankedTensorType>(arg_type)) {
         if (mlir::failed(mlir::verifyCompatibleShape(ranked_arg_type.getShape(),
                                                      type.getShape()))) {
           return absl::InvalidArgumentError(absl::StrCat(
@@ -377,9 +381,10 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
     if (IsTokenType(arg_type) || is_input_refined) {
       continue;
     }
-    auto ranked_arg_type = arg_type.dyn_cast<mlir::RankedTensorType>();
+    auto ranked_arg_type = mlir::dyn_cast<mlir::RankedTensorType>(arg_type);
     if (!ranked_arg_type || !ranked_arg_type.hasStaticShape()) {
-      auto type = static_array_input_types[i].cast<mlir::RankedTensorType>();
+      auto type =
+          mlir::cast<mlir::RankedTensorType>(static_array_input_types[i]);
       auto custom_call =
           MakeShapeRefinementOperandWrapper(op_builder, arg, type.getShape());
       auto call_result = custom_call.getResult(0);
@@ -406,8 +411,8 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
   // Clean up custom_call shims.
   for (auto call : llvm::make_early_inc_range(
            main_body.getOps<mlir::stablehlo::CustomCallOp>())) {
-    if (call->getAttr("call_target_name").cast<mlir::StringAttr>().strref() ==
-        kCustomCallShimTarget) {
+    if (mlir::cast<mlir::StringAttr>(call->getAttr("call_target_name"))
+            .strref() == kCustomCallShimTarget) {
       auto operand = call->getOperand(0);
       auto result = call->getResult(0);
       if (operand.getType() != result.getType()) {
@@ -427,7 +432,7 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
     DumpMlirOpToFile("xla_call_module.after_shape_refinement", *module_);
   }
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status XlaCallModuleLoader::LoadModule(
@@ -524,7 +529,7 @@ absl::Status XlaCallModuleLoader::LoadModule(
         " arguments of which ", nr_platform_args, " platform index arguments, ",
         "and ", nr_token_arguments, " token arguments."));
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status XlaCallModuleLoader::ValidateDialect() {
@@ -547,7 +552,7 @@ absl::Status XlaCallModuleLoader::ValidateDialect() {
         absl::StrCat("Module has unsupported dialects: ",
                      diag_handler.ConsumeStatus().ToString()));
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status XlaCallModuleLoader::ValidateStaticShapes() {
@@ -560,8 +565,8 @@ absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
   mlir::PassManager pm(module_->getContext());
   applyTensorflowAndCLOptions(pm);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass(
-      /*legalizeBroadcasts=*/true, /*expandCompositions=*/true));
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createChloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   // In order to export to XLA, we must sink constants to control flow
   // regions, since XLA uses functional control flow.
@@ -580,7 +585,7 @@ absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
   return absl::OkStatus();
 }
 
-tsl::StatusOr<xla::XlaComputation> XlaCallModuleLoader::ToXlaComputation() {
+absl::StatusOr<xla::XlaComputation> XlaCallModuleLoader::ToXlaComputation() {
   xla::HloProto proto;
   mlir::MlirToHloConversionOptions options;
   TF_RETURN_IF_ERROR(

@@ -64,15 +64,17 @@ message MemoryAccessBreakdown {
 // Metrics for an operation (accumulated over all occurrences).
 // Next ID: 25
 message OpMetrics {
-  // HLO module id. 0 for TF ops.
+  // HLO module id. 0 for Framework ops.
   uint64 hlo_module_id = 13;
   // Name of this op.
   string name = 6;
   // Long name of this op (e.g., HLO expression).
   string long_name = 20;
-  // Category of this op.
+  // Category of this op. (e.g. Hlo op category, Framework op type)
+  // Could be parsed from provenance if it is a framework op.
   string category = 11;
-  // Provenance of this op (e.g., if HLO op, original TF op).
+  // Provenance of this op if it is an HLO Op. (e.g. TF Op name, JAX Op name)
+  // TODO(b/310434797) Extends this for JAX as now only TF Op is populated.
   string provenance = 12;
   // Whether it is executed eagerly.
   bool is_eager = 18;

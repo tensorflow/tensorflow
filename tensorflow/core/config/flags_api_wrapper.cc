@@ -54,5 +54,6 @@ PYBIND11_MODULE(flags_pybind, m) {
   TF_PY_DECLARE_FLAG(publish_function_graphs);
   TF_PY_DECLARE_FLAG(enable_aggressive_constant_replication);
   TF_PY_DECLARE_FLAG(enable_colocation_key_propagation_in_while_op_lowering);
+  TF_PY_DECLARE_FLAG(enable_tf2min_ici_weight)
   // LINT.ThenChange(//tensorflow/core/config/flag_defs.h)
 };

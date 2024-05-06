@@ -15,25 +15,46 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "llvm/Support/Casting.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_layout.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/tuple.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/pjrt_device.h"
+#include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
-#include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/casts.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -57,6 +78,91 @@ std::unique_ptr<PjRtClient> PjRtClient::Create(
   return absl::WrapUnique(new PjRtClient(std::move(pjrt_client)));
 }
 
+PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
+    : pjrt_client_(std::move(pjrt_client)), default_compiler_(this) {
+  devices_.reserve(pjrt_client_->devices().size());
+  device_map_.reserve(pjrt_client_->devices().size());
+  for (xla::PjRtDevice* device : pjrt_client_->devices()) {
+    auto ifrt_device = std::make_unique<PjRtDevice>(
+        this, DeviceId(device->global_device_id().value()),
+        std::string(device->device_kind()), std::string(device->ToString()),
+        std::string(device->DebugString()), device->process_index(),
+        device->Attributes(), device->IsAddressable() ? device : nullptr);
+    devices_.push_back(ifrt_device.get());
+    CHECK(device_id_map_.emplace(ifrt_device->Id(), ifrt_device.get()).second);
+    CHECK(device_map_.emplace(device, std::move(ifrt_device)).second);
+  }
+  addressable_devices_.reserve(pjrt_client_->addressable_devices().size());
+  for (xla::PjRtDevice* device : pjrt_client_->addressable_devices()) {
+    auto it = device_map_.find(device);
+    CHECK(it != device_map_.end());
+    addressable_devices_.push_back(it->second.get());
+  }
+
+  memory_map_.reserve(pjrt_client_->memory_spaces().size());
+  for (xla::PjRtMemorySpace* memory_space : pjrt_client_->memory_spaces()) {
+    auto ifrt_memory_space = std::make_unique<PjRtMemory>(this, memory_space);
+    memory_map_[memory_space] = std::move(ifrt_memory_space);
+  }
+
+  for (size_t i = 0; i < devices_.size(); ++i) {
+    auto* device = tensorflow::down_cast<PjRtDevice*>(devices_[i]);
+    auto* pjrt_device = pjrt_client_->devices()[i];
+    device->memories_.reserve(pjrt_device->memory_spaces().size());
+    for (xla::PjRtMemorySpace* pjrt_memory_space :
+         pjrt_device->memory_spaces()) {
+      device->memories_.push_back(*LookupPjRtMemory(pjrt_memory_space));
+    }
+    absl::StatusOr<PjRtMemorySpace*> memory =
+        pjrt_device->default_memory_space();
+    if (memory.ok()) {
+      device->default_memory_ = *LookupPjRtMemory(*memory);
+    } else {
+      device->default_memory_ = memory.status();
+    }
+  }
+}
+
+PjRtClient::~PjRtClient() = default;
+
+absl::StatusOr<PjRtCompatibleDevice*> PjRtClient::LookupPjRtDevice(
+    xla::PjRtDevice* pjrt_device) const {
+  auto it = device_map_.find(pjrt_device);
+  if (it == device_map_.end()) {
+    return InvalidArgument("PjRtDevice not found: %s",
+                           pjrt_device->DebugString());
+  }
+  return it->second.get();
+}
+
+absl::StatusOr<PjRtCompatibleMemory*> PjRtClient::LookupPjRtMemory(
+    xla::PjRtMemorySpace* pjrt_memory) const {
+  auto it = memory_map_.find(pjrt_memory);
+  if (it == memory_map_.end()) {
+    return InvalidArgument("PjRtMemorySpace not found: %s",
+                           pjrt_memory->DebugString());
+  }
+  return it->second.get();
+}
+
+absl::StatusOr<Device*> PjRtClient::LookupDevice(DeviceId device_id) const {
+  DCHECK(this);
+  auto it = device_id_map_.find(device_id);
+  if (it != device_id_map_.end()) {
+    return it->second;
+  }
+  return InvalidArgument("No matching device found for device_id %d",
+                         device_id.value());
+}
+
+absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
+    int local_hardware_id) const {
+  DCHECK(this);
+  TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
+                      pjrt_client_->LookupAddressableDevice(local_hardware_id));
+  return LookupPjRtDevice(pjrt_device);
+}
+
 absl::flat_hash_map<std::string, Client::ClientAttribute>
 PjRtClient::attributes() const {
   absl::flat_hash_map<std::string, ClientAttribute> attributes;
@@ -71,26 +177,29 @@ PjRtClient::attributes() const {
     attributes.insert(
         {"pjrt_c_api_minor_version",
          ClientAttribute(plugin_attributes->pjrt_c_api_minor_version)});
+    for (const auto& [key, value] : plugin_attributes->attributes) {
+      attributes.insert({key, value});
+    }
   }
 
   return attributes;
 }
 
-StatusOr<tsl::RCReference<PjRtCompatibleArray>> PjRtClient::CreatePjRtArray(
-    std::shared_ptr<PjRtBuffer> pjrt_buffer) {
+absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
+PjRtClient::CreatePjRtArray(std::shared_ptr<PjRtBuffer> pjrt_buffer) {
   TF_ASSIGN_OR_RETURN(auto array,
                       PjRtArray::Create(this, std::move(pjrt_buffer)));
   return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
 }
 
-StatusOr<tsl::RCReference<PjRtCompatibleArray>> PjRtClient::CreatePjRtArray(
-    Shape shape, PjRtBuffers pjrt_buffers) {
+absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
+PjRtClient::CreatePjRtArray(Shape shape, PjRtBuffers pjrt_buffers) {
   TF_ASSIGN_OR_RETURN(auto array, PjRtArray::Create(this, std::move(shape),
                                                     std::move(pjrt_buffers)));
   return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
 }
 
-StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
+absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides,
     std::shared_ptr<const Sharding> sharding,
@@ -112,41 +221,48 @@ StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
   if (sharding->memory_kind().memory_kind().has_value()) {
     // Find `PjRtMemorySpace` that is associated with the sharding's device and
     // matches the sharding's memory_kind.
-    PjRtMemorySpace* memory_space = nullptr;
-    for (PjRtMemorySpace* ms : sharding->devices().front()->memory_spaces()) {
-      if (ms->memory_space_kind() == *sharding->memory_kind().memory_kind()) {
-        memory_space = ms;
+    Memory* memory = nullptr;
+    for (Memory* ms : sharding->devices().front()->Memories()) {
+      if (ms->Kind() == sharding->memory_kind()) {
+        memory = ms;
         break;
       }
     }
-    if (memory_space == nullptr) {
+    if (memory == nullptr) {
       return InvalidArgument(
           "Invalid memory kind: %s; available memory kinds: %s",
           *sharding->memory_kind().memory_kind(),
-          absl::StrJoin(sharding->devices().front()->memory_spaces(), ", ",
-                        [](std::string* out, PjRtMemorySpace* ms) {
-                          absl::StrAppend(out, ms->memory_space_kind());
+          absl::StrJoin(sharding->devices().front()->Memories(), ", ",
+                        [](std::string* out, Memory* ms) {
+                          absl::StrAppend(out, *ms->Kind().memory_kind());
                         }));
+    }
+    TF_ASSIGN_OR_RETURN(
+        buffer, pjrt_client_->BufferFromHostBuffer(
+                    data, primitive_type, shape.dims(), byte_strides, semantics,
+                    FromStdFunction(std::move(on_done_with_host_buffer)),
+                    tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory(),
+                    /*device_layout=*/nullptr));
+  } else {
+    Device* device = sharding->devices().front();
+    if (!device->IsAddressable()) {
+      return InvalidArgument("Cannot copy array to non-addressable device %s",
+                             device->DebugString());
     }
     TF_ASSIGN_OR_RETURN(
         buffer,
         pjrt_client_->BufferFromHostBuffer(
             data, primitive_type, shape.dims(), byte_strides, semantics,
-            FromStdFunction(std::move(on_done_with_host_buffer)), memory_space,
-            /*device_layout=*/nullptr));
-  } else {
-    TF_ASSIGN_OR_RETURN(
-        buffer, pjrt_client_->BufferFromHostBuffer(
-                    data, primitive_type, shape.dims(), byte_strides, semantics,
-                    FromStdFunction(std::move(on_done_with_host_buffer)),
-                    sharding->devices().front()));
+            FromStdFunction(std::move(on_done_with_host_buffer)),
+            tensorflow::down_cast<PjRtDevice*>(sharding->devices().front())
+                ->pjrt_device()));
   }
   return PjRtArray::Create(
       this, dtype, std::move(shape), std::move(sharding),
       PjRtArray::PjRtBuffers({std::shared_ptr<PjRtBuffer>(buffer.release())}));
 }
 
-StatusOr<tsl::RCReference<Array>>
+absl::StatusOr<tsl::RCReference<Array>>
 PjRtClient::AssembleArrayFromSingleDeviceArrays(
     Shape shape, std::shared_ptr<const Sharding> sharding,
     absl::Span<tsl::RCReference<Array>> arrays, ArrayCopySemantics semantics) {
@@ -215,18 +331,50 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
                            std::move(buffers));
 }
 
-StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
+absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
     absl::Span<tsl::RCReference<Value>> values) {
   return PjRtTuple::Create(this, values);
 }
 
-StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-PjRtClient::GetTopologyForDevices(absl::Span<Device* const> devices) const {
+absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
+PjRtClient::GetTopologyForDevices(const xla::ifrt::DeviceList& devices) const {
   // TODO(parkers): Consider constructing a sub-slice topology based on the
   // provided devices.
   TF_ASSIGN_OR_RETURN(auto topology, pjrt_client_->GetTopologyDescription());
   return std::shared_ptr<const xla::PjRtTopologyDescription>(pjrt_client_,
                                                              topology);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLayout>>
+PjRtClient::GetDefaultLayoutForDevice(DType dtype,
+                                      absl::Span<const int64_t> dims,
+                                      Device* device) const {
+  TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
+  TF_ASSIGN_OR_RETURN(xla::Layout layout,
+                      pjrt_client_->GetDefaultLayout(element_type, dims));
+  return std::make_unique<PjRtXlaLayout>(std::move(layout));
+}
+
+absl::Status PjRtClient::TransferToInfeed(PjRtDevice* device,
+                                          const LiteralSlice& literal) {
+  if (!device->IsAddressable()) {
+    return InvalidArgument(
+        "Infeed is only supported on addressable devices "
+        "but device %s is not addressable",
+        device->DebugString());
+  }
+  return device->pjrt_device()->TransferToInfeed(literal);
+}
+
+absl::Status PjRtClient::TransferFromOutfeed(PjRtDevice* device,
+                                             MutableBorrowingLiteral literal) {
+  if (!device->IsAddressable()) {
+    return InvalidArgument(
+        "Outfeed is only supported on addressable devices "
+        "but device %s is not addressable",
+        device->DebugString());
+  }
+  return device->pjrt_device()->TransferFromOutfeed(literal);
 }
 
 }  // namespace ifrt

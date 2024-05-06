@@ -20,7 +20,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/cord.h"
-#include "absl/strings/string_view.h"
+#include "absl/strings/cord_buffer.h"
+#include "absl/strings/str_cat.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {

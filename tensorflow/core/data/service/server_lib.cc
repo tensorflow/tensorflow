@@ -195,7 +195,7 @@ void WorkerGrpcDataServer::MaybeStartAlternativeDataTransferServer(
                << s;
     return;
   }
-  s = transfer_server_->Start();
+  s = transfer_server_->Start(config_);
   if (!s.ok()) {
     LOG(ERROR) << "failed to start " << config_.data_transfer_protocol()
                << " server for worker " << config_.worker_address() << ": "

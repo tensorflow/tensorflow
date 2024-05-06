@@ -29,7 +29,9 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -52,9 +54,9 @@ struct SelectAndScatterExpanderPattern
                                 PatternRewriter& rewriter) const override {
     // Capture original values with variables
     ImplicitLocOpBuilder builder(sas.getLoc(), rewriter);
-    TypedValue<TensorType> operand = sas.getOperand();
+    TypedValue<RankedTensorType> operand = sas.getOperand();
     llvm::ArrayRef<int64_t> operandShape = operand.getType().getShape();
-    TypedValue<TensorType> source = sas.getSource();
+    TypedValue<RankedTensorType> source = sas.getSource();
     Value initValue = sas.getInitValue();
     Region& select = sas.getSelect();
     Region& scatter = sas.getScatter();
@@ -161,7 +163,7 @@ struct SelectAndScatterExpanderPattern
 
     llvm::SmallVector<int64_t> concatenatedIotasDims;
     concatenatedIotasDims.reserve(
-        iotaIndices.front().getType().cast<ShapedType>().getRank());
+        mlir::cast<ShapedType>(iotaIndices.front().getType()).getRank());
     concatenatedIotasDims.insert(concatenatedIotasDims.end(),
                                  broadcastedIotaDims.begin(),
                                  broadcastedIotaDims.end());
@@ -188,8 +190,8 @@ struct SelectAndScatterExpanderPattern
     llvm::SmallVector<Type> scatterIns;
     llvm::SmallVector<Location> scatterLocs;
     scatterIns.push_back(RankedTensorType::get(
-        {},
-        broadcastedInitValue.getType().cast<ShapedType>().getElementType()));
+        {}, mlir::cast<ShapedType>(broadcastedInitValue.getType())
+                .getElementType()));
     scatterIns.push_back(
         RankedTensorType::get({}, source.getType().getElementType()));
     scatterLocs.push_back(broadcastedInitValue.getLoc());

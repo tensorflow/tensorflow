@@ -40,7 +40,7 @@ bool LogisticExpander::InstructionMatchesPattern(HloInstruction* instruction) {
   return instruction->opcode() == HloOpcode::kLogistic;
 }
 
-StatusOr<HloInstruction*> LogisticExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> LogisticExpander::ExpandInstruction(
     HloInstruction* instruction) {
   HloInstruction* operand = instruction->mutable_operand(0);
   const Shape operand_shape = operand->shape();

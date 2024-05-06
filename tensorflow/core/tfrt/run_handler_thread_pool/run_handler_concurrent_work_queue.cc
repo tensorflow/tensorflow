@@ -59,7 +59,7 @@ RunHandlerThreadWorkQueue::RunHandlerThreadWorkQueue(const Options& options)
   handler_pool_ = std::make_unique<RunHandlerPool>(pool_options);
 }
 
-tensorflow::StatusOr<std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
+absl::StatusOr<std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
 RunHandlerThreadWorkQueue::InitializeRequest(int64_t request_id) const {
   RunHandlerOptions options;
   std::unique_ptr<RunHandler> handler =

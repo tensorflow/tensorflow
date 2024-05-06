@@ -21,6 +21,8 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -35,22 +37,22 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<mlir::Operation*> ImportDynamicBroadcastInDimOp(
+absl::StatusOr<mlir::Operation*> ImportDynamicBroadcastInDimOp(
     mlir::StringRef backend_config, mlir::Location loc, mlir::Type result_type,
     mlir::ValueRange operands, mlir::OpBuilder* builder) {
   if (backend_config.empty()) {
     return Internal("backend_config attribute cannot be empty.");
   }
 
-  auto attr = mlir::parseAttribute(backend_config, builder->getContext())
-                  .dyn_cast<mlir::DictionaryAttr>();
+  auto attr = mlir::dyn_cast<mlir::DictionaryAttr>(
+      mlir::parseAttribute(backend_config, builder->getContext()));
   if (!attr) {
     return Internal(
         "Couldn't parse backend config into a dictionary attribute");
   }
 
   auto broadcast_dimensions_attr =
-      attr.get("broadcast_dimensions").dyn_cast_or_null<mlir::ArrayAttr>();
+      mlir::dyn_cast_or_null<mlir::ArrayAttr>(attr.get("broadcast_dimensions"));
   if (!broadcast_dimensions_attr) {
     return Internal("broadcast_dimensions attribute is required.");
   }
@@ -59,7 +61,7 @@ StatusOr<mlir::Operation*> ImportDynamicBroadcastInDimOp(
   for (auto [i, broadcast_dimension] :
        llvm::enumerate(broadcast_dimensions_attr)) {
     broadcast_dimensions[i] =
-        broadcast_dimension.cast<mlir::IntegerAttr>().getInt();
+        mlir::cast<mlir::IntegerAttr>(broadcast_dimension).getInt();
   }
 
   return builder
@@ -69,7 +71,7 @@ StatusOr<mlir::Operation*> ImportDynamicBroadcastInDimOp(
       .getOperation();
 }
 
-StatusOr<mlir::Operation*> ImportDynamicReshapeOp(
+absl::StatusOr<mlir::Operation*> ImportDynamicReshapeOp(
     mlir::StringRef backend_config, mlir::Location loc, mlir::Type result_type,
     mlir::ValueRange operands, mlir::OpBuilder* builder) {
   if (!backend_config.empty()) {
@@ -80,7 +82,7 @@ StatusOr<mlir::Operation*> ImportDynamicReshapeOp(
       .getOperation();
 }
 
-StatusOr<mlir::Operation*> ImportRealDynamicSliceOp(
+absl::StatusOr<mlir::Operation*> ImportRealDynamicSliceOp(
     mlir::StringRef backend_config, mlir::Location loc, mlir::Type result_type,
     mlir::ValueRange operands, mlir::OpBuilder* builder) {
   if (!backend_config.empty()) {
@@ -92,6 +94,68 @@ StatusOr<mlir::Operation*> ImportRealDynamicSliceOp(
 }
 
 }  // namespace
+
+mlir::Type getQuantizedType(mlir::DictionaryAttr& backend_config) {
+  std::vector<double> scales;
+  std::vector<int64_t> zero_points;
+  int64_t quantization_dimension = -1, storage_max = 0, storage_min = 0;
+  mlir::Type storage_type, expressed_type;
+
+  if (const mlir::Attribute scales_attr = backend_config.get("scale");
+      scales_attr) {
+    for (auto scale_attr : mlir::cast<mlir::ArrayAttr>(scales_attr)) {
+      scales.push_back(
+          mlir::cast<mlir::FloatAttr>(scale_attr).getValueAsDouble());
+    }
+  }
+
+  auto zero_points_attr = backend_config.get("zero_point");
+  if (zero_points_attr) {
+    for (auto zero_point_attr : mlir::cast<mlir::ArrayAttr>(zero_points_attr)) {
+      zero_points.push_back(
+          mlir::cast<mlir::IntegerAttr>(zero_point_attr).getInt());
+    }
+  }
+
+  auto quantization_dimension_attr =
+      backend_config.get("quantization_dimension");
+  if (quantization_dimension_attr) {
+    quantization_dimension =
+        mlir::cast<mlir::IntegerAttr>(quantization_dimension_attr).getInt();
+  }
+
+  auto storage_max_attr = backend_config.get("storage_max");
+  if (storage_max_attr) {
+    storage_max = mlir::cast<mlir::IntegerAttr>(storage_max_attr).getInt();
+  }
+
+  auto storage_min_attr = backend_config.get("storage_min");
+  if (storage_min_attr) {
+    storage_min = mlir::cast<mlir::IntegerAttr>(storage_min_attr).getInt();
+  }
+
+  auto storage_type_attr = backend_config.get("storage_type");
+  if (storage_type_attr) {
+    storage_type = mlir::cast<mlir::TypeAttr>(storage_type_attr).getValue();
+  }
+
+  auto expressed_type_attr = backend_config.get("expressed_type");
+  if (expressed_type_attr) {
+    expressed_type = mlir::cast<mlir::TypeAttr>(expressed_type_attr).getValue();
+  }
+
+  auto is_signed = mlir::cast<mlir::IntegerType>(storage_type).isSignless();
+
+  if (quantization_dimension != -1) {
+    return mlir::quant::UniformQuantizedPerAxisType::get(
+        is_signed, storage_type, expressed_type, scales, zero_points,
+        quantization_dimension, storage_min, storage_max);
+  } else {
+    return mlir::quant::UniformQuantizedType::get(
+        is_signed, storage_type, expressed_type, scales[0], zero_points[0],
+        storage_min, storage_max);
+  }
+}
 
 absl::StatusOr<mlir::Operation*> ImportCustomCallAsOp(
     const HloCustomCallInstruction* instruction, mlir::Location loc,
@@ -111,6 +175,30 @@ absl::StatusOr<mlir::Operation*> ImportCustomCallAsOp(
   if (custom_call_target == "mhlo.real_dynamic_slice") {
     return ImportRealDynamicSliceOp(backend_config_str, loc, result_type,
                                     operands, builder);
+  }
+
+  auto backend_config = mlir::dyn_cast<mlir::DictionaryAttr>(
+      mlir::parseAttribute(backend_config_str, builder->getContext()));
+  if (!backend_config) {
+    return Internal(
+        "Couldn't parse backend config into a dictionary attribute");
+  }
+
+  if (custom_call_target == "mhlo.uniform_quantize") {
+    return builder
+        ->create<mlir::mhlo::UniformQuantizeOp>(
+            loc,
+            mlir::RankedTensorType::get(
+                mlir::cast<mlir::RankedTensorType>(result_type).getShape(),
+                getQuantizedType(backend_config)),
+            operands)
+        .getOperation();
+  }
+
+  if (custom_call_target == "mhlo.uniform_dequantize") {
+    return builder
+        ->create<mlir::mhlo::UniformDequantizeOp>(loc, result_type, operands)
+        .getOperation();
   }
   return InvalidArgument("Unsupported MHLO op custom_call %s",
                          custom_call_target);
