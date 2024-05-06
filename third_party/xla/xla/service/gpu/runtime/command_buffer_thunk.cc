@@ -80,6 +80,10 @@ CommandBufferThunk::CommandBufferThunk(CommandBufferCmdSequence commands,
 bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
     const CommandBufferCmdSequence& commands,
     const Thunk::ExecuteParams& params) {
+  if (commands.force_update()) {
+    return true;
+  }
+
   bool should_update = false;
   const BufferAllocations* allocs = params.buffer_allocations;
 
@@ -156,6 +160,10 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // before execution, because command buffers when instantiated will allocate
   // memory on device and this might lead to deadlocks when we have concurrent
   // NCCL operations in flight.
+  //
+  // If command buffer in any other state we check it is has to be updated, i.e.
+  // if captured pointers changed or command buffer has commands that require
+  // update on each call.
   if (cmd_buffer->command_buffer->state() ==
           se::CommandBuffer::State::kCreate &&
       cmd_buffer->ShouldUpdateCommandBuffer(commands_, execute_params)) {
@@ -181,6 +189,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
             << params.executor->device_ordinal() << " in "
             << (end_micros - start_micros)
             << " μs; num_commands=" << commands_.size();
+    cmd_buffer->num_executions = 0;
   }
 
   return absl::OkStatus();

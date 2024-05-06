@@ -1357,7 +1357,7 @@ BarrierCmd::BufferUsageVector BarrierCmd::buffers() { return {}; }
 CollectiveCmd::CollectiveCmd(ExecutionStreamId execution_stream_id,
                              ExecutionStreamId async_from_stream_id,
                              NcclApi* nccl_api, NcclCollectiveConfig config)
-    : TracedCommandBufferCmd(execution_stream_id),
+    : CommandBufferCmd(execution_stream_id),
       async_from_stream_id_(async_from_stream_id),
       nccl_api_(nccl_api),
       config_(std::move(config)) {}
@@ -1406,6 +1406,20 @@ absl::Status CollectiveCmd::Prepare(
       NcclCliqueKey(std::move(participants), nccl_stream_id(),
                     GetAsyncStreamKind()),
       num_local_participants);
+}
+
+absl::Status CollectiveCmd::AddTracedCommandBuffer(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, se::CommandBuffer* command_buffer,
+    absl::FunctionRef<absl::Status(se::Stream*)> trace) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::CommandBuffer> nested_cmd,
+                      se::CommandBuffer::Trace(
+                          execute_params.stream->parent(),
+                          execute_params.command_buffer_trace_stream, trace));
+
+  ExecutionScopeId execution_scope_id = GetExecutionScope(record_params);
+  return command_buffer->AddNestedCommandBuffer(execution_scope_id,
+                                                *nested_cmd);
 }
 
 //===----------------------------------------------------------------------===//
