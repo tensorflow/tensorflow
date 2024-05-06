@@ -27,7 +27,7 @@ ROCM_PATH=${ROCM_PATH:-/opt/rocm-${ROCM_VERSION}}
 # Intial release don't have the trialing '.0'
 # For example ROCM 5.4.0 is at https://repo.radeon.com/rocm/apt/5.4/
 if [ ${ROCM_VERSION##*[^0-9]} -eq '0' ]; then
-        ROCM_VERSION_REPO==${ROCM_VERSION%.*}
+        ROCM_VERSION_REPO=${ROCM_VERSION%.*}
 else
         ROCM_VERSION_REPO=$ROCM_VERSION
 fi
