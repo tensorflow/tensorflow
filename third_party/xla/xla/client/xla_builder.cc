@@ -915,7 +915,7 @@ XlaOp XlaBuilder::MhloDynamicBroadcastInDim(
 
     if (!output_dimensions_shape->IsInteger()) {
       return InvalidArgument("output_dimensions must be an integer type %s",
-                             output_dimensions_shape->ToString());
+                             ShapeUtil::HumanString(*output_dimensions_shape));
     }
 
     if (output_dimensions_shape->rank() != 1) {
@@ -990,8 +990,8 @@ absl::StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
       TF_RET_CHECK(operand_shape->is_bounded_dynamic_dimension(
                        it - broadcast_dimensions.begin()) ==
                    shape.is_bounded_dynamic_dimension(i))
-          << " i: " << i << ", shape: " << shape.ToString()
-          << ", operand_shape: " << operand_shape->ToString();
+          << " i: " << i << ", shape: " << ShapeUtil::HumanString(shape)
+          << ", operand_shape: " << ShapeUtil::HumanString(*operand_shape);
     } else {
       // Non-broadcast dimensions must be static.
       TF_RET_CHECK(shape.is_static_dimension(i));
@@ -1423,7 +1423,7 @@ XlaOp XlaBuilder::Iota(const Shape& shape, int64_t iota_dimension) {
     if (!shape.is_static()) {
       return InvalidArgument(
           "The output of iota must not have dynamic dimensions: %s",
-          shape.ToString());
+          ShapeUtil::HumanString(shape));
     }
     HloInstructionProto instr;
     *instr.mutable_shape() = shape.ToProto();
@@ -1515,7 +1515,7 @@ XlaOp XlaBuilder::BroadcastInDim(
                             operand_shape->element_type(), out_dim_size));
     TF_RET_CHECK(!output_shape.is_unbounded_dynamic())
         << "BroadcastInDim output must shape be static or bounded dynamic "
-        << output_shape.ToString();
+        << ShapeUtil::HumanString(output_shape);
     int64_t broadcast_rank = broadcast_dimensions.size();
     if (operand_shape->rank() != broadcast_rank) {
       return InvalidArgument(
@@ -3200,13 +3200,14 @@ XlaOp XlaBuilder::AllReduceImpl(XlaOp operand,
     if (layout) {
       if (!LayoutUtil::HasLayout(*layout)) {
         return InvalidArgument("shape_with_layout must have the layout set: %s",
-                               layout->ToString());
+                               ShapeUtil::HumanString(*layout));
       }
       if (!ShapeUtil::Compatible(*layout, *operand_shape)) {
         return InvalidArgument(
             "Provided shape_with_layout must be compatible with the "
             "operand shape: %s vs %s",
-            layout->ToString(), operand_shape->ToString());
+            ShapeUtil::HumanString(*layout),
+            ShapeUtil::HumanString(*operand_shape));
       }
       instr.set_constrain_layout(true);
       if (operand_shape->IsTuple() && !inferred_shape.IsTuple()) {
@@ -3848,7 +3849,8 @@ XlaOp XlaBuilder::AllToAllTuple(
           return InvalidArgument(
               "Provided layout must be compatible with the operands' shape. "
               "The layout is %s, but operand %d has shape %s.",
-              layout->ToString(), i, shape.tuple_shapes(i).ToString());
+              layout->ToString(), i,
+              ShapeUtil::HumanString(shape.tuple_shapes(i)));
         }
         *(shape.mutable_tuple_shapes(i)->mutable_layout()) = *layout;
       }
