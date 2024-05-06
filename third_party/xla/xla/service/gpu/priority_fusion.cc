@@ -715,9 +715,29 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
           .debug_options()
           .xla_gpu_enable_triton_softmax_priority_fusion();
 
+  // GetNonFusionComputations (see the loop below) also returns computations
+  // that should not be fused, such as reducers, scatter computations, etc. We
+  // collect these here.
+  absl::flat_hash_set<const HloComputation*> computations_not_to_fuse;
+  for (auto* computation : module->computations()) {
+    for (auto* instruction : computation->instructions()) {
+      // Don't fuse within called computations, unless they are for control
+      // flow. See also fusion_wrapper.cc, which does the same.
+      if (HloInstruction::MightHaveCalledComputations(instruction->opcode()) &&
+          instruction->opcode() != HloOpcode::kWhile &&
+          instruction->opcode() != HloOpcode::kConditional &&
+          instruction->opcode() != HloOpcode::kFusion) {
+        for (auto* called : instruction->called_computations()) {
+          computations_not_to_fuse.insert(called);
+        }
+      }
+    }
+  }
+
   int changed = false;
   for (auto* computation :
        GetNonFusionComputations(module, execution_threads)) {
+    if (computations_not_to_fuse.contains(computation)) continue;
     CHECK(!computation->IsFusionComputation());
 
     auto fusion_queue = std::make_unique<GpuPriorityFusionQueue>(
