@@ -491,7 +491,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
   auto kernel = se::TypedKernel<se::DeviceMemoryBase, int64_t, int64_t>::Create(
       executor, "RepeatBufferKernel", repeat_buffer_kernel::kernel());
   if (!kernel.ok()) {
-    LOG(FATAL) << "Could not create RepeatBufferKernel";
+    LOG(FATAL) << "Could not create RepeatBufferKernel: " << kernel.status();
   }
   // Launch the kernel with at least host_buffer_bytes threads. Each thread
   // will read one byte of `host_buffer` from the start of `buffer`, where the
