@@ -697,8 +697,9 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
   // With this modification it will be easier to match instructions before and
   // after fusion passes, because they will have the same unique prefix. Names
   // are not used in the pipeline, but it makes debugging much easier.
-  for (auto* computation :
-       GetNonFusionComputations(module, execution_threads)) {
+  auto non_fusion_computations =
+      GetNonFusionComputations(module, execution_threads);
+  for (auto* computation : non_fusion_computations) {
     for (auto* instruction : computation->instructions()) {
       module->SetAndUniquifyInstrName(instruction,
                                       absl::StrCat(instruction->name(), ".0"));
@@ -735,8 +736,7 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
   }
 
   int changed = false;
-  for (auto* computation :
-       GetNonFusionComputations(module, execution_threads)) {
+  for (auto* computation : non_fusion_computations) {
     if (computations_not_to_fuse.contains(computation)) continue;
     CHECK(!computation->IsFusionComputation());
 
