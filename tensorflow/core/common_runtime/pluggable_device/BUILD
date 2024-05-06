@@ -42,7 +42,6 @@ cc_library(
         ":pluggable_device_bfc_allocator",
         ":pluggable_device_init_impl",
         ":pluggable_device_simple_allocator",
-        "//tensorflow/c/experimental/stream_executor",
         "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
@@ -55,10 +54,14 @@ cc_library(
         "//tensorflow/core/common_runtime/device:device_event_mgr",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/framework:device_id_utils",
         "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream_executor_install_hdrs_gather",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ],
     alwayslink = 1,
@@ -86,6 +89,7 @@ cc_library(
         "//tensorflow/compiler/jit:pjrt_device_context",
         "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -99,10 +103,13 @@ cc_library(
         "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_factory",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@local_xla//xla/pjrt:pjrt_api",
         "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
         "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream_executor_install_hdrs_gather",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ] + if_static([
         "//tensorflow/core/common_runtime:copy_tensor",
@@ -115,6 +122,7 @@ cc_library(
     linkstatic = 1,
     deps = [
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -126,6 +134,7 @@ cc_library(
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream_executor_install_hdrs_gather",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ] + if_static([
         # Temporary workaround for duplicated symbols issues.
@@ -149,8 +158,10 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:bfc_allocator",
-        "//tensorflow/core/common_runtime/device:device_id",
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/memory",
+        "@local_tsl//tsl/framework:bfc_allocator",
     ],
 )
 
@@ -166,8 +177,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime/device:device_id",
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
+        "//tensorflow/core/framework:allocator",
     ],
 )
 
@@ -178,11 +189,9 @@ cc_library(
     ],
     deps = [
         "pluggable_device_init_impl",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/platform:stream_executor",
     ],
 )
 
@@ -197,12 +206,9 @@ cc_library(
     copts = tf_copts(),
     linkstatic = 1,
     deps = [
-        "//tensorflow/core:core_cpu_lib",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/platform:stream_executor",
         "@local_xla//xla/stream_executor:platform_manager",
     ],
     alwayslink = 1,
