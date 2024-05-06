@@ -17,6 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_SINGLE_THREADED_EXECUTOR_H_
 
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/local_executor_params.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
