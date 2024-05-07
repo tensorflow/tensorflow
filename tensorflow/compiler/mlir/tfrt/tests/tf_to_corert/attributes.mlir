@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -tf-to-tfrt=func-use-fallback-tensor=true %s | FileCheck %s --dump-input=fail
+// RUN: tf-tfrt-opt -tf-to-tfrt %s | FileCheck %s --dump-input=fail
 
 // _output_shapes and f.* attributes are removed during tf-to-tfrt lowering.
 // CHECK-LABEL: func @remove_unused_attr
