@@ -59,11 +59,14 @@ struct CallOptions {
 // `error` if it's not nullptr; returns OK status otherwise.
 absl::Status TakeStatus(XLA_FFI_Error* error);
 
-absl::Status Call(Ffi& handler, CallFrame& call_frame,
-                  const CallOptions& options = {});
+absl::Status Call(
+    Ffi& handler, CallFrame& call_frame, const CallOptions& options = {},
+    XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
 
-absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
-                  const CallOptions& options = {});
+absl::Status Call(
+    XLA_FFI_Handler* handler, CallFrame& call_frame,
+    const CallOptions& options = {},
+    XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
 
 namespace internal {
 // This is an internal workaround to override FFI execution context for FFI

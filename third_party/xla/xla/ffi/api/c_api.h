@@ -261,6 +261,30 @@ struct XLA_FFI_Array {
 // Call frame
 //===----------------------------------------------------------------------===//
 
+// XLA runtime has multiple execution stages and it is possible to run
+// different handlers for each stage:
+//
+// (1) Prepare - called before the execution to let FFI handlers to prepare
+//     for the execution and request resources from runtime, i.e. in XLA:GPU
+//     we use prepare stage to request collective cliques.
+//
+// (2) Initialize - called before the execution after acquiring all the
+//     resources requested in the prepare stage.
+//
+// (3) Execute - called when FFI handler is executed. Note that FFI handler
+//     can be called as a part of command buffer capture (CUDA graph capture
+//     on GPU backend) and argument buffers might contain uninitialized
+//     values in this case.
+//
+// It is undefined behavior to access argument buffers in prepare and
+// initialize stages as they might not be initialized yet. However it is safe
+// to use memory address as it is assigned ahead of time by buffer assignment.
+typedef enum {
+  XLA_FFI_ExecutionStage_PREPARE = 0,
+  XLA_FFI_ExecutionStage_INITIALIZE = 1,
+  XLA_FFI_ExecutionStage_EXECUTE = 2,
+} XLA_FFI_ExecutionStage;
+
 struct XLA_FFI_Args {
   size_t struct_size;
   void* priv;
@@ -303,6 +327,7 @@ struct XLA_FFI_CallFrame {
 
   const XLA_FFI_Api* api;
   XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_ExecutionStage stage;
   XLA_FFI_Args args;
   XLA_FFI_Rets rets;
   XLA_FFI_Attrs attrs;
@@ -317,24 +342,7 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_CallFrame, attrs);
 // External functions registered with XLA as FFI handlers.
 typedef XLA_FFI_Error* XLA_FFI_Handler(XLA_FFI_CallFrame* call_frame);
 
-// XLA runtime has multiple execution stages and it is possible to run
-// different handlers for each stage:
-//
-// (1) Prepare - called before the execution to let FFI handlers to prepare
-//     for the execution and request resources from runtime, i.e. in XLA:GPU
-//     we use prepare stage to request collective cliques.
-//
-// (2) Initialize - called before the execution after acquiring all the
-//     resources requested in the prepare stage.
-//
-// (3) Execute - called when FFI handler is executed. Note that FFI handler
-//     can be called as a part of command buffer capture (CUDA graph capture
-//     on GPU backend) and argument buffers might contain uninitialized
-//     values in this case.
-//
-// It is undefined behavior to access argument buffers in prepare and
-// initialize stages as they might not be initialized yet. However it is safe
-// to use memory address as it is assigned ahead of time by buffer assignment.
+// XLA FFI handlers for execution stages (see XLA_FFI_ExecutionStage).
 struct XLA_FFI_Handler_Bundle {
   XLA_FFI_Handler* prepare;     // optional
   XLA_FFI_Handler* initialize;  // optional
