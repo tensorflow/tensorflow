@@ -24,22 +24,38 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// This pass performs the unrolling-by-2 loop transformation
-// to effectively achieve double buffering between inputs and outputs
-// of previously rolled iterations.
-// This pass only runs on loops with known trip counts.
-// For even number of iterations, unrolling-by-2 will be done directly.
-// For odd number of iterations, the first iteration of the loop will be
-// peeled outside of the while loop to make the trip count an even number,
-// then proceed to unroll by 2.
-// It also updates the trip count property of the loop to the correct one (n/2).
+// With `kDoubleBuffer` strategy:
+//   This pass performs the unrolling-by-2 loop transformation
+//   to effectively achieve double buffering between inputs and outputs
+//   of previously rolled iterations.
+//   This pass only runs on loops with known trip counts.
+//   For even number of iterations, unrolling-by-2 will be done directly.
+//   For odd number of iterations, the first iteration of the loop will be
+//   peeled outside of the while loop to make the trip count an even number,
+//   then proceed to unroll by 2.
+//   It also updates the trip count property of the loop to the correct one
+//   (n/2).
+//
+// With `kFullUnroll` strategy:
+//   This pass will perform the full unroll of the loop with the same strategy
+//   that is used with `kDoubleBuffer` but while loop trip count times.
+//   It updates the trip count of the while loop to 1, and relies on other
+//   passes (like `WhileLoopSimplifier`) to simplify/get rid of the while loop
+//   eventually.
 //
 // Note that this pass will flatten the call graph if any loop has been
 // unrolled.
+// TODO(olechwierowicz): Rename the loop unroller to something more generic like
+// 'DoubleBufferLoopUnrolling'.
 class LoopDoubleBufferTransformer : public HloModulePass {
  public:
-  LoopDoubleBufferTransformer() = default;
+  enum class UnrollStrategy { kDoubleBuffer, kFullUnroll };
+
+  explicit LoopDoubleBufferTransformer(
+      UnrollStrategy unroll_strategy = UnrollStrategy::kDoubleBuffer)
+      : unroll_strategy_(unroll_strategy) {};
   ~LoopDoubleBufferTransformer() override = default;
+
   absl::string_view name() const override {
     return "loop-double-buffer-transformer";
   }
@@ -48,6 +64,9 @@ class LoopDoubleBufferTransformer : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  UnrollStrategy unroll_strategy_;
 };
 
 }  // end namespace gpu

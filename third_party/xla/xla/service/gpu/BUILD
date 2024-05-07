@@ -5819,7 +5819,6 @@ cc_library(
     hdrs = ["loop_double_buffer_transformer.h"],
     deps = [
         "//xla:status",
-        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
