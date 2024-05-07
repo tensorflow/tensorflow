@@ -3151,8 +3151,9 @@ TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1BiasSoftmaxBmm2PatternDbias) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto m,
       ParseAndReturnVerifiedModule(hlo_BF16Bmm1BiasSoftmaxBmm2Pattern_dbias));
-  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
-                                         GetCudnnVersion()};
+  // require cudnn 8.9.6 + hopper for dbias
+  CudnnFusedMHARewriter fusedMhaRewriter{se::CudaComputeCapability(9, 0),
+                                         se::dnn::VersionInfo(8, 9, 6)};
   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
 
   ComputationLayout computation_layout(

@@ -1635,7 +1635,7 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
     if (!debug_options.xla_gpu_enable_cudnn_fmha() ||
         !IsComputeCapabilityAndCudnnSupported(
             compute_capability_, cudnn_version,
-            stream_executor::dnn::VersionInfo(8, 8, 0))) {
+            stream_executor::dnn::VersionInfo(8, 9, 4))) {
       return false;
     }
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
@@ -1712,6 +1712,19 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
                 fwd_fmha_call, matched_result.matched_bmm_1, v_transposed);
         if (!matched_bwd_result.has_match) {
           VLOG(2) << "Backward pattern not matching, skipping.";
+          // restore fwd graph if bwd pattern match failed
+          TF_RETURN_IF_ERROR(
+              RestoreFwdGraph(comp, fwd_fmha_call, original_bmm2, activation,
+                              original_bmm2_producer0, original_bmm2_producer1,
+                              original_activation_producers,
+                              matched_result.need_canonicalization));
+          continue;
+        }
+        if (matched_bwd_result.matched_dbias &&
+            !(compute_capability_.IsAtLeastHopper() &&
+              compute_capability_.minor == 0 &&
+              cudnn_version >= stream_executor::dnn::VersionInfo(8, 9, 6))) {
+          VLOG(2) << "Flash attention dbias requires cudnn 8.9.6 + hopper.";
           // restore fwd graph if bwd pattern match failed
           TF_RETURN_IF_ERROR(
               RestoreFwdGraph(comp, fwd_fmha_call, original_bmm2, activation,

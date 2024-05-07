@@ -746,9 +746,12 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
   template <typename T>
   void TestImpl_Flash_Attention_BMM1_Bias_Softmax_BMM2_Dbias() {
     if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+    auto cc = GetCudaComputeCapability();
     if (GetDnnVersionInfo(backend().default_stream_executor()) <
-        se::dnn::VersionInfo(8, 9, 4)) {
-      GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.4.";
+            se::dnn::VersionInfo(8, 9, 6) ||
+        !cc.IsAtLeastHopper() || cc.minor != 0) {
+      GTEST_SKIP()
+          << "Flash Attention dbias requires cuDNN >= 8.9.6 and Hopper arch.";
     }
     XlaBuilder builder(TestName());
     auto lhs_bmm1_literal =
