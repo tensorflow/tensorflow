@@ -492,11 +492,9 @@ bool SupportSpatialPartitioning(
     case HloOpcode::kWhile:
     case HloOpcode::kReduce:
     case HloOpcode::kRngBitGenerator:
-      return true;
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
-      // Only if channel_id is not specified.
-      return instruction->channel_id() == std::nullopt;
+      return true;
     case HloOpcode::kParameter:
       return allow_spmd_sharding_propagation_to_parameters ||
              computation_map.find(instruction->parent()) !=
