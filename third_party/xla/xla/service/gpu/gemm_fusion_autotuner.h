@@ -132,6 +132,34 @@ class GemmFusionAutotunerImpl {
   std::vector<TritonGemmConfig> triton_configs_;
 };
 
+// Replaces dynamic-slice instructions with slice instructions in the entry
+// computation of the module.
+//
+// The start_indices of the slice instructions are set to 0 for all dimensions.
+// The offset parameters of the dynamic-slice instructions will be removed
+// from the computation if they have no other users, including if they are
+// parameters to the computation.
+//
+// Use this when the module has only an entry computation without fusions.
+//
+// Note: Exposed for testing only.
+absl::Status ReplaceDynamicSliceWithSliceInEntryComputation(HloModule& module);
+
+// Replaces dynamic-slice instructions with slice instructions in the fused
+// instructions computation of the root instruction if it is a fusion.
+//
+// The start_indices of the slice instructions are set to 0 for all dimensions.
+// The offset parameters of the dynamic-slice instructions will be removed
+// from both the fused instructions computation and the entry computation, if
+// they have no other users, including if they are parameters to the
+// computations.
+//
+// Use this when the module's entry computation has only a single fusion
+// instruction other than the parameters.
+//
+// Note: Exposed for testing only.
+absl::Status ReplaceDynamicSliceWithSliceInSingleFusion(HloModule& module);
+
 }  // namespace gpu
 }  // namespace xla
 

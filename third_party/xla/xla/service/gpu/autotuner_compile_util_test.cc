@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -30,6 +33,7 @@ namespace xla::gpu {
 namespace {
 
 using AutotunerCompileUtilTest = HloTestBase;
+using ::testing::ElementsAre;
 
 TEST_F(AutotunerCompileUtilTest, VerifyOutputNotATuple) {
   constexpr absl::string_view kHlo = R"(
@@ -190,6 +194,41 @@ ENTRY main {
   EXPECT_EQ(rzb3.output_buffers().size(), 1);
   EXPECT_FALSE(rzb3.output_shape().IsTuple());
   EXPECT_EQ(rzb3.output_shape(), root.shape().tuple_shapes(0));
+}
+
+TEST_F(AutotunerCompileUtilTest, CreateRedzoneBuffersForInputs) {
+  constexpr absl::string_view kHlo = R"(
+HloModule hlo
+ENTRY main {
+  p0 = f32[2,2] parameter(0)
+  p1 = f32[4,4] parameter(1)
+  p2 = f32[6,6] parameter(2)
+  ROOT root = (f32[1,2,3], u8[1,2]) custom-call(p0, p1, p2), custom_call_target="fake"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHlo));
+
+  se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                          PlatformUtil::GetStreamExecutors(platform));
+
+  AutotuneConfig autotune_config{DeviceConfig{executors.at(0), nullptr},
+                                 GetDebugOptionsForTest()};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      RedzoneBuffers buffers,
+      RedzoneBuffers::ForInputs(
+          module->entry_computation()->parameter_instructions(),
+          autotune_config, GetDebugOptionsForTest()));
+
+  EXPECT_THAT(buffers.input_shapes(),
+              ElementsAre(ShapeUtil::MakeShape(F32, {2, 2}),
+                          ShapeUtil::MakeShape(F32, {4, 4}),
+                          ShapeUtil::MakeShape(F32, {6, 6})));
+  EXPECT_EQ(buffers.input_buffers().size(), 3);
+  EXPECT_TRUE(buffers.output_buffers().empty());
+  EXPECT_EQ(buffers.output_shape(), Shape());
 }
 
 }  // namespace

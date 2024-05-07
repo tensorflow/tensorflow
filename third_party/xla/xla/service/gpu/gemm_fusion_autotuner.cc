@@ -313,6 +313,54 @@ absl::StatusOr<TileSizeLimit> GetLimits(const HloDotInstruction& dot,
 
 int GetLogEveryN() { return VLOG_IS_ON(3) ? 100 : 1000; }
 
+// Replaces dynamic-slice instructions with slice instructions in the given
+// computation.
+//
+// The start_indices of the slice instructions are set to 0 for all dimensions.
+// The offset parameters of the dynamic-slice instructions will be removed
+// from the computation if they have no other users, including if they are
+// parameters to the computation.
+absl::Status ReplaceDynamicSliceWithSliceInComputation(
+    HloComputation& computation) {
+  for (HloInstruction* instr : computation.MakeInstructionPostOrder()) {
+    if (instr->opcode() != HloOpcode::kDynamicSlice) {
+      continue;
+    }
+
+    HloDynamicSliceInstruction* dynamic_slice =
+        Cast<HloDynamicSliceInstruction>(instr);
+    VLOG(5) << "Replacing dynamic slice: " << dynamic_slice->ToString();
+
+    std::vector<int64_t> start_indices(dynamic_slice->shape().rank(), 0);
+    std::vector<int64_t> limit_indices = dynamic_slice->dynamic_slice_sizes();
+    std::vector<int64_t> strides(start_indices.size(), 1);
+    // TODO(b/322359579): These lines can be swapped with
+    // HloComputation::ReplaceInstruction, once RemoveUnusedParameters
+    // does not crash following ReplaceInstruction.
+    HloInstruction* slice =
+        computation.AddInstruction(HloInstruction::CreateSlice(
+            dynamic_slice->shape(), dynamic_slice->mutable_operand(0),
+            start_indices, limit_indices, strides));
+    TF_RETURN_IF_ERROR(dynamic_slice->ReplaceAllUsesWith(slice));
+    TF_RETURN_IF_ERROR(computation.RemoveInstruction(dynamic_slice));
+  }
+
+  TF_RETURN_IF_ERROR(computation.RemoveUnusedParametersFromAnyComputation());
+  return absl::OkStatus();
+}
+
+// Returns true if the operand is only used as indices to dynamic slice.
+bool IsOnlyDynamicSliceIndex(HloInstruction* operand) {
+  // Operands with multiple users can be removed if all users are dynamic-slice.
+  for (HloInstruction* user : operand->users()) {
+    if (user->opcode() != HloOpcode::kDynamicSlice ||
+        user->operand(0) == operand) {
+      return false;
+    }
+  }
+  return true;
+}
+
 absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     const TritonGemmConfig& config,
     const se::DeviceDescription& gpu_device_info,
@@ -328,6 +376,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
         false);
   }
   new_module->mutable_config().set_debug_options(debug_opts);
+  TF_RETURN_IF_ERROR(ReplaceDynamicSliceWithSliceInSingleFusion(*new_module));
 
   HloComputation* entry_computation = new_module->entry_computation();
   HloInstruction* cloned_dot_fusion = entry_computation->root_instruction();
@@ -374,6 +423,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
   std::unique_ptr<HloModule> new_module =
       ExtractComputationIntoNewModule(*fusion_computation);
   new_module->mutable_config().set_debug_options(debug_opts);
+  TF_RETURN_IF_ERROR(
+      ReplaceDynamicSliceWithSliceInEntryComputation(*new_module));
 
   auto* dot = hlo_query::GetFirstInstructionWithOpcode(
       *new_module->entry_computation(), HloOpcode::kDot);
@@ -407,6 +458,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CudnnGemmAutotuneExtractor(
   std::unique_ptr<HloModule> new_module =
       ExtractInstructionIntoNewModule(*fusion);
   new_module->mutable_config().set_debug_options(debug_opts);
+  TF_RETURN_IF_ERROR(ReplaceDynamicSliceWithSliceInSingleFusion(*new_module));
 
   GpuBackendConfig gpu_config;
   FusionBackendConfig& backend_config =
@@ -825,10 +877,16 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
   BufferComparator comparator(root.shape(),
                               fusion_computation->parent()->config());
 
-  TF_ASSIGN_OR_RETURN(auto rz_buffers,
-                      RedzoneBuffers::FromInstruction(
-                          *fusion_computation->FusionInstruction(), config_,
-                          debug_options_, RedzoneBuffers::kAllInputs));
+  // We do this to remove the dynamic-slice indices from the inputs.
+  const std::unique_ptr<HloModule> extracted_module =
+      ExtractComputationIntoNewModule(*fusion_computation);
+  TF_RETURN_IF_ERROR(
+      ReplaceDynamicSliceWithSliceInEntryComputation(*extracted_module));
+  TF_ASSIGN_OR_RETURN(
+      auto rz_buffers,
+      RedzoneBuffers::ForInputs(
+          extracted_module->entry_computation()->parameter_instructions(),
+          config_, debug_options_));
 
   const int log_every_n = GetLogEveryN();
   std::vector<AutotuneResult> results;
@@ -1018,6 +1076,57 @@ absl::Status DumpAutotuningLogs(const DebugOptions& debug_opts,
         tsl::WriteStringToFile(tsl::Env::Default(), resolved_path, textproto));
     LOG(INFO) << "Autotune logs serialized to file: " << resolved_path;
   }
+  return absl::OkStatus();
+}
+
+absl::Status ReplaceDynamicSliceWithSliceInEntryComputation(HloModule& module) {
+  TF_RETURN_IF_ERROR(
+      ReplaceDynamicSliceWithSliceInComputation(*module.entry_computation()));
+  // The entry computation layout will still reference the removed parameters.
+  // Recompute and set the new computation layout.
+  module.mutable_config().SetComputationLayoutIfExists(
+      module.entry_computation()->ComputeProgramShape());
+
+  return absl::OkStatus();
+}
+
+absl::Status ReplaceDynamicSliceWithSliceInSingleFusion(HloModule& module) {
+  HloInstruction* root = module.entry_computation()->root_instruction();
+  if (root->opcode() != HloOpcode::kFusion ||
+      root->fused_instructions_computation() == nullptr) {
+    return absl::OkStatus();
+  }
+
+  // Fusion computations will have dynamic slice instances removed.
+  // Skip all operands which are only used as indices to dynamic slice.
+  std::vector<HloInstruction*> needed_operands;
+  for (int i = 0; i < root->operand_count(); ++i) {
+    HloInstruction* computation_param =
+        root->fused_instructions_computation()->parameter_instruction(i);
+    if (!IsOnlyDynamicSliceIndex(computation_param)) {
+      needed_operands.push_back(root->mutable_operand(i));
+    }
+  }
+
+  // TODO(b/322359579): These lines can be swapped with
+  // HloComputation::ReplaceInstruction, once RemoveUnusedParameters
+  // does not crash following ReplaceInstruction.
+  HloInstruction* new_root = module.entry_computation()->AddInstruction(
+      root->CloneWithNewOperands(root->shape(), needed_operands));
+  module.entry_computation()->set_root_instruction(new_root);
+  TF_CHECK_OK(root->ReplaceAllUsesWith(new_root));
+  TF_CHECK_OK(module.entry_computation()->RemoveInstruction(root));
+
+  TF_CHECK_OK(
+      module.entry_computation()->RemoveUnusedParametersFromAnyComputation());
+  // The entry computation layout will still reference the removed parameters.
+  // Recompute and set the new computation layout.
+  module.mutable_config().SetComputationLayoutIfExists(
+      module.entry_computation()->ComputeProgramShape());
+
+  TF_RETURN_IF_ERROR(ReplaceDynamicSliceWithSliceInComputation(
+      *new_root->fused_instructions_computation()));
+
   return absl::OkStatus();
 }
 

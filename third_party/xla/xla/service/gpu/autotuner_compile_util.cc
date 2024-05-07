@@ -213,8 +213,8 @@ absl::StatusOr<RedzoneBuffers> RedzoneBuffers::FromInstruction(
 
   int64_t rng_state = 0;
 
-  TF_RETURN_IF_ERROR(
-      buffers.CreateInputs(instruction, config, debug_options, rng_state));
+  TF_RETURN_IF_ERROR(buffers.CreateInputs(instruction.operands(), config,
+                                          debug_options, rng_state));
 
   if (buffers_to_create == BuffersToCreate::kAllInputsAllOutputs ||
       buffers_to_create == BuffersToCreate::kAllInputsOutputsNoScratch) {
@@ -225,11 +225,29 @@ absl::StatusOr<RedzoneBuffers> RedzoneBuffers::FromInstruction(
   return buffers;
 }
 
-absl::Status RedzoneBuffers::CreateInputs(const HloInstruction& instruction,
-                                          const AutotuneConfig& config,
-                                          const DebugOptions& debug_options,
-                                          int64_t& rng_state) {
-  for (const auto* operand : instruction.operands()) {
+absl::StatusOr<RedzoneBuffers> RedzoneBuffers::ForInputs(
+    const HloInstruction::InstructionVector& inputs,
+    const AutotuneConfig& config, const DebugOptions& debug_options) {
+  RedzoneBuffers buffers;
+
+  TF_ASSIGN_OR_RETURN(auto rz_allocator, AutotunerUtil::CreateRedzoneAllocator(
+                                             config, debug_options));
+  buffers.redzone_allocator_ =
+      std::make_unique<se::RedzoneAllocator>(std::move(rz_allocator));
+
+  int64_t rng_state = 0;
+
+  TF_RETURN_IF_ERROR(
+      buffers.CreateInputs(inputs, config, debug_options, rng_state));
+
+  return buffers;
+}
+
+absl::Status RedzoneBuffers::CreateInputs(
+    const HloInstruction::InstructionVector& inputs,
+    const AutotuneConfig& config, const DebugOptions& debug_options,
+    int64_t& rng_state) {
+  for (const auto* operand : inputs) {
     TF_ASSIGN_OR_RETURN(
         se::DeviceMemoryBase buf,
         AutotunerUtil::CreateBuffer(*redzone_allocator_, operand->shape(),

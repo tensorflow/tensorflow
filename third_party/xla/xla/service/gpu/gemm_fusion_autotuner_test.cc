@@ -94,10 +94,39 @@ ENTRY entry {
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
-  module.release();
+  module.reset();
 
   EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+  EXPECT_EQ(extracted_module->entry_computation()->instruction_count(), 3);
+  TF_EXPECT_OK(VerifyHloModule(extracted_module.get(),
+                               /*layout_sensitive=*/true,
+                               /*allow_mixed_precision=*/false));
+}
+
+TEST_F(HloExtractionTest, InstructionExtractionHandlesNonFusionComputation) {
+  // This test verifies that non-fusion dots can be extracted without crashing.
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[2,4]{1,0} parameter(0)
+  p1 = f32[7,2]{1,0} parameter(1)
+  p2 = f32[7,2]{1,0} parameter(2)
+  add = f32[7,2]{1,0} add(p1, p2)
+  ROOT dot = f32[7,4]{1,0} dot(add, p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                                                  .value();
+
+  std::unique_ptr<HloModule> extracted_module = ExtractInstructionIntoNewModule(
+      *module->entry_computation()->root_instruction());
+
+  // Destroy the original module to be sure that the extracted one has no
+  // dependency on it.
+  module.reset();
+
+  EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(m::Parameter(), m::Parameter())));
   EXPECT_EQ(extracted_module->entry_computation()->instruction_count(), 3);
   TF_EXPECT_OK(VerifyHloModule(extracted_module.get(),
                                /*layout_sensitive=*/true,
@@ -134,12 +163,129 @@ ENTRY entry {
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
-  module.release();
+  module.reset();
 
   EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
               GmockMatch(m::Dot(m::Convert(m::Parameter()), m::Parameter())));
   EXPECT_EQ(extracted_module->entry_computation()->instruction_count(), 4);
   TF_EXPECT_OK(VerifyHloModule(extracted_module.get(),
+                               /*layout_sensitive=*/true,
+                               /*allow_mixed_precision=*/false));
+}
+
+using DynamicSliceReplacementTest = HloTestBase;
+
+TEST_F(DynamicSliceReplacementTest, ReplacesDynamicSliceInFusion) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+HloModule module, entry_computation_layout={
+            (f32[2,4]{1,0}, f32[7,2]{1,0}, s32[], s32[])->f32[4,4]{1,0}}
+
+triton_gemm_d_computation {
+  parameter_0 = f32[2,4]{1,0} parameter(0)
+  parameter_1 = f32[7,2]{1,0} parameter(1)
+  parameter_2 = s32[] parameter(2)
+  parameter_3 = s32[] parameter(3)
+  dynamic-slice = f32[4,2]{1,0} dynamic-slice(parameter_1, parameter_2, parameter_3), dynamic_slice_sizes={4,2}
+  ROOT dot = f32[4,4]{1,0} dot(parameter_0, dynamic-slice), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+ENTRY entry {
+  p0 = f32[2,4]{1,0} parameter(0)
+  p1 = f32[7,2]{1,0} parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  ROOT triton_gemm_d = f32[4,4]{1,0} fusion(p0, p1, p2, p3),
+        kind=kCustom, calls=triton_gemm_d_computation,
+        backend_config={"kind":"__triton_gemm"}
+})")
+                                                  .value();
+
+  EXPECT_OK(ReplaceDynamicSliceWithSliceInSingleFusion(*module));
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+  HloComputation* fusion_computation = module->entry_computation()
+                                           ->root_instruction()
+                                           ->fused_instructions_computation();
+  EXPECT_THAT(fusion_computation->root_instruction(),
+              GmockMatch(m::Dot(m::Parameter(), m::Slice(m::Parameter()))));
+  EXPECT_EQ(module->entry_computation()->instruction_count(), 3);
+  EXPECT_EQ(module->entry_computation()->num_parameters(), 2);
+  EXPECT_EQ(module->entry_computation_layout().parameter_count(), 2);
+  EXPECT_OK(VerifyHloModule(module.get(),
+                            /*layout_sensitive=*/true,
+                            /*allow_mixed_precision=*/false));
+}
+
+TEST_F(DynamicSliceReplacementTest,
+       ReplacesTwoDynamicSlicesHavingSharedIndicesInFusion) {
+  // This tests that fusions with multiple dynamic-slices with shared indices
+  // be processed without crashing.
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+HloModule module, entry_computation_layout={
+            (f32[2,6]{1,0}, f32[7,2]{1,0}, s32[], s32[])->f32[4,4]{1,0}}
+
+triton_gemm_d_computation {
+  parameter_0 = f32[2,6]{1,0} parameter(0)
+  parameter_1 = f32[7,2]{1,0} parameter(1)
+  parameter_2 = s32[] parameter(2)
+  parameter_3 = s32[] parameter(3)
+  dynamic-slice_0 = f32[2,4]{1,0} dynamic-slice(parameter_0, parameter_3, parameter_2), dynamic_slice_sizes={2,4}
+  dynamic-slice_1 = f32[4,2]{1,0} dynamic-slice(parameter_1, parameter_2, parameter_3), dynamic_slice_sizes={4,2}
+  ROOT dot = f32[4,4]{1,0} dot(dynamic-slice_0, dynamic-slice_1), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+ENTRY entry {
+  p0 = f32[2,6]{1,0} parameter(0)
+  p1 = f32[7,2]{1,0} parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  ROOT triton_gemm_d = f32[4,4]{1,0} fusion(p0, p1, p2, p3),
+        kind=kCustom, calls=triton_gemm_d_computation,
+        backend_config={"kind":"__triton_gemm"}
+})")
+                                                  .value();
+
+  EXPECT_OK(ReplaceDynamicSliceWithSliceInSingleFusion(*module));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+  HloComputation* fusion_computation = module->entry_computation()
+                                           ->root_instruction()
+                                           ->fused_instructions_computation();
+  EXPECT_THAT(
+      fusion_computation->root_instruction(),
+      GmockMatch(m::Dot(m::Slice(m::Parameter()), m::Slice(m::Parameter()))));
+  EXPECT_EQ(module->entry_computation()->instruction_count(), 3);
+  EXPECT_EQ(module->entry_computation()->num_parameters(), 2);
+  EXPECT_EQ(module->entry_computation_layout().parameter_count(), 2);
+  EXPECT_OK(VerifyHloModule(module.get(),
+                            /*layout_sensitive=*/true,
+                            /*allow_mixed_precision=*/false));
+}
+
+TEST_F(DynamicSliceReplacementTest, ReplacesDynamicSliceInEntryComputation) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+HloModule module, entry_computation_layout={
+            (f32[2,4]{1,0}, f32[7,2]{1,0}, s32[], s32[])->f32[4,4]{1,0}}
+
+ENTRY entry {
+  parameter_0 = f32[2,4]{1,0} parameter(0)
+  parameter_1 = f32[7,2]{1,0} parameter(1)
+  parameter_2 = s32[] parameter(2)
+  parameter_3 = s32[] parameter(3)
+  dynamic-slice = f32[4,2]{1,0} dynamic-slice(parameter_1, parameter_2, parameter_3), dynamic_slice_sizes={4,2}
+  ROOT dot = f32[4,4]{1,0} dot(parameter_0, dynamic-slice), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+})")
+                                                  .value();
+
+  EXPECT_OK(ReplaceDynamicSliceWithSliceInEntryComputation(*module));
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(m::Parameter(), m::Slice(m::Parameter()))));
+  EXPECT_EQ(module->entry_computation()->instruction_count(), 4);
+  EXPECT_EQ(module->entry_computation()->num_parameters(), 2);
+  EXPECT_EQ(module->entry_computation_layout().parameter_count(), 2);
+  TF_EXPECT_OK(VerifyHloModule(module.get(),
                                /*layout_sensitive=*/true,
                                /*allow_mixed_precision=*/false));
 }

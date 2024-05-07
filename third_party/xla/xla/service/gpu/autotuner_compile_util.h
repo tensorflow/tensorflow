@@ -142,6 +142,13 @@ class RedzoneBuffers {
       const HloInstruction& instruction, const AutotuneConfig& config,
       const DebugOptions& debug_options, BuffersToCreate buffers_to_create);
 
+  // Creates buffers for a list of inputs.
+  //
+  // No output buffers are created.
+  static absl::StatusOr<RedzoneBuffers> ForInputs(
+      const HloInstruction::InstructionVector& inputs,
+      const AutotuneConfig& config, const DebugOptions& debug_options);
+
   const std::vector<se::DeviceMemoryBase>& input_buffers() const {
     return input_buffers_;
   }
@@ -153,7 +160,7 @@ class RedzoneBuffers {
   se::RedzoneAllocator& RedzoneAllocator() const { return *redzone_allocator_; }
 
  private:
-  absl::Status CreateInputs(const HloInstruction& instruction,
+  absl::Status CreateInputs(const HloInstruction::InstructionVector& inputs,
                             const AutotuneConfig& config,
                             const DebugOptions& debug_options,
                             int64_t& rng_state);

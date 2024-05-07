@@ -1667,6 +1667,7 @@ xla_test(
             "@com_google_googletest//:gtest_main",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:string_view",
+            "//xla:shape_util",
             "//xla/hlo/ir:hlo",
             "//xla/service:platform_util",
             "//xla/stream_executor:platform",
