@@ -20,8 +20,11 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/maybe_owning_device_memory.h"
@@ -30,7 +33,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/xla_data.pb.h"
 
 // APIs for converting between internal and external versions of
 // XLA/StreamExecutor data structures.

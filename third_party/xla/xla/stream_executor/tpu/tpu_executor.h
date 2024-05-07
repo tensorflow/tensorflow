@@ -1,4 +1,6 @@
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/stream_interface.h"
 /* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
