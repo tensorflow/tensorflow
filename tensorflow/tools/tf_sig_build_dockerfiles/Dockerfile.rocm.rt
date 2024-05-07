@@ -12,7 +12,7 @@ RUN /setup.packages.sh /runtime.packages.txt
 # Install ROCM
 ARG TF_PKGS_DIR=tmp/packages
 ARG TENSORFLOW_PACKAGE=tf_nightly_rocm
-ARG ROCM_VERSION=6.0.0
+ARG ROCM_VERSION=6.1.0
 ARG CUSTOM_INSTALL
 ARG ROCM_PATH=/opt/rocm-${ROCM_VERSION}
 ENV ROCM_PATH=${ROCM_PATH}
