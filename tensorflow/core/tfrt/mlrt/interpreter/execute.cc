@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/mlrt/interpreter/execute.h"
 
+#include <string>
 #include <utility>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/kernel.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/register_span.h"
@@ -170,6 +173,13 @@ void Execute(ExecutionContext& ctx) {
 namespace execute_internal {
 
 void UnwindOnError(ExecutionContext& context, int64_t pc) {
+  std::string function_name;
+  if (!context.function_stack_.empty()) {
+    function_name = context.function_stack_.back().function_object().name();
+  }
+  context.LogError(absl::InternalError(absl::StrCat(
+      "Start UnwindOnError from function", function_name, " at pc: ", pc)));
+
   while (!context.function_stack_.empty()) {
     DCHECK(context.state_ == ExecutionContext::State::kError);
 
@@ -240,6 +250,7 @@ void UnwindOnError(ExecutionContext& context, int64_t pc) {
   if (context.exit_handler_) {
     std::move(context.exit_handler_)();
   }
+  context.LogError(absl::InternalError("Finish UnwindOnError"));
 }
 
 }  // namespace execute_internal
