@@ -16,9 +16,7 @@ func.func @zero_input() -> !mhlo.token {
 // -----
 
 func.func @zero_output_ret2(%arg0 : tensor<3xi64>) -> (tensor<3xi64>, tensor<3xi64>) {
-  // CHECK:      mhlo.trace %arg0, "This is a test" : tensor<3xi64>
-  // CHECK-NEXT: mhlo.return %arg0, %arg0 : tensor<3xi64>, tensor<3xi64>
-  "mhlo.trace"(%arg0) {tag = "This is a test"} : (tensor<3xi64>) -> ()
+  // CHECK: mhlo.return %arg0, %arg0 : tensor<3xi64>, tensor<3xi64>
   "mhlo.return"(%arg0, %arg0) : (tensor<3xi64>, tensor<3xi64>) -> ()
 }
 

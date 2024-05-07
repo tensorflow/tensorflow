@@ -2658,11 +2658,6 @@ LogicalResult ExportXlaOp(SubtractOp op, OpLoweringContext ctx) {
   return mlir::success();
 }
 
-LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
-  // TODO(atondwal): remove mhlo.trace
-  return success();
-}
-
 LogicalResult ExportXlaOp(UnaryEinsumOp op, OpLoweringContext ctx) {
   // Intentional as UnaryEinsumOp is always lowered to the EinsumOp with two
   // operands.

@@ -438,7 +438,36 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
-@@ -3503,58 +3503,4 @@
+@@ -2952,28 +2952,6 @@
+       `interior` `=` custom<DenseI64Array>($interior_padding)
+       attr-dict `:` functional-type(operands, results)
+   }];
+-}
+-
+-def StableHLO_TraceOp: StableHLO_Op<"trace"> {
+-  let summary = "Trace operation";
+-  let description = [{
+-    This operation is on its way out of StableHLO, so it is not included in
+-    the StableHLO specification: https://github.com/openxla/stablehlo/issues/604.
+-
+-    It is not used by JAX, PyTorch or TensorFlow, so it looks like we should've
+-    classified it as "Private to XLA" and not included it in StableHLO in the
+-    first place. With that in mind, its semantics will not be documented here.
+-
+-    Example:
+-    ```mlir
+-    stablehlo.trace %arg0, "In test code." : tensor<5x1x5xi32>
+-    ```
+-  }];
+-  let arguments = (ins
+-    HLO_Tensor:$operand,
+-    StrAttr:$tag
+-  );
+-  let assemblyFormat = "$operand `,` $tag attr-dict `:` type($operand)";
+ }
+ 
+ def StableHLO_TransposeOp: StableHLO_ShapedInterfaceOp<"transpose",
+@@ -3503,58 +3481,4 @@
    let results = (outs HLO_Tensor);
  }
  
@@ -530,6 +559,23 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.td b/stablehlo/stablehlo/dialec
  }
  
  // TODO(#1187): api_version is different between VHLO and the StableHLO spec:
+@@ -1023,16 +1007,6 @@
+   let results = (outs VHLO_AnyType:$result);
+ }
+ 
+-// TODO(#3): TraceOp is not part of the StableHLO spec.
+-// This operation is on its way out of StableHLO, so it is not included in
+-// the StableHLO specification.
+-def VHLO_TraceOpV1 : VHLO_Op<"trace_v1", "0.9.0", "current"> {
+-  let arguments = (ins
+-    VHLO_AnyType:$operand,
+-    VHLO_AnyAttr:$tag
+-  );
+-}
+-
+ def VHLO_TransposeOpV1 : VHLO_Op<"transpose_v1", "0.9.0", "current"> {
+   let arguments = (ins
+     VHLO_AnyType:$operand,
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
@@ -2919,6 +2965,18 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/reference/Ops.cpp
+--- stablehlo/stablehlo/reference/Ops.cpp
++++ stablehlo/stablehlo/reference/Ops.cpp
+@@ -950,8 +950,6 @@
+       auto result = tanhOp(operand, op.getType());
+       scope.add(op.getResult(), result);
+     } else if (isa<TorchIndexSelectOp>(operation)) {
+-      failOnDecomposableOp(operation);
+-    } else if (isa<TraceOp>(operation)) {
+       failOnDecomposableOp(operation);
+     } else if (auto op = dyn_cast<TransposeOp>(operation)) {
+       auto operand = scope.findTensor(op.getOperand());
 diff --ruN a/stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir
 --- stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir
 +++ stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir
@@ -2942,7 +3000,18 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_chlo_roundtrip.mlir b/stablehlo/stabl
 diff --ruN a/stablehlo/stablehlo/tests/print_stablehlo.mlir b/stablehlo/stablehlo/tests/print_stablehlo.mlir
 --- stablehlo/stablehlo/tests/print_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/print_stablehlo.mlir
-@@ -172,30 +172,6 @@
+@@ -43,9 +43,7 @@
+ 
+ // CHECK-LABEL: func @zero_output_ret2
+ func.func @zero_output_ret2(%arg0 : tensor<3xi64>) -> (tensor<3xi64>, tensor<3xi64>) {
+-  // CHECK:      stablehlo.trace %arg0, "This is a test" : tensor<3xi64>
+-  // CHECK-NEXT: stablehlo.return %arg0, %arg0 : tensor<3xi64>, tensor<3xi64>
+-  "stablehlo.trace"(%arg0) {tag = "This is a test"} : (tensor<3xi64>) -> ()
++  // CHECK: stablehlo.return %arg0, %arg0 : tensor<3xi64>, tensor<3xi64>
+   "stablehlo.return"(%arg0, %arg0) : (tensor<3xi64>, tensor<3xi64>) -> ()
+ }
+ 
+@@ -172,30 +170,6 @@
    "stablehlo.return"() : () -> ()
  }
  
@@ -3165,6 +3234,24 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_10_0.ml
  // CHECK-LABEL: "op_custom_call"
  func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
    //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+@@ -1976,17 +1962,6 @@
+   func.return %0 : tensor<2x1x5xf32>
+ }
+ 
+-// CHECK-LABEL: "op_trace"
+-func.func @op_trace(%arg0: tensor<f32>) {
+-  //      CHECK: "vhlo.trace_v1"(%arg0) <{
+-  // CHECK-SAME:   tag = #vhlo.string_v1<"foo">
+-  // CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> ()
+-  "stablehlo.trace"(%arg0) {
+-    tag = "foo"
+-  } : (tensor<f32>) -> ()
+-  func.return
+-}
+-
+ // CHECK-LABEL: "op_transpose"
+ func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
+   //      CHECK: "vhlo.transpose_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_11_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_11_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_11_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_11_0.mlir
@@ -3196,6 +3283,24 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_11_0.ml
  // CHECK-LABEL: "op_custom_call"
  func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
    //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+@@ -1976,17 +1962,6 @@
+   func.return %0 : tensor<2x1x5xf32>
+ }
+ 
+-// CHECK-LABEL: "op_trace"
+-func.func @op_trace(%arg0: tensor<f32>) {
+-  //      CHECK: "vhlo.trace_v1"(%arg0) <{
+-  // CHECK-SAME:   tag = #vhlo.string_v1<"foo">
+-  // CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> ()
+-  "stablehlo.trace"(%arg0) {
+-    tag = "foo"
+-  } : (tensor<f32>) -> ()
+-  func.return
+-}
+-
+ // CHECK-LABEL: "op_transpose"
+ func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
+   //      CHECK: "vhlo.transpose_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_12_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_12_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_12_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_12_0.mlir
@@ -3227,6 +3332,24 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_12_0.ml
  // CHECK-LABEL: "op_custom_call"
  func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
    //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+@@ -1976,17 +1962,6 @@
+   func.return %0 : tensor<2x1x5xf32>
+ }
+ 
+-// CHECK-LABEL: "op_trace"
+-func.func @op_trace(%arg0: tensor<f32>) {
+-  //      CHECK: "vhlo.trace_v1"(%arg0) <{
+-  // CHECK-SAME:   tag = #vhlo.string_v1<"foo">
+-  // CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> ()
+-  "stablehlo.trace"(%arg0) {
+-    tag = "foo"
+-  } : (tensor<f32>) -> ()
+-  func.return
+-}
+-
+ // CHECK-LABEL: "op_transpose"
+ func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
+   //      CHECK: "vhlo.transpose_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_13_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_13_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_13_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_13_0.mlir
@@ -3258,6 +3381,24 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_13_0.ml
  // CHECK-LABEL: "op_custom_call"
  func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
    //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+@@ -1976,17 +1962,6 @@
+   func.return %0 : tensor<2x1x5xf32>
+ }
+ 
+-// CHECK-LABEL: "op_trace"
+-func.func @op_trace(%arg0: tensor<f32>) {
+-  //      CHECK: "vhlo.trace_v1"(%arg0) <{
+-  // CHECK-SAME:   tag = #vhlo.string_v1<"foo">
+-  // CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> ()
+-  "stablehlo.trace"(%arg0) {
+-    tag = "foo"
+-  } : (tensor<f32>) -> ()
+-  func.return
+-}
+-
+ // CHECK-LABEL: "op_transpose"
+ func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
+   //      CHECK: "vhlo.transpose_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_14_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_14_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_14_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_14_0.mlir
@@ -3289,6 +3430,24 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_14_0.ml
  // CHECK-LABEL: "op_custom_call"
  func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
    //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+@@ -1976,17 +1962,6 @@
+   func.return %0 : tensor<2x1x5xf32>
+ }
+ 
+-// CHECK-LABEL: "op_trace"
+-func.func @op_trace(%arg0: tensor<f32>) {
+-  //      CHECK: "vhlo.trace_v1"(%arg0) <{
+-  // CHECK-SAME:   tag = #vhlo.string_v1<"foo">
+-  // CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> ()
+-  "stablehlo.trace"(%arg0) {
+-    tag = "foo"
+-  } : (tensor<f32>) -> ()
+-  func.return
+-}
+-
+ // CHECK-LABEL: "op_transpose"
+ func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
+   //      CHECK: "vhlo.transpose_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_15_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_15_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_15_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_15_0.mlir
@@ -3320,6 +3479,24 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_15_0.ml
  // CHECK-LABEL: "op_custom_call"
  func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
    //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+@@ -1982,17 +1968,6 @@
+   func.return %0 : tensor<2x1x5xf32>
+ }
+ 
+-// CHECK-LABEL: "op_trace"
+-func.func @op_trace(%arg0: tensor<f32>) {
+-  //      CHECK: "vhlo.trace_v1"(%arg0) <{
+-  // CHECK-SAME:   tag = #vhlo.string_v1<"foo">
+-  // CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> ()
+-  "stablehlo.trace"(%arg0) {
+-    tag = "foo"
+-  } : (tensor<f32>) -> ()
+-  func.return
+-}
+-
+ // CHECK-LABEL: "op_transpose"
+ func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
+   //      CHECK: "vhlo.transpose_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_16_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_16_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_16_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_16_0.mlir
@@ -3351,6 +3528,24 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_16_0.ml
  // CHECK-LABEL: "op_custom_call"
  func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
    //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+@@ -1994,17 +1980,6 @@
+   func.return %0 : tensor<2x1x5xf32>
+ }
+ 
+-// CHECK-LABEL: "op_trace"
+-func.func @op_trace(%arg0: tensor<f32>) {
+-  //      CHECK: "vhlo.trace_v1"(%arg0) <{
+-  // CHECK-SAME:   tag = #vhlo.string_v1<"foo">
+-  // CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> ()
+-  "stablehlo.trace"(%arg0) {
+-    tag = "foo"
+-  } : (tensor<f32>) -> ()
+-  func.return
+-}
+-
+ // CHECK-LABEL: "op_transpose"
+ func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
+   //      CHECK: "vhlo.transpose_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_17_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_17_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_17_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_17_0.mlir
@@ -3382,6 +3577,24 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_17_0.ml
  // CHECK-LABEL: "op_custom_call"
  func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
    //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+@@ -2120,17 +2106,6 @@
+   func.return %0 : tensor<2x1x5xf32>
+ }
+ 
+-// CHECK-LABEL: "op_trace"
+-func.func @op_trace(%arg0: tensor<f32>) {
+-  //      CHECK: "vhlo.trace_v1"(%arg0) <{
+-  // CHECK-SAME:   tag = #vhlo.string_v1<"foo">
+-  // CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> ()
+-  "stablehlo.trace"(%arg0) {
+-    tag = "foo"
+-  } : (tensor<f32>) -> ()
+-  func.return
+-}
+-
+ // CHECK-LABEL: "op_transpose"
+ func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
+   //      CHECK: "vhlo.transpose_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_18_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_18_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_18_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_18_0.mlir
@@ -3413,6 +3626,24 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_18_0.ml
  // CHECK-LABEL: "op_custom_call"
  func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
    //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+@@ -2120,17 +2106,6 @@
+   func.return %0 : tensor<2x1x5xf32>
+ }
+ 
+-// CHECK-LABEL: "op_trace"
+-func.func @op_trace(%arg0: tensor<f32>) {
+-  //      CHECK: "vhlo.trace_v1"(%arg0) <{
+-  // CHECK-SAME:   tag = #vhlo.string_v1<"foo">
+-  // CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> ()
+-  "stablehlo.trace"(%arg0) {
+-    tag = "foo"
+-  } : (tensor<f32>) -> ()
+-  func.return
+-}
+-
+ // CHECK-LABEL: "op_transpose"
+ func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
+   //      CHECK: "vhlo.transpose_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_19_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_19_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_19_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_19_0.mlir
@@ -3444,6 +3675,24 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_19_0.ml
  // CHECK-LABEL: "op_custom_call"
  func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
    //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+@@ -2155,17 +2141,6 @@
+   func.return %0 : tensor<2x1x5xf32>
+ }
+ 
+-// CHECK-LABEL: "op_trace"
+-func.func @op_trace(%arg0: tensor<f32>) {
+-  //      CHECK: "vhlo.trace_v1"(%arg0) <{
+-  // CHECK-SAME:   tag = #vhlo.string_v1<"foo">
+-  // CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> ()
+-  "stablehlo.trace"(%arg0) {
+-    tag = "foo"
+-  } : (tensor<f32>) -> ()
+-  func.return
+-}
+-
+ // CHECK-LABEL: "op_transpose"
+ func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
+   //      CHECK: "vhlo.transpose_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_9_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_9_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_9_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_9_0.mlir
@@ -3475,6 +3724,24 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.0_9_0.mli
  // CHECK-LABEL: "op_custom_call"
  func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
    //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+@@ -1976,17 +1962,6 @@
+   func.return %0 : tensor<2x1x5xf32>
+ }
+ 
+-// CHECK-LABEL: "op_trace"
+-func.func @op_trace(%arg0: tensor<f32>) {
+-  //      CHECK: "vhlo.trace_v1"(%arg0) <{
+-  // CHECK-SAME:   tag = #vhlo.string_v1<"foo">
+-  // CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> ()
+-  "stablehlo.trace"(%arg0) {
+-    tag = "foo"
+-  } : (tensor<f32>) -> ()
+-  func.return
+-}
+-
+ // CHECK-LABEL: "op_transpose"
+ func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
+   //      CHECK: "vhlo.transpose_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
@@ -3506,6 +3773,24 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/st
  // CHECK-LABEL: "op_custom_call"
  func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
    //      CHECK: "vhlo.custom_call_v1"(%arg0) <{
+@@ -2155,17 +2141,6 @@
+   func.return %0 : tensor<2x1x5xf32>
+ }
+ 
+-// CHECK-LABEL: "op_trace"
+-func.func @op_trace(%arg0: tensor<f32>) {
+-  //      CHECK: "vhlo.trace_v1"(%arg0) <{
+-  // CHECK-SAME:   tag = #vhlo.string_v1<"foo">
+-  // CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> ()
+-  "stablehlo.trace"(%arg0) {
+-    tag = "foo"
+-  } : (tensor<f32>) -> ()
+-  func.return
+-}
+-
+ // CHECK-LABEL: "op_transpose"
+ func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
+   //      CHECK: "vhlo.transpose_v1"(%arg0) <{
 diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 --- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 +++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
@@ -3576,6 +3861,14 @@ diff --ruN a/stablehlo/stablehlo/transforms/MapStablehloToVhlo.h b/stablehlo/sta
  MAP_STABLEHLO_TO_VHLO(CustomCallOp, V1)
  MAP_STABLEHLO_TO_VHLO(DivOp, V1)
  MAP_STABLEHLO_TO_VHLO(DotGeneralOp, V1)
+@@ -156,7 +154,6 @@
+ MAP_STABLEHLO_TO_VHLO(SubtractOp, V1)
+ MAP_STABLEHLO_TO_VHLO(TanhOp, V1)
+ MAP_STABLEHLO_TO_VHLO(TorchIndexSelectOp, V1)
+-MAP_STABLEHLO_TO_VHLO(TraceOp, V1)
+ MAP_STABLEHLO_TO_VHLO(TransposeOp, V1)
+ MAP_STABLEHLO_TO_VHLO(TriangularSolveOp, V1)
+ MAP_STABLEHLO_TO_VHLO(TupleOp, V1)
 diff --ruN a/stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp
 --- stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp
 +++ stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp
@@ -3686,6 +3979,20 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cp
      Block *newReducerBlock = rewriter.createBlock(&newOp.getBody());
  
      IRMapping mapper;
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloInstrumentWithProbe.cpp b/stablehlo/stablehlo/transforms/StablehloInstrumentWithProbe.cpp
+--- stablehlo/stablehlo/transforms/StablehloInstrumentWithProbe.cpp
++++ stablehlo/stablehlo/transforms/StablehloInstrumentWithProbe.cpp
+@@ -112,8 +112,8 @@
+ bool StablehloInstrumentWithProbePass::shouldProbeOp(Operation& op) const {
+   if (isa<ConstantOp>(op)) return false;
+ 
+-  // Operations that do not produce values should not be instrumented (ReturnOp,
+-  // TraceOp, etc.)
++  // Operations that do not produce values should not be instrumented
++  // (ReturnOp, CustomCallOp with no result, etc)
+   if (op.getNumResults() == 0) return false;
+ 
+   return true;
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp

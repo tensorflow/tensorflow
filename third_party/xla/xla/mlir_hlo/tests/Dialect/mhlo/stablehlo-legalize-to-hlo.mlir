@@ -1579,17 +1579,6 @@ func.func @op_torch_index_select(%arg0: tensor<5x1x5xf32>, %arg1: tensor<2xi32>)
   func.return %0 : tensor<2x1x5xf32>
 }
 
-// CHECK-LABEL: "op_trace"
-func.func @op_trace(%arg0: tensor<f32>) {
-  //      CHECK: "mhlo.trace"(%arg0) <{
-  // CHECK-SAME:   tag = "foo"
-  // CHECK-SAME: }> : (tensor<f32>) -> ()
-  "stablehlo.trace"(%arg0) {
-    tag = "foo"
-  } : (tensor<f32>) -> ()
-  func.return
-}
-
 // CHECK-LABEL: "op_transpose"
 func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
   //      CHECK: "mhlo.transpose"(%arg0) <{
