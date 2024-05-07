@@ -320,17 +320,16 @@ def _stack_tables_with_same_table_dim_and_optimizer(
   if sparse_core_embedding_config:
     disable_table_stacking = sparse_core_embedding_config.disable_table_stacking
 
-  if disable_table_stacking:
-    logging.warn("Table stacking is disabled.")
-
   s = TableStacking()
+
   # Round the table sizes to be divisible by the number of SCs.
   num_shards = num_partitions * num_sc_per_partition * 8
 
   s.table_to_padding_columns = {}
   s.table_to_padding_rows = {}
-
+  table_name_to_table = {}
   for table in table_config:
+    table_name_to_table[table.name] = table
     extra_rows = (
         num_shards - (table.vocabulary_size % num_shards)
     ) % num_shards
@@ -364,49 +363,54 @@ def _stack_tables_with_same_table_dim_and_optimizer(
     table.vocabulary_size += extra_rows
     table.dim += extra_cols
 
-  table_names = []
-  table_widths = []
-  table_heights = []
-  table_num_samples = []
-  table_groups = []
+  if disable_table_stacking:
+    logging.warn("Table stacking is disabled.")
+    table_stacks = [[table] for table in table_config]
+  else:
+    table_names = []
+    table_widths = []
+    table_heights = []
+    table_num_samples = []
+    table_groups = []
 
-  table_data_to_group = {}
-  table_to_num_samples = {table.name: 0 for table in table_config}
-  table_name_to_table = {}
-  for _, feature in flat_features:
-    table_to_num_samples[feature.table.name] += functools.reduce(
-        operator.mul, feature.output_shape
+    table_data_to_group = {}
+    table_to_num_samples = {table.name: 0 for table in table_config}
+    for _, feature in flat_features:
+      table_to_num_samples[feature.table.name] += functools.reduce(
+          operator.mul, feature.output_shape
+      )
+
+    for table in table_config:
+      key = (
+          table.dim,
+          table.optimizer,
+          repr(table.quantization_config)
+          if table.quantization_config
+          else None,
+      )
+      if key not in table_data_to_group:
+        table_data_to_group[key] = len(table_data_to_group)
+      table_groups.append(table_data_to_group[key])
+      table_names.append(table.name)
+      table_widths.append(table.dim)
+      table_heights.append(table.vocabulary_size)
+      table_num_samples.append(table_to_num_samples[table.name])
+
+    table_stacks_by_name = _pywrap_tpu_embedding.stack_tables(
+        table_heights,
+        table_widths,
+        table_num_samples,
+        table_groups,
+        table_names,
+        num_partitions,
     )
 
-  for table in table_config:
-    table_name_to_table[table.name] = table
-    key = (
-        table.dim,
-        table.optimizer,
-        repr(table.quantization_config) if table.quantization_config else None,
-    )
-    if key not in table_data_to_group:
-      table_data_to_group[key] = len(table_data_to_group)
-    table_groups.append(table_data_to_group[key])
-    table_names.append(table.name)
-    table_widths.append(table.dim)
-    table_heights.append(table.vocabulary_size)
-    table_num_samples.append(table_to_num_samples[table.name])
+    table_stacks = [
+        [table_name_to_table[table_name] for table_name in stack_by_name]
+        for stack_by_name in table_stacks_by_name
+    ]
 
-  table_stacks_by_name = _pywrap_tpu_embedding.stack_tables(
-      table_heights,
-      table_widths,
-      table_num_samples,
-      table_groups,
-      table_names,
-      num_partitions,
-  )
-
-  table_stacks = [
-      [table_name_to_table[table_name] for table_name in stack_by_name]
-      for stack_by_name in table_stacks_by_name
-  ]
-
+  s.table_name_to_table = table_name_to_table
   # Store the mapping between stacked table names to the actual tableConfigs.
   s.stacked_table_to_tables = {}
   # Store the mapping between table to name of the stacked table which

@@ -321,10 +321,17 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
     dist_iter = iter(dist)
     data = next(dist_iter)
 
+    sparse_core_embedding_config = tpu_embedding_v3.SparseCoreEmbeddingConfig(
+        disable_table_stacking=False,
+        max_ids_per_chip_per_sample=64,
+        allow_id_dropping=False,
+    )
+
     with strategy.scope():
       mid_level_api = tpu_embedding_v3.TPUEmbeddingV2(
           feature_config=feature_config,
           optimizer=tpu_embedding_v2_utils.SGD(learning_rate=1.0),
+          sparse_core_embedding_config=sparse_core_embedding_config,
       )
     self.assertLen(mid_level_api.embedding_tables, 1)
 
@@ -581,10 +588,18 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
     dist_iter = iter(dist)
     data = next(dist_iter)
 
+    sparse_core_embedding_config = tpu_embedding_v3.SparseCoreEmbeddingConfig(
+        disable_table_stacking=False,
+        max_ids_per_chip_per_sample=64,
+        allow_id_dropping=False,
+    )
+
     with strategy.scope():
       optimizer = tpu_embedding_v2_utils.SGD(learning_rate=1.0)
       mid_level_api = tpu_embedding_v3.TPUEmbeddingV2(
-          feature_config=feature_config, optimizer=optimizer
+          feature_config=feature_config,
+          optimizer=optimizer,
+          sparse_core_embedding_config=sparse_core_embedding_config,
       )
       mid_level_api.build()
     random1 = np.random.uniform(size=(16, self.embedding_dim)).astype(
