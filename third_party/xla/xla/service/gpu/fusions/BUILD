@@ -270,6 +270,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:hlo_traversal",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu/fusions/mlir:elemental_hlo_to_mlir",
         "@com_google_absl//absl/algorithm:container",

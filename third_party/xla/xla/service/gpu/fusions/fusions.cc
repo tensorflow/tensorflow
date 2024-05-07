@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/transpose_mlir.h"
 #include "xla/service/gpu/fusions/triton.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -76,10 +77,10 @@ bool IsParameterOrGteOfParameter(const HloInstruction* instr) {
 
 bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
   return absl::c_all_of(
-      analysis.fusion_roots(), [](const HloInstruction* root) {
-        return root->opcode() == HloOpcode::kDynamicUpdateSlice ||
-               (root->opcode() == HloOpcode::kBitcast &&
-                root->operand(0)->opcode() == HloOpcode::kDynamicUpdateSlice);
+      analysis.fusion_root_adaptors(), [](const HloInstructionAdaptor& root) {
+        return root.opcode() == HloOpcode::kDynamicUpdateSlice ||
+               (root.opcode() == HloOpcode::kBitcast &&
+                root.GetOperand(0).opcode() == HloOpcode::kDynamicUpdateSlice);
       });
 }
 
@@ -126,7 +127,7 @@ HloFusionInfo::GetCopyFusion() const {
 
 bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
   auto ret = CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-      instr_, buffer_assignment_, analysis().fusion_roots());
+      instr_, buffer_assignment_, analysis().fusion_root_adaptors());
   return ret.ok() && *ret;
 }
 

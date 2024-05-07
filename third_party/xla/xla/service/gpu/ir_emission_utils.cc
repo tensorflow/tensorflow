@@ -362,15 +362,15 @@ absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
 }
 
 std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
-    const std::vector<const HloInstruction*>& roots) {
+    absl::Span<HloInstructionAdaptor const> roots) {
   std::vector<const HloInstruction*> dus_ops;
-  for (const HloInstruction* root : roots) {
-    while (root->opcode() == HloOpcode::kBitcast) {
-      root = root->operand(0);
+  for (HloInstructionAdaptor root : roots) {
+    while (root.opcode() == HloOpcode::kBitcast) {
+      root = root.GetOperand(0);
     }
 
-    if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
-      dus_ops.push_back(root);
+    if (root.opcode() == HloOpcode::kDynamicUpdateSlice) {
+      dus_ops.push_back(&root.instruction());
     }
   }
   return dus_ops;
@@ -390,7 +390,7 @@ absl::InlinedVector<const HloInstruction*, 4> GetStartIndices(T instr) {
 absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     const HloFusionInstruction* fusion,
     const BufferAssignment* buffer_assignment,
-    const std::vector<const HloInstruction*>& roots) {
+    absl::Span<HloInstructionAdaptor const> roots) {
   std::vector<const HloInstruction*> dus_instrs =
       GetOutputDefiningDynamicUpdateSlices(roots);
 

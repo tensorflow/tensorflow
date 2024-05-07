@@ -64,8 +64,8 @@ class InPlaceDynamicUpdateSliceFusion : public KernelFusionEmitterBase {
  public:
   explicit InPlaceDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis),
-        dus_ops_(
-            GetOutputDefiningDynamicUpdateSlices(analysis.fusion_roots())) {}
+        dus_ops_(GetOutputDefiningDynamicUpdateSlices(
+            analysis.fusion_root_adaptors())) {}
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
