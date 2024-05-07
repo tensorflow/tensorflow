@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/statusor.h"
 #include "xla/tests/filecheck.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
@@ -33,6 +35,20 @@ namespace {
 
 using ::testing::SizeIs;
 
+bool IsTestingCpu() {
+#ifdef XLA_TEST_BACKEND_CPU
+  return true;
+#endif
+  return false;
+}
+
+absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient() {
+  if (IsTestingCpu()) {
+    return xla::FunctionalHloRunner::CreateHostClient();
+  }
+  return xla::FunctionalHloRunner::CreateGpuClient();
+}
+
 class FunctionalHloRunnerTest : public ::testing::Test {
  protected:
   std::string GetHloPath(std::string file_name) {
@@ -43,7 +59,7 @@ class FunctionalHloRunnerTest : public ::testing::Test {
 
 TEST_F(FunctionalHloRunnerTest, SingleDeviceHlo) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          xla::FunctionalHloRunner::CreateGpuClient());
+                          GetPjRtClient());
 
   // Options corresponding to --num_replicas=1 --num_partitions=1
   xla::DebugOptions debug_options;
@@ -60,7 +76,7 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHlo) {
 
 TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          xla::FunctionalHloRunner::CreateGpuClient());
+                          GetPjRtClient());
 
   constexpr int kRequiredDeviceCount = 2;
   const int kDeviceCount = client->device_count();
@@ -89,7 +105,7 @@ TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {
 
 TEST_F(FunctionalHloRunnerTest, UseZerosAsInputs) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          xla::FunctionalHloRunner::CreateGpuClient());
+                          GetPjRtClient());
 
   constexpr int kRequiredDeviceCount = 2;
   const int kDeviceCount = client->device_count();
@@ -121,7 +137,7 @@ TEST_F(FunctionalHloRunnerTest, UseZerosAsInputs) {
 
 TEST_F(FunctionalHloRunnerTest, UseUninitializedInputs) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          xla::FunctionalHloRunner::CreateGpuClient());
+                          GetPjRtClient());
 
   constexpr int kRequiredDeviceCount = 2;
   const int kDeviceCount = client->device_count();
@@ -153,7 +169,7 @@ TEST_F(FunctionalHloRunnerTest, UseUninitializedInputs) {
 
 TEST_F(FunctionalHloRunnerTest, UseUninitializedInputsWithTupledArguments) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          xla::FunctionalHloRunner::CreateGpuClient());
+                          GetPjRtClient());
 
   // Options corresponding to:
   // --num_replicas=1 --num_partitions=1
@@ -196,7 +212,7 @@ TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
   raw_compile_options.xla_dump_to = dump_dir;
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          xla::FunctionalHloRunner::CreateGpuClient());
+                          GetPjRtClient());
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndCompile(
       *client, debug_options, preproc_options, raw_compile_options,
       GetHloPath("sharded_16_devices.hlo"), InputFormat::kText));
@@ -212,8 +228,8 @@ TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
     TF_ASSERT_OK(
         tsl::ReadFileToString(env, after_opt_hlo_paths[0], &after_opt_hlo));
     absl::StatusOr<bool> file_check_result = RunFileCheck(after_opt_hlo, R"(
-      // CHECK: param = f32[16,1]{1,0}
-      // CHECK: add = f32[16,1]{1,0}
+      // CHECK: param{{.*}} = f32[16,1]{1,0}
+      // CHECK: add{{.*}} = f32[16,1]{1,0}
     )");
     TF_ASSERT_OK(file_check_result.status());
     EXPECT_TRUE(file_check_result.value());
