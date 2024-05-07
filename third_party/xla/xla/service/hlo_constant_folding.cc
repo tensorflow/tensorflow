@@ -163,20 +163,19 @@ absl::StatusOr<bool> HloConstantFolding::Run(
         continue;
       }
 
-      // Don't constant fold unless it's a net positive or the output is small.
+      // Don't constant fold unless output and operand sizes are small.
       if (instruction->shape().IsArray()) {
-        int64_t elements_in_removed_operands = 0;
+        int64_t elements_in_operands = 0;
         for (HloInstruction* operand : instruction->operands()) {
-          if (operand->user_count() == 1 && operand->shape().IsArray()) {
-            elements_in_removed_operands +=
-                ShapeUtil::ElementsIn(operand->shape());
+          if (operand->shape().IsArray()) {
+            elements_in_operands += ShapeUtil::ElementsIn(operand->shape());
           }
         }
         int64_t elements_in_constant =
             ShapeUtil::ElementsIn(instruction->shape());
 
         static const int64_t kMaximumConstantSizeElements = 45 * 1000 * 1000;
-        if (std::max(elements_in_constant, elements_in_removed_operands) >
+        if (std::max(elements_in_constant, elements_in_operands) >
             kMaximumConstantSizeElements) {
           continue;
         }
