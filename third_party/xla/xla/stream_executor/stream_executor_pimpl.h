@@ -70,12 +70,6 @@ class StreamExecutor : public StreamExecutorInterface {
 
   const Platform* GetPlatform() const override { return platform_; }
 
-  // Synchronously allocates an array on the device of type T with element_count
-  // elements.
-  template <typename T>
-  DeviceMemory<T> AllocateArray(uint64_t element_count,
-                                int64_t memory_space = 0);
-
   // Convenience wrapper that allocates space for a single element of type T in
   // device memory.
   template <typename T>
@@ -113,6 +107,8 @@ class StreamExecutor : public StreamExecutorInterface {
       std::optional<std::variant<StreamPriority, int>> priority =
           std::nullopt) override;
 
+  int64_t GetMemoryLimitBytes() const override { return memory_limit_bytes_; }
+
  private:
   // Reader/writer lock for mutable data structures on this StreamExecutor.
   //
@@ -139,24 +135,6 @@ class StreamExecutor : public StreamExecutorInterface {
   StreamExecutor(const StreamExecutor&) = delete;
   void operator=(const StreamExecutor&) = delete;
 };
-
-////////////
-// Inlines
-
-template <typename T>
-inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64_t element_count,
-                                                     int64_t memory_space) {
-  uint64_t bytes = sizeof(T) * element_count;
-  if (memory_limit_bytes_ > 0 &&
-      static_cast<int64_t>(bytes) > memory_limit_bytes_) {
-    LOG(WARNING) << "Not enough memory to allocate " << bytes << " on device "
-                 << device_ordinal()
-                 << " within provided limit.  limit=" << memory_limit_bytes_
-                 << "]";
-    return DeviceMemory<T>();
-  }
-  return DeviceMemory<T>(Allocate(bytes, memory_space));
-}
 
 }  // namespace stream_executor
 
