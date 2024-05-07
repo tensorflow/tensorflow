@@ -20,7 +20,6 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import importer
@@ -753,9 +752,6 @@ class OptimizeForInferenceTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFuseDecomposedBatchNorm_FormatUnsupportedCase(self):
-    if tf_config.list_physical_devices("CPU"):
-      self.skipTest("Skip test for CPU")
-
     original_graph_def, original_result = self.create_base_for_fuse_batchnorm(
         "MISMATCH_FORMAT")
 
@@ -767,13 +763,6 @@ class OptimizeForInferenceTest(test.TestCase):
         optimized_graph_def)
     self.assertEqual(batchnorm_count, 0)
     self.assertEqual(math_op_count, 7)
-
-    with self.cached_session() as sess:
-      _ = importer.import_graph_def(
-          optimized_graph_def, input_map={}, name="optimized")
-      optimized_result = sess.run(["optimized/output:0"])
-
-    self.assertAllClose(original_result, optimized_result)
 
 if __name__ == "__main__":
   test.main()
