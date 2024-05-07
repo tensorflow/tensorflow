@@ -2824,6 +2824,11 @@ LogicalResult ExportXlaOp(TopKOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(MinimumBroadcastShapesOp op, OpLoweringContext ctx) {
+  // This op is only used by KernelGen and is not meant to be lowered to HLO.
+  return failure();
+}
+
 }  // namespace
 }  // namespace mhlo
 }  // namespace mlir
