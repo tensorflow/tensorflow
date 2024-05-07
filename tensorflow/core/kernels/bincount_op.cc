@@ -14,12 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/math_ops.cc.
-
-#include <atomic>
-
 #include "tensorflow/core/platform/errors.h"
+
 #define EIGEN_USE_THREADS
 
+#include <atomic>
+#include <cstdint>
+
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -81,7 +84,7 @@ struct BincountFunctor<CPUDevice, Tidx, T, true> {
     Eigen::array<int, 1> reduce_dim({0});
     output.device(context->eigen_cpu_device()) =
         partial_bins.any(reduce_dim).cast<T>();
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -164,7 +167,7 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
       Eigen::array<int, 1> reduce_dim({0});
       output.device(context->eigen_cpu_device()) = partial_bins.sum(reduce_dim);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -209,7 +212,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
           static_cast<int>(err_neg_val)));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -325,7 +328,7 @@ class DenseBincountOp : public OpKernel {
       const int64_t num_rows = data.dim_size(0);
       auto weight_matrix =
           (weights.NumElements() == 0)
-              ? weights.shaped<T, 2>(gtl::InlinedVector<int64_t, 2>(2, 0))
+              ? weights.shaped<T, 2>(absl::InlinedVector<int64_t, 2>(2, 0))
               : weights.matrix<T>();
       OP_REQUIRES_OK(
           ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));

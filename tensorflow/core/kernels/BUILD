@@ -3560,7 +3560,10 @@ cc_library(
 tf_kernel_library(
     name = "aggregate_ops",
     prefix = "aggregate_ops",
-    deps = MATH_DEPS + [":variant_ops_util"],
+    deps = MATH_DEPS + [
+        ":variant_ops_util",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 tf_kernel_library(
@@ -3648,7 +3651,7 @@ tf_kernel_library(
     features = if_cuda(["-layering_check"]),
     gpu_srcs = ["gpu_device_array.h"],
     prefix = "bucketize_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + ["@com_google_absl//absl/status"],
 )
 
 tf_kernel_library(
@@ -4464,11 +4467,12 @@ tf_kernel_library(
     prefix = "bincount_op",
     deps = [
         ":fill_functor",
-        ":gpu_prim_hdrs",
         ":sparse_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
