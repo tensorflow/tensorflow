@@ -342,6 +342,9 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
   if (instruction->IsRoot()) {
     return false;
   }
+  if (instruction->user_count() == 0) {
+    return false;
+  }
   HloInstruction* starting_instr =
       FindDUSFromAnnotation(instruction->users().at(0));
   // If it's the pure copy case reset instruction.

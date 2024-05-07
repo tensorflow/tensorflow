@@ -164,7 +164,7 @@ INSTANTIATE_TEST_SUITE_P(
     Sparsity, SparseDotTest,
     ::testing::Combine(/*m=*/::testing::Values(32, 256),
                        /*n=*/::testing::Values(32, 256),
-                       /*k=*/::testing::Values(32, 256)),
+                       /*k=*/::testing::Values(64, 512)),
     [](const ::testing::TestParamInfo<SparseDotTest::ParamType>& info) {
       return absl::StrCat("m", std::get<0>(info.param), "n",
                           std::get<1>(info.param), "k",

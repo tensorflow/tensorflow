@@ -36,7 +36,7 @@ namespace gpu {
 std::optional<Interval> GetRange(mlir::Value value);
 
 std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool pre_ampere);
-std::unique_ptr<mlir::Pass> CreateLowerFuncPass();
+std::unique_ptr<mlir::Pass> CreateConvertPureCallOpsPass();
 std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(
     bool is_amd_gpu = false, const std::string& gpu_arch = "6.0");
 std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass();

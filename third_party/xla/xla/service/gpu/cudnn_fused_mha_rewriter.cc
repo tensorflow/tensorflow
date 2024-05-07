@@ -616,11 +616,30 @@ MatchFwdResult MatchBmm1UnfusedBiasSoftmaxBmm2(MatchFwdResult previous_result,
     // bmm1 - (scale) - bias - softmax
     match_result.matched_bmm_1 = bmm_1;
     match_result.matched_scale = scale;
-    match_result.matched_bias = bias;
     match_result.matched_custom_call_name =
         has_dropout ? kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget
                     : kCudnnfMHAScaleBiasSoftmaxCallTarget;
     match_result.is_causal_mask |= IsCausalMaskPattern(bias);
+    if (!match_result.is_causal_mask &&
+        bias->opcode() == HloOpcode::kBroadcast) {
+      // we can take the bias before broadcast
+      auto dims = Cast<HloBroadcastInstruction>(bias)->dimensions();
+      if (dims == std::vector<int64_t>{2, 3} ||
+          dims == std::vector<int64_t>{0, 2, 3} ||
+          dims == std::vector<int64_t>{1, 2, 3}) {
+        // shapes [1, 1, s, s], [b, 1, s, s], [1, h, s, s] are supported
+        HloInstruction* bias_bc = bias->mutable_operand(0);
+        // bitcast bias_before_broadcast to be 4D
+        std::vector<int64_t> bitcast_dims(bias->shape().rank(), 1);
+        for (int dim : dims) {
+          bitcast_dims[dim] = bias->shape().dimensions()[dim];
+        }
+        bias = bias_bc->AddInstruction(HloInstruction::CreateBitcast(
+            ShapeUtil::MakeShape(bias->shape().element_type(), bitcast_dims),
+            bias_bc));
+      }
+    }
+    match_result.matched_bias = bias;
     match_result.has_match = true;
   } else {
     match_result.has_match = false;
@@ -804,7 +823,16 @@ MatchBwdResult MatchDbias(MatchBwdResult previous_result,
       user_count == 1 &&
       Match(dbias_user, m::Reduce(&dbias, m::Op(), m::Op()).WithOneUse()) &&
       dbias->shape().rank() == 3 && ConsumeExtraConvert(dbias);
-  match_result.matched_dbias = dbias;
+  if (match_result.has_match) {
+    // cuDNN only supports dbias for [1, h, s, s]
+    // make sure reduce dimension is on batch dim
+    auto reduce_dim = dbias->dimensions();
+    if (reduce_dim.size() == 1 && reduce_dim[0] == 0) {
+      match_result.matched_dbias = dbias;
+    } else {
+      match_result.has_match = false;
+    }
+  }
   return match_result;
 }
 
@@ -882,9 +910,10 @@ MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
 
   // Backward scale input pattern
   HloInstruction* bwd_scale_input = nullptr;
+  HloInstruction* bwd_scale = nullptr;
 
   auto bwd_scale_pattern =
-      m::MultiplyAnyOrder(m::Op(&bwd_scale_input),
+      m::MultiplyAnyOrder(&bwd_scale, m::Op(&bwd_scale_input),
                           m::Broadcast(m::Constant().WithPredicate(IsScalar)))
           .WithNumUser(2);
   int intermediate_input_pos = is_bmm1_grad1_canonicalized ? 1 : 0;
@@ -947,7 +976,7 @@ MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
       // no dbias
       match_result.has_match = true;
     } else if (dS->user_count() == 2) {
-      match_result = MatchDbias(match_result, dS, {bwd_scale_input});
+      match_result = MatchDbias(match_result, dS, {bwd_scale});
     } else {
       match_result.has_match = false;
     }
@@ -1486,7 +1515,7 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
 
   // Output order:
   // {dQ(bmm_1_grad_2), dK(bmm_1_grad_1), dV(bmm_2_grad_1),
-  // d_intermediate_tensor*, scratch, dbias*}
+  // scratch, dbias*}
   std::vector<Shape> output_shapes = {
       bmm_1_grad_2->shape(), bmm_1_grad_1->shape(), bmm_2_grad_1->shape()};
   // Reserved placeholder for workspace
@@ -1533,7 +1562,7 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
     HloInstruction* dbias_user = dbias->users()[0];
     HloInstruction* cudnn_dbias_output =
         comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-            output_shapes.back(), fmha_bwd_call, 5));
+            output_shapes.back(), fmha_bwd_call, 4));
     HloInstruction* reshape_dbias = comp->AddInstruction(
         HloInstruction::CreateReshape(original_shape, cudnn_dbias_output));
     TF_RETURN_IF_ERROR(dbias_user->ReplaceOperandWith(
@@ -1683,21 +1712,6 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
                 fwd_fmha_call, matched_result.matched_bmm_1, v_transposed);
         if (!matched_bwd_result.has_match) {
           VLOG(2) << "Backward pattern not matching, skipping.";
-          // restore fwd graph if bwd pattern match failed
-          TF_RETURN_IF_ERROR(
-              RestoreFwdGraph(comp, fwd_fmha_call, original_bmm2, activation,
-                              original_bmm2_producer0, original_bmm2_producer1,
-                              original_activation_producers,
-                              matched_result.need_canonicalization));
-          continue;
-        }
-        // check if dbias exist and the cudnn version is > 8.9.1. We
-        // won't lower bwd if this condition is not met as we won't deal with
-        // unswizzling now
-        if (matched_bwd_result.matched_dbias &&
-            !IsComputeCapabilityAndCudnnSupported(
-                compute_capability_, cudnn_version,
-                stream_executor::dnn::VersionInfo(8, 9, 1))) {
           // restore fwd graph if bwd pattern match failed
           TF_RETURN_IF_ERROR(
               RestoreFwdGraph(comp, fwd_fmha_call, original_bmm2, activation,

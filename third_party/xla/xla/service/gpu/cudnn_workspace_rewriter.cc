@@ -150,6 +150,12 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
 
     std::optional<Shape> fwd_output_shape =
         custom_call->operand(input_index++)->shape();
+    if (config.mask_type() == xla::gpu::CudnnfMHABackendConfig::PADDING ||
+        config.mask_type() ==
+            xla::gpu::CudnnfMHABackendConfig::PADDING_CAUSAL) {
+      // skip q_seqlen and kv_seqlen
+      input_index += 2;
+    }
     TF_RET_CHECK(input_index == custom_call->operand_count());
 
     int output_index = 0;
@@ -162,6 +168,11 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
     output_index++;
     std::optional<Shape> d_s_shape;
     std::optional<Shape> d_bias_shape;
+    bool has_dbias = custom_call->shape().tuple_shapes().size() == 5;
+    if (has_dbias) {
+      d_bias_shape =
+          ShapeUtil::GetSubshape(custom_call->shape(), {output_index++});
+    }
     TF_RET_CHECK(output_index == custom_call->shape().tuple_shapes().size());
     TF_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
                         AsCudnnFmhaMaskKind(config.mask_type()));

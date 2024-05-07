@@ -23,7 +23,6 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -53,7 +52,7 @@ class BackendInterface {
   // want to revise the shared_ptr below to the `IfrtResponse` proto itself.
   // Also, if and when we have a move-only Future in xla::ifrt, we may consider
   // changing it to std::unique_ptr.
-  using Response = absl::StatusOr<std::shared_ptr<IfrtResponse>>;
+  using Response = std::shared_ptr<IfrtResponse>;
 
   // Processes a given IFRT Request and returns a Future of an IfrtResponse.
   virtual Future<Response> Process(std::unique_ptr<IfrtRequest> request) = 0;
@@ -102,54 +101,59 @@ class IfrtBackend final : public BackendInterface {
   // that becomes ready when the function returns. If the thread pool is not
   // given, uses a default thread pool implementation that does not limit the
   // maximum number of threads.
-  Future<Response> AsyncExecute(std::function<Response()> handle_fn,
-                                tsl::thread::ThreadPool* thread_pool = nullptr);
+  Future<Response> AsyncExecute(
+      std::function<absl::StatusOr<Response>()> handle_fn,
+      tsl::thread::ThreadPool* thread_pool = nullptr);
 
   //////////////////////////////////////////////////////////////////////
   // Handlers for individual requests
   //
 
-  Response HandleInit(std::unique_ptr<IfrtRequest> request);
+  absl::StatusOr<Response> HandleInit(std::unique_ptr<IfrtRequest> request);
 
   Future<Response> HandleCheckFutureRequest(
       std::unique_ptr<IfrtRequest> request);
 
-  Response HandleMakeArrayFromHostBufferRequest(
+  absl::StatusOr<Response> HandleMakeArrayFromHostBufferRequest(
       std::unique_ptr<IfrtRequest> request);
-  Response HandleAssembleArrayFromSingleDeviceArraysRequest(
+  absl::StatusOr<Response> HandleAssembleArrayFromSingleDeviceArraysRequest(
       std::unique_ptr<IfrtRequest> request);
   Future<Response> HandleCopyToHostBufferRequest(
       std::unique_ptr<IfrtRequest> request);
-  Response HandleDisassembleIntoSingleDeviceArraysRequest(
+  absl::StatusOr<Response> HandleDisassembleIntoSingleDeviceArraysRequest(
       std::unique_ptr<IfrtRequest> request);
-  Response HandleReshardRequest(std::unique_ptr<IfrtRequest> request);
-  Response HandleFullyReplicatedShardRequest(
+  absl::StatusOr<Response> HandleReshardRequest(
+      std::unique_ptr<IfrtRequest> request);
+  absl::StatusOr<Response> HandleFullyReplicatedShardRequest(
       std::unique_ptr<IfrtRequest> request);
   Future<Response> HandleCheckArrayReadyRequest(
       std::unique_ptr<IfrtRequest> request);
-  Response HandleDeleteArrayRequest(std::unique_ptr<IfrtRequest> request);
-  Response HandleIsArrayDeletedRequest(std::unique_ptr<IfrtRequest> request);
-  Response HandleDestructArrayRequest(std::unique_ptr<IfrtRequest> request);
+  absl::StatusOr<Response> HandleDeleteArrayRequest(
+      std::unique_ptr<IfrtRequest> request);
+  absl::StatusOr<Response> HandleIsArrayDeletedRequest(
+      std::unique_ptr<IfrtRequest> request);
+  absl::StatusOr<Response> HandleDestructArrayRequest(
+      std::unique_ptr<IfrtRequest> request);
 
   Future<Response> HandleCompileRequest(std::unique_ptr<IfrtRequest> request);
 
   Future<Response> HandleLoadedExecutableMetadataRequest(
       std::unique_ptr<IfrtRequest> request);
-  Response HandleLoadedExecutableExecuteRequest(
+  absl::StatusOr<Response> HandleLoadedExecutableExecuteRequest(
       std::unique_ptr<IfrtRequest> request);
-  Response HandleLoadedExecutableDeleteRequest(
+  absl::StatusOr<Response> HandleLoadedExecutableDeleteRequest(
       std::unique_ptr<IfrtRequest> request);
-  Response HandleLoadedExecutableIsDeletedRequest(
+  absl::StatusOr<Response> HandleLoadedExecutableIsDeletedRequest(
       std::unique_ptr<IfrtRequest> request);
-  Response HandleLoadedExecutableDestructRequest(
+  absl::StatusOr<Response> HandleLoadedExecutableDestructRequest(
       std::unique_ptr<IfrtRequest> request);
 
   Future<Response> HandleLoadedHostCallbackPollRequest(
       std::unique_ptr<IfrtRequest> request);
-  Response HandleLoadedHostCallbackReturnRequest(
+  absl::StatusOr<Response> HandleLoadedHostCallbackReturnRequest(
       std::unique_ptr<IfrtRequest> request);
 
-  Response HandleGetDefaultDeviceAssignmentRequest(
+  absl::StatusOr<Response> HandleGetDefaultDeviceAssignmentRequest(
       std::unique_ptr<IfrtRequest> request);
 
   //////////////////////////////////////////////////////////////////////

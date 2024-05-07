@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
-#include <cinttypes>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -27,14 +26,20 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/pjrt/local_device_state.h"
-#include "xla/pjrt/utils.h"
+#include "absl/types/span.h"
+#include "xla/pjrt/event_pool.h"
+#include "xla/service/executable.h"
+#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/event.h"
-#include "xla/types.h"
+#include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 
@@ -44,7 +49,7 @@ void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
                                                se::Stream* stream) {
   {
     absl::MutexLock lock(&mu_);
-    defined_status_.emplace(OkStatus());
+    defined_status_.emplace(absl::OkStatus());
     CHECK(!event_.event());
     event_ = std::move(event);
     CHECK(streams_defined_on_.empty());
@@ -233,7 +238,7 @@ TrackedDeviceBuffer::TrackedDeviceBuffer(
 TrackedDeviceBuffer::~TrackedDeviceBuffer() {
   if (allocator_) {
     for (const se::DeviceMemoryBase& buffer : device_memory_) {
-      Status status = allocator_->Deallocate(device_ordinal_, buffer);
+      absl::Status status = allocator_->Deallocate(device_ordinal_, buffer);
       if (!status.ok()) {
         LOG(ERROR) << "Buffer deallocation failed: " << status;
       }

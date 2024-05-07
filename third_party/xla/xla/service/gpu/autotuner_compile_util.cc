@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuner_compile_util.h"
 
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -87,6 +88,7 @@ AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
   opts_.set_xla_gpu_dump_autotune_results_to("");
   opts_.set_xla_gpu_load_autotune_results_from("");
   opts_.set_xla_gpu_dump_llvmir(false);
+  opts_.set_xla_gpu_dump_autotune_logs_to("");
   // Avoid using another thread pool.
   opts_.set_xla_gpu_force_compilation_parallelism(1);
   opts_.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
@@ -173,7 +175,7 @@ AutotunerCompileUtil::Create(const AutotuneConfig& config,
   se::DeviceMemoryAllocator* allocator = config.GetAllocator();
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config.GetStream());
   TF_ASSIGN_OR_RETURN(Compiler * compiler,
-                      Compiler::GetForPlatform(stream_exec->platform()));
+                      Compiler::GetForPlatform(stream_exec->GetPlatform()));
   return AutotunerCompileUtil(config, compiler, *stream_exec, *stream,
                               *allocator, opts);
 }
@@ -259,8 +261,10 @@ absl::Status RedzoneBuffers::CreateOutputs(const HloInstruction& instruction,
   auto end = instruction.shape().tuple_shapes().end();
   end -= buffers_to_create == kAllInputsAllOutputs ? 0 : 1;
 
-  output_shape_ =
-      ShapeUtil::MakeTupleShape(std::vector<Shape>{current_shape_it, end});
+  output_shape_ = std::distance(current_shape_it, end) == 1
+                      ? output_shape_ = *current_shape_it
+                      : ShapeUtil::MakeTupleShape(
+                            std::vector<Shape>{current_shape_it, end});
 
   for (; current_shape_it < end; current_shape_it++) {
     if (current_shape_it->IsTuple()) {

@@ -57,44 +57,43 @@ const char kUsageHeader[] =
 // Read the input file containing the MHLO module, and write a Serialized
 // AotCompilationResult or Executable to the output file.
 int main(int argc, char* argv[]) {
-  std::string module_path;
-  std::string output_path;
-  std::string platform;
-  std::string gpu_target_config_path;
-  std::string autotune_results_path;
-  std::string symbol_repository;
-  std::string symbol_id;
-  bool use_attached_device = false;
-  bool wait_for_uploads = false;
-  std::string result_output_file;
+  xla::XlaCompileOptions options;
   std::vector<tsl::Flag> flag_list = {
-      tsl::Flag("module_file", &module_path,
+      tsl::Flag("module_file", &options.module_path,
                 "The path to the HLO, MHLO or StableHLO file"),
-      tsl::Flag("output_file", &output_path, "The path to the output file"),
-      tsl::Flag("platform", &platform,
+      tsl::Flag("output_file", &options.output_path,
+                "The path to the output file"),
+      tsl::Flag("platform", &options.platform,
                 "The platform on which the built executable runs"),
-      tsl::Flag("gpu_target_config", &gpu_target_config_path,
+      tsl::Flag("gpu_target_config",
+                &options.gpu_options.gpu_target_config_path,
                 "The path to a text-format GpuTargetConfig. If not provided, "
                 "an attached GPU will be used."),
-      tsl::Flag("autotune_results", &autotune_results_path,
+      tsl::Flag("autotune_results", &options.gpu_options.autotune_results_path,
                 "The path to AutotuneResults, optional when compiling for"
                 " GPU"),
-      tsl::Flag("symbol_repo", &symbol_repository,
+      tsl::Flag("symbol_repo", &options.repo_options.symbol_repo,
                 "Which SymbolRepository to look up --symbol_reference in. If "
                 "the repository contains a GpuTargetConfig, "
                 "--gpu_target_config will take precedence if it is also set."),
-      tsl::Flag("symbol_reference", &symbol_id,
+      tsl::Flag("symbol_reference", &options.repo_options.symbol_id,
                 "Symbol ID to look up in a SymbolRepository. Overrides "
                 "--module_file."),
-      tsl::Flag("use_attached_device", &use_attached_device,
+      tsl::Flag(
+          "optimized_symbol_reference",
+          &options.repo_options.optimized_symbol_id,
+          "Optimized symbol ID to look up in a SymbolRepository. Overrides "
+          "--autotune_results_path."),
+
+      tsl::Flag("use_attached_device", &options.gpu_options.use_attached_device,
                 "Whether to use the attached GPU or not. Overrides the "
                 "AOT-vs-device-backed inference based on the presence of "
                 "--gpu_target_config, which is relevant when a GpuTargetConfig "
                 "can be found in the symbol repository."),
-      tsl::Flag("wait_for_uploads", &wait_for_uploads,
+      tsl::Flag("wait_for_uploads", &options.repo_options.wait_for_uploads,
                 "Whether to wait for uploads to a symbol repository to "
                 "complete. See export_hlo.h for more on uploads."),
-      tsl::Flag("result_output_file", &result_output_file,
+      tsl::Flag("result_output_file", &options.result_output_file,
                 "File to write a serialized xla.CompilationResult proto to."),
   };
 
@@ -110,10 +109,7 @@ int main(int argc, char* argv[]) {
 
   tsl::port::InitMain(usage.c_str(), &argc, &argv);
 
-  absl::Status result = xla::XlaCompileMain(
-      module_path, output_path, platform, gpu_target_config_path,
-      autotune_results_path, symbol_repository, symbol_id, use_attached_device,
-      wait_for_uploads, result_output_file);
+  absl::Status result = xla::XlaCompileMain(options);
   if (!result.ok()) {
     LOG(ERROR) << "Compilation failed: " << result;
     return 1;

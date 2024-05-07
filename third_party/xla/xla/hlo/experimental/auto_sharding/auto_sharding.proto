@@ -40,6 +40,9 @@ message AutoShardingSolverRequest {
   message Coeff {
     double coeff = 1;
   }
+  message Group {
+    repeated int64 prims = 1;  // Node or edge primitive indices.
+  }
 
   int64 num_nodes = 1;
   int64 memory_budget = 2;
@@ -52,6 +55,8 @@ message AutoShardingSolverRequest {
   repeated Edges live_edges = 28;
   repeated Pair node_intervals = 36;
   repeated Pair edge_intervals = 37;
+  repeated Group node_groups = 38;
+  repeated Group edge_groups = 39;
   repeated Costs computation_costs = 8;
   repeated Costs communication_costs = 9;
   repeated Costs memory_costs = 10;

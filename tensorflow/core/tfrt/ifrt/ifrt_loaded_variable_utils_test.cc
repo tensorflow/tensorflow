@@ -80,11 +80,11 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
   VariableDeviceShardingConfigProto sharding_config;
   sharding_config.add_device_ids(0);
 
-  auto promise =
-      xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>::CreatePromise();
-  auto future = xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(promise);
+  auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
+  auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
+      false,
       GetDtypeAndShape(variable_handle.scalar<ResourceHandle>()()).value(),
       future};
   TF_ASSERT_OK(restored_tensor_registry.TryRegister("var_x_wrong",
@@ -123,11 +123,11 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
   VariableDeviceShardingConfigProto sharding_config;
   sharding_config.add_device_ids(0);
 
-  auto promise =
-      xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>::CreatePromise();
-  auto future = xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(promise);
+  auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
+  auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
+      false,
       GetDtypeAndShape(variable_handle.scalar<ResourceHandle>()()).value(),
       future};
 
@@ -137,8 +137,12 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
       "var_x", client, thread_pool, restored_tensor_registry,
       loaded_variable_registry, restore_work_queue.get(), sharding_config));
   promise.Set(input_tensor);
+  IfrtLoadedVariableRegistry::Key key{
+      .device_ids = {0},
+      .input_name = "var_x",
+  };
   TF_ASSERT_OK_AND_ASSIGN(auto v,
-                          loaded_variable_registry.GetLoadedVariable("var_x"));
+                          loaded_variable_registry.GetLoadedVariable(key));
   TF_ASSERT_OK_AND_ASSIGN(auto assembled_array, v.array.Await());
 
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled_arrays,

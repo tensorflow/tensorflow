@@ -246,36 +246,54 @@ TEST(AsyncValueRefTest, MapMultipleTimes) {
   EXPECT_EQ(mapped.get(), 42 + 6);
 }
 
-TEST(AsyncValueRefTest, MapStatusOr) {
+TEST(AsyncValuePtrTest, MapToStatus) {
+  AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
+
+  AsyncValueRef<absl::Status> mapped_to_status =
+      ref.Map([](int32_t value) -> absl::Status { return absl::OkStatus(); });
+  EXPECT_TRUE(mapped_to_status.IsAvailable());
+  EXPECT_EQ(mapped_to_status.get(), absl::OkStatus());
+}
+
+TEST(AsyncValueRefTest, MapToStatusOr) {
+  AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
+
+  AsyncValueRef<absl::StatusOr<float>> mapped_to_float =
+      ref.Map([](int32_t value) -> absl::StatusOr<float> { return value; });
+  EXPECT_TRUE(mapped_to_float.IsAvailable());
+  EXPECT_EQ(*mapped_to_float.get(), 42.0f);
+}
+
+TEST(AsyncValueRefTest, TryMap) {
   AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
 
   AsyncValueRef<float> mapped_to_float =
-      ref.Map([](int32_t value) -> absl::StatusOr<float> { return value; });
+      ref.TryMap([](int32_t value) -> absl::StatusOr<float> { return value; });
   EXPECT_TRUE(mapped_to_float.IsAvailable());
   EXPECT_EQ(mapped_to_float.get(), 42.0f);
 }
 
-TEST(AsyncValueRefTest, MapStatusOrError) {
+TEST(AsyncValueRefTest, TryMapError) {
   AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
 
   AsyncValueRef<float> mapped_to_float =
-      ref.Map([](int32_t value) -> absl::StatusOr<float> {
+      ref.TryMap([](int32_t value) -> absl::StatusOr<float> {
         return absl::InternalError("error");
       });
   EXPECT_TRUE(mapped_to_float.IsError());
   EXPECT_EQ(mapped_to_float.GetError(), absl::InternalError("error"));
 }
 
-TEST(AsyncValueRefTest, MapStatusOrConstructible) {
+TEST(AsyncValueRefTest, TryMapConstructible) {
   AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
 
   struct X {
-    explicit X(absl::StatusOr<float> value) : value(*value) {}
+    explicit X(float value) : value(value) {}
     float value;
   };
 
-  AsyncValueRef<X> mapped_to_x =
-      ref.Map<X>([](int32_t value) -> absl::StatusOr<float> { return value; });
+  AsyncValueRef<X> mapped_to_x = ref.TryMap<X>(
+      [](int32_t value) -> absl::StatusOr<float> { return value; });
   EXPECT_TRUE(mapped_to_x.IsAvailable());
   EXPECT_EQ(mapped_to_x->value, 42.0f);
 }
@@ -368,11 +386,11 @@ TEST(AsyncValueRefTest, MapUnavailableOnExecutor) {
   EXPECT_EQ(mapped_to_float.get(), 42.0f);
 }
 
-TEST(AsyncValueRefTest, MapStatusOrOnExecutor) {
+TEST(AsyncValueRefTest, TryMapOnExecutor) {
   AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
 
   DeferredExecutor executor;
-  AsyncValueRef<float> mapped_to_float = ref.Map(
+  AsyncValueRef<float> mapped_to_float = ref.TryMap(
       executor, [](int32_t value) -> absl::StatusOr<float> { return value; });
 
   ref.SetStateConcrete();
@@ -385,12 +403,12 @@ TEST(AsyncValueRefTest, MapStatusOrOnExecutor) {
   EXPECT_EQ(mapped_to_float.get(), 42.0f);
 }
 
-TEST(AsyncValueRefTest, MapStatusOrErrorOnExecutor) {
+TEST(AsyncValueRefTest, TryMapErrorOnExecutor) {
   AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
 
   DeferredExecutor executor;
   AsyncValueRef<float> mapped_to_float =
-      ref.Map(executor, [](int32_t value) -> absl::StatusOr<float> {
+      ref.TryMap(executor, [](int32_t value) -> absl::StatusOr<float> {
         return absl::InternalError("error");
       });
 
@@ -526,6 +544,18 @@ TEST(AsyncValueRefTest, Isa) {
   typed_indirect->ForwardTo(c_ref.CopyRCRef());
   EXPECT_TRUE(Isa<A>(c_typed_indirect));
   EXPECT_TRUE(Isa<C>(c_typed_indirect));
+
+  // Typed indirect async value with error correctly handled by Isa<T>.
+  auto typed_indirect_err = MakeIndirectAsyncValue<C>();
+  AsyncValueRef<A> c_typed_indirect_err(typed_indirect_err);
+  EXPECT_TRUE(Isa<A>(c_typed_indirect.AsPtr()));
+  EXPECT_TRUE(Isa<C>(c_typed_indirect.AsPtr()));
+
+  // After indirect async value is set to error it should still return true
+  // from Isa<T> checks.
+  typed_indirect_err->SetError(absl::InternalError("error"));
+  EXPECT_TRUE(Isa<A>(c_typed_indirect_err.AsPtr()));
+  EXPECT_TRUE(Isa<C>(c_typed_indirect_err.AsPtr()));
 }
 
 TEST(AsyncValueRefTest, DynCast) {

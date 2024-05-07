@@ -110,9 +110,11 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
                               /*index*/ {});
   }
 
-  auto slice_adaptor =
-      HloFindIf({HloInstructionAdaptor(*start)}, adaptor, [](auto node) {
-        return IsOpcodeAnyOf<HloOpcode::kDynamicSlice, HloOpcode::kSlice>(node);
+  auto slice_adaptor = HloFindIf(
+      {HloInstructionAdaptor(*start, &adaptor)}, adaptor,
+      [](HloInstructionAdaptor node) {
+        return IsOpcodeAnyOf<HloOpcode::kDynamicSlice, HloOpcode::kSlice>(
+            &node.instruction());
       });
   if (slice_adaptor.has_value()) {
     auto* slice_instr =
@@ -225,7 +227,7 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
   }
 
   auto slice_adaptor = HloFindIf(
-      {HloInstructionAdaptor(*start)}, adaptor,
+      {HloInstructionAdaptor(*start, &adaptor)}, adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kDynamicUpdateSlice; },
       /*visit_operands=*/false);
   if (slice_adaptor.has_value()) {

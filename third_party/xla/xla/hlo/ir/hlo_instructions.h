@@ -312,6 +312,15 @@ class HloAsyncStartInstruction : public HloAsyncInstruction {
       absl::string_view async_execution_thread) override;
   HloInstructionProto ToProto() const override;
 
+  static bool ClassOf(const HloInstruction* hlo) {
+    switch (hlo->opcode()) {
+      case HloOpcode::kAsyncStart:
+        return true;
+      default:
+        return false;
+    }
+  }
+
  private:
   void PrintExtraAttributesImpl(AttributePrinter& printer,
                                 const HloPrintOptions& options) const override;

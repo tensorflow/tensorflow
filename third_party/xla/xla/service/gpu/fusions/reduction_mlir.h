@@ -32,7 +32,8 @@ namespace gpu {
 // Reduction fusion. Lowers to LLVM via MLIR. Currently not fully
 // implemented: only single reduction groups, no side outputs, only row
 // reductions.
-class MlirReductionFusion : public ReductionFusionBase<MlirFusionEmitterBase> {
+class MlirReductionFusion
+    : public ReductionFusionBase<MlirFusionEmitterBase, /*is_mlir=*/true> {
  public:
   explicit MlirReductionFusion(const HloFusionAnalysis& analysis);
 
@@ -59,6 +60,7 @@ class MlirReductionFusion : public ReductionFusionBase<MlirFusionEmitterBase> {
   // The roots that have reduction heroes.
   std::vector<const HloInstruction*> reduction_roots_;
   std::vector<const HloInstruction*> side_output_roots_;
+  int first_reduction_root_index_;
 };
 
 }  // namespace gpu

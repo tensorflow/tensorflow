@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emitter_triton.h"
 
+#include <array>
 #include <climits>
 #include <cmath>
 #include <cstddef>
@@ -1754,7 +1755,7 @@ absl::StatusOr<Value> Emit6xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
   auto bf16_dot = [&](Value lhs_bf16, Value rhs_bf16,
                       Value accumulator) -> Value {
     return b.create<mt::DotOp>(lhs_bf16, rhs_bf16, accumulator,
-                               /*allowTF32=*/false,
+                               /*inputPrecision=*/mt::InputPrecision::IEEE,
                                /*maxNumImpreciseAcc=*/0);
   };
 
@@ -1796,7 +1797,7 @@ absl::StatusOr<Value> Emit3xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
   auto bf16_dot = [&](Value lhs_bf16, Value rhs_bf16,
                       Value accumulator) -> Value {
     return b.create<mt::DotOp>(lhs_bf16, rhs_bf16, accumulator,
-                               /*allowTF32=*/false,
+                               /*inputPrecision=*/mt::InputPrecision::IEEE,
                                /*maxNumImpreciseAcc=*/0);
   };
 
@@ -1937,8 +1938,8 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   const HloInstruction* root = dot_instr->parent()->root_instruction();
   TF_RET_CHECK(!root->shape().IsTuple());
 
-  HloInstructionAdaptor instr_adaptor{*instr};
   auto fusion_adaptor = HloFusionAdaptor::ForComputation(computation);
+  HloInstructionAdaptor instr_adaptor{*instr, fusion_adaptor.get()};
   // TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
   bool is_8_bit_or_less_dot_with_F32 = HloAnyOf(
       instr_adaptor.GetOperands(), *fusion_adaptor,
@@ -1957,7 +1958,6 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   // time.
   auto loc = mlir::NameLoc::get(builder.getStringAttr(dot_instr->name()));
   ImplicitLocOpBuilder b(loc, builder);
-  Type i32_ty = b.getI32Type();
 
   TF_RETURN_IF_ERROR(ValidateMatMulConfig(config, *dot_instr));
   const int split_k = config.split_k;
@@ -1977,7 +1977,6 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   const int64_t width = group_m * launch_config.grid_n;
 
   auto c32 = [&](int64_t v) { return CreateConst(b, b.getI32Type(), v); };
-  auto c64 = [&](int64_t v) { return CreateConst(b, b.getI64Type(), v); };
 
   auto pid_nc =
       b.create<mt::GetProgramIdOp>(launch_config.noncontracting_program_id_dim);
@@ -2030,22 +2029,37 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
                           /*split_value=*/1)},
            dims.out_batch_dim_idx};
 
+  std::vector<Side> scopes = {lhs, rhs};
+  if (is_sparse) {
+    scopes.push_back(
+        {TritonFusionAnalysis::Scope::META,
+         /*tiled_dims=*/
+         {DimProperties(dims.lhs_noncontracting_dim_idx, pid_m, block_m,
+                        /*split_value=*/1),
+          DimProperties(dims.lhs_contracting_dim_idx, pid_k, block_k / 16,
+                        split_k)},
+         dims.lhs_batch_dim_idx});
+  }
+
+  constexpr size_t kLhsMetaOperandIdx = HloDotInstruction::kOperands;
+  size_t lsize = ScopeInputs(analysis, TritonFusionAnalysis::Scope::LHS).size();
+  size_t rsize = ScopeInputs(analysis, TritonFusionAnalysis::Scope::RHS).size();
+
   auto body_builder = [&](mlir::OpBuilder&, mlir::Location, Value ki,
                           ValueRange iter_args) {
     SmallVector<Value> iter_args_next;
     iter_args_next.reserve(iter_args.size());
-    absl::flat_hash_map<const HloInstruction*, Value> values_lhs;
-    absl::flat_hash_map<const HloInstruction*, Value> values_rhs;
+    std::array<absl::flat_hash_map<const HloInstruction*, Value>, 3> values;
 
     // Load tiles of all parameters of LHS and RHS scopes and advance pointers.
-    for (int i = 0; i < iter_args.size() - 1 - is_sparse; ++i) {
-      const bool is_lhs =
-          i < ScopeInputs(analysis, TritonFusionAnalysis::Scope::LHS).size();
-      Side& side = is_lhs ? lhs : rhs;
-      auto& values = is_lhs ? values_lhs : values_rhs;
+    for (int i = 0; i < iter_args.size() - 1; ++i) {
+      const int index = i < lsize ? 0 : i < lsize + rsize ? 1 : 2;
+      Side& side = scopes[index];
 
       const HloInstruction* param_hlo = iter_args_to_inputs[i];
-      Type param_ty = TritonType(b, param_hlo->shape().element_type());
+      Type param_ty = index == kLhsMetaOperandIdx
+                          ? b.getI16Type()
+                          : TritonType(b, param_hlo->shape().element_type());
       Type param_storage_ty = StorageType(b, param_ty);
       Value param_value =
           EmitParameterLoad(b, iter_args[i], iter_args_to_boundary_checks[i]);
@@ -2054,7 +2068,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
         param_value = Cast(b, param_value, param_ty);
       }
 
-      CHECK(values.insert({param_hlo, param_value}).second);
+      CHECK(values[index].insert({param_hlo, param_value}).second);
       SmallVector<Value> increments;
       for (const DimProperties& dim : side.tiled_dims) {
         const TensorIterationSpec::DimIterationSpec* spec =
@@ -2063,8 +2077,9 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
           continue;
         }
         // Only the contracting dimensions are advanced.
-        if (dim.index == (is_lhs ? dims.lhs_contracting_dim_idx
-                                 : dims.rhs_contracting_dim_idx)) {
+        if (dim.index == (index == 0 || index == kLhsMetaOperandIdx
+                              ? dims.lhs_contracting_dim_idx
+                              : dims.rhs_contracting_dim_idx)) {
           increments.push_back(c32(dim.block_size * split_k));
         } else {
           increments.push_back(c32(0));
@@ -2079,8 +2094,10 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
     }
 
     // Emit all operations of LHS and RHS scopes.
-    Value dot_input_lhs = emitter.MakeInput(lhs, 0, values_lhs);
-    Value dot_input_rhs = emitter.MakeInput(rhs, 1, values_rhs);
+    Value dot_input_lhs = emitter.MakeInput(lhs, 0, values[0]);
+    Value dot_input_rhs = emitter.MakeInput(rhs, 1, values[1]);
+    Value dot_input_meta =
+        is_sparse ? emitter.MakeInput(scopes.back(), 2, values[2]) : Value{};
 
     // Operation in the fusion before the dot can alter the elements of the
     // tiles that were zero masked during loads. These have to be zeroed here
@@ -2089,17 +2106,14 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
     // the other two get discarded by the masked store at the end.
     const bool need_masking = dims.k % (block_k * split_k) > 0;
     if (need_masking) {
-      auto elements_in_tile =
-          b.create<ma::SubIOp>(CreateConst(b, i32_ty, dims.k), ki);
-      auto range_k = Range(b, block_k);
-      if (pid_k != nullptr) {
-        range_k = b.create<ma::AddIOp>(
-            range_k,
-            Splat(b,
-                  b.create<ma::MulIOp>(pid_k, CreateConst(b, i32_ty, block_k)),
-                  block_k));
-      }
-      auto apply_mask = [&](int64_t dim, Value input) {
+      auto apply_mask = [&](int64_t dim, Value input, int denom) {
+        auto elements_in_tile = b.create<ma::SubIOp>(c32(dims.k / denom), ki);
+        int size = block_k / denom;
+        auto range_k = Range(b, size);
+        if (pid_k != nullptr) {
+          range_k = b.create<ma::AddIOp>(
+              range_k, Splat(b, b.create<ma::MulIOp>(pid_k, c32(size)), size));
+        }
         auto ty = mlir::cast<mlir::RankedTensorType>(input.getType());
         TensorValue range_expanded = mlir::cast<TensorValue>(
             b.create<mt::ExpandDimsOp>(range_k, dim).getResult());
@@ -2110,21 +2124,15 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
                                        range_expanded.getType().getShape())));
         return b.create<ma::SelectOp>(mask, input, ZerosLike(b, input));
       };
-      dot_input_lhs = apply_mask(0, dot_input_lhs);
-      dot_input_rhs = apply_mask(1, dot_input_rhs);
+      dot_input_lhs = apply_mask(0, dot_input_lhs, is_sparse ? 2 : 1);
+      dot_input_rhs = apply_mask(1, dot_input_rhs, 1);
+      // Masking the metadata is not necessary, as the inputs are masked
+      // (i.e. zeroed out), so the padded metadata can hold any values.
     }
 
     if (is_sparse) {
-      Value meta_arg = iter_args[iter_args.size() - 2];
-      Value meta = b.create<mt::LoadOp>(meta_arg, std::vector<int>{},
-                                        std::nullopt, mt::CacheModifier::NONE,
-                                        mt::EvictionPolicy::NORMAL,
-                                        /*isVolatile=*/false);
-      iter_args_next.push_back(
-          b.create<mt::AdvanceOp>(meta_arg.getType(), meta_arg,
-                                  mlir::ValueRange{c32(0), c32(block_k / 16)}));
       iter_args_next.push_back(b.create<mt::gpu::SparseDotOp>(
-          dot_input_lhs, dot_input_rhs, iter_args.back(), meta));
+          dot_input_lhs, dot_input_rhs, iter_args.back(), dot_input_meta));
       b.create<mlir::scf::YieldOp>(iter_args_next);
       return;
     }
@@ -2155,10 +2163,13 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
       // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
       // lower precision than the output type. The change was introduced here:
       // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
+      auto input_precision =
+          IsTf32Allowed(dot_instr) && !is_8_bit_or_less_dot_with_F32
+              ? mt::InputPrecision::TF32
+              : mt::InputPrecision::IEEE;
       accumulator_next =
           b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs, iter_args.back(),
-                              /*allowTF32=*/IsTf32Allowed(dot_instr) &&
-                                  !is_8_bit_or_less_dot_with_F32,
+                              /*inputPrecision=*/input_precision,
                               /*maxNumImpreciseAcc=*/0);
     }
     iter_args_next.push_back(accumulator_next);
@@ -2169,11 +2180,9 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   // Pointers to inputs of LHS scope, then RHS, then the accumulator
   // that change with every loop iteration and are passed between them.
   SmallVector<Value> iter_args;
-  iter_args.reserve(
-      ScopeInputs(analysis, TritonFusionAnalysis::Scope::LHS).size() +
-      ScopeInputs(analysis, TritonFusionAnalysis::Scope::RHS).size() + 1);
+  iter_args.reserve(lsize + rsize + 1 + is_sparse);
 
-  for (const Side& side : {lhs, rhs}) {
+  for (const Side& side : scopes) {
     for (const HloInstruction* input : ScopeInputs(analysis, side.scope)) {
       TF_RET_CHECK(
           iter_args_to_inputs.insert({iter_args.size(), input}).second);
@@ -2183,31 +2192,6 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
                               iter_args_to_boundary_checks[iter_args.size()]));
       iter_args.push_back(tensor_ptr);
     }
-  }
-
-  // Create tensor pointer for the sparsity metadata.
-  if (is_sparse) {
-    Shape shape = dot_instr->operand(2)->shape();
-    int last = shape.rank() - 1;
-    auto params = analysis.ScopeParameters(TritonFusionAnalysis::Scope::META);
-    CHECK_EQ(params.size(), 1);
-    int64_t stride = split_k > 1 ? shape.dimensions(1) * shape.dimensions(2)
-                                 : shape.dimensions(last);
-    auto tensor_ptr =
-        b.create<mt::MakeTensorPtrOp>(
-             fn.getArgument((*params.begin())->parameter_number()),
-             mlir::ValueRange{c64(shape.dimensions(0)),
-                              c64(shape.dimensions(last))},
-             mlir::ValueRange{c64(stride), c64(1)},
-             mlir::ValueRange{c32(0), c32(0)},
-             std::vector<int32_t>{block_m, block_k / 16},
-             std::vector<int32_t>{1, 0})
-            .getResult()
-            .cast<Value>();
-    tensor_ptr = b.create<mt::AdvanceOp>(
-        tensor_ptr.getType(), tensor_ptr,
-        mlir::ValueRange{b.create<ma::MulIOp>(pid_m, c32(block_m)), c32(0)});
-    iter_args.push_back(tensor_ptr);
   }
 
   iter_args.push_back(accumulator_init);

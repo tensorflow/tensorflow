@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/nb_class_ptr.h"
+#include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/py_client.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -231,8 +232,10 @@ class CompileOnlyIfRtClient final
   absl::StatusOr<std::unique_ptr<PjRtLayout>> GetDefaultLayoutForDevice(
       ifrt::DType dtype, absl::Span<const int64_t> dims,
       ifrt::Device* device) const override {
-    return absl::UnimplementedError(
-        "GetDefaultLayout not supported for CompileOnlyIfRtClient.");
+    TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
+    TF_ASSIGN_OR_RETURN(xla::Layout layout,
+                        topology_->GetDefaultLayout(element_type, dims));
+    return std::make_unique<PjRtXlaLayout>(std::move(layout));
   }
 
  private:

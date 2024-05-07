@@ -12,45 +12,6 @@ package_group(
     packages = ["//tensorflow/lite/..."],
 )
 
-package_group(
-    name = "tf_lite_current_dependencies_in_tf",
-    packages = [
-        "//tensorflow",
-        "//tensorflow/compiler/mlir/lite",
-        "//tensorflow/compiler/mlir/lite/experimental/google/interpreter_from_mlir",
-        "//tensorflow/compiler/mlir/lite/experimental/google/tooling",
-        "//tensorflow/compiler/mlir/lite/experimental/google/tooling/tools",
-        "//tensorflow/compiler/mlir/lite/experimental/jax/tests",
-        "//tensorflow/compiler/mlir/lite/experimental/tac/tools",
-        "//tensorflow/compiler/mlir/lite/experimental/xnnpack_mhlo",
-        "//tensorflow/compiler/mlir/lite/metrics",
-        "//tensorflow/compiler/mlir/lite/python",
-        "//tensorflow/compiler/mlir/lite/quantization/lite",
-        "//tensorflow/compiler/mlir/lite/sparsity",
-        "//tensorflow/compiler/mlir/lite/stablehlo",
-        "//tensorflow/compiler/mlir/lite/tests/flatbuffer2mlir",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/utils",
-        "//tensorflow/compiler/mlir/tosa",
-        "//tensorflow/core",
-        "//tensorflow/python",
-        "//tensorflow/python/kernel_tests/signal",
-        "//tensorflow/python/tools/api/generator",
-    ],
-)
-
-package_group(
-    name = "anything_but_tf",
-    includes = [
-        "tf_lite_current_dependencies_in_tf",
-        "tf_lite_runtime",
-    ],
-    packages = [
-        "-//third_party/tensorflow/...",
-        "//...",
-    ],
-)
-
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
@@ -534,9 +495,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    deps = [
-        "//tensorflow/lite/core/api:error_reporter",
-    ],
+    deps = ["//tensorflow/lite/core/api:error_reporter"],
 )
 
 cc_library(

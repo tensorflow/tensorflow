@@ -352,7 +352,8 @@ XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
   EXPECT_TRUE(LiteralTestUtil::Equal(literal2, result2));
 }
 
-XLA_TEST_F(TransferManagerTest, TransferDynamicShape) {
+// TODO(b/223222672): TPUs transfer literals using a different codepath.
+XLA_TEST_F(TransferManagerTest, DISABLED_ON_TPU(TransferDynamicShape)) {
   TF_ASSERT_OK_AND_ASSIGN(
       Shape s, ParseShape("(s64[], s32[<=1048576,3], f32[<=1048576,48])"));
 

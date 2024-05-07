@@ -68,6 +68,9 @@ class GpuLayoutAssignment : public LayoutAssignment {
 
   bool PropagateReductionLayoutToOperand(const HloInstruction* user) override;
 
+  bool InstructionCanChangeLayoutInstance(
+      const HloInstruction* instruction) override;
+
   const se::GpuComputeCapability gpu_version_;
   const se::dnn::VersionInfo dnn_version_;
 };

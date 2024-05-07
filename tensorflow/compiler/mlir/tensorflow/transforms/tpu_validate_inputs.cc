@@ -540,6 +540,18 @@ bool IsValidMAXIMALSharding(Operation* op, MetadataMap& metadata_map) {
   return true;
 }
 
+bool HasSingleCoreTpu(Operation* op) {
+  if (auto compilation_attr =
+          op->getAttrOfType<mlir::StringAttr>(TF::kCompileDeviceTypeAttr)) {
+    if (compilation_attr.getValue().str() == TF::kTpuDevice) {
+      op->emitOpError(
+          "TF2XLA TPU bridge input check: found a single-core TPU graph");
+      return true;
+    }
+  }
+  return false;
+}
+
 void TPUValidateInputsPass::runOnOperation() {
   ModuleOp module = getOperation();
   bool success = true;
@@ -564,10 +576,11 @@ void TPUValidateInputsPass::runOnOperation() {
       success &= IsValidMAXIMALSharding(op, metadata_map);
       success &= IsValidShardingTupleForArity(op);
     }
+    success &= !HasSingleCoreTpu(op);
+    if (!success) {
+      signalPassFailure();
+    }
   });
-  if (!success) {
-    signalPassFailure();
-  }
 }
 
 }  // anonymous namespace

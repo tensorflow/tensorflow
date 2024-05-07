@@ -521,6 +521,32 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(CuDnnFusionLevel2Test, ConstantExecutesCorrectly) {
+  EXPECT_TRUE(RunAndCompare(R"(
+fusion1 {
+  x = bf16[16,32] parameter(0)
+  y = bf16[32,16] parameter(1)
+  x_const = bf16[] constant(-1)
+  y_const = s32[] constant(-2)
+  x_const_bcast = bf16[16,32] broadcast(x_const), dimensions={}
+  y_const_bcast = s32[32,16] broadcast(y_const), dimensions={}
+  y_const_convert = bf16[32,16] convert(y_const_bcast)
+  x_add = bf16[16,32] minimum(x, x_const_bcast)
+  y_add = bf16[32,16] minimum(y, y_const_convert)
+  dot_a = f32[16,16] dot(x_add, y_add), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c = f32[] constant(0)
+  c_bcast = f32[16,16] broadcast(c), dimensions={}
+  ROOT out = f32[16,16] maximum(dot_a, c_bcast)
+  }
+ENTRY e {
+  p0 = bf16[16,32] parameter(0)
+  p1 = bf16[32,16] parameter(1)
+  ROOT _ = f32[16,16] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 class CuDnnFusionLevel3Test : public CuDnnFusionExecutionTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {

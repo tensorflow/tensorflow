@@ -247,5 +247,29 @@ ENTRY computation {
   EXPECT_GT(previous_reshape->operand(0)->shape().dimensions(batch_dim), 4);
 }
 
+TEST_F(SpaceToBatchConverterTest, NoPropagateThroughDot) {
+  std::string hlo_string = R"(
+  HloModule module
+
+  ENTRY computation {
+    %p0 = bf16[1,258,258,32] parameter(0)
+    %p1 = bf16[3,3,32,32] parameter(1)
+    %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=3x3},
+    dim_labels=b01f_01io->b01f
+    %p2 = bf16[1,256,256,32] parameter(2)
+    ROOT %dot.5010 = bf16[1,256,32,32] dot(%convolution, %p2), lhs_batch_dims={0,1},
+    lhs_contracting_dims={2}, rhs_batch_dims={0,2}, rhs_contracting_dims={1}
+  }
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
+  // Test that we do not start space-to-batch on conv->dot chains
+  ASSERT_FALSE(converter.Run(module.get()).value());
+}
+
 }  // namespace
 }  // namespace xla

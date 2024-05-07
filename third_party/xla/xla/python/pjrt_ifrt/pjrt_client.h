@@ -204,6 +204,7 @@ class PjRtClient final
       device_map_;
   absl::flat_hash_map<xla::PjRtMemorySpace*, std::unique_ptr<PjRtMemory>>
       memory_map_;
+  absl::flat_hash_map<DeviceId, PjRtDevice*> device_id_map_;
 };
 
 }  // namespace ifrt

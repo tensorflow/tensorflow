@@ -38,8 +38,10 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
@@ -54,6 +56,11 @@ namespace {
 void R0F32Add2(float* out, float** in) {
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float*));
   *out = **in + 2.0f;
+}
+
+void R0F32Add2InPlace(float* out, float** in) {
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float*));
+  **in = **in + 2.0f;
 }
 
 void R2F32ReduceSum(float* out, float** in) {
@@ -101,6 +108,7 @@ void CustomCallFailWithBackendConfigStr(float*, float**, const char* opaque,
 }  // namespace
 
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2InPlace);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R2F32ReduceSum);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(Add1ToValues);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(F32TupleSwap);
@@ -142,8 +150,8 @@ XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2Aliased) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
 
   builder
-      .AddInstruction(
-          HloInstruction::CreateCustomCall(r0f32_, {constant}, "R0F32Add2"))
+      .AddInstruction(HloInstruction::CreateCustomCall(r0f32_, {constant},
+                                                       "R0F32Add2InPlace"))
       ->set_output_to_operand_aliasing({{{}, {0, {}}}});
 
   module->AddEntryComputation(builder.Build());
@@ -396,15 +404,6 @@ XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Helper functions to get data pointers from buffers
-template <typename NativeType, typename BufferType>
-static NativeType* DataPointer(BufferType& buffer) {
-  return reinterpret_cast<NativeType*>(buffer.data.opaque());
-}
-template <typename NativeType, typename BufferType>
-static NativeType* DataPointer(ffi::Result<BufferType>& buffer) {
-  return reinterpret_cast<NativeType*>(buffer->data.opaque());
-}
 
 // TODO(abanas): The following three usings are a workaround, delete when
 // ResultBuffer is implemented as its own class
@@ -444,8 +443,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_fail", "Host",
                          kAlwaysFail);
 
 static absl::Status FfiR0F32Add2(R0F32Buffer in, R0F32ResultBuffer out) {
-  auto in_data = DataPointer<float>(in);
-  auto out_data = DataPointer<float>(out);
+  auto in_data = in.data.base();
+  auto out_data = out->data.base();
   *out_data = *in_data + 2.0f;
   return absl::OkStatus();
 }
@@ -459,6 +458,18 @@ XLA_FFI_DEFINE_HANDLER(kFfiR0F32Add2, FfiR0F32Add2,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiR0F32Add2",
                          "Host", kFfiR0F32Add2);
 
+template <PrimitiveType dtype>
+static absl::Status R0FAdd2(BufferBase in, ResultBufferBase out) {
+  using NativeType =
+      typename ::xla::primitive_util::PrimitiveTypeToNative<dtype>::type;
+
+  auto in_data = reinterpret_cast<const NativeType*>(in.data.opaque());
+  auto out_data = reinterpret_cast<NativeType*>(out->data.opaque());
+  *out_data = *in_data + 2.0f;
+
+  return absl::OkStatus();
+}
+
 // This represents a kernel that is valid only for F32 and F64 types
 static absl::Status FfiR0FAdd2BufferBase(BufferBase in, ResultBufferBase out) {
   if (in.dtype != out->dtype) {
@@ -466,23 +477,13 @@ static absl::Status FfiR0FAdd2BufferBase(BufferBase in, ResultBufferBase out) {
   }
 
   switch (in.dtype) {
-    case PrimitiveType::F32: {
-      auto in_data = DataPointer<float>(in);
-      auto out_data = DataPointer<float>(out);
-      *out_data = *in_data + 2.0f;
-      break;
-    }
-    case PrimitiveType::F64: {
-      auto in_data = DataPointer<double>(in);
-      auto out_data = DataPointer<double>(out);
-      *out_data = *in_data + 2.0f;
-      break;
-    }
+    case PrimitiveType::F32:
+      return R0FAdd2<PrimitiveType::F32>(in, out);
+    case PrimitiveType::F64:
+      return R0FAdd2<PrimitiveType::F64>(in, out);
     default:
       return absl::InternalError("Incorrect type");
   }
-
-  return absl::OkStatus();
 }
 
 XLA_FFI_DEFINE_HANDLER(kFfiR0FAdd2BufferBase, FfiR0FAdd2BufferBase,
@@ -497,8 +498,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
 
 static absl::Status FfiR0F32AddN(R0F32Buffer in, R0F32ResultBuffer out,
                                  float n) {
-  auto in_data = DataPointer<float>(in);
-  auto out_data = DataPointer<float>(out);
+  auto in_data = in.data.base();
+  auto out_data = out->data.base();
   *out_data = *in_data + n;
   return absl::OkStatus();
 }
@@ -514,8 +515,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiR0F32AddN",
 
 static absl::Status FfiR0F32AddNPointer(R0F32Buffer in, R0F32ResultBuffer out,
                                         float* n) {
-  auto in_data = DataPointer<float>(in);
-  auto out_data = DataPointer<float>(out);
+  auto in_data = in.data.base();
+  auto out_data = out->data.base();
   *out_data = *in_data + *n;
   return absl::OkStatus();
 }
@@ -530,8 +531,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiR0F32AddNPointer",
                          "Host", kFfiR0F32AddNPointer);
 
 static absl::Status FfiF32ReduceSum(F32Buffer in, R0F32ResultBuffer out) {
-  auto in_data = DataPointer<float>(in);
-  auto out_data = DataPointer<float>(out);
+  auto in_data = in.data.base();
+  auto out_data = out->data.base();
 
   // Calculate the total size of the vector
   const auto size =
@@ -553,8 +554,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32ReduceSum",
                          "Host", kFfiF32ReduceSum);
 
 static absl::Status FfiF32Add1ToValues(F32Buffer in, F32ResultBuffer out) {
-  auto in_data = DataPointer<float>(in);
-  auto out_data = DataPointer<float>(out);
+  auto in_data = in.data.base();
+  auto out_data = out->data.base();
 
   // Calculate and verify the total size of the vector
   const auto in_size =
@@ -584,10 +585,10 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32Add1ToValues",
 static absl::Status FfiF32TupleSwap(R0F32Buffer in0, R0F32Buffer in1,
                                     R0F32ResultBuffer out0,
                                     R0F32ResultBuffer out1) {
-  auto in_data0 = DataPointer<float>(in0);
-  auto in_data1 = DataPointer<float>(in1);
-  auto out_data0 = DataPointer<float>(out0);
-  auto out_data1 = DataPointer<float>(out1);
+  auto in_data0 = in0.data.base();
+  auto in_data1 = in1.data.base();
+  auto out_data0 = out0->data.base();
+  auto out_data1 = out1->data.base();
   *out_data0 = *in_data1;
   *out_data1 = *in_data0;
   return absl::OkStatus();
@@ -604,19 +605,20 @@ XLA_FFI_DEFINE_HANDLER(kFfiF32TupleSwap, FfiF32TupleSwap,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32TupleSwap",
                          "Host", kFfiF32TupleSwap);
 
-static absl::Status FfiTupleRotate(BufferBase in0, BufferBase in1,
-                                   BufferBase in2, BufferBase in3,
-                                   ResultBufferBase out0, ResultBufferBase out1,
-                                   ResultBufferBase out2,
-                                   ResultBufferBase out3) {
-  auto in_data0 = DataPointer<float>(in0);
-  auto in_data1 = DataPointer<float>(in1);
-  auto in_data2 = DataPointer<float>(in2);
-  auto in_data3 = DataPointer<float>(in3);
-  auto out_data0 = DataPointer<float>(out0);
-  auto out_data1 = DataPointer<float>(out1);
-  auto out_data2 = DataPointer<float>(out2);
-  auto out_data3 = DataPointer<float>(out3);
+static absl::Status FfiTupleRotate(R0F32Buffer in0, R0F32Buffer in1,
+                                   R0F32Buffer in2, R0F32Buffer in3,
+                                   R0F32ResultBuffer out0,
+                                   R0F32ResultBuffer out1,
+                                   R0F32ResultBuffer out2,
+                                   R0F32ResultBuffer out3) {
+  auto in_data0 = in0.data.base();
+  auto in_data1 = in1.data.base();
+  auto in_data2 = in2.data.base();
+  auto in_data3 = in3.data.base();
+  auto out_data0 = out0->data.base();
+  auto out_data1 = out1->data.base();
+  auto out_data2 = out2->data.base();
+  auto out_data3 = out3->data.base();
   *out_data0 = *in_data1;
   *out_data1 = *in_data2;
   *out_data2 = *in_data3;
@@ -626,14 +628,14 @@ static absl::Status FfiTupleRotate(BufferBase in0, BufferBase in1,
 
 XLA_FFI_DEFINE_HANDLER(kFfiTupleRotate, FfiTupleRotate,
                        ffi::Ffi::Bind()
-                           .Arg<BufferBase>()  // in0
-                           .Arg<BufferBase>()  // in1
-                           .Arg<BufferBase>()  // in2
-                           .Arg<BufferBase>()  // in3
-                           .Ret<BufferBase>()  // out0
-                           .Ret<BufferBase>()  // out1
-                           .Ret<BufferBase>()  // out2
-                           .Ret<BufferBase>()  // out3
+                           .Arg<R0F32Buffer>()  // in0
+                           .Arg<R0F32Buffer>()  // in1
+                           .Arg<R0F32Buffer>()  // in2
+                           .Arg<R0F32Buffer>()  // in3
+                           .Ret<R0F32Buffer>()  // out0
+                           .Ret<R0F32Buffer>()  // out1
+                           .Ret<R0F32Buffer>()  // out2
+                           .Ret<R0F32Buffer>()  // out3
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiTupleRotate",
@@ -641,14 +643,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiTupleRotate",
 
 }  // namespace
 
-// TODO(abanas): When #10056 (typed FFI support) is ready, this class can be
-// replaced by a simple 'using FfiCustomCallTest = CustomCallTest;'
-class FfiCustomCallTest : public CustomCallTest {
- protected:
-  void SetUp() override {
-    GTEST_SKIP() << "Typed FFI is not supported yet on CPU";
-  }
-};
+using FfiCustomCallTest = CustomCallTest;
 
 XLA_TEST_F(FfiCustomCallTest, FfiReportsSuccess) {
   auto module = CreateNewVerifiedModule();
@@ -904,7 +899,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleAttrPointer) {
   auto n = 4.0f;
   auto ptr = reinterpret_cast<uintptr_t>(&n);
   builder.AddInstruction(HloInstruction::CreateCustomCall(
-      r0f32_, {constant}, "__xla_test$$FfiR0F32AddN",
+      r0f32_, {constant}, "__xla_test$$FfiR0F32AddNPointer",
       /*opaque=*/absl::StrFormat("{n = %d : i64}", ptr),
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
@@ -1082,6 +1077,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleOutput) {
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiTupleInput) {
+  GTEST_SKIP() << "Tuple inputs not yet implemented.";
   const char* const kModuleStr = R"(
     HloModule m
 

@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -376,11 +377,13 @@ PjRtLoadedExecutable::CreateInternal(
         /*shard_shape=*/ifrt::Shape(tile_shape_dimensions)));
     return OkStatus();
   };
-  auto append_token = [&] {
+  auto append_token = [&](MemoryKind memory_kind) {
     output_dtypes.push_back(DType(DType::kToken));
     output_shapes.push_back(Shape({}));
     output_shardings.push_back(
-        OpaqueSharding::Create(*sharding_devices, MemoryKind()));
+        ifrt::ConcreteEvenSharding::Create(*sharding_devices, memory_kind,
+                                           /*shape=*/ifrt::Shape({}),
+                                           /*shard_shape=*/ifrt::Shape({})));
   };
   auto check_output_sharding_condition =
       [](absl::Span<const xla::PrimitiveType> element_types,
@@ -416,6 +419,10 @@ PjRtLoadedExecutable::CreateInternal(
   output_shardings.reserve(result_element_types.size());
   for (int i = 0; i < result_element_types.size(); ++i) {
     const auto& element_type = result_element_types[i];
+    MemoryKind element_memory_kind;
+    if (result_memory_kinds.has_value()) {
+      element_memory_kind = MemoryKind((*result_memory_kinds)[i]);
+    }
     if (xla::primitive_util::IsArrayType(element_type)) {
       const xla::HloSharding* element_hlo_sharding = nullptr;
       if (result_hlo_sharding.has_value()) {
@@ -427,14 +434,10 @@ PjRtLoadedExecutable::CreateInternal(
               "Nested-tupled output sharding is not supported");
         }
       }
-      MemoryKind element_memory_kind;
-      if (result_memory_kinds.has_value()) {
-        element_memory_kind = MemoryKind((*result_memory_kinds)[i]);
-      }
       TF_RETURN_IF_ERROR(append_arg(element_type, result_dimensions[i],
                                     element_hlo_sharding, element_memory_kind));
     } else if (element_type == TOKEN) {
-      append_token();
+      append_token(element_memory_kind);
     } else {
       return FailedPrecondition(
           "The element type is not a supported type (array, token)");
@@ -586,6 +589,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   ExecuteResult result;
   if (portable_execution) {
     std::optional<PjRtFuture<>> returned_pjrt_future;
+    TF_RET_CHECK(portable_execution_device->IsAddressable());
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<PjRtBuffer>> single_device_pjrt_results,
         pjrt_loaded_executable_->ExecutePortable(

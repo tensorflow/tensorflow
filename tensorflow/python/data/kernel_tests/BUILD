@@ -374,7 +374,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "flat_map_test",
-    size = "small",
+    size = "medium",
     srcs = ["flat_map_test.py"],
     grpc_enabled = True,
     shard_count = 8,
@@ -384,7 +384,9 @@ tf_py_strict_test(
     deps = [
         ":checkpoint_test_base",
         ":test_base",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
+        "//tensorflow/python/data/experimental/ops:global_shuffle_op",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
         "//tensorflow/python/framework:combinations",

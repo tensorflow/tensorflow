@@ -135,9 +135,8 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
   return Future<>(xla::FromGrpcStatus(writer->Finish()));
 }
 
-Future<absl::StatusOr<absl::Cord>> GrpcClientHostBufferStore::Lookup(
-    uint64_t handle) {
-  auto promise = Future<absl::StatusOr<absl::Cord>>::CreatePromise();
+Future<absl::Cord> GrpcClientHostBufferStore::Lookup(uint64_t handle) {
+  auto promise = Future<absl::Cord>::CreatePromise();
 
   lookup_work_queue_->Schedule([this, handle, promise]() mutable -> void {
     GrpcHostBufferLookupRequest request;
@@ -163,7 +162,7 @@ Future<absl::StatusOr<absl::Cord>> GrpcClientHostBufferStore::Lookup(
     }
   });
 
-  return Future<absl::StatusOr<absl::Cord>>(promise);
+  return Future<absl::Cord>(promise);
 }
 
 Future<> GrpcClientHostBufferStore::Delete(uint64_t handle) {

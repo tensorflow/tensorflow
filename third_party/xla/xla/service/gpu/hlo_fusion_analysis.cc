@@ -116,15 +116,15 @@ int SmallestBitWidth(absl::Span<const HloInstruction* const> args) {
 
 HloFusionAnalysis::HloFusionAnalysis(
     FusionBackendConfig fusion_backend_config,
-    std::vector<const HloInstruction*> fusion_roots,
     std::unique_ptr<HloFusionAdaptor> fusion,
+    std::vector<const HloInstruction*> fusion_roots,
     std::vector<const HloInstruction*> fusion_heroes,
     const se::DeviceDescription* device_info,
     std::optional<TransposeDescription> tiled_transpose,
     HloFusionAnalysis::InputOutputInfo input_output_info)
     : fusion_backend_config_(std::move(fusion_backend_config)),
-      fusion_roots_(std::move(fusion_roots)),
       fusion_(std::move(fusion)),
+      fusion_roots_(std::move(fusion_roots)),
       fusion_heroes_(std::move(fusion_heroes)),
       device_info_(device_info),
       tiled_transpose_(tiled_transpose),
@@ -139,7 +139,7 @@ HloFusionAnalysis HloFusionAnalysis::Create(
   std::vector<const HloInstruction*> heroes;
   for (auto root : fusion->GetRoots()) {
     roots.push_back(&root.instruction());
-    heroes.push_back(&FindNonTrivialHero(*roots.back(), *fusion));
+    heroes.push_back(&FindNonTrivialHero(root).instruction());
   }
 
   std::vector<const HloInstruction*> fusion_arguments;
@@ -155,8 +155,8 @@ HloFusionAnalysis HloFusionAnalysis::Create(
   std::optional<TransposeDescription> tiled_transpose_hero =
       FindConsistentTransposeHero(roots, heroes);
 
-  return HloFusionAnalysis(std::move(backend_config), std::move(roots),
-                           std::move(fusion), std::move(heroes), device_info,
+  return HloFusionAnalysis(std::move(backend_config), std::move(fusion),
+                           std::move(roots), std::move(heroes), device_info,
                            tiled_transpose_hero, std::move(input_output_info));
 }
 

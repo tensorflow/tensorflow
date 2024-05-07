@@ -303,17 +303,12 @@ class DebugOptions:
   xla_dump_hlo_as_long_text: bool
   xla_dump_disable_metadata: bool
   xla_dump_hlo_pipeline_re: str
-  xla_gpu_enable_async_all_reduce: bool
-  xla_gpu_enable_async_all_gather: bool
-  xla_gpu_enable_async_collective_broadcast: bool
-  xla_gpu_enable_async_collective_permute: bool
-  xla_gpu_enable_async_all_to_all: bool
-  xla_gpu_enable_async_reduce_scatter: bool
   xla_gpu_cuda_data_dir: str
   xla_detailed_logging: bool
   xla_enable_dumping: bool
   xla_gpu_dump_autotune_results_to: str
   xla_gpu_load_autotune_results_from: str
+  xla_gpu_dump_autotune_logs_to: str
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int
@@ -734,6 +729,7 @@ def cuda_array_interface_to_buffer(
       List[Tuple[str, str, Tuple[int, ...]]]]
     ],
     gpu_backend: Optional[Client] = ...,
+    device_id: int | None = None,
 ) -> ArrayImpl: ...
 
 

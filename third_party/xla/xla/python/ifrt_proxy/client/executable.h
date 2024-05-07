@@ -137,7 +137,7 @@ class LoadedExecutable final
 
   // Metadata queried when the executable is created. Declared as `mutable`
   // since `Future::Await()` is not const.
-  mutable Future<absl::StatusOr<std::shared_ptr<Metadata>>> metadata_future_;
+  mutable Future<std::shared_ptr<Metadata>> metadata_future_;
 };
 
 }  // namespace proxy

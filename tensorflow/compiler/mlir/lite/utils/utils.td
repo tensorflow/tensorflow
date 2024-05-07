@@ -29,6 +29,27 @@ def GetShape: NativeCodeCall<"GetShape($0)">;
 // Constraint that values in list attribute are all ones.
 def IsAllOnesConstant : Constraint<CPred<"TFL::IsAllOnesConstant($0)">>;
 
+// Constraint that checks if the transpose op is trivial. Trivial means that
+// the permutation is a cyclic permutation of the original shape with only the
+// identity dimensions permuted.
+def IsTransposeTrivial : Constraint<CPred<
+  "TFL::IsTransposeTrivial($0.getType().cast<ShapedType>().getShape(), $1)">>;
+
+// Constraint that checks if the reshape op is equivalent to a transpose op.
+// This is true if the reshape op is a trivial reshape op, meaning no change in
+// the order of non-identity dimensions.
+def IsReshapeEquivalentToTranspose : Constraint<CPred<
+  "TFL::IsReshapeEquivalentToTranspose("
+    "$0.getType().cast<ShapedType>(),"
+    "$1.getType().cast<ShapedType>())">>;
+
+// Returns the permutation of the trivial reshape op, this will be used to
+// construct the transpose op.
+def GetPermutationFromTrivialReshape : NativeCodeCall<
+  "TFL::GetPermutationFromTrivialReshape("
+    "$0.getType().cast<ShapedType>(),"
+    "$1.getType().cast<ShapedType>())">;
+
 // Constraint that checks if all values in offset between two
 // attributes are non-negative.
 def HasNonNegativeOffset : Constraint<CPred<"TFL::HasNonNegativeOffset($0, $1)">>;
@@ -61,6 +82,10 @@ def SameElementType : Constraint<
 // applying the permutation to the given shape through a transpose.
 class GetTransposedType<string perm> : NativeCodeCall<
   "GetTransposedType($0, " # perm # ")">;
+
+// Function to map final permutation to initial permutation
+// initial -> permutation1 -> permutation2 -> final
+def RemapPermutation: NativeCodeCall<"RemapPermutation($0, $1)">;
 
 // Checks if all of an ops inputs are the same static shape.
 // BUILD NOTE: "OpHasSameStaticShapes" here refers to the C++ function defined 

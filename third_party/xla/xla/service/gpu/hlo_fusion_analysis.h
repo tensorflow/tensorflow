@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_HLO_FUSION_ANALYSIS_H_
 #define XLA_SERVICE_GPU_HLO_FUSION_ANALYSIS_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -59,13 +60,23 @@ class HloFusionAnalysis {
   static HloFusionAnalysis Create(const HloFusionInstruction* fusion,
                                   const se::DeviceDescription* device_info);
 
+  const HloFusionAdaptor& fusion() const { return *fusion_; }
+
   const std::vector<const HloInstruction*>& fusion_roots() const {
     return fusion_roots_;
   }
+  HloInstructionAdaptor fusion_root(int64_t i) const {
+    return HloInstructionAdaptor(*fusion_roots_[i], fusion_.get());
+  }
+  int64_t fusion_root_count() const { return fusion_roots_.size(); }
+
   const std::vector<const HloInstruction*>& fusion_heroes() const {
     return fusion_heroes_;
   }
-  const HloFusionAdaptor& fusion() const { return *fusion_; }
+  HloInstructionAdaptor fusion_hero(int64_t i) const {
+    return HloInstructionAdaptor(*fusion_heroes_[i], fusion_.get());
+  }
+  int64_t fusion_hero_count() const { return fusion_heroes_.size(); }
 
   // Determines the fusion type for the emitter.
   EmitterFusionKind GetEmitterFusionKind() const;
@@ -92,8 +103,8 @@ class HloFusionAnalysis {
 
  private:
   HloFusionAnalysis(FusionBackendConfig fusion_backend_config,
-                    std::vector<const HloInstruction*> fusion_roots,
                     std::unique_ptr<HloFusionAdaptor> fusion,
+                    std::vector<const HloInstruction*> fusion_roots,
                     std::vector<const HloInstruction*> fusion_heroes,
                     const se::DeviceDescription* device_info,
                     std::optional<TransposeDescription> tiled_transpose,
@@ -102,8 +113,10 @@ class HloFusionAnalysis {
   bool HasConsistentTransposeHeros() const;
 
   FusionBackendConfig fusion_backend_config_;
-  std::vector<const HloInstruction*> fusion_roots_;
   std::unique_ptr<HloFusionAdaptor> fusion_;
+  // TODO(shyshkov): Change fusion_roots_ and fusion_heroes_ to store
+  // HloInstructionAdaptor.
+  std::vector<const HloInstruction*> fusion_roots_;
   std::vector<const HloInstruction*> fusion_heroes_;
   const se::DeviceDescription* device_info_;
   std::optional<TransposeDescription> tiled_transpose_;

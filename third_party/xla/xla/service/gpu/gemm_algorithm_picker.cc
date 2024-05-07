@@ -48,12 +48,12 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "xla/stream_executor/scratch_allocator.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/buffer_comparator.h"
@@ -144,6 +144,9 @@ class GemmAutotuner {
 
   absl::StatusOr<AutotuneResult> TuneGpuBlasLt(const HloInstruction* gemm,
                                                const GemmConfig& gemm_config) {
+    auto workspace_buffer =
+        rz_buffers_.output_buffers().at(gemm->shape().tuple_shapes_size() - 1);
+
     GpuBackendConfig gpu_config =
         gemm->backend_config<GpuBackendConfig>().value();
     const GemmBackendConfig& backend_config = gpu_config.gemm_backend_config();
@@ -174,25 +177,26 @@ class GemmAutotuner {
     TF_ASSIGN_OR_RETURN(auto plan,
                         BlasLt::GetMatmulPlan(stream_, gemm_config, epilogue));
 
-    TF_ASSIGN_OR_RETURN(auto algorithms, plan->GetAlgorithms());
+    TF_ASSIGN_OR_RETURN(
+        auto algorithms,
+        plan->GetAlgorithms(/*max_algorithm_count*/ 128,
+                            /*max_workspace_size*/ workspace_buffer.size()));
 
     auto tuned_func = [&](const BlasLt::MatmulAlgorithm& algorithm)
         -> absl::StatusOr<se::blas::ProfileResult> {
-      se::OwningScratchAllocator<> scratch_allocator(
-          stream_->parent()->device_ordinal(), autotune_config_.GetAllocator());
       // Run a warmup iteration without the profiler active.
       TF_RETURN_IF_ERROR(plan->ExecuteOnStream(
           stream_, LhsBuffer(), RhsBuffer(), OutputBuffer(), OutputBuffer(),
           bias_buffer, aux_buffer, a_scale_buffer, b_scale_buffer,
           c_scale_buffer, d_scale_buffer, d_amax_buffer, algorithm,
-          scratch_allocator));
+          workspace_buffer));
       se::blas::ProfileResult profile_result;
       profile_result.set_warmup_run_executed(true);
       TF_RETURN_IF_ERROR(plan->ExecuteOnStream(
           stream_, LhsBuffer(), RhsBuffer(), OutputBuffer(), OutputBuffer(),
           bias_buffer, aux_buffer, a_scale_buffer, b_scale_buffer,
           c_scale_buffer, d_scale_buffer, d_amax_buffer, algorithm,
-          scratch_allocator, &profile_result));
+          workspace_buffer, &profile_result));
       return std::move(profile_result);
     };
 
@@ -264,6 +268,10 @@ class GemmAutotuner {
     if (!stream_->parent()->SynchronizeAllActivity()) {
       return Internal("Failed to synchronize GPU for autotuning.");
     }
+    tsl::profiler::ScopedAnnotation annotation([&] {
+      return absl::StrFormat("XlaAutotunerMeasurement:#hlo_op=%s#",
+                             gemm->name());
+    });
 
     auto& hlo_module_config = gemm->GetModule()->mutable_config();
     const auto& output_shape = GetOutputShape(gemm);

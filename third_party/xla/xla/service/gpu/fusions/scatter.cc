@@ -51,13 +51,13 @@ namespace gpu {
 
 ScatterFusion::ScatterFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {
-  CHECK_EQ(analysis.fusion_roots().size(), 1);
-  CHECK_EQ(analysis.fusion_roots()[0]->opcode(), HloOpcode::kScatter);
+  CHECK_EQ(analysis.fusion_root_count(), 1);
+  CHECK_EQ(analysis.fusion_root(0).opcode(), HloOpcode::kScatter);
 }
 
 LaunchDimensions ScatterFusion::launch_dimensions() const {
   const auto& updates_shape =
-      analysis_.fusion_roots().front()->operands().back()->shape();
+      analysis_.fusion_root(0).instruction().operands().back()->shape();
   return CalculateLaunchDimensions(updates_shape, analysis_.device_info());
 }
 
@@ -243,8 +243,8 @@ absl::Status ScatterFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 std::optional<IndexingMap> ScatterFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* ctx) const {
-  auto* scatter =
-      DynCast<HloScatterInstruction>(analysis_.fusion_heroes().front());
+  const auto* scatter =
+      DynCast<HloScatterInstruction>(&analysis_.fusion_hero(0).instruction());
   int64_t scatter_operand_count = scatter->scatter_operand_count();
   // Scatter operands a packed in the following way:
   // Operand IDs [0, scatter_operand_count - 1] for `scatter operands`.

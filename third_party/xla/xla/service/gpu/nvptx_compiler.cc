@@ -148,6 +148,31 @@ class ConvBfloat16Support : public FloatSupport {
   bool is_conv_bf16_supported_;
 };
 
+class MatmulBfloat16Support : public FloatSupport {
+ public:
+  explicit MatmulBfloat16Support(
+      se::CudaComputeCapability cuda_compute_capability)
+      : FloatSupport(BF16),
+        is_matmul_bf16_supported_(cuda_compute_capability.IsAtLeast(
+            se::CudaComputeCapability::AMPERE)) {}
+
+  bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
+                                   int64_t operand_index) const override {
+    return (hlo.opcode() != HloOpcode::kDot) || is_matmul_bf16_supported_;
+  }
+
+  bool SupportsLowPrecisionOutput(const HloInstruction& hlo) const override {
+    return (hlo.opcode() != HloOpcode::kDot) || is_matmul_bf16_supported_;
+  }
+
+  bool SupportsMixedPrecisions(const HloInstruction& hlo) const override {
+    return true;
+  }
+
+ private:
+  bool is_matmul_bf16_supported_;
+};
+
 }  // namespace
 
 absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
@@ -166,6 +191,10 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   // Convert unsupported bf16 convolutions to f32.
   ConvBfloat16Support conv_bf16_support(dnn_version, cuda_compute_capability);
   pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
+
+  // Convert unsupported bf16 matmuls to f32.
+  MatmulBfloat16Support matmul_bf16_support(cuda_compute_capability);
+  pipeline.AddPass<FloatNormalization>(&matmul_bf16_support);
 
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
@@ -200,7 +229,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
           "reshape_mover_after_conv_canonicalization")] {
     ReshapeMoverOptions reshape_mover_options;
     reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
-    pipeline.AddPass<HloPassFix<ReshapeMover>>(reshape_mover_options);
+    pipeline.AddPass<ReshapeMover>(reshape_mover_options);
     pipeline.AddPass<AlgebraicSimplifier>(algsimp_options);
   }();
 

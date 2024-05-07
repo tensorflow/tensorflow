@@ -59,6 +59,7 @@ using mlir::AffineMap;
 using mlir::AffineSymbolExpr;
 using mlir::getAffineBinaryOpExpr;
 using mlir::getAffineConstantExpr;
+using mlir::getAffineDimExpr;
 using mlir::MLIRContext;
 
 class AffineExprSimplifier {
@@ -685,6 +686,11 @@ IndexingMap IndexingMap::FromTensorSizes(
                      /*rt_vars=*/{}};
 }
 
+RangeEvaluator IndexingMap::GetRangeEvaluator() const {
+  return RangeEvaluator(GetDimensionBounds(), GetSymbolBounds(),
+                        GetMLIRContext());
+}
+
 const Interval& IndexingMap::GetDimensionBound(int64_t dim_id) const {
   return dim_vars_[dim_id].bounds;
 }
@@ -1087,75 +1093,128 @@ bool IsFunctionOfUnusedDimsAndSymbolsOnly(
   return true;
 }
 
-}  // namespace
+struct UnusedVariables {
+  SmallBitVector unused_dims;
+  SmallBitVector unused_symbols;
+  SmallVector<AffineExpr> constraints_with_unused_vars_only;
+};
 
-SmallBitVector IndexingMap::RemoveUnusedSymbols() {
-  if (IsUndefined()) return {};
+// Detects unused dimensions and symbols in the inde
+UnusedVariables DetectUnusedVariables(const IndexingMap& indexing_map) {
+  AffineMap affine_map = indexing_map.GetAffineMap();
 
-  // Remove unused symbols from the affine_map.
-  unsigned num_symbols_before = affine_map_.getNumSymbols();
-  SmallBitVector unused_symbols_bit_vector =
-      mlir::getUnusedSymbolsBitVector({affine_map_});
-  SmallBitVector unused_dims_bit_vector =
-      mlir::getUnusedDimsBitVector({affine_map_});
+  UnusedVariables unused_vars;
+  // Find unused dimensions and symbols in the affine_map.
+  unused_vars.unused_dims = mlir::getUnusedDimsBitVector({affine_map});
+  unused_vars.unused_symbols = mlir::getUnusedSymbolsBitVector({affine_map});
 
   // Check if the symbols that are unused in `affine_map` are also unused in
   // expressions.
-  std::vector<std::pair<AffineExpr, UsedParameters>> candidates_to_remove;
-  for (const auto& [expr, range] : constraints_) {
+  SmallVector<std::pair<AffineExpr, UsedParameters>, 2>
+      unused_constraints_candidates;
+  for (const auto& [expr, range] : indexing_map.GetConstraints()) {
     UsedParameters used_parameters = GetUsedParameters(expr);
     // If the expression uses only symbols and dims that are "unused" in
     // `affine_map`, then we can remove it.
     if (IsFunctionOfUnusedDimsAndSymbolsOnly(used_parameters,
-                                             unused_dims_bit_vector,
-                                             unused_symbols_bit_vector)) {
-      candidates_to_remove.push_back({expr, used_parameters});
+                                             unused_vars.unused_dims,
+                                             unused_vars.unused_symbols)) {
+      unused_constraints_candidates.push_back({expr, used_parameters});
       continue;
     }
-    // Otherwise, we need to mark all symbols of these expr as "used".
+    // Otherwise, we need to mark all dims and symbols of these expr as "used".
+    for (int64_t dim_id : used_parameters.dimension_ids) {
+      unused_vars.unused_dims[dim_id] = false;
+    }
     for (int64_t symbol_id : used_parameters.symbol_ids) {
-      unused_symbols_bit_vector[symbol_id] = false;
+      unused_vars.unused_symbols[symbol_id] = false;
     }
   }
-  for (const auto& [expr, used_parameters] : candidates_to_remove) {
+  for (const auto& [expr, used_parameters] : unused_constraints_candidates) {
     if (IsFunctionOfUnusedDimsAndSymbolsOnly(used_parameters,
-                                             unused_dims_bit_vector,
-                                             unused_symbols_bit_vector)) {
-      constraints_.erase(expr);
+                                             unused_vars.unused_dims,
+                                             unused_vars.unused_symbols)) {
+      unused_vars.constraints_with_unused_vars_only.push_back(expr);
     }
   }
+  return unused_vars;
+}
 
-  // Compress `affine_map` using the updated `unused_symbols_bit_vector`.
-  affine_map_ = mlir::compressSymbols(affine_map_, unused_symbols_bit_vector);
+SmallBitVector ConcatenateBitVectors(const SmallBitVector& lhs,
+                                     const SmallBitVector& rhs) {
+  SmallBitVector concat(lhs.size() + rhs.size(), false);
+  int id = 0;
+  for (int i = 0; i < lhs.size(); ++i, ++id) {
+    concat[id] = lhs[i];
+  }
+  for (int i = 0; i < rhs.size(); ++i, ++id) {
+    concat[id] = rhs[i];
+  }
+  return concat;
+}
 
-  // Remap symbols in the constraint expressions accordingly.
-  unsigned num_symbols_after = affine_map_.getNumSymbols();
-  if (num_symbols_after == num_symbols_before) return {};
+}  // namespace
 
-  std::vector<RangeVar> compressed_range_vars;
-  std::vector<RTVar> compressed_rt_vars;
+bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
+                               const llvm::SmallBitVector& unused_symbols) {
   MLIRContext* mlir_context = GetMLIRContext();
-  int64_t used_symbols_count = 0;
-  std::vector<AffineExpr> symbol_replacements(
-      num_symbols_before, getAffineConstantExpr(0, mlir_context));
-  auto range_vars_count = range_vars_.size();
-  for (int i = 0; i < unused_symbols_bit_vector.size(); ++i) {
-    if (!unused_symbols_bit_vector[i]) {
-      if (i < range_vars_count) {
-        compressed_range_vars.push_back(range_vars_[i]);
-      } else {
-        compressed_rt_vars.push_back(rt_vars_[i - range_vars_count]);
+
+  bool num_dims_changed = unused_dims.count() > 0;
+  bool num_symbols_changed = unused_symbols.count() > 0;
+  if (!num_dims_changed && !num_symbols_changed) return false;
+
+  unsigned num_dims_before = GetDimensionCount();
+  unsigned num_symbols_before = GetSymbolCount();
+
+  // Compress DimVars.
+  SmallVector<AffineExpr, 2> dim_replacements;
+  if (num_dims_changed) {
+    affine_map_ = mlir::compressDims(affine_map_, unused_dims);
+    std::vector<DimVar> compressed_dim_vars;
+    dim_replacements = SmallVector<AffineExpr, 2>(
+        num_dims_before, getAffineConstantExpr(0, mlir_context));
+    int64_t used_dims_count = 0;
+    for (int i = 0; i < unused_dims.size(); ++i) {
+      if (!unused_dims[i]) {
+        compressed_dim_vars.push_back(dim_vars_[i]);
+        dim_replacements[i] = getAffineDimExpr(used_dims_count++, mlir_context);
       }
-      symbol_replacements[i] =
-          getAffineSymbolExpr(used_symbols_count++, mlir_context);
     }
+    dim_vars_ = std::move(compressed_dim_vars);
   }
-  range_vars_ = std::move(compressed_range_vars);
-  rt_vars_ = std::move(compressed_rt_vars);
+
+  // Compress RangeVars and RTVars.
+  SmallVector<AffineExpr, 2> symbol_replacements;
+  if (num_symbols_changed) {
+    affine_map_ = mlir::compressSymbols(affine_map_, unused_symbols);
+    symbol_replacements = SmallVector<AffineExpr, 2>(
+        num_symbols_before, getAffineConstantExpr(0, mlir_context));
+    std::vector<RangeVar> compressed_range_vars;
+    std::vector<RTVar> compressed_rt_vars;
+    MLIRContext* mlir_context = GetMLIRContext();
+    int64_t used_symbols_count = 0;
+    auto range_vars_count = range_vars_.size();
+    for (int i = 0; i < unused_symbols.size(); ++i) {
+      if (!unused_symbols[i]) {
+        if (i < range_vars_count) {
+          compressed_range_vars.push_back(range_vars_[i]);
+        } else {
+          compressed_rt_vars.push_back(rt_vars_[i - range_vars_count]);
+        }
+        symbol_replacements[i] =
+            getAffineSymbolExpr(used_symbols_count++, mlir_context);
+      }
+    }
+    range_vars_ = std::move(compressed_range_vars);
+    rt_vars_ = std::move(compressed_rt_vars);
+  }
+
+  // Remove constraints.
   std::vector<AffineExpr> to_remove;
   std::vector<std::pair<AffineExpr, Interval>> to_add;
   for (const auto& [expr, range] : constraints_) {
-    auto updated_expr = expr.replaceSymbols(symbol_replacements);
+    auto updated_expr =
+        expr.replaceDimsAndSymbols(dim_replacements, symbol_replacements);
     if (updated_expr == expr) continue;
     to_add.push_back({updated_expr, range});
     to_remove.push_back(expr);
@@ -1166,7 +1225,47 @@ SmallBitVector IndexingMap::RemoveUnusedSymbols() {
   for (const auto& [expr, range] : to_add) {
     AddConstraint(expr, range);
   }
-  return unused_symbols_bit_vector;
+  return true;
+}
+
+SmallBitVector IndexingMap::RemoveUnusedSymbols() {
+  if (IsUndefined()) return {};
+
+  UnusedVariables unused_vars = DetectUnusedVariables(*this);
+  for (AffineExpr expr : unused_vars.constraints_with_unused_vars_only) {
+    constraints_.erase(expr);
+  }
+  if (!CompressVars(/*unused_dims=*/{}, unused_vars.unused_symbols)) {
+    return {};
+  }
+  return std::move(unused_vars.unused_symbols);
+}
+
+SmallBitVector IndexingMap::RemoveUnusedDimensions() {
+  if (IsUndefined()) return {};
+
+  UnusedVariables unused_vars = DetectUnusedVariables(*this);
+  for (AffineExpr expr : unused_vars.constraints_with_unused_vars_only) {
+    constraints_.erase(expr);
+  }
+  if (!CompressVars(unused_vars.unused_dims, /*unused_symbols=*/{})) {
+    return {};
+  }
+  return std::move(unused_vars.unused_dims);
+}
+
+SmallBitVector IndexingMap::RemoveUnusedVars() {
+  if (IsUndefined()) return {};
+
+  UnusedVariables unused_vars = DetectUnusedVariables(*this);
+  for (AffineExpr expr : unused_vars.constraints_with_unused_vars_only) {
+    constraints_.erase(expr);
+  }
+  if (!CompressVars(unused_vars.unused_dims, unused_vars.unused_symbols)) {
+    return {};
+  }
+  return ConcatenateBitVectors(unused_vars.unused_dims,
+                               unused_vars.unused_symbols);
 }
 
 void IndexingMap::MergeModConstraints() {

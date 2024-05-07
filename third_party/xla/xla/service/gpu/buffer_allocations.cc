@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/util.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -57,23 +56,7 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
     BufferAllocation::Index buffer_index) const {
   CHECK_GE(buffer_index, 0);
   CHECK_LT(buffer_index, buffers_.size());
-  se::DeviceMemoryBase base = buffers_[buffer_index];
-  if (reinterpret_cast<uintptr_t>(base.opaque()) == kExternalAllocationMarker) {
-    if (!external_allocations_) {
-      LOG(ERROR) << "Does not have external allocations for buffer "
-                 << buffer_index;
-      return se::DeviceMemoryBase();
-    }
-    auto external_address =
-        external_allocations_->GetDeviceAddress(buffer_index);
-    if (external_address.ok()) {
-      return external_address.value();
-    }
-    LOG(ERROR) << "External address for allocation" << buffer_index
-               << " is not allocated yet";
-    return se::DeviceMemoryBase();
-  }
-  return base;
+  return buffers_[buffer_index];
 }
 
 se::DeviceMemoryBase& BufferAllocations::GetMutableDeviceAddress(
@@ -99,28 +82,6 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
       << " size " << base.size();
 
   return base.GetByteSlice(buffer_slice.offset(), buffer_slice.size());
-}
-
-absl::Status BufferAllocations::AddExternalAllocation(
-    BufferAllocation::Index index, se::DeviceMemoryBase memory) const {
-  if (external_allocations_ == nullptr) {
-    return Internal(
-        "Calling external allocations, but no allocation tracker is provided"
-        "for allocation %d",
-        index);
-  }
-  return external_allocations_->AddAllocation(index, memory);
-}
-
-absl::Status BufferAllocations::EraseExternalAllocation(
-    BufferAllocation::Index index) const {
-  if (external_allocations_ == nullptr) {
-    return Internal(
-        "Calling external allocations, but no allocation tracker is provided"
-        "for allocation %d",
-        index);
-  }
-  return external_allocations_->EraseAllocation(index);
 }
 
 }  // namespace gpu

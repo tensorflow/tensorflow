@@ -44,7 +44,6 @@ cc_library(
         # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
         # copybara:uncomment "//learning/brain/tfrt/tpu/compiler/mlir:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
-        "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt/saved_model:friends",
     ],
     deps = [

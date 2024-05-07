@@ -74,8 +74,26 @@ def Ifrt_ShardingParamAttr : AttrDef<Ifrt_Dialect, "IfrtShardingParam", [
   let mnemonic = "sharding_param";
   let summary = "ShardingParam as an attribute.";
 
-  let parameters = (ins Ifrt_ShardingParameter:$sharding);
-  let assemblyFormat = "`<` $sharding `>`";
+  let parameters = (ins
+    Ifrt_ShardingParameter:$sharding,
+    OptionalParameter<"::mlir::StringAttr">:$memory_kind
+  );
+  let assemblyFormat = [{
+    `<` $sharding (`,` `memory_kind` `=` $memory_kind^)? `>`
+  }];
+
+  let builders = [
+    AttrBuilder<(ins "::xla::ifrt::ShardingParam":$sharding), [{
+      return $_get($_ctxt, sharding, /*memory_kind=*/nullptr);
+    }]>,
+    AttrBuilder<(ins
+      "::xla::ifrt::ShardingParam":$sharding,
+      "::mlir::StringRef":$memory_kind), [{
+        return $_get($_ctxt,
+                     sharding,
+                     ::mlir::StringAttr::get($_ctxt,  memory_kind));
+    }]>
+  ];
 
   let genVerifyDecl = 1;
 }

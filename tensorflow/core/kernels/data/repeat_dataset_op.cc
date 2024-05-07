@@ -357,12 +357,18 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       if (ctx->restored_element_count().has_value()) {
-        i_ = *ctx->restored_element_count() / dataset()->input_->Cardinality();
+        CardinalityOptions options;
+        options.set_compute_level(
+            CardinalityOptions::CARDINALITY_COMPUTE_MODERATE);
+        const int64_t input_cardinality =
+            dataset()->input_->Cardinality(std::move(options));
+        i_ = *ctx->restored_element_count() / input_cardinality;
         // For upstream iterators, the restored element count should be the
         // element count within the current repetition.
         IteratorContext::Params params(ctx);
         params.restored_element_count =
-            *ctx->restored_element_count() % dataset()->input_->Cardinality();
+            *ctx->restored_element_count() % input_cardinality;
+        params.index_mapper = GetIndexMapper(ctx->index_mapper());
         IteratorContext ctx_with_restored_element_count(params);
         return RestoreInput(&ctx_with_restored_element_count, reader,
                             input_impl_);

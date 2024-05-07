@@ -74,7 +74,8 @@ Status ValidateArrayCreationInput(std::shared_ptr<const Sharding> sharding,
   MemoryKind canonicalized_sharding_memory_kind = CanonicalizeMemoryKind(
       sharding->memory_kind(), sharding->devices().front());
   for (int i = 0; i < sharding->devices().size(); ++i) {
-    PjRtDevice* device = llvm::dyn_cast<PjRtDevice>(sharding->devices()[i]);
+    PjRtCompatibleDevice* device =
+        llvm::dyn_cast<PjRtCompatibleDevice>(sharding->devices()[i]);
     if (!device) {
       return InvalidArgument("Sharding device %d is not a PjRtDevice", i);
     }
@@ -492,14 +493,18 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
           break;
       }
     } else {
-      PjRtDevice* pjrt_device =
-          llvm::dyn_cast<PjRtDevice>(new_sharding->devices()[i]);
+      PjRtCompatibleDevice* pjrt_device =
+          llvm::dyn_cast<PjRtCompatibleDevice>(new_sharding->devices()[i]);
       if (!pjrt_device) {
         return InvalidArgument(
             "The destination device is owned by a non-PjRt-compatible client. "
             "To use this Array on the destination device, the Array must be "
             "first fetched to the host and then sent to the destination "
             "device.");
+      }
+      if (!pjrt_device->IsAddressable()) {
+        return InvalidArgument("Cannot copy array to non-addressable device %s",
+                               pjrt_device->DebugString());
       }
       // Use `PjRtBuffer::CopyToMemorySpace` instead of
       // `PjRtBuffer::CopyToDevice` when memories are supported. Because the

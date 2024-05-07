@@ -273,6 +273,35 @@ message GPUOptions {
     // node_id for use when creating a PjRt GPU client with remote devices,
     // which enumerates jobs*tasks from a ServerDef.
     int32 node_id = 18;
+
+    // Whether to merge data transfer streams into the compute stream in the
+    // same stream group. Stream merging helps reduce the overhead caused by
+    // stream synchronization, especially when data transfers are frequent. For
+    // example, setting "merge_host_to_device_stream = true" will make the
+    // compute stream responsible for both computation and host to device memory
+    // copy.
+    message StreamMergeOptions {
+      // If true, the compute stream will be used for host_to_device copy as
+      // well. It's no longer necessary to record an event before the copy to
+      // let the copy stream wait for the compute stream to finish. There is
+      // also no need to wait for the copy to complete before executing the
+      // callback function.
+      bool merge_host_to_device_stream = 1;
+
+      // If true, the compute stream will be used for device_to_host copy as
+      // well. It's no longer necessary to record an event before the copy to
+      // let the copy stream wait for the compute stream to finish.
+      bool merge_device_to_host_stream = 2;
+
+      // If true, the compute stream will be used for device_to_device copy as
+      // well. It's no longer necessary to record an event before the copy to
+      // let the copy stream wait for the compute stream of the sending device
+      // to finish. There is also no need to wait for the compute stream of the
+      // receiving device to finish if the copy is within the same device.
+      bool merge_device_to_device_stream = 3;
+    }
+
+    StreamMergeOptions stream_merge_options = 19;
   }
 
   // Everything inside experimental is subject to change and is not subject

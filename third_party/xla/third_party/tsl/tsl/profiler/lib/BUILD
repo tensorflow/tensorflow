@@ -281,6 +281,19 @@ cc_library(
 )
 
 cc_library(
+    name = "nvtx_utils_libtpu",
+    srcs = ["nvtx_utils_stub.cc"],
+    hdrs = ["nvtx_utils.h"],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "libtpu_on_gce",
+    values = {"copt": "-DLIBTPU_ON_GCE"},
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "scoped_annotation",
     hdrs = [
         "nvtx_utils.h",
@@ -288,13 +301,16 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":nvtx_utils",
         "//tsl/platform:macros",
         "//tsl/platform:types",
         "@com_google_absl//absl/strings",
     ] + if_not_android([
         "//tsl/profiler/backends/cpu:annotation_stack",
-    ]),
+    ]) + select({
+        # Remove this once we clean up all the CUDA specific deps.
+        "libtpu_on_gce": [":nvtx_utils_libtpu"],
+        "//conditions:default": [":nvtx_utils"],
+    }),
 )
 
 tsl_cc_test(

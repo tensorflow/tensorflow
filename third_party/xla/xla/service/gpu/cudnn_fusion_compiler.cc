@@ -312,6 +312,35 @@ class GemmDimensionAdapter {
   const HloDotInstruction& dot_;
 };
 
+template <PrimitiveType XlaT, typename T>
+std::shared_ptr<graph::Tensor_attributes> LiteralToCudnnTensor(
+    const HloInstruction& hlo, graph::Graph& graph) {
+  using NativeT = typename primitive_util::PrimitiveTypeToNative<XlaT>::type;
+  return graph.tensor(T(hlo.literal().GetFirstElement<NativeT>()));
+}
+
+std::optional<std::shared_ptr<graph::Tensor_attributes>>
+HandleConstantHloToCudnnGraph(const HloInstruction& hlo, graph::Graph& graph) {
+  CHECK(hlo.IsConstant()) << "HLO is not a constant: " << hlo.ToShortString();
+  if (!ShapeUtil::IsScalar(hlo.shape())) {
+    VLOG(3) << "Currently only support fusing scalar in the graph";
+    return std::nullopt;
+  }
+  PrimitiveType constant_type = hlo.shape().element_type();
+  switch (constant_type) {
+    case BF16:
+      return LiteralToCudnnTensor<BF16, __nv_bfloat16>(hlo, graph);
+    case F32:
+      return LiteralToCudnnTensor<F32, float>(hlo, graph);
+    case S32:
+      return LiteralToCudnnTensor<S32, int>(hlo, graph);
+    default:
+      VLOG(3) << "Unsupported constant type: "
+              << PrimitiveType_Name(constant_type);
+      return std::nullopt;
+  }
+}
+
 // Traverses fusion computations and creates cuDNN graphs out of them.
 absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
     const HloFusionInstruction& fusion) {
@@ -343,6 +372,7 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
             .set_dim(dimensions)
             .set_stride(strides)
             .set_data_type(*data_type)
+            .set_name(std::string(parameter.name()))
             .set_uid(se::gpu::CuDnnTensorUID(parameter.parameter_number())));
     return true;
   };
@@ -387,6 +417,14 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
         return std::nullopt;
       }
       continue;
+    } else if (FusionLevel(fusion) >= 2 &&
+               hlo->opcode() == HloOpcode::kConstant) {
+      if (const auto const_tensor = HandleConstantHloToCudnnGraph(*hlo, graph);
+          const_tensor.has_value()) {
+        hlo_to_cudnn[hlo] = const_tensor.value();
+      } else {
+        return std::nullopt;
+      }
     } else if (hlo->opcode() == HloOpcode::kReshape ||
                hlo->opcode() == HloOpcode::kBitcast ||
                hlo->opcode() == HloOpcode::kTranspose ||
@@ -411,6 +449,25 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
                              .set_compute_data_type(compute_dtype.value());
       if (hlo->operand_count() == 1) {
         hlo_to_cudnn[hlo] = graph.pointwise(operand(0), attrs);
+        // Sets the dimensions for unary ops whose operands are broadcast for
+        // cuDNN to infer its inputs' shapes. constant has dimension [1] while
+        // cuDNN requires constant to have dimension [1,1,1]. Not setting output
+        // of the unary shapes results in the rejection of the cuDNN graph.
+        if (hlo->operand(0)->opcode() == HloOpcode::kBroadcast) {
+          const auto scope = adapter->analysis_.QueryInstructionScope(*hlo);
+          std::vector<int64_t> dimensions;
+          std::vector<int64_t> strides;
+          if (!scope.has_value()) {
+            LOG(FATAL) << "No scope for instruction: " << hlo->ToShortString();
+          }
+          if (!adapter->DimensionsAndStrides(*hlo, scope.value(), dimensions,
+                                             strides)) {
+            VLOG(3) << "Unsupported hlo for querying dimensions: "
+                    << hlo->ToShortString();
+          } else {
+            hlo_to_cudnn[hlo]->set_dim(dimensions);
+          }
+        }
       } else if (hlo->operand_count() == 2) {
         hlo_to_cudnn[hlo] = graph.pointwise(operand(0), operand(1), attrs);
       } else if (hlo->operand_count() == 3) {
@@ -448,7 +505,9 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       VLOG(3) << "Unimplemented data type: " << hlo->shape().element_type();
       return std::nullopt;
     }
-    hlo_to_cudnn[hlo]->set_data_type(data_type.value());
+    hlo_to_cudnn[hlo]
+        ->set_data_type(data_type.value())
+        .set_name(std::string(hlo->name()));
   }
   const HloInstruction* output = instructions.back();
   if (instructions.back()->shape().IsTuple()) {

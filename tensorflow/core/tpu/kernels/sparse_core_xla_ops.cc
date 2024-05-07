@@ -61,8 +61,10 @@ namespace tensorflow {
 namespace {
 
 // Get the SparseCore logical replica count.
-// TODO(agagik): get it from the tpu topology.
-absl::StatusOr<int64_t> GetSparseCoresPerChip() { return 4; }
+absl::StatusOr<int64_t> GetSparseCoresPerChip() {
+  return stream_executor::tpu::OpsApiFn()->TpuTopology_AvailableCoresPerChipFn(
+      /*tpu_core_type=*/TpuCoreTypeEnum::kEmbeddingV2);
+}
 
 // This TensorFlow op performs the embedding lookup on SparseCore. It takes the
 // embedding table and input sparse tensor represented by the `row_ids`,

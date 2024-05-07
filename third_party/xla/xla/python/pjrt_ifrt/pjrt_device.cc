@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -36,40 +36,41 @@ char PjRtCompatibleDevice::ID = 0;
 
 char PjRtDevice::ID = 0;
 
-PjRtDevice::PjRtDevice(PjRtClient* client, xla::PjRtDevice* pjrt_device)
-    : client_(client), pjrt_device_(pjrt_device) {}
+PjRtDevice::PjRtDevice(
+    PjRtClient* client, DeviceId id, std::string kind, std::string to_string,
+    std::string debug_string, int process_index,
+    absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes,
+    xla::PjRtDevice* pjrt_device)
+    : client_(client),
+      id_(id),
+      kind_(std::move(kind)),
+      to_string_(std::move(to_string)),
+      debug_string_(std::move(debug_string)),
+      process_index_(process_index),
+      attributes_(std::move(attributes)),
+      pjrt_device_(pjrt_device) {}
 
-DeviceId PjRtDevice::Id() const {
-  return DeviceId(pjrt_device_->global_device_id().value());
-}
+DeviceId PjRtDevice::Id() const { return id_; }
 
-absl::string_view PjRtDevice::Kind() const {
-  return pjrt_device_->device_kind();
-}
+absl::string_view PjRtDevice::Kind() const { return kind_; }
 
-absl::string_view PjRtDevice::ToString() const {
-  return pjrt_device_->ToString();
-}
+absl::string_view PjRtDevice::ToString() const { return to_string_; }
 
-absl::string_view PjRtDevice::DebugString() const {
-  return pjrt_device_->DebugString();
-}
+absl::string_view PjRtDevice::DebugString() const { return debug_string_; }
 
 absl::StatusOr<Memory*> PjRtDevice::DefaultMemory() const {
-  TF_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * pjrt_memory_space,
-                      pjrt_device_->default_memory_space());
-  return client_->LookupPjRtMemory(pjrt_memory_space);
+  return default_memory_;
 }
 
-bool PjRtDevice::IsAddressable() const { return pjrt_device_->IsAddressable(); }
+bool PjRtDevice::IsAddressable() const { return pjrt_device_ != nullptr; }
 
 absl::Span<Memory* const> PjRtDevice::Memories() const { return memories_; }
 
-int PjRtDevice::ProcessIndex() const { return pjrt_device_->process_index(); }
+int PjRtDevice::ProcessIndex() const { return process_index_; }
 
 const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
 PjRtDevice::Attributes() const {
-  return pjrt_device_->Attributes();
+  return attributes_;
 }
 
 }  // namespace ifrt

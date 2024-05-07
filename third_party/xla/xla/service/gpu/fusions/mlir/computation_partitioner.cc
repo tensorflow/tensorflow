@@ -89,6 +89,7 @@ absl::flat_hash_map<const HloInstruction*, int> PartitionGraphByIndexing(
     for (auto* user : instr->users()) {
       auto user_indexing = indexing_for_instr(user);
       if (user->opcode() == HloOpcode::kConcatenate ||
+          user->opcode() == HloOpcode::kSelect ||
           user->opcode() == HloOpcode::kTuple ||
           (instr_indexing && user_indexing != *instr_indexing)) {
         instr_indexing = std::nullopt;
@@ -151,10 +152,9 @@ EpilogueSpecification EpilogueSpecification::FromOutputIndexing(
         result.index_ranges.push_back(sym.upper + 1);
       }
     }
-
     auto* hero = root_to_hero[root];
-    auto epilogue_indexing =
-        ComputeEpilogueInputToOutputIndexing(hero, mlir_context);
+    auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(
+        {*hero, &analysis.fusion()}, {*root, &analysis.fusion()}, mlir_context);
     auto root_indexing = ComposeIndexingMaps(*indexing, epilogue_indexing);
 
     result.root_indexing.push_back(root_indexing.GetAffineMap());

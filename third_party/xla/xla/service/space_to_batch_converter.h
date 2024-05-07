@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPACE_TO_BATCH_CONVERTER_H_
 #define XLA_SERVICE_SPACE_TO_BATCH_CONVERTER_H_
 
+#include <stdbool.h>
+
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
@@ -29,6 +31,7 @@ struct SpaceToBatchController {
   bool enable_propagations_on_trivial_window_dilations;
   bool disable_starting_on_small_chains;
   int64_t limit_on_batch_size;
+  bool enable_propagations_on_dots = false;
   int64_t dimension_from_end_to_convert = 1;
   // We choose the new batch size to be number_of_splits times that of the old
   // batch so that space-to-batch propagation through several convolutional

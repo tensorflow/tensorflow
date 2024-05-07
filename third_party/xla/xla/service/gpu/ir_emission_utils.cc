@@ -652,11 +652,11 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
     // TODO(akuegel): Figure out why we still need this check for transpose
     // fusions.
     int64_t num_users =
-        fusion ? absl::c_count_if(HloInstructionAdaptor{*instr}.GetUsers(),
-                                  [&](auto user) {
-                                    return fusion->ContainsInstruction(user);
-                                  })
-               : instr->user_count();
+        fusion
+            ? absl::c_count_if(
+                  HloInstructionAdaptor{*instr, fusion}.GetUsers(),
+                  [&](auto user) { return fusion->ContainsInstruction(user); })
+            : instr->user_count();
     if (num_users > 1) {
       return false;
     }
@@ -688,7 +688,7 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
 }
 
 static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
-    HloInstructionAdaptor root, const HloFusionAdaptor& fusion,
+    const HloInstructionAdaptor& root,
     const std::function<bool(const HloInstruction&)>& predicate) {
   std::optional<HloInstructionAdaptor> hero = std::nullopt;
   auto visitor = [&](HloInstructionAdaptor node) {
@@ -710,7 +710,7 @@ static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
     }
     return TraversalResult::kAdvance;
   };
-  HloBfsConsumersFirstTraversal({root}, fusion, visitor);
+  HloBfsConsumersFirstTraversal({root}, root.parent(), visitor);
   if (!hero) {
     return std::nullopt;
   }
@@ -727,23 +727,23 @@ static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
                            /*add_single_user_check=*/true);
   };
   bool visit_operands = false;
-  if (HloAnyOf(hero->GetUsers(), fusion, is_nontrivial, visit_operands)) {
+  if (HloAnyOf(hero->GetUsers(), hero->parent(), is_nontrivial,
+               visit_operands)) {
     return std::nullopt;
   }
 
   return hero;
 }
 
-const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
-                                         const HloFusionAdaptor& fusion) {
-  HloInstructionAdaptor hero{instr};
+HloInstructionAdaptor FindNonTrivialHero(const HloInstructionAdaptor& instr) {
+  HloInstructionAdaptor hero = instr;
 
   // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Note
   // that no memoization is needed due to number of operands constraints: we
   // never have to revisit same nodes.
   while (IsIntermediate(&hero.instruction(), /*allowed_operand_count=*/1,
-                        &fusion) &&
-         fusion.ContainsInstruction(hero.GetOperand(0))) {
+                        &hero.parent()) &&
+         hero.parent().ContainsInstruction(hero.GetOperand(0))) {
     hero = hero.GetOperand(0);
   }
 
@@ -753,25 +753,26 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
   auto is_transpose = [](const HloInstruction& node) {
     return FindTiledLogicalTranspose(node).has_value();
   };
-  if (auto transpose = FindNonTrivialHero(hero, fusion, is_transpose)) {
-    return transpose->instruction();
+  if (auto transpose = FindNonTrivialHero(hero, is_transpose)) {
+    return *transpose;
   }
   auto is_concatenate = [](const HloInstruction& node) {
     return node.opcode() == HloOpcode::kConcatenate;
   };
-  if (auto concatenate = FindNonTrivialHero(hero, fusion, is_concatenate)) {
-    return concatenate->instruction();
+  if (auto concatenate = FindNonTrivialHero(hero, is_concatenate)) {
+    return *concatenate;
   }
   if (hero.opcode() != HloOpcode::kReduce) {
     return instr;
   }
-  return hero.instruction();
+  return hero;
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
   CHECK_NE(instr.opcode(), HloOpcode::kFusion);
-  return FindNonTrivialHero(instr,
-                            *HloFusionAdaptor::ForComputation(instr.parent()));
+  auto fusion_adaptor = HloFusionAdaptor::ForComputation(instr.parent());
+  HloInstructionAdaptor instr_adaptor(instr, fusion_adaptor.get());
+  return FindNonTrivialHero(instr_adaptor).instruction();
 }
 
 void VLogModule(int level, const llvm::Module& module) {

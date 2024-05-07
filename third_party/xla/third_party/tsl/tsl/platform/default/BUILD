@@ -554,6 +554,12 @@ bzl_library(
     srcs = ["rules_cc.bzl"],
 )
 
+bzl_library(
+    name = "build_config_root_bzl",
+    srcs = ["build_config_root.bzl"],
+    # copybara:uncomment parse_tests = False,
+)
+
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
     name = "additional_mobile_srcs_no_runtime",

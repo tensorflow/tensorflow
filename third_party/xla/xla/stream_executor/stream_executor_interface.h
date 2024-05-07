@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <variant>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_interface.h"
 
 namespace stream_executor {
@@ -48,11 +50,19 @@ class StreamExecutorInterface {
   StreamExecutorInterface() = default;
   virtual ~StreamExecutorInterface() = default;
 
+  // Returns a reference to the platform that created this executor.
+  virtual const Platform* GetPlatform() const = 0;
+
   // Initializes the device for use.
   virtual absl::Status Init() = 0;
 
   // Returns the device ordinal.
   virtual int device_ordinal() const { return -1; }
+
+  // Creates and initializes a Stream.
+  virtual absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority =
+          std::nullopt) = 0;
 
   // Retrieves (loads) a kernel, if one exists.
   //

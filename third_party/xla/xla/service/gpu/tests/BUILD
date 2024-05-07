@@ -20,6 +20,7 @@ load(
     "xla_cc_test",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl.bzl", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
@@ -527,14 +528,9 @@ xla_cc_test(
 xla_test(
     name = "gpu_kernel_tiling_test",
     srcs = ["gpu_kernel_tiling_test.cc"],
-    backend_tags = {"gpu": [
-        "requires-gpu-nvidia",
-        "requires-gpu-sm60-only",
-    ]},
     backends = [
-        "gpu",
         "gpu_p100",
-    ],
+    ] + if_oss(["gpu"]),
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -775,6 +771,7 @@ lit_test_suite(
             "add_preds.hlo",
             "calling_convention.hlo",
             "copy.hlo",
+            "dot_bf16.hlo",
             "dynamic_update_slice_inplace.hlo",
             "element_wise_row_vectorization.hlo",
             "fused_scatter.hlo",
@@ -909,13 +906,9 @@ xla_cc_test(
 xla_test(
     name = "tensor_float_32_global_var_test",
     srcs = ["tensor_float_32_global_var_test.cc"],
-    backend_tags = {"gpu": [
-        "requires-gpu-nvidia",
-        "requires-gpu-sm80-only",
-    ]},
     backends = [
-        "gpu",
-    ],
+        "gpu_a100",
+    ] + if_oss(["gpu"]),
     deps = [
         "//xla:error_spec",
         "//xla/tests:hlo_test_base",

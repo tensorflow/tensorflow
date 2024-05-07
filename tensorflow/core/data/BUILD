@@ -27,6 +27,8 @@ exports_files([
     "dataset_utils.h",
     "finalization_utils.cc",
     "finalization_utils.h",
+    "flat_map_utils.cc",
+    "flat_map_utils.h",
     "global_shuffle_utils.cc",
     "global_shuffle_utils.h",
     "metric_utils.cc",
@@ -182,6 +184,28 @@ tf_cc_test(
         "@com_google_absl//absl/container:flat_hash_set",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_xla//xla/tsl/util:determinism_test_util",
+    ],
+)
+
+cc_library(
+    name = "flat_map_utils",
+    srcs = ["flat_map_utils.cc"],
+    hdrs = ["flat_map_utils.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
+    deps = [
+        ":captured_function",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels/data:iterator_ops",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:refcount",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

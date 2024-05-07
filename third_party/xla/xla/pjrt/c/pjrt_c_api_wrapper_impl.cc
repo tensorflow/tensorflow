@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -441,8 +442,9 @@ PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_LookupDevice_Args",
       PJRT_Client_LookupDevice_Args_STRUCT_SIZE, args->struct_size));
-  PJRT_ASSIGN_OR_RETURN(xla::PjRtDevice * device,
-                        args->client->client->LookupDevice(args->id));
+  PJRT_ASSIGN_OR_RETURN(
+      xla::PjRtDevice * device,
+      args->client->client->LookupDevice(xla::PjRtGlobalDeviceId(args->id)));
   args->device = GetCDevice(args->client, device);
   return nullptr;
 }
@@ -2102,6 +2104,58 @@ PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Layouts_MemoryLayout_Destroy(
+    PJRT_Layouts_MemoryLayout_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Layouts_MemoryLayout_Destroy_Args",
+      PJRT_Layouts_MemoryLayout_Destroy_Args_STRUCT_SIZE, args->struct_size));
+  delete args->layout;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Layouts_MemoryLayout_Serialize(
+    PJRT_Layouts_MemoryLayout_Serialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Layouts_MemoryLayout_Serialize_Args",
+      PJRT_Layouts_MemoryLayout_Serialize_Args_STRUCT_SIZE, args->struct_size));
+
+  PJRT_Layouts_SerializedLayout* s_layout = new PJRT_Layouts_SerializedLayout{
+      .serialized = args->layout->layout->Serialize()};
+  args->serialized_layout = s_layout;
+  args->serialized_bytes = s_layout->serialized.data();
+  args->serialized_bytes_size = s_layout->serialized.size();
+  args->serialized_layout_deleter =
+      +[](PJRT_Layouts_SerializedLayout* s_lay) { delete s_lay; };
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Layouts_PJRT_Client_GetDefaultLayout(
+    PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args",
+      PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  PJRT_ASSIGN_OR_RETURN(xla::Layout xla_layout,
+                        args->client->client->GetDefaultLayout(
+                            pjrt::ConvertFromPjRtBufferType(args->type),
+                            {args->dims, args->num_dims}));
+  auto pjrt_xla_layout = std::make_unique<xla::PjRtXlaLayout>(xla_layout);
+  args->layout = new PJRT_Layouts_MemoryLayout{std::move(pjrt_xla_layout)};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Layouts_PJRT_Buffer_MemoryLayout(
+    PJRT_Layouts_PJRT_Buffer_MemoryLayout_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Layouts_PJRT_Buffer_MemoryLayout_Args",
+      PJRT_Layouts_PJRT_Buffer_MemoryLayout_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->layout = new PJRT_Layouts_MemoryLayout{args->buffer->buffer->layout()};
+  return nullptr;
+}
+
 static std::vector<PJRT_NamedValue> PopulatePjrtAttributes(
     const absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>&
         attributes) {
@@ -2445,6 +2499,22 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       /*PJRT_Executable_GetCompiledMemoryStats= */
       pjrt::PJRT_Executable_GetCompiledMemoryStats,
       /*PJRT_Memory_Kind_Id=*/pjrt::PJRT_Memory_Kind_Id,
+  };
+}
+
+PJRT_Layouts_Extension CreateLayoutsExtension(PJRT_Extension_Base* next) {
+  return PJRT_Layouts_Extension{
+      /*struct_size=*/PJRT_Layouts_Extension_STRUCT_SIZE,
+      /*type=*/PJRT_Extension_Type_Layouts,
+      /*next=*/next,
+      /*PJRT_Layouts_MemoryLayout_Destroy=*/
+      pjrt::PJRT_Layouts_MemoryLayout_Destroy,
+      /*PJRT_Layouts_MemoryLayout_Serialize=*/
+      pjrt::PJRT_Layouts_MemoryLayout_Serialize,
+      /*PJRT_Layouts_PJRT_Client_GetDefaultLayout=*/
+      pjrt::PJRT_Layouts_PJRT_Client_GetDefaultLayout,
+      /*PJRT_Layouts_PJRT_Buffer_MemoryLayout=*/
+      pjrt::PJRT_Layouts_PJRT_Buffer_MemoryLayout,
   };
 }
 

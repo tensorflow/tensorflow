@@ -72,23 +72,34 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
       const HloFusionInstruction& fusion,
       mlir::MLIRContext* mlir_context) const override;
 
-  absl::StatusOr<llvm::SmallVector<mlir::Value, 4>> EmitWriteToShMemMlir(
+  struct WriteResult {
+    // All output tensors of the fusion, with side outputs written to them.
+    mlir::SmallVector<mlir::Value> updated_outputs;
+    // Shared memory tiles for transpose heroes.
+    mlir::ValueRange shmem_tensors;
+  };
+
+  WriteResult EmitWriteToShMemMlir(
       mlir::ImplicitLocOpBuilder& builder, mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion,
       const mlir_converter::PartitionedComputation& root_computation,
-      const mlir_converter::CallTargetProvider& call_target_provider) const;
-  absl::Status EmitReadFromShMemMlir(
+      const mlir_converter::CallTargetProvider& call_target_provider,
+      mlir::ValueRange output_args) const;
+  void EmitReadFromShMemMlir(
       mlir::ImplicitLocOpBuilder& builder, mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion,
       const mlir_converter::PartitionedComputations& computations,
-      const mlir_converter::CallTargetProvider& call_target_provider,
-      mlir::ValueRange shmem_tensors) const;
+      const WriteResult& written) const;
 
  private:
   const HloFusionAnalysis& analysis_;
   Tiling tiling_;
   Vector3 permutation_;
   std::vector<const HloInstruction*> shmem_transposes_;
+  std::vector<const HloInstruction*> shmem_transpose_roots_;
+  std::vector<int> shmem_transpose_root_indices_;
+  std::vector<const HloInstruction*> side_output_roots_;
+  std::vector<int> side_output_root_indices_;
 };
 
 }  // namespace gpu

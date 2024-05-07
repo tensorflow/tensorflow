@@ -16,6 +16,9 @@ limitations under the License.
 #include "tsl/platform/coding.h"
 
 #include "tsl/platform/byte_order.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/tstring.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace core {

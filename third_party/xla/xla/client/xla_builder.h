@@ -524,9 +524,10 @@ class XlaBuilder {
   // op from the XlaBuilder. This is only intended for export to MHLO or
   // StableHLO, and cannot be compiled. Only static output_dimensions are
   // allowed, and broadcast_dimensions is verified.
-  XlaOp DynamicBroadcastInDim(XlaOp operand, XlaOp output_dimensions,
-                              absl::Span<const int64_t> broadcast_dimensions,
-                              const Shape& output_shape);
+  XlaOp MhloDynamicBroadcastInDim(
+      XlaOp operand, XlaOp output_dimensions,
+      absl::Span<const int64_t> broadcast_dimensions,
+      const Shape& output_shape);
 
   XlaOp Pad(XlaOp operand, XlaOp padding_value,
             const PaddingConfig& padding_config);
@@ -550,6 +551,9 @@ class XlaBuilder {
   XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
                        absl::Span<const int64_t> new_size_bounds,
                        const std::vector<bool>& dims_are_dynamic);
+
+  XlaOp MhloDynamicReshape(XlaOp operand, XlaOp output_shape,
+                           const Shape& shape);
 
   XlaOp Collapse(XlaOp operand, absl::Span<const int64_t> dimensions);
 
@@ -1212,7 +1216,7 @@ class XlaBuilder {
                               absl::Span<const int64_t> out_dim_size,
                               absl::Span<const int64_t> broadcast_dimensions);
 
-  friend XlaOp DynamicBroadcastInDim(
+  friend XlaOp MhloDynamicBroadcastInDim(
       XlaOp operand, XlaOp output_dimensions,
       absl::Span<const int64_t> broadcast_dimensions,
       const Shape& output_shape);
@@ -1235,6 +1239,9 @@ class XlaBuilder {
   friend XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
                               absl::Span<const int64_t> new_size_bounds,
                               const std::vector<bool>& dims_are_dynamic);
+
+  friend XlaOp MhloDynamicReshape(XlaOp operand, XlaOp output_shape,
+                                  const Shape& shape);
 
   friend XlaOp ReshapeWithInferredDimension(XlaOp operand,
                                             absl::Span<const int64_t> new_sizes,
@@ -1918,9 +1925,9 @@ XlaOp BroadcastInDim(XlaOp operand, absl::Span<const int64_t> out_dim_size,
 // StableHLO, and cannot be compiled. See
 // https://www.tensorflow.org/mlir/hlo_ops#mhlodynamic_broadcast_in_dim_mhlodynamicbroadcastindimop.
 // for the op semantics.
-XlaOp DynamicBroadcastInDim(XlaOp operand, XlaOp output_dimensions,
-                            absl::Span<const int64_t> broadcast_dimensions,
-                            const Shape& output_shape);
+XlaOp MhloDynamicBroadcastInDim(XlaOp operand, XlaOp output_dimensions,
+                                absl::Span<const int64_t> broadcast_dimensions,
+                                const Shape& output_shape);
 
 // Copies the input operand to the output. This operation is for internal
 // purpose and is only used by the compiler for optimization purposes or to
@@ -1965,6 +1972,11 @@ XlaOp Reshape(XlaOp operand, absl::Span<const int64_t> dimensions,
 XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
                      absl::Span<const int64_t> new_size_bounds,
                      const std::vector<bool>& dims_are_dynamic);
+
+// This is an experimental API for creating the mhlo.dynamic_reshape op from the
+// XlaBuilder. This is only intended for export to MHLO or StableHLO, and cannot
+// be compiled.
+XlaOp MhloDynamicReshape(XlaOp operand, XlaOp output_shape, const Shape& shape);
 
 // Enqueues an operation onto the computation that collapses the operand,
 // from first to last dimension (C order), then reshapes it to the given

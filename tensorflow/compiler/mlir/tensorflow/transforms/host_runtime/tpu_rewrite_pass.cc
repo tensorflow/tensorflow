@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 
-#include "absl/strings/match.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -76,7 +75,6 @@ namespace mlir {
 namespace TFTPU {
 
 constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
-constexpr char kDeviceAttr[] = "device";
 constexpr char kDevicesAttr[] = "devices";
 constexpr char kVersionsAttr[] = "tf.versions";
 constexpr char kUseXlaSpmdAttr[] = "use_spmd_for_xla_partitioning";
@@ -381,18 +379,9 @@ LogicalResult AddToParallelExecuteOp(
     // If computation is replicated, use aliased device. Otherwise there is only
     // one execution device per core and the device is assigned to the execute
     // op.
-    std::string device;
-    if (replicated) {
-      device = tensorflow::GetDeviceAliasForLogicalCore(core);
-    } else {
-      auto device_attr = cluster_func->getAttrOfType<StringAttr>(kDeviceAttr);
-      if (device_attr && !device_attr.str().empty() &&
-          absl::StrContains(device_attr.str(), "TPU:")) {
-        device = cluster_func->getAttrOfType<StringAttr>(kDeviceAttr).str();
-      } else {
-        device = tpu_devices.front()[core].device;
-      }
-    }
+    std::string device = replicated
+                             ? tensorflow::GetDeviceAliasForLogicalCore(core)
+                             : tpu_devices.front()[core].device;
     auto block_launch_op = tensorflow::WrapOpInLaunch(
         builder, block.getParent()->getLoc(), execute, device);
 

@@ -527,12 +527,24 @@ class QuantizeSingularOpPattern : public EntryFuncBodyQuantizationPattern {
 
   LogicalResult match(func::FuncOp entry_func_op,
                       const Method& quantization_method) const override {
+    if (!quantization_method.has_static_range_ptq()) {
+      return failure();
+    }
     const auto op_iterator_range = entry_func_op.getOps<SingularOpT>();
     if (op_iterator_range.empty()) {
       LLVM_DEBUG(llvm::dbgs() << "Function does not have "
                               << SingularOpT::getOperationName() << " op.\n");
       return failure();
     }
+
+    // Entry function body should have one block with two ops(op to be quantized
+    // and return op).
+    Region& body = entry_func_op.getBody();
+    if (body.getBlocks().size() != 1 ||
+        body.begin()->getOperations().size() != 2) {
+      return failure();
+    }
+
     if (!isa<RankedTensorType>(
             (*op_iterator_range.begin()).getResult().getType())) {
       LLVM_DEBUG(llvm::dbgs() << SingularOpT::getOperationName()
@@ -631,9 +643,9 @@ void ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
     const EntryFuncBodyQuantizationPattern& body_rewrite_pattern,
     const Method& quantization_method) {
   const ModuleOp module_op = xla_call_module_op->getParentOfType<ModuleOp>();
-  const SymbolTable symbol_table(module_op);
 
-  func::FuncOp entry_func_op = GetEntryFuncOp(xla_call_module_op, symbol_table);
+  func::FuncOp entry_func_op =
+      GetEntryFuncOp(xla_call_module_op, SymbolTable(module_op));
   QuantizeEntryFuncOp(ctx, rewriter, xla_call_module_op, entry_func_op,
                       body_rewrite_pattern, quantization_method);
 
@@ -666,7 +678,6 @@ class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
 
   LogicalResult match(TF::XlaCallModuleOp op) const override {
     ModuleOp module_op = op->getParentOfType<ModuleOp>();
-    SymbolTable symbol_table(module_op);
 
     // Ignore ops without quantization method.
     // Consider adding checks for individual methods.
@@ -680,7 +691,7 @@ class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
       return failure();
     }
 
-    func::FuncOp entry_func_op = GetEntryFuncOp(op, symbol_table);
+    func::FuncOp entry_func_op = GetEntryFuncOp(op, SymbolTable(module_op));
     if (!entry_func_op) {
       op->emitError("Failed to find a valid entry function.");
       return failure();

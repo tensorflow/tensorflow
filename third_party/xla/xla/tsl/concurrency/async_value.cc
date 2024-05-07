@@ -167,8 +167,9 @@ void IndirectAsyncValue::ForwardTo(RCReference<AsyncValue> value) {
       indirect_value->DropRef();
     }
     // If indirect async value was created for any particular type id, check
-    // that forwarded to value has exactly the same type id.
-    DCHECK(type_id_ == kUnknownTypeId || type_id_ == concrete_value->type_id_)
+    // that forwarded to value has exactly the same type id or an error.
+    DCHECK(type_id_ == kUnknownTypeId || type_id_ == concrete_value->type_id_ ||
+           concrete_value->IsType<DummyValueForErrorAsyncValue>())
         << "IndirectAsyncValue::ForwardTo value has an unexpected type id";
     value_ = concrete_value;
     type_id_ = concrete_value->type_id_;

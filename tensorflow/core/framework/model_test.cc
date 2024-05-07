@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdlib>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/model.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -3619,6 +3621,78 @@ TEST(NodeTest, OnlyCollectParametersThatHaveElementsProduced) {
   // be 2.
   root->record_element();
   EXPECT_EQ(root->CollectTunableParameters().size(), 2);
+}
+
+TEST(NodeTest, TotalMaximumBufferedBytesHasValueWhenElementSizeProvided) {
+  // Builds a graph:
+  // root <- parallel_map <- parallel_interleave
+
+  static constexpr int kMin = 1;
+  static constexpr int kIrrelevantMax = 16;
+
+  static constexpr int64_t element_size = 100;
+
+  auto parallel_interleave = model::MakeAsyncKnownRatioNode(
+      {0, "parallel_interleave", nullptr}, /*ratio=*/1,
+      {model::MakeParameter(kParallelism,
+                            std::make_shared<SharedState>(kAutotune,
+                                                          /*mu=*/nullptr,
+                                                          /*cond_var=*/nullptr),
+                            kMin, kIrrelevantMax)},
+      /*is_legacy_prefetch_autotuned=*/false);
+
+  auto parallel_map_parameter =
+      model::MakeParameter(kParallelism,
+                           std::make_shared<SharedState>(kAutotune,
+                                                         /*mu=*/nullptr,
+                                                         /*cond_var=*/nullptr),
+                           kMin, kIrrelevantMax);
+  auto parallel_map = model::MakeAsyncKnownRatioNode(
+      {1, "parallel_map", nullptr}, /*ratio=*/1, {parallel_map_parameter},
+      /*is_legacy_prefetch_autotuned=*/false, element_size);
+
+  parallel_map->add_input(parallel_interleave);
+
+  auto root = MakeUnknownNode({2, "unknown0", nullptr});
+  root->add_input(parallel_map);
+
+  EXPECT_EQ(root->TotalMaximumBufferedBytes(), element_size * kMin);
+
+  parallel_map_parameter->value = 7;
+  EXPECT_EQ(root->TotalMaximumBufferedBytes(), element_size * 7);
+}
+
+TEST(NodeTest, TotalMaximumBufferedBytesNoValueWhenElementSizeNotProvided) {
+  // Builds a graph:
+  // root <- parallel_map <- parallel_interleave
+
+  static constexpr int kIrrelevantMin = 1;
+  static constexpr int kIrrelevantMax = 16;
+
+  auto parallel_interleave = model::MakeAsyncKnownRatioNode(
+      {0, "parallel_interleave", nullptr}, /*ratio=*/1,
+      {model::MakeParameter(kParallelism,
+                            std::make_shared<SharedState>(kAutotune,
+                                                          /*mu=*/nullptr,
+                                                          /*cond_var=*/nullptr),
+                            kIrrelevantMin, kIrrelevantMax)},
+      /*is_legacy_prefetch_autotuned=*/false);
+
+  auto parallel_map = model::MakeAsyncKnownRatioNode(
+      {1, "parallel_map", nullptr}, /*ratio=*/1,
+      {model::MakeParameter(kParallelism,
+                            std::make_shared<SharedState>(kAutotune,
+                                                          /*mu=*/nullptr,
+                                                          /*cond_var=*/nullptr),
+                            kIrrelevantMin, kIrrelevantMax)},
+      /*is_legacy_prefetch_autotuned=*/false, std::nullopt);
+
+  parallel_map->add_input(parallel_interleave);
+
+  auto root = MakeUnknownNode({2, "unknown0", nullptr});
+  root->add_input(parallel_map);
+
+  EXPECT_EQ(root->TotalMaximumBufferedBytes(), 0.);
 }
 
 }  // namespace

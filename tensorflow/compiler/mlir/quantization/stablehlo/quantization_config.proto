@@ -338,7 +338,7 @@ message CalibrationOptions {
 
 // Quantization configuration for StableHLO Quantizer. This is the primary
 // message containing all configurable options.
-// Next ID: 8
+// Next ID: 9
 message QuantizationConfig {
   // Config presets provide predefined popular or common quantization specs.
   // Lightweight users may choose one of the presets for quick experiments. Each
@@ -367,4 +367,9 @@ message QuantizationConfig {
   // activation of static range quantization (SRQ). Quantization calibration
   // method is set to MIN_MAX by default.
   CalibrationOptions calibration_options = 6;
+
+  // Path to file to save the quantization report, which is essentially a
+  // textproto rendering of `QuantizationResults`. If not set, the report will
+  // only be emitted to stdout.
+  optional string report_file_path = 8;
 }

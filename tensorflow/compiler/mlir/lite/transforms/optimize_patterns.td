@@ -366,6 +366,15 @@ class ConstDoubleValueLessThan<string n> : Constraint<
   "std::abs(*$0.cast<DenseElementsAttr>().getValues<float>().begin()) < "
   # n>>;
 
+// Constraint that the attribute value is negative infinity or negative largest.
+// We use both -inf & flt_min due to the forward compatibility.
+def ConstAPFloatNegLargestOrNegInfinity : Constraint<CPred<
+  "$0.isa<DenseElementsAttr>() && "
+  "$0.cast<DenseElementsAttr>().getNumElements() == 1 && "
+  "(($0.cast<DenseElementsAttr>().getValues<APFloat>()[0].isLargest() && "
+  "$0.cast<DenseElementsAttr>().getValues<APFloat>()[0].isNegative()) || "
+  "$0.cast<DenseElementsAttr>().getValues<APFloat>()[0].isNegInfinity())">>;
+
 def L2NormValidReduceIndex : Constraint<CPred<
   "L2NormalizeReduceAxis($0, $1.cast<DenseElementsAttr>())">>;
 
@@ -771,9 +780,13 @@ def UndoBroadcastConvBiasAdd : Pat<
    (HasRankAtLeast<2> $bias),
    (IsDefinedByConv2DOp $lhs)]>;
 
-// Function to map final permutation to initial permutation
-// initial -> permutation1 -> permutation2 -> final
-def RemapPermutation: NativeCodeCall<"RemapPermutation($0, $1)">;
+// Pattern to convert a trivial transpose op to a reshape op.
+def ConvertTrivialTransposeOpToReshapeOp : Pat<
+  (TFL_TransposeOp:$transpose_op $input, (Arith_ConstantOp:$permutation $p1)),
+  (TFL_ReshapeOp $input, (Arith_ConstantOp (GetShape $transpose_op))),
+  [(IsTransposeTrivial $input, $permutation),
+   (AnyStaticShapeTensor $input),
+   (AnyStaticShapeTensor $transpose_op)]>;
 
 // Pattern to fuse redundant tanspose op
 def FoldDoubleTranspose : Pat<
@@ -1010,6 +1023,30 @@ def FoldNormalizationIntoSoftmax : Pat<
   (TFL_SoftmaxOp $input, $beta),
   [(IsSame $input, $max_input),
    (AxesIsLastDimension $axes, $max_input),
+   (HasOneUse $sub),
+   (HasOneUse $max)]>;
+
+// Convert softmax(x-reshape(maximum(max(x), -inf))) into softmax(x) as the softmax op already deals
+// with the max normalization. This comes from upstream Jax (https://github.com/google/jax/pull/15677)
+def FoldNormalizationIntoSoftmaxJaxWithAxisMinus1 : Pat<
+  (TFL_SoftmaxOp
+    (TFL_SubOp:$sub $input,
+    (TFL_ReshapeOp:$reshape
+      (TFL_MaximumOp:$maximum
+        (TFL_ReduceMaxOp:$max $max_input, (Arith_ConstantOp I32ElementsAttr: $axes),
+                              ConstBoolAttrFalse),
+        (Arith_ConstantOp F32ElementsAttr: $threshold)
+      ),
+      (Arith_ConstantOp I32ElementsAttr: $shape)
+    ),
+    TFL_AF_None),
+    $beta),
+  (TFL_SoftmaxOp $input, $beta),
+  [(IsSame $input, $max_input),
+   (AxesIsLastDimension $axes, $max_input),
+   (ConstAPFloatNegLargestOrNegInfinity $threshold),
+   (HasOneUse $maximum),
+   (HasOneUse $reshape),
    (HasOneUse $sub),
    (HasOneUse $max)]>;
 

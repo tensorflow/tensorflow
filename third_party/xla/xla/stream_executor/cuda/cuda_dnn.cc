@@ -5133,6 +5133,30 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
                          .set_uid(CudnnfMHAUid::BIAS_ID));
     sdpa_options.set_bias(bias_tensor);
   }
+  // Setting actual seqlen
+  bool is_padding = mask_type == dnn::FMHAMaskKind::PADDING ||
+                    mask_type == dnn::FMHAMaskKind::PADDING_CAUSAL;
+  if (is_padding) {
+    auto q_dim = q_descriptor.GetCudnnCompatibleDimensions(true);
+    auto b = q_dim[0];
+    auto seq_q_tensor =
+        graph.tensor(Tensor_attributes()
+                         .set_name("seq_q")
+                         .set_dim({b, 1, 1, 1})
+                         .set_stride({1, 1, 1, 1})
+                         .set_uid(CudnnfMHAUid::Q_SEQLEN_ID)
+                         .set_data_type(cudnn_frontend::DataType_t::INT32));
+    auto seq_kv_tensor =
+        graph.tensor(Tensor_attributes()
+                         .set_name("seq_kv")
+                         .set_dim({b, 1, 1, 1})
+                         .set_stride({1, 1, 1, 1})
+                         .set_uid(CudnnfMHAUid::K_SEQLEN_ID)
+                         .set_data_type(cudnn_frontend::DataType_t::INT32));
+    sdpa_options.set_padding_mask(true);
+    sdpa_options.set_seq_len_q(seq_q_tensor);
+    sdpa_options.set_seq_len_kv(seq_kv_tensor);
+  }
   // Setting seed and offset
   if (use_dropout) {
     auto seed_tensor =
@@ -5184,7 +5208,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
   if (!supported) {
     return absl::InternalError("cuDNN graph is not supported.");
   }
-  TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/0));
+  TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, std::nullopt));
 
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "\b flash attention operation graph: " << graph;
@@ -5300,6 +5324,11 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   // Setting bias
   if (use_bias) {
     DCHECK(bias_descriptor != std::nullopt);
+    auto bias_dim = bias_descriptor->dimensions();
+    auto q_dim = q_desc.GetCudnnCompatibleDimensions(false);
+    auto b = bias_dim[0];
+    auto n = bias_dim[1];
+    auto q_n = q_dim[1];
     auto bias_tensor =
         graph.tensor(Tensor_attributes()
                          .set_name("bias")
@@ -5307,6 +5336,42 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
                          .set_stride(bias_descriptor->GetLogicalStrides())
                          .set_uid(CudnnfMHAUid::BIAS_ID));
     sdpa_backward_options.set_bias(bias_tensor);
+
+    // shapes [1, 1, s, s], [b, 1, s, s], [b, h, s, s] are not supported for
+    // dbias calculation but they are supported for forward bias calculation
+    if (b == 1 && n == q_n) {
+      auto d_bias_tensor =
+          graph.tensor(Tensor_attributes()
+                           .set_name("dBias")
+                           .set_dim(bias_descriptor->dimensions())
+                           .set_stride(bias_descriptor->GetLogicalStrides())
+                           .set_uid(CudnnfMHAUid::dBIAS_ID));
+      sdpa_backward_options.set_dbias(d_bias_tensor);
+    }
+  }
+  // Setting actual seqlen
+  bool is_padding = mask_type == dnn::FMHAMaskKind::PADDING ||
+                    mask_type == dnn::FMHAMaskKind::PADDING_CAUSAL;
+  if (is_padding) {
+    auto q_dim = q_desc.GetCudnnCompatibleDimensions(false);
+    auto b = q_dim[0];
+    auto seq_q_tensor =
+        graph.tensor(Tensor_attributes()
+                         .set_name("seq_q")
+                         .set_dim({b, 1, 1, 1})
+                         .set_stride({1, 1, 1, 1})
+                         .set_uid(CudnnfMHAUid::Q_SEQLEN_ID)
+                         .set_data_type(cudnn_frontend::DataType_t::INT32));
+    auto seq_kv_tensor =
+        graph.tensor(Tensor_attributes()
+                         .set_name("seq_kv")
+                         .set_dim({b, 1, 1, 1})
+                         .set_stride({1, 1, 1, 1})
+                         .set_uid(CudnnfMHAUid::K_SEQLEN_ID)
+                         .set_data_type(cudnn_frontend::DataType_t::INT32));
+    sdpa_backward_options.set_padding_mask(true);
+    sdpa_backward_options.set_seq_len_q(seq_q_tensor);
+    sdpa_backward_options.set_seq_len_kv(seq_kv_tensor);
   }
   // Setting seed and offset
   if (use_dropout) {
@@ -5358,7 +5423,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   if (!supported) {
     return absl::InternalError("cuDNN graph is not supported.");
   }
-  TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/0));
+  TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, std::nullopt));
 
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "\b flash attention operation backward graph: " << graph;
@@ -7168,6 +7233,14 @@ CudnnSupport::FusedMHARunnerFromDesc(
   uids.emplace_back(activation_descriptor.has_value()
                         ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::P_ID)
                         : std::nullopt);
+  bool is_padding = mask_type == dnn::FMHAMaskKind::PADDING ||
+                    mask_type == dnn::FMHAMaskKind::PADDING_CAUSAL;
+  uids.emplace_back(is_padding
+                        ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::Q_SEQLEN_ID)
+                        : std::nullopt);
+  uids.emplace_back(is_padding
+                        ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::K_SEQLEN_ID)
+                        : std::nullopt);
   TF_ASSIGN_OR_RETURN(auto runner,
                       CudnnGraphRunner<dnn::FusedMHASignature>::Create(
                           parent_, cudnn_.get(), std::move(graph),
@@ -7211,8 +7284,7 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
           bmm2_grad_gemm1_lhs_descriptor, bmm2_grad_gemm2_rhs_descriptor,
           d_output_descriptor, d_bmm1_lhs_descriptor, d_bmm1_rhs_descriptor,
           d_bmm2_rhs_descriptor, bias_descriptor, dropout_rate, seed, scale,
-          use_dropout,
-          /*use_bias*/ bias_descriptor != std::nullopt, mask_type));
+          use_dropout, bias_descriptor != std::nullopt, mask_type));
 
   std::vector<int64_t> p_dims =
       bmm2_grad_gemm1_lhs_descriptor.GetCudnnCompatibleDimensions(false);
@@ -7223,10 +7295,21 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
   std::vector<std::optional<int64_t>> uids;
   uids = {CudnnfMHAUid::Q_ID,  CudnnfMHAUid::K_ID,  CudnnfMHAUid::P_ID,
           CudnnfMHAUid::V_ID,  CudnnfMHAUid::dO_ID, CudnnfMHAUid::dQ_ID,
-          CudnnfMHAUid::dK_ID, CudnnfMHAUid::dV_ID, std::nullopt,
-          std::nullopt,        CudnnfMHAUid::O_ID};
+          CudnnfMHAUid::dK_ID, CudnnfMHAUid::dV_ID, std::nullopt};
+  uids.emplace_back(d_bias_descriptor.has_value()
+                        ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::dBIAS_ID)
+                        : std::nullopt);
+  uids.push_back(CudnnfMHAUid::O_ID);
   uids.emplace_back(bias_descriptor.has_value()
                         ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::BIAS_ID)
+                        : std::nullopt);
+  bool is_padding = mask_type == dnn::FMHAMaskKind::PADDING ||
+                    mask_type == dnn::FMHAMaskKind::PADDING_CAUSAL;
+  uids.emplace_back(is_padding
+                        ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::Q_SEQLEN_ID)
+                        : std::nullopt);
+  uids.emplace_back(is_padding
+                        ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::K_SEQLEN_ID)
                         : std::nullopt);
   TF_ASSIGN_OR_RETURN(auto runner,
                       CudnnGraphRunner<dnn::FusedMHABackwardSignature>::Create(
@@ -8306,11 +8389,15 @@ absl::StatusOr<bool> CudnnGraph::Prepare(dnn::DnnSupport& dnn_support) {
 }
 
 absl::Status CudnnGraph::Build(dnn::DnnSupport& dnn_support,
-                               const int64_t plan_id) {
+                               const std::optional<int64_t> plan_id) {
   const CudnnSupport& cudnn_support = static_cast<CudnnSupport&>(dnn_support);
   TF_ASSIGN_OR_RETURN(auto cudnn, cudnn_support.cudnn_->GetLocalHandle());
-  RETURN_IF_CUDNN_FRONTEND_ERROR(
-      graph_.build_plan_at_index(cudnn->handle(), plan_id));
+  if (plan_id.has_value()) {
+    RETURN_IF_CUDNN_FRONTEND_ERROR(
+        graph_.build_plan_at_index(cudnn->handle(), *plan_id));
+  } else {
+    RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.build_plans(cudnn->handle()));
+  }
   return absl::OkStatus();
 }
 

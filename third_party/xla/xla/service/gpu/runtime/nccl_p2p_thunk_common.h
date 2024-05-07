@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
@@ -39,13 +39,15 @@ namespace gpu {
 // Count the number of times a Send or Recv instruction executed on a device.
 class ExecutionCounters {
  public:
-  absl::Status Initialize(se::StreamExecutor* executor);
-  absl::StatusOr<int64_t*> GetCounter(se::StreamExecutor* executor);
+  absl::Status Initialize(se::StreamExecutor* executor, RunId run_id);
+  absl::StatusOr<int64_t*> GetCounter(se::StreamExecutor* executor,
+                                      RunId run_id);
 
  private:
+  using CounterKey = std::pair<se::StreamExecutor*, RunId>;
   absl::Mutex mu_;
-  absl::flat_hash_map<se::StreamExecutor*, int64_t> counters_
-      ABSL_GUARDED_BY(mu_);
+  // TODO(b/338288906): may need to clean up the counters for finished runs.
+  absl::flat_hash_map<CounterKey, int64_t> counters_ ABSL_GUARDED_BY(mu_);
 };
 
 // Records the information for implementing CollectivePermute, Send and Recv.

@@ -16,13 +16,15 @@
 
 import collections
 import copy
+import dataclasses
 import functools
 import operator
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from absl import logging
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.tpu.kernels import sparse_core_layout_pb2
 from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -39,9 +41,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_collective_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -59,9 +59,27 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
+
 _PIPELINE_ATTRIBUTE = "_embedding_pipelining"
 _PIPELINE_MODE_FORWARD = "forward"
 _PIPELINE_MODE_BACKWARD = "backward"
+
+
+TableConfig = tpu_embedding_v2_utils.TableConfig
+FeatureConfig = tpu_embedding_v2_utils.TableConfig
+QuantizationConfig = tpu_embedding_v2_utils.QuantizationConfig
+
+
+@tf_export("tpu.experimental.embedding.SparseCoreEmbeddingConfig")
+@dataclasses.dataclass(frozen=True)
+class SparseCoreEmbeddingConfig:
+  """Config for sparsecore embedding."""
+
+  disable_table_stacking: bool = True
+  max_ids_per_chip_per_sample: int = 64
+  max_ids_per_table: Optional[Dict[str, int]] = None
+  max_unique_ids_per_table: Optional[Dict[str, int]] = None
+  allow_id_dropping: bool = False
 
 
 class EmbeddingPipeliningContext(control_flow_ops.ControlFlowContext):
@@ -135,6 +153,33 @@ class TPUEmbeddingShardedSaveable(saveable_object.SaveableObject):
     return values_util.assign_on_device(
         self._variable.device, self._variable, restored_tensor
     )
+
+
+def _fielddict():
+  return dataclasses.field(default_factory=dict)
+
+
+@dataclasses.dataclass
+class TableStacking:
+  """Information about how we stack tables."""
+
+  # Indexed by stacked table name:
+  stacked_table_to_tables: Dict[str, TableConfig] = _fielddict()
+  quantization_configs: Dict[str, QuantizationConfig] = _fielddict()
+
+  # Indexed by table name:
+  table_name_to_table: Dict[str, TableConfig] = _fielddict()
+  table_to_padding_rows: Dict[str, int] = _fielddict()
+  table_to_padding_columns: Dict[str, int] = _fielddict()
+  table_to_sample_count: Dict[str, int] = _fielddict()
+  table_to_layout: Dict[str, sparse_core_layout_pb2.SparseCoreTableLayout] = (
+      _fielddict()
+  )
+  # Maps table name to (stacked table, row offset, shard rotation)
+  table_to_stacked_table_offset: Dict[str, Tuple[str, int, int]] = _fielddict()
+
+  # Indexed by feature_path the key of flat_features:
+  feature_to_sample_offset: Dict[str, int] = _fielddict()
 
 
 @saveable_compat.legacy_saveable_name("")
@@ -262,16 +307,165 @@ PartitionedCsrFormatTensor = collections.namedtuple(
 )
 
 
+def _stack_tables_with_same_table_dim_and_optimizer(
+    table_config: Sequence[TableConfig],
+    flat_features: Sequence[Tuple[Any, FeatureConfig]],
+    num_partitions: int,
+    num_sc_per_partition: int,
+    sparse_core_embedding_config: Optional[SparseCoreEmbeddingConfig] = None,
+) -> TableStacking:
+  """Stack tables with the same table dim and optimizer."""
+  logging.info("Number of tables before stacking is %d", len(table_config))
+  disable_table_stacking = False
+  if sparse_core_embedding_config:
+    disable_table_stacking = sparse_core_embedding_config.disable_table_stacking
+
+  if disable_table_stacking:
+    logging.warn("Table stacking is disabled.")
+
+  s = TableStacking()
+  # Round the table sizes to be divisible by the number of SCs.
+  num_shards = num_partitions * num_sc_per_partition * 8
+
+  s.table_to_padding_columns = {}
+  s.table_to_padding_rows = {}
+
+  for table in table_config:
+    extra_rows = (
+        num_shards - (table.vocabulary_size % num_shards)
+    ) % num_shards
+    extra_cols = (8 - (table.dim % 8)) % 8
+    if extra_rows != 0:
+      if table.vocabulary_size < num_shards:
+        logging.warning(
+            "!!! Adding %d extra rows to a small table %s!!! Table had"
+            " %d rows before padding and %d rows after padding.",
+            extra_rows,
+            table.name,
+            table.vocabulary_size,
+            table.vocabulary_size + extra_rows,
+        )
+      else:
+        logging.warning(
+            "Adding %d extra rows to table %s to get %d rows.",
+            extra_rows,
+            table.name,
+            table.vocabulary_size + extra_rows,
+        )
+    if extra_cols != 0:
+      logging.warning(
+          "Adding %d extra columns to table %s to get %d columns.",
+          extra_cols,
+          table.name,
+          table.dim + extra_cols,
+      )
+    s.table_to_padding_columns[table.name] = extra_cols
+    s.table_to_padding_rows[table.name] = extra_rows
+    table.vocabulary_size += extra_rows
+    table.dim += extra_cols
+
+  table_names = []
+  table_widths = []
+  table_heights = []
+  table_num_samples = []
+  table_groups = []
+
+  table_data_to_group = {}
+  table_to_num_samples = {table.name: 0 for table in table_config}
+  table_name_to_table = {}
+  for _, feature in flat_features:
+    table_to_num_samples[feature.table.name] += functools.reduce(
+        operator.mul, feature.output_shape
+    )
+
+  for table in table_config:
+    table_name_to_table[table.name] = table
+    key = (
+        table.dim,
+        table.optimizer,
+        repr(table.quantization_config) if table.quantization_config else None,
+    )
+    if key not in table_data_to_group:
+      table_data_to_group[key] = len(table_data_to_group)
+    table_groups.append(table_data_to_group[key])
+    table_names.append(table.name)
+    table_widths.append(table.dim)
+    table_heights.append(table.vocabulary_size)
+    table_num_samples.append(table_to_num_samples[table.name])
+
+  table_stacks_by_name = _pywrap_tpu_embedding.stack_tables(
+      table_heights,
+      table_widths,
+      table_num_samples,
+      table_groups,
+      table_names,
+      num_partitions,
+  )
+
+  table_stacks = [
+      [table_name_to_table[table_name] for table_name in stack_by_name]
+      for stack_by_name in table_stacks_by_name
+  ]
+
+  # Store the mapping between stacked table names to the actual tableConfigs.
+  s.stacked_table_to_tables = {}
+  # Store the mapping between table to name of the stacked table which
+  # contains the table and its offset.
+  s.table_to_stacked_table_offset = {}
+  # Save Quantization Config per stacked tables
+  s.quantization_configs = {}
+  for tables in table_stacks:
+    stacked_table_name = "_".join(map(lambda table: table.name, tables))
+    if stacked_table_name in s.stacked_table_to_tables:
+      raise ValueError(f"{stacked_table_name} already exists!")
+    s.stacked_table_to_tables[stacked_table_name] = tables
+    s.quantization_configs[stacked_table_name] = tables[0].quantization_config
+
+    current_offset = 0
+    current_index = 0
+    for table in tables:
+      s.table_to_stacked_table_offset[table.name] = (
+          stacked_table_name,
+          current_offset,
+          num_sc_per_partition * current_index,
+      )
+      current_offset += table.vocabulary_size
+      current_index += 1
+
+  logging.info(
+      "Number of tables after stacking is %d.",
+      len(s.stacked_table_to_tables),
+  )
+
+  s.feature_to_sample_offset = {}
+  s.table_to_sample_count = {
+      table_name: 0 for table_name in s.stacked_table_to_tables
+  }
+  for feature_path, feature in flat_features:
+    stacked_table_name = s.table_to_stacked_table_offset[feature.table.name][0]
+    s.feature_to_sample_offset[feature_path] = s.table_to_sample_count[
+        stacked_table_name
+    ]
+    s.table_to_sample_count[stacked_table_name] += functools.reduce(
+        operator.mul, feature.output_shape
+    )
+  return s
+
+
 # TODO(b/233952762): Add tests of this version of the mid-level API.
 @tf_export("tpu.experimental.embedding.TPUEmbeddingV2")
 class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
   """The TPUEmbedding mid level API running on TPU with sparse core accelerator."""
+
+  DEFAULT_MAX_IDS_PER_TABLE = 256
+  DEFAULT_MAX_UNIQUE_IDS_PER_TABLE = 256
 
   def __init__(
       self,
       feature_config: Union[tpu_embedding_v2_utils.FeatureConfig, Iterable],  # pylint:disable=g-bare-generic
       optimizer: Optional[tpu_embedding_v2_utils._Optimizer] = None,  # pylint:disable=protected-access
       pipeline_execution_with_tensor_core: bool = False,
+      sparse_core_embedding_config: Optional[SparseCoreEmbeddingConfig] = None,
   ):
     """Creates the TPUEmbeddingV2 mid level API object.
 
@@ -287,6 +481,8 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       pipeline_execution_with_tensor_core: If True, the TPU embedding
         computations will overlap with the TensorCore computations (and hence
         will be one step old). Set to True for improved performance.
+      sparse_core_embedding_config: Configs for sparse core embedding including
+        settings for table stacking, input feature static buffer size etc.
 
     Raises:
       ValueError: If optimizer is not one of tf.tpu.experimental.embedding.(SGD,
@@ -326,16 +522,87 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
         self._feature_config
     )
 
-    self._round_table_sizes()
-    self._stack_tables_with_same_table_dim_and_optimizer()
+    if sparse_core_embedding_config is None:
+      self._sparse_core_embedding_config = SparseCoreEmbeddingConfig()
+      logging.warning(
+          "SparseCoreEmbeddingConfig is not provided. Using default values %s",
+          self._sparse_core_embedding_config,
+      )
+    else:
+      self._sparse_core_embedding_config = sparse_core_embedding_config
+
+    self._s = _stack_tables_with_same_table_dim_and_optimizer(
+        self._table_config,
+        self._flat_features,
+        self._strategy.num_replicas_in_sync,
+        self._num_sc_per_chip,
+        self._sparse_core_embedding_config,
+    )
+
+    self._table_name_to_table = self._s.table_name_to_table
+    self._stacked_table_to_tables = self._s.stacked_table_to_tables
+    self._table_to_padding_columns = self._s.table_to_padding_columns
+    self._table_to_padding_rows = self._s.table_to_padding_rows
+    self._table_to_stacked_table_offset = self._s.table_to_stacked_table_offset
+    self._table_to_sample_count = self._s.table_to_sample_count
+    self._feature_to_sample_offset = self._s.feature_to_sample_offset
+    self._quantization_configs = self._s.quantization_configs
 
     # These hyperparameters will be provided by the FDO. Currently hardcode
     # here just for testing.
-    # TODO(pineapplejuice233): Remove these hyperparameters.
-    self.max_ids_per_chip_per_sample = 64
+    self.max_ids_per_chip_per_sample = (
+        self._sparse_core_embedding_config.max_ids_per_chip_per_sample
+    )
     self.max_minibatches_per_sc = 64
 
+    self._table_to_max_ids_per_sparse_core = {}
+    self._table_to_max_unique_ids_per_sparse_core = {}
+
+    self._update_sparse_core_buffer_size_after_table_stacking()
+
     self._pipelining = pipeline_execution_with_tensor_core
+
+  def _update_sparse_core_buffer_size_after_table_stacking(self):
+    """Update the sparse core buffer size after table stacking."""
+    for table_name in self._stacked_table_to_tables:
+      if (
+          self._sparse_core_embedding_config.max_ids_per_table is None
+          or table_name
+          not in self._sparse_core_embedding_config.max_ids_per_table
+      ):
+        logging.warning(
+            "Table %s is not found in max_ids_per_table provided by"
+            " SparseCoreEmbeddingConfig. Using default value 256.",
+            table_name,
+        )
+        self._table_to_max_ids_per_sparse_core[table_name] = (
+            self.DEFAULT_MAX_IDS_PER_TABLE
+        )
+      else:
+        self._table_to_max_ids_per_sparse_core[table_name] = (
+            self._sparse_core_embedding_config.max_ids_per_table[table_name]
+        )
+      if (
+          self._sparse_core_embedding_config.max_unique_ids_per_table is None
+          or table_name
+          not in self._sparse_core_embedding_config.max_unique_ids_per_table
+      ):
+        logging.warning(
+            (
+                "Table %s is not found in max_unique_ids_per_table provided by"
+                " SparseCoreEmbeddingConfig. Using default value 256."
+            ),
+            table_name,
+        )
+        self._table_to_max_unique_ids_per_sparse_core[table_name] = (
+            self.DEFAULT_MAX_UNIQUE_IDS_PER_TABLE
+        )
+      else:
+        self._table_to_max_unique_ids_per_sparse_core[table_name] = (
+            self._sparse_core_embedding_config.max_unique_ids_per_table[
+                table_name
+            ]
+        )
 
   def _clone_feature_config(self, feature_config):
     old_to_new_table = {}
@@ -349,47 +616,6 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       new_features.append(feature)
 
     return nest.pack_sequence_as(feature_config, new_features)
-
-  def _round_table_sizes(self):
-    num_shards = self._num_sc_shards * 8
-
-    self._table_to_padding_columns = {}
-    self._table_to_padding_rows = {}
-
-    for table in self._table_config:
-      extra_rows = (
-          num_shards - (table.vocabulary_size % num_shards)
-      ) % num_shards
-      extra_cols = (8 - (table.dim % 8)) % 8
-      if extra_rows != 0:
-        if table.vocabulary_size < num_shards:
-          logging.warning(
-              "!!! Adding %d extra rows to a small table %s!!! Table had"
-              " %d rows before padding and %d rows after padding.",
-              extra_rows,
-              table.name,
-              table.vocabulary_size,
-              table.vocabulary_size + extra_rows,
-          )
-        else:
-          logging.warning(
-              "Adding %d extra rows to table %s to get %d rows.",
-              extra_rows,
-              table.name,
-              table.vocabulary_size + extra_rows,
-          )
-      if extra_cols != 0:
-        logging.warning(
-            "Adding %d extra columns to table %s to get %d columns.",
-            extra_cols,
-            table.name,
-            table.dim + extra_cols,
-        )
-      self._table_to_padding_columns[table.name] = extra_cols
-      self._table_to_padding_rows[table.name] = extra_rows
-      table.vocabulary_size += extra_rows
-      table.dim += extra_cols
-    return
 
   @property
   def embedding_tables(
@@ -565,104 +791,6 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     slot_vars["parameters"] = parameters
     return slot_vars
 
-  def _stack_tables_with_same_table_dim_and_optimizer(self):
-    """Stack tables with the same table dim and optimizer."""
-    logging.info(
-        "Number of tables before stacking is %d", len(self._table_config)
-    )
-
-    table_names = []
-    table_widths = []
-    table_heights = []
-    table_num_samples = []
-    table_groups = []
-
-    table_data_to_group = {}
-    table_to_num_samples = {table.name: 0 for table in self._table_config}
-    table_name_to_table = {}
-    for _, feature in self._flat_features:
-      table_to_num_samples[feature.table.name] += functools.reduce(
-          operator.mul, feature.output_shape
-      )
-
-    for table in self._table_config:
-      table_name_to_table[table.name] = table
-      key = (
-          table.dim,
-          table.optimizer,
-          repr(table.quantization_config)
-          if table.quantization_config
-          else None,
-      )
-      if key not in table_data_to_group:
-        table_data_to_group[key] = len(table_data_to_group)
-      table_groups.append(table_data_to_group[key])
-      table_names.append(table.name)
-      table_widths.append(table.dim)
-      table_heights.append(table.vocabulary_size)
-      table_num_samples.append(table_to_num_samples[table.name])
-
-    table_stacks_by_name = _pywrap_tpu_embedding.stack_tables(
-        table_heights,
-        table_widths,
-        table_num_samples,
-        table_groups,
-        table_names,
-        self._strategy.num_replicas_in_sync,
-    )
-
-    table_stacks = [
-        [table_name_to_table[table_name] for table_name in stack_by_name]
-        for stack_by_name in table_stacks_by_name
-    ]
-
-    # Store the mapping between stacked table names to the actual tableConfigs.
-    self._stacked_table_to_tables = {}
-    # Store the mapping between table to name of the stacked table which
-    # contains the table and its offset.
-    self._table_to_stacked_table_offset = {}
-    # Save Quantization Config per stacked tables
-    self._quantization_configs = {}
-    for tables in table_stacks:
-      stacked_table_name = "_".join(map(lambda table: table.name, tables))
-      if stacked_table_name in self._stacked_table_to_tables:
-        raise ValueError(f"{stacked_table_name} already exists!")
-      self._stacked_table_to_tables[stacked_table_name] = tables
-      self._quantization_configs[stacked_table_name] = tables[
-          0
-      ].quantization_config
-
-      current_offset = 0
-      current_index = 0
-      for table in tables:
-        self._table_to_stacked_table_offset[table.name] = (
-            stacked_table_name,
-            current_offset,
-            self._num_sc_per_chip * current_index,
-        )
-        current_offset += table.vocabulary_size
-        current_index += 1
-
-    logging.info(
-        "Number of tables after stacking is %d.",
-        len(self._stacked_table_to_tables),
-    )
-
-    self._feature_to_sample_offset = {}
-    self._table_to_sample_count = {
-        table_name: 0 for table_name in self._stacked_table_to_tables
-    }
-    for feature_path, feature in self._flat_features:
-      stacked_table_name = self._table_to_stacked_table_offset[
-          feature.table.name
-      ][0]
-      self._feature_to_sample_offset[feature_path] = (
-          self._table_to_sample_count[stacked_table_name]
-      )
-      self._table_to_sample_count[stacked_table_name] += functools.reduce(
-          operator.mul, feature.output_shape
-      )
-
   def _create_variables_and_slots(
       self,
   ) -> Dict[str, Dict[str, tf_variables.Variable]]:
@@ -760,7 +888,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       table = self.variables[table_name]["parameters"]
       optimizer = self._stacked_table_to_tables[table_name][0].optimizer
       if isinstance(optimizer, tpu_embedding_v2_utils.SGD):
-        updated_embedding_table = xla_ops.xla_sparse_dense_matmul_grad_with_sgd_and_csr_input(
+        updated_embedding_table = xla_ops.xla_sparse_dense_matmul_grad_with_sgd_and_static_buffer_size(
             row_pointers=partitioned_tensor.row_pointers,
             sorted_sample_ids=partitioned_tensor.sorted_sample_ids,
             sorted_token_ids=partitioned_tensor.sorted_token_ids,
@@ -769,13 +897,19 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
             learning_rate=_wrap_param(optimizer.learning_rate),
             embedding_table=table.read_value(),
             num_minibatches_per_physical_sparse_core=num_minibatches_per_physical_sparse_core,
+            max_ids_per_sparse_core=self._table_to_max_ids_per_sparse_core[
+                table_name
+            ],
+            max_unique_ids_per_sparse_core=self._table_to_max_unique_ids_per_sparse_core[
+                table_name
+            ],
             table_name=table_name,
         )
         table.assign(updated_embedding_table)
       elif isinstance(optimizer, tpu_embedding_v2_utils.Adagrad):
         accumulators = self.variables[table_name]["accumulators"]
         updated_embedding_table, updated_accumulator = (
-            xla_ops.xla_sparse_dense_matmul_grad_with_adagrad_and_csr_input(
+            xla_ops.xla_sparse_dense_matmul_grad_with_adagrad_and_static_buffer_size(
                 row_pointers=partitioned_tensor.row_pointers,
                 sorted_sample_ids=partitioned_tensor.sorted_sample_ids,
                 sorted_token_ids=partitioned_tensor.sorted_token_ids,
@@ -785,6 +919,12 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
                 embedding_table=table.read_value(),
                 accumulator=accumulators.read_value(),
                 num_minibatches_per_physical_sparse_core=num_minibatches_per_physical_sparse_core,
+                max_ids_per_sparse_core=self._table_to_max_ids_per_sparse_core[
+                    table_name
+                ],
+                max_unique_ids_per_sparse_core=self._table_to_max_unique_ids_per_sparse_core[
+                    table_name
+                ],
                 table_name=table_name,
             )
         )
@@ -794,7 +934,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
         accumulators = self.variables[table_name]["accumulators"]
         momenta = self.variables[table_name]["momenta"]
         updated_embedding_table, updated_accumulator, updated_momenta = (
-            xla_ops.xla_sparse_dense_matmul_grad_with_adagrad_momentum_and_csr_input(
+            xla_ops.xla_sparse_dense_matmul_grad_with_adagrad_momentum_and_static_buffer_size(
                 row_pointers=partitioned_tensor.row_pointers,
                 sorted_sample_ids=partitioned_tensor.sorted_sample_ids,
                 sorted_token_ids=partitioned_tensor.sorted_token_ids,
@@ -810,6 +950,12 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
                 beta1=optimizer.momentum,
                 beta2=optimizer.beta2,
                 epsilon=optimizer.epsilon,
+                max_ids_per_sparse_core=self._table_to_max_ids_per_sparse_core[
+                    table_name
+                ],
+                max_unique_ids_per_sparse_core=self._table_to_max_unique_ids_per_sparse_core[
+                    table_name
+                ],
                 table_name=table_name,
             )
         )
@@ -820,7 +966,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
         momenta = self.variables[table_name]["momenta"]
         velocity = self.variables[table_name]["velocities"]
         updated_embedding_table, updated_momenta, updated_velocity = (
-            xla_ops.xla_sparse_dense_matmul_grad_with_adam_and_csr_input(
+            xla_ops.xla_sparse_dense_matmul_grad_with_adam_and_static_buffer_size(
                 row_pointers=partitioned_tensor.row_pointers,
                 sorted_sample_ids=partitioned_tensor.sorted_sample_ids,
                 sorted_token_ids=partitioned_tensor.sorted_token_ids,
@@ -835,6 +981,12 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
                 beta1=optimizer.beta_1,
                 beta2=optimizer.beta_2,
                 epsilon=optimizer.epsilon,
+                max_ids_per_sparse_core=self._table_to_max_ids_per_sparse_core[
+                    table_name
+                ],
+                max_unique_ids_per_sparse_core=self._table_to_max_unique_ids_per_sparse_core[
+                    table_name
+                ],
                 table_name=table_name,
             )
         )
@@ -845,7 +997,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
         accumulators = self.variables[table_name]["accumulators"]
         linears = self.variables[table_name]["linears"]
         (updated_table_tensor, updated_accum_tensor, updated_linear_tensor) = (
-            xla_ops.xla_sparse_dense_matmul_grad_with_ftrl_and_csr_input(
+            xla_ops.xla_sparse_dense_matmul_grad_with_ftrl_and_static_buffer_size(
                 row_pointers=partitioned_tensor.row_pointers,
                 sorted_sample_ids=partitioned_tensor.sorted_sample_ids,
                 sorted_token_ids=partitioned_tensor.sorted_token_ids,
@@ -861,6 +1013,12 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
                 learning_rate_power=optimizer.learning_rate_power,
                 l1_regularization_strength=optimizer.l1_regularization_strength,
                 l2_regularization_strength=optimizer.l2_regularization_strength,
+                max_ids_per_sparse_core=self._table_to_max_ids_per_sparse_core[
+                    table_name
+                ],
+                max_unique_ids_per_sparse_core=self._table_to_max_unique_ids_per_sparse_core[
+                    table_name
+                ],
                 table_name=table_name,
             )
         )
@@ -872,335 +1030,11 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
 
     context.Exit()
 
-  def _stack_gradients(self, gradients):
-    """Stack the incoming gradients to per table gradients."""
-
-    # Gradients are stacked in a particular order. That order is the order
-    # features appear in the self._flat_features.
-    table_to_gradient_list = {
-        table_name: [] for table_name in self._stacked_table_to_tables
-    }
-    flattend_gradients = nest.flatten(gradients)
-    for gradient, (path, feature) in zip(
-        flattend_gradients, self._flat_features
-    ):
-      sample_count = functools.reduce(operator.mul, feature.output_shape)
-      if gradient is not None and not isinstance(gradient, tensor.Tensor):
-        raise ValueError(
-            f"found non-tensor type: {type(gradient)} at path {path}."
-        )
-      if gradient is None:
-        # TODO(bfontain): In the case that an entire table's gradient is gone
-        # then maybe we can just omit the update all together?
-        logging.warning(
-            (
-                "No gradient passed for feature %s, sending zero "
-                "gradient. This may not be correct behavior for certain "
-                "optimizers like Adam."
-            ),
-            path,
-        )
-        gradient = array_ops.zeros(
-            (sample_count, feature.table.dim), dtype=dtypes.float32
-        )
-      table_name = self._table_to_stacked_table_offset[feature.table.name][0]
-      extra_cols = self._table_to_padding_columns[feature.table.name]
-      gradient = array_ops.reshape(
-          gradient, [-1, feature.table.dim - extra_cols]
-      )
-      if extra_cols != 0:
-        gradient = array_ops.pad(gradient, [[0, 0], [0, extra_cols]])
-        # Ensure static shape after padding.
-        gradient.set_shape([sample_count, feature.table.dim])
-      table_to_gradient_list[table_name].append(gradient)
-
-    return {
-        table_name: array_ops.concat(table_to_gradient_list[table_name], axis=0)
-        for table_name in table_to_gradient_list
-    }
-
-  def _unstack_activations(self, activations: Dict[str, tensor.Tensor]):
-    """Untack the incoming per table activations into per feature."""
-
-    # Activations are stacked in a particular order. That order is the order
-    # features appear in the self._flat_features.
-
-    flattened_activations = []
-    table_to_current_offset = {
-        table_name: 0 for table_name in self._stacked_table_to_tables
-    }
-    for _, feature in self._flat_features:
-      sample_count = functools.reduce(operator.mul, feature.output_shape)
-      table_name = self._table_to_stacked_table_offset[feature.table.name][0]
-      extra_cols = self._table_to_padding_columns[feature.table.name]
-      activation = array_ops.slice(
-          activations[table_name],
-          [table_to_current_offset[table_name], 0],
-          [sample_count, feature.table.dim - extra_cols],
-      )
-
-      # Reshape to follow the user's requested output shape.
-      activation = array_ops.reshape(
-          activation,
-          list(feature.output_shape) + [feature.table.dim - extra_cols],
-      )
-      flattened_activations.append(activation)
-      table_to_current_offset[table_name] += sample_count
-
-    return nest.pack_sequence_as(self._feature_config, flattened_activations)
-
   def __call__(
       self, features: Any, weights: Optional[Any] = None
   ) -> Tuple[Any, Dict[str, PartitionedCsrFormatTensor]]:
     """Call the mid level api to do embedding lookup."""
     return self.embedding_lookup(features, weights)
-
-  @staticmethod
-  def _convert_input_feature_to_coo(
-      input_feature: Union[
-          tensor.Tensor, sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor
-      ],
-      weight: Optional[tensor.Tensor],
-      feature_config: tpu_embedding_v2_utils.FeatureConfig,
-      row_offset: int,
-      col_offset: int,
-      col_shift: int,
-      vocab_size: int,
-      num_sc_shards: int,
-  ) -> Any:
-    """Convert any of the expected input types to a COO format."""
-    sample_count = functools.reduce(operator.mul, feature_config.output_shape)
-    if isinstance(input_feature, tensor.Tensor):
-      input_feature = array_ops.reshape(input_feature, [-1])
-      if weight is None:
-        weight = array_ops.ones_like(input_feature, dtype=dtypes.float32)
-      elif isinstance(weight, tensor.Tensor):
-        weight = array_ops.reshape(weight, [-1])
-      else:
-        raise ValueError(
-            f"Expect weight to be Tensor type but got {type(weight)}"
-        )
-      row_ids, col_ids, gains = xla_ops.convert_to_coo_tensor(
-          indices_or_row_splits=array_ops.zeros((0,), dtype=dtypes.int32),
-          values=math_ops.cast(input_feature, dtype=dtypes.int32),
-          weights=math_ops.cast(weight, dtypes.float32),
-          sample_count=sample_count,
-          combiner=feature_config.table.combiner,
-      )
-    elif isinstance(input_feature, sparse_tensor.SparseTensor):
-      if weight is None:
-        weight = array_ops.ones_like(input_feature.values, dtype=dtypes.float32)
-      elif isinstance(weight, sparse_tensor.SparseTensor):
-        weight = weight.values
-      else:
-        raise ValueError(
-            f"Expect weight to be SparseTensor type but got {type(weight)}"
-        )
-      row_ids, col_ids, gains = xla_ops.convert_to_coo_tensor(
-          indices_or_row_splits=math_ops.cast(
-              input_feature.indices, dtype=dtypes.int32
-          ),
-          values=math_ops.cast(input_feature.values, dtype=dtypes.int32),
-          weights=math_ops.cast(weight, dtypes.float32),
-          sample_count=sample_count,
-          combiner=feature_config.table.combiner,
-      )
-    elif isinstance(input_feature, ragged_tensor.RaggedTensor):
-      if not weight:
-        weight = array_ops.ones_like(input_feature.values, dtype=dtypes.float32)
-      elif isinstance(weight, ragged_tensor.RaggedTensor):
-        weight = weight.values
-      else:
-        raise ValueError(
-            f"Expect weight to be RaggedTensor type but got {type(weight)}"
-        )
-      row_ids, col_ids, gains = xla_ops.convert_to_coo_tensor(
-          indices_or_row_splits=math_ops.cast(
-              input_feature.row_splits, dtype=dtypes.int32
-          ),
-          values=math_ops.cast(input_feature.values, dtype=dtypes.int32),
-          weights=math_ops.cast(weight, dtypes.float32),
-          sample_count=sample_count,
-          combiner=feature_config.table.combiner,
-      )
-    else:
-      raise ValueError(
-          f"Input of unknown type {type(input_feature)}. Please only pass "
-          "Tensor, SparseTensor or RaggedTensor as input to embedding "
-          "lookup."
-      )
-    return (
-        row_ids + row_offset,
-        (
-            (col_ids + col_shift) % num_sc_shards
-            + (col_ids // num_sc_shards * num_sc_shards)
-            + col_offset
-        ),
-        gains,
-    )
-
-  @staticmethod
-  def _preprocess_inputs_and_weights_to_coo_tensor(
-      flat_inputs: Any,
-      flat_weights: Any,
-      flat_features: Any,
-      stacked_table_to_tables: Dict[str, Any],
-      table_to_stacked_table_offset: Dict[str, Tuple[str, int, int]],
-      feature_to_sample_offset: Dict[str, int],
-      num_sc_shards: int,
-  ) -> Dict[str, Any]:
-    """Convert the raw inputs into coo tensor."""
-    table_to_list_of_coos = {
-        table_name: ([], [], []) for table_name in stacked_table_to_tables
-    }
-    for inp, weight, (feature_path, feature) in zip(
-        flat_inputs, flat_weights, flat_features
-    ):
-      table_name, col_offset, col_shift = table_to_stacked_table_offset[
-          feature.table.name
-      ]
-      row_offset = feature_to_sample_offset[feature_path]
-      # Consider making this into one op per table rather than per feature?
-      row_ids, col_ids, gains = TPUEmbeddingV2._convert_input_feature_to_coo(
-          inp,
-          weight,
-          feature,
-          row_offset,
-          col_offset,
-          col_shift,
-          feature.table.vocabulary_size,
-          num_sc_shards,
-      )
-      table_to_list_of_coos[table_name][0].append(row_ids)
-      table_to_list_of_coos[table_name][1].append(col_ids)
-      table_to_list_of_coos[table_name][2].append(gains)
-
-    return table_to_list_of_coos
-
-  @staticmethod
-  def _get_minibatch_splits_from_coo_tensor(
-      num_replicas_in_sync: int,
-      table_to_list_of_coos: Dict[str, Any],
-      stacked_table_to_tables: Dict[str, Any],
-      table_to_sample_count: Dict[str, int],
-      num_sc_per_chip: int,
-  ) -> Tuple[Dict[str, Any], List[tensor.Tensor]]:
-    """Compute minibatch splits from the coo tensor."""
-    table_to_sorted_coo_tensor = {}
-    per_replica_table_splits = []
-    for table_name in stacked_table_to_tables:
-      row_ids = array_ops.concat(table_to_list_of_coos[table_name][0], axis=0)
-      col_ids = array_ops.concat(table_to_list_of_coos[table_name][1], axis=0)
-      gains = array_ops.concat(table_to_list_of_coos[table_name][2], axis=0)
-
-      # Feature width are the same across stacked tables.
-      feature_width = stacked_table_to_tables[table_name][0].dim
-
-      total_vocab_size = sum(
-          [
-              table.vocabulary_size
-              for table in stacked_table_to_tables[table_name]
-          ]
-      )
-
-      (
-          sorted_row_ids,
-          sorted_col_ids,
-          sorted_gains,
-          splits,
-          id_counts,
-          unused_max_ids,
-          unused_max_uniques,
-      ) = xla_ops.get_minibatch_splits_with_physical_replica(
-          program_key=constant_op.constant([""]),
-          row_ids=row_ids,
-          col_ids=col_ids,
-          gains=gains,
-          sample_count=table_to_sample_count[table_name],
-          num_replica=num_replicas_in_sync,
-          table_vocab_size=total_vocab_size,
-          feature_width=feature_width,
-          num_sc_per_chip=num_sc_per_chip,
-          table_name=table_name,
-          mini_batch_splits="",
-      )
-
-      table_to_sorted_coo_tensor[table_name] = (
-          sorted_row_ids,
-          sorted_col_ids,
-          sorted_gains,
-          id_counts,
-      )
-
-      per_replica_table_splits.append(splits)
-
-    return (table_to_sorted_coo_tensor, per_replica_table_splits)
-
-  @staticmethod
-  def _get_minibatches_from_sorted_coo_tensor(
-      num_replicas_in_sync: int,
-      max_ids_per_chip_per_sample: int,
-      max_minibatches_per_sc: int,
-      table_to_sorted_coo_tensor: Dict[str, Any],
-      cross_replica_table_splits: tensor.Tensor,
-      stacked_table_to_tables: Dict[str, Any],
-      table_to_sample_count: Dict[str, int],
-      num_sc_per_chip: int,
-  ) -> Any:
-    """Partition the sorted coo tensor into minibatches."""
-    table_to_csr_format_tensor = {}
-    for table_name in stacked_table_to_tables:
-      sorted_row_ids, sorted_col_ids, sorted_gains, id_counts = (
-          table_to_sorted_coo_tensor[table_name]
-      )
-
-      # Feature width are the same across stacked tables.
-      feature_width = stacked_table_to_tables[table_name][0].dim
-
-      total_vocab_size = sum(
-          [
-              table.vocabulary_size
-              for table in stacked_table_to_tables[table_name]
-          ]
-      )
-      (
-          row_pointers,
-          sorted_sample_ids,
-          sorted_token_ids,
-          sorted_gains,
-          row_pointers_unpadded_size,
-          ids_unpadded_size,
-          num_minibatches_per_physical_sparse_core,
-      ) = xla_ops.get_minibatches_in_csr_with_physical_replica(
-          program_key=constant_op.constant([""]),
-          row_ids=sorted_row_ids,
-          col_ids=sorted_col_ids,
-          gains=sorted_gains,
-          splits=cross_replica_table_splits,
-          id_counts=id_counts,
-          sample_count=table_to_sample_count[table_name],
-          num_replica=num_replicas_in_sync,
-          max_minibatches_per_sc=max_minibatches_per_sc,
-          max_ids_per_chip_per_sample=max_ids_per_chip_per_sample,
-          table_vocab_size=total_vocab_size,
-          feature_width=feature_width,
-          num_sc_per_chip=num_sc_per_chip,
-          table_name=table_name,
-          mini_batch_in_csr="",
-      )
-      table_to_csr_format_tensor[table_name] = (
-          PartitionedCsrFormatTensor(
-              row_pointers=row_pointers,
-              sorted_sample_ids=sorted_sample_ids,
-              sorted_token_ids=sorted_token_ids,
-              sorted_gains=sorted_gains,
-              sample_count=table_to_sample_count[table_name],
-              num_minibatches_per_physical_sparse_core=num_minibatches_per_physical_sparse_core,
-          ),
-          row_pointers_unpadded_size,
-          ids_unpadded_size,
-      )
-    return table_to_csr_format_tensor
 
   # TODO(pineapplejuice233): Duplicated helper function from tpu_embedding_v2.py. Remove
   # this once this file is open souced.
@@ -1232,70 +1066,102 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       )
     return in_tpu_ctx
 
-  @staticmethod
-  def preprocess_features(
-      num_replicas_in_sync: int,
-      max_ids_per_chip_per_sample: int,
-      max_minibatches_per_sc: int,
-      num_sc_per_chip: int,
-      num_sc_shards: int,
-      stacked_table_to_tables: Dict[str, Any],
-      table_to_stacked_table_offset: Dict[str, Tuple[str, int, int]],
-      table_to_sample_count: Dict[str, int],
-      feature_to_sample_offset: Dict[str, int],
-      flat_features: Any,
-      flat_inputs: Any,
-      flat_weights: Optional[Any] = None,
-  ) -> Any:
-    """Function to preprocess features."""
-    # Preprocess the inputs into COO tensor.
+  @classmethod
+  def compute_sparse_core_stats(
+      cls,
+      features: Any,
+      feature_config: Union[FeatureConfig, Iterable],  # pylint:disable=g-bare-generic
+      num_tpu_chips: int,
+      num_sc_per_chip: int = 4,
+      optimizer: Optional[tpu_embedding_v2_utils._Optimizer] = None,  # pylint:disable=protected-access
+      sparse_core_embedding_config: Optional[SparseCoreEmbeddingConfig] = None,
+  ) -> Tuple[Any, Any]:
+    """Computes the max_ids/unique ids settings from the input features."""
+
+    table_config = []
+    for feature in nest.flatten(feature_config):
+      table_config.append(feature.table)
+
+    for table in table_config:
+      if table.optimizer is None:
+        table.optimizer = optimizer
+
+    flat_features = nest.flatten_with_joined_string_paths(feature_config)
+
+    s = _stack_tables_with_same_table_dim_and_optimizer(
+        table_config,
+        flat_features,
+        num_tpu_chips,
+        num_sc_per_chip,
+        sparse_core_embedding_config,
+    )
+
+    flat_inputs = nest.flatten(features)
+
+    # First process them to be COO tensors.
     table_to_list_of_coos = (
-        TPUEmbeddingV2._preprocess_inputs_and_weights_to_coo_tensor(
-            flat_inputs,
-            flat_weights,
-            flat_features,
-            stacked_table_to_tables,
-            table_to_stacked_table_offset,
-            feature_to_sample_offset,
-            num_sc_shards,
+        TPUEmbeddingV2._preprocess_inputs_and_weights_to_list_of_coo_tensors(
+            flat_inputs=flat_inputs,
+            flat_weights=[None] * len(flat_inputs),
+            flat_features=flat_features,
+            stacked_table_to_tables=s.stacked_table_to_tables,
+            table_to_stacked_table_offset=s.table_to_stacked_table_offset,
+            feature_to_sample_offset=s.feature_to_sample_offset,
+            num_sc_per_chip=num_sc_per_chip,
+            stacked_table_to_sample_count=s.table_to_sample_count,
+            num_sc_shards=num_sc_per_chip * num_tpu_chips,
         )
     )
 
-    # Get minibatch splits from the COO tensor.
-    table_to_sorted_coo_tensor, per_replica_table_splits = (
-        TPUEmbeddingV2._get_minibatch_splits_from_coo_tensor(
-            num_replicas_in_sync,
-            table_to_list_of_coos,
-            stacked_table_to_tables,
-            table_to_sample_count,
-            num_sc_per_chip,
+    table_to_max_ids_per_sparse_core = {
+        table_name: 0 for table_name in s.stacked_table_to_tables
+    }
+    table_to_max_unique_ids_per_sparse_core = {
+        table_name: 0 for table_name in s.stacked_table_to_tables
+    }
+
+    for table_name in s.stacked_table_to_tables:
+      feature_width = s.stacked_table_to_tables[table_name][0].dim
+
+      total_vocab_size = sum([
+          table.vocabulary_size
+          for table in s.stacked_table_to_tables[table_name]
+      ])
+      for i in range(num_sc_per_chip):
+        row_ids_list = table_to_list_of_coos[table_name][0][i]
+        col_ids_list = table_to_list_of_coos[table_name][1][i]
+        gains_list = table_to_list_of_coos[table_name][2][i]
+        sample_count_list = table_to_list_of_coos[table_name][3]
+        col_offset_list = table_to_list_of_coos[table_name][4]
+
+        (
+            max_ids_per_sparse_core,
+            max_unique_ids_per_sparse_core,
+        ) = xla_ops.get_stats_from_list_of_sparse_core_coo_tensors(
+            row_ids_list=row_ids_list,
+            col_ids_list=col_ids_list,
+            gains_list=gains_list,
+            sample_count_list=sample_count_list,
+            col_offset_list=col_offset_list,
+            num_replica=num_tpu_chips,
+            table_vocab_size=total_vocab_size,
+            feature_width=feature_width,
+            num_sc_per_chip=num_sc_per_chip,
+            table_name=table_name,
         )
-    )
 
-    # Collective all gather across replicas to get final splits.
-    cross_replica_table_splits = gen_collective_ops.collective_gather_v2(
-        input=per_replica_table_splits,
-        group_size=num_replicas_in_sync,
-        group_key=0,
-        instance_key=math_ops.cast(xla_ops.global_iter_id(), dtypes.int32),
-        ordering_token=[],
-    )
-
-    # Use the final splits to convert COO tensors into CSR formatted tensor.
-    table_to_csr_format_tensor = (
-        TPUEmbeddingV2._get_minibatches_from_sorted_coo_tensor(
-            num_replicas_in_sync,
-            max_ids_per_chip_per_sample,
-            max_minibatches_per_sc,
-            table_to_sorted_coo_tensor,
-            cross_replica_table_splits,
-            stacked_table_to_tables,
-            table_to_sample_count,
-            num_sc_per_chip,
+        table_to_max_ids_per_sparse_core[table_name] = math_ops.maximum(
+            table_to_max_ids_per_sparse_core[table_name],
+            max_ids_per_sparse_core,
         )
+        table_to_max_unique_ids_per_sparse_core[table_name] = math_ops.maximum(
+            table_to_max_unique_ids_per_sparse_core[table_name],
+            max_unique_ids_per_sparse_core,
+        )
+    return (
+        table_to_max_ids_per_sparse_core,
+        table_to_max_unique_ids_per_sparse_core,
     )
-
-    return table_to_csr_format_tensor
 
   def enqueue(
       self,
@@ -1317,7 +1183,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     if in_tpu_context:
       # Automatically apply outside compilation if we are in tpu context.
       return tpu_replication.outside_compilation(
-          TPUEmbeddingV2.preprocess_features,
+          self._preprocess_features,
           num_replicas_in_sync=self._strategy.num_replicas_in_sync,
           max_ids_per_chip_per_sample=self.max_ids_per_chip_per_sample,
           max_minibatches_per_sc=self.max_minibatches_per_sc,
@@ -1337,7 +1203,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       tpu_devices = self._strategy.extended._tpu_devices  # pylint:disable=protected-access
 
       with ops.device(device_util.get_host_for_device(tpu_devices[0][0])):
-        return TPUEmbeddingV2.preprocess_features(
+        return self._preprocess_features(
             num_replicas_in_sync=self._strategy.num_replicas_in_sync,
             max_ids_per_chip_per_sample=self.max_ids_per_chip_per_sample,
             max_minibatches_per_sc=self.max_minibatches_per_sc,
@@ -1357,7 +1223,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
         raise ValueError("Non-TPU device {} passed to enqueue.".format(device))
 
       with ops.device(device_util.get_host_for_device(device)):
-        return TPUEmbeddingV2.preprocess_features(
+        return self._preprocess_features(
             num_replicas_in_sync=self._strategy.num_replicas_in_sync,
             max_ids_per_chip_per_sample=self.max_ids_per_chip_per_sample,
             max_minibatches_per_sc=self.max_minibatches_per_sc,
@@ -1434,8 +1300,6 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
         _PIPELINE_MODE_FORWARD, self._pipelining
     )
     context.Enter()
-    # TODO(pineapplejuice233): Add the virtual infeed dequeue here to get the tensors
-    # rather than getting them from arguments.
     partitioned_tensors = tpu_replication.outside_compilation(
         self._copy_tensors_to_device,
         partitioned_tensors=partitioned_tensors,
@@ -1458,7 +1322,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
             "Expect PartitionedCsrFormatTensor but get"
             f" {type(partitioned_tensor)}."
         )
-      activation = xla_ops.xla_sparse_dense_matmul_with_csr_input(
+      activation = xla_ops.xla_sparse_dense_matmul_with_static_buffer_size(
           row_pointers=partitioned_tensor.row_pointers,
           sorted_sample_ids=partitioned_tensor.sorted_sample_ids,
           sorted_token_ids=partitioned_tensor.sorted_token_ids,
@@ -1475,6 +1339,12 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           quantization_config_num_buckets=(
               quantization_config.num_buckets if quantization_config else 0
           ),
+          max_ids_per_sparse_core=self._table_to_max_ids_per_sparse_core[
+              table_name
+          ],
+          max_unique_ids_per_sparse_core=self._table_to_max_unique_ids_per_sparse_core[
+              table_name
+          ],
           table_name=table_name,
       )
 
@@ -1533,10 +1403,8 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
 
     return result
 
-  # TODO(pineapplejuice233): Enable these methods later if needed. Don't open source these
-  # methods as these ops are not available yet.
-  @staticmethod
-  def _experimental_preprocess_features(
+  def _preprocess_features(
+      self,
       num_replicas_in_sync: int,
       max_ids_per_chip_per_sample: int,
       max_minibatches_per_sc: int,
@@ -1552,45 +1420,30 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
   ) -> Any:
     """Function to preprocess features."""
     # Preprocess the inputs into list of COO tensor.
-    table_to_list_of_coos = TPUEmbeddingV2._experimental_preprocess_inputs_and_weights_to_list_of_coo_tensors(
-        flat_inputs,
-        flat_weights,
-        flat_features,
+    table_to_list_of_coos = (
+        TPUEmbeddingV2._preprocess_inputs_and_weights_to_list_of_coo_tensors(
+            flat_inputs,
+            flat_weights,
+            flat_features,
+            stacked_table_to_tables,
+            table_to_stacked_table_offset,
+            feature_to_sample_offset,
+            num_sc_per_chip,
+            table_to_sample_count,
+            num_sc_shards,
+        )
+    )
+
+    # Sort the COO tensors.
+    table_to_sorted_coo_tensor = self._sort_list_of_coo_tensors(
+        num_replicas_in_sync,
+        table_to_list_of_coos,
         stacked_table_to_tables,
-        table_to_stacked_table_offset,
-        feature_to_sample_offset,
         num_sc_per_chip,
-        table_to_sample_count,
-        num_sc_shards,
     )
 
-    # Sort the COO tensors and compute whether minibatching is needed.
-    table_to_sorted_coo_tensor, is_minibatching_needed_per_replica = (
-        TPUEmbeddingV2._experimental_sort_list_of_coo_tensors(
-            num_replicas_in_sync,
-            table_to_list_of_coos,
-            stacked_table_to_tables,
-            num_sc_per_chip,
-        )
-    )
-
-    # Collective all gather across replicas to determine whether minibatching
-    # is needed.
-    is_minibatching_needed_cross_replica = (
-        gen_collective_ops.collective_gather_v2(
-            input=is_minibatching_needed_per_replica,
-            group_size=num_replicas_in_sync,
-            group_key=0,
-            instance_key=math_ops.cast(xla_ops.global_iter_id(), dtypes.int32),
-            ordering_token=[],
-        )
-    )
-
-    table_to_csr_format_tensor = cond.cond(
-        math_ops.equal(
-            math_ops.reduce_sum(is_minibatching_needed_cross_replica), 0
-        ),
-        lambda: TPUEmbeddingV2._experimental_get_single_minibatch_from_sorted_coo_tensor(  # pylint: disable=g-long-lambda
+    table_to_csr_format_tensor = (
+        self._get_csr_wrapped_coo_from_sorted_coo_tensor(
             num_replicas_in_sync,
             max_ids_per_chip_per_sample,
             max_minibatches_per_sc,
@@ -1598,24 +1451,14 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
             stacked_table_to_tables,
             table_to_sample_count,
             num_sc_per_chip,
-        ),
-        lambda: TPUEmbeddingV2._experimental_get_multiple_minibatches_from_sorted_coo_tensor(  # pylint: disable=g-long-lambda
-            num_replicas_in_sync,
-            max_ids_per_chip_per_sample,
-            max_minibatches_per_sc,
-            table_to_sorted_coo_tensor,
-            stacked_table_to_tables,
-            table_to_sample_count,
-            num_sc_per_chip,
-        ),
-        strict=True,
+        )
     )
 
     return table_to_csr_format_tensor
 
-  # TODO(pineapplejuice233): Do not use it as they are experimental.
-  @staticmethod
-  def _experimental_convert_input_feature_to_list_of_coo_tensors(
+  @classmethod
+  def _convert_input_feature_to_list_of_coo_tensors(
+      cls,
       input_feature: Union[
           tensor.Tensor, sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor
       ],
@@ -1642,13 +1485,18 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
             f"Expect weight to be Tensor type but got {type(weight)}"
         )
       row_ids_list, col_ids_list, gains_list = (
-          xla_ops.convert_to_list_of_coo_tensors(
+          xla_ops.convert_to_list_of_sparse_core_coo_tensors(
               indices_or_row_splits=array_ops.zeros((0,), dtype=dtypes.int32),
               values=math_ops.cast(input_feature, dtype=dtypes.int32),
               weights=math_ops.cast(weight, dtypes.float32),
               sample_count=sample_count,
               combiner=feature_config.table.combiner,
               num_sc_per_chip=num_sc_per_chip,
+              row_offset=row_offset,
+              col_offset=col_offset,
+              col_shift=col_shift,
+              num_sc_shards=num_sc_shards,
+              stacked_table_sample_count=stacked_table_sample_count,
           )
       )
     elif isinstance(input_feature, sparse_tensor.SparseTensor):
@@ -1661,7 +1509,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
             f"Expect weight to be SparseTensor type but got {type(weight)}"
         )
       row_ids_list, col_ids_list, gains_list = (
-          xla_ops.convert_to_list_of_coo_tensors(
+          xla_ops.convert_to_list_of_sparse_core_coo_tensors(
               indices_or_row_splits=math_ops.cast(
                   input_feature.indices, dtype=dtypes.int32
               ),
@@ -1670,6 +1518,11 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
               sample_count=sample_count,
               combiner=feature_config.table.combiner,
               num_sc_per_chip=num_sc_per_chip,
+              row_offset=row_offset,
+              col_offset=col_offset,
+              col_shift=col_shift,
+              num_sc_shards=num_sc_shards,
+              stacked_table_sample_count=stacked_table_sample_count,
           )
       )
     elif isinstance(input_feature, ragged_tensor.RaggedTensor):
@@ -1682,7 +1535,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
             f"Expect weight to be RaggedTensor type but got {type(weight)}"
         )
       row_ids_list, col_ids_list, gains_list = (
-          xla_ops.convert_to_list_of_coo_tensors(
+          xla_ops.convert_to_list_of_sparse_core_coo_tensors(
               indices_or_row_splits=math_ops.cast(
                   input_feature.row_splits, dtype=dtypes.int32
               ),
@@ -1691,6 +1544,11 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
               sample_count=sample_count,
               combiner=feature_config.table.combiner,
               num_sc_per_chip=num_sc_per_chip,
+              row_offset=row_offset,
+              col_offset=col_offset,
+              col_shift=col_shift,
+              num_sc_shards=num_sc_shards,
+              stacked_table_sample_count=stacked_table_sample_count,
           )
       )
     else:
@@ -1699,22 +1557,11 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           "Tensor, SparseTensor or RaggedTensor as input to embedding "
           "lookup."
       )
-    for i in range(num_sc_per_chip):
-      row_ids_list[i] = (
-          row_ids_list[i] % (sample_count // num_sc_per_chip)
-          + int(row_offset // num_sc_per_chip)
-          + int(stacked_table_sample_count // num_sc_per_chip) * i
-      )
-      col_ids_list[i] = (
-          (col_ids_list[i] + col_shift) % num_sc_shards
-          + (col_ids_list[i] // num_sc_shards * num_sc_shards)
-          + col_offset
-      )
     return row_ids_list, col_ids_list, gains_list, sample_count
 
-  # TODO(pineapplejuice233): Do not use it as they are experimental.
-  @staticmethod
-  def _experimental_preprocess_inputs_and_weights_to_list_of_coo_tensors(
+  @classmethod
+  def _preprocess_inputs_and_weights_to_list_of_coo_tensors(
+      cls,
       flat_inputs: Any,
       flat_weights: Any,
       flat_features: Any,
@@ -1746,7 +1593,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       row_offset = feature_to_sample_offset[feature_path]
       # Consider making this into one op per table rather than per feature?
       row_ids_list, col_ids_list, gains_list, sample_count = (
-          TPUEmbeddingV2._experimental_convert_input_feature_to_list_of_coo_tensors(
+          TPUEmbeddingV2._convert_input_feature_to_list_of_coo_tensors(
               inp,
               weight,
               feature,
@@ -1769,9 +1616,8 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       table_to_list_of_coos[table_name][4].append(col_offset)
     return table_to_list_of_coos
 
-  # TODO(pineapplejuice233): Do not use it as they are experimental.
-  @staticmethod
-  def _experimental_sort_list_of_coo_tensors(
+  def _sort_list_of_coo_tensors(
+      self,
       num_replicas_in_sync: int,
       table_to_list_of_coos: Dict[str, Any],
       stacked_table_to_tables: Dict[str, Any],
@@ -1781,17 +1627,13 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     table_to_sorted_coo_tensor = {
         table_name: ([], [], [], []) for table_name in stacked_table_to_tables
     }
-    is_minibatching_needed_per_table = []
     for table_name in stacked_table_to_tables:
       # Feature width are the same across stacked tables.
       feature_width = stacked_table_to_tables[table_name][0].dim
 
-      total_vocab_size = sum(
-          [
-              table.vocabulary_size
-              for table in stacked_table_to_tables[table_name]
-          ]
-      )
+      total_vocab_size = sum([
+          table.vocabulary_size for table in stacked_table_to_tables[table_name]
+      ])
       for i in range(num_sc_per_chip):
         row_ids_list = table_to_list_of_coos[table_name][0][i]
         col_ids_list = table_to_list_of_coos[table_name][1][i]
@@ -1804,8 +1646,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
             sorted_col_ids,
             sorted_gains,
             id_counts,
-            is_minibatch_needed,
-        ) = xla_ops.sort_list_of_coo_tensors_with_physical_replica(
+        ) = xla_ops.sort_list_of_sparse_core_coo_tensors(
             row_ids_list=row_ids_list,
             col_ids_list=col_ids_list,
             gains_list=gains_list,
@@ -1815,6 +1656,12 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
             table_vocab_size=total_vocab_size,
             feature_width=feature_width,
             num_sc_per_chip=num_sc_per_chip,
+            max_ids_per_sparse_core=self._table_to_max_ids_per_sparse_core[
+                table_name
+            ],
+            max_unique_ids_per_sparse_core=self._table_to_max_unique_ids_per_sparse_core[
+                table_name
+            ],
             table_name=table_name,
         )
 
@@ -1823,80 +1670,10 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
         table_to_sorted_coo_tensor[table_name][2].append(sorted_gains)
         table_to_sorted_coo_tensor[table_name][3].append(id_counts)
 
-        is_minibatching_needed_per_table.append(
-            math_ops.cast(is_minibatch_needed, dtypes.int32)
-        )
+    return table_to_sorted_coo_tensor
 
-    return (table_to_sorted_coo_tensor, is_minibatching_needed_per_table)
-
-  # TODO(pineapplejuice233): Do not use it as they are experimental.
-  @staticmethod
-  def _experimental_get_minibatch_splits_from_sorted_coo_tensor(
-      num_replicas_in_sync: int,
-      table_to_sorted_coo_tensor: Dict[str, Any],
-      stacked_table_to_tables: Dict[str, Any],
-      table_to_sample_count: Dict[str, int],
-      num_sc_per_chip: int,
-  ) -> Tuple[Dict[str, Any], List[tensor.Tensor]]:
-    """Compute minibatch splits from the sorted coo tensor."""
-    table_to_sorted_coo_tensor_with_minibatch = {
-        table_name: ([], [], [], []) for table_name in stacked_table_to_tables
-    }
-    per_replica_table_splits = []
-    for table_name in stacked_table_to_tables:
-      # Feature width are the same across stacked tables.
-      feature_width = stacked_table_to_tables[table_name][0].dim
-
-      total_vocab_size = sum(
-          [
-              table.vocabulary_size
-              for table in stacked_table_to_tables[table_name]
-          ]
-      )
-
-      (
-          sorted_row_ids_list,
-          sorted_col_ids_list,
-          sorted_gains_list,
-          id_counts_list,
-      ) = table_to_sorted_coo_tensor[table_name]
-
-      for i in range(num_sc_per_chip):
-        (sorted_row_ids, sorted_col_ids, sorted_gains, id_counts, splits) = (
-            xla_ops.get_multiple_minibatches_splits_with_physical_replica(
-                sorted_row_ids=sorted_row_ids_list[i],
-                sorted_col_ids=sorted_col_ids_list[i],
-                sorted_gains=sorted_gains_list[i],
-                id_counts=id_counts_list[i],
-                num_replica=num_replicas_in_sync,
-                sample_count_per_sc=table_to_sample_count[table_name]
-                // num_sc_per_chip,
-                table_vocab_size=total_vocab_size,
-                feature_width=feature_width,
-                num_sc_per_chip=num_sc_per_chip,
-                table_name=table_name,
-            )
-        )
-
-        table_to_sorted_coo_tensor_with_minibatch[table_name][0].append(
-            sorted_row_ids
-        )
-        table_to_sorted_coo_tensor_with_minibatch[table_name][1].append(
-            sorted_col_ids
-        )
-        table_to_sorted_coo_tensor_with_minibatch[table_name][2].append(
-            sorted_gains
-        )
-        table_to_sorted_coo_tensor_with_minibatch[table_name][3].append(
-            id_counts
-        )
-        per_replica_table_splits.append(splits)
-
-    return (table_to_sorted_coo_tensor_with_minibatch, per_replica_table_splits)
-
-  # TODO(pineapplejuice233): Do not use it as they are experimental.
-  @staticmethod
-  def _experimental_get_multiple_minibatches_from_sorted_coo_tensor(
+  def _get_csr_wrapped_coo_from_sorted_coo_tensor(
+      self,
       num_replicas_in_sync: int,
       max_ids_per_chip_per_sample: int,
       max_minibatches_per_sc: int,
@@ -1905,94 +1682,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       table_to_sample_count: Dict[str, int],
       num_sc_per_chip: int,
   ) -> Any:
-    """Get multiple minibatches from the sorted coo tensor."""
-
-    table_to_sorted_coo_tensor_with_minibatch, per_replica_table_splits = (
-        TPUEmbeddingV2._experimental_get_minibatch_splits_from_sorted_coo_tensor(
-            num_replicas_in_sync,
-            table_to_sorted_coo_tensor,
-            stacked_table_to_tables,
-            table_to_sample_count,
-            num_sc_per_chip,
-        )
-    )
-
-    # Collective all gather across replicas to get final splits.
-    cross_replica_table_splits = gen_collective_ops.collective_gather_v2(
-        input=per_replica_table_splits,
-        group_size=num_replicas_in_sync,
-        group_key=1,
-        instance_key=math_ops.cast(xla_ops.global_iter_id(), dtypes.int32),
-        ordering_token=[],
-    )
-
-    table_to_csr_format_tensor = {}
-    for table_name in stacked_table_to_tables:
-      (
-          sorted_row_ids_list,
-          sorted_col_ids_list,
-          sorted_gains_list,
-          id_counts_list,
-      ) = table_to_sorted_coo_tensor_with_minibatch[table_name]
-
-      # Feature width are the same across stacked tables.
-      feature_width = stacked_table_to_tables[table_name][0].dim
-
-      total_vocab_size = sum(
-          [
-              table.vocabulary_size
-              for table in stacked_table_to_tables[table_name]
-          ]
-      )
-      (
-          row_pointers,
-          sorted_sample_ids,
-          sorted_token_ids,
-          sorted_gains,
-          row_pointers_unpadded_size,
-          ids_unpadded_size,
-          num_minibatches_per_physical_sparse_core,
-      ) = xla_ops.convert_to_csr_wrapped_coo_with_physical_replica(
-          sorted_row_ids_list=sorted_row_ids_list,
-          sorted_col_ids_list=sorted_col_ids_list,
-          sorted_gains_list=sorted_gains_list,
-          id_counts_list=id_counts_list,
-          splits=cross_replica_table_splits,
-          sample_count_per_sc=table_to_sample_count[table_name]
-          // num_sc_per_chip,
-          num_replica=num_replicas_in_sync,
-          max_minibatches_per_sc=max_minibatches_per_sc,
-          max_ids_per_chip_per_sample=max_ids_per_chip_per_sample,
-          table_vocab_size=total_vocab_size,
-          feature_width=feature_width,
-          table_name=table_name,
-      )
-      table_to_csr_format_tensor[table_name] = (
-          PartitionedCsrFormatTensor(
-              row_pointers=row_pointers,
-              sorted_sample_ids=sorted_sample_ids,
-              sorted_token_ids=sorted_token_ids,
-              sorted_gains=sorted_gains,
-              sample_count=table_to_sample_count[table_name],
-              num_minibatches_per_physical_sparse_core=num_minibatches_per_physical_sparse_core,
-          ),
-          row_pointers_unpadded_size,
-          ids_unpadded_size,
-      )
-    return table_to_csr_format_tensor
-
-  # TODO(pineapplejuice233): Do not use it as they are experimental.
-  @staticmethod
-  def _experimental_get_single_minibatch_from_sorted_coo_tensor(
-      num_replicas_in_sync: int,
-      max_ids_per_chip_per_sample: int,
-      max_minibatches_per_sc: int,
-      table_to_sorted_coo_tensor: Dict[str, Any],
-      stacked_table_to_tables: Dict[str, Any],
-      table_to_sample_count: Dict[str, int],
-      num_sc_per_chip: int,
-  ) -> Any:
-    """Get a single minibatch from the sorted coo tensor."""
+    """Get csr wrapped coo tensor from the sorted coo tensor."""
     table_to_csr_format_tensor = {}
     for table_name in stacked_table_to_tables:
       (
@@ -2005,12 +1695,9 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       # Feature width are the same across stacked tables.
       feature_width = stacked_table_to_tables[table_name][0].dim
 
-      total_vocab_size = sum(
-          [
-              table.vocabulary_size
-              for table in stacked_table_to_tables[table_name]
-          ]
-      )
+      total_vocab_size = sum([
+          table.vocabulary_size for table in stacked_table_to_tables[table_name]
+      ])
       (
           row_pointers,
           sorted_sample_ids,
@@ -2019,7 +1706,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           row_pointers_unpadded_size,
           ids_unpadded_size,
           num_minibatches_per_physical_sparse_core,
-      ) = xla_ops.convert_to_csr_wrapped_coo_with_physical_replica(
+      ) = xla_ops.convert_to_sparse_core_csr_wrapped_coo_tensor(
           sorted_row_ids_list=sorted_row_ids_list,
           sorted_col_ids_list=sorted_col_ids_list,
           sorted_gains_list=sorted_gains_list,
@@ -2035,6 +1722,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           table_vocab_size=total_vocab_size,
           feature_width=feature_width,
           table_name=table_name,
+          allow_id_dropping=True,  # TODO(pineapplejuice233): make this configurable.
       )
       table_to_csr_format_tensor[table_name] = (
           PartitionedCsrFormatTensor(
@@ -2050,10 +1738,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       )
     return table_to_csr_format_tensor
 
-  # TODO(pineapplejuice233): Do not use it as they are experimental.
-  def _experimental_unstack_activations(
-      self, activations: Dict[str, tensor.Tensor]
-  ):
+  def _unstack_activations(self, activations: Dict[str, tensor.Tensor]):
     """Untack the incoming per table activations into per feature."""
 
     # Activations are stacked in a particular order. That order is the order
@@ -2093,8 +1778,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
 
     return nest.pack_sequence_as(self._feature_config, flattened_activations)
 
-  # TODO(pineapplejuice233): Do not use it as they are experimental.
-  def _experimental_stack_gradients(self, gradients):
+  def _stack_gradients(self, gradients):
     """Stack the incoming gradients to per table gradients."""
 
     # Gradients are stacked in a particular order. That order is the order

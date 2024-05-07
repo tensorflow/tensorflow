@@ -452,9 +452,6 @@ Status RunIsolatedAndCompare(
     chunk_results.push_back({std::move(module_name), test_module_result,
                              reference_module_result, chunk_status});
     status.Update(chunk_status);
-    if (!chunk_status.ok() && test_module_result != ModuleResult::kMismatch) {
-      break;
-    }
   }
   absl::c_sort(chunk_results);
   std::cout << BuildResultsTable(chunk_results, modules.size());

@@ -45,7 +45,7 @@ class ClientHostBufferStore {
 
   // Retrieves the data associated with the handle. Returns an error if the
   // handle does not exist.
-  virtual Future<absl::StatusOr<absl::Cord>> Lookup(uint64_t handle) = 0;
+  virtual Future<absl::Cord> Lookup(uint64_t handle) = 0;
 
   // Deletes the host buffer associated with the handle. Returns an error if the
   // handle does not exist.

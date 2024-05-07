@@ -37,8 +37,7 @@ class MockClientHostBufferStore final : public ClientHostBufferStore {
               (override));
   MOCK_METHOD(Future<>, Store, (uint64_t handle, const absl::Cord& data),
               (override));
-  MOCK_METHOD(Future<absl::StatusOr<absl::Cord>>, Lookup, (uint64_t handle),
-              (override));
+  MOCK_METHOD(Future<absl::Cord>, Lookup, (uint64_t handle), (override));
   MOCK_METHOD(Future<>, Delete, (uint64_t handle), (override));
 };
 

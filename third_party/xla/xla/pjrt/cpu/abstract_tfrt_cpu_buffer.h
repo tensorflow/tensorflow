@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/transpose.h"
-#include "xla/runtime/cpu_event.h"
+#include "xla/service/cpu/cpu_event.h"
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
@@ -57,7 +57,7 @@ namespace xla {
 // robust by using setting the AsyncValue in the destructor.
 class MarkEventReadyOnExit {
  public:
-  explicit MarkEventReadyOnExit(tsl::AsyncValueRef<runtime::CpuEvent> event)
+  explicit MarkEventReadyOnExit(tsl::AsyncValueRef<CpuEvent> event)
       : event_(std::move(event)) {}
 
   MarkEventReadyOnExit(const MarkEventReadyOnExit&) = delete;
@@ -69,12 +69,10 @@ class MarkEventReadyOnExit {
     if (event_) event_.SetStateConcrete();
   }
 
-  tsl::AsyncValueRef<runtime::CpuEvent> Release() && {
-    return std::move(event_);
-  }
+  tsl::AsyncValueRef<CpuEvent> Release() && { return std::move(event_); }
 
  private:
-  tsl::AsyncValueRef<runtime::CpuEvent> event_;
+  tsl::AsyncValueRef<CpuEvent> event_;
 };
 
 // Async work runner abstracts away the implementation of the underlying thread
@@ -123,16 +121,14 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
 
   bool IsDeleted() override;
 
-  void CopyToRemoteDevice(
-      PjRtFuture<absl::StatusOr<std::string>> serialized_descriptor,
-      RemoteSendCallback on_done) override {
+  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+                          RemoteSendCallback on_done) override {
     on_done(Unimplemented("CopyToRemoteDevice not implemented."),
             /*sends_were_enqueued=*/false);
   }
 
   void CopyToRemoteDeviceScattered(
-      PjRtFuture<absl::StatusOr<std::vector<std::string>>>
-          serialized_descriptors,
+      PjRtFuture<std::vector<std::string>> serialized_descriptors,
       std::vector<RemoteSendCallback> callbacks,
       const xla::PjRtBuffer::ScatterDetails& scatter_details) override {
     for (const auto& on_done : callbacks) {
@@ -151,7 +147,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // nullptr if the buffer is already donated or there is outstanding external
   // references.
   TrackedTfrtCpuDeviceBuffer* AcquireUsage(
-      tsl::AsyncValueRef<runtime::CpuEvent> usage_event);
+      tsl::AsyncValueRef<CpuEvent> usage_event);
 
   // A helper class for managing a pending donation. It should be committed upon
   // success. Otherwise, the donated buffer is returned to the
@@ -218,8 +214,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   static absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
   AllocateTrackedDeviceBuffer(
       const Shape& on_device_shape,
-      absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4>
-          definition_events);
+      absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events);
 
   // Allocates new cpu events to `avs` and `definition_events`. If `shape` is a
   // tuple, multiple events will be allocated. Otherwise, `avs` and
@@ -227,8 +222,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   static void AllocateAvsAndEvents(
       const Shape& shape,
       absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
-      absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4>*
-          definition_events);
+      absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>* definition_events);
 
   // A helper function for PjRtClient::BufferFromHostBuffer. Creates a new cpu
   // device buffer from the host buffer (maybe zero-copy or async).
@@ -305,8 +299,8 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // If this buffer has external references when Delete() is called, this event
   // is populated by Delete(). When the last external reference is released,
   // the event is triggered, which is a precondition for the buffer being
-  std::optional<tsl::AsyncValueRef<runtime::CpuEvent>>
-      external_references_dropped_event_ ABSL_GUARDED_BY(mu_);
+  std::optional<tsl::AsyncValueRef<CpuEvent>> external_references_dropped_event_
+      ABSL_GUARDED_BY(mu_);
 
   // `pending_donation_` indicates whether a donation is pending. The destructor
   // of the AbstractTfrtCpuBuffer will wait for a pending donation, as the

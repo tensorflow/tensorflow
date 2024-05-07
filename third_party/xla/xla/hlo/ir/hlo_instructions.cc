@@ -2016,14 +2016,30 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         clone->ReplaceOperandWith(operand_num, called_computation_parameter));
   }
 
+  if (clone != instruction_to_append) {
+    VLOG(2) << "New clone:\n" << clone->ToString();
+  }
+
   if (add_output) {
     int64_t user_count = instruction_to_append->user_count();
     CHECK(user_count > 0 || instruction_to_append->IsRoot())
         << "Unable to append instruction: " << instruction_to_append->ToString()
         << ", which has " << user_count << " users.";
+    HloInstruction* root = called_computation_root();
+    // Check whether we have replaced an existing fusion root with 'clone'. If
+    // yes, no need to add a duplicate root.
+    if (root->opcode() == HloOpcode::kTuple) {
+      for (int64_t i = 0; i < root->operand_count(); ++i) {
+        if (root->operand(i) == clone) {
+          HloInstruction* new_gte = AddInstruction(
+              HloInstruction::CreateGetTupleElement(clone->shape(), this, i));
+          TF_CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
+          return clone;
+        }
+      }
+    }
     // If this is already a multioutput instruction, expand the root tuple
     // by 1.
-    HloInstruction* root = called_computation_root();
     HloInstruction::InstructionVector tuple_elements;
     bool newly_created_tuple_instr = false;
     if (root->opcode() == HloOpcode::kTuple) {
@@ -2054,7 +2070,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     // If this is a newly created multioutput instruction, we need to update
     // the use of the original callable instruction.
     if (newly_created_tuple_instr) {
-      HloInstruction* new_instr = parent()->AddInstruction(
+      HloInstruction* new_instr = AddInstruction(
           HloInstruction::CreateGetTupleElement(root->shape(), this, 0));
       TF_CHECK_OK(ReplaceAllUsesWithDifferentShape(new_instr));
     }
@@ -2069,7 +2085,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         CHECK_EQ(old_gte->opcode(), HloOpcode::kGetTupleElement);
         int64_t old_tuple_index = old_gte->tuple_index();
         HloInstruction* new_gte =
-            parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
+            AddInstruction(HloInstruction::CreateGetTupleElement(
                 old_gte->shape(), this, index + old_tuple_index));
         TF_CHECK_OK(old_gte->ReplaceAllUsesWith(new_gte));
         to_be_removed.push_back(old_gte);
@@ -2079,15 +2095,12 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
       }
     } else {
       HloInstruction* new_gte =
-          parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
+          AddInstruction(HloInstruction::CreateGetTupleElement(
               clone->shape(), this, index - 1));
       TF_CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
     }
   }
 
-  if (clone != instruction_to_append) {
-    VLOG(2) << "New clone:\n" << clone->ToString();
-  }
   return clone;
 }
 
@@ -2128,6 +2141,7 @@ HloFusionInstruction::HloFusionInstruction(const Shape& shape,
   SetAndSanitizeName(HloOpcodeString(opcode()));
   set_parent(fused_root->parent());
   set_metadata(fused_root->metadata());
+  set_frontend_attributes(fused_root->frontend_attributes());
   CHECK(fused_root->IsFusible()) << fused_root->ToString();
   CloneAndAppendInstructionIntoCalledComputation(fused_root);
 }

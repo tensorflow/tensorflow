@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -197,7 +198,11 @@ TEST_F(AutoShardingTest, MemoryBudgetTest) {
         liveness_set[i].push_back(hlo_value);
       }
     }
-    return spmd::MemoryBudgetLowerBound(module, liveness_set, *alias_analysis,
+    absl::flat_hash_set<const HloInstruction*> instructions_to_shard(
+        module.entry_computation()->instructions().begin(),
+        module.entry_computation()->instructions().end());
+    return spmd::MemoryBudgetLowerBound(module, instructions_to_shard,
+                                        liveness_set, *alias_analysis,
                                         num_devices, preserved_shardings);
   };
 
@@ -426,6 +431,57 @@ ENTRY %RngBitGenerator (p0: u64[2]) -> (u64[2], u32[16,16]) {
   auto* instruction = FindInstruction(module.get(), "p0");
   ASSERT_NE(instruction, nullptr);
   EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
+TEST_F(AutoShardingTest, SPMDShardToFullShapeTest) {
+  constexpr absl::string_view kHloString = R"(
+HloModule rng_bit_generator
+
+add.6.clone {
+  y.13 = bf16[]{:T(256)} parameter(1)
+  x.13 = bf16[]{:T(256)} parameter(0)
+  ROOT add.9011 = bf16[]{:T(256)} add(x.13, y.13)
+}
+
+ENTRY main {
+  input.1 = bf16[512,512]{1,0} parameter(0)
+  custom-call.1 = bf16[512,512]{1,0} custom-call(input.1), custom_call_target="Sharding", sharding={devices=[4,4]<=[16]}
+  custom-call.2 = bf16[128,128]{1,0} custom-call(custom-call.1), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  all-reduce.1 = bf16[128,128]{1,0} all-reduce(custom-call.2), channel_id=621, replica_groups={{0,1,2,3},{4,5,6,7},{8,9,10,11},{12,13,14,15}}, use_global_device_ids=true, to_apply=add.6.clone, frontend_attributes={from-cross-replica-sharding="true"}, backend_config={"flag_configs":[],"barrier_config":{"barrier_type":"CUSTOM","id":"9"},"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+  custom-call.3 = bf16[512,512]{1,0} custom-call(all-reduce.1), custom_call_target="SPMDShardToFullShape", sharding={devices=[4,1,4]<=[16]last_tile_dim_replicate}
+  ROOT copy.1 = copy(custom-call.3)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  // Check that custom call shardings are preserved despite us dropped user
+  // shardings
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kRemoveAllShardings;
+  option.enable = true;
+  option.device_mesh_shape = {4, 4};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {1.0, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* custom_call2 =
+      FindInstruction(module.get(), "custom-call.2");
+  ASSERT_NE(custom_call2, nullptr);
+  EXPECT_THAT(custom_call2, op::Sharding("{manual}"));
+
+  const HloInstruction* custom_call3 =
+      FindInstruction(module.get(), "custom-call.3");
+  ASSERT_NE(custom_call3, nullptr);
+  EXPECT_THAT(custom_call3,
+              op::Sharding("{devices=[4,1,4]<=[16]last_tile_dim_replicate}"));
+
+  // Auto-sharding rewrites Sharding custom-calls
+  const HloInstruction* custom_call1 = custom_call2->operand(0);
+  ASSERT_NE(custom_call1, nullptr);
+  EXPECT_THAT(custom_call1, op::Sharding("{devices=[4,4]<=[16]}"));
 }
 
 TEST_F(AutoShardingTest, RngBitGeneratorTupleInput) {
@@ -728,10 +784,14 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   // Keep all user shardings
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
+  absl::flat_hash_set<const HloInstruction*> instructions_to_shard(
+      module->entry_computation()->instructions().begin(),
+      module->entry_computation()->instructions().end());
   std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
       saved_shardings_result =
           AutoShardingImplementation(option).SaveAndRemoveShardingAnnotation(
-              module.get(), /* replicated_small_tensors */ {},
+              module.get(), instructions_to_shard,
+              /* replicated_small_tensors */ {},
               /* execution_threads */ {});
   absl::flat_hash_map<std::string, std::vector<HloSharding>> saved_shardings =
       saved_shardings_result.first;
@@ -782,10 +842,14 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   // Keep all user shardings
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepInputOutputShardings;
+  absl::flat_hash_set<const HloInstruction*> instructions_to_shard(
+      module->entry_computation()->instructions().begin(),
+      module->entry_computation()->instructions().end());
   std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
       saved_shardings_result =
           AutoShardingImplementation(option).SaveAndRemoveShardingAnnotation(
-              module.get(), /* replicated_small_tensors */ {"dot"},
+              module.get(), instructions_to_shard,
+              /* replicated_small_tensors */ {"dot"},
               /* execution_threads */ {});
   absl::flat_hash_map<std::string, std::vector<HloSharding>> saved_shardings =
       saved_shardings_result.first;
@@ -833,10 +897,14 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   AutoShardingOption option;
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepInputOutputShardings;
+  absl::flat_hash_set<const HloInstruction*> instructions_to_shard(
+      module->entry_computation()->instructions().begin(),
+      module->entry_computation()->instructions().end());
   std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
       saved_shardings_result =
           AutoShardingImplementation(option).SaveAndRemoveShardingAnnotation(
-              module.get(), /* replicated_small_tensors */ {},
+              module.get(), instructions_to_shard,
+              /* replicated_small_tensors */ {},
               /* execution_threads */ {});
   absl::flat_hash_map<std::string, std::vector<HloSharding>> saved_shardings =
       saved_shardings_result.first;
@@ -913,10 +981,14 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   // Remove all user shardings
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kRemoveAllShardings;
+  absl::flat_hash_set<const HloInstruction*> instructions_to_shard(
+      module->entry_computation()->instructions().begin(),
+      module->entry_computation()->instructions().end());
   std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
       saved_shardings_result =
           AutoShardingImplementation(option).SaveAndRemoveShardingAnnotation(
-              module.get(), /* replicated_small_tensors */ {},
+              module.get(), instructions_to_shard,
+              /* replicated_small_tensors */ {},
               /* execution_threads */ {});
   absl::flat_hash_map<std::string, std::vector<HloSharding>> saved_shardings =
       saved_shardings_result.first;
@@ -947,10 +1019,14 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   // Remove all user shardings
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kRemoveAllShardings;
+  absl::flat_hash_set<const HloInstruction*> instructions_to_shard(
+      module->entry_computation()->instructions().begin(),
+      module->entry_computation()->instructions().end());
   std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
       saved_shardings_result =
           AutoShardingImplementation(option).SaveAndRemoveShardingAnnotation(
-              module.get(), /* replicated_small_tensors */ {"dot", "copy"},
+              module.get(), instructions_to_shard,
+              /* replicated_small_tensors */ {"dot", "copy"},
               /* execution_threads */ {});
   absl::flat_hash_map<std::string, std::vector<HloSharding>> saved_shardings =
       saved_shardings_result.first;

@@ -37,8 +37,8 @@ class HloFusionAdaptor;
 class HloInstructionAdaptor {
  public:
   HloInstructionAdaptor() = default;
-  explicit HloInstructionAdaptor(const HloInstruction& instruction,
-                                 const HloFusionAdaptor* parent = nullptr)
+  HloInstructionAdaptor(const HloInstruction& instruction,
+                        const HloFusionAdaptor* parent)
       : instruction_(&instruction), parent_(parent) {}
 
   HloOpcode opcode() const { return instruction_->opcode(); }
@@ -57,15 +57,12 @@ class HloInstructionAdaptor {
 
   // Use sparingly; prefer extending the interface.
   const HloInstruction& instruction() const { return *instruction_; }
+  const HloFusionAdaptor& parent() const { return *parent_; }
 
  private:
   const HloInstruction* instruction_;
 
-  // Pointer to the parent fusion adaptor. Can be null for legacy cases when
-  // HloInstructionAdaptor is used without HloFusionAdaptor.
-  // TODO(shyshkov): Consistently set parent pointer in all cases and check that
-  // it is not null.
-  // TODO(shyshkov): Use parent to determine operands and users correctly.
+  // Pointer to the parent fusion adaptor. Can not be null.
   const HloFusionAdaptor* parent_;
 };
 
@@ -76,8 +73,8 @@ H AbslHashValue(H h, const HloInstructionAdaptor& m) {
 }
 
 template <HloOpcode op, HloOpcode... rest>
-bool IsOpcodeAnyOf(const HloInstructionAdaptor& adaptor) {
-  return (adaptor.opcode() == op) || ((adaptor.opcode() == rest) || ...);
+bool IsOpcodeAnyOf(const HloInstruction* instr) {
+  return (instr->opcode() == op) || ((instr->opcode() == rest) || ...);
 }
 
 namespace internal {
@@ -87,8 +84,14 @@ namespace internal {
 class HloFusionInstructionAdaptor {
  public:
   virtual ~HloFusionInstructionAdaptor() = default;
-  virtual bool ContainsInstruction(HloInstructionAdaptor instruction) const = 0;
+  virtual bool ContainsInstruction(const HloInstruction* instruction) const = 0;
+  // If it is a regular multi-output fusion, the order of the returned roots
+  // matches the order of the tuple elements of the tuple root of the fusion
+  // computation. We do not deduplicate fusion roots.
   virtual absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const = 0;
+  virtual absl::InlinedVector<const HloInstruction*, 2> GetParameters()
+      const = 0;
+  virtual const HloInstruction& FusionInstruction() const = 0;
   virtual absl::InlinedVector<HloInstructionAdaptor, 2>
   MakeInstructionPostOrder() const = 0;
   virtual std::string ToString() const = 0;
@@ -99,7 +102,9 @@ class HloFusionInstructionAdaptor {
 class HloFusionAdaptor {
  public:
   bool ContainsInstruction(HloInstructionAdaptor instruction) const;
+  bool ContainsInstruction(const HloInstruction* instruction) const;
   absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const;
+  absl::InlinedVector<const HloInstruction*, 2> GetParameters() const;
   absl::InlinedVector<HloInstructionAdaptor, 2> MakeInstructionPostOrder()
       const;
   std::string ToString() const;
@@ -156,8 +161,16 @@ bool HloAnyOf(absl::Span<const HloInstructionAdaptor> roots,
               const std::function<bool(HloInstructionAdaptor node)>& visit,
               bool visit_operands = true);
 
-// Visit the HLO nodes stating from `roots`, returning the first
-// node for which `visit` returns true, or `nullptr` if no node matches. Uses
+// Visit the HLO nodes starting from `roots`, returning true if the return value
+// of `visit` for any of nodes is true. If `visit_operands` is true, the
+// search is going towards the operands, otherwise towards the users. Doesn't
+// require instruction and fusion adaptors.
+bool HloAnyOf(absl::Span<const HloInstruction* const> roots,
+              const std::function<bool(const HloInstruction* node)>& visit,
+              bool visit_operands = true);
+
+// Visit the HLO nodes starting from `roots`, returning the first
+// node for which `visit` returns true, or `nullopt` if no node matches. Uses
 // the same order as `HloBfsConsumersFirstTraversal` if `visit_operands` is
 // true. Otherwise the same order as `HloBfsProducersFirstTraversal` is used.
 std::optional<HloInstructionAdaptor> HloFindIf(
@@ -166,10 +179,24 @@ std::optional<HloInstructionAdaptor> HloFindIf(
     const std::function<bool(HloInstructionAdaptor node)>& visit,
     bool visit_operands = true);
 
+// Visit the HLO nodes starting from `roots`. If `visit_operands` is true, the
+// search is going towards the operands, otherwise towards the users. Returns
+// the first node for which `visit` returns true, or `nullopt` if no node
+// matches.
+std::optional<const HloInstruction*> HloFindIf(
+    absl::Span<const HloInstruction* const> roots,
+    const std::function<bool(const HloInstruction* node)>& visit,
+    bool visit_operands = true);
+
 // Visit the producers of all parameters that are needed by the fusion.
 void FindFusionArguments(
     const HloFusionAdaptor& fusion,
     const std::function<void(HloInstructionAdaptor producer)>& visit);
+
+// Find a use chain from `parent` to `root`. Empty if no chain exists.
+// `[parent]` if `parent` is `root`.
+std::vector<HloInstructionAdaptor> HloFindUseChain(HloInstructionAdaptor parent,
+                                                   HloInstructionAdaptor root);
 
 }  // namespace gpu
 }  // namespace xla

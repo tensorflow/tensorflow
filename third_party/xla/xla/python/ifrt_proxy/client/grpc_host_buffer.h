@@ -46,7 +46,7 @@ class GrpcClientHostBufferStore : public ClientHostBufferStore {
   uint64_t NextHandle() override;
   Future<> Store(uint64_t handle, absl::string_view data) override;
   Future<> Store(uint64_t handle, const absl::Cord& data) override;
-  Future<absl::StatusOr<absl::Cord>> Lookup(uint64_t handle) override;
+  Future<absl::Cord> Lookup(uint64_t handle) override;
   Future<> Delete(uint64_t handle) override;
 
  private:

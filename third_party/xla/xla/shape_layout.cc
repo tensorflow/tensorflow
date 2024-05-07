@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/status.h"
 
 namespace xla {
 

@@ -607,13 +607,6 @@ func.func @add_n.impl(%arg0: tensor<i64>) -> tensor<i64> {
   func.return %1 : tensor<i64>
 }
 
-// CHECK-LABEL: "op_compute_reshape_shape"
-func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
-  // CHECK: "mhlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
-  %0 = "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
-  func.return %0 : tensor<1xindex>
-}
-
 // CHECK-LABEL: "op_concatenate"
 func.func @op_concatenate(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>) -> tensor<16xf32> {
   //      CHECK: "mhlo.concatenate"(%arg0, %arg1) <{
@@ -693,13 +686,6 @@ func.func @op_cross_replica_sum(%arg0: tensor<f32>) -> tensor<f32> {
     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
-}
-
-// CHECK-LABEL: "op_cstr_reshapable"
-func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.witness {
-  // CHECK: "mhlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
-  %0 = "stablehlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<1xindex>) -> !shape.witness
-  func.return %0 : !shape.witness
 }
 
 // CHECK-LABEL: "op_custom_call_api_version_original"

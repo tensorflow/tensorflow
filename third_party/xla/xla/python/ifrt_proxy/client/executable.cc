@@ -212,9 +212,8 @@ LoadedExecutable::LoadedExecutable(
   // eagerly schedule this fetch since, in some implementations, it may take a
   // long time for sharding information to be available.
 
-  auto promise =
-      Future<absl::StatusOr<std::shared_ptr<Metadata>>>::CreatePromise();
-  metadata_future_ = Future<absl::StatusOr<std::shared_ptr<Metadata>>>(promise);
+  auto promise = Future<std::shared_ptr<Metadata>>::CreatePromise();
+  metadata_future_ = Future<std::shared_ptr<Metadata>>(promise);
 
   auto req = std::make_unique<LoadedExecutableMetadataRequest>();
   req->set_loaded_executable_handle(handle_);

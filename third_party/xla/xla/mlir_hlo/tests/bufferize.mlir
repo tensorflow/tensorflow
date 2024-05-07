@@ -233,7 +233,7 @@ func.func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>
 
   // Select whether to use the original shapes in case of invalid broadcasts.
   // CHECK: %[[FINAL_RESULT_RHS:.*]] = arith.select %[[MAIN_FOR]]#4, %[[RHS]], %[[REDUCED_RESULT_RHS:.*]] : memref<?xindex>
-  %0, %1 = chlo.minimum_broadcast_shapes %lhs, %rhs :
+  %0, %1 = mhlo.minimum_broadcast_shapes %lhs, %rhs :
       tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
   // CHECK-NEXT: return %[[FINAL_RESULT_LHS]], %[[FINAL_RESULT_RHS]] : memref<?xindex>, memref<?xindex>
   func.return %0, %1 : tensor<?xindex>, tensor<?xindex>

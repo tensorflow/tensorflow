@@ -52,7 +52,13 @@ class DeviceMemoryBase {
   // region. An opaque pointer may be provided -- see header for details on the
   // opacity of that pointer.
   explicit DeviceMemoryBase(void *opaque = nullptr, uint64_t size = 0)
-      : opaque_(opaque), size_(size) {}
+      : opaque_(opaque), size_(size) {
+    // TODO(b/336267585): This constructor dangerously encourages
+    //                 DeviceMemoryBase(mem) which would imply
+    //                 DeviceMemoryBase(mem, 0)
+    //                 We should delete & resolve any dependencies.
+    //  explicit DeviceMemoryBase(void *opaque) = delete;
+  }
 
   // Returns whether the backing memory is the null pointer.
   // A `== nullptr` convenience method is also provided.
@@ -142,6 +148,12 @@ class DeviceMemory final : public DeviceMemoryBase {
   // Returns the number of elements of type ElemT that constitute this
   // allocation.
   uint64_t ElementCount() const { return size() / sizeof(ElemT); }
+
+  // Returns pointer to the allocated data
+  ElemT *base() { return reinterpret_cast<ElemT *>(opaque()); }
+  const ElemT *base() const {
+    return reinterpret_cast<const ElemT *>(opaque());
+  }
 
   // Creates a typed area of DeviceMemory with a given opaque pointer and the
   // quantity of bytes in the allocation. This function is broken out to

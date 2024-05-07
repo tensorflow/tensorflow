@@ -182,6 +182,26 @@ class AsyncValueRef {
     return AsPtr().template Map(executor, std::forward<F>(f));
   }
 
+  template <typename R, typename F>
+  AsyncValueRef<R> TryMap(F&& f) {
+    return AsPtr().template TryMap<R>(std::forward<F>(f));
+  }
+
+  template <typename R, typename F>
+  AsyncValueRef<R> TryMap(AsyncValue::Executor& executor, F&& f) {
+    return AsPtr().template TryMap<R>(executor, std::forward<F>(f));
+  }
+
+  template <typename F>
+  auto TryMap(F&& f) {
+    return AsPtr().template TryMap(std::forward<F>(f));
+  }
+
+  template <typename F>
+  auto TryMap(AsyncValue::Executor& executor, F&& f) {
+    return AsPtr().template TryMap(executor, std::forward<F>(f));
+  }
+
   template <typename F>
   auto FlatMap(F&& f) {
     return AsPtr().template FlatMap(std::forward<F>(f));
@@ -325,9 +345,9 @@ class AsyncValuePtr {
   // use other types of callbacks to disambiguate the provenance of status.
   template <typename Waiter>
   using StatusWaiter =
-      std::enable_if_t<(!is_status_v<T> &&
-                        std::is_invocable_v<Waiter, absl::Status> &&
-                        !std::is_invocable_v<Waiter, absl::StatusOr<T*>>)>;
+      std::enable_if_t<(std::is_invocable_v<Waiter, absl::Status> &&
+                        !std::is_invocable_v<Waiter, absl::StatusOr<T*>> &&
+                        !is_status_v<T>)>;
 
   // Because AsyncValue itself is a discriminated union of absl::Status and
   // typed payload (error or value) the use of AsyncValueRef<status-like> is
@@ -335,16 +355,15 @@ class AsyncValuePtr {
   // automatically folds returned status-like object into the returned async
   // value error.
 
-  // Simple async value functor: Map<R>([](T& value) -> U {});
+  // Async value map functor: Map<R>([](T& value) -> U);
   //   - R must be constructible from U
   template <typename R, typename U>
-  using SimpleFunctor =
-      std::enable_if_t<!is_status_like_v<R> && std::is_constructible_v<R, U>>;
+  using MapFunctor = std::enable_if_t<std::is_constructible_v<R, U>>;
 
-  // StatusOr async value functor: Map<R>([](T& value) -> absl::StatusOr<U> {});
+  // Async value try map functor: TryMap<R>([](T& value) -> absl::StatusOr<U>);
   //   - R must be constructible from U
   template <typename R, typename U>
-  using StatusOrFunctor =
+  using TryMapFunctor =
       std::enable_if_t<!is_status_like_v<R> && is_status_or_v<U> &&
                        std::is_constructible_v<R, typename U::value_type> &&
                        !std::is_constructible_v<R, U>>;
@@ -537,7 +556,7 @@ class AsyncValuePtr {
   // })
   //
   template <typename R, typename F, typename U = std::invoke_result_t<F, T&>,
-            SimpleFunctor<R, U>* = nullptr>
+            MapFunctor<R, U>* = nullptr>
   AsyncValueRef<R> Map(F&& f) {
     auto result = MakeUnconstructedAsyncValueRef<R>();
     AndThen([f = std::forward<F>(f), result, ptr = *this]() mutable {
@@ -552,7 +571,7 @@ class AsyncValuePtr {
 
   // An overload that executes `f` on a user-provided executor.
   template <typename R, typename F, typename U = std::invoke_result_t<F, T&>,
-            SimpleFunctor<R, U>* = nullptr>
+            MapFunctor<R, U>* = nullptr>
   AsyncValueRef<R> Map(AsyncValue::Executor& executor, F&& f) {
     auto result = MakeUnconstructedAsyncValueRef<R>();
     // We don't know when the executor will run the callback, so we need to
@@ -568,20 +587,23 @@ class AsyncValuePtr {
     return result;
   }
 
-  // A `Map` specialization that accepts a functor returning an absl::StatusOr
-  // result that is automatically folded into the async value.
+  // Returns and AsyncValueRef<R> that is emplaced from the result of invoking
+  // functor `f` with *this value. Functor must return an `absl::StatusOr<U>`
+  // result that in case of error will be folded into the returned async value
+  // as an error. If *this completes with an error, returned async value will
+  // also be an error.
   //
   // Sample usage:
   //
-  // async_value_ptr.Map<R>([](T& value) -> absl::StatusOr<U> {
+  // async_value_ptr.TryMap<R>([](T& value) -> absl::StatusOr<U> {
   //   return absl::StatusOr<U>(U{value}); // R must be constructible from U
   // })
   //
   // If returned status container will have an error status, it will be
   // automatically converted to async value error.
   template <typename R, typename F, typename U = std::invoke_result_t<F, T&>,
-            StatusOrFunctor<R, U>* = nullptr>
-  AsyncValueRef<R> Map(F&& f) {
+            TryMapFunctor<R, U>* = nullptr>
+  AsyncValueRef<R> TryMap(F&& f) {
     auto result = MakeUnconstructedAsyncValueRef<R>();
     AndThen([f = std::forward<F>(f), result, ptr = *this]() mutable {
       if (ABSL_PREDICT_FALSE(ptr.IsError())) {
@@ -600,8 +622,8 @@ class AsyncValuePtr {
 
   // An overload that executes `f` on a user-provided executor.
   template <typename R, typename F, typename U = std::invoke_result_t<F, T&>,
-            StatusOrFunctor<R, U>* = nullptr>
-  AsyncValueRef<R> Map(AsyncValue::Executor& executor, F&& f) {
+            TryMapFunctor<R, U>* = nullptr>
+  AsyncValueRef<R> TryMap(AsyncValue::Executor& executor, F&& f) {
     auto result = MakeUnconstructedAsyncValueRef<R>();
     // We don't know when the executor will run the callback, so we need to
     // copy the AsyncValueRef to keep the underlying value alive.
@@ -624,24 +646,29 @@ class AsyncValuePtr {
   // A `Map` overload that automatically infers the type of result from `f`.
   template <typename F, typename R = std::invoke_result_t<F, T&>>
   auto Map(F&& f) {
-    static_assert(!is_status_v<R>, "absl::Status result is not supported");
-    if constexpr (is_status_or_v<R>) {
-      return Map<typename R::value_type>(std::forward<F>(f));
-    } else {
-      return Map<R>(std::forward<F>(f));
-    }
+    return Map<R>(std::forward<F>(f));
   }
 
   // A `Map` overload that automatically infers the type of result from `f` and
   // executes `f` on user-provided executor.
   template <typename F, typename R = std::invoke_result_t<F, T&>>
   auto Map(AsyncValue::Executor& executor, F&& f) {
-    static_assert(!is_status_v<R>, "absl::Status result is not supported");
-    if constexpr (is_status_or_v<R>) {
-      return Map<typename R::value_type>(executor, std::forward<F>(f));
-    } else {
-      return Map<R>(executor, std::forward<F>(f));
-    }
+    return Map<R>(executor, std::forward<F>(f));
+  }
+
+  // A `TryMap` overload that automatically infers the type of result from `f`.
+  template <typename F, typename R = std::invoke_result_t<F, T&>,
+            std::enable_if_t<is_status_or_v<R>>* = nullptr>
+  auto TryMap(F&& f) {
+    return TryMap<typename R::value_type>(std::forward<F>(f));
+  }
+
+  // A `TryMap` overload that automatically infers the type of result from `f`
+  // and executes `f` on user-provided executor.
+  template <typename F, typename R = std::invoke_result_t<F, T&>,
+            std::enable_if_t<is_status_or_v<R>>* = nullptr>
+  auto TryMap(AsyncValue::Executor& executor, F&& f) {
+    return TryMap<typename R::value_type>(executor, std::forward<F>(f));
   }
 
   // Returns and AsyncValueRef<R> that will be forwarded to the AsyncValueRef

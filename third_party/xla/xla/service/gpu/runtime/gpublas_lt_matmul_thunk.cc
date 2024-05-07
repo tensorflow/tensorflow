@@ -21,7 +21,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/scratch_allocator.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -35,7 +34,8 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
     BufferAllocation::Slice bias_buffer, BufferAllocation::Slice aux_buffer,
     BufferAllocation::Slice a_scale, BufferAllocation::Slice b_scale,
     BufferAllocation::Slice c_scale, BufferAllocation::Slice d_scale,
-    BufferAllocation::Slice d_amax)
+    BufferAllocation::Slice d_amax,
+    std::optional<const BufferAllocation::Slice> workspace_buffer)
     : Thunk(Kind::kCublasLtMatmul, thunk_info),
       gemm_config_(std::move(gemm_config)),
       epilogue_(epilogue),
@@ -50,11 +50,17 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
       b_scale_buffer_(b_scale),
       c_scale_buffer_(c_scale),
       d_scale_buffer_(d_scale),
-      d_amax_buffer_(d_amax) {}
+      d_amax_buffer_(d_amax),
+      workspace_buffer_(workspace_buffer) {}
 
 absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(auto plan, GetMatmulPlan(params.stream));
-  TF_ASSIGN_OR_RETURN(auto algorithm, GetMatmulAlgorithm(plan));
+
+  TF_ASSIGN_OR_RETURN(
+      auto algorithm,
+      GetMatmulAlgorithm(plan, workspace_buffer_.has_value()
+                                   ? workspace_buffer_.value().size()
+                                   : 0));
 
   VLOG(3) << "Running cublas_lt matmul thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
@@ -84,13 +90,16 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
     aux = allocs.GetDeviceAddress(aux_buffer_);
   }
 
-  se::OwningScratchAllocator<> scratch_allocator(allocs.device_ordinal(),
-                                                 allocs.memory_allocator());
+  std::optional<se::DeviceMemoryBase> workspace;
+  if (workspace_buffer_.has_value()) {
+    workspace = allocs.GetDeviceAddress(workspace_buffer_.value());
+  }
+
   return plan->ExecuteOnStream(
       params.stream, allocs.GetDeviceAddress(a_buffer_),
       allocs.GetDeviceAddress(b_buffer_), allocs.GetDeviceAddress(c_buffer_),
       allocs.GetDeviceAddress(d_buffer_), bias, aux, a_scale, b_scale, c_scale,
-      d_scale, d_amax, algorithm, scratch_allocator);
+      d_scale, d_amax, algorithm, workspace);
 }
 
 absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> CublasLtMatmulThunk::GetMatmulPlan(
@@ -109,14 +118,17 @@ absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> CublasLtMatmulThunk::GetMatmulPlan(
 }
 
 absl::StatusOr<se::gpu::BlasLt::MatmulAlgorithm>
-CublasLtMatmulThunk::GetMatmulAlgorithm(
-    const se::gpu::BlasLt::MatmulPlan* plan) {
+CublasLtMatmulThunk::GetMatmulAlgorithm(const se::gpu::BlasLt::MatmulPlan* plan,
+                                        int64_t max_workspace) {
   {
     absl::MutexLock lock(&matmul_algorithm_cache_mutex_);
     auto it = matmul_algorithm_cache_.find(plan);
     if (it != matmul_algorithm_cache_.end()) return it->second;
   }
-  TF_ASSIGN_OR_RETURN(auto algorithms, plan->GetAlgorithms());
+  TF_ASSIGN_OR_RETURN(
+      auto algorithms,
+      plan->GetAlgorithms(/*max_algorithm_count*/ 128,
+                          /*max_workspace_size*/ max_workspace));
   TF_RET_CHECK(algorithm_idx_ >= 0 && algorithm_idx_ < algorithms.size());
 
   absl::MutexLock lock(&matmul_algorithm_cache_mutex_);

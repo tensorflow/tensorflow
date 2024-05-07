@@ -117,6 +117,12 @@ absl::StatusOr<std::unique_ptr<IfrtBackend>> IfrtBackend::Create(
 
 IfrtBackend::~IfrtBackend() {
   // Cancel all in-flight host callback executions.
+  {
+    absl::MutexLock lock(&host_callback_queues_mutex_);
+    for (const auto& [key, queue] : host_callback_queues_) {
+      queue->Close();
+    }
+  }
   absl::flat_hash_map<uint64_t, RemoteLoadedHostCallbackQueue::ExecutionRequest>
       host_callback_executions;
   {
@@ -210,7 +216,8 @@ void IfrtBackend::HandleGenerator::BulkNew(absl::Span<uint64_t> handles) {
 }
 
 Future<BackendInterface::Response> IfrtBackend::AsyncExecute(
-    std::function<Response()> handle_fn, tsl::thread::ThreadPool* thread_pool) {
+    std::function<absl::StatusOr<Response>()> handle_fn,
+    tsl::thread::ThreadPool* thread_pool) {
   {
     absl::MutexLock lock(&in_flight_count_mutex_);
     ++in_flight_count_;
@@ -236,7 +243,7 @@ Future<BackendInterface::Response> IfrtBackend::AsyncExecute(
 // Handlers for individual request types
 //
 
-BackendInterface::Response IfrtBackend::HandleInit(
+absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     std::unique_ptr<IfrtRequest> request) {
   std::unique_ptr<IfrtResponse> response =
       NewIfrtResponse(request->request_metadata().op_id());
@@ -330,7 +337,8 @@ Future<BackendInterface::Response> IfrtBackend::HandleCheckFutureRequest(
   return Future<BackendInterface::Response>(std::move(promise));
 }
 
-BackendInterface::Response IfrtBackend::HandleMakeArrayFromHostBufferRequest(
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleMakeArrayFromHostBufferRequest(
     std::unique_ptr<IfrtRequest> request) {
   if (!request->has_make_array_from_host_buffer_request()) {
     return absl::InternalError(
@@ -392,7 +400,7 @@ BackendInterface::Response IfrtBackend::HandleMakeArrayFromHostBufferRequest(
   return response;
 }
 
-BackendInterface::Response
+absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
     std::unique_ptr<IfrtRequest> request) {
   const auto& assemble_request =
@@ -497,7 +505,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
   return resp_future;
 }
 
-BackendInterface::Response
+absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleDisassembleIntoSingleDeviceArraysRequest(
     std::unique_ptr<IfrtRequest> request) {
   TF_ASSIGN_OR_RETURN(
@@ -562,7 +570,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCheckArrayReadyRequest(
   return ifrt_response_future;
 }
 
-BackendInterface::Response IfrtBackend::HandleReshardRequest(
+absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleReshardRequest(
     std::unique_ptr<IfrtRequest> request) {
   const auto& reshard_request = request->reshard_request();
   TF_ASSIGN_OR_RETURN(auto array, GetArray(reshard_request.array_handle()));
@@ -589,7 +597,8 @@ BackendInterface::Response IfrtBackend::HandleReshardRequest(
   return ifrt_resp;
 }
 
-BackendInterface::Response IfrtBackend::HandleFullyReplicatedShardRequest(
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleFullyReplicatedShardRequest(
     std::unique_ptr<IfrtRequest> request) {
   const auto& fully_replicated_shard_request =
       request->fully_replicated_shard_request();
@@ -619,8 +628,8 @@ BackendInterface::Response IfrtBackend::HandleFullyReplicatedShardRequest(
   return ifrt_resp;
 }
 
-BackendInterface::Response IfrtBackend::HandleDeleteArrayRequest(
-    std::unique_ptr<IfrtRequest> request) {
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleDeleteArrayRequest(std::unique_ptr<IfrtRequest> request) {
   TF_ASSIGN_OR_RETURN(auto array,
                       GetArray(request->delete_array_request().array_handle()));
 
@@ -637,8 +646,8 @@ BackendInterface::Response IfrtBackend::HandleDeleteArrayRequest(
   return ifrt_resp;
 }
 
-BackendInterface::Response IfrtBackend::HandleIsArrayDeletedRequest(
-    std::unique_ptr<IfrtRequest> request) {
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleIsArrayDeletedRequest(std::unique_ptr<IfrtRequest> request) {
   TF_ASSIGN_OR_RETURN(
       auto array, GetArray(request->is_array_deleted_request().array_handle()));
 
@@ -648,8 +657,8 @@ BackendInterface::Response IfrtBackend::HandleIsArrayDeletedRequest(
   return ifrt_resp;
 }
 
-BackendInterface::Response IfrtBackend::HandleDestructArrayRequest(
-    std::unique_ptr<IfrtRequest> request) {
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleDestructArrayRequest(std::unique_ptr<IfrtRequest> request) {
   {
     absl::MutexLock lock(&arrays_mutex_);
     bool deleted =
@@ -674,7 +683,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
   // thread during compilation and (2) run compilation with bigger stacks (often
   // necessary for XLA).
   auto f = [this, request = std::shared_ptr<IfrtRequest>(
-                      std::move(request))]() -> Response {
+                      std::move(request))]() -> absl::StatusOr<Response> {
     const CompileRequest& compile_request = request->compile_request();
 
     auto deserialize_program_options =
@@ -789,8 +798,8 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
     std::unique_ptr<IfrtRequest> request) {
   // Call `GetParameterShardings` and `GetOutputShardings` on a thread pool
   // since some implementations may block until compilation completes.
-  return AsyncExecute([this, request = std::shared_ptr<IfrtRequest>(
-                                 std::move(request))]() -> Response {
+  return AsyncExecute([this, request = std::shared_ptr<IfrtRequest>(std::move(
+                                 request))]() -> absl::StatusOr<Response> {
     const uint64_t handle = request->loaded_executable_metadata_request()
                                 .loaded_executable_handle();
     TF_ASSIGN_OR_RETURN(std::shared_ptr<xla::ifrt::LoadedExecutable> executable,
@@ -867,7 +876,8 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
   });
 }
 
-BackendInterface::Response IfrtBackend::HandleLoadedExecutableExecuteRequest(
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleLoadedExecutableExecuteRequest(
     std::unique_ptr<IfrtRequest> request) {
   const LoadedExecutableExecuteRequest& execute =
       request->loaded_executable_execute_request();
@@ -941,7 +951,8 @@ BackendInterface::Response IfrtBackend::HandleLoadedExecutableExecuteRequest(
   return ifrt_resp;
 }
 
-BackendInterface::Response IfrtBackend::HandleLoadedExecutableDeleteRequest(
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleLoadedExecutableDeleteRequest(
     std::unique_ptr<IfrtRequest> request) {
   const auto& del = request->loaded_executable_delete_request();
   TF_ASSIGN_OR_RETURN(std::shared_ptr<xla::ifrt::LoadedExecutable> executable,
@@ -961,7 +972,8 @@ BackendInterface::Response IfrtBackend::HandleLoadedExecutableDeleteRequest(
   return ifrt_resp;
 }
 
-BackendInterface::Response IfrtBackend::HandleLoadedExecutableIsDeletedRequest(
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleLoadedExecutableIsDeletedRequest(
     std::unique_ptr<IfrtRequest> request) {
   const auto& is_deleted = request->loaded_executable_is_deleted_request();
   TF_ASSIGN_OR_RETURN(
@@ -976,7 +988,8 @@ BackendInterface::Response IfrtBackend::HandleLoadedExecutableIsDeletedRequest(
   return ifrt_resp;
 }
 
-BackendInterface::Response IfrtBackend::HandleLoadedExecutableDestructRequest(
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleLoadedExecutableDestructRequest(
     std::unique_ptr<IfrtRequest> request) {
   const auto& destruct = request->loaded_executable_destruct_request();
 
@@ -1006,8 +1019,8 @@ BackendInterface::Response IfrtBackend::HandleLoadedExecutableDestructRequest(
 Future<BackendInterface::Response>
 IfrtBackend::HandleLoadedHostCallbackPollRequest(
     std::unique_ptr<IfrtRequest> request) {
-  return AsyncExecute([this, request = std::shared_ptr<IfrtRequest>(
-                                 std::move(request))]() -> Response {
+  return AsyncExecute([this, request = std::shared_ptr<IfrtRequest>(std::move(
+                                 request))]() -> absl::StatusOr<Response> {
     const auto& poll = request->loaded_host_callback_poll_request();
     const uint64_t handle = poll.loaded_host_callback_handle();
 
@@ -1073,7 +1086,8 @@ IfrtBackend::HandleLoadedHostCallbackPollRequest(
   });
 }
 
-BackendInterface::Response IfrtBackend::HandleLoadedHostCallbackReturnRequest(
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleLoadedHostCallbackReturnRequest(
     std::unique_ptr<IfrtRequest> request) {
   const auto& ret = request->loaded_host_callback_return_request();
 
@@ -1141,7 +1155,8 @@ BackendInterface::Response IfrtBackend::HandleLoadedHostCallbackReturnRequest(
   return ifrt_resp;
 }
 
-BackendInterface::Response IfrtBackend::HandleGetDefaultDeviceAssignmentRequest(
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleGetDefaultDeviceAssignmentRequest(
     std::unique_ptr<IfrtRequest> request) {
   const auto& get_default_device_assignment_request =
       request->get_default_device_assignment_request();

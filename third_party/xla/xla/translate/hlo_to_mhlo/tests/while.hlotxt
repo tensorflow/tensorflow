@@ -1,4 +1,5 @@
 // RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations -hlo-flatten-computation-args-result %s -o - | FileCheck %s -check-prefix=FLATTEN-CHECK
 
 HloModule foo
 
@@ -43,6 +44,11 @@ ENTRY %foo (arg0.1: s64[]) -> s64[] {
 // CHECK-NEXT:   %[[RES:.*]] = mhlo.tuple %[[GTE_0]], %[[GTE_1]], %[[GTE_2]], %[[ADD]]
 // CHECK-NEXT:   return %[[RES]] : tuple<tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>>
 
+// FLATTEN-CHECK-LABEL: func private @region_body1
+// FLATTEN-CHECK-SAME:    (%[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<i32>, %[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>) -> (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>)
+// FLATTEN-CHECK-NEXT:   %[[ADD:.*]] = mhlo.add %[[ARG_2]], %[[ARG_3]]
+// FLATTEN-CHECK-NEXT:   return %[[ARG_0]], %[[ARG_1]], %[[ARG_2]], %[[ADD]]
+
 %region_body1 (Arg_0.7: (s32[], s32[], f32[], f32[])) -> (s32[], s32[], f32[], f32[]) {
   %Arg_0.7 = (s32[], s32[], f32[], f32[]) parameter(0)
   %get-tuple-element.8 = s32[] get-tuple-element((s32[], s32[], f32[], f32[]) %Arg_0.7), index=0
@@ -60,6 +66,11 @@ ENTRY %foo (arg0.1: s64[]) -> s64[] {
 // CHECK-NEXT:   %[[GTE_1:.*]] = mhlo.get_tuple_element %[[ARG_0]][1]
 // CHECK-NEXT:   %[[CMP:.*]] = mhlo.compare LT, %[[GTE_0]], %[[GTE_1]]
 // CHECK-NEXT"   return %[[CMP]] : tensor<i1>
+
+// FLATTEN-CHECK-LABEL: func private @region_cond1
+// FLATTEN-CHECK-SAME:    (%[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<i32>, %[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>) -> tensor<i1>
+// FLATTEN-CHECK-NEXT:   %[[CST:.*]] = mhlo.constant
+// FLATTEN-CHECK-NEXT:   %[[CMP:.*]] = mhlo.compare LT, %[[ARG_0]], %[[ARG_1]]
 
 %region_cond1 (Arg_0.15: (s32[], s32[], f32[], f32[])) -> pred[] {
   %constant.18 = s32[] constant(0)
@@ -284,6 +295,11 @@ ENTRY %foo (arg0.1: s64[]) -> s64[] {
 // CHECK:         %[[TUPLE_7:.*]] = mhlo.tuple %[[WHILE]]#1, %[[TUPLE_6]] : tuple<tensor<i32>, tuple<tensor<i32>>>
 // CHECK:         %[[TUPLE_8:.*]] = mhlo.tuple %[[WHILE]]#0, %[[TUPLE_7]] {xla_shape = "(s32[], (s32[], (s32[])))"} : tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>
 // CHECK:          return %[[TUPLE_8]] : tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>
+
+// FLATTEN-CHECK-LABEL: func private @test_4
+// FLATTEN-CHECK-SAME:    (%[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<i32>, %[[ARG_2:.*]]: tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
+// FLATTEN-CHECK-NEXT:    %[[WHILE:.*]]:3 = mhlo.while(%[[ITER_ARG1:.*]] = %[[ARG_0]], %[[ITER_ARG2:.*]] = %[[ARG_1]], %[[ITER_ARG3:.*]] = %[[ARG_2]])
+// FLATTEN-CHECK:         return %[[WHILE]]#0, %[[WHILE]]#1, %[[WHILE]]#2
 
 %test_4 (Arg_0: (s32[], (s32[], (s32[])))) -> (s32[], (s32[], (s32[]))) {
   %Arg_0 = (s32[], (s32[], (s32[]))) parameter(0)

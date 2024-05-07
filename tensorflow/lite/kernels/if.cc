@@ -147,13 +147,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-// Returns the subgraph input tensor index if the given output is also an input.
-int output_is_input(int output_idx, const std::vector<int>& subgraph_inputs) {
-  auto e =
-      std::find(subgraph_inputs.begin(), subgraph_inputs.end(), output_idx);
-  return (e != subgraph_inputs.end()) ? (e - subgraph_inputs.begin()) : -1;
-}
-
 // Evaluate IF op when subgraphs have dynamic outputs.
 TfLiteStatus Eval_dynamic(TfLiteContext* context, TfLiteNode* node,
                           Subgraph* active_branch_subgraph) {
@@ -184,8 +177,8 @@ TfLiteStatus Eval_dynamic(TfLiteContext* context, TfLiteNode* node,
                         TfLiteIntArrayView(node->outputs), true));
 
   for (int i = 0; i < num_outputs; ++i) {
-    const int input_pos = output_is_input(active_branch_subgraph->outputs()[i],
-                                          active_branch_subgraph->inputs());
+    const int input_pos = OutputIsInput(active_branch_subgraph->outputs()[i],
+                                        active_branch_subgraph->inputs());
     if (input_pos != -1) {
       TfLiteTensor* this_input =
           this_subgraph->tensor(node->inputs->data[input_pos + 1]);
@@ -235,9 +228,8 @@ TfLiteStatus Eval_static(TfLiteContext* context, TfLiteNode* node,
       TfLiteTensorResizeMaybeCopy(this_input->bytes, this_output, false);
       TfLiteTensorCopy(this_input, this_output);
     } else {
-      const int input_pos =
-          output_is_input(active_branch_subgraph->outputs()[i],
-                          active_branch_subgraph->inputs());
+      const int input_pos = OutputIsInput(active_branch_subgraph->outputs()[i],
+                                          active_branch_subgraph->inputs());
       if (input_pos != -1) {
         TfLiteTensor* this_input =
             this_subgraph->tensor(node->inputs->data[input_pos + 1]);

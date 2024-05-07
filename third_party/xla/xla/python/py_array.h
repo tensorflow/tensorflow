@@ -324,7 +324,8 @@ class PyArrayResultHandler {
 };
 
 absl::StatusOr<nanobind::object> CudaArrayInterfaceToBuffer(
-    const nanobind::dict& cai, nb_class_ptr<PyClient> cuda_client);
+    const nanobind::dict& cai, nb_class_ptr<PyClient> cuda_client,
+    std::optional<int> device_id);
 
 }  // namespace xla
 

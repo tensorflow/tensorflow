@@ -195,6 +195,9 @@ class SinkVariableAsNamedArrayPass
     // ReadVariableOp.
     module.walk([&](mlir::TF::ReadVariableOp read_variable_op) {
       if (!read_variable_op->use_empty()) {
+        // This variable tensor is used by CPU host.
+        read_to_load[read_variable_op].setUsedByHost(true);
+
         // Replace CPU use of ReadVariableOp
         read_variable_op.replaceAllUsesWith(
             read_to_load[read_variable_op].getTensorFuture());

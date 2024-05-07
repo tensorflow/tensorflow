@@ -225,7 +225,11 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
   }
 
   absl::Status RandomIndexingCompatible() const override {
-    return random_indexing_compatible_;
+    // TODO(b/325112575): Fix incompatibility issue with batch dataset where it
+    // assumes the index_mapper is stateless. And fix the failed test in
+    // weighted_flat_map_test.py.
+    return absl::FailedPreconditionError(
+        absl::StrCat(type_string(), " does not support random access."));
   }
 
  private:
@@ -233,12 +237,12 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
-          input_impls_(dataset()->inputs_.size()),
+          cumulative_input_cardinalities_(
+              dataset()->ComputeCumulativeInputCardinalities()),
           element_count_(0),
           inputs_element_count_(dataset()->inputs_.size(), 0),
           next_positions_(dataset()->inputs_.size(), 0),
-          cumulative_input_cardinalities_(
-              dataset()->ComputeCumulativeInputCardinalities()) {}
+          input_impls_(dataset()->inputs_.size()) {}
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
@@ -392,9 +396,9 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
+    const std::vector<uint64_t> cumulative_input_cardinalities_;
+
     mutable absl::Mutex mu_;
-    std::vector<std::unique_ptr<IteratorBase>> input_impls_
-        ABSL_GUARDED_BY(mu_);
     // Counts the number of elements this iterator has produced.
     int64_t element_count_ ABSL_GUARDED_BY(mu_) = 0;
     // Counts the number of elements each input iterator has produced.
@@ -402,7 +406,8 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
     // Keeps track of the position of this iterator that each input starts to
     // scan for its next index.
     std::vector<size_t> next_positions_;
-    const std::vector<uint64_t> cumulative_input_cardinalities_;
+    std::vector<std::unique_ptr<IteratorBase>> input_impls_
+        ABSL_GUARDED_BY(mu_);
   };
 
   const std::vector<DatasetBase*> inputs_;

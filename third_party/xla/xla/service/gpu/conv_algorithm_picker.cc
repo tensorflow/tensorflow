@@ -426,7 +426,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
   // Check StreamExecutor on which platform it is. ROCm and Cuda implementation
   // have diverged. Specifically, we need to make sure redzone allocator related
   // utilities are not used in ROCm routine
-  se::Platform::Id platform_id = stream_exec->platform()->id();
+  se::Platform::Id platform_id = stream_exec->GetPlatform()->id();
   if (platform_id == se::rocm::kROCmPlatformId) {
     result_or = PickBestAlgorithmNoCacheRocm(instr);
   } else if (platform_id == se::cuda::kCudaPlatformId) {

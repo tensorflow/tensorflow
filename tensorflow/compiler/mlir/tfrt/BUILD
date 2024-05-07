@@ -350,7 +350,6 @@ cc_library(
         "translate/import_model.h",
     ],
     visibility = [
-        # copybara:uncomment "//learning/brain/experimental/tfrt/visualization:__pkg__",
         "//tensorflow/compiler/mlir/tfrt/tests/saved_model:__pkg__",
         "//tensorflow/compiler/mlir/tfrt/transforms/mlrt:__pkg__",
         "//tensorflow/core/tfrt/graph_executor:__pkg__",
@@ -668,6 +667,7 @@ cc_library(
     hdrs = ["transforms/tpu_passes.h"],
     visibility = [":friends"] + if_google([
         "//learning/brain/tfrt/ifrt/pjrt/__subpackages__",
+        "//learning/serving/servables/tfrt:__subpackages__",
     ]),
     deps = [
         ":fallback_converter",

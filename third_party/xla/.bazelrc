@@ -919,7 +919,9 @@ build:cross_compile_macos_x86 --extra_toolchains=//tensorflow/tools/toolchains/c
 build:cross_compile_macos_x86 --platform_mappings=tensorflow/tools/toolchains/cross_compile/config/platform_mappings
 
 # RBE cross-compile configs for Darwin x86
-build:rbe_cross_compile_macos_x86 --config=cross_compile_macos_x86
+build:rbe_cross_compile_macos_x86 --config=cross_compile_macos_x86 --remote_download_minimal
+build:rbe_cross_compile_macos_x86 --bes_backend="" --bes_results_url="" --bes_timeout="0s"
+build:rbe_cross_compile_macos_x86 --experimental_remote_build_event_upload="minimal"
 build:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
 build:rbe_cross_compile_macos_x86 --bes_upload_mode=nowait_for_upload_complete
 test:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base

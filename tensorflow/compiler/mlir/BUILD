@@ -76,7 +76,6 @@ cc_library(
         "@local_xla//xla/mlir/framework/ir:xla_framework",
         "@local_xla//xla/mlir/framework/transforms:passes",
         "@local_xla//xla/mlir_hlo:all_passes",
-        "@local_xla//xla/service/cpu:hlo_xla_runtime_pipeline",
     ],
 )
 
@@ -205,7 +204,6 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir/framework/ir:xla_framework",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
-        "@local_xla//xla/service/cpu:hlo_xla_runtime_pipeline",
         "@stablehlo//:register",
     ],
 )

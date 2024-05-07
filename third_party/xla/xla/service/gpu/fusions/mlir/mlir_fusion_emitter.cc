@@ -149,8 +149,31 @@ bool Needs64Bits(const Shape& shape) {
                          : absl::c_any_of(shape.tuple_shapes(), Needs64Bits);
 }
 
+bool Is64BitIndex(const HloInstruction* instr, int operand) {
+  const auto& shape = instr->operand(operand)->shape();
+  return shape.element_type() == PrimitiveType::S64 ||
+         shape.element_type() == PrimitiveType::U64;
+}
+
 bool Needs64BitIndices(const HloComputation* computation) {
   for (auto* instr : computation->instructions()) {
+    // Check if any HLO instructions directly take 64 bit indices as operands.
+    switch (instr->opcode()) {
+      case HloOpcode::kDynamicSlice:
+      case HloOpcode::kDynamicUpdateSlice:
+        for (int i = 1; i < instr->operand_count(); ++i) {
+          if (Is64BitIndex(instr, i)) return true;
+        }
+        break;
+      case HloOpcode::kGather:
+      case HloOpcode::kScatter:
+        CHECK(instr->shape().IsArray()) << "Variadic scatter is unsupported.";
+        if (Is64BitIndex(instr, 1)) return true;
+        break;
+      default:
+        break;
+    }
+
     if (Needs64Bits(instr->shape()) ||
         absl::c_any_of(instr->called_computations(), Needs64BitIndices)) {
       return true;
@@ -270,7 +293,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
   pm.addPass(CreatePropagateSliceIndicesPass());
-  pm.addPass(CreateLowerFuncPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateConvertPureCallOpsPass());
   pm.addPass(CreateLowerXlaGpuToScfPass());
   pm.addPass(CreateLowerTensorsPass(
       is_amd, is_amd ? device.rocm_compute_capability().gcn_arch_name()

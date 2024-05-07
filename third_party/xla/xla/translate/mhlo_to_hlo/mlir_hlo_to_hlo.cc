@@ -926,16 +926,6 @@ LogicalResult ExportXlaOp(CompositeOp, OpLoweringContext) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(ComputeReshapeShapeOp, OpLoweringContext) {
-  // This op should've been removed during PrepareForExport.
-  return failure();
-}
-
-LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
-  // This op should've been removed during PrepareForExport.
-  return failure();
-}
-
 LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
   // This op has no expression in the legacy export format.
   return failure();
@@ -2834,6 +2824,11 @@ LogicalResult ExportXlaOp(TopKOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(MinimumBroadcastShapesOp op, OpLoweringContext ctx) {
+  // This op is only used by KernelGen and is not meant to be lowered to HLO.
+  return failure();
+}
+
 }  // namespace
 }  // namespace mhlo
 }  // namespace mlir
@@ -3602,7 +3597,6 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
   bool hasShapeOps = false;
   module.walk([&](Operation* op) {
     hasShapeOps |= isa<shape::ShapeDialect>(op->getDialect());
-    hasShapeOps |= isa<mhlo::ComputeReshapeShapeOp, mhlo::CstrReshapableOp>(op);
     return hasShapeOps ? WalkResult::interrupt() : WalkResult::advance();
   });
   mlir::PassManager pm(module.getContext());

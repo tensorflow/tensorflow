@@ -147,17 +147,14 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
 }
 
 absl::StatusOr<std::string> CompileExecutable(
-    std::unique_ptr<HloModule> hlo_module, absl::string_view platform,
+    std::unique_ptr<HloModule> hlo_module, BackendType backend,
     std::optional<Compiler::TargetConfig> target_config,
     CompilationResult& result) {
-  if (platform == "cpu") {
+  if (backend == BackendType::kCpu) {
     return AotCompileCpuExecutable(std::move(hlo_module));
-  } else if (platform == "gpu") {
-    return CompileGpuExecutable(std::move(hlo_module), target_config, result);
   }
-
-  return absl::UnimplementedError(
-      absl::StrCat("platform", platform, " is not supported"));
+  return CompileGpuExecutable(std::move(hlo_module), std::move(target_config),
+                              result);
 }
 
 absl::Status WriteResultFile(const absl::string_view result_output_file,
@@ -220,32 +217,90 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
   return HloModule::CreateFromProto(hlo_module_proto, config);
 }
 
-absl::Status XlaCompileMain(
-    absl::string_view module_path, absl::string_view output_path,
-    absl::string_view platform, absl::string_view gpu_target_config_path,
-    absl::string_view autotune_results_path, absl::string_view symbol_repo,
-    absl::string_view symbol_id, const bool use_attached_device,
-    const bool wait_for_uploads, absl::string_view result_output_file) {
-  std::unique_ptr<HloModule> hlo_module;
-  std::unique_ptr<Compiler::TargetConfig> target_config;
-  if (!symbol_id.empty()) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloModuleAndMetadata> mod,
-        LookupSymbolInRepository(symbol_repo, symbol_id, BackendType::kGpu));
-    if (mod == nullptr) {
-      return absl::NotFoundError(
-          absl::StrCat("Could not find ", symbol_id, " in ", symbol_repo));
+static absl::StatusOr<std::unique_ptr<HloModuleAndMetadata>>
+ReadModuleFromSymbolRepo(absl::string_view symbol_repo,
+                         absl::string_view symbol_reference,
+                         BackendType backend) {
+  std::unique_ptr<HloModuleAndMetadata> mod;
+  TF_ASSIGN_OR_RETURN(
+      mod, LookupSymbolInRepository(symbol_repo, symbol_reference, backend));
+  if (mod == nullptr) {
+    return absl::NotFoundError(
+        absl::StrCat("Could not find ", symbol_reference, " in ", symbol_repo));
+  }
+  return mod;
+}
+
+static absl::StatusOr<bool> LoadAutotuneDataFromModule(
+    HloModuleAndMetadata* mod, BackendType backend) {
+  if (backend == BackendType::kGpu) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    if (auto* data = static_cast<gpu::GpuBackendSpecificData*>(
+            mod->backend_specific_data.get());
+        data != nullptr && data->autotune_results.has_value()) {
+      TF_RETURN_IF_ERROR(
+          gpu::AutotunerUtil::LoadAutotuneResults(*data->autotune_results));
+      return true;
     }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  }
+  return false;
+}
+
+static std::unique_ptr<Compiler::TargetConfig> ReadTargetConfigFromModule(
+    HloModuleAndMetadata* mod, BackendType backend) {
+  if (backend == BackendType::kGpu) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     if (auto* data = static_cast<gpu::GpuBackendSpecificData*>(
             mod->backend_specific_data.get());
         data != nullptr) {
-      target_config = std::move(mod->target_config);
+      return std::move(mod->target_config);
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  }
+
+  return nullptr;
+}
+
+absl::Status XlaCompileMain(const XlaCompileOptions& options) {
+  std::unique_ptr<HloModule> hlo_module;
+  std::unique_ptr<Compiler::TargetConfig> target_config;
+  if (options.platform != "cpu" && options.platform != "gpu") {
+    return absl::UnimplementedError(
+        absl::StrCat("platform", options.platform, " is not supported"));
+  }
+
+  const BackendType backend =
+      (options.platform == "gpu" ? BackendType::kGpu : BackendType::kCpu);
+
+  absl::string_view symbol_repo = options.repo_options.symbol_repo;
+  if (absl::string_view symbol_id = options.repo_options.symbol_id;
+      !symbol_id.empty()) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModuleAndMetadata> mod,
+        ReadModuleFromSymbolRepo(symbol_repo, symbol_id, backend));
+
     hlo_module = std::move(mod->hlo_module);
+    target_config = ReadTargetConfigFromModule(mod.get(), backend);
   } else {
-    TF_ASSIGN_OR_RETURN(hlo_module, LoadModule(module_path));
+    TF_ASSIGN_OR_RETURN(hlo_module, LoadModule(options.module_path));
+  }
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  bool found_autotune = false;
+#endif
+
+  if (absl::string_view optimized_symbol_id =
+          options.repo_options.optimized_symbol_id;
+      !optimized_symbol_id.empty()) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModuleAndMetadata> optimized_mod,
+        ReadModuleFromSymbolRepo(symbol_repo, optimized_symbol_id, backend));
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    TF_ASSIGN_OR_RETURN(found_autotune, LoadAutotuneDataFromModule(
+                                            optimized_mod.get(), backend));
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   }
 
   xla::TimerStats stats;
@@ -255,15 +310,18 @@ absl::Status XlaCompileMain(
   absl::Cleanup cleanup([&] {
     // Make sure we stop the timer if compilation failed.
     timer.StopAndLog();
-    if (!result_output_file.empty()) {
-      TF_QCHECK_OK(
-          WriteResultFile(result_output_file, stats, compilation_result));
+    if (!options.result_output_file.empty()) {
+      TF_QCHECK_OK(WriteResultFile(options.result_output_file, stats,
+                                   compilation_result));
     }
   });
   // Run AOT compilation.
   std::optional<Compiler::TargetConfig> cfg = std::nullopt;
-  if (platform == "gpu") {
-    if (!gpu_target_config_path.empty()) {
+  if (backend == BackendType::kGpu) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    if (absl::string_view gpu_target_config_path =
+            options.gpu_options.gpu_target_config_path;
+        !gpu_target_config_path.empty()) {
       // Parse GpuTargetConfig.
       std::string gpu_target_config_string;
       TF_RETURN_IF_ERROR(tsl::ReadFileToString(
@@ -279,28 +337,30 @@ absl::Status XlaCompileMain(
       target_config =
           std::make_unique<Compiler::TargetConfig>(gpu_target_config_proto);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      if (!autotune_results_path.empty()) {
+      if (absl::string_view autotune_results_path =
+              options.gpu_options.autotune_results_path;
+          !found_autotune && !autotune_results_path.empty()) {
         TF_RETURN_IF_ERROR(gpu::AutotunerUtil::LoadAutotuneResultsFromFile(
             autotune_results_path));
       }
-#endif
     }
 
-    cfg = (use_attached_device) ? std::nullopt
-                                : std::make_optional(*std::move(target_config));
+    cfg = (options.gpu_options.use_attached_device)
+              ? std::nullopt
+              : std::make_optional(*std::move(target_config));
+#endif
   }
-  auto result = CompileExecutable(std::move(hlo_module), platform, cfg,
-                                  compilation_result);
+  auto result = CompileExecutable(std::move(hlo_module), backend,
+                                  std::move(cfg), compilation_result);
   if (!result.ok()) {
     *compilation_result.mutable_status() = tsl::StatusToProto(result.status());
     return result.status();
   }
 
   TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(),
-                                            std::string(output_path), *result));
+                                            options.output_path, *result));
 
-  if (wait_for_uploads) {
+  if (options.repo_options.wait_for_uploads) {
     MaybeWaitForUploads();
   }
   return OkStatus();

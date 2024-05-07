@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "xla/service/while_loop_invariant_code_motion.h"
 
+#include <cstdint>
+#include <iterator>
+#include <string>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -32,7 +37,6 @@ limitations under the License.
 #include "xla/service/while_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -112,10 +116,14 @@ static void CreateLoopInvariantCopy(
 }
 
 // Returns true if `instruction` is worth hoisting only if it lets us hoist some
-// instruction using it.  The rationale is that hoisting these instructions will
-// prevent simplification and fusion in the while body.
+// instruction using it. The rationale is that hoisting these instructions will
+// prevent simplification, fusion, and sharding annotation in the while body.
 bool WhileLoopInvariantCodeMotion::NotWorthHoistingIndividually(
     const HloInstruction& instruction) {
+  if (instruction.IsCustomCall("Sharding")) {
+    return true;
+  }
+
   switch (instruction.opcode()) {
     default:
       return false;

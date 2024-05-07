@@ -1078,24 +1078,11 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                    [](DebugOptions* self, std::string value) {
                      self->set_xla_dump_hlo_pipeline_re(value);
                    })
-      .def_prop_rw("xla_gpu_enable_async_all_reduce",
-                   &DebugOptions::xla_gpu_enable_async_all_reduce,
-                   &DebugOptions::set_xla_gpu_enable_async_all_reduce)
-      .def_prop_rw("xla_gpu_enable_async_all_gather",
-                   &DebugOptions::xla_gpu_enable_async_all_gather,
-                   &DebugOptions::set_xla_gpu_enable_async_all_gather)
-      .def_prop_rw("xla_gpu_enable_async_collective_broadcast",
-                   &DebugOptions::xla_gpu_enable_async_collective_broadcast,
-                   &DebugOptions::set_xla_gpu_enable_async_collective_broadcast)
-      .def_prop_rw("xla_gpu_enable_async_collective_permute",
-                   &DebugOptions::xla_gpu_enable_async_collective_permute,
-                   &DebugOptions::set_xla_gpu_enable_async_collective_permute)
-      .def_prop_rw("xla_gpu_enable_async_all_to_all",
-                   &DebugOptions::xla_gpu_enable_async_all_to_all,
-                   &DebugOptions::set_xla_gpu_enable_async_all_to_all)
-      .def_prop_rw("xla_gpu_enable_async_reduce_scatter",
-                   &DebugOptions::xla_gpu_enable_async_reduce_scatter,
-                   &DebugOptions::set_xla_gpu_enable_async_reduce_scatter);
+      .def_prop_rw("xla_gpu_dump_autotune_logs_to",
+                   &DebugOptions::xla_gpu_dump_autotune_logs_to,
+                   [](DebugOptions* self, std::string value) {
+                     self->set_xla_gpu_dump_autotune_logs_to(value);
+                   });
 
   nb::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(nb::init<>())

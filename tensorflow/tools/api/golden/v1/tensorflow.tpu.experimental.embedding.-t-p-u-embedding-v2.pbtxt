@@ -6,6 +6,14 @@ tf_class {
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "DEFAULT_MAX_IDS_PER_TABLE"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "DEFAULT_MAX_UNIQUE_IDS_PER_TABLE"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "embedding_table_shards"
     mtype: "<type \'property\'>"
   }
@@ -19,7 +27,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'feature_config\', \'optimizer\', \'pipeline_execution_with_tensor_core\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'self\', \'feature_config\', \'optimizer\', \'pipeline_execution_with_tensor_core\', \'sparse_core_embedding_config\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "apply_gradients"
@@ -28,6 +36,10 @@ tf_class {
   member_method {
     name: "build"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "compute_sparse_core_stats"
+    argspec: "args=[\'cls\', \'features\', \'feature_config\', \'num_tpu_chips\', \'num_sc_per_chip\', \'optimizer\', \'sparse_core_embedding_config\'], varargs=None, keywords=None, defaults=[\'4\', \'None\', \'None\'], "
   }
   member_method {
     name: "dequeue"
@@ -40,9 +52,5 @@ tf_class {
   member_method {
     name: "enqueue"
     argspec: "args=[\'self\', \'features\', \'weights\', \'device\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "preprocess_features"
-    argspec: "args=[\'num_replicas_in_sync\', \'max_ids_per_chip_per_sample\', \'max_minibatches_per_sc\', \'num_sc_per_chip\', \'num_sc_shards\', \'stacked_table_to_tables\', \'table_to_stacked_table_offset\', \'table_to_sample_count\', \'feature_to_sample_offset\', \'flat_features\', \'flat_inputs\', \'flat_weights\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

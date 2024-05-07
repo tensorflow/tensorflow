@@ -39,10 +39,11 @@ limitations under the License.
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/python/ifrt/memory.h"
 
 // Generated definitions.
 #include "xla/python/ifrt/ir/ifrt_dialect.cc.inc"
-#include "xla/python/ifrt/ir/sharding_param.h"
 #define GET_TYPEDEF_CLASSES
 #include "xla/python/ifrt/ir/ifrt_types.cc.inc"
 #define GET_ATTRDEF_CLASSES
@@ -127,7 +128,7 @@ mlir::LogicalResult IfrtDialect::verifyRegionArgAttribute(
 
 mlir::LogicalResult IfrtShardingParamAttr::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-    ShardingParam sharding_param) {
+    ShardingParam sharding_param, mlir::StringAttr memory_kind) {
   return sharding_param.verify(emitError);
 }
 
@@ -152,6 +153,12 @@ IfrtShardingParamAttr::LocalShapeFromGlobalShape(
 // Returns the number of devices the sharding applies to.
 int IfrtShardingParamAttr::NumDevices() const {
   return getSharding().NumDevices();
+};
+
+xla::ifrt::MemoryKind IfrtShardingParamAttr::MemoryKind() const {
+  return getMemoryKind() == nullptr
+             ? xla::ifrt::MemoryKind()
+             : xla::ifrt::MemoryKind(getMemoryKind().str());
 };
 
 //===----------------------------------------------------------------------===//
@@ -184,6 +191,10 @@ IfrtUnspecifiedShardingAttr::LocalShapeFromGlobalShape(
 }
 
 int IfrtUnspecifiedShardingAttr::NumDevices() const { return 0; }
+
+xla::ifrt::MemoryKind IfrtUnspecifiedShardingAttr::MemoryKind() const {
+  return xla::ifrt::MemoryKind();
+}
 
 //===----------------------------------------------------------------------===//
 // IfrtArrayType

@@ -432,17 +432,30 @@ class Array {
 
   // Performs the equivalent of a slice operation on this array.
   Array<T> Slice(absl::Span<const int64_t> starts,
-                 absl::Span<const int64_t> limits) const {
+                 absl::Span<const int64_t> limits,
+                 bool out_of_bounds_ok = false) const {
     CHECK_EQ(starts.size(), num_dimensions());
     CHECK_EQ(limits.size(), num_dimensions());
 
     OwnedBuffer<int64_t> sizes(starts.size());
     for (int64_t i = 0; i < starts.size(); ++i) {
       CHECK_GE(starts[i], 0);
-      CHECK_LE(limits[i], dim(i));
+      if (!out_of_bounds_ok) {
+        CHECK_LE(limits[i], dim(i));
+      }
       sizes[i] = limits[i] - starts[i];
     }
     Array<T> result(sizes.span());
+    if (result.num_elements() == 0) {
+      return result;
+    }
+    // Initializes the slice to the first value if out of bounds access are ok.
+    if (out_of_bounds_ok) {
+      CHECK_GT(num_elements(), 0);
+      for (int64_t i = 0; i < result.num_elements(); ++i) {
+        result.values_[i] = values_[0];
+      }
+    }
 
     OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     int64_t slice_i = 0;

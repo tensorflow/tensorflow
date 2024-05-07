@@ -18,10 +18,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/hash/hash.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/status.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
 
