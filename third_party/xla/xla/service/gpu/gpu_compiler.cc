@@ -913,46 +913,48 @@ absl::Status RunCollectiveOptimizationPasses(
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
       debug_options.xla_gpu_enable_pipelined_all_reduce()) {
     CollectivePipeliner::Config config{
-        /*level_to_operate_on=*/0,
-        /*max_pipelining_per_loop=*/INT64_MAX,
-        /*last_run=*/true,
-        /*pipeline_use_tree=*/false,
-        /*process_different_sized_ops=*/true,
-        /*pipelining_direction=*/
-        CollectivePipeliner::PipeliningDirection::kForward,
-        /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>,
-        /*acceptable_formatting=*/HloPredicateTrue,
-        /*reuse_pipelined_op_buffer=*/HloPredicateFalse};
+        .level_to_operate_on = 0,
+        .max_pipelining_per_loop = INT64_MAX,
+        .last_run = true,
+        .pipeline_use_tree = false,
+        .process_different_sized_ops = true,
+        .pipelining_direction =
+            CollectivePipeliner::PipeliningDirection::kForward,
+        .should_process = HloPredicateIsOp<HloOpcode::kAllReduce>,
+        .acceptable_formatting = HloPredicateTrue,
+        .reuse_pipelined_op_buffer = HloPredicateFalse,
+    };
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
       debug_options.xla_gpu_enable_pipelined_all_gather()) {
     CollectivePipeliner::Config config{
-        /*level_to_operate_on=*/0,
-        /*max_pipelining_per_loop=*/INT64_MAX,
-        /*last_run=*/true,
-        /*pipeline_use_tree=*/false,
-        /*process_different_sized_ops=*/true,
-        /*pipelining_direction=*/
-        CollectivePipeliner::PipeliningDirection::kBackward,
-        /*should_process=*/HloPredicateIsOp<HloOpcode::kAllGather>,
-        /*acceptable_formatting=*/HloPredicateTrue,
-        /*reuse_pipelined_op_buffer=*/HloPredicateFalse};
+        .level_to_operate_on = 0,
+        .max_pipelining_per_loop = INT64_MAX,
+        .last_run = true,
+        .pipeline_use_tree = false,
+        .process_different_sized_ops = true,
+        .pipelining_direction =
+            CollectivePipeliner::PipeliningDirection::kBackward,
+        .should_process = HloPredicateIsOp<HloOpcode::kAllGather>,
+        .acceptable_formatting = HloPredicateTrue,
+        .reuse_pipelined_op_buffer = HloPredicateFalse,
+    };
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
       debug_options.xla_gpu_enable_pipelined_reduce_scatter()) {
     CollectivePipeliner::Config config{
-        /*level_to_operate_on=*/0,
-        /*max_pipelining_per_loop=*/INT64_MAX,
-        /*last_run=*/true,
-        /*pipeline_use_tree=*/false,
-        /*process_different_sized_ops=*/true,
-        /*pipelining_direction=*/
-        CollectivePipeliner::PipeliningDirection::kForward,
-        /*should_process=*/HloPredicateIsOp<HloOpcode::kReduceScatter>,
-        /*acceptable_formatting=*/HloPredicateTrue,
-        /*reuse_pipelined_op_buffer=*/HloPredicateFalse};
+        .level_to_operate_on = 0,
+        .max_pipelining_per_loop = INT64_MAX,
+        .last_run = true,
+        .pipeline_use_tree = false,
+        .process_different_sized_ops = true,
+        .pipelining_direction =
+            CollectivePipeliner::PipeliningDirection::kForward,
+        .should_process = HloPredicateIsOp<HloOpcode::kReduceScatter>,
+        .acceptable_formatting = HloPredicateTrue,
+        .reuse_pipelined_op_buffer = HloPredicateFalse};
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
 
