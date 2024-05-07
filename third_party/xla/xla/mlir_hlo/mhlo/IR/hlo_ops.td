@@ -1234,6 +1234,9 @@ def MHLO_AfterAllOp : MHLO_Op<"after_all", [Pure,
   let arguments = (ins Variadic<MHLO_Token>:$inputs);
   let results = (outs MHLO_Token:$result);
 
+  // Add builder for token creation
+  let builders = [OpBuilder<(ins)>];
+
   let assemblyFormat = [{
     $inputs attr-dict
       `:` custom<VariadicSameOperandsAndResultType>(ref($inputs), type($inputs), type($result))

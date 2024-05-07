@@ -38,7 +38,7 @@ def LegalizeTFCommunicationPass : Pass<"xla-legalize-tf-communication", "ModuleO
 
     ```mlir
       func @send_to_host(%arg0: tensor<i32>) {
-        %0 = "mhlo.create_token"() : () -> !mhlo.token
+        %0 = "mhlo.after_all"() : () -> !mhlo.token
         %1 = "mhlo.send"(%arg0, %0) {...}} : (tensor<i32>, !mhlo.token) -> !mhlo.token
         return
       }

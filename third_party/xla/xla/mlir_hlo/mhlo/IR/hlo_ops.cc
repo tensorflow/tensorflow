@@ -577,6 +577,10 @@ LogicalResult AsyncDoneOp::inferReturnTypes(
 // AfterAllOp
 //===----------------------------------------------------------------------===//
 
+void AfterAllOp::build(OpBuilder& odsBuilder, OperationState& odsState) {
+  AfterAllOp::build(odsBuilder, odsState, {});
+}
+
 LogicalResult AfterAllOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange,
     DictionaryAttr, OpaqueProperties, RegionRange,

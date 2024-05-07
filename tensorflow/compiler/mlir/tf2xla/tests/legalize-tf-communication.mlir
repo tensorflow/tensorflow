@@ -17,7 +17,7 @@
 // CHECK-LABEL: func @host_compute
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i32>, [[ARG1:%.*]]: tensor<i64>)
 func.func @host_compute(%arg0: tensor<i32>, %arg1: tensor<i64>) -> (tensor<f32>, tensor<f64>) {
-  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK:      [[SEND_ARG0_TOKEN:%.*]] = "mhlo.send"([[ARG0]], [[INIT_TOKEN]])
   // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
@@ -63,7 +63,7 @@ func.func @host_compute(%arg0: tensor<i32>, %arg1: tensor<i64>) -> (tensor<f32>,
 
 // CHECK-LABEL: func @host_compute_no_operands_one_result
 func.func @host_compute_no_operands_one_result() {
-  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK-NOT:  "mhlo.send"
   // CHECK-NOT:  "mhlo.after_all"
@@ -80,7 +80,7 @@ func.func @host_compute_no_operands_one_result() {
 // CHECK-LABEL: func @host_compute_one_operand_no_results
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i32>)
 func.func @host_compute_one_operand_no_results(%arg0: tensor<i32>) {
-  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK:      [[SEND_TOKEN:%.*]] = "mhlo.send"([[ARG0]], [[INIT_TOKEN]])
   // CHECK-NOT:  "mhlo.after_all"
@@ -99,7 +99,7 @@ func.func @host_compute_one_operand_no_results(%arg0: tensor<i32>) {
 // CHECK-LABEL: func @host_compute_single_operand_result
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i32>)
 func.func @host_compute_single_operand_result(%arg0: tensor<i32>) {
-  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK:      [[SEND_TOKEN:%.*]] = "mhlo.send"([[ARG0]], [[INIT_TOKEN]])
   // CHECK-NOT:  "mhlo.after_all"
@@ -116,7 +116,7 @@ func.func @host_compute_single_operand_result(%arg0: tensor<i32>) {
 // CHECK-LABEL: func @send_to_host
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i32>)
 func.func @send_to_host(%arg0: tensor<i32>) {
-  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK:      "mhlo.send"([[ARG0]], [[INIT_TOKEN]])
   // CHECK-SAME: channel_handle = #mhlo.channel_handle
@@ -136,7 +136,7 @@ func.func @send_to_host(%arg0: tensor<i32>) {
 
 // CHECK-LABEL: func @recv_from_host
 func.func @recv_from_host() -> tensor<i32> {
-  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK:      [[RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[INIT_TOKEN]])
   // CHECK-SAME: channel_handle = #mhlo.channel_handle
@@ -159,7 +159,7 @@ func.func @recv_from_host() -> tensor<i32> {
 // CHECK-LABEL: func @multiple_consecutive_ops
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i32>)
 func.func @multiple_consecutive_ops(%arg0: tensor<i32>) -> tensor<i32> {
-  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK:      [[SEND0_ARG0_TOKEN:%.*]] = "mhlo.send"([[ARG0]], [[INIT_TOKEN]])
   // CHECK-SAME: channel_handle = #mhlo.channel_handle
@@ -202,7 +202,7 @@ func.func @multiple_consecutive_ops(%arg0: tensor<i32>) -> tensor<i32> {
 
 // CHECK: func @main([[MAIN_ARG0:%.*]]: tensor<i32>) -> tensor<i32>
 func.func @main(%arg0: tensor<i32>) -> tensor<i32> {
-  // CHECK:      [[MAIN_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[MAIN_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK:      [[CALL:%.*]]:2 = call @callee([[MAIN_ARG0]], [[MAIN_TOKEN]])
   // CHECK-SAME: (tensor<i32>, !mhlo.token) -> (tensor<i32>, !mhlo.token)
@@ -214,7 +214,7 @@ func.func @main(%arg0: tensor<i32>) -> tensor<i32> {
 
 // CHECK: func private @callee([[CALLEE_ARG0:%.*]]: tensor<i32>, [[CALLEE_ARG1:%.*]]: !mhlo.token) -> (tensor<i32>, !mhlo.token)
 func.func private @callee(%arg0: tensor<i32>) -> tensor<i32> {
-  // CHECK-NOT:  mhlo.create_token
+  // CHECK-NOT:  mhlo.after_all
 
   // CHECK:      [[SEND_ARG0_TOKEN:%.*]] = "mhlo.send"([[CALLEE_ARG0]], [[CALLEE_ARG1]])
   // CHECK:      [[RECV_RETVAL0_TUPLE:%.*]]:2 = "mhlo.recv"([[SEND_ARG0_TOKEN]])
@@ -235,7 +235,7 @@ func.func private @callee(%arg0: tensor<i32>) -> tensor<i32> {
 
 // CHECK: func @main([[MAIN_ARG0:%.*]]: tensor<i32>) -> tensor<i32>
 func.func @main(%arg0: tensor<i32>) -> tensor<i32> {
-  // CHECK:      [[MAIN_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[MAIN_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK:      [[CALL:%.*]]:2 = call [[CALLEE_CLONE:@.*]]([[MAIN_ARG0]], [[MAIN_TOKEN]])
   // CHECK-SAME: (tensor<i32>, !mhlo.token) -> (tensor<i32>, !mhlo.token)
@@ -247,7 +247,7 @@ func.func @main(%arg0: tensor<i32>) -> tensor<i32> {
 
 // CHECK: func @callee([[CALLEE_ARG0:%.*]]: tensor<i32>) -> tensor<i32>
 func.func @callee(%arg0: tensor<i32>) -> tensor<i32> {
-  // CHECK:      [[CALLEE_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[CALLEE_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK:      [[SEND_ARG0_TOKEN:%.*]] = "mhlo.send"([[CALLEE_ARG0]], [[CALLEE_TOKEN]])
   // CHECK:      [[RECV_RETVAL0_TUPLE:%.*]]:2 = "mhlo.recv"([[SEND_ARG0_TOKEN]])
@@ -258,7 +258,7 @@ func.func @callee(%arg0: tensor<i32>) -> tensor<i32> {
 }
 
 // CHECK: func private [[CALLEE_CLONE]]([[CALLEE_CLONE_ARG0:%.*]]: tensor<i32>, [[CALLEE_CLONE_ARG1:%.*]]: !mhlo.token) -> (tensor<i32>, !mhlo.token)
-// CHECK-NOT:  mhlo.create_token
+// CHECK-NOT:  mhlo.after_all
 
 // CHECK:      [[CLONE_SEND_ARG0_TOKEN:%.*]] = "mhlo.send"([[CALLEE_CLONE_ARG0]], [[CALLEE_CLONE_ARG1]])
 // CHECK:      [[CLONE_RECV_RETVAL0_TUPLE:%.*]]:2 = "mhlo.recv"([[CLONE_SEND_ARG0_TOKEN]])
@@ -272,7 +272,7 @@ func.func @callee(%arg0: tensor<i32>) -> tensor<i32> {
 
 // CHECK: func @main([[MAIN_ARG0:%.*]]: tensor<i32>)
 func.func @main(%arg0: tensor<i32>) {
-  // CHECK:      [[MAIN_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[MAIN_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK:      [[MAIN_SEND0_TOKEN:%.*]] = "mhlo.send"([[MAIN_ARG0]], [[MAIN_TOKEN]])
   "tf.XlaSendToHost"(%arg0) {key = "send0"} : (tensor<i32>) -> ()
@@ -288,7 +288,7 @@ func.func @main(%arg0: tensor<i32>) {
 
 // CHECK: func private @callee([[CALLEE_ARG0:%.*]]: !mhlo.token) -> !mhlo.token
 func.func private @callee() {
-  // CHECK-NOT:  mhlo.create_token
+  // CHECK-NOT:  mhlo.after_all
 
   // CHECK:      [[ZERO:%.*]] = mhlo.constant dense<0>
   %0 = mhlo.constant dense<0> : tensor<i32>
@@ -306,7 +306,7 @@ func.func private @callee() {
 
 // CHECK: func private @callee0()
 func.func private @callee0() {
-  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK:      call @callee1([[INIT_TOKEN]])
   func.call @callee1() : () -> ()
@@ -315,7 +315,7 @@ func.func private @callee0() {
 
 // CHECK: func private @callee1([[CALLEE1_ARG0:%.*]]: !mhlo.token) -> !mhlo.token
 func.func private @callee1() {
-  // CHECK-NOT:  mhlo.create_token
+  // CHECK-NOT:  mhlo.after_all
 
   // CHECK:      [[CALL_2:%.*]] = call @callee2([[CALLEE1_ARG0]])
   func.call @callee2() : () -> ()
@@ -326,7 +326,7 @@ func.func private @callee1() {
 
 // CHECK: func private @callee2([[CALLEE2_ARG0:%.*]]: !mhlo.token) -> !mhlo.token
 func.func private @callee2() {
-  // CHECK-NOT:  mhlo.create_token
+  // CHECK-NOT:  mhlo.after_all
 
   // CHECK:      [[RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[CALLEE2_ARG0]])
   %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
@@ -342,7 +342,7 @@ func.func private @callee2() {
 
 // CHECK: func @callee3()
 func.func @callee3() {
-  // CHECK:      [[CALLEE3_INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[CALLEE3_INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK:      call @callee4{{.+}}([[CALLEE3_INIT_TOKEN]])
   func.call @callee4() : () -> ()
@@ -351,7 +351,7 @@ func.func @callee3() {
 
 // CHECK: func @callee4()
 func.func @callee4() {
-  // CHECK:      [[CALLEE4_INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[CALLEE4_INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK:      [[CALL_5:%.*]] = call @callee5([[CALLEE4_INIT_TOKEN]])
   func.call @callee5() : () -> ()
@@ -362,7 +362,7 @@ func.func @callee4() {
 
 // CHECK: func private @callee5([[CALLEE5_ARG0:%.*]]: !mhlo.token) -> !mhlo.token
 func.func private @callee5() {
-  // CHECK-NOT:  mhlo.create_token
+  // CHECK-NOT:  mhlo.after_all
 
   // CHECK:      [[RECV_TUPLE:%.*]]:2 = "mhlo.recv"([[CALLEE5_ARG0]])
   %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
@@ -372,7 +372,7 @@ func.func private @callee5() {
 }
 
 // CHECK: func private @callee4{{.+}}([[CALLEE4_ARG0:%.*]]: !mhlo.token) -> !mhlo.token
-// CHECK-NOT:  mhlo.create_token
+// CHECK-NOT:  mhlo.after_all
 // CHECK:      [[CALL_5:%.*]] = call @callee5([[CALLEE4_ARG0]])
 // CHECK:      return [[CALL_5]]
 
@@ -383,7 +383,7 @@ func.func private @callee5() {
 // CHECK-LABEL: func @if_both_branches
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tensor<f32>, [[ARG2:%.*]]: tensor<f32>)
 func.func @if_both_branches(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
-  // CHECK: [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK: [[INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK: [[IF:%.*]]:2 = "mhlo.if"([[ARG0]])
   %0 = "mhlo.if"(%arg0) ({
@@ -434,7 +434,7 @@ func.func @if_both_branches(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor
 // CHECK-LABEL: func @if_true_branch
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tensor<f32>, [[ARG2:%.*]]: tensor<f32>)
 func.func @if_true_branch(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
-  // CHECK: [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK: [[INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK: [[IF:%.*]]:2 = "mhlo.if"([[ARG0]])
   %0 = "mhlo.if"(%arg0) ({
@@ -472,7 +472,7 @@ func.func @if_true_branch(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f
 // CHECK-LABEL: func @if_false_branch
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tensor<f32>, [[ARG2:%.*]]: tensor<f32>)
 func.func @if_false_branch(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
-  // CHECK: [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK: [[INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK: [[IF:%.*]]:2 = "mhlo.if"([[ARG0]])
   %0 = "mhlo.if"(%arg0) ({
@@ -511,7 +511,7 @@ func.func @if_false_branch(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tensor<f32>, [[ARG2:%.*]]: tensor<f32>)
 func.func @if_replace_tuple_arg(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
   // CHECK-NOT:  mhlo.tuple [[ARG1]], [[ARG2]]
-  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK: [[IF:%.*]] = "mhlo.if"([[ARG0]])
   %1 = "mhlo.if"(%arg0) ({
@@ -530,7 +530,7 @@ func.func @if_replace_tuple_arg(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: te
 // CHECK-LABEL: func @if_unpack_tuple_arg
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tuple<tensor<f32>, tensor<f32>>)
 func.func @if_unpack_tuple_arg(%arg0: tensor<i1>, %arg1: tuple<tensor<f32>, tensor<f32>>) -> tensor<f32> {
-  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.after_all
   // CHECK-DAG:  [[IF_ARG_ELEMENT0:%.*]] = mhlo.get_tuple_element [[ARG1]][0]
   // CHECK-DAG:  [[IF_ARG_ELEMENT1:%.*]] = mhlo.get_tuple_element [[ARG1]][1]
   %0 = "mhlo.get_tuple_element"(%arg1) {index = 0 : i32} : (tuple<tensor<f32>, tensor<f32>>) -> tensor<f32>
@@ -576,7 +576,7 @@ func.func @if_extend_tuple_result(%arg0: tensor<i1>, %arg1: tuple<tensor<f32>, t
 // CHECK-LABEL: func @if_nested
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tensor<f32>)
 func.func @if_nested(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32> {
-  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK:      [[IF:%.*]]:2 = "mhlo.if"([[ARG0]])
   %0 = "mhlo.if"(%arg0) ({
@@ -620,7 +620,7 @@ func.func @if_nested(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: func @if_function_call
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tensor<f32>)
 func.func @if_function_call(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32> {
-  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.after_all
   // CHECK: "mhlo.if"
   %0 = "mhlo.if"(%arg0) ({
     // CHECK:      [[CALL_TOKEN:%.*]] = func.call @callee([[ARG1]], [[INIT_TOKEN]])
@@ -651,7 +651,7 @@ func.func private @callee(%arg0: tensor<f32>) {
 // CHECK-LABEL: func @if_region_multiple_ops
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tensor<f32>)
 func.func @if_region_multiple_ops(%arg0: tensor<i1>, %arg1: tensor<f32>) {
-  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.after_all
   // CHECK: "mhlo.if"
   %0 = "mhlo.if"(%arg0) ({
     // CHECK: [[SEND0_TOKEN:%.*]] = "mhlo.send"([[ARG1]], [[INIT_TOKEN]])
@@ -676,7 +676,7 @@ func.func @if_region_multiple_ops(%arg0: tensor<i1>, %arg1: tensor<f32>) {
 // CHECK-LABEL: func @if_followed_by_communication_op
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<i1>, [[ARG1:%.*]]: tensor<f32>)
 func.func @if_followed_by_communication_op(%arg0: tensor<i1>, %arg1: tensor<f32>) {
-  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK:      [[INIT_TOKEN:%.*]] = mhlo.after_all
   // CHECK-NEXT: [[IF:%.*]]:2 = "mhlo.if"
   %0 = "mhlo.if"(%arg0) ({
     // CHECK-NEXT: [[SEND0_TOKEN:%.*]] = "mhlo.send"([[ARG1]], [[INIT_TOKEN]])
@@ -703,7 +703,7 @@ func.func @if_followed_by_communication_op(%arg0: tensor<i1>, %arg1: tensor<f32>
 // CHECK-LABEL: func @while_cond_body
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<f32>)
 func.func @while_cond_body(%arg0: tensor<f32>) -> tensor<f32> {
-  // CHECK: [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK: [[INIT_TOKEN:%.*]] = mhlo.after_all
 
   // CHECK: [[WHILE:%.*]]:2 = mhlo.while([[ITER_ARG_VALUE:.*]] = [[ARG0]], [[ITER_ARG_TOKEN:.*]] = [[INIT_TOKEN]])
   %0 = "mhlo.while"(%arg0) ({
@@ -757,7 +757,7 @@ func.func @while_cond_body(%arg0: tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: func @while_cond
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<f32>)
 func.func @while_cond(%arg0: tensor<f32>) -> tensor<f32> {
-  // CHECK: [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK: [[INIT_TOKEN:%.*]] = mhlo.after_all
   // CHECK: [[WHILE:%.*]]:2 = mhlo.while([[ITER_ARG_VALUE:.*]] = [[ARG0]], [[ITER_ARG_TOKEN:.*]] = [[INIT_TOKEN]])
   %0 = "mhlo.while"(%arg0) ({
   ^bb0(%arg1: tensor<f32>):
@@ -798,7 +798,7 @@ func.func @while_cond(%arg0: tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: func @while_body
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<f32>)
 func.func @while_body(%arg0: tensor<f32>) -> tensor<f32> {
-  // CHECK: [[INIT_TOKEN:%.*]] = mhlo.create_token
+  // CHECK: [[INIT_TOKEN:%.*]] = mhlo.after_all
   // CHECK: [[WHILE:%.*]]:2 = mhlo.while([[ITER_ARG_VALUE:.*]] = [[ARG0]], [[ITER_ARG_TOKEN:.*]] = [[INIT_TOKEN]])
   %0 = "mhlo.while"(%arg0) ({
   ^bb0(%arg1: tensor<f32>):

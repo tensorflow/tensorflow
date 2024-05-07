@@ -1236,7 +1236,7 @@ func.func @checkNumerics(%arg0: tensor<1xf32>) -> tensor<1xf32> {
 
 // CHECK-LABEL: func @infeed_dequeue_tuple
 func.func @infeed_dequeue_tuple() -> (tensor<1x8x4x4xi32>, tensor<1x100x1xf32>) {
-// CHECK: [[TOKEN:%.*]] = mhlo.create_token  : !mhlo.token
+// CHECK: [[TOKEN:%.*]] = mhlo.after_all  : !mhlo.token
 // CHECK: [[INFEED:%.*]]:3 = "mhlo.infeed"([[TOKEN]]) <{infeed_config = ""{{.*}}}> : (!mhlo.token) -> (tensor<1x8x4x4xi32>, tensor<1x100x1xf32>, !mhlo.token)
 // CHECK: return [[INFEED]]#0, [[INFEED]]#1
   %0:2 = "tf.InfeedDequeueTuple"() : () -> (tensor<1x8x4x4xi32>, tensor<1x100x1xf32>)
@@ -1576,7 +1576,7 @@ func.func @one_hot(%indices: tensor<3xi32>, %on_value: tensor<f32>, %off_value: 
 // CHECK-LABEL: func @outfeed_enqueue_tuple
 // CHECK-SAME: [[VAL_0:%.*]]: tensor<3xi32>, [[VAL_1:%.*]]: tensor<4xf32>)
 func.func @outfeed_enqueue_tuple(%data_1: tensor<3xi32>, %data_2: tensor<4xf32>) -> () {
-// CHECK: [[TOKEN:%.*]] = mhlo.create_token  : !mhlo.token
+// CHECK: [[TOKEN:%.*]] = mhlo.after_all  : !mhlo.token
 // CHECK: "mhlo.outfeed"([[VAL_0]], [[VAL_1]], [[TOKEN]]) <{outfeed_config = ""}> : (tensor<3xi32>, tensor<4xf32>, !mhlo.token) -> !mhlo.token
   "tf.OutfeedEnqueueTuple"(%data_1, %data_2) : (tensor<3xi32>, tensor<4xf32>) -> ()
   func.return
