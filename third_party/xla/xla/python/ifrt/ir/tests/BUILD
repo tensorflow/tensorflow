@@ -1,5 +1,5 @@
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -35,7 +35,7 @@ lit_test_suite(
     ],
 )
 
-cc_binary(
+xla_cc_binary(
     name = "ifrt-opt",
     srcs = ["ifrt-opt.cc"],
     deps = [

@@ -141,6 +141,7 @@ cc_library(
         ":ifrt_interfaces_inc_gen",
         ":ifrt_ops_inc_gen",
         ":sharding_param",
+        "//xla/python/ifrt",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:CallOpInterfaces",  # buildcleaner: keep
