@@ -2908,7 +2908,7 @@ TEST_F(HloInstructionTest,
       gte4 = f32[10]{0} get-tuple-element(consumer), index=0
       gte5 = f32[10]{0} get-tuple-element(consumer), index=1
       gte6 = f32[10]{0} get-tuple-element(consumer), index=2
-      ROOT res = tuple(gte0, gte1, gte3, gte4, gte5, gte6)
+      ROOT res = (f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}) tuple(gte0, gte1, gte3, gte4, gte5, gte6)
     }
   )";
 
@@ -2931,6 +2931,60 @@ TEST_F(HloInstructionTest,
                   m::Divide(m::Add(m::Parameter(0), m::Parameter(1)),
                             m::Subtract(m::Parameter(0), m::Parameter(1))),
                   m::Parameter(0), m::Add(m::Parameter(0), m::Parameter(1)))));
+}
+
+TEST_F(HloInstructionTest,
+       MergeMultiOutputProducerFusionIntoMultiOutputFusionAvoidDuplicateRoots) {
+  const std::string& hlo_string = R"(
+    HloModule mof
+    mof_producer {
+      param0 = f32[10]{0} parameter(0)
+      param1 = f32[10]{0} parameter(1)
+      add = f32[10]{0} add(param0, param1)
+      sub = f32[10]{0} subtract(param0, param1)
+      ROOT res = (f32[10]{0}, f32[10]{0}) tuple(add, sub)
+    }
+
+    mof_consumer {
+      param0.0 = f32[10]{0} parameter(0)
+      param1.0 = f32[10]{0} parameter(1)
+      mul = f32[10]{0} multiply(param0.0, param1.0)
+      div = f32[10]{0} divide(param0.0, param1.0)
+      ROOT res = (f32[10]{0}, f32[10]{0}, f32[10]{0}) tuple(mul, div, param0.0)
+    }
+
+    ENTRY main {
+      p0 = f32[10]{0} parameter(0)
+      p1 = f32[10]{0} parameter(1)
+      producer = (f32[10]{0}, f32[10]{0}) fusion(p0, p1), kind=kLoop, calls=mof_producer
+      gte1 = f32[10]{0} get-tuple-element(producer), index=0
+      gte2 = f32[10]{0} get-tuple-element(producer), index=1
+      consumer = (f32[10]{0}, f32[10]{0}, f32[10]{0}) fusion(gte1, gte2), kind=kLoop, calls=mof_consumer
+      gte3 = f32[10]{0} get-tuple-element(consumer), index=0
+      gte4 = f32[10]{0} get-tuple-element(consumer), index=1
+      gte5 = f32[10]{0} get-tuple-element(consumer), index=2
+      ROOT res = (f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}) tuple(gte1, gte3, gte4, gte5)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* producer = FindInstruction(module.get(), "producer");
+  HloInstruction* consumer = FindInstruction(module.get(), "consumer");
+  consumer->MergeFusionInstructionIntoMultiOutput(producer);
+  HloInstruction* fusion = nullptr;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion), 2),
+                                  m::GetTupleElement(m::Fusion(), 0),
+                                  m::GetTupleElement(m::Fusion(), 1),
+                                  m::GetTupleElement(m::Fusion(), 2))));
+  EXPECT_THAT(fusion->fused_instructions_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Multiply(m::Add(m::Parameter(0), m::Parameter(1)),
+                              m::Subtract(m::Parameter(0), m::Parameter(1))),
+                  m::Divide(m::Add(m::Parameter(0), m::Parameter(1)),
+                            m::Subtract(m::Parameter(0), m::Parameter(1))),
+                  m::Add(m::Parameter(0), m::Parameter(1)))));
 }
 
 TEST_F(HloInstructionTest,
@@ -2960,7 +3014,7 @@ TEST_F(HloInstructionTest,
       sibling2 = (f32[10]{0}, f32[10]{0}) fusion(p0, p1), kind=kLoop, calls=mof_sibling2
       gte2 = f32[10]{0} get-tuple-element(sibling2), index=0
       gte3 = f32[10]{0} get-tuple-element(sibling2), index=1
-      ROOT res = tuple(gte0, gte1, gte2, gte3)
+      ROOT res = (f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}) tuple(gte0, gte1, gte2, gte3)
     }
   )";
 
