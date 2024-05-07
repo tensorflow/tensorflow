@@ -193,7 +193,10 @@ cc_library(
     hdrs = [
         "export_graphdef.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//tensorflow/compiler/mlir/tensorflow:__pkg__",
+        "//waymo:__subpackages__",
+    ],
     deps = [
         ":export_tf_dialect_op",
         ":mlir_roundtrip_flags",
@@ -233,11 +236,11 @@ cc_library(
         "tf_mlir_translate_registration.cc",
     ],
     deps = [
-        ":export_graphdef",
         ":mlir_roundtrip_flags",
         ":translate_cl_options",
         ":translate_lib",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2/executor_to_graph",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu_base",

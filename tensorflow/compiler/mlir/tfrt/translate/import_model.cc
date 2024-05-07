@@ -43,13 +43,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_asset_sinking_pass.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/executor_to_graph/executor_to_graph.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "tensorflow/compiler/mlir/tfrt/function/function.h"
@@ -114,7 +114,7 @@ absl::StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(
           absl::StrCat("Function ", func_name, " is not found."));
     }
     FunctionDef func_def;
-    TF_RETURN_IF_ERROR(ConvertMlirFunctionToFunctionLibraryDef(
+    TF_RETURN_IF_ERROR(tf2xla::v2::ConvertMlirFunctionToFunctionLibraryDef(
         func_op, GraphExportConfig(), &func_def));
     xla_func_defs.push_back(func_def);
 

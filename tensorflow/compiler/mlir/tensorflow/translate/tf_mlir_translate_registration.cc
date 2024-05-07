@@ -23,10 +23,10 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/executor_to_graph/executor_to_graph.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/client_library.h"
 #include "xla/client/compile_only_client.h"
@@ -129,8 +129,8 @@ static LogicalResult MlirToGraphTranslateFunction(ModuleOp module,
   auto graph =
       std::make_unique<tensorflow::Graph>(tensorflow::OpRegistry::Global());
 
-  auto status =
-      tensorflow::ConvertMlirToGraph(module, confs, &graph, flib_def.get());
+  auto status = tensorflow::tf2xla::v2::ConvertMlirToGraph(
+      module, confs, &graph, flib_def.get());
   if (!status.ok()) {
     LOG(ERROR) << "Export to Graph failed: " << status;
     return mlir::failure();
@@ -173,7 +173,7 @@ static LogicalResult MlirToGraphdefTranslateFunction(
   confs.export_original_tf_func_name = export_original_tf_func_name;
 
   absl::StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
-      tensorflow::ConvertMlirToGraphdef(module, confs));
+      tensorflow::tf2xla::v2::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {
     LOG(ERROR) << "Graph export failed: " << graphdef_or.status();
     return mlir::failure();
