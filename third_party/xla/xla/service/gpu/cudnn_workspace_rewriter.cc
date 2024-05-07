@@ -84,7 +84,7 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
         xla::ShapeUtil::TupleElementCount(custom_call->shape()) == 3;
     if (has_activation) {
       output_shapes.push_back(
-          ShapeUtil::GetSubshape(custom_call->shape(), {2}));
+          ShapeUtil::GetSubshape(custom_call->shape(), {1}));
     }
 
     Shape q_shape = custom_call->operand(0)->shape();
@@ -165,7 +165,6 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
         ShapeUtil::GetSubshape(custom_call->shape(), {output_index++});
     Shape d_bmm2_rhs_shape =
         ShapeUtil::GetSubshape(custom_call->shape(), {output_index++});
-    output_index++;
     std::optional<Shape> d_s_shape;
     std::optional<Shape> d_bias_shape;
     bool has_dbias = custom_call->shape().tuple_shapes().size() == 5;
@@ -173,7 +172,9 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
       d_bias_shape =
           ShapeUtil::GetSubshape(custom_call->shape(), {output_index++});
     }
-    TF_RET_CHECK(output_index == custom_call->shape().tuple_shapes().size());
+    // The last one is the workspace.
+    TF_RET_CHECK(output_index ==
+                 custom_call->shape().tuple_shapes().size() - 1);
     TF_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
                         AsCudnnFmhaMaskKind(config.mask_type()));
     GpufMHABackwardDescriptor descriptor = {
@@ -237,14 +238,11 @@ class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
                                   DynCast<HloCustomCallInstruction>(hlo)));
     auto workspace = graph.Graph().get_workspace_size();
     if (workspace != 0) {
-      // rewrite custom call to have correct scratch spaces
+      // rewrite custom call to have correct workspace size
       VLOG(4) << "Rewriting: " << hlo->ToString();
       Shape* shape = hlo->mutable_shape();
-      if (IsFwdCustomCallTofMHA(*hlo)) {
-        shape->mutable_tuple_shapes(1)->set_dimensions(0, workspace);
-      } else {
-        shape->mutable_tuple_shapes(3)->set_dimensions(0, workspace);
-      }
+      shape->mutable_tuple_shapes(shape->tuple_shapes_size() - 1)
+          ->set_dimensions(0, workspace);
       MarkAsChanged();
     }
     return absl::OkStatus();

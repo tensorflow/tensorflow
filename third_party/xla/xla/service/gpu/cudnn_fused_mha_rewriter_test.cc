@@ -3188,7 +3188,7 @@ TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1BiasSoftmaxBmm2PatternDbias) {
           m::Reshape(
               m::GetTupleElement(
                   m::CustomCall({kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget}),
-                  4))
+                  3))
               .WithShape(BF16, {4, 1024, 1024}))));
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
                           fmha->backend_config<GpuBackendConfig>());
