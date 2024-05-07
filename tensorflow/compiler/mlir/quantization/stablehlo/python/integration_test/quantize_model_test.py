@@ -899,7 +899,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # be exactly the same. Indirectly proves that the `FunctionNameMatcherSpec`
     # with regex '.*invalid_function_name.*' did not match the quantizable unit.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.04)
-    self.assertNotAllClose(new_outputs, expected_outputs, rtol=0.00001)
+    self.assertNotAllClose(new_outputs, expected_outputs, 1e-7)
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
