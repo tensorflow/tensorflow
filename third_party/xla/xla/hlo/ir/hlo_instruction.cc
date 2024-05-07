@@ -19,6 +19,7 @@ limitations under the License.
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <iostream>
 #include <iterator>
@@ -3238,6 +3239,200 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
   }
 
   return OkStatus();
+}
+
+// Given an instruction and the list of its new operands, it transforms the
+// shape of the instruction. The default implementation only handles the
+// instruction in which the output shape is directly dependent on its operands,
+// namely, gte, tuple, and while.
+std::optional<Shape> ShapeT(HloInstruction* instr,
+                            std::vector<const Shape*> user_operands_shapes) {
+  switch (instr->opcode()) {
+    case HloOpcode::kGetTupleElement:
+      return user_operands_shapes.front()->tuple_shapes(instr->tuple_index());
+    case HloOpcode::kTuple: {
+      Shape output = ShapeUtil::MakeTupleShape({});
+      for (const Shape* operand_shape : user_operands_shapes) {
+        ShapeUtil::AppendShapeToTuple(*operand_shape, &output);
+      }
+      return output;
+    }
+    case HloOpcode::kWhile: {
+      Shape while_new_shape = *user_operands_shapes.front();
+      for (int64_t i = 0; i < instr->shape().tuple_shapes_size(); ++i) {
+        const Shape& current_subshape = instr->shape().tuple_shapes(i);
+        if (!ShapeUtil::Compatible(current_subshape,
+                                   while_new_shape.tuple_shapes(i))) {
+          bool replaced = HloInstruction::ReplaceWhileOperandShape(
+              instr, while_new_shape.tuple_shapes(i), std::nullopt, i);
+          if (!replaced) {
+            VLOG(2) << "ShapeT failed to replace " << instr->name() << " at "
+                    << i << " with "
+                    << while_new_shape.tuple_shapes(i).ToString();
+            return std::nullopt;
+          }
+        }
+      }
+      return while_new_shape;
+    }
+    default:
+      return std::nullopt;
+  }
+}
+
+// Given an instruction and the list of the shapes of its operand, this function
+// applies the shape_transformer to the instruction to obtain the new output
+// shape. We apply BFS to postpone changing the shape of instruction until we
+// are sure that all the chain of all the users can be updated.
+static std::optional<absl::flat_hash_map<HloInstruction*, Shape>>
+PropagateShapeChange(HloInstruction* gte, const Shape& new_gte_shape,
+                     HloInstruction::ShapeTransformer shape_transformer) {
+  VLOG(5) << "PropagateShapeChange gte: " << gte->ToString();
+
+  // If the new_shape is the same as current shape do nothing.
+  if (ShapeUtil::Compatible(gte->shape(), new_gte_shape)) {
+    VLOG(3) << "New shape is compatible with current shape: "
+            << gte->ToString();
+    return {};
+  }
+
+  absl::flat_hash_map<HloInstruction*, Shape> visited;
+  std::deque<HloInstruction*> worklist;
+  worklist.push_back(gte);
+  visited.insert({gte, new_gte_shape});
+  while (!worklist.empty()) {
+    HloInstruction* instr_to_change = worklist.front();
+    Shape new_operand_shape = FindOrDie(visited, instr_to_change);
+    worklist.pop_front();
+    for (HloInstruction* user : instr_to_change->users()) {
+      if (ContainsKey(visited, user)) {
+        continue;
+      }
+      // Construct the list of new shapes of the operands which is used to
+      // determine the new shape of the output.
+      int64_t use_index = user->operand_index(instr_to_change);
+      std::vector<const Shape*> user_operands_shapes(user->operand_count());
+      for (int64_t i = 0; i < user->operand_count(); ++i) {
+        if (i == use_index) {
+          user_operands_shapes[i] = &new_operand_shape;
+        } else {
+          user_operands_shapes[i] = &user->operand(i)->shape();
+        }
+      }
+      std::optional<Shape> user_shape =
+          shape_transformer(user, user_operands_shapes);
+      if (!user_shape.has_value()) {
+        VLOG(3) << "Shape transformer not found for " << user->ToString();
+        return std::nullopt;
+      }
+      worklist.push_back(user);
+      visited.insert({user, std::move(user_shape.value())});
+    }
+  }
+  return visited;
+}
+
+// Helper function that propagates shape change of the users of changed index
+// and updates the computation shape if propagation is successful.
+static std::optional<absl::flat_hash_map<HloInstruction*, Shape>>
+ReplaceWhileComputationOperandShape(
+    HloComputation* comp, const Shape& new_shape,
+    HloInstruction::ShapeTransformer shape_transformer, int64_t idx) {
+  CHECK_EQ(comp->parameter_instructions().size(), 1);
+  CHECK(comp->parameter_instruction(0)->shape().IsTuple());
+
+  VLOG(3) << "Propagating shape change of index " << idx << " in "
+          << comp->name();
+  absl::flat_hash_map<HloInstruction*, Shape> shape_changes;
+  for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+    // We only need to propagate changes through the gte instructions with index
+    // = idx.
+    if (instr->opcode() == HloOpcode::kGetTupleElement &&
+        instr->tuple_index() == idx) {
+      if (instr->mutable_operand(0) != comp->parameter_instruction(0)) {
+        continue;
+      }
+      // If propagation was unsuccessful, we terminate early and don't update
+      // the computation's shape.
+      std::optional<absl::flat_hash_map<HloInstruction*, Shape>>
+          gte_shape_change =
+              PropagateShapeChange(instr, new_shape, shape_transformer);
+      if (!gte_shape_change.has_value()) {
+        VLOG(3) << "Failed to propagate shape change for " << instr->ToString();
+        return {};
+      }
+      for (auto pair : gte_shape_change.value()) {
+        shape_changes.emplace(std::move(pair));
+      }
+    }
+  }
+  VLOG(3) << "Finish propagating shape change of index " << idx << " in "
+          << comp->name();
+  return shape_changes;
+}
+
+// Update the parameter shape of the computation.
+static void UpdateParameterShape(HloComputation* comp, const Shape& new_shape,
+                                 int64_t idx) {
+  Shape new_param_shape =
+      ShapeUtil::MakeStaticShape(comp->parameter_instruction(0)->shape());
+  ShapeUtil::UpdateTupleShape(new_shape, idx, &new_param_shape);
+  comp->ReplaceParameter(
+      0, HloInstruction::CreateParameter(0, new_param_shape, "new"));
+}
+
+/*static*/ bool HloInstruction::ReplaceWhileOperandShape(
+    HloInstruction* while_instr, const Shape& new_shape,
+    std::optional<ShapeTransformer> shape_transformer, int64_t idx) {
+  VLOG(5) << "ReplaceWhileOperandShape: " << while_instr->name() << " at "
+          << idx;
+  std::optional<absl::flat_hash_map<HloInstruction*, Shape>> body_changes;
+  std::optional<absl::flat_hash_map<HloInstruction*, Shape>> condition_changes;
+  // CustomShapeTransformer transformer =
+  // CustomShapeTransformer::Create(while_instr->GetModule()).value();
+
+  // auto transformerFunction = [&transformer](HloInstruction* instr,
+  //                                              std::vector<const Shape*>
+  //                                              operands) {
+  //   return transformer.CustomShapeT(instr, operands);
+  // };
+
+  if (!shape_transformer.has_value()) {
+    body_changes = ReplaceWhileComputationOperandShape(
+        while_instr->while_body(), new_shape, ShapeT, idx);
+    if (!body_changes.has_value()) {
+      VLOG(3) << "here";
+      return false;
+    }
+    condition_changes = ReplaceWhileComputationOperandShape(
+        while_instr->while_condition(), new_shape, ShapeT, idx);
+    if (!condition_changes.has_value()) {
+      VLOG(3) << "here1";
+      return false;
+    }
+  } else {
+    body_changes = ReplaceWhileComputationOperandShape(
+        while_instr->while_body(), new_shape, *shape_transformer, idx);
+    if (!body_changes.has_value()) {
+      return false;
+    }
+    condition_changes = ReplaceWhileComputationOperandShape(
+        while_instr->while_condition(), new_shape, *shape_transformer, idx);
+    if (!condition_changes.has_value()) {
+      return false;
+    }
+  }
+  VLOG(3) << "Changing " << while_instr->while_body()->name();
+  UpdateParameterShape(while_instr->while_body(), new_shape, idx);
+  for (auto [hlo, shape] : body_changes.value()) {
+    *hlo->mutable_shape() = shape;
+  }
+  VLOG(3) << "Changing " << while_instr->while_condition()->name();
+  UpdateParameterShape(while_instr->while_condition(), new_shape, idx);
+  for (auto [hlo, shape] : condition_changes.value()) {
+    *hlo->mutable_shape() = shape;
+  }
+  return true;
 }
 
 bool HloInstruction::IsEffectiveBitcast() const {

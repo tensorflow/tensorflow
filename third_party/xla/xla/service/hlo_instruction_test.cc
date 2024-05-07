@@ -22,16 +22,21 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
@@ -48,6 +53,7 @@ namespace m = ::xla::match;
 
 using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
+namespace op = ::xla::testing::opcode_matchers;
 
 class HloInstructionTest : public HloTestBase {
  protected:
@@ -3033,6 +3039,258 @@ TEST_F(HloInstructionTest,
               GmockMatch(m::Tuple(m::Multiply(m::Parameter(0), m::Parameter(1)),
                                   m::Parameter(1),
                                   m::Add(m::Parameter(0), m::Parameter(1)))));
+}
+
+// The following set of tests operate on unverified modules since we are only
+// checking the correctness of shape propagation not the module as a whole.
+TEST_F(HloInstructionTest, ChangeWhileOperandGteUser) {
+  const char* const hlo_string = R"(
+    HloModule ModuleWithWhile
+    while_body {
+      p_body = (f32[10,10]{1,0}, f32[32,32]{1,0}) parameter(0)
+      gte0 = f32[10,10]{1,0} get-tuple-element(p_body), index=0
+      gte1 = f32[32,32]{1,0} get-tuple-element(p_body), index=1
+      ROOT out = (f32[10,10]{1,0}, f32[32,32]{1,0}) tuple(gte0, gte1)
+    }
+
+    while_condition {
+      p_cond = (f32[10,10]{1,0}, f32[32,32]{1,0}) parameter(0)
+      ROOT result = pred[] constant(true)
+    }
+
+    ENTRY entry {
+      p_entry_0 = f32[10,10]{1,0} parameter(0)
+      p_entry_1 = f32[32,32]{1,0} parameter(1)
+      while_init = (f32[10,10]{1,0}, f32[32,32]{1,0}) tuple(p_entry_0, p_entry_1)
+      ROOT outer = (f32[10,10]{1,0}, f32[32,32]{1,0}) while(while_init), condition=while_condition, body=while_body
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* while_instr = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(HloInstruction::ReplaceWhileOperandShape(
+      while_instr, ShapeUtil::MakeShape(S32, {123, 123}), std::nullopt, 1));
+  VLOG(3) << "after: \n" << module->ToString();
+  EXPECT_THAT(while_instr->while_body()->root_instruction()->operand(0),
+              op::Shape("f32[10,10]"));
+  EXPECT_THAT(while_instr->while_body()->root_instruction()->operand(1),
+              op::Shape("s32[123,123]"));
+}
+
+TEST_F(HloInstructionTest, ChangeWhileOperandUnsupportedUser) {
+  const char* const hlo_string = R"(
+    HloModule ModuleWithWhile
+    body_inner {
+      ROOT p_body = (s32[], f32[32,32]{1,0}) parameter(0)
+    }
+
+    cond_inner {
+      p_cond = (s32[], f32[32,32]{1,0}) parameter(0)
+      ROOT result = pred[] constant(true)
+    }
+
+    while_body {
+      p_body = (f32[10,10]{1,0}, f32[32,32]{1,0}) parameter(0)
+      gte0 = f32[10,10]{1,0} get-tuple-element(p_body), index=0
+      gte1 = f32[32,32]{1,0} get-tuple-element(p_body), index=1
+      add = f32[10,10]{1,0} add(gte0, gte0)
+      intermediat_tuple = (f32[10,10]{1,0}, f32[32,32]{1,0}) tuple(add, gte1)
+      next_gte1 = f32[32,32]{1,0} get-tuple-element(intermediat_tuple), index=1
+      zero = s32[] constant(0)
+      next_input = (s32[], f32[32,32]{1,0}) tuple(zero, next_gte1)
+      inner = (s32[], f32[32,32]{1,0}) while(next_input), condition=cond_inner, body=body_inner
+      ROOT invalid = f32[32,32]{1,0} add(gte1, gte1)
+    }
+
+    while_condition {
+      p_cond = (f32[10,10]{1,0}, f32[32,32]{1,0}) parameter(0)
+      gte0 = f32[10,10]{1,0} get-tuple-element(p_cond), index=0
+      gte1 = f32[32,32]{1,0} get-tuple-element(p_cond), index=1
+      ROOT result = pred[] constant(true)
+    }
+
+    ENTRY entry {
+      p_entry_0 = f32[10,10]{1,0} parameter(0)
+      p_entry_1 = f32[32,32]{1,0} parameter(1)
+      while_init = (f32[10,10]{1,0}, f32[32,32]{1,0}) tuple(p_entry_0, p_entry_1)
+      ROOT outer = (f32[10,10]{1,0}, f32[32,32]{1,0}) while(while_init), condition=while_condition, body=while_body
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* while_instr = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(HloInstruction::ReplaceWhileOperandShape(
+      while_instr, ShapeUtil::MakeShape(S32, {123, 123}), std::nullopt, 1));
+}
+
+TEST_F(HloInstructionTest, ChangeWhileOperandTupleUser) {
+  const char* const hlo_string = R"(
+    HloModule ModuleWithWhile
+    body_inner {
+      p_body = (s32[], f32[32,32]{1,0}) parameter(0)
+      gte0 = s32[] get-tuple-element(p_body), index=0
+      gte1 = f32[32,32]{1,0} get-tuple-element(p_body), index=1
+      ROOT out = (s32[], f32[32,32]{1,0}) tuple(gte0, gte1)
+    }
+
+    cond_inner {
+      p_cond = (s32[], f32[32,32]{1,0}) parameter(0)
+      ROOT result = pred[] constant(true)
+    }
+
+    while_body {
+      p_body = (f32[10,10]{1,0}, f32[32,32]{1,0}) parameter(0)
+      gte0 = f32[10,10]{1,0} get-tuple-element(p_body), index=0
+      gte1 = f32[32,32]{1,0} get-tuple-element(p_body), index=1
+      add = f32[10,10]{1,0} add(gte0, gte0)
+      intermediat_tuple = (f32[10,10]{1,0}, f32[32,32]{1,0}) tuple(add, gte1)
+      next_gte1 = f32[32,32]{1,0} get-tuple-element(intermediat_tuple), index=1
+      zero = s32[] constant(0)
+      next_input = (s32[], f32[32,32]{1,0}) tuple(zero, next_gte1)
+      inner = (s32[], f32[32,32]{1,0}) while(next_input), condition=cond_inner, body=body_inner
+      ROOT out = (f32[10,10]{1,0}, f32[32,32]{1,0}) tuple(gte0, gte1)
+    }
+
+    while_condition {
+      p_cond = (f32[10,10]{1,0}, f32[32,32]{1,0}) parameter(0)
+      ROOT result = pred[] constant(true)
+    }
+
+    ENTRY entry {
+      p_entry_0 = f32[10,10]{1,0} parameter(0)
+      p_entry_1 = f32[32,32]{1,0} parameter(1)
+      while_init = (f32[10,10]{1,0}, f32[32,32]{1,0}) tuple(p_entry_0, p_entry_1)
+      ROOT outer = (f32[10,10]{1,0}, f32[32,32]{1,0}) while(while_init), condition=while_condition, body=while_body
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* while_instr = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(HloInstruction::ReplaceWhileOperandShape(
+      while_instr, ShapeUtil::MakeShape(S32, {123, 123}), std::nullopt, 1));
+  VLOG(3) << "after: \n" << module->ToString();
+  HloInstruction* inner_while =
+      while_instr->while_body()->GetInstructionWithName("inner");
+  EXPECT_THAT(inner_while->while_init()->operand(0), op::Shape("s32[]"));
+  EXPECT_THAT(inner_while->while_init()->operand(1), op::Shape("s32[123,123]"));
+}
+
+TEST_F(HloInstructionTest, ChangeWhileOperandNestedWhileUser) {
+  const char* const hlo_string = R"(
+    HloModule ModuleWithWhile
+    body_inner {
+      p_body = (s32[], f32[32,32]{1,0}) parameter(0)
+      gte0 = s32[] get-tuple-element(p_body), index=0
+      gte1 = f32[32,32]{1,0} get-tuple-element(p_body), index=1
+      ROOT out = (s32[], f32[32,32]{1,0}) tuple(gte0, gte1)
+    }
+
+    cond_inner {
+      p_cond = (s32[], f32[32,32]{1,0}) parameter(0)
+      ROOT result = pred[] constant(true)
+    }
+
+    while_body {
+      p_body = (f32[10,10]{1,0}, f32[32,32]{1,0}) parameter(0)
+      gte0 = f32[10,10]{1,0} get-tuple-element(p_body), index=0
+      gte1 = f32[32,32]{1,0} get-tuple-element(p_body), index=1
+      add = f32[10,10]{1,0} add(gte0, gte0)
+      intermediat_tuple = (f32[10,10]{1,0}, f32[32,32]{1,0}) tuple(add, gte1)
+      next_gte1 = f32[32,32]{1,0} get-tuple-element(intermediat_tuple), index=1
+      zero = s32[] constant(0)
+      next_input = (s32[], f32[32,32]{1,0}) tuple(zero, next_gte1)
+      inner = (s32[], f32[32,32]{1,0}) while(next_input), condition=cond_inner, body=body_inner
+      user0 = f32[32,32]{1,0} get-tuple-element(inner), index=1
+      ROOT out = (f32[10,10]{1,0}, f32[32,32]{1,0}) tuple(add, user0)
+    }
+
+    while_condition {
+      p_cond = (f32[10,10]{1,0}, f32[32,32]{1,0}) parameter(0)
+      ROOT result = pred[] constant(true)
+    }
+
+    ENTRY entry {
+      p_entry_0 = f32[10,10]{1,0} parameter(0)
+      p_entry_1 = f32[32,32]{1,0} parameter(1)
+      while_init = (f32[10,10]{1,0}, f32[32,32]{1,0}) tuple(p_entry_0, p_entry_1)
+      ROOT outer = (f32[10,10]{1,0}, f32[32,32]{1,0}) while(while_init), condition=while_condition, body=while_body
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* while_instr = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(HloInstruction::ReplaceWhileOperandShape(
+      while_instr, ShapeUtil::MakeShape(S32, {123, 123}), std::nullopt, 1));
+  VLOG(3) << "after: \n" << module->ToString();
+  EXPECT_THAT(while_instr->while_body()->root_instruction()->operand(0),
+              op::Shape("f32[10,10]"));
+  EXPECT_THAT(while_instr->while_body()->root_instruction()->operand(1),
+              op::Shape("s32[123,123]"));
+}
+
+TEST_F(HloInstructionTest, ChangeWhileOperandToTupleNestedWhileUser) {
+  const char* const hlo_string = R"(
+    HloModule ModuleWithWhile
+    body_inner {
+      p_body = (s32[], f32[8,32]{1,0}) parameter(0)
+      inner_gte0 = s32[] get-tuple-element(p_body), index=0
+      inner_gte1 = f32[8,32]{1,0} get-tuple-element(p_body), index=1
+      ROOT inner_out = (s32[], f32[8,32]{1,0}) tuple(inner_gte0, inner_gte1)
+    }
+
+    cond_inner {
+      p_cond = (s32[], f32[8,32]{1,0}) parameter(0)
+      inner_gte0 = s32[] get-tuple-element(p_cond), index=0
+      inner_gte1 = f32[8,32]{1,0} get-tuple-element(p_cond), index=1
+      ROOT result = pred[] constant(true)
+    }
+
+    while_body {
+      p_body = (f32[10,10]{1,0}, f32[8,32]{1,0}) parameter(0)
+      gte0 = f32[10,10]{1,0} get-tuple-element(p_body), index=0
+      gte1 = f32[8,32]{1,0} get-tuple-element(p_body), index=1
+      add = f32[10,10]{1,0} add(gte0, gte0)
+      intermediat_tuple = (f32[10,10]{1,0}, f32[8,32]{1,0}) tuple(add, gte1)
+      next_gte1 = f32[8,32]{1,0} get-tuple-element(intermediat_tuple), index=1
+      zero = s32[] constant(0)
+      next_input = (s32[], f32[8,32]{1,0}) tuple(zero, next_gte1)
+      inner = (s32[], f32[8,32]{1,0}) while(next_input), condition=cond_inner, body=body_inner
+      user0 = f32[8,32]{1,0} get-tuple-element(inner), index=1
+      ROOT out = (f32[10,10]{1,0}, f32[8,32]{1,0}) tuple(add, user0)
+    }
+
+    while_condition {
+      p_cond = (f32[10,10]{1,0}, f32[8,32]{1,0}) parameter(0)
+      gte0 = f32[10,10]{1,0} get-tuple-element(p_cond), index=0
+      gte1 = f32[8,32]{1,0} get-tuple-element(p_cond), index=1
+      ROOT result = pred[] constant(true)
+    }
+
+    ENTRY entry {
+      p_entry_0 = f32[8,32]{1,0} parameter(0)
+      p_entry_1 = f32[8,32]{1,0} parameter(1)
+      while_init = (f32[10,10]{1,0}, f32[8,32]{1,0}) tuple(p_entry_0, p_entry_1)
+      ROOT outer = (f32[10,10]{1,0}, f32[8,32]{1,0}) while(while_init), condition=while_condition, body=while_body
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* while_instr = module->entry_computation()->root_instruction();
+  Shape new_shape = ShapeUtil::MakeTupleShape(
+      absl::MakeConstSpan({ShapeUtil::MakeShape(S32, {4, 32}),
+                           ShapeUtil::MakeShape(S32, {4, 32})}));
+  EXPECT_TRUE(HloInstruction::ReplaceWhileOperandShape(while_instr, new_shape,
+                                                       std::nullopt, 1));
+  VLOG(3) << "after: \n" << module->ToString();
+  HloInstruction* inner_while =
+      while_instr->while_body()->GetInstructionWithName("inner");
+  EXPECT_THAT(inner_while->while_init()->operand(1),
+              op::Shape(new_shape.ToString()));
 }
 
 }  // namespace

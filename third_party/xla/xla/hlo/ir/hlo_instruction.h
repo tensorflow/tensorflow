@@ -1680,6 +1680,23 @@ class HloInstruction {
   Status ReplaceAllUsesWithDifferentShape(
       absl::Span<HloInstruction* const> users, HloInstruction* new_producer);
 
+  // The shape transformer function type which given an instruction and its new
+  // operands shape, it returns the new (possible) output shape.
+  using ShapeTransformer = absl::FunctionRef<std::optional<Shape>(
+      HloInstruction*, std::vector<const Shape*>& new_operands_shapes)>;
+
+  // Provide an interface to change the shape of the operand at index idx of the
+  // input/output tuple in while loops. The default implementation (no
+  // ShapeTransformer provided) propagates shape changes through instructions in
+  // which the output shape is directly inferred from operands, namely, gte,
+  // tuple, and nested while loops. As the result, the default implementation
+  // guarantees validity of the hlo graph after shape replacement. Currently,
+  // the replace function simply bails and returns false if there are any users
+  // other than the mentioned instructions.
+  static bool ReplaceWhileOperandShape(
+      HloInstruction* while_instr, const Shape& new_shape,
+      std::optional<ShapeTransformer> shape_transformer, int64_t idx);
+
   // Performs a postorder DFS visit using this node as the root. If
   // call_finish_visit is true, then DfsHloVisitor::FinishVisit is called when
   // complete. If ignore_control_predecessors is true, instructions only

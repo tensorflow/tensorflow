@@ -881,6 +881,7 @@ xla_cc_test(
     srcs = ["hlo_instruction_test.cc"],
     tags = ["no_aarch64"],
     deps = [
+        ":hlo_parser",
         ":pattern_matcher",
         ":pattern_matcher_gmock",
         "//xla:literal",
@@ -892,10 +893,13 @@ xla_cc_test(
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_matchers",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )
@@ -6127,7 +6131,9 @@ cc_library(
     srcs = ["while_util.cc"],
     hdrs = ["while_util.h"],
     deps = [
+        ":call_graph",
         ":call_inliner",
+        ":hlo_alias_analysis",
         ":hlo_creation_utils",
         ":tuple_util",
         "//xla:comparison_util",
