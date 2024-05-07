@@ -89,7 +89,12 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_fast_math_honor_division(true);
 
   // TODO(AyanmoI): Remove this flag when cuDNN FMHA is fully supported.
-  opts.set_xla_gpu_enable_cudnn_fmha(true);
+  //
+  // cuDNN FMHA currently rewrites attention layers to use FlashAttention by
+  // default. This reassociation is not semantics-preserving, and the user
+  // should explicitly opt in if they wish to use this feature. cuDNN FMHA can
+  // not be turned on by default.
+  opts.set_xla_gpu_enable_cudnn_fmha(false);
 
   opts.set_xla_gpu_fused_attention_use_cudnn_rng(false);
 
