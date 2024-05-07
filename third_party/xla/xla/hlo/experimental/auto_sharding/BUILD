@@ -2,7 +2,7 @@
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
-load("//xla:xla.bzl", "auto_sharding_deps", "auto_sharding_solver_deps", "xla_cc_binary", "xla_cc_test")
+load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
 
 package(
@@ -79,7 +79,10 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ] + auto_sharding_deps(),
+    ] + xla_internal(
+        ["experimental/auto_sharding:auto_sharding_impl_internal"],
+        otherwise = ["//xla/hlo/experimental/auto_sharding:auto_sharding_impl"],
+    ),
 )
 
 cc_library(
@@ -123,7 +126,10 @@ cc_library(
         "@local_tsl//tsl/platform:hash",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:types",
-    ] + auto_sharding_solver_deps(),
+    ] + xla_internal(
+        ["experimental/auto_sharding:auto_sharding_solver_impl_internal"],
+        otherwise = ["//xla/hlo/experimental/auto_sharding:auto_sharding_solver_impl"],
+    ),
 )
 
 cc_library(

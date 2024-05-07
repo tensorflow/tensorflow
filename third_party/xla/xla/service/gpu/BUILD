@@ -23,7 +23,7 @@ load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//xla:xla.bzl", "xla_cc_test", "xla_cub_deps", "xla_export_hlo_deps")
+load("//xla:xla.bzl", "xla_cc_test", "xla_cub_deps", "xla_internal")
 load(
     "//xla/service/gpu:build_defs.bzl",
     "build_cub_sort_kernels",
@@ -3609,7 +3609,7 @@ cc_library(
         "//xla/service:logical_buffer",
         "//xla/stream_executor/rocm:rocm_platform_id",
         "@local_tsl//tsl/platform:numbers",
-    ]) + xla_export_hlo_deps() + [
+    ]) + xla_internal(["service:export_hlo"]) + [
         ":command_buffer_scheduling",
         ":fusion_pipeline",
         ":ir_emitter_context",

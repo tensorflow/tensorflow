@@ -16,6 +16,7 @@ load(
     "//xla:xla.bzl",
     "xla_cc_binary",
     "xla_cc_test",
+    "xla_internal",
     "xla_py_proto_library",
 )
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
@@ -393,7 +394,6 @@ xla_cc_binary(
         "//xla/client:local_client",
         "//xla/service:compiler",
         "//xla/service:cpu_plugin",
-        "//xla/service:hlo_graph_dumper",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_runner",
         "//xla/service:local_service",
@@ -411,7 +411,10 @@ xla_cc_binary(
         "//xla/service:gpu_plugin",
     ]) + if_cuda([
         "//xla/stream_executor:cuda_platform",
-    ]),
+    ]) + xla_internal(
+        ["service:hlo_graph_dumper_google"],
+        otherwise = ["//xla/service:hlo_graph_dumper"],
+    ),
 )
 
 xla_cc_test(
