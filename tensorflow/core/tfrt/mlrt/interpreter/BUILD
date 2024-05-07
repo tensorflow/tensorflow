@@ -8,7 +8,6 @@ package(
     default_visibility = [
         # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
         # copybara:uncomment "//learning/brain/tfrt:__subpackages__",
-        # copybara:uncomment "//learning/infra/mira/distributed:__subpackages__",
         # copybara:uncomment "//smartass/brain/inference:__subpackages__",
         # copybara:uncomment "//smartass/brain/ops/tfrt_kernels:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt/translate/mlrt:__subpackages__",
