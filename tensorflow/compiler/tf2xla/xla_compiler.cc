@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
@@ -83,6 +84,12 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+// Name of component for error logging. This name is fixed and required to
+// enable logging.
+constexpr char kSingleOpComponent[] = "TF2XLA_XLA_COMPILER_COMPILE_SINGLE_OP";
+constexpr char kCompileFunctionComponent[] =
+    "TF2XLA_XLA_COMPILER_COMPILE_FUNCTION";
 
 // Checks that arguments `args` match types `types`.
 Status CheckSignature(const DataTypeVector& types,
@@ -770,6 +777,9 @@ Status XlaCompiler::CompileSingleOp(
     tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
         tensorflow::metrics::Phase2XlaCompilerMetric::
             kCompileSingleOpXlaBuilderFailure);
+    tsl::error_logging::Log(mlir::TF::kBridgeComponent, kSingleOpComponent,
+                            status.ToString())
+        .IgnoreError();
   }
   return status;
 }
@@ -862,12 +872,7 @@ Status XlaCompiler::CompileFunction(
 
   VLOG(1) << "====================================================";
 
-  auto state = ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
-  if (options.is_entry_computation) {
-    state = GetMlirBridgeRolloutState(config_proto);
-  }
-
-  VLOG(1) << "MLIR bridge off. Using the old bridge to compile the function";
+  VLOG(1) << "CompileFunction with XlaBuilder";
   auto status =
       CompileGraph(options, function_id, std::move(graph), args, result);
   if (!status.ok()) {
@@ -880,6 +885,9 @@ Status XlaCompiler::CompileFunction(
         ". Run with TF_DUMP_GRAPH_PREFIX=/path/to/dump/dir and "
         "--vmodule=xla_compiler=2 to obtain a dump of the compiled "
         "functions.");
+    tsl::error_logging::Log(mlir::TF::kBridgeComponent,
+                            kCompileFunctionComponent, status.ToString())
+        .IgnoreError();
     return status;
   }
 
