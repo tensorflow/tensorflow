@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/rocm/hip_blas_lt.h"
 #include "xla/stream_executor/rocm/rocm_blas.h"
+#include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 
 #define SET_ATTR(setter, handle, attr, value) \
@@ -402,7 +403,6 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     DeviceMemoryBase bias, DeviceMemoryBase aux, DeviceMemoryBase a_scale,
     DeviceMemoryBase b_scale, DeviceMemoryBase c_scale,
     DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
-    ScratchAllocator& scratch_allocator,
     blas::ProfileResult* profile_result) const {
   return DoMatmul(stream, alpha, a, b, beta, c, d, algorithm, bias, aux,
                   a_scale, b_scale, c_scale, d_scale, d_amax, std::nullopt,
@@ -431,7 +431,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     workspace_size = workspace.value().size();
     TF_RET_CHECK(workspace_size >= algorithm.workspace_size);
   } else if (algorithm.workspace_size > 0) {
-    TF_RET_CHECK(scratch_allocator.has_value())
+    TF_RET_CHECK(scratch_allocator.has_value());
     TF_ASSIGN_OR_RETURN(
         DeviceMemory<uint8_t> alloc,
         scratch_allocator.value()->AllocateBytes(algorithm.workspace_size));
@@ -577,7 +577,7 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
         SCALENTYPE, HipToNativeT<ATYPE>::type, HipToNativeT<BTYPE>::type,    \
         HipToNativeT<CTYPE>::type, HipToNativeT<DTYPE>::type>(               \
         stream, alpha_, a, b, beta_, c, d, bias, aux, a_scale, b_scale,      \
-        c_scale, d_scale, d_amax, algorithm, scratch_allocator,              \
+        c_scale, d_scale, d_amax, algorithm, *scratch_allocator.value(),     \
         profile_result);                                                     \
   }
 
@@ -641,7 +641,6 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
         float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16F, HIP_R_16F)
     TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(
         float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_32F, HIP_R_32F)
-#endif
 
     // Other data types:
     TYPED_MATMUL_WITH_SCRATCH_ALLOCATOR(float, HIP_R_16BF, HIP_R_16BF,
