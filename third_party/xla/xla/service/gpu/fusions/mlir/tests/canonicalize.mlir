@@ -83,3 +83,16 @@ func.func @fold_operands(%d0: index) -> index {
 // CHECK-LABEL: func.func @fold_operands
 // CHECK-SAME:      %[[ARG_0:.*]]: index)
 // CHECK:         xla_gpu.apply_indexing #[[$MAP]](%[[ARG_0]] in [0, 10])
+
+// -----
+
+func.func @fold_operands_and_results(%arg0: index, %arg1: index)
+  -> (index, index) {
+  %0:2 = xla_gpu.apply_indexing affine_map<(d0, d1) -> (0, d1)>
+    (%arg0 in [0, 4], %arg1 in [0, 5])
+  return %0#0, %0#1 : index, index
+}
+// CHECK-LABEL: func.func @fold_operands_and_results
+// CHECK-SAME:      %[[ARG_0:.*]]: index, %[[ARG_1:.*]]: index)
+// CHECK-NEXT: %[[C0:.*]] = arith.constant 0
+// CHECK-NEXT: return %[[C0]], %[[ARG_1]] : index, index

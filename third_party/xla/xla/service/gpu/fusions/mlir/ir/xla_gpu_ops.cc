@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -35,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
@@ -159,6 +161,16 @@ void AllocateSharedOp::getAsmResultNames(
 //===----------------------------------------------------------------------===//
 // ApplyIndexingOp
 //===----------------------------------------------------------------------===//
+
+void ApplyIndexingOp::build(OpBuilder &builder, OperationState &result,
+                            ValueRange dims, ValueRange symbols,
+                            const IndexingMap &indexing_map) {
+  SmallVector<Value, 4> operands;
+  operands.reserve(dims.size() + symbols.size());
+  operands.append(dims.begin(), dims.end());
+  operands.append(symbols.begin(), symbols.end());
+  build(builder, result, operands, indexing_map);
+}
 
 void ApplyIndexingOp::build(OpBuilder &builder, OperationState &result,
                             ValueRange operands,
@@ -306,10 +318,6 @@ LogicalResult ApplyIndexingOp::verify() {
         "operand, lower_bounds, upper_bounds count and affine map dimension "
         "and symbol count must match");
   }
-  IndexingMap indexing_map = getIndexingMap();
-  if (indexing_map.IsKnownEmpty()) {
-    return emitOpError("indexing map is empty");
-  }
   return success();
 }
 
@@ -384,41 +392,66 @@ struct FoldApplyIndexingOperands
     MLIRContext *ctx = affine_map.getContext();
     unsigned num_operands = indexing_op->getNumOperands();
     unsigned num_dims = affine_map.getNumDims();
-    llvm::SmallBitVector constant_operands(num_operands, false);
-    mlir::DenseMap<AffineExpr, AffineExpr> replacements;
-    unsigned num_nonconstant_operands = num_operands;
+    unsigned num_symbols = affine_map.getNumSymbols();
+
+    SmallVector<std::optional<int64_t>> constant_values(num_operands,
+                                                        std::nullopt);
+    bool constant_found = false;
+    SmallVector<int64_t> dim_id_map(num_dims, -1);
+    SmallVector<int64_t> symbol_id_map(num_symbols, -1);
     for (auto &operand : indexing_op->getOpOperands()) {
+      unsigned operand_number = operand.getOperandNumber();
       auto constant = operand.get().getDefiningOp<arith::ConstantIndexOp>();
       if (!constant) continue;
-
-      unsigned operand_number = operand.getOperandNumber();
-      replacements[operand_number < num_dims
-                       ? getAffineDimExpr(operand_number, ctx)
-                       : getAffineSymbolExpr(operand_number - num_dims, ctx)] =
-          getAffineConstantExpr(constant.value(), ctx);
-      constant_operands.set(operand_number);
-      --num_nonconstant_operands;
+      constant_values[operand_number] = constant.value();
+      constant_found = true;
     }
-    if (replacements.empty()) {
+    if (!constant_found) {
       return rewriter.notifyMatchFailure(indexing_op,
                                          "No constant operands found");
     }
+    unsigned new_num_dims = 0;
+    unsigned new_num_symbols = 0;
+    SmallVector<AffineExpr, 2> dim_replacements, symbol_replacements;
+    dim_replacements.reserve(num_dims);
+    symbol_replacements.reserve(num_symbols);
+
+    unsigned new_num_operands = new_num_dims + new_num_symbols;
     SmallVector<Value, 4> new_operands;
-    new_operands.reserve(num_nonconstant_operands);
-    ArrayRef<int64_t> lbs = indexing_op.getLowerBounds();
-    ArrayRef<int64_t> ubs = indexing_op.getUpperBounds();
+    new_operands.reserve(new_num_operands);
     SmallVector<int64_t, 4> new_lbs, new_ubs;
-    new_lbs.reserve(num_nonconstant_operands);
-    new_ubs.reserve(num_nonconstant_operands);
-    for (auto [index, operand] : llvm::enumerate(indexing_op.getOperands())) {
-      if (constant_operands[index]) continue;
-      new_operands.push_back(operand);
-      new_lbs.push_back(lbs[index]);
-      new_ubs.push_back(ubs[index]);
+    new_lbs.reserve(new_num_operands);
+    new_ubs.reserve(new_num_operands);
+
+    for (auto [operand, constant_value, lb, ub] : llvm::zip(
+             indexing_op->getOpOperands(), constant_values,
+             indexing_op.getLowerBounds(), indexing_op.getUpperBounds())) {
+      unsigned operand_id = operand.getOperandNumber();
+      if (constant_value.has_value()) {
+        if (operand_id < num_dims) {
+          dim_replacements.push_back(
+              getAffineConstantExpr(*constant_value, ctx));
+        } else {
+          symbol_replacements.push_back(
+              getAffineConstantExpr(*constant_value, ctx));
+        }
+      } else {
+        if (operand_id < num_dims) {
+          dim_replacements.push_back(getAffineDimExpr(new_num_dims++, ctx));
+        } else {
+          symbol_replacements.push_back(
+              getAffineSymbolExpr(new_num_symbols++, ctx));
+        }
+        new_operands.push_back(operand.get());
+        new_lbs.push_back(lb);
+        new_ubs.push_back(ub);
+      }
     }
     rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
-        indexing_op, new_operands, affine_map.replace(replacements), new_lbs,
-        new_ubs);
+        indexing_op, new_operands,
+        affine_map.replaceDimsAndSymbols(dim_replacements, symbol_replacements,
+                                         new_num_dims, new_num_symbols),
+        new_lbs, new_ubs);
     return success();
   }
 };
@@ -432,15 +465,20 @@ struct FoldApplyIndexingResults
                                 PatternRewriter &rewriter) const override {
     mlir::Location loc = indexing_op.getLoc();
     IndexingMap indexing_map = indexing_op.getIndexingMap();
+    if (indexing_map.IsKnownEmpty()) {
+      return rewriter.notifyMatchFailure(indexing_op,
+                                         "Domain of the indexing map is empty");
+    }
     AffineMap *affine_map = &indexing_map.GetMutableAffineMap();
     unsigned num_results = affine_map->getNumResults();
     SmallVector<AffineExpr, 4> new_exprs;
     new_exprs.reserve(num_results);
     SmallVector<Value, 4> new_values;
     new_values.reserve(num_results);
+    Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     for (mlir::OpResult opresult : indexing_op->getOpResults()) {
       if (opresult.use_empty()) {
-        new_values.push_back(opresult);
+        new_values.push_back(zero);
         continue;
       }
 
