@@ -65,6 +65,24 @@ using HloValueMap =
     absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>;
 
 struct MlirReductionFusion::EmitterState {
+  EmitterState(const MlirReductionFusion& owner,
+               mlir::func::FuncOp entry_function,
+               const HloFusionInstruction& fusion,
+               const PartitionedComputations& computations,
+               const mlir_converter::CallTargetProvider& call_target)
+      : owner(owner),
+        entry_function(entry_function),
+        fusion(fusion),
+        computations(computations),
+        call_target(call_target),
+        builder(entry_function.getLoc(), entry_function) {
+    int index = 0;
+    for (auto root : owner.analysis().fusion_roots()) {
+      fusion_result_index_starts[root] = index;
+      index += root->shape().IsTuple() ? root->shape().tuple_shapes_size() : 1;
+    }
+  }
+
   // Uses the given indexing map to reduce a subset of the inputs in a single
   // thread. The subset may be a single element.
   HloValueMap EmitPerThreadReducedElements(const HloValueMap& inits);
@@ -82,15 +100,7 @@ struct MlirReductionFusion::EmitterState {
   }
 
   int OutputIndex(const HloInstruction* root, int result_index) {
-    if (root->shape().IsTuple()) {
-      // If the root is a tuple, that means we're dealing with a variadic
-      // reduction. Variadic reductions have no epilogues or side outputs.
-      return result_index;
-    }
-
-    CHECK_EQ(result_index, 0);
-    return absl::c_find(owner.analysis().fusion_roots(), root) -
-           owner.analysis().fusion_roots().begin();
+    return fusion_result_index_starts[root] + result_index;
   }
 
   const MlirReductionFusion& owner;
@@ -99,6 +109,7 @@ struct MlirReductionFusion::EmitterState {
   const PartitionedComputations& computations;
   const mlir_converter::CallTargetProvider& call_target;
   mlir::ImplicitLocOpBuilder builder;
+  absl::flat_hash_map<const HloInstruction*, int> fusion_result_index_starts;
 };
 
 MlirReductionFusion::MlirReductionFusion(const HloFusionAnalysis& analysis)
@@ -139,9 +150,7 @@ absl::Status MlirReductionFusion::EmitEntryFunction(
   // they share nothing by definition.
   TF_RET_CHECK(reduction_info().GetGroups().grouped_roots.size() == 1)
       << "Only one reduction group is supported.";
-  EmitterState state{*this,        entry_function,
-                     fusion,       computations,
-                     call_targets, {entry_function.getLoc(), entry_function}};
+  EmitterState state{*this, entry_function, fusion, computations, call_targets};
   state.builder.setInsertionPointToStart(entry_function.addEntryBlock());
   return EmitReduction(state);
 }
@@ -333,13 +342,13 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
   SmallVector<Value> iter_arg_inits;
   ValueRange output_args = entry_function.getArguments().drop_front(
       fusion.fused_parameters().size());
-  for (auto [is_reduction, hero, output] :
+  for (auto [is_reduction, hero] :
        llvm::zip(owner.reduction_info().GetGroups().is_reduction_root,
-                 owner.analysis().fusion_heroes(), output_args)) {
+                 owner.analysis().fusion_heroes())) {
     if (is_reduction) {
       iter_arg_inits.append(inits.at(hero));
     } else {
-      iter_arg_inits.push_back(output);
+      iter_arg_inits.push_back(output_args[OutputIndex(hero, 0)]);
     }
   }
 
@@ -351,24 +360,24 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
     auto tile_indices = mlir_converter::ApplyAffineMap(
         tile_indexing.GetAffineMap(), dim_values, symbol_values, builder);
 
-    llvm::SmallVector<Value> results;
+    llvm::SmallVector<Value> results(iter_args.size(), nullptr);
     struct SideOutput {
-      Value tensor;
       llvm::SmallVector<Value> indices;
       Value scalar;
       int result_index;
     };
     llvm::SmallVector<SideOutput> side_outputs;
-    int start = 0;
-    for (auto [is_reduction, hero] :
+    for (auto [is_reduction, hero, root] :
          llvm::zip(owner.reduction_info().GetGroups().is_reduction_root,
-                   owner.analysis().fusion_heroes())) {
+                   owner.analysis().fusion_heroes(),
+                   owner.analysis().fusion_roots())) {
       const xla::Shape& input_shape =
           is_reduction ? hero->operand(0)->shape() : hero->shape();
-      llvm::SmallVector<Value> input_indices = mlir_converter::ApplyAffineMap(
+      auto input_indices = mlir_converter::ApplyAffineMap(
           GetBitcastMap(tiling.GetXlaShape(), input_shape, builder.getContext())
               .GetAffineMap(),
           tile_indices, {}, builder);
+      int start = fusion_result_index_starts[root];
       if (is_reduction) {
         int num_outs = hero->operand_count() / 2;
         auto values = ProvideParameterRange(
@@ -378,8 +387,7 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
         reduce_args.append(values);
         absl::c_copy(builder.create<PureCallOp>(GetReducer(hero), reduce_args)
                          .getResults(),
-                     std::back_inserter(results));
-        start += num_outs;
+                     results.begin() + start);
       } else {
         auto* root_tuple = fusion.fused_expression_root();
         Value value = mlir_converter::ProvideParameter(
@@ -388,16 +396,13 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
         // Tensor insertions turn into writes, so they have to happen in the
         // end. This could be considered a bug in the lowering, but since we
         // don't have bufferization, we need to handle it here.
-        side_outputs.push_back(
-            {iter_args[start], std::move(input_indices), value, start});
-        results.push_back(nullptr);
-        ++start;
+        side_outputs.push_back({std::move(input_indices), value, start});
       }
     }
     for (auto& side_output : side_outputs) {
-      results[side_output.result_index] =
-          builder.create<mlir::tensor::InsertOp>(
-              side_output.scalar, side_output.tensor, side_output.indices);
+      int index = side_output.result_index;
+      results[index] = builder.create<mlir::tensor::InsertOp>(
+          side_output.scalar, iter_args[index], side_output.indices);
     }
     return results;
   };

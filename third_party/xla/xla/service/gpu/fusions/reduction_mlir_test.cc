@@ -397,6 +397,41 @@ TEST_F(ReductionTest, BroadcastSideOutput) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(ReductionTest, VariadicMOF) {
+  constexpr auto kHloString = R"(
+    %reducer1 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    %reducer2 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      p2 = f32[] parameter(2)
+      p3 = f32[] parameter(3)
+      add0 = f32[] add(p0, p2)
+      add1 = f32[] add(p1, p3)
+      ROOT tuple = (f32[], f32[]) tuple(add0, add1)
+    }
+    %fusion {
+      %p0 = f32[6,6] parameter(0)
+      %c0 = f32[] constant(0)
+      %neg = f32[6,6] negate(%p0)
+      %reduce1 = f32[] reduce(%neg, %c0), dimensions={0,1}, to_apply=%reducer1
+      %reduce2 = (f32[], f32[]) reduce(%p0, %p0, %c0, %c0), dimensions={0,1}, to_apply=%reducer2
+      ROOT %tuple = (f32[], (f32[], f32[]), f32[6,6]) tuple(%reduce1, %reduce2, %neg)
+    }
+    ENTRY main {
+      %p0 = f32[6,6] parameter(0)
+      ROOT %fusion = (f32[], (f32[], f32[]), f32[6,6]) fusion(%p0), kind=kInput, calls=%fusion
+    })";
+
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: @fused_computation
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

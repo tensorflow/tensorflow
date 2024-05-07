@@ -450,12 +450,9 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
   };
 
   for (auto* root : subgraph.roots) {
-    if (root->shape().IsTuple()) {
-      for (auto& shape : root->shape().tuple_shapes()) {
-        result_types.push_back(element_type(shape));
-      }
-    } else {
-      result_types.push_back(element_type(root->shape()));
+    for (auto ty : ShapeToMlirTypes(root->shape(), b)) {
+      result_types.push_back(
+          mlir::cast<mlir::RankedTensorType>(ty).getElementType());
     }
   }
 
