@@ -116,9 +116,8 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
       reference_module->mutable_config().set_debug_options(debug_options);
     }
     // Sanity check to ensure the first computation doesn't use FMHA.
-    TF_ASSERT_OK_AND_ASSIGN(
-        int num_fmha_calls,
-        CountFMHACalls(std::move(reference_module->Clone())));
+    TF_ASSERT_OK_AND_ASSIGN(int num_fmha_calls,
+                            CountFMHACalls(reference_module->Clone()));
     EXPECT_EQ(num_fmha_calls, 0);
     const Literal expected_result =
         ExecuteAndTransfer(std::move(reference_module), literals);
@@ -126,7 +125,7 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> test_module,
                             ParseAndReturnVerifiedModule(hlo_string));
     TF_ASSERT_OK_AND_ASSIGN(num_fmha_calls,
-                            CountFMHACalls(std::move(test_module->Clone())));
+                            CountFMHACalls(test_module->Clone()));
     EXPECT_EQ(num_fmha_calls, expected_num_fmha_calls);
     const Literal actual_result =
         ExecuteAndTransfer(std::move(test_module), literals);
