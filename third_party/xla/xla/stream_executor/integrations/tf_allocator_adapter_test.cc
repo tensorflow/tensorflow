@@ -30,37 +30,44 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/framework/allocator.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace se = stream_executor;
 
-// Each allocatotion will have an incrementing address.
+// Each allocation will have an incrementing address.
 class TestAllocator : public tsl::Allocator {
  public:
-  explicit TestAllocator(size_t start_address)
-      : start_address_(start_address) {}
+  explicit TestAllocator(
+      size_t start_address,
+      std::shared_ptr<absl::flat_hash_set<void*>> allocations = nullptr)
+      : start_address_(start_address), allocations_(allocations) {
+    if (allocations_ == nullptr) {
+      allocations_ = std::make_shared<absl::flat_hash_set<void*>>();
+    }
+  }
 
   std::string Name() override { return "test"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     void* ptr = reinterpret_cast<void*>(++start_address_);
-    allocations_.insert(ptr);
+    allocations_->insert(ptr);
     return ptr;
   }
 
   void DeallocateRaw(void* ptr) override {
-    auto it = allocations_.find(ptr);
-    if (it == allocations_.end()) {
+    auto it = allocations_->find(ptr);
+    if (it == allocations_->end()) {
       ADD_FAILURE() << "Allocation not found (double free?)";
     } else {
-      allocations_.erase(it);
+      allocations_->erase(it);
     }
   }
 
  private:
-  absl::flat_hash_set<void*> allocations_;
   size_t start_address_;
+  std::shared_ptr<absl::flat_hash_set<void*>> allocations_;
 };
 
 TEST(MultiDeviceAdapter, UsesCorrectAllocator) {
@@ -102,4 +109,44 @@ TEST(MultiDeviceAdapter, UsesCorrectAllocator) {
       se::OwningDeviceMemory buff4,
       allocator->Allocate(/*device_ordinal=*/1, 4, false, /*memory_space=*/1));
   CHECK_EQ(reinterpret_cast<size_t>(buff4->opaque()), 0x4001);
+}
+
+TEST(MultiDeviceAdapter, DeallocationWithDifferentAllocator) {
+  TF_ASSERT_OK_AND_ASSIGN(auto* platform,
+                          xla::PlatformUtil::GetDefaultPlatform());
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                          xla::PlatformUtil::GetStreamExecutors(platform));
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
+
+  std::shared_ptr<absl::flat_hash_set<void*>> allocations =
+      std::make_shared<absl::flat_hash_set<void*>>();
+  std::vector<se::MultiDeviceAdapter::AllocatorInfo> info_allocator;
+  info_allocator.emplace_back(
+      std::make_unique<TestAllocator>(0x1000, allocations), stream.get(),
+      /*memory_space=*/0, /*device_ordinal=*/0);
+
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator =
+      std::make_unique<se::MultiDeviceAdapter>(platform,
+                                               std::move(info_allocator));
+
+  std::vector<se::MultiDeviceAdapter::AllocatorInfo> info_deallocator;
+  info_deallocator.emplace_back(
+      std::make_unique<TestAllocator>(0x1000, allocations), stream.get(),
+      /*memory_space=*/0, /*device_ordinal=*/0);
+  std::unique_ptr<se::DeviceMemoryAllocator> deallocator =
+      std::make_unique<se::MultiDeviceAdapter>(platform,
+                                               std::move(info_deallocator));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      se::OwningDeviceMemory buff0,
+      allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/0));
+  CHECK_EQ(allocations->size(), 1);
+  CHECK_EQ(reinterpret_cast<size_t>(buff0->opaque()), 0x1001);
+
+  TF_CHECK_OK(deallocator->Deallocate(/*device_ordinal=*/0, buff0.cref()));
+  CHECK_EQ(allocations->size(), 0);
+
+  // Place back memory pointer to remove it during with ScopedDeviceMemory
+  // destruction.
+  allocations->insert(buff0->opaque());
 }
