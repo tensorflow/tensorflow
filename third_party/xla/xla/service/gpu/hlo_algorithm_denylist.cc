@@ -34,26 +34,18 @@ namespace gpu {
 
 constexpr char kDefaultDenylist[] = R"pb(
   entries {
-    hlo: "(f32[4,32,32,32]{2,1,3,0}, u8[0]{0}) custom-call(f32[4,32,32,32]{2,1,3,0}, f32[5,5,32,32]{1,0,2,3}), window={size=5x5 pad=2_2x2_2}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convForward\", backend_config=\"{conv_result_scale:1}\""
+    hlo: "(f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(f32[512,512,7,7]{3,2,1,0}, f32[512,512,3,3]{3,2,1,0}, f32[512]{0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\", backend_config={\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[],\"cudnn_conv_backend_config\":{\"activation_mode\":\"kNone\",\"conv_result_scale\":1,\"side_input_scale\":0,\"leakyrelu_alpha\":0},\"force_earliest_schedule\":false}"
     cc { major: 7 }
-    cudnn_version { major: 7 minor: 6 patch: 4 }
-    algos { id: 7 }
-    blas_version: "10201"
+    cudnn_version { major: 9 }
+    algos { id: 14 }
+    blas_version: "120302"
   }
   entries {
-    hlo: "(f32[4,32,32,32]{2,1,3,0}, u8[0]{0}) custom-call(f32[4,32,32,32]{2,1,3,0}, f32[5,5,32,32]{1,0,2,3}), window={size=5x5 pad=2_2x2_2}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convForward\", backend_config=\"{conv_result_scale:1}\""
+    hlo: "(f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(f32[512,512,7,7]{3,2,1,0}, f32[512,512,3,3]{3,2,1,0}, f32[512]{0}), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBiasActivationForward\", backend_config={\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[],\"cudnn_conv_backend_config\":{\"activation_mode\":\"kNone\",\"conv_result_scale\":1,\"side_input_scale\":0,\"leakyrelu_alpha\":0},\"force_earliest_schedule\":false}"
     cc { major: 7 }
-    cudnn_version { major: 7 minor: 6 patch: 4 }
-    algos { id: 7 tensor_ops: true }
-    blas_version: "10201"
-  }
-  entries {
-    hlo: "(f16[3,3,256,256]{2,1,0,3}, u8[0]{0}) custom-call(f16[2048,7,7,256]{3,2,1,0}, f16[2048,7,7,256]{3,2,1,0}), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convBackwardFilter\", backend_config=\"{\\\"algorithm\\\":\\\"0\\\",\\\"tensor_ops_enabled\\\":false,\\\"conv_result_scale\\\":1,\\\"activation_mode\\\":\\\"0\\\",\\\"side_input_scale\\\":0}\""
-    cc { major: 7 }
-    cudnn_version { major: 8 minor: 2 patch: 1 } algos
-    [ { id: 0 tensor_ops: true }
-      , { id: 0 }]
-    blas_version: "11402"
+    cudnn_version { major: 9 minor: 1 patch: 1 }
+    algos { id: 14 }
+    blas_version: "120302"
   }
 )pb";
 
