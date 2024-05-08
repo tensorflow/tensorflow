@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/cc/max_size.h"
 #include "tensorflow/tools/proto_splitter/cc/test_util.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
+#include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tensorflow/tools/proto_splitter/testdata/test_message.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
