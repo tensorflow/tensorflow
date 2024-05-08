@@ -24,8 +24,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/array4d.h"
 #include "xla/client/xla_builder.h"
@@ -90,20 +88,17 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
  protected:
   DebugOptions GetDebugOptionsForTest() override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_cudnn_fmha(false);
+    debug_options.set_xla_gpu_enable_cudnn_fmha(true);
     return debug_options;
   }
 
-  absl::StatusOr<int> CountFMHACalls(absl::string_view hlo_string,
-                                     const HloModuleConfig &config) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> verified_module,
-                        ParseAndReturnVerifiedModule(hlo_string, config));
-
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_verified_module,
-                        GetOptimizedModule(std::move(verified_module)));
+  absl::StatusOr<int> CountFMHACalls(
+      std::unique_ptr<HloModule> unoptimized_module) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
+                        GetOptimizedModule(std::move(unoptimized_module)));
 
     return absl::c_count_if(
-        optimized_verified_module->entry_computation()->instructions(),
+        optimized_module->entry_computation()->instructions(),
         [&](const HloInstruction *inst) {
           return inst->opcode() == HloOpcode::kCustomCall &&
                  absl::StrContains(inst->custom_call_target(), "__cudnn$fmha");
@@ -113,32 +108,31 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
   void ExecuteAndCompare(absl::string_view hlo_string,
                          const std::vector<Literal *> &literals,
                          int expected_num_fmha_calls = 1) {
-    HloModuleConfig config;
-    DebugOptions debug_options = GetDebugOptionsForTest();
-    config.set_debug_options(debug_options);
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_string, config));
-    auto expected_result = ExecuteAndTransfer(std::move(module), literals);
-
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> reference_module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    {
+      DebugOptions debug_options = GetDebugOptionsForTest();
+      debug_options.set_xla_gpu_enable_cudnn_fmha(false);
+      reference_module->mutable_config().set_debug_options(debug_options);
+    }
     // Sanity check to ensure the first computation doesn't use FMHA.
-    TF_ASSERT_OK_AND_ASSIGN(int num_fmha_calls,
-                            CountFMHACalls(hlo_string, config));
-    EXPECT_EQ(num_fmha_calls, 0);
-
-    debug_options.set_xla_gpu_enable_cudnn_fmha(true);
-    HloModuleConfig config_with_fmha;
-    config_with_fmha.set_debug_options(debug_options);
-
     TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<HloModule> new_module,
-        ParseAndReturnVerifiedModule(hlo_string, config_with_fmha));
-    auto actual_result = ExecuteAndTransfer(std::move(new_module), literals);
+        int num_fmha_calls,
+        CountFMHACalls(std::move(reference_module->Clone())));
+    EXPECT_EQ(num_fmha_calls, 0);
+    const Literal expected_result =
+        ExecuteAndTransfer(std::move(reference_module), literals);
+
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> test_module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    TF_ASSERT_OK_AND_ASSIGN(num_fmha_calls,
+                            CountFMHACalls(std::move(test_module->Clone())));
+    EXPECT_EQ(num_fmha_calls, expected_num_fmha_calls);
+    const Literal actual_result =
+        ExecuteAndTransfer(std::move(test_module), literals);
+
     EXPECT_TRUE(
         LiteralTestUtil::Near(expected_result, actual_result, error_spec_));
-
-    TF_ASSERT_OK_AND_ASSIGN(num_fmha_calls,
-                            CountFMHACalls(hlo_string, config_with_fmha));
-    EXPECT_EQ(num_fmha_calls, expected_num_fmha_calls);
   }
 
   template <typename T>
@@ -1033,9 +1027,8 @@ class FlashAttentionBMMScalePaddingMaskSoftmaxBMM
     // so directly lower to custom call instead for reference
     std::string hlo_string_ref =
         GetModuleFlash_Attention_Training_BMM1_PaddingMask_Generation_Softmax_BMM2_HloString_BF16();  // NOLINT
-    HloModuleConfig config{};
-    EXPECT_TRUE(RunAndCompareTwoModules(hlo_string, hlo_string_ref, config,
-                                        config, ErrorSpec{1e-5, 1e-5}));
+    EXPECT_TRUE(RunAndCompareTwoModules(hlo_string, hlo_string_ref,
+                                        ErrorSpec{1e-5, 1e-5}));
   }
 };
 
