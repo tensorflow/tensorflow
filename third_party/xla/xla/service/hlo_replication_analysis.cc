@@ -354,6 +354,9 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
         shape_tree.CopySubtreeFrom(hlo_replication_[inst->operand(i)], {}, {i});
       }
       changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);
+    } else if (inst->opcode() == HloOpcode::kOptimizationBarrier) {
+      ShapeTree<HloReplication> shape_tree = hlo_replication_[inst->operand(0)];
+      changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);
     } else if (inst->opcode() == HloOpcode::kGetTupleElement) {
       ShapeTree<HloReplication> shape_tree(
           inst->shape(), HloReplication::ReplicatedOnAllDevices());
