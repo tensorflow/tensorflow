@@ -247,10 +247,13 @@ void UnwindOnError(ExecutionContext& context, int64_t pc) {
     context.function_stack_.pop_back();
   }
 
+  context.LogError(absl::InternalError(
+      absl::StrCat("Finish UnwindOnError for function ", function_name)));
+
+  // Context may no longer be valid after exit_handler_ is called.
   if (context.exit_handler_) {
     std::move(context.exit_handler_)();
   }
-  context.LogError(absl::InternalError("Finish UnwindOnError"));
 }
 
 }  // namespace execute_internal
