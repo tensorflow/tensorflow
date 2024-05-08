@@ -2402,6 +2402,7 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
                             return sharding.IsManualSubgroup();
                           }));
       if (has_manual_subgroup && !hlo->IsCustomCall("SPMDFullToShardShape") &&
+          !hlo->IsCustomCall("SPMDShardToFullShape") &&
           hlo->opcode() != HloOpcode::kGetTupleElement) {
         auto get_grouped_sharding =
             [&](const HloSharding& sharding, const Shape& shape,
