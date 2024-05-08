@@ -174,35 +174,92 @@ struct DataTypeToNative {
   static_assert(always_false<dtype>::value, "unsupported data type");
 };
 
-// clang-format off
-template <> struct DataTypeToNative<DataType::PRED>  { using type = bool; };
-template <> struct DataTypeToNative<DataType::U8>    { using type = uint8_t; };
-template <> struct DataTypeToNative<DataType::U16>   { using type = uint16_t; };
-template <> struct DataTypeToNative<DataType::U32>   { using type = uint32_t; };
-template <> struct DataTypeToNative<DataType::U64>   { using type = uint64_t; };
-template <> struct DataTypeToNative<DataType::S8>    { using type = int8_t; };
-template <> struct DataTypeToNative<DataType::S16>   { using type = int16_t; };
-template <> struct DataTypeToNative<DataType::S32>   { using type = int32_t; };
-template <> struct DataTypeToNative<DataType::S64>   { using type = int64_t; };
-template <> struct DataTypeToNative<DataType::F16>   { using type = uint16_t; };
-template <> struct DataTypeToNative<DataType::F32>   { using type = float; };
-template <> struct DataTypeToNative<DataType::F64>   { using type = double; };
-template <> struct DataTypeToNative<DataType::BF16>  { using type = uint16_t; };
-template <> struct DataTypeToNative<DataType::C64>   { using type = std::complex<float>; }; // NOLINT
-template <> struct DataTypeToNative<DataType::C128>  { using type = std::complex<double>; }; // NOLINT
-template <> struct DataTypeToNative<DataType::TOKEN> { using type = void; };
-// clang-format on
+#define XLA_FFI_REGISTER_DATATYPE_MAPPING(data_type_value, actual_type) \
+  template <>                                                           \
+  struct DataTypeToNative<data_type_value> {                            \
+    using type = actual_type;                                           \
+  };
+
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::PRED, bool);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::U8, uint8_t);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::U16, uint16_t);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::U32, uint32_t);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::U64, uint64_t);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::S8, int8_t);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::S16, int16_t);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::S32, int32_t);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::S64, int64_t);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::F16, uint16_t);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::F32, float);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::F64, double);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::BF16, uint16_t);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::C64, std::complex<float>);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::C128, std::complex<double>);
+XLA_FFI_REGISTER_DATATYPE_MAPPING(DataType::TOKEN, void);
+
+#undef XLA_FFI_REGISTER_DATATYPE_MAPPING
 
 inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
 
-template <DataType dtype>
-using NativeType = typename DataTypeToNative<dtype>::type;
-
 }  // namespace internal
+
+constexpr DataType ToComplex(DataType dtype) {
+  switch (dtype) {
+    case DataType::F32:
+      return DataType::C64;
+    case DataType::F64:
+      return DataType::C128;
+    default:
+      return DataType::INVALID;
+  }
+}
+
+constexpr DataType ToReal(DataType dtype) {
+  switch (dtype) {
+    case DataType::C64:
+      return DataType::F32;
+    case DataType::C128:
+      return DataType::F64;
+    default:
+      return dtype;
+  }
+}
+
+constexpr DataType ToImag(DataType dtype) {
+  switch (dtype) {
+    case DataType::C64:
+      return DataType::F32;
+    case DataType::C128:
+      return DataType::F64;
+    default:
+      return dtype;
+  }
+}
+
+template <DataType dtype>
+using NativeType = typename internal::DataTypeToNative<dtype>::type;
+
+template <DataType dtype>
+constexpr bool IsComplexType() {
+  return std::is_same_v<NativeType<dtype>,
+                        std::complex<NativeType<ToReal(dtype)>>>;
+}
+
+static_assert(ToReal(DataType::C64) == DataType::F32);
+static_assert(ToReal(DataType::C128) == DataType::F64);
+static_assert(ToReal(DataType::F32) == DataType::F32);
+static_assert(ToComplex(DataType::F32) == DataType::C64);
+static_assert(ToComplex(DataType::F64) == DataType::C128);
+static_assert(ToComplex(DataType::S32) == DataType::INVALID);
+static_assert(ToComplex(ToReal(DataType::C64)) == DataType::C64);
+static_assert(ToComplex(ToImag(DataType::C128)) == DataType::C128);
+static_assert(IsComplexType<DataType::C64>());
+static_assert(IsComplexType<DataType::C128>());
+static_assert(!IsComplexType<DataType::F32>());
 
 template <DataType dtype, size_t rank = internal::kDynamicRank>
 struct Buffer {
-  internal::NativeType<dtype>* data;
+  NativeType<dtype>* data;
   Span<const int64_t> dimensions;
 };
 
@@ -240,7 +297,7 @@ std::optional<Buffer<dtype, rank>> DecodeBuffer(XLA_FFI_Buffer* buf,
   }
 
   Buffer<dtype, rank> buffer;
-  buffer.data = static_cast<internal::NativeType<dtype>*>(buf->data);
+  buffer.data = static_cast<NativeType<dtype>*>(buf->data);
   buffer.dimensions = Span<const int64_t>(buf->dims, buf->rank);
   return buffer;
 }

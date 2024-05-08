@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -1320,6 +1321,10 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(uint32_t, XLA_FFI_DataType_U32);
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(uint64_t, XLA_FFI_DataType_U64);
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(float, XLA_FFI_DataType_F32);
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(double, XLA_FFI_DataType_F64);
+XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(std::complex<float>,
+                                      XLA_FFI_DataType_C64);
+XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(std::complex<double>,
+                                      XLA_FFI_DataType_C128);
 
 #undef XLA_FFI_REGISTER_SCALAR_ATTR_DECODING
 
