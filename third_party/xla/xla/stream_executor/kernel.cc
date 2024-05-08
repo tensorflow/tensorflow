@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/demangle.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
