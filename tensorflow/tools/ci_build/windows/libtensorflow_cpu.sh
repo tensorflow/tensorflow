@@ -60,7 +60,7 @@ rm -f ${DIR}/tensorflow_jni.dll
 mkdir -p ${DIR}/include/tensorflow/c
 mkdir -p ${DIR}/include/tensorflow/c/eager
 mkdir -p ${DIR}/include/tensorflow/core/platform
-mkdir -p ${DIR}/include/tsl/c
+mkdir -p ${DIR}/include/xla/tsl/c
 mkdir -p ${DIR}/include/tsl/platform
 mkdir -p ${DIR}/lib
 cp bazel-bin/tensorflow/tensorflow.dll ${DIR}/lib/tensorflow.dll
@@ -85,8 +85,7 @@ cp tensorflow/c/eager/c_api.h \
 cp tensorflow/core/platform/ctstring.h \
   tensorflow/core/platform/ctstring_internal.h \
   ${DIR}/include/tensorflow/core/platform
-cp third_party/xla/third_party/tsl/compiler/xla/tsl/c/tsl_status.h \
-   ${DIR}/include/tsl/c
+cp third_party/xla/xla/tsl/c/tsl_status.h ${DIR}/include/xla/tsl/c
 cp third_party/xla/third_party/tsl/tsl/platform/ctstring.h \
    third_party/xla/third_party/tsl/tsl/platform/ctstring_internal.h \
    ${DIR}/include/tsl/platform
@@ -113,7 +112,7 @@ zip libtensorflow-cpu-windows-$(uname -m).zip \
   include/tensorflow/c/c_api_experimental.h \
   include/tensorflow/core/platform/ctstring.h \
   include/tensorflow/core/platform/ctstring_internal.h \
-  include/compiler/xla/tsl/c/tsl_status.h \
+  include/xla/tsl/c/tsl_status.h \
   include/tsl/platform/ctstring.h \
   include/tsl/platform/ctstring_internal.h \
   LICENSE \
