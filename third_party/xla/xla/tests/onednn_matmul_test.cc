@@ -1010,6 +1010,43 @@ TEST_F(MatmulTest, SimpleTestF32WithMulAndAddFusion) {
     )");
 }
 
+TEST_F(MatmulTest, SimpleTestBF16WithMulAndAddFusion) {
+  if (!IsSupportedType(PrimitiveType::BF16)) {
+    GTEST_SKIP() << "CPU does not support BF16.";
+  }
+
+  const char* matmul_module_str = R"(
+  ENTRY matmul.mul.add.test.bf16 {
+    arg0.1 = f32[32,32,40,30] parameter(0), parameter_replication={false}
+    convert0 = bf16[32,32,40,30] convert(arg0.1)
+    arg0.2 = f32[32,32,30,40] parameter(1), parameter_replication={false}
+    convert1 = bf16[32,32,30,40] convert(arg0.2)
+    dot.7 = bf16[32,32,40,40] dot(convert0, convert1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+    convert2 = f32[32,32,40,40] convert(dot.7)
+    const.0 = f32[] constant(0.044715)
+    bcast.0 = f32[32,32,40,40] broadcast(const.0), dimensions={}
+    mul.0 = f32[32,32,40,40] multiply(convert2,bcast.0)
+    const.1 = f32[] constant(0.65)
+    bcast.1 = f32[32,32,40,40] broadcast(const.1), dimensions={}
+    add.0 = f32[32,32,40,40] add(mul.0, bcast.1)
+    convert3 = bf16[32,32,40,40] convert(add.0)
+    tuple.12 = (bf16[32,32,40,40]) tuple(convert3)
+    ROOT get-tuple-element.13 = bf16[32,32,40,40] get-tuple-element(tuple.12), index=0
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+    ; CHECK:     custom_call_target="__onednn$matmul",
+    ; CHECK:       backend_config={
+    ; CHECK-DAG:     "outer_dimension_partitions":[],
+    ; CHECK-DAG:     "onednn_matmul_config":{
+    ; CHECK-DAG:       "fused_ops":["LINEAR","BINARY_ADD"]
+    ; CHECK-DAG:   }
+    ; CHECK:     }
+    )");
+}
+
 TEST_F(MatmulTest, WeightsPrepackAndScratch) {
   const char* matmul_module_str = R"(
   HloModule matmul.test.f32
