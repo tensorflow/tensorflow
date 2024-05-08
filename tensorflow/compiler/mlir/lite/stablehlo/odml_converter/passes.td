@@ -15,10 +15,25 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+def OutlineCompositesPass: Pass<"outline-composites", "func::FuncOp"> {
+  let summary = "Outlines specific patterns into composites.";
+  let description = [{
+    Outline specific patterns into composites. Specific patterns can be any
+    sub-DAG within a single `Block*`. The signature of the new composite
+    matches the inupt and output edges from a node in the sub-DAG to a node out
+    of it. The associated decomposition has the same semantic as the matched
+    ops, but may not have identical structure.
+  }];
+
+  let options = [];
+  let constructor = "CreateOutlineCompositesPass()";
+  let dependentDialects = ["mlir::chlo::ChloDialect", "mlir::stablehlo::StablehloDialect", "mlir::func::FuncDialect"];
+}
+
 def SHLOSimplifyPass: Pass<"shlo-simplify", "ModuleOp"> {
   let summary = "Apply internal canonicalizations and foldings.";
   let description = [{
-    TODO
+    Applies various internally defined patterns.
   }];
 
   let options = [
