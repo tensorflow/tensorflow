@@ -660,8 +660,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   for (const ConstantInfo& info : constants_) {
     absl::StatusOr<stream_executor::DeviceMemoryBase> global_status;
     if (static_cast<bool>(module_handle)) {
-      global_status =
-          executor->GetUntypedSymbol(info.symbol_name, module_handle);
+      global_status = executor->GetSymbol(info.symbol_name, module_handle);
     }
 
     se::DeviceMemoryBase global;

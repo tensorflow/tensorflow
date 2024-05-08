@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <variant>
 
 #include "absl/status/status.h"
@@ -299,19 +300,16 @@ class StreamExecutorInterface {
     return false;
   }
 
-  // Retrieves device pointer and size for a symbol. The device pointer is
-  // stored at mem, and the size is stored at size. Either mem or bytes can be
-  // null, however, both of them cannot be null at the same time. To use
-  // constant memory in CUDA, GetSymbol has to be used. Returns true if symbol
-  // is found.
+  // Retrieves device pointer and size for a symbol. To use
+  // constant memory in CUDA, GetSymbol has to be used. Returns DeviceMemoryBase
+  // describing the symbol in memory if symbol is found.
   //
   // If ModuleHandle is set then we search for `symbol_name` only within the
   // module corresponding to `module_handle`.  Otherwise all loaded modules are
   // searched.
-  virtual bool GetSymbol(const std::string& symbol_name,
-                         ModuleHandle module_handle, void** mem,
-                         size_t* bytes) {
-    return false;
+  virtual absl::StatusOr<DeviceMemoryBase> GetSymbol(
+      const std::string& symbol_name, ModuleHandle module_handle) {
+    return absl::UnimplementedError("Not implemented");
   }
 
   // Creates a new DeviceDescription object. Ownership is transferred to the

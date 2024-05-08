@@ -256,11 +256,8 @@ class GpuExecutor : public StreamExecutor {
 
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
-  // Search for the symbol in the given module and returns a device pointer and
-  // size. Returns false if symbol does not exist. 'module_handle' must not
-  // be null.
-  bool GetSymbol(const std::string& symbol_name, ModuleHandle module_handle,
-                 void** mem, size_t* bytes) override;
+  absl::StatusOr<DeviceMemoryBase> GetSymbol(
+      const std::string& symbol_name, ModuleHandle module_handle) override;
 
   absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {

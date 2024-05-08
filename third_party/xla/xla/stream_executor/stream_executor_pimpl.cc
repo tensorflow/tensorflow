@@ -78,22 +78,6 @@ const DeviceDescription& StreamExecutor::GetDeviceDescription() const {
   return *device_description_;
 }
 
-absl::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
-    const std::string& symbol_name, ModuleHandle module_handle) {
-  // If failed to get the symbol, opaque/bytes are unchanged. Initialize them to
-  // be nullptr/0 for consistency with DeviceMemory semantics.
-  void* opaque = nullptr;
-  size_t bytes = 0;
-  if (GetSymbol(symbol_name, module_handle, &opaque, &bytes)) {
-    return DeviceMemoryBase(opaque, bytes);
-  }
-
-  return absl::NotFoundError(
-      absl::StrCat("Check if module containing symbol ", symbol_name,
-                   " is loaded (module_handle = ",
-                   reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
-}
-
 absl::Status StreamExecutor::SynchronousMemcpyD2H(
     const DeviceMemoryBase& device_src, int64_t size, void* host_dst) {
   return SynchronousMemcpy(host_dst, device_src, size);

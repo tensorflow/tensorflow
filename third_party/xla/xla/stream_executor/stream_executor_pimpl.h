@@ -77,10 +77,6 @@ class StreamExecutor : public StreamExecutorInterface {
     return AllocateArray<T>(1);
   }
 
-  // An untyped version of GetSymbol.
-  absl::StatusOr<DeviceMemoryBase> GetUntypedSymbol(
-      const std::string& symbol_name, ModuleHandle module_handle);
-
   absl::Status SynchronousMemcpyH2D(const void* host_src, int64_t size,
                                     DeviceMemoryBase* device_dst);
 
