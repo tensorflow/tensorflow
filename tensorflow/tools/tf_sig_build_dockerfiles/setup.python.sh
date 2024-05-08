@@ -90,6 +90,8 @@ python3 -m pip install -U setuptools
 
 if [[ $3 ]]; then
     echo "Runtime mode"
+    # Install tf_keras
+    python3 -m pip install --no-cache-dir --no-deps tf-keras==2.16.0
 else
     echo "Install Requirements"
     # Disable the cache dir to save image space, and install packages
