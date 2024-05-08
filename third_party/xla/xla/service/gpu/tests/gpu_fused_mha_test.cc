@@ -90,7 +90,6 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
  protected:
   DebugOptions GetDebugOptionsForTest() override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_xla_runtime_executable(false);
     debug_options.set_xla_gpu_enable_cudnn_fmha(false);
     return debug_options;
   }
