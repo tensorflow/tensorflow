@@ -29,6 +29,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
+#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -3013,6 +3015,17 @@ Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
 absl::StatusOr<bool> ShardingPropagation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // Register custom-call partitioner for SharBarrierFrom and ShardBarrierTo.
+  ABSL_CONST_INIT static absl::once_flag did_registration;
+  absl::call_once(did_registration, [] {
+    RegisterCustomCallPartitioner(
+        spmd::kShardBarrierFrom,
+        std::make_unique<spmd::ShardBarrierFromPartitioner>());
+    RegisterCustomCallPartitioner(
+        spmd::kShardBarrierTo,
+        std::make_unique<spmd::ShardBarrierToPartitioner>());
+  });
+
   std::optional<absl::flat_hash_map<const HloInstruction*, HloSharding>>
       original_sharding;
   bool any_changed = false;
