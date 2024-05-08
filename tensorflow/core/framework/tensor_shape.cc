@@ -35,7 +35,7 @@ static_assert(sizeof(TensorShapeRep) == sizeof(PartialTensorShape),
 
 template <class Shape>
 static void AppendTo(const TensorShapeBase<Shape>& s,
-                     gtl::InlinedVector<int64, 8>* vals) {
+                     absl::InlinedVector<int64, 8UL>* vals) {
   for (auto dim : s) {
     vals->push_back(dim.size);
   }
@@ -345,7 +345,7 @@ void TensorShapeRep::SlowCopyFrom(const TensorShapeRep& b) {
       *(as64()->dims_) = *(b.as64()->dims_);
     } else {
       set_tag(REP_OUT_OF_LINE);
-      as64()->dims_ = new gtl::InlinedVector<int64_t, 4>(*(b.as64()->dims_));
+      as64()->dims_ = new absl::InlinedVector<int64_t, 4UL>(*(b.as64()->dims_));
     }
   }
 }
@@ -468,7 +468,7 @@ void TensorShapeBase<Shape>::UnsafeAddDim(int64_t size,
     as64()->dims_->push_back(size);
   } else {
     // Need to change representation
-    gtl::InlinedVector<int64_t, 8> vals;
+    absl::InlinedVector<int64_t, 8UL> vals;
     AppendTo(*this, &vals);
     vals.push_back(size);
     // We know we can't be REP16.  See if we have a small enough
@@ -493,7 +493,7 @@ void TensorShapeBase<Shape>::UnsafeAddDim(int64_t size,
     } else {
       set_tag(REP_OUT_OF_LINE);
       as64()->dims_ =
-          new gtl::InlinedVector<int64_t, 4>(vals.begin(), vals.end());
+          new absl::InlinedVector<int64_t, 4UL>(vals.begin(), vals.end());
     }
   }
   set_ndims_byte(nd + 1);
@@ -524,7 +524,7 @@ void TensorShapeBase<Shape>::InsertDim(int d, int64_t size) {
   CHECK_LE(d, dims());
   if (!kIsPartial) CHECK_GE(size, 0);
   CHECK_LT(dims(), MaxDimensions());
-  gtl::InlinedVector<int64_t, 8> vals;
+  absl::InlinedVector<int64_t, 8UL> vals;
   AppendTo(*this, &vals);
   vals.insert(vals.begin() + d, size);
   ClearAllButDataType();
@@ -555,7 +555,7 @@ Status TensorShapeBase<Shape>::InsertDimWithStatus(int d, int64_t size) {
                             " dimensions which is the maximum allowed");
   }
 
-  gtl::InlinedVector<int64_t, 8> vals;
+  absl::InlinedVector<int64_t, 8UL> vals;
   AppendTo(*this, &vals);
   vals.insert(vals.begin() + d, size);
   ClearAllButDataType();
@@ -571,8 +571,8 @@ Status TensorShapeBase<Shape>::InsertDimWithStatus(int d, int64_t size) {
 }
 
 template <class Shape>
-gtl::InlinedVector<int64_t, 4> TensorShapeBase<Shape>::dim_sizes() const {
-  gtl::InlinedVector<int64_t, 4> result;
+absl::InlinedVector<int64_t, 4UL> TensorShapeBase<Shape>::dim_sizes() const {
+  absl::InlinedVector<int64_t, 4UL> result;
   for (auto dim : *this) {
     result.push_back(dim.size);
   }
@@ -596,7 +596,7 @@ void TensorShapeBase<Shape>::set_dim(int d, int64_t size) {
     (*as64()->dims_)[d] = size;
   } else {
     // Must upgrade
-    gtl::InlinedVector<int64_t, 8> vals;
+    absl::InlinedVector<int64_t, 8UL> vals;
     AppendTo(*this, &vals);
     vals[d] = size;
     ClearAllButDataType();
@@ -630,7 +630,7 @@ Status TensorShapeBase<Shape>::SetDimWithStatus(int d, int64_t size) {
     (*as64()->dims_)[d] = size;
   } else {
     // Must upgrade
-    gtl::InlinedVector<int64_t, 8> vals;
+    absl::InlinedVector<int64_t, 8UL> vals;
     AppendTo(*this, &vals);
     vals[d] = size;
     ClearAllButDataType();
@@ -657,7 +657,7 @@ void TensorShapeBase<Shape>::RemoveDimRange(int begin, int end) {
   CHECK_GE(end, 0);
   CHECK_LE(end, dims());
   if (begin >= end) return;
-  gtl::InlinedVector<int64_t, 8> vals;
+  absl::InlinedVector<int64_t, 8UL> vals;
   AppendTo(*this, &vals);
   vals.erase(vals.begin() + begin, vals.begin() + end);
   ClearAllButDataType();
@@ -695,7 +695,7 @@ Status TensorShapeBase<Shape>::RemoveDimRangeWithStatus(int begin, int end) {
     return absl::OkStatus();
   }
 
-  gtl::InlinedVector<int64_t, 8> vals;
+  absl::InlinedVector<int64_t, 8UL> vals;
   AppendTo(*this, &vals);
   vals.erase(vals.begin() + begin, vals.begin() + end);
   ClearAllButDataType();

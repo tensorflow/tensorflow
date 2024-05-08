@@ -1253,7 +1253,7 @@ inline uint16_t PrintOneElement(uint4 a, bool print_v2) {
 
 // Print from left dim to right dim recursively.
 template <typename T>
-void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
+void PrintOneDim(int dim_index, const absl::InlinedVector<int64, 4UL>& shape,
                  int64_t limit, int shape_size, const T* data,
                  int64_t* data_index, string* result) {
   if (*data_index >= limit) return;
@@ -1306,7 +1306,7 @@ void PrintDimSpacing(int dim_index, int num_dims, string* result) {
 
 // Print from left dim to right dim recursively.
 template <typename T>
-void PrintOneDimV2(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
+void PrintOneDimV2(int dim_index, const absl::InlinedVector<int64, 4UL>& shape,
                    int64_t num_elts_at_ends, int num_dims, const T* data,
                    int64_t data_index, string* result) {
   // We have recursed beyond all the dimensions into a single element
@@ -1354,7 +1354,7 @@ string SummarizeArrayInternal(int64_t limit, int64_t num_elts,
                               const TensorShape& tensor_shape, const T* array,
                               const bool print_v2) {
   string ret;
-  const gtl::InlinedVector<int64_t, 4> shape = tensor_shape.dim_sizes();
+  const absl::InlinedVector<int64_t, 4UL> shape = tensor_shape.dim_sizes();
   if (shape.empty()) {
     for (int64_t i = 0; i < limit; ++i) {
       if (i > 0) strings::StrAppend(&ret, " ");
@@ -1544,9 +1544,9 @@ void Tensor::FillDescription(TensorDescription* description) const {
   }
 }
 
-gtl::InlinedVector<int64_t, 4> Tensor::ComputeFlatInnerDims(
+absl::InlinedVector<int64_t, 4UL> Tensor::ComputeFlatInnerDims(
     absl::Span<const int64_t> orig, int64_t num_out_dims) {
-  gtl::InlinedVector<int64_t, 4> out_dims(num_out_dims, 0);
+  absl::InlinedVector<int64_t, 4UL> out_dims(num_out_dims, 0);
   int64_t offset = orig.size() - num_out_dims;
   for (int64_t out_dim = num_out_dims - 1; out_dim >= 0; --out_dim) {
     const int64_t in_dim = out_dim + offset;
@@ -1558,9 +1558,9 @@ gtl::InlinedVector<int64_t, 4> Tensor::ComputeFlatInnerDims(
   return out_dims;
 }
 
-gtl::InlinedVector<int64_t, 4> Tensor::ComputeFlatOuterDims(
+absl::InlinedVector<int64_t, 4UL> Tensor::ComputeFlatOuterDims(
     absl::Span<const int64_t> orig, int64_t num_out_dims) {
-  gtl::InlinedVector<int64_t, 4> out_dims(num_out_dims, 0);
+  absl::InlinedVector<int64_t, 4UL> out_dims(num_out_dims, 0);
   for (int64_t out_dim = 0; out_dim <= num_out_dims - 1; ++out_dim) {
     out_dims[out_dim] = out_dim >= orig.size() ? 1 : orig[out_dim];
   }

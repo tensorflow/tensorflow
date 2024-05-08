@@ -97,7 +97,7 @@ class TensorShapeRep {
     uint32 dims_[3];
   };
   struct Rep64 {
-    gtl::InlinedVector<int64_t, 4>* dims_;
+    absl::InlinedVector<int64_t, 4UL>* dims_;
   };
 
   // We use the max value of uint16 or uint32 to represent unknown shapes, so
@@ -302,7 +302,7 @@ class TensorShapeBase : public TensorShapeRep {
 
   /// Returns sizes of all dimensions.
   // Returns an empty list for unknown rank PartialTensorShape.
-  gtl::InlinedVector<int64_t, 4> dim_sizes() const;
+  absl::InlinedVector<int64_t, 4UL> dim_sizes() const;
 
   /// Return true iff the rank and all of the dimensions are well defined
   // TODO(irving): Rename to is_fully_defined now that it's fast.
