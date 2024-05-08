@@ -547,6 +547,31 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(CuDnnFusionLevel2Test, DotF8ExecutesCorrectly) {
+  EXPECT_TRUE(RunAndCompare(R"(
+
+fusion1 {
+  x = f8e4m3fn[16,32] parameter(0)
+  y = f8e4m3fn[32,16] parameter(1)
+  dot = f32[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  x_scale = f32[] parameter(2)
+  y_scale = f32[] parameter(3)
+  combined_scale = f32[] multiply(x_scale, y_scale)
+  scale_bcast = f32[16,16] broadcast(combined_scale), dimensions={}
+  ROOT out =  f32[16,16] multiply(dot, scale_bcast)
+}
+
+ENTRY e {
+  p0 = f8e4m3fn[16,32] parameter(0)
+  p1 = f8e4m3fn[32,16] parameter(1)
+  x_scale = f32[] parameter(2)
+  y_scale = f32[] parameter(3)
+  ROOT _ = f32[16,16] fusion(p0, p1, x_scale, y_scale), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 class CuDnnFusionLevel3Test : public CuDnnFusionExecutionTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
