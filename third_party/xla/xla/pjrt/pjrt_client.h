@@ -663,12 +663,6 @@ class PjRtClient {
                          platform_name());
   }
 
-  // Returns topology object for compilation based on this client's topology.
-  virtual StatusOr<const PjRtTopologyDescription*>
-  GetFullTopologyForCompilation() const {
-    return GetTopologyDescription();
-  }
-
   // A client may want to create a buffer, and hand the buffer to other PjRt
   // methods, before the data to store in the buffer is available to the client.
   // This is supported using CreateBuffersForAsyncHostToDevice, which returns an
