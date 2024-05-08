@@ -1410,8 +1410,17 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
   // Schedule only one collective at a time.
   bool is_a_collective_launch = !!last_collective_launch_event;
+  // Add additional dependency conditioned on whether this is a collective
+  // launch or not.
   if (is_a_collective_launch) {
     input_deps.push_back(std::move(last_collective_launch_event));
+  } else {
+    // This is a non-parallel computation. Add the last enqueue event as a
+    // dependency.
+    auto last_enqueue_event = client_->GetLastEnqueueEvent();
+    if (!last_enqueue_event.IsAvailable()) {
+      input_deps.push_back(std::move(last_enqueue_event));
+    }
   }
 
   bool execute_inline = cheap_computation_ || !client_->asynchronous_;
@@ -1471,6 +1480,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     // this one completes.
     if (is_a_collective_launch) {
       client_->SetLastCollectiveLaunchEvent(execute_event.CopyRef());
+    } else {
+      // This is a non-parallel computation. Set the execute event as the new
+      // last enqueue event.
+      client_->SetLastEnqueueEvent(execute_event.CopyRef());
     }
     std::vector<tsl::RCReference<tsl::AsyncValue>> input_deps_avs_copy =
         CopyAsyncValues(input_deps);
