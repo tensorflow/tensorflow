@@ -227,6 +227,16 @@ class GraphDefBuilderWrapper {
     return OkStatus();
   }
 
+  absl::Status AddScalar(const std::string& val, Node** output) {
+    Tensor val_t = Tensor(DataTypeToEnum<tstring>::v(), TensorShape({}));
+    val_t.scalar<tstring>()() = val;
+    AddTensorInternal(val_t, output);
+    if (*output == nullptr) {
+      return absl::InternalError("AddScalar: Failed to build Const op.");
+    }
+    return absl::OkStatus();
+  }
+
   // Adds a Const node with vector value to the Graph.
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
   // non-null if the method returns with an OK status.
