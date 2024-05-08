@@ -583,9 +583,7 @@ cc_library(
         ":kernel_spec",
         ":platform",
         ":stream_executor_headers",
-        ":stream_executor_interface",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -782,6 +780,11 @@ alias(
 alias(
     name = "rocm_platform",
     actual = "//xla/stream_executor/rocm:all_runtime",
+)
+
+alias(
+    name = "sycl_platform",
+    actual = "//xla/stream_executor/sycl:all_runtime",
 )
 
 # TODO(ezhulenev): This should be removed.
