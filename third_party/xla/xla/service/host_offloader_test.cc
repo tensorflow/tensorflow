@@ -28,6 +28,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/host_offload_legalize.h"
 #include "xla/service/pattern_matcher.h"
@@ -173,6 +175,30 @@ ENTRY main {
   TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, BasicAsyncCustomCallWithAliasing) {
+  const std::string& hlo_string = R"(
+HloModule m, input_output_alias={{}: (0, {}, must-alias)},
+             entry_computation_layout={(f32[4096]{0:T(128)S(5)})->f32[4096]{0:T(128)S(5)}}
+
+ENTRY %main (a: f32[4096]) -> f32[4096] {
+  %a = f32[4096]{0} parameter(0)
+  %async-start = ((f32[4096]{0}), f32[4096]{0}, u32[]) custom-call-start(%a),
+                 custom_call_target="Foo",
+                 output_to_operand_aliasing={{}: (0, {})}
+  ROOT %async-done = f32[4096]{0} custom-call-done(%async-start)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  TestShapeHasMemorySpace(async_done->shape(), kHostMemorySpaceColor);
 }
 
 TEST_F(HostOffloaderTest, ParameterStreamingWithXposeCopyFeedingIntoWhile) {
