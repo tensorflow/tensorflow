@@ -2259,7 +2259,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
 }
 
 // Helper function that turns the integer output of cuDeviceGetAttribute to type
-// T and wraps it in a StatusOr.
+// T and wraps it in a absl::StatusOr.
 template <typename T>
 static absl::StatusOr<T> GetSimpleAttribute(CUdevice device,
                                             CUdevice_attribute attribute) {

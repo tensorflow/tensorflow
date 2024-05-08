@@ -1975,7 +1975,7 @@ template <typename Base>
 class MIOpenDescriptorCommon : public MixinBase<Base> {
  public:
   bool ok() const { return status_.ok(); }
-  absl::Status Status() const { return status_; }
+  absl::Status absl::Status() const { return status_; }
 
  protected:
   void SetFailure(const absl::Status& status) { status_.Update(status); }

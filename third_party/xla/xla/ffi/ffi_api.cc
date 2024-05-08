@@ -63,14 +63,15 @@ bool IsCommandBufferCompatible(XLA_FFI_Handler_Traits traits) {
 // WARNING: These functions defined in `call_frame.h` as we need to make them
 // available without having to depend on `ffi.h` header.
 
-Status TakeStatus(XLA_FFI_Error* error) {
+absl::Status TakeStatus(XLA_FFI_Error* error) {
   if (error == nullptr) return absl::OkStatus();
-  Status status = std::move(error->status);
+  absl::Status status = std::move(error->status);
   delete error;
   return status;
 }
 
-Status Call(Ffi& handler, CallFrame& call_frame, const CallOptions& options) {
+absl::Status Call(Ffi& handler, CallFrame& call_frame,
+                  const CallOptions& options) {
   XLA_FFI_ExecutionContext ctx = {
       options.run_options, options.called_computation,
       internal::ScopedExecutionContext::GetCallExecutionContext(options)};
@@ -78,8 +79,8 @@ Status Call(Ffi& handler, CallFrame& call_frame, const CallOptions& options) {
   return TakeStatus(handler.Call(&ffi_call_frame));
 }
 
-Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
-            const CallOptions& options) {
+absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
+                  const CallOptions& options) {
   XLA_FFI_ExecutionContext ctx = {
       options.run_options, options.called_computation,
       internal::ScopedExecutionContext::GetCallExecutionContext(options)};
@@ -127,9 +128,10 @@ static HandlerRegistry& GetHandlerRegistry() {
   return *registry;
 }
 
-static Status RegisterHandler(std::string_view name, std::string_view platform,
-                              XLA_FFI_Handler* handler,
-                              XLA_FFI_Handler_Traits traits) {
+static absl::Status RegisterHandler(std::string_view name,
+                                    std::string_view platform,
+                                    XLA_FFI_Handler* handler,
+                                    XLA_FFI_Handler_Traits traits) {
   auto emplaced = GetHandlerRegistry().try_emplace(
       MakeHandlerKey(name, platform), HandlerRegistration{handler, traits});
   if (!emplaced.second)
@@ -172,8 +174,8 @@ static std::string StructSizeErrorMsg(std::string_view struct_name,
                       XLA_FFI_API_MAJOR, ".", XLA_FFI_API_MINOR, ".");
 }
 
-static Status ActualStructSizeIsGreaterOrEqual(std::string_view struct_name,
-                                               size_t expected, size_t actual) {
+static absl::Status ActualStructSizeIsGreaterOrEqual(
+    std::string_view struct_name, size_t expected, size_t actual) {
   if (actual < expected) {
     return absl::InvalidArgumentError(
         StructSizeErrorMsg(struct_name, expected, actual));
@@ -225,7 +227,7 @@ static absl::StatusCode ToStatusCode(XLA_FFI_Error_Code errc) {
 
 #define XLA_FFI_RETURN_IF_ERROR(expr)                                   \
   do {                                                                  \
-    Status _status = (expr);                                            \
+    absl::Status _status = (expr);                                      \
     if (!_status.ok()) {                                                \
       XLA_FFI_Error* _c_status = new XLA_FFI_Error{std::move(_status)}; \
       return _c_status;                                                 \
@@ -241,7 +243,7 @@ static XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args) {
 }
 
 static void XLA_FFI_Error_GetMessage(XLA_FFI_Error_GetMessage_Args* args) {
-  Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
+  absl::Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_Error_GetMessage", XLA_FFI_Error_GetMessage_Args_STRUCT_SIZE,
       args->struct_size);
   if (!struct_size_check.ok()) {
@@ -253,7 +255,7 @@ static void XLA_FFI_Error_GetMessage(XLA_FFI_Error_GetMessage_Args* args) {
 }
 
 static void XLA_FFI_Error_Destroy(XLA_FFI_Error_Destroy_Args* args) {
-  Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
+  absl::Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_Error_Destroy", XLA_FFI_Error_Destroy_Args_STRUCT_SIZE,
       args->struct_size);
   if (!struct_size_check.ok()) {

@@ -360,7 +360,7 @@ struct CtxDecoding<UserData<T>> {
 
 template <>
 struct ResultEncoding<Status> {
-  static XLA_FFI_Error* Encode(const XLA_FFI_Api* api, Status status) {
+  static XLA_FFI_Error* Encode(const XLA_FFI_Api* api, absl::Status status) {
     return api->internal_api->XLA_FFI_INTERNAL_Error_Forward(&status);
   }
 };
