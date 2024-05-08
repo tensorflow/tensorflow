@@ -1397,7 +1397,7 @@ class HloInstruction {
 
   // Creates a Afterall instruction used for joining or creating new values of
   // token type which thread through side-effecting operations. Operands must
-  // all be tokens, and there must be at least one operand.
+  // all be tokens, calls without operands generates a token.
   static std::unique_ptr<HloInstruction> CreateAfterAll(
       absl::Span<HloInstruction* const> operands);
 

@@ -1305,6 +1305,15 @@ TEST(XlaBuilderTest, AfterAllWithNonTokenOperands) {
               ::testing::HasSubstr("All operands to AfterAll must be tokens"));
 }
 
+TEST(XlaBuilderTest, AfterAllWithNoInputs) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("token[]"));
+  AfterAll(&b, {});
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, CheckInputOutputAlias) {
   XlaBuilder b(TestName());
   auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {8, 4}), "p0");
