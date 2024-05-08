@@ -3,8 +3,8 @@
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
-    DUCC_COMMIT = "3d28aadfd8bb0219e3df188613dbbcdfffccc3cd"
-    DUCC_SHA256 = "eb044dd11374ed894d67081109d4aa7ed55c29fe3286b116f13db70da6af336c"
+    DUCC_COMMIT = "15246e40cfa880c079606ce49bbf629b07fcf9cb"
+    DUCC_SHA256 = "82d961c0227b6842f2fcac30dd178f6fd278b54e0405d3e8c977ed6981ea0e70"
     tf_http_archive(
         name = "ducc",
         strip_prefix = "ducc-{commit}".format(commit = DUCC_COMMIT),
