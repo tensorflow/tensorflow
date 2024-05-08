@@ -31,7 +31,7 @@
 #include "grpcpp/server_builder.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt_proxy/common/grpc_credentials.h"
+#include "xla/python/ifrt_proxy/common/grpc_credentials_possibly_insecure_wrapper.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/server/grpc_service_impl.h"
@@ -62,7 +62,8 @@ absl::StatusOr<std::unique_ptr<GrpcServer>> GrpcServer::Create(
   builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH, -1);
   builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH, -1);
   builder.RegisterService(impl.get());
-  builder.AddListeningPort(std::string(address), GetServerCredentials());
+  builder.AddListeningPort(std::string(address),
+                           GetServerCredentialsPossiblyInsecure());
   auto server = builder.BuildAndStart();
   if (server == nullptr) {
     return absl::UnavailableError(
