@@ -752,6 +752,10 @@ class OptimizeForInferenceTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFuseDecomposedBatchNorm_FormatUnsupportedCase(self):
+    if not test_util.IsMklEnabled():
+      # Non-Mkl build doesn't support NCHW format on CPU.
+      self.skipTest("Skip test for non-Mkl build.")
+
     original_graph_def, original_result = self.create_base_for_fuse_batchnorm(
         "MISMATCH_FORMAT")
 
