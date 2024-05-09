@@ -2963,36 +2963,43 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   }
 
   auto operand = GetPartitionedHlo(hlo->operand(0));
-  // The output shape is the source and the operand shape is the target to get
-  // the aligned sharding for the operand.
-  std::optional<HloSharding> desired_operand_sharding =
-      hlo_sharding_util::ReshapeSharding(hlo->shape(), hlo->operand(0)->shape(),
-                                         hlo->sharding());
-  // Use the desired operand sharding only if the number of tiles returned
-  // matches the number of tiles in the output.
-  if (desired_operand_sharding.has_value() &&
-      hlo->sharding().NumTiles() == desired_operand_sharding->NumTiles()) {
-    auto operand_hlo = operand.Reshard(*desired_operand_sharding).hlo();
-    SetPartitionedHlo(hlo, [&] {
+  auto desired_operand = [&](const HloSharding& output_sharding)
+      -> std::optional<HloInstruction*> {
+    // The output shape is the source and the operand shape is the target to get
+    // desired_operand_sharding.
+    std::optional<HloSharding> desired_operand_sharding =
+        hlo_sharding_util::ReshapeSharding(
+            hlo->shape(), hlo->operand(0)->shape(), output_sharding);
+    if (desired_operand_sharding.has_value() &&
+        output_sharding.NumTiles() == desired_operand_sharding->NumTiles()) {
       return b_.AddInstruction(hlo->CloneWithNewOperands(
-          MakePartitionedShape(hlo->shape(), hlo->sharding()), {operand_hlo}));
-    });
+          MakePartitionedShape(hlo->shape(), output_sharding),
+          {operand.Reshard(*desired_operand_sharding).hlo()}));
+    }
+    return std::nullopt;
+  };
+
+  // Try the original output sharding at first.
+  if (auto operand_hlo = desired_operand(hlo->sharding())) {
+    SetPartitionedHlo(hlo, [&] { return *operand_hlo; });
     return OkStatus();
   }
+
+  // Then try the desired_output_sharding.
   std::optional<HloSharding> desired_output_sharding =
       hlo_sharding_util::ReshapeSharding(hlo->operand(0)->shape(), hlo->shape(),
                                          operand.sharding());
   if (desired_output_sharding.has_value()) {
-    auto reshape = b_.AddInstruction(hlo->CloneWithNewOperands(
-        MakePartitionedShape(hlo->shape(), *desired_output_sharding),
-        {operand.hlo()}));
-    reshape->set_sharding(*desired_output_sharding);
-    SetPartitionedHlo(hlo, [&] {
-      return PartitionedHlo(reshape, hlo->shape(), MakePartitioningState())
-          .Reshard(sharding)
-          .hlo();
-    });
-    return OkStatus();
+    if (auto operand_hlo = desired_operand(*desired_output_sharding)) {
+      (*operand_hlo)->set_sharding(*desired_output_sharding);
+      SetPartitionedHlo(hlo, [&] {
+        return PartitionedHlo(*operand_hlo, hlo->shape(),
+                              MakePartitioningState())
+            .Reshard(hlo->sharding())
+            .hlo();
+      });
+      return OkStatus();
+    }
   }
 
   auto shard_reshape =

@@ -813,6 +813,7 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
         source_dims_stack.push_back(s_size / t_size);
         sharding_tile_dims_stack.push_back(s_partitions / t_size);
       } else {
+        append_sharding_dim(std::gcd(t_size, s_partitions));
         break;
       }
     } else {

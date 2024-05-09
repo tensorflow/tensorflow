@@ -3656,6 +3656,45 @@ ENTRY entry {
                               op::AllToAll(op::Reshape(local_reshape))))));
 }
 
+// The test case is derived from b/338145758.
+TEST_P(SpmdPartitioningTest, ReshapeWithReshard3) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %reshape {
+  p0 = bf16[80,64,2,2,2,2,2] parameter(0), sharding={devices=[16,8,1,1,1,1,1]<=[128]}
+  ROOT reshape = bf16[5120,4,8] reshape(p0), sharding={devices=[128,1,1]<=[128]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, PartitionComputation(hlo_string, /*num_devices=*/128));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  auto reshape = AllOf(op::Reshape(op::AllReduce(op::DynamicUpdateSlice(
+                           _, op::Parameter(0), _, _, _, _, _, _, _))),
+                       op::Shape("bf16[320,4,8]"));
+  EXPECT_THAT(root, AllOf(op::DynamicSlice(reshape, _, _, _),
+                          op::Shape("bf16[40,4,8]")));
+}
+
+TEST_P(SpmdPartitioningTest, ReshapeWithReshard4) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %reshape {
+  p0 = bf16[80,64,8,2,2,2,2] parameter(0), sharding={devices=[16,1,8,1,1,1,1]<=[128]}
+  ROOT reshape = bf16[5120,16,8] reshape(p0), sharding={devices=[128,1,1]<=[128]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, PartitionComputation(hlo_string, /*num_devices=*/128));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Reshape(op::Reshape(op::Transpose(op::AllToAll()))),
+                    op::Shape("bf16[40,16,8]")));
+}
+
 TEST_P(SpmdPartitioningTest, PartialReplicateShardableReshape) {
   absl::string_view hlo_string = R"(
 HloModule module

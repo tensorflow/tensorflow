@@ -179,6 +179,18 @@ TEST(HloShardingUtilTest, ReshapeShardingTiledSplit2) {
   EXPECT_EQ(result.value(), output_sharding);
 }
 
+TEST(HloShardingUtilTest, ReshapeShardingTiledSplit3) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {36});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {6, 6});
+  HloSharding input_sharding = HloSharding::IotaTile({4});
+  HloSharding output_sharding =
+      HloSharding::PartialTile(TileAssignment({2, 1, 2}));
+  std::optional<HloSharding> result =
+      ReshapeSharding(input_shape, output_shape, input_sharding);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result.value(), output_sharding);
+}
+
 TEST(HloShardingUtilTest, ReshapeShardingTiledSplitThenMerge) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {16, 4, 7});
   Shape output_shape = ShapeUtil::MakeShape(F32, {4, 16, 7});
