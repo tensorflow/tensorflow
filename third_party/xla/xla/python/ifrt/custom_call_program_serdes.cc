@@ -25,9 +25,9 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/array_spec.pb.h"
+#include "xla/python/ifrt/custom_call_program.h"
+#include "xla/python/ifrt/custom_call_program.pb.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/io_callable_program.h"
-#include "xla/python/ifrt/io_callable_program.pb.h"
 #include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/sharding.pb.h"
@@ -38,19 +38,18 @@ namespace ifrt {
 
 namespace {
 
-// Serialization/deserialization for `IoCallableProgram`.
-class IoCallableProgramSerDes
-    : public llvm::RTTIExtends<IoCallableProgramSerDes, SerDes> {
+// Serialization/deserialization for `CustomCallProgram`.
+class CustomCallProgramSerDes
+    : public llvm::RTTIExtends<CustomCallProgramSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
-    return "xla::ifrt::IoCallableProgram";
+    return "xla::ifrt::CustomCallProgram";
   }
 
   absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
-    const IoCallableProgram& program =
-        llvm::cast<IoCallableProgram>(serializable);
-    IoCallableProgramProto proto;
-    ;
+    const CustomCallProgram& program =
+        llvm::cast<CustomCallProgram>(serializable);
+    CustomCallProgramProto proto;
     proto.set_type(program.type);
     proto.set_name(program.name);
     proto.set_serialized_program_text(program.serialized_program_text);
@@ -70,10 +69,10 @@ class IoCallableProgramSerDes
     const auto* deserialize_program_options =
         llvm::cast<DeserializeProgramOptions>(options.get());
 
-    IoCallableProgramProto proto;
+    CustomCallProgramProto proto;
     if (!proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError(
-          "Failed to parse serialized IoCallableProgramProto");
+          "Failed to parse serialized CustomCallProgramProto");
     }
     TF_ASSIGN_OR_RETURN(
         DeviceList devices,
@@ -98,7 +97,7 @@ class IoCallableProgramSerDes
       output_specs.push_back(std::move(spec));
     }
 
-    return std::make_unique<IoCallableProgram>(
+    return std::make_unique<CustomCallProgram>(
         /*type=*/proto.type(), /*name=*/proto.name(),
         /*serialized_program_text=*/
         std::move(*proto.mutable_serialized_program_text()),
@@ -110,12 +109,12 @@ class IoCallableProgramSerDes
   static char ID;  // NOLINT
 };
 
-// Serialization/deserialization for `IoCallableCompileOptions`.
-class IoCallableCompileOptionsSerDes
-    : public llvm::RTTIExtends<IoCallableCompileOptionsSerDes, SerDes> {
+// Serialization/deserialization for `CustomCallCompileOptions`.
+class CustomCallCompileOptionsSerDes
+    : public llvm::RTTIExtends<CustomCallCompileOptionsSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
-    return "xla::ifrt::IoCallableCompileOptions";
+    return "xla::ifrt::CustomCallCompileOptions";
   }
 
   absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
@@ -127,27 +126,27 @@ class IoCallableCompileOptionsSerDes
       std::unique_ptr<DeserializeOptions> options) override {
     if (!serialized.empty()) {
       return absl::InvalidArgumentError(
-          "Invalid serialized IoCallableCompileOptions; a serialized "
-          "IoCallableCompileOptions is expected to be an empty string");
+          "Invalid serialized CustomCallCompileOptions; a serialized "
+          "CustomCallCompileOptions is expected to be an empty string");
     }
-    return std::make_unique<IoCallableCompileOptions>();
+    return std::make_unique<CustomCallCompileOptions>();
   }
 
   static char ID;  // NOLINT
 };
 
-[[maybe_unused]] char IoCallableProgramSerDes::ID = 0;         // NOLINT
-[[maybe_unused]] char IoCallableCompileOptionsSerDes::ID = 0;  // NOLINT
+[[maybe_unused]] char CustomCallProgramSerDes::ID = 0;         // NOLINT
+[[maybe_unused]] char CustomCallCompileOptionsSerDes::ID = 0;  // NOLINT
 
 // clang-format off
-bool register_io_callable_program_serdes = ([]{
-  RegisterSerDes<IoCallableProgram>(
-      std::make_unique<IoCallableProgramSerDes>());
+bool register_custom_call_program_serdes = ([]{
+  RegisterSerDes<CustomCallProgram>(
+      std::make_unique<CustomCallProgramSerDes>());
 }(), true);
 
-bool register_io_callable_compile_options_serdes = ([]{
-  RegisterSerDes<IoCallableCompileOptions>(
-      std::make_unique<IoCallableCompileOptionsSerDes>());
+bool register_custom_call_compile_options_serdes = ([]{
+  RegisterSerDes<CustomCallCompileOptions>(
+      std::make_unique<CustomCallCompileOptionsSerDes>());
 }(), true);
 // clang-format on
 

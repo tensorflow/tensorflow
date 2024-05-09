@@ -553,9 +553,9 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "io_callable_program",
-    srcs = ["io_callable_program.cc"],
-    hdrs = ["io_callable_program.h"],
+    name = "custom_call_program",
+    srcs = ["custom_call_program.cc"],
+    hdrs = ["custom_call_program.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":ifrt",
@@ -564,8 +564,8 @@ cc_library(
 )
 
 tf_proto_library(
-    name = "io_callable_program_proto",
-    srcs = ["io_callable_program.proto"],
+    name = "custom_call_program_proto",
+    srcs = ["custom_call_program.proto"],
     protodeps = [
         ":array_spec_proto",
         ":device_proto",
@@ -573,14 +573,14 @@ tf_proto_library(
 )
 
 cc_library(
-    name = "io_callable_program_serdes",
-    srcs = ["io_callable_program_serdes.cc"],
+    name = "custom_call_program_serdes",
+    srcs = ["custom_call_program_serdes.cc"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":array_spec_proto_cc",
+        ":custom_call_program",
+        ":custom_call_program_proto_cc",
         ":ifrt",
-        ":io_callable_program",
-        ":io_callable_program_proto_cc",
         ":program_serdes",
         ":serdes",
         ":sharding_proto_cc",
@@ -595,12 +595,12 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "io_callable_program_serdes_test",
-    srcs = ["io_callable_program_serdes_test.cc"],
+    name = "custom_call_program_serdes_test",
+    srcs = ["custom_call_program_serdes_test.cc"],
     deps = [
+        ":custom_call_program",
+        ":custom_call_program_serdes",
         ":ifrt",
-        ":io_callable_program",
-        ":io_callable_program_serdes",
         ":program_serdes",
         ":serdes",
         ":sharding_test_util",

@@ -20,8 +20,8 @@ package xla.ifrt;
 import "xla/python/ifrt/array_spec.proto";
 import "xla/python/ifrt/device.proto";
 
-// Proto equivalent of C++ `IoCallableProgram`.
-message IoCallableProgramProto {
+// Proto equivalent of C++ `CustomCallProgram`.
+message CustomCallProgramProto {
   string type = 1;
   string name = 2;
   bytes serialized_program_text = 3;

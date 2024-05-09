@@ -23,9 +23,9 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/custom_call_program.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/io_callable_program.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/serdes.h"
@@ -45,9 +45,9 @@ using ::testing::MatchesRegex;
 using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
 
-class IoCallableProgramSerDesTest : public test_util::ShardingTest {};
+class CustomCallProgramSerDesTest : public test_util::ShardingTest {};
 
-TEST_P(IoCallableProgramSerDesTest, RoundTrip) {
+TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   Shape shape0({10, 20});
   Shape shard_shape0({5, 20});
   DeviceList devices = GetDevices({0, 1});
@@ -63,7 +63,7 @@ TEST_P(IoCallableProgramSerDesTest, RoundTrip) {
                                    /*shape=*/shape1,
                                    /*shard_shape=*/shard_shape1);
 
-  IoCallableProgram orig(
+  CustomCallProgram orig(
       /*type=*/"test type",
       /*name=*/"test name",
       /*serialized_program_text=*/"test\0program\0text\0",
@@ -81,8 +81,8 @@ TEST_P(IoCallableProgramSerDesTest, RoundTrip) {
 
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(orig));
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<IoCallableProgram> deserialized_program,
-      Deserialize<IoCallableProgram>(
+      std::unique_ptr<CustomCallProgram> deserialized_program,
+      Deserialize<CustomCallProgram>(
           serialized, std::make_unique<DeserializeProgramOptions>(
                           absl::bind_front(&Client::LookupDevice, client()))));
 
@@ -116,27 +116,27 @@ TEST_P(IoCallableProgramSerDesTest, RoundTrip) {
   EXPECT_EQ(deserialized_sharding1->shard_shape(), shard_shape1);
 }
 
-INSTANTIATE_TEST_SUITE_P(NumDevices, IoCallableProgramSerDesTest,
+INSTANTIATE_TEST_SUITE_P(NumDevices, CustomCallProgramSerDesTest,
                          testing::Values(test_util::ShardingTestParam{
                              /*num_devices=*/2,
                              /*num_addressable_devices=*/2}));
 
-TEST(IoCallableCompileOptionsSerDesTest, RoundTrip) {
-  IoCallableCompileOptions orig;
+TEST(CustomCallCompileOptionsSerDesTest, RoundTrip) {
+  CustomCallCompileOptions orig;
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(orig));
   TF_EXPECT_OK(
-      Deserialize<IoCallableCompileOptions>(serialized, /*options=*/nullptr)
+      Deserialize<CustomCallCompileOptions>(serialized, /*options=*/nullptr)
           .status());
 }
 
-TEST(IoCallableCompileOptionsSerDesTest, InvalidSerialized) {
-  IoCallableCompileOptions orig;
+TEST(CustomCallCompileOptionsSerDesTest, InvalidSerialized) {
+  CustomCallCompileOptions orig;
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(orig));
   serialized.set_data("abc");
   EXPECT_THAT(
-      Deserialize<IoCallableCompileOptions>(serialized, /*options=*/nullptr),
+      Deserialize<CustomCallCompileOptions>(serialized, /*options=*/nullptr),
       StatusIs(absl::StatusCode::kInvalidArgument,
-               MatchesRegex("Invalid serialized IoCallableCompileOptions.*")));
+               MatchesRegex("Invalid serialized CustomCallCompileOptions.*")));
 }
 
 }  // namespace

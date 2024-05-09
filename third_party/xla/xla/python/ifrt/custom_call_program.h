@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IO_CALLABLE_PROGRAM_H_
-#define XLA_PYTHON_IFRT_IO_CALLABLE_PROGRAM_H_
+#ifndef XLA_PYTHON_IFRT_CUSTOM_CALL_PROGRAM_H_
+#define XLA_PYTHON_IFRT_CUSTOM_CALL_PROGRAM_H_
 
 #include <string>
 #include <utility>
@@ -29,13 +29,12 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-// Wraps an I/O callable program that may run potentially side-effecting
-// operations on CPU devices.
-struct IoCallableProgram
-    : public llvm::RTTIExtends<IoCallableProgram, Program> {
+// Wraps a custom call program that expresses a runtime-specific execution.
+struct CustomCallProgram
+    : public llvm::RTTIExtends<CustomCallProgram, Program> {
   // Specification for a single array. The sharding of all input and output
   // specs must use only the devices in `devices`.
-  IoCallableProgram(std::string type, std::string name,
+  CustomCallProgram(std::string type, std::string name,
                     std::string serialized_program_text, DeviceList devices,
                     std::vector<ArraySpec> input_specs,
                     std::vector<ArraySpec> output_specs)
@@ -45,9 +44,9 @@ struct IoCallableProgram
         devices(std::move(devices)),
         input_specs(std::move(input_specs)),
         output_specs(std::move(output_specs)) {}
-  ~IoCallableProgram() override = default;
+  ~CustomCallProgram() override = default;
 
-  // Type of this I/O callable program recognized by IFRT implementations. It
+  // Type of this custom call program recognized by IFRT implementations. It
   // indicates what this program represents, e.g., a runtime-specific feature or
   // a pickled Python function.
   std::string type;
@@ -55,14 +54,14 @@ struct IoCallableProgram
   // Name of this program. Used for debugging.
   std::string name;
 
-  // Serialized I/O callable program. The interpretation of the program text
+  // Serialized custom call program. The interpretation of the program text
   // depends `type`.
   std::string serialized_program_text;
 
-  // List of devices to compile and run the I/O callable program on.
+  // List of devices to compile and run the custom call program on.
   DeviceList devices;
 
-  // Specification for input and output arrays. The I/O callable program must
+  // Specification for input and output arrays. The custom call program must
   // expect to receive input arrays and return output arrays both following the
   // specification.
   std::vector<ArraySpec> input_specs;
@@ -71,12 +70,13 @@ struct IoCallableProgram
   static char ID;  // NOLINT
 };
 
-// Compile options for an I/O callable program. It is currently empty because
-// I/O callable program does not use any runtime objects for compilation.
-struct IoCallableCompileOptions
-    : llvm::RTTIExtends<IoCallableCompileOptions, CompileOptions> {
-  IoCallableCompileOptions() = default;
-  ~IoCallableCompileOptions() override = default;
+// Compile options for a custom call program. It is currently empty because
+// the custom call program does not use any other runtime objects for
+// compilation.
+struct CustomCallCompileOptions
+    : llvm::RTTIExtends<CustomCallCompileOptions, CompileOptions> {
+  CustomCallCompileOptions() = default;
+  ~CustomCallCompileOptions() override = default;
 
   static char ID;  // NOLINT
 };
@@ -84,4 +84,4 @@ struct IoCallableCompileOptions
 }  // namespace ifrt
 }  // namespace xla
 
-#endif  // XLA_PYTHON_IFRT_IO_CALLABLE_PROGRAM_H_
+#endif  // XLA_PYTHON_IFRT_CUSTOM_CALL_PROGRAM_H_

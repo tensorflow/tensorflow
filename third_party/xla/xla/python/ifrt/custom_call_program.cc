@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/io_callable_program.h"
+#include "xla/python/ifrt/custom_call_program.h"
 
 namespace xla {
 namespace ifrt {
 
-char IoCallableProgram::ID = 0;         // NOLINT
-char IoCallableCompileOptions::ID = 0;  // NOLINT
+char CustomCallProgram::ID = 0;         // NOLINT
+char CustomCallCompileOptions::ID = 0;  // NOLINT
 
 }  // namespace ifrt
 }  // namespace xla
