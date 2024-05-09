@@ -214,13 +214,14 @@ class OutlineGELU : public RewritePattern {
         output_mul.getLoc(), func.getResultTypes()[0],
         SmallVector<Value>{erf_input->getOperand(0)}, MakeCompositeName(kGelu),
         composite_attrs, func.getSymName());
-
     rewriter.replaceAllOpUsesWith(output_mul, composite_op);
-    rewriter.eraseOp(rhs_mul);
-    rewriter.eraseOp(rhs_add);
-    rewriter.eraseOp(lhs_mul);
+    // Note these must be erased in reverse topo order to avoid
+    // failing in debug mode.
     rewriter.eraseOp(output_mul);
+    rewriter.eraseOp(rhs_add);
     rewriter.eraseOp(op);
+    rewriter.eraseOp(lhs_mul);
+    rewriter.eraseOp(rhs_mul);
 
     return success();
   }
