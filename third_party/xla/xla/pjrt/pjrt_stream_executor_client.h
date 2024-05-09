@@ -399,7 +399,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
     }
   }
 
-  virtual PjRtFuture<> CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
+  virtual PjRtFuture<> CopyRawSubBufferToHost(PjRtBuffer* buffer,
+                                              PjRtFuture<void*> dst,
                                               int64_t offset,
                                               int64_t transfer_size) {
     return PjRtFuture<>(Unimplemented("Raw copies to host not implemented."));

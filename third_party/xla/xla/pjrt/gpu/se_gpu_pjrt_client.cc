@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
@@ -504,97 +505,141 @@ StreamExecutorGpuClient::GetDefaultDeviceAssignment(int num_replicas,
 }
 
 PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
-    PjRtBuffer* pjrt_buffer, void* dst, int64_t offset, int64_t transfer_size) {
+    PjRtBuffer* pjrt_buffer, PjRtFuture<void*> dst, int64_t offset,
+    int64_t transfer_size) {
   auto* buffer = tensorflow::down_cast<PjRtStreamExecutorBuffer*>(pjrt_buffer);
   DCHECK(buffer);
   PjRtStreamExecutorDevice* device = buffer->device();
   LocalDeviceState* local_device = device->local_device_state();
   se::Stream* stream = local_device->GetDeviceToHostStream();
 
+  // Acquire the usage hold inline so that the buffer is kept alive even if
+  // `dst` is not immediately available.
   PjRtStreamExecutorBuffer::ScopedHold hold(buffer->GetBufferWithUsageHold());
   if (!hold.ok()) {
     return PjRtFuture<>(hold.status());
   }
+
   auto device_buffer = hold.buffer();
   if (device_buffer->device_memory().size() != 1) {
     return PjRtFuture<>(InvalidArgument("Copy raw buffer called on tuple"));
   }
-  auto& device_memory = device_buffer->device_memory()[0];
-  if (offset < 0 || offset > device_memory.size() ||
-      device_memory.size() - offset < transfer_size) {
-    return PjRtFuture<>(
-        InvalidArgument("Copy raw buffer called on buffer size %lld with "
-                        "invalid offset %lld, transfer size %lld",
-                        device_memory.size(), offset, transfer_size));
-  }
-  WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
-  absl::StatusOr<EventPool::Handle> event_or =
-      local_device->event_pool().AllocateEvent(stream->parent());
-  if (!event_or.ok()) {
-    return PjRtFuture<>(event_or.status());
-  }
-
-  std::unique_ptr<se::DeviceMemoryBase> sub_buffer;
-  if (transfer_size < device_memory.size()) {
-    sub_buffer = std::make_unique<se::DeviceMemoryBase>(
-        device_memory.GetByteSlice(offset, transfer_size));
-  } else {
-    sub_buffer = std::make_unique<se::DeviceMemoryBase>(device_memory);
-  }
-
-  if (transfer_size != 0) {
-    if (should_stage_host_to_device_transfers()) {
-      if (host_memory_allocator() == nullptr) {
-        return PjRtFuture<>(InvalidArgument(
-            "host_memory_allocator should be initialized for staging buffer "
-            "transfer."));
-      }
-      void* ptr = host_memory_allocator()->AllocateRaw(
-          tsl::Allocator::kAllocatorAlignment, transfer_size);
-
-      std::shared_ptr<void> staging_buffer = std::shared_ptr<void>(
-          ptr, [host_memory_allocator = host_memory_allocator()](void* ptr) {
-            host_memory_allocator->DeallocateRaw(ptr);
-          });
-      if (auto status =
-              stream->Memcpy(staging_buffer.get(), *sub_buffer, transfer_size);
-          !status.ok()) {
-        return PjRtFuture<>(status);
-      }
-      auto copy_to_staging_buffer = [dst, transfer_size,
-                                     staging_buffer]() mutable {
-        std::memcpy(dst, staging_buffer.get(), transfer_size);
-      };
-      if (auto status = stream->DoHostCallback(copy_to_staging_buffer);
-          !status.ok()) {
-        return PjRtFuture<>(status);
-      }
-    } else {
-      // D2H request holds a non-owned pointer into sub_buffer base address
-      // that needs to outlive the transfer until the stream callback is
-      // invoked.
-      auto status = stream->Memcpy(dst, *sub_buffer, transfer_size);
-      if (!status.ok()) {
-        return PjRtFuture<>(status);
-      }
-    }
-  }
-
-  auto usage_event =
-      std::make_shared<BufferSequencingEvent>(this->thread_pool());
-  local_device->event_pool().ThenRecordEvent(stream, event_or.value());
-  usage_event->SetSequencingEvent(std::move(event_or).value(), stream);
-  // This usage hold will prevent device_buffer from being deleted before
-  // the transfer is complete.
-  hold.ConvertUsageHold(stream, std::move(usage_event),
-                        /*reference_held=*/false);
 
   auto promise = PjRtFuture<>::CreatePromise();
-  auto callback_status = local_device->ThenExecuteCallback(
-      stream, [promise]() mutable { promise.Set(); });
-  if (!callback_status.ok()) {
-    return PjRtFuture<>(callback_status);
-  }
+  auto usage_event =
+      std::make_shared<BufferSequencingEvent>(this->thread_pool());
+
+  // When using the ComputeSynchronized allocation model, retain a reference to
+  // the device_buffer until the copy completes, to ensure that the buffer isn't
+  // deleted or donated while it is still in use. The choice of retaining a
+  // reference at the host is a heuristic; the alternative is to ensure, before
+  // freeing the buffer, that the compute stream is synchronized past the
+  // transfer, but it seems better to hold onto the buffer too long than to
+  // stall the compute stream.
+  hold.ConvertUsageHold(stream, usage_event, /*reference_held=*/true);
+
+  auto async_copy = [this, promise, offset, transfer_size, stream, local_device,
+                     device_buffer, usage_event = std::move(usage_event)](
+                        absl::StatusOr<void*> dst) mutable {
+    absl::StatusOr<EventPool::Handle> event =
+        local_device->event_pool().AllocateEvent(stream->parent());
+    if (!event.ok()) {
+      promise.Set(event.status());
+      return;
+    }
+
+    absl::Status defined_status =
+        device_buffer->definition_events()[0]->GetDefinedStatus();
+    if (!defined_status.ok()) {
+      promise.Set(defined_status);
+      return;
+    }
+
+    auto& device_memory = device_buffer->device_memory()[0];
+    if (offset < 0 || offset > device_memory.size() ||
+        device_memory.size() - offset < transfer_size) {
+      promise.Set(
+          InvalidArgument("Copy raw buffer called on buffer size %lld with "
+                          "invalid offset %lld, transfer size %lld",
+                          device_memory.size(), offset, transfer_size));
+      return;
+    }
+
+    std::unique_ptr<se::DeviceMemoryBase> sub_buffer;
+    if (transfer_size < device_memory.size()) {
+      sub_buffer = std::make_unique<se::DeviceMemoryBase>(
+          device_memory.GetByteSlice(offset, transfer_size));
+    } else {
+      sub_buffer = std::make_unique<se::DeviceMemoryBase>(device_memory);
+    }
+
+    WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
+
+    if (transfer_size != 0) {
+      if (should_stage_host_to_device_transfers()) {
+        if (host_memory_allocator() == nullptr) {
+          promise.Set(InvalidArgument(
+              "host_memory_allocator should be initialized for staging buffer "
+              "transfer."));
+          return;
+        }
+        void* ptr = host_memory_allocator()->AllocateRaw(
+            tsl::Allocator::kAllocatorAlignment, transfer_size);
+
+        std::shared_ptr<void> staging_buffer = std::shared_ptr<void>(
+            ptr, [host_memory_allocator = host_memory_allocator()](void* ptr) {
+              host_memory_allocator->DeallocateRaw(ptr);
+            });
+        if (auto status = stream->Memcpy(staging_buffer.get(), *sub_buffer,
+                                         transfer_size);
+            !status.ok()) {
+          promise.Set(std::move(status));
+          return;
+        }
+        auto copy_to_staging_buffer = [dst, transfer_size,
+                                       staging_buffer]() mutable {
+          std::memcpy(*dst, staging_buffer.get(), transfer_size);
+        };
+        if (auto status = stream->DoHostCallback(copy_to_staging_buffer);
+            !status.ok()) {
+          promise.Set(std::move(status));
+          return;
+        }
+      } else {
+        // D2H request holds a non-owned pointer into sub_buffer base address
+        // that needs to outlive the transfer until the stream callback is
+        // invoked.
+        auto status = stream->Memcpy(*dst, *sub_buffer, transfer_size);
+        if (!status.ok()) {
+          promise.Set(std::move(status));
+          return;
+        }
+      }
+    }
+
+    local_device->event_pool().ThenRecordEvent(stream, event.value());
+    usage_event->SetSequencingEvent(std::move(event).value(), stream);
+
+    auto callback_status = local_device->ThenExecuteCallback(
+        stream, [promise, device_buffer = std::move(device_buffer)]() mutable {
+          promise.Set();
+        });
+    if (!callback_status.ok()) {
+      promise.Set(std::move(callback_status));
+      return;
+    }
+  };
+
+  device_buffer->definition_events()[0]->ExecuteOrAddToFutureTasks(
+      absl::StrFormat("async_copy_raw_sub_buffer_to_host_%p", &async_copy),
+      [this, dst, async_copy = std::move(async_copy)]() mutable {
+        dst.OnReady([this, async_copy = std::move(async_copy)](
+                        absl::StatusOr<void*> dst) {
+          // Trampoline through a thread pool since GPUs do not allow calling
+          // D2H inside the callback's context.
+          thread_pool()->Schedule(absl::bind_front(async_copy, std::move(dst)));
+        });
+      });
 
   return PjRtFuture<>(
       std::move(promise),

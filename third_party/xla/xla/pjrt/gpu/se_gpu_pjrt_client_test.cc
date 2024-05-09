@@ -440,12 +440,17 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
   xla::PjRtFuture<void*> dst_future(dst_promise);
 
   TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
-  buffer->GetReadyFuture().OnReady([dst_promise = std::move(dst_promise),
-                                    size](absl::Status status) mutable {
+  auto ready = buffer->GetReadyFuture();
+  auto result = buffer->CopyRawToHostFuture(dst_future, 0, size);
+
+  // Drop the buffer before fulfilling `dst`. The transfer should still keep the
+  // buffer alive.
+  buffer.reset();
+  ready.OnReady([dst_promise = std::move(dst_promise),
+                 size](absl::Status status) mutable {
     dst_promise.Set(aligned_alloc(size, 0));
   });
 
-  auto result = buffer->CopyRawToHostFuture(dst_future, 0, size);
   TF_EXPECT_OK(result.Await());
   TF_ASSERT_OK_AND_ASSIGN(auto* dst, dst_future.Await());
   EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
