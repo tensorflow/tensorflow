@@ -83,5 +83,5 @@ else
     		--test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
     		--test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
     		--action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
-    		-- @local_xla//xla/... @local_xla//build_tools/...
+    		-- @local_xla//xla/...
 fi
