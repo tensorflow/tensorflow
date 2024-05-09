@@ -2456,7 +2456,7 @@ absl::StatusOr<bool> CollectivePipeliner::Run(
           loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.process_different_sized_ops, config_.should_process,
           config_.acceptable_formatting, config_.postprocess_backward_peeled_op,
-          config_.postprocess_backward_rorated_op, next_channel_id));
+          config_.postprocess_backward_rotated_op, next_channel_id));
     }
     ++transformed_loops;
     changed = true;

@@ -219,7 +219,7 @@ void AddP2PPipeliner(HloPassPipeline& pipeline) {
       ShouldAllowLoopVariantParameterInChain,
       /*should_allow_control_dependencies=*/true,
       /*=postprocess_backward_peeled_op*/ PostprocessPeeledP2P,
-      /*=postprocess_backward_rorated_op*/ PostprocessRotatedP2P};
+      /*=postprocess_backward_rotated_op*/ PostprocessRotatedP2P};
   pipeline.AddPass<CollectivePipeliner>(config);
 }
 
