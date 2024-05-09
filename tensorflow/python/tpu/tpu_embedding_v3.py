@@ -506,6 +506,19 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           .format(self._strategy)
       )
 
+    # TODO(pineapplejuice233): Remove this once weight decay is supported.
+    for table in self._table_config:
+      if (
+          table.optimizer.weight_decay_factor is not None
+          or table.optimizer.multiply_weight_decay_factor_by_learning_rate
+          is not None
+      ):
+        raise NotImplementedError(
+            "weight_decay_factor and"
+            " multiply_weight_decay_factor_by_learning_rate are not supported"
+            f" yet. But found in table {table.name} setting."
+        )
+
     self._num_sc_per_chip = (
         self._strategy.extended.tpu_hardware_feature.num_embedding_devices_per_chip
     )

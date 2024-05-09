@@ -721,6 +721,27 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
     ):
       self.assertAllEqual(per_feature_result, per_feature_result_cpu)
 
+  def test_raise_error_when_weight_decay_is_set(self):
+    feature_config = tpu_embedding_v2_utils.FeatureConfig(
+        table=self.table_video, name='watched', output_shape=[16]
+    )
+
+    resolver = tpu_cluster_resolver.TPUClusterResolver(tpu='')
+    remote.connect_to_cluster(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
+    strategy = tpu_strategy.TPUStrategy(resolver)
+
+    with self.assertRaises(NotImplementedError):
+      with strategy.scope():
+        tpu_embedding_v3.TPUEmbeddingV2(
+            feature_config=feature_config,
+            optimizer=tpu_embedding_v2_utils.SGD(
+                learning_rate=1.0,
+                weight_decay_factor=0.1,
+                multiply_weight_decay_factor_by_learning_rate=True,
+            ),
+        )
+
 
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()
