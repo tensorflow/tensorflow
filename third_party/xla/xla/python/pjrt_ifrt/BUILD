@@ -240,6 +240,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":basic_string_array",
         ":xla_ifrt",
         "//xla:literal",
         "//xla:shape_util",
@@ -276,6 +277,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
@@ -298,10 +300,11 @@ cc_library(
     name = "basic_string_array",
     srcs = ["basic_string_array.cc"],
     hdrs = ["basic_string_array.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
-        ":pjrt_ifrt",
         "//xla:status",
         "//xla:xla_data_proto_cc",
+        "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base:core_headers",
@@ -310,8 +313,34 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "basic_string_array_test",
+    srcs = ["basic_string_array_test.cc"],
+    deps = [
+        ":basic_string_array",
+        ":tfrt_cpu_client_test_lib",
+        "//xla/pjrt:pjrt_future",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:test_util",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
