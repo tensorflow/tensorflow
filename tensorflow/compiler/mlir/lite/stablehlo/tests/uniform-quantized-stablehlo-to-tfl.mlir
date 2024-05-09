@@ -427,8 +427,8 @@ func.func @dot_general_upstream_srq_per_axis_quantized_filter(%arg0: tensor<1x3x
 
 // CHECK-LABEL: dot_general_upstream_srq_per_axis_quantized_filter_with_batch_dim
 func.func @dot_general_upstream_srq_per_axis_quantized_filter_with_batch_dim(%arg0: tensor<1x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>> {
-  %0 = stablehlo.constant() {value = dense<1> : tensor<1x3x2xi8>} : () -> tensor<1x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>
-  %1 = stablehlo.dot_general %arg0, %0, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<1x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<1x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>) -> tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
+  %0 = stablehlo.constant() {value = dense<1> : tensor<1x3x2xi8>} : () -> tensor<1x3x2x!quant.uniform<i8:f32:2,{2.000000e+02, 3.000000e+03}>>
+  %1 = stablehlo.dot_general %arg0, %0, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<1x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<1x3x2x!quant.uniform<i8:f32:2,{2.000000e+02, 3.000000e+03}>>) -> tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
   return %1 : tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
 }
 // Nothing changes.
@@ -443,8 +443,8 @@ func.func @dot_general_upstream_srq_per_axis_quantized_filter_with_batch_dim(%ar
 
 // CHECK-LABEL: dot_general_upstream_srq_per_axis_quantized_filter_multibatch
 func.func @dot_general_upstream_srq_per_axis_quantized_filter_multibatch(%arg0: tensor<3x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<3x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>> {
-  %0 = stablehlo.constant() {value = dense<1> : tensor<3x3x2xi8>} : () -> tensor<3x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>
-  %1 = stablehlo.dot_general %arg0, %0, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<3x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<3x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>) -> tensor<3x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
+  %0 = stablehlo.constant() {value = dense<1> : tensor<3x3x2xi8>} : () -> tensor<3x3x2x!quant.uniform<i8:f32:2,{2.000000e+02, 3.000000e+03}>>
+  %1 = stablehlo.dot_general %arg0, %0, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<3x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<3x3x2x!quant.uniform<i8:f32:2,{2.000000e+02, 3.000000e+03}>>) -> tensor<3x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
   return %1 : tensor<3x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
 }
 // Nothing changes.
@@ -459,8 +459,8 @@ func.func @dot_general_upstream_srq_per_axis_quantized_filter_multibatch(%arg0: 
 
 // CHECK-LABEL: dot_general_upstream_srq_per_axis_quantized_filter_with_multiple_contracting_dims
 func.func @dot_general_upstream_srq_per_axis_quantized_filter_with_multiple_contracting_dims(%arg0: tensor<1x2x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>> {
-  %0 = stablehlo.constant() {value = dense<1> : tensor<1x3x2xi8>} : () -> tensor<1x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>
-  %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [1, 2] x [2, 1] : (tensor<1x2x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<1x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>) -> tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>>
+  %0 = stablehlo.constant() {value = dense<1> : tensor<1x3x2xi8>} : () -> tensor<1x3x2x!quant.uniform<i8:f32:2,{2.000000e+02, 3.000000e+03}>>
+  %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [1, 2] x [2, 1] : (tensor<1x2x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<1x3x2x!quant.uniform<i8:f32:2,{2.000000e+02, 3.000000e+03}>>) -> tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>>
   return %1 : tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>>
 }
 // Nothing changes.
@@ -486,17 +486,17 @@ func.func @dot_general_upstream_srq_per_axis_quantized_filter_with_multiple_cont
 // * dot_general_with_relu6_fn
 
 func.func @dot_general_srq(%arg0: tensor<1x1024x!quant.uniform<i8:f32, 1.000000e+0:0>>) -> (tensor<1x3x!quant.uniform<i8:f32, 3.000000e+00:-127>>) {
-  %0 = stablehlo.constant() {value = dense<1> : tensor<1024x3xi8>} : () -> tensor<1024x3x!quant.uniform<i8<-127:127>:f32:1, {2.000000e+0, 2.000000e+0}>>
-  %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [1] x [0] : (tensor<1x1024x!quant.uniform<i8:f32, 1.000000e+0:0>>, tensor<1024x3x!quant.uniform<i8<-127:127>:f32:1, {2.000000e+0, 2.000000e+0}>>) -> tensor<1x3x!quant.uniform<i32:f32:1, {2.000000e+0, 2.000000e+0, 2.000000e+0}>>
+  %0 = stablehlo.constant() {value = dense<1> : tensor<1024x3xi8>} : () -> tensor<1024x3x!quant.uniform<i8<-127:127>:f32:1, {2.000000e+0, 2.000000e+0, 2.000000e+0}>>
+  %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [1] x [0] : (tensor<1x1024x!quant.uniform<i8:f32, 1.000000e+0:0>>, tensor<1024x3x!quant.uniform<i8<-127:127>:f32:1, {2.000000e+0, 2.000000e+0, 2.000000e+0}>>) -> tensor<1x3x!quant.uniform<i32:f32:1, {2.000000e+0, 2.000000e+0, 2.000000e+0}>>
   %2 = stablehlo.uniform_quantize %1 : (tensor<1x3x!quant.uniform<i32:f32:1, {2.000000e+0, 2.000000e+0, 2.000000e+0}>>) -> tensor<1x3x!quant.uniform<i8:f32, 3.000000e+00:-127>>
   return %2 : tensor<1x3x!quant.uniform<i8:f32, 3.000000e+00:-127>>
 }
 // CHECK-LABEL: dot_general_srq
 // CHECK-SAME: (%[[ARG_1:.+]]: tensor<1x1024x!quant.uniform<i8:f32, {{.*}}>) -> tensor<1x3x!quant.uniform<i8:f32, 3.000000e+00:-127>>
 // CHECK-NOT: stablehlo.dot_general
-// CHECK: %[[QCONST_0:.+]] =  "tfl.pseudo_qconst"() <{qtype = tensor<3x1024x!quant.uniform<i8<-127:127>:f32:0, {2.000000e+00,2.000000e+00}>>, value = dense<1> : tensor<3x1024xi8>}> : () -> tensor<3x1024x!quant.uniform<i8<-127:127>:f32:0, {2.000000e+00,2.000000e+00}>>
-// CHECK: %[[QCONST_1:.+]] =  "tfl.pseudo_qconst"() <{qtype = tensor<3x!quant.uniform<i32:f32:0, {2.000000e+00,2.000000e+00}>>, value = dense<0> : tensor<3xi32>}> : () -> tensor<3x!quant.uniform<i32:f32:0, {2.000000e+00,2.000000e+00}>>
-// CHECK: %[[FULLY_CONNECTED:.+]] =  "tfl.fully_connected"(%[[ARG_1]], %[[QCONST_0]], %[[QCONST_1]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1x1024x!quant.uniform<i8:f32, 1.000000e+00>>, tensor<3x1024x!quant.uniform<i8<-127:127>:f32:0, {2.000000e+00,2.000000e+00}>>, tensor<3x!quant.uniform<i32:f32:0, {2.000000e+00,2.000000e+00}>>) -> tensor<1x3x!quant.uniform<i8:f32, 3.000000e+00:-127>>
+// CHECK: %[[QCONST_0:.+]] =  "tfl.pseudo_qconst"() <{qtype = tensor<3x1024x!quant.uniform<i8<-127:127>:f32:0, {2.000000e+00,2.000000e+00,2.000000e+00}>>, value = dense<1> : tensor<3x1024xi8>}> : () -> tensor<3x1024x!quant.uniform<i8<-127:127>:f32:0, {2.000000e+00,2.000000e+00,2.000000e+00}>>
+// CHECK: %[[QCONST_1:.+]] =  "tfl.pseudo_qconst"() <{qtype = tensor<3x!quant.uniform<i32:f32:0, {2.000000e+00,2.000000e+00,2.000000e+00}>>, value = dense<0> : tensor<3xi32>}> : () -> tensor<3x!quant.uniform<i32:f32:0, {2.000000e+00,2.000000e+00,2.000000e+00}>>
+// CHECK: %[[FULLY_CONNECTED:.+]] =  "tfl.fully_connected"(%[[ARG_1]], %[[QCONST_0]], %[[QCONST_1]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1x1024x!quant.uniform<i8:f32, 1.000000e+00>>, tensor<3x1024x!quant.uniform<i8<-127:127>:f32:0, {2.000000e+00,2.000000e+00,2.000000e+00}>>, tensor<3x!quant.uniform<i32:f32:0, {2.000000e+00,2.000000e+00,2.000000e+00}>>) -> tensor<1x3x!quant.uniform<i8:f32, 3.000000e+00:-127>>
 // CHECK-NOT: tfl.batch_matmul
 // CHECK: return %[[FULLY_CONNECTED]]
 
@@ -1609,13 +1609,13 @@ func.func @convolution_hybrid_per_tensor(%arg0: tensor<1x3x3x4xf32>) -> tensor<1
 // CHECK-LABEL: func @depthwise_convolution_hybrid_per_channel
 // CHECK-SAME: %[[ARG0:.+]]: tensor<1x3x3x4xf32>
 func.func @depthwise_convolution_hybrid_per_channel(%arg0: tensor<1x3x3x4xf32>) -> tensor<1x3x3x4xf32> {
-  %0 = stablehlo.constant() {value = dense<3> : tensor<3x3x1x4xi8>} : () -> tensor<3x3x1x4x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>
-  %1 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 4 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x1x4x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>) -> tensor<1x3x3x4xf32>
+  %0 = stablehlo.constant() {value = dense<3> : tensor<3x3x1x4xi8>} : () -> tensor<3x3x1x4x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3, 2.000000e+2, 3.000000e+3}>>
+  %1 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 4 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x1x4x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3, 2.000000e+2, 3.000000e+3}>>) -> tensor<1x3x3x4xf32>
   return %1 : tensor<1x3x3x4xf32>
 }
 
-// CHECK: %[[WEIGHT:.+]] = "tfl.pseudo_qconst"() <{qtype = tensor<1x3x3x4x!quant.uniform<i8<-127:127>:f32:3, {2.000000e+02,3.000000e+03}>>, value = dense<3> : tensor<1x3x3x4xi8>}>
-// CHECK: %[[DQ:.+]] = "tfl.dequantize"(%[[WEIGHT]]) : (tensor<1x3x3x4x!quant.uniform<i8<-127:127>:f32:3, {2.000000e+02,3.000000e+03}>>) -> tensor<1x3x3x4xf32>
+// CHECK: %[[WEIGHT:.+]] = "tfl.pseudo_qconst"() <{qtype = tensor<1x3x3x4x!quant.uniform<i8<-127:127>:f32:3, {2.000000e+02,3.000000e+03,2.000000e+02,3.000000e+03}>>, value = dense<3> : tensor<1x3x3x4xi8>}>
+// CHECK: %[[DQ:.+]] = "tfl.dequantize"(%[[WEIGHT]]) : (tensor<1x3x3x4x!quant.uniform<i8<-127:127>:f32:3, {2.000000e+02,3.000000e+03,2.000000e+02,3.000000e+03}>>) -> tensor<1x3x3x4xf32>
 // CHECK: %[[CONV:.+]] = stablehlo.convolution(%[[ARG0]], %[[DQ]])
 // CHECK{LITERAL}: dim_numbers = [b, 0, 1, f]x[i, 0, 1, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 4 : i64}
 // CHECK-SAME: (tensor<1x3x3x4xf32>, tensor<1x3x3x4xf32>) -> tensor<1x3x3x4xf32>
