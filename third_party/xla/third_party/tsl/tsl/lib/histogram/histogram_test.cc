@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 #include "tsl/protobuf/histogram.pb.h"
 
 namespace tsl {

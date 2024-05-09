@@ -30,6 +30,7 @@ cc_library(
         "//tsl/platform:thread_annotations",
         "//tsl/platform:types",
         "//tsl/protobuf:histogram_proto_cc",
+        "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
 )
@@ -62,6 +63,7 @@ tsl_cc_test(
         "//tsl/platform:logging",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "//tsl/platform:types",
         "//tsl/protobuf:histogram_proto_cc",
     ],
 )
