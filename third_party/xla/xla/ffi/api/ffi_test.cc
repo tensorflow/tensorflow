@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
@@ -343,6 +346,36 @@ TEST(FfiTest, PointerAttr) {
 
   auto handler = Ffi::Bind().Attr<Pointer<std::string>>("ptr").To(fn);
   auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+struct MyData {
+  std::string str;
+};
+
+TEST(FfiTest, UserData) {
+  static constexpr char kId[] = "my_data";
+
+  MyData data{"foo"};
+  auto deleter = +[](void*) {};
+
+  ExecutionContext execution_context;
+  TF_ASSERT_OK(execution_context.Emplace(kId, &data, deleter));
+
+  CallFrameBuilder builder;
+  auto call_frame = builder.Build();
+
+  auto fn = [&](MyData* data) {
+    EXPECT_EQ(data->str, "foo");
+    return Error::Success();
+  };
+
+  auto handler = Ffi::Bind().Ctx<UserData<kId, MyData>>().To(fn);
+
+  CallOptions options;
+  options.execution_context = &execution_context;
+  auto status = Call(*handler, call_frame, options);
 
   TF_ASSERT_OK(status);
 }

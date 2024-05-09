@@ -71,6 +71,7 @@ xla_cc_test(
         ":ffi",
         "//xla:xla_data_proto_cc",
         "//xla/ffi:call_frame",
+        "//xla/ffi:execution_context",
         "//xla/ffi:ffi_api",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/log:check",

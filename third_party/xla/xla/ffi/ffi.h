@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_FFI_FFI_H_
 #define XLA_FFI_FFI_H_
 
+#include <memory>
 #ifdef XLA_FFI_API_FFI_H_
 #error Two different XLA FFI implementations cannot be included together
 #endif  // XLA_FFI_API_FFI_H_
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
+#include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
 #include "xla/status.h"
@@ -312,6 +314,38 @@ struct CtxDecoding<CalledComputation> {
                                     DiagnosticEngine&) {
     void* ptr = api->internal_api->XLA_FFI_INTERNAL_CalledComputation_Get(ctx);
     return reinterpret_cast<Type>(ptr);
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// UserData
+//===----------------------------------------------------------------------===//
+
+// A type tag for automatic decoding user data passed via the execution context.
+template <typename T>
+struct UserData {};
+
+template <typename T>
+struct CtxDecoding<UserData<T>> {
+  using Type = std::shared_ptr<T>;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    auto* execution_context = reinterpret_cast<const ExecutionContext*>(
+        api->internal_api->XLA_FFI_INTERNAL_ExecutionContext_Get(ctx));
+
+    if (execution_context == nullptr) {
+      return diagnostic.Emit("Failed to get execution context");
+    }
+
+    auto user_data = execution_context->Lookup<T>();
+    if (!user_data.ok()) {
+      return diagnostic.Emit("Failed to get user data from execution context: ")
+             << user_data.status().message();
+    }
+
+    return *std::move(user_data);
   }
 };
 

@@ -17,14 +17,17 @@ limitations under the License.
 
 #include <complex>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_memory.h"
@@ -608,6 +611,32 @@ TEST(FfiTest, RunOptionsCtx) {
 
   auto handler = Ffi::Bind().Ctx<Stream>().To(fn);
   auto status = Call(*handler, call_frame, {&opts});
+
+  TF_ASSERT_OK(status);
+}
+
+struct MyData : public ExecutionContext::UserData {
+  explicit MyData(std::string str) : str(std::move(str)) {}
+  std::string str;
+};
+
+TEST(FfiTest, UserData) {
+  ExecutionContext execution_context;
+  TF_ASSERT_OK(execution_context.Emplace<MyData>("foo"));
+
+  CallFrameBuilder builder;
+  auto call_frame = builder.Build();
+
+  auto fn = [&](std::shared_ptr<MyData> data) {
+    EXPECT_EQ(data->str, "foo");
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Ctx<UserData<MyData>>().To(fn);
+
+  CallOptions options;
+  options.execution_context = &execution_context;
+  auto status = Call(*handler, call_frame, options);
 
   TF_ASSERT_OK(status);
 }

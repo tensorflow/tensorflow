@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
@@ -45,6 +46,7 @@ namespace xla::ffi {
 struct CallOptions {
   const ServiceExecutableRunOptions* run_options = nullptr;
   const HloComputation* called_computation = nullptr;
+  const ExecutionContext* execution_context = nullptr;
 };
 
 // Takes ownership of the XLA FFI error and returns underlying status. Frees

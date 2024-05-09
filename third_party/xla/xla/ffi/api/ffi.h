@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_FFI_API_FFI_H_
 #define XLA_FFI_API_FFI_H_
 
+#include <string_view>
 #ifdef XLA_FFI_FFI_H_
 #error Two different XLA FFI implementations cannot be included together
 #endif  // XLA_FFI_FFI_H_
@@ -490,6 +491,34 @@ struct ResultEncoding<Error> {
 };
 
 //===----------------------------------------------------------------------===//
+// Error helpers
+//===----------------------------------------------------------------------===//
+
+namespace internal {
+
+struct ErrorUtil {
+  static const char* GetErrorMessage(const XLA_FFI_Api* api,
+                                     XLA_FFI_Error* error) {
+    XLA_FFI_Error_GetMessage_Args args;
+    args.struct_size = XLA_FFI_Error_GetMessage_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.error = error;
+    api->XLA_FFI_Error_GetMessage(&args);
+    return args.message;
+  }
+
+  static void DestroyError(const XLA_FFI_Api* api, XLA_FFI_Error* error) {
+    XLA_FFI_Error_Destroy_Args args;
+    args.struct_size = XLA_FFI_Error_Destroy_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.error = error;
+    api->XLA_FFI_Error_Destroy(&args);
+  }
+};
+
+}  // namespace internal
+
+//===----------------------------------------------------------------------===//
 // PlatformStream
 //===----------------------------------------------------------------------===//
 
@@ -513,30 +542,48 @@ struct CtxDecoding<PlatformStream<T>> {
 
     if (XLA_FFI_Error* error = api->XLA_FFI_Stream_Get(&args); error) {
       diagnostic.Emit("Failed to get platform stream: ")
-          << GetErrorMessage(api, error);
-      DestroyError(api, error);
+          << internal::ErrorUtil::GetErrorMessage(api, error);
+      internal::ErrorUtil::DestroyError(api, error);
       return std::nullopt;
     }
 
     return reinterpret_cast<T>(args.stream);
   }
+};
 
-  static const char* GetErrorMessage(const XLA_FFI_Api* api,
-                                     XLA_FFI_Error* error) {
-    XLA_FFI_Error_GetMessage_Args args;
-    args.struct_size = XLA_FFI_Error_GetMessage_Args_STRUCT_SIZE;
-    args.priv = nullptr;
-    args.error = error;
-    api->XLA_FFI_Error_GetMessage(&args);
-    return args.message;
-  }
+//===----------------------------------------------------------------------===//
+// UserData
+//===----------------------------------------------------------------------===//
 
-  static void DestroyError(const XLA_FFI_Api* api, XLA_FFI_Error* error) {
-    XLA_FFI_Error_Destroy_Args args;
-    args.struct_size = XLA_FFI_Error_Destroy_Args_STRUCT_SIZE;
+// A type tag for automatic decoding user data passed via the execution context.
+template <const char* id, typename T>
+struct UserData {};
+
+template <const char* id, typename T>
+struct CtxDecoding<UserData<id, T>> {
+  using Type = T*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    static constexpr std::string_view id_view = {id};
+
+    XLA_FFI_ExecutionContext_Get_Args args;
+    args.struct_size = XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE;
     args.priv = nullptr;
-    args.error = error;
-    api->XLA_FFI_Error_Destroy(&args);
+    args.ctx = ctx;
+    args.id = XLA_FFI_ByteSpan{XLA_FFI_ByteSpan_STRUCT_SIZE, nullptr,
+                               id_view.data(), id_view.size()};
+    args.data = nullptr;
+
+    if (XLA_FFI_Error* err = api->XLA_FFI_ExecutionContext_Get(&args); err) {
+      diagnostic.Emit("Failed to get platform stream: ")
+          << internal::ErrorUtil::GetErrorMessage(api, err);
+      internal::ErrorUtil::DestroyError(api, err);
+      return std::nullopt;
+    }
+
+    return static_cast<Type>(args.data);
   }
 };
 
