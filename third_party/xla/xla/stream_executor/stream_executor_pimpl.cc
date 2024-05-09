@@ -78,16 +78,6 @@ const DeviceDescription& StreamExecutor::GetDeviceDescription() const {
   return *device_description_;
 }
 
-absl::Status StreamExecutor::SynchronousMemcpyD2H(
-    const DeviceMemoryBase& device_src, int64_t size, void* host_dst) {
-  return SynchronousMemcpy(host_dst, device_src, size);
-}
-
-absl::Status StreamExecutor::SynchronousMemcpyH2D(
-    const void* host_src, int64_t size, DeviceMemoryBase* device_dst) {
-  return SynchronousMemcpy(device_dst, host_src, size);
-}
-
 absl::StatusOr<std::unique_ptr<Stream>> StreamExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   auto stream = std::make_unique<Stream>(this);

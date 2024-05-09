@@ -65,11 +65,22 @@ class StreamExecutorInterface {
       std::optional<std::variant<StreamPriority, int>> priority =
           std::nullopt) = 0;
 
+  // Obtains metadata about the underlying device.
+  // The value is cached on first use.
+  virtual const DeviceDescription& GetDeviceDescription() const = 0;
+
   // Synchronously allocates an array on the device of type T with element_count
   // elements.
   template <typename T>
   DeviceMemory<T> AllocateArray(uint64_t element_count,
                                 int64_t memory_space = 0);
+
+  // Convenience wrapper that allocates space for a single element of type T in
+  // device memory.
+  template <typename T>
+  DeviceMemory<T> AllocateScalar() {
+    return AllocateArray<T>(1);
+  }
 
   // Retrieves (loads) a kernel, if one exists.
   //
@@ -188,12 +199,20 @@ class StreamExecutorInterface {
   virtual absl::Status SynchronousMemcpy(DeviceMemoryBase* device_dst,
                                          const void* host_src,
                                          uint64_t size) = 0;
+  absl::Status SynchronousMemcpyH2D(const void* host_src, int64_t size,
+                                    DeviceMemoryBase* device_dst) {
+    return SynchronousMemcpy(device_dst, host_src, size);
+  }
 
-  // Blocks the caller while "size" bytes are copied to the given location in
-  // host memory.
+  // Blocks the caller while "size" bytes are copied to the given location
+  // in host memory.
   virtual absl::Status SynchronousMemcpy(void* host_dst,
                                          const DeviceMemoryBase& device_src,
                                          uint64_t size) = 0;
+  absl::Status SynchronousMemcpyD2H(const DeviceMemoryBase& device_src,
+                                    int64_t size, void* host_dst) {
+    return SynchronousMemcpy(host_dst, device_src, size);
+  }
 
   // Enqueues an operation onto stream to zero out size bytes at the given
   // device memory location. Neither stream nor location may be null. Returns
