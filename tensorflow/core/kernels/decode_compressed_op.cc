@@ -16,6 +16,8 @@ limitations under the License.
 // See docs in ../ops/parse_ops.cc.
 
 #include <algorithm>
+#include <climits>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -107,7 +109,7 @@ class DecodeCompressedOp : public OpKernel {
                 input_stream.get(), static_cast<size_t>(kBufferSize),
                 static_cast<size_t>(kBufferSize), zlib_options));
         tstring output_string;
-        Status s = zlib_stream->ReadNBytes(INT_MAX, &output_string);
+        Status s = zlib_stream->ReadNBytes(LONG_MAX, &output_string);
         OP_REQUIRES(context, (s.ok() || errors::IsOutOfRange(s)), s);
         output_flat(i) = std::move(output_string);
       }
