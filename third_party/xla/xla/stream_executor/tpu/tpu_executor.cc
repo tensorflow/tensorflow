@@ -298,7 +298,7 @@ TSL_Status* HostCallbackTrampoline(void* ctx) {
   HostCallbackContext* host_ctx = reinterpret_cast<HostCallbackContext*>(ctx);
   Status status = std::move(host_ctx->callback)();
   TSL_Status* c_status = ExecutorApiFn()->TpuStatus_CreateFn(
-      status.raw_code(), tsl::NullTerminatedMessage(status));
+      status.raw_code(), absl::StatusMessageAsCStr(status));
   delete host_ctx;
   return c_status;
 }
