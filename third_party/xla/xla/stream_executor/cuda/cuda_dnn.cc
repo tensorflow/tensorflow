@@ -6054,7 +6054,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
               << profile_result->elapsed_time_in_ms() << "ms";
     }
 
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   static absl::StatusOr<CudnnExecutionPlanRunner> Create(
@@ -6172,7 +6172,7 @@ class CudnnGraphRunner<void(Args...)> : public dnn::OpRunner<void(Args...)> {
     RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.Graph().execute(
         handle.handle(), variant_pack, scratch_memory.opaque()));
 
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   static absl::StatusOr<CudnnGraphRunner> Create(
@@ -7059,7 +7059,7 @@ CudnnSupport::NormRunnerFromDesc(
   };
 
   auto create_cudnn_tensor = [next_uid](dnn::TensorDescriptor tensor_descriptor)
-      -> tsl::StatusOr<cudnn_frontend::Tensor> {
+      -> absl::StatusOr<cudnn_frontend::Tensor> {
     return CreateCudnnTensor(tensor_descriptor.dimensions(),
                              tensor_descriptor.GetPhysicalStridesMajorToMinor(),
                              next_uid(), tensor_descriptor.type(), 1, -1);
