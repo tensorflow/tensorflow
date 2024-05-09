@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/util.h"
 
@@ -111,7 +112,8 @@ TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
       tiling_(ComputeTransposeTiling(analysis.tiled_transpose())) {
   for (auto [root, hero] :
        llvm::zip(analysis_.fusion_roots(), analysis_.fusion_heroes())) {
-    if (auto transpose = GetDescriptionForTiledTransposeEmitter(*root, *hero)) {
+    if (auto transpose = GetDescriptionForTiledTransposeEmitter(
+            root.instruction(), hero.instruction())) {
       permutation_ = transpose->permutation;
       break;
     }
@@ -148,18 +150,20 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 
   for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
     const auto& hero = analysis_.fusion_hero(output_idx).instruction();
-    auto transpose_descr = GetDescriptionForTiledTransposeEmitter(*root, hero);
+    auto transpose_descr =
+        GetDescriptionForTiledTransposeEmitter(root.instruction(), hero);
     if (transpose_descr.has_value()) {
       auto iterator_inserted = transposes_to_roots.insert(std::make_pair(
           &hero, std::vector<std::pair<int64_t, const HloInstruction*>>{
-                     {output_idx, root}}));
+                     {output_idx, &root.instruction()}}));
       if (iterator_inserted.second) {
         transposes.push_back(*transpose_descr);
       } else {
-        iterator_inserted.first->second.push_back({output_idx, root});
+        iterator_inserted.first->second.push_back(
+            {output_idx, &root.instruction()});
       }
     } else {
-      extra_outputs.push_back({output_idx, root});
+      extra_outputs.push_back({output_idx, &root.instruction()});
     }
   }
 
