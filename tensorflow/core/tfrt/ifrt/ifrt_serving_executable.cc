@@ -635,7 +635,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
                        inputs[i].shape().DebugString(), " at index ", i));
     }
     std::string runtime_name = inputs[i].scalar<tsl::tstring>()();
-    // TODO(b/330360798): Add test cases for OpSharding on variables.
+    // TODO(b/339521818): Add test cases for OpSharding on variables.
     VariableDeviceShardingConfigProto sharding_config;
     *sharding_config.mutable_sharding() =
         executable_bundle.compile_metadata.args()[i].sharding();
