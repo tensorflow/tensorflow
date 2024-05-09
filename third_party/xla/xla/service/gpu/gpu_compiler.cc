@@ -16,13 +16,12 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -55,14 +54,9 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -84,7 +78,6 @@ limitations under the License.
 #include "xla/service/bitcast_dtypes_expander.h"
 #include "xla/service/broadcast_canonicalizer.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/buffer_value.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/collective_permute_decomposer.h"
 #include "xla/service/collective_pipeliner.h"
@@ -116,14 +109,12 @@ limitations under the License.
 #include "xla/service/gather_simplifier.h"
 #include "xla/service/gpu/address_computation_fusion_rewriter.h"
 #include "xla/service/gpu/algorithm_checker.h"
-#include "xla/service/gpu/alias_passthrough_params.h"
 #include "xla/service/gpu/all_reduce_blueconnect.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/collective_permute_cycle_decomposer.h"
 #include "xla/service/gpu/command_buffer_scheduling.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
-#include "xla/service/gpu/copy_fusion.h"
 #include "xla/service/gpu/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/dot_dimension_sorter.h"
 #include "xla/service/gpu/dot_operand_converter.h"
@@ -134,7 +125,6 @@ limitations under the License.
 #include "xla/service/gpu/gemm_rewriter.h"
 #include "xla/service/gpu/gpu_all_gather_optimizer.h"
 #include "xla/service/gpu/gpu_async_collective_annotator.h"
-#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_conv_rewriter.h"
 #include "xla/service/gpu/gpu_convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -147,7 +137,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_scatter_expander.h"
 #include "xla/service/gpu/gpu_windowed_einsum_handler.h"
 #include "xla/service/gpu/hlo_fusion_stats.h"
-#include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_unnested.h"
@@ -183,7 +172,6 @@ limitations under the License.
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_ordering.h"
 #include "xla/service/hlo_pass_fix.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_rematerialization.h"
@@ -194,9 +182,7 @@ limitations under the License.
 #include "xla/service/layout_assignment.h"
 #include "xla/service/layout_normalization.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/logical_buffer.h"
 #include "xla/service/logistic_expander.h"
-#include "xla/service/loop_schedule_linearizer.h"
 #include "xla/service/operand_upcaster.h"
 #include "xla/service/optimization_barrier_expander.h"
 #include "xla/service/optimize_input_output_buffer_alias.h"
@@ -235,7 +221,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
@@ -253,7 +238,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
-#include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -467,7 +451,8 @@ GpuThunkAotCompilationResult::LoadExecutable(
       se::Platform * platform,
       se::PlatformManager::PlatformWithId(compiler->PlatformId()));
   std::string platform_name = platform->Name();
-  se::DeviceDescription gpu_device_info = stream_exec->GetDeviceDescription();
+  const se::DeviceDescription& gpu_device_info =
+      stream_exec->GetDeviceDescription();
   mlir::DialectRegistry registry;
   auto mlir_context = std::make_unique<mlir::MLIRContext>(registry);
   llvm::LLVMContext llvm_context;
@@ -1138,8 +1123,7 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
     disabled_async_ops.insert(
         static_cast<DebugOptions::CollectiveOpType>(collective_op_type));
   }
-  auto convert_to_async = [&hlo_module,
-                           &disabled_async_ops](const HloInstruction* inst) {
+  auto convert_to_async = [&disabled_async_ops](const HloInstruction* inst) {
     switch (inst->opcode()) {
       case HloOpcode::kAllReduceStart:
         return !disabled_async_ops.contains(DebugOptions::ALLREDUCE);
