@@ -77,21 +77,10 @@ class StreamExecutor : public StreamExecutorInterface {
     return AllocateArray<T>(1);
   }
 
+  // Aliases to SynchronousMemcpy, with suffixes to imply the correct ordering
+  // of Host to Device or Device to Host.
   absl::Status SynchronousMemcpyH2D(const void* host_src, int64_t size,
                                     DeviceMemoryBase* device_dst);
-
-  // Alternative interface for memcpying from host to device that takes an
-  // array slice. Checks that the destination size can accommodate the host
-  // slice size.
-  template <class T>
-  absl::Status SynchronousMemcpyH2D(absl::Span<const T> host_src,
-                                    DeviceMemoryBase* device_dst) {
-    auto host_size = host_src.size() * sizeof(T);
-    CHECK(device_dst->size() == 0 || device_dst->size() >= host_size);
-    return SynchronousMemcpyH2D(host_src.begin(), host_size, device_dst);
-  }
-
-  // Same as SynchronousMemcpy(void*, ...) above.
   absl::Status SynchronousMemcpyD2H(const DeviceMemoryBase& device_src,
                                     int64_t size, void* host_dst);
 
