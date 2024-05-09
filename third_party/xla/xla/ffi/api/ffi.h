@@ -309,6 +309,18 @@ std::optional<Buffer<dtype, rank>> DecodeBuffer(XLA_FFI_Buffer* buf,
 
 }  // namespace internal
 
+using ResultBufferBase = Result<BufferBase>;
+template <DataType dtype, size_t rank = internal::kDynamicRank>
+using ResultBuffer = Result<Buffer<dtype, rank>>;
+
+// clang-format off
+template <DataType dtype> using ResultBufferR0 = ResultBuffer<dtype, 0>;
+template <DataType dtype> using ResultBufferR1 = ResultBuffer<dtype, 1>;
+template <DataType dtype> using ResultBufferR2 = ResultBuffer<dtype, 2>;
+template <DataType dtype> using ResultBufferR3 = ResultBuffer<dtype, 3>;
+template <DataType dtype> using ResultBufferR4 = ResultBuffer<dtype, 4>;
+// clang-format on
+
 //===----------------------------------------------------------------------===//
 // Arguments binding
 //===----------------------------------------------------------------------===//
