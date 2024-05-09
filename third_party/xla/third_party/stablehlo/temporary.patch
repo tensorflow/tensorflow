@@ -506,6 +506,17 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
    return success();
  }
  
+@@ -3861,8 +3819,8 @@
+   if (SmallVector<int64_t> shape; operandType.hasStaticShape() &&
+                                   matchInts(outputShape, shape).succeeded()) {
+     int64_t operandCount = operandType.getNumElements();
+-    int64_t shapeCount = std::accumulate(shape.begin(), shape.end(), 1,
+-                                         std::multiplies<int64_t>());
++    int64_t shapeCount = std::accumulate(
++        shape.begin(), shape.end(), int64_t{1}, std::multiplies<int64_t>());
+     if (operandCount != shapeCount) {
+       return emitOptionalError(location,
+                                "output_shape is incompatible with input type "
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
