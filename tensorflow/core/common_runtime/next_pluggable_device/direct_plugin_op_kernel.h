@@ -60,7 +60,8 @@ class DirectPluginOpKernelConstruction : public PluginOpKernelConstruction {
 
 class DirectPluginOpKernelContext : public PluginOpKernelContext {
  public:
-  explicit DirectPluginOpKernelContext(OpKernelContext* ctx) : ctx_(ctx) {}
+  explicit DirectPluginOpKernelContext(void* ctx)
+      : ctx_(reinterpret_cast<OpKernelContext*>(ctx)) {}
 
   std::string_view GetResourceMgrDefaultContainerName() override;
 

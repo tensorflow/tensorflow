@@ -16,13 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_PLUGIN_OP_KERNEL_HELPER_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_PLUGIN_OP_KERNEL_HELPER_H_
 
-#include "absl/flags/flag.h"
+#include "tensorflow/c/kernels.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c_plugin_op_kernel.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_op_kernel.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/flags.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_op_kernel.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 
@@ -41,8 +40,7 @@ inline void DeletePluginOpKernelConstruction(
 
 inline PluginOpKernelContext* CreatePluginOpKernelContext(void* ctx) {
   if (!absl::GetFlag(FLAGS_next_pluggable_device_use_c_api)) {
-    return new DirectPluginOpKernelContext(
-        reinterpret_cast<OpKernelContext*>(ctx));
+    return new DirectPluginOpKernelContext(ctx);
   } else {
     return new CPluginOpKernelContext(ctx);
   }
