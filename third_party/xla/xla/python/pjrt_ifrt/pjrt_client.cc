@@ -26,7 +26,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -42,6 +44,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/tuple.h"
@@ -49,11 +52,11 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
+#include "xla/python/pjrt_ifrt/pjrt_remap.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -329,6 +332,13 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
   }
   return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
                            std::move(buffers));
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+PjRtClient::RemapArrays(const RemapPlan& plan,
+                        absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+                        ArrayCopySemantics semantics) {
+  return PjRtCompatibleClientRemapArrays(this, plan, arrays, semantics);
 }
 
 absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(

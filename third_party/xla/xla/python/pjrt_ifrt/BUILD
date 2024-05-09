@@ -224,6 +224,7 @@ cc_library(
         "pjrt_executable.cc",
         "pjrt_host_callback.cc",
         "pjrt_memory.cc",
+        "pjrt_remap.cc",
         "pjrt_tuple.cc",
     ],
     hdrs = [
@@ -234,6 +235,7 @@ cc_library(
         "pjrt_executable.h",
         "pjrt_host_callback.h",
         "pjrt_memory.h",
+        "pjrt_remap.h",
         "pjrt_tuple.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -274,7 +276,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
@@ -358,6 +359,17 @@ xla_cc_test(
     deps = [
         ":tfrt_cpu_client_test_lib",
         "//xla/python/ifrt:tuple_impl_test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_remap_impl_test_tfrt_cpu",
+    size = "small",
+    srcs = [],
+    deps = [
+        ":tfrt_cpu_client_test_lib",
+        "//xla/python/ifrt:remap_impl_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

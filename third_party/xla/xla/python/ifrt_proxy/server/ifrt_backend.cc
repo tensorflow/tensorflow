@@ -51,6 +51,7 @@
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/program_serdes.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -156,6 +157,8 @@ Future<BackendInterface::Response> IfrtBackend::Process(
     case IfrtRequest::RequestCase::kAssembleArrayFromSingleDeviceArraysRequest:
       return Future<Response>(
           HandleAssembleArrayFromSingleDeviceArraysRequest(std::move(request)));
+    case IfrtRequest::RequestCase::kRemapArraysRequest:
+      return Future<Response>(HandleRemapArraysRequest(std::move(request)));
     case IfrtRequest::RequestCase::kCopyToHostBufferRequest:
       return HandleCopyToHostBufferRequest(std::move(request));
     case IfrtRequest::RequestCase::kDisassembleIntoSingleDeviceArraysRequest:
@@ -438,6 +441,54 @@ IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
   }
 
   return ifrt_resp;
+}
+
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleRemapArraysRequest(std::unique_ptr<IfrtRequest> request) {
+  const auto& remap_request = request->remap_arrays_request();
+
+  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays;
+  {
+    absl::ReaderMutexLock lock(&arrays_mutex_);
+    for (const uint64_t handle : remap_request.array_handles()) {
+      TF_ASSIGN_OR_RETURN(arrays.emplace_back(), GetArrayLocked(handle));
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      RemapPlan plan,
+      RemapPlan::FromProto(
+          absl::bind_front(&Client::LookupDevice, client_.get()),
+          remap_request.plan()));
+  TF_ASSIGN_OR_RETURN(auto semantics, FromArrayCopySemanticsProto(
+                                          remap_request.copy_semantics()));
+
+  TF_ASSIGN_OR_RETURN(
+      auto out_arrays,
+      client_->RemapArrays(plan, absl::MakeSpan(arrays), semantics));
+
+  // Set up an IfrtResponse with pre-allocated space for the right number of
+  // single device array handles.
+  int64_t num_arrays = out_arrays.size();
+  auto response = NewIfrtResponse(request->request_metadata().op_id());
+
+  // Pre-allocate space in the response proto and fill it in with bulk allocated
+  // new handles.
+  auto* handles =
+      response->mutable_remap_arrays_response()->mutable_array_handles();
+  handles->Reserve(num_arrays);
+  uint64_t* handles_buf = handles->AddNAlreadyReserved(num_arrays);
+  handle_generator_.BulkNew(absl::MakeSpan(handles_buf, num_arrays));
+
+  // Install the newly created arrays into the arrays_.
+  {
+    absl::MutexLock lock(&arrays_mutex_);
+    for (int i = 0; i < num_arrays; ++i) {
+      arrays_.insert({handles_buf[i], out_arrays[i]});
+    }
+  }
+
+  return response;
 }
 
 Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(

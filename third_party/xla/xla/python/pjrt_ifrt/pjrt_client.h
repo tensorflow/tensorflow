@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -32,11 +33,13 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/tuple.h"
@@ -112,6 +115,11 @@ class PjRtClient final
   absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<Array>> arrays,
+      ArrayCopySemantics semantics) override;
+
+  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> RemapArrays(
+      const RemapPlan& plan,
+      absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
       ArrayCopySemantics semantics) override;
 
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
