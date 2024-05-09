@@ -126,15 +126,15 @@ class InsertWeightParamPattern
     if (IsPerTensor(weight_only_ptq)) {
       weight_type = dyn_cast<quant::QuantizedType>(
           quant::GetUniformQuantizedTypeForWeight(
-              attr, /*symmetric=*/false, /*num_bits=*/8, /*is_signed=*/true,
-              /*narrow_range=*/false, /*legacy_float_scale=*/false));
+              attr, /*symmetric=*/true, /*num_bits=*/8, /*is_signed=*/true,
+              /*narrow_range=*/true, /*legacy_float_scale=*/false));
     } else {
       int quantization_dimension = GetQuantizationDimension(
           weight_only_ptq, cast<TF::XlaCallModuleOp>(quantizable_op));
       weight_type = quant::GetUniformQuantizedPerAxisTypeForWeight(
-          attr, quantization_dimension, /*symmetric=*/false, /*num_bits=*/8,
+          attr, quantization_dimension, /*symmetric=*/true, /*num_bits=*/8,
           /*is_signed=*/true,
-          /*narrow_range=*/false, /*legacy_float_scale=*/false);
+          /*narrow_range=*/true, /*legacy_float_scale=*/false);
     }
 
     auto quant_type = dyn_cast<quant::QuantizedType>(weight_type);
