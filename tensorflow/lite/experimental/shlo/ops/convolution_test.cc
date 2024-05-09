@@ -467,5 +467,208 @@ TYPED_TEST(NonQuantizedIntConvolutionTest, IntTestTypesTensorsWork2) {
   EXPECT_THAT(output_data, Pointwise(Eq(), expected_data));
 }
 
+template <class T>
+struct QuantizedIntConvolutionTest : ::testing::Test {};
+TYPED_TEST_SUITE(QuantizedIntConvolutionTest, QuantizedTestTypes,
+                 TestParamNames);
+TYPED_TEST(QuantizedIntConvolutionTest, QuantizedTestTypesTensorsWork1) {
+  using StorageT = typename TypeParam::StorageT;
+  using ExpressedT = typename TypeParam::ExpressedT;
+
+  const Shape shape_lhs({1, 1, 10});
+  const Shape shape_rhs({1, 1, 1});
+  const Shape shape_padding({1, 2});
+  const Shape shape_parametrs({1});
+  const Shape shape_result({1, 1, 10});
+
+  Vector<int64_t> lhs_data_int{1, 2, 3, 1, 2, 3, 1, 2, 3, 2};
+  Vector<StorageT> lhs_data(lhs_data_int.begin(), lhs_data_int.end());
+  Vector<StorageT> rhs_data = Vector<StorageT>{1};
+  Vector<StorageT> output_data(shape_result.NumElements());
+  Vector<int64_t> window_stride_values({1});
+  Vector<int64_t> padding_values({0, 0});
+  Vector<int64_t> lhs_dilation_values({1});
+  Vector<int64_t> rhs_dilation_values({1});
+  int64_t input_batch_dimension = 0;
+  int64_t input_feature_dimension = 1;
+  Vector<int64_t> input_spatial_dimensions_values({2});
+  int64_t kernel_input_feature_dimension = 1;
+  int64_t kernel_output_feature_dimension = 0;
+  Vector<int64_t> kernel_spatial_dimensions_values({2});
+  int64_t output_batch_dimension = 0;
+  int64_t output_feature_dimension = 1;
+  Vector<int64_t> output_spatial_dimensions_values({2});
+  int64_t feature_group_count = 1;
+  int64_t batch_group_count = 1;
+
+  const ExpressedT scale = static_cast<ExpressedT>(1);
+  const StorageT zero_point = static_cast<StorageT>(0);
+
+  const QuantizedElementTypePerTensor tensor_type =
+      QuantizedElementTypePerTensor(TypeParam::kStorage, zero_point,
+                                    TypeParam::kExpressed, scale);
+
+  Tensor lhs{.type = QuantizedPerTensorTensorType{.shape = shape_lhs,
+                                                  .element_type = tensor_type},
+             .data = lhs_data.data()};
+  Tensor rhs{.type = QuantizedPerTensorTensorType{.shape = shape_rhs,
+                                                  .element_type = tensor_type},
+             .data = rhs_data.data()};
+  absl::Span<int64_t> window_stride(window_stride_values);
+  Tensor padding{.type = TensorType{.shape = shape_padding,
+                                    .element_type = DataType::kSI64},
+                 .data = padding_values.data()};
+  absl::Span<int64_t> lhs_dilation(lhs_dilation_values);
+  absl::Span<int64_t> rhs_dilation(rhs_dilation_values);
+  absl::Span<int64_t> input_spatial_dimensions(input_spatial_dimensions_values);
+  absl::Span<int64_t> kernel_spatial_dimensions(
+      kernel_spatial_dimensions_values);
+  absl::Span<int64_t> output_spatial_dimensions(
+      output_spatial_dimensions_values);
+  Tensor output_tensor{
+      .type = QuantizedPerTensorTensorType{.shape = shape_result,
+                                           .element_type = tensor_type},
+      .data = output_data.data()};
+
+  std::array<PrecisionTypes, 2> precision_configs = {PrecisionTypes::DEFAULT,
+                                                     PrecisionTypes::DEFAULT};
+
+  auto op = Create(ConvolutionOp::Attributes{
+      .window_strides = window_stride,
+      .padding = padding,
+      .lhs_dilation = lhs_dilation,
+      .rhs_dilation = rhs_dilation,
+      .input_batch_dimension = input_batch_dimension,
+      .input_feature_dimension = input_feature_dimension,
+      .input_spatial_dimensions = input_spatial_dimensions,
+      .kernel_input_feature_dimension = kernel_input_feature_dimension,
+      .kernel_output_feature_dimension = kernel_output_feature_dimension,
+      .kernel_spatial_dimensions = kernel_spatial_dimensions,
+      .output_batch_dimension = output_batch_dimension,
+      .output_feature_dimension = output_feature_dimension,
+      .output_spatial_dimensions = output_spatial_dimensions,
+      .feature_group_count = feature_group_count,
+      .batch_group_count = batch_group_count,
+      .precision_configs = precision_configs});
+
+  Vector<StorageT> expected_data =
+      Vector<StorageT>{1, 2, 3, 1, 2, 3, 1, 2, 3, 2};
+
+  Vector<StorageT> expected_data_quantized(shape_result.NumElements());
+  std::transform(expected_data.begin(), expected_data.end(),
+                 expected_data_quantized.begin(), [&](StorageT val) {
+                   return Quantize<TypeParam::kStorage, TypeParam::kExpressed>(
+                       static_cast<ExpressedT>(val), zero_point,
+                       static_cast<ExpressedT>(1.0) / scale);
+                 });
+
+  ASSERT_OK(Prepare(op, lhs, rhs, output_tensor));
+  ASSERT_OK(Evaluate(op, lhs, rhs, output_tensor));
+  EXPECT_THAT(output_data, Pointwise(Eq(), expected_data_quantized));
+}
+
+TYPED_TEST(QuantizedIntConvolutionTest, QuantizedTestTypesTensorsWork2) {
+  using StorageT = typename TypeParam::StorageT;
+  using ExpressedT = typename TypeParam::ExpressedT;
+
+  const Shape shape_lhs({1, 1, 10});
+  const Shape shape_rhs({1, 1, 1});
+  const Shape shape_padding({1, 2});
+  const Shape shape_parametrs({1});
+  const Shape shape_result({1, 1, 10});
+
+  Vector<int64_t> lhs_data_int{1, 2, 3, 4, 5, 1, 2, 3, 4, -5};
+  Vector<StorageT> lhs_data(lhs_data_int.begin(), lhs_data_int.end());
+  Vector<StorageT> rhs_data = Vector<StorageT>{5};
+  Vector<StorageT> output_data(shape_result.NumElements());
+  Vector<int64_t> window_stride_values({1});
+  Vector<int64_t> padding_values({0, 0});
+  Vector<int64_t> lhs_dilation_values({1});
+  Vector<int64_t> rhs_dilation_values({1});
+  int64_t input_batch_dimension = 0;
+  int64_t input_feature_dimension = 1;
+  Vector<int64_t> input_spatial_dimensions_values({2});
+  int64_t kernel_input_feature_dimension = 1;
+  int64_t kernel_output_feature_dimension = 0;
+  Vector<int64_t> kernel_spatial_dimensions_values({2});
+  int64_t output_batch_dimension = 0;
+  int64_t output_feature_dimension = 1;
+  Vector<int64_t> output_spatial_dimensions_values({2});
+  int64_t feature_group_count = 1;
+  int64_t batch_group_count = 1;
+
+  std::initializer_list<float> zero_points = {0, 0, 0};
+  std::initializer_list<float> scales = {1.7, 1.6, 1.5};
+
+  const ExpressedT scale = static_cast<ExpressedT>(1);
+  const StorageT zero_point = static_cast<StorageT>(0);
+
+  QuantizedElementTypePerTensor tensor_type = QuantizedElementTypePerTensor(
+      TypeParam::kStorage, zero_point, TypeParam::kExpressed, scale);
+  QuantizedElementTypePerAxis tensor_type_axis(
+      TypeParam::kStorage, zero_points, TypeParam::kExpressed, scales, 0);
+  QuantizedElementTypePerAxis tensor_type_axis_res(
+      TypeParam::kStorage, zero_points, TypeParam::kExpressed, scales, 1);
+
+  Tensor lhs{.type = QuantizedPerTensorTensorType{.shape = shape_lhs,
+                                                  .element_type = tensor_type},
+             .data = lhs_data.data()};
+  Tensor rhs{
+      .type = QuantizedPerAxisTensorType{.shape = shape_rhs,
+                                         .element_type = tensor_type_axis},
+      .data = rhs_data.data()};
+  absl::Span<int64_t> window_stride(window_stride_values);
+  Tensor padding{.type = TensorType{.shape = shape_padding,
+                                    .element_type = DataType::kSI64},
+                 .data = padding_values.data()};
+  absl::Span<int64_t> lhs_dilation(lhs_dilation_values);
+  absl::Span<int64_t> rhs_dilation(rhs_dilation_values);
+  absl::Span<int64_t> input_spatial_dimensions(input_spatial_dimensions_values);
+  absl::Span<int64_t> kernel_spatial_dimensions(
+      kernel_spatial_dimensions_values);
+  absl::Span<int64_t> output_spatial_dimensions(
+      output_spatial_dimensions_values);
+  Tensor output_tensor{
+      .type = QuantizedPerAxisTensorType{.shape = shape_result,
+                                         .element_type = tensor_type_axis_res},
+      .data = output_data.data()};
+
+  std::array<PrecisionTypes, 2> precision_configs = {PrecisionTypes::DEFAULT,
+                                                     PrecisionTypes::DEFAULT};
+
+  auto op = Create(ConvolutionOp::Attributes{
+      .window_strides = window_stride,
+      .padding = padding,
+      .lhs_dilation = lhs_dilation,
+      .rhs_dilation = rhs_dilation,
+      .input_batch_dimension = input_batch_dimension,
+      .input_feature_dimension = input_feature_dimension,
+      .input_spatial_dimensions = input_spatial_dimensions,
+      .kernel_input_feature_dimension = kernel_input_feature_dimension,
+      .kernel_output_feature_dimension = kernel_output_feature_dimension,
+      .kernel_spatial_dimensions = kernel_spatial_dimensions,
+      .output_batch_dimension = output_batch_dimension,
+      .output_feature_dimension = output_feature_dimension,
+      .output_spatial_dimensions = output_spatial_dimensions,
+      .feature_group_count = feature_group_count,
+      .batch_group_count = batch_group_count,
+      .precision_configs = precision_configs});
+
+  Vector<StorageT> expected_data =
+      Vector<StorageT>{5, 10, 15, 20, 25, 5, 10, 15, 20, -25};
+
+  Vector<StorageT> expected_data_quantized(shape_result.NumElements());
+  std::transform(expected_data.begin(), expected_data.end(),
+                 expected_data_quantized.begin(), [&](StorageT val) {
+                   return Quantize<TypeParam::kStorage, TypeParam::kExpressed>(
+                       static_cast<ExpressedT>(val), zero_point,
+                       static_cast<ExpressedT>(1) / scale);
+                 });
+
+  ASSERT_OK(Prepare(op, lhs, rhs, output_tensor));
+  ASSERT_OK(Evaluate(op, lhs, rhs, output_tensor));
+  EXPECT_THAT(output_data, Pointwise(Eq(), expected_data_quantized));
+}
+
 }  // namespace
 }  // namespace shlo_ref
