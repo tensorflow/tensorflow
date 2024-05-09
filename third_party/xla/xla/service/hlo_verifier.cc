@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -2003,6 +2004,37 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
           StringifyShape(layout.parameter_shape(i)));
     }
   }
+
+  // If result is aliased with a parameter, entry computation layout must have
+  // same shape, layout and memory space for them (for example we can't alias
+  // parameter and result if they have different memory spaces).
+  const auto& alias_config = module.input_output_alias_config();
+  TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
+      [&](ShapeIndex result_index,
+          HloInputOutputAliasConfig::Alias alias) -> absl::Status {
+        // We skip may-alias buffers as they do not force aliasing.
+        if (!alias.must_alias()) {
+          return absl::OkStatus();
+        }
+
+        const Shape& result_shape =
+            ShapeUtil::GetSubshape(result_layout.shape(), result_index);
+        const Shape& parameter_shape = ShapeUtil::GetSubshape(
+            layout.parameter_layout(alias.parameter_number).shape(),
+            alias.parameter_index);
+
+        if (result_shape != parameter_shape) {
+          return Internal(
+              "Shape and memory space of the result at index %s (%s) "
+              "must be the same as the shape and memory spaceof aliased "
+              "parameter %d at index %s (%s)",
+              result_index.ToString(), StringifyShape(result_shape),
+              alias.parameter_number, alias.parameter_index.ToString(),
+              StringifyShape(parameter_shape));
+        }
+
+        return absl::OkStatus();
+      }));
 
   return OkStatus();
 }
