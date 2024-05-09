@@ -111,13 +111,14 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
   int index = 0;
   for (auto [root, hero] :
        llvm::zip(analysis_.fusion_roots(), analysis_.fusion_heroes())) {
-    if (auto transpose = GetDescriptionForTiledTransposeEmitter(*root, *hero)) {
-      transposes_to_tile.insert(hero);
-      shmem_transpose_roots_.push_back(root);
+    if (auto transpose = GetDescriptionForTiledTransposeEmitter(
+            root.instruction(), hero.instruction())) {
+      transposes_to_tile.insert(&hero.instruction());
+      shmem_transpose_roots_.push_back(&root.instruction());
       shmem_transpose_root_indices_.push_back(index);
       permutation_ = transpose->permutation;
     } else {
-      side_output_roots_.push_back(root);
+      side_output_roots_.push_back(&root.instruction());
       side_output_root_indices_.push_back(index);
     }
     ++index;
