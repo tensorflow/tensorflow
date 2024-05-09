@@ -9,6 +9,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_generate_proto_text_sources")
 load(
     "//tensorflow/core/platform:build_config.bzl",
+    "tf_jspb_proto_library",
     "tf_proto_library",
     "tf_pyclif_proto_library",
 )
@@ -1711,6 +1712,12 @@ tf_proto_library(
     ],
 )
 
+tf_jspb_proto_library(
+    name = "tensor_jspb_proto",
+    visibility = ["//visibility:public"],
+    deps = [":tensor_proto"],
+)
+
 tf_proto_library(
     name = "api_def_proto",
     srcs = ["api_def.proto"],
@@ -1759,6 +1766,12 @@ tf_proto_library(
     srcs = ["types.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+)
+
+tf_jspb_proto_library(
+    name = "types_jspb_proto",
+    visibility = ["//visibility:public"],
+    deps = [":types_proto"],
 )
 
 tf_proto_library(
