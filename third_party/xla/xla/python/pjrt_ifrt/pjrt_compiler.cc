@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "llvm/Support/Casting.h"
+#include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -34,9 +35,9 @@ char PjRtCompiler::ID = 0;
 absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
     std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
-  const auto* xla_program = llvm::dyn_cast<XlaProgram>(program.get());
+  const auto* xla_program = llvm::dyn_cast<HloProgram>(program.get());
   if (xla_program == nullptr) {
-    return absl::InvalidArgumentError("PjRtCompiler requires an XlaProgram");
+    return absl::InvalidArgumentError("PjRtCompiler requires an HloProgram");
   }
   TF_ASSIGN_OR_RETURN(auto xla_compile_options,
                       GetXlaCompileOptions(std::move(options)));

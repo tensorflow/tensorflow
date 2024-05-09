@@ -29,8 +29,8 @@ limitations under the License.
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/serdes.h"
-#include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "tsl/platform/status.h"
 
 namespace xla {
@@ -39,7 +39,7 @@ namespace ifrt {
 namespace {
 
 // Library that provides stable serialization and deserialization of
-// `xla::ifrt::XlaProgram`. Both serialization and deserialization require
+// `xla::ifrt::HloProgram`. Both serialization and deserialization require
 // linking in this library.
 //
 // Serialization:
@@ -50,21 +50,23 @@ namespace {
 // Deserialization:
 // ```
 // TF_ASSIGN_OR_RETURN(auto deserialized, Deserialize(serialized));
-// auto xla_program = llvm::dyn_cast<XlaProgram>(deserialized);
+// auto xla_program = llvm::dyn_cast<HloProgram>(deserialized);
 // ```
 
-class XlaProgramSerDes : public llvm::RTTIExtends<XlaProgramSerDes, SerDes> {
+class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
+    // TODO(phawkins): whenever we next break compatibility, change this to
+    // "xla::ifrt::HloProgram".
     return "xla::ifrt::XlaProgram";
   }
 
   absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
-    // Currently, PjRT-IFRT accepts an `XlaProgram` that contains C/MHLO. Since
+    // Currently, PjRT-IFRT accepts an `HloProgram` that contains C/MHLO. Since
     // these dialects don't provide version compatibility, the following
     // converts the module into StableHLO and use its portable serialization.
 
-    const auto& program = llvm::cast<XlaProgram>(serializable);
+    const auto& program = llvm::cast<HloProgram>(serializable);
     if (program.mlir_module == nullptr) {
       return absl::InvalidArgumentError("Unable to serialize null MLIR module");
     }
@@ -97,17 +99,17 @@ class XlaProgramSerDes : public llvm::RTTIExtends<XlaProgramSerDes, SerDes> {
       return absl::InvalidArgumentError("StableHLO => MHLO failed");
     }
 
-    return std::make_unique<XlaProgram>(std::move(context), std::move(module));
+    return std::make_unique<HloProgram>(std::move(context), std::move(module));
   }
 
   static char ID;  // NOLINT
 };
 
-char XlaProgramSerDes::ID = 0;  // NOLINT
+char HloProgramSerDes::ID = 0;  // NOLINT
 
 // clang-format off
 bool register_xla_program_serdes = ([]() {
-  RegisterSerDes<XlaProgram>(std::make_unique<XlaProgramSerDes>());
+  RegisterSerDes<HloProgram>(std::make_unique<HloProgramSerDes>());
 }(), true);
 // clang-format on
 

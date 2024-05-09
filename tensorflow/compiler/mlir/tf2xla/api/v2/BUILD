@@ -210,6 +210,7 @@ tf_cc_test(
     srcs = ["tf_dialect_to_executor_test.cc"],
     data = [
         "testdata/empty_func.mlir",
+        "testdata/func_with_dead_ops.mlir",
         "testdata/invalid_executor.mlir",
     ],
     deps = [
@@ -220,10 +221,9 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/lib/monitoring:test_utils",
-        "@local_tsl//tsl/platform:status",
     ],
 )
