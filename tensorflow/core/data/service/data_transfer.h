@@ -70,6 +70,7 @@ class DataTransferClient {
   struct Config {
     absl::string_view protocol;
     std::string address;
+    const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info;
     Allocator* allocator;
   };
   using ClientFactoryT =

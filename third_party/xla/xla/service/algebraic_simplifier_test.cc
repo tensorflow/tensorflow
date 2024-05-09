@@ -7866,6 +7866,28 @@ TEST_F(AlgebraicSimplifierTest, GatherOfScalarToBroadcast) {
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, GatherOfSmallOperand) {
+  const char* hlo_string = R"(
+  HloModule repeat
+
+  ENTRY main {
+    param_0.1046 = f32[16]{0:T(128)S(1)} parameter(0)
+    transpose.133 = s32[4608]{0:T(1024)} parameter(1)
+
+    ROOT gather.34 = f32[4608]{0:T(1024)} gather(param_0.1046, transpose.133),
+      offset_dims={}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_very_small_gather_size(64);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite of gather\n" << module->ToString();
+}
+
 TEST_F(AlgebraicSimplifierTest, GatherOfPad) {
   const char* hlo_string = R"(
 HloModule module

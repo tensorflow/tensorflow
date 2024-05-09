@@ -3880,11 +3880,19 @@ Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
   // If the operand of a gather is very small, it is easier to fuse a
   // sequence of selects.
   const Shape& index_shape = gather->operand(1)->shape();
+  bool small_gather =
+      operand_shape.dimensions(0) <= options_.very_small_gather_size();
+  bool index_match = gather->gather_dimension_numbers().index_vector_dim() ==
+                     index_shape.rank();
+  VLOG(4) << "gather " << gather->ToString() << " Small gather?" << small_gather
+          << " index match " << index_match;
+
   if (operand_shape.rank() == 1 &&
       operand_shape.dimensions(0) <= options_.very_small_gather_size() &&
       gather->gather_dimension_numbers().index_vector_dim() ==
           index_shape.rank() &&
-      gather->gather_dimension_numbers().collapsed_slice_dims_size() == 1) {
+      gather->gather_dimension_numbers().collapsed_slice_dims_size() == 1 &&
+      false) {
     const int64_t operand_elements = operand_shape.dimensions(0);
     auto get_value = [&](int64_t i) {
       auto slice = gather->AddInstruction(HloInstruction::CreateSlice(
