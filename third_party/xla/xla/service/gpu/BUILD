@@ -4186,7 +4186,6 @@ cc_library(
     hdrs = ["gpu_schedule_postprocessing.h"],
     deps = [
         ":backend_configs_cc",
-        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:hlo_pass",
