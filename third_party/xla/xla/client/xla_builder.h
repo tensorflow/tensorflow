@@ -75,11 +75,9 @@ struct XlaBuilderFriend {
       std::string execution_thread, const XlaComputation& called_computation,
       const Shape& shape);
   static XlaOp BuildAsyncUpdate(XlaBuilder* builder, XlaOp operands,
-                                std::string execution_thread,
-                                int64_t called_computation, const Shape& shape);
+                                const Shape& shape);
   static XlaOp BuildAsyncDone(XlaBuilder* builder, XlaOp operands,
-                              std::string execution_thread,
-                              int64_t called_computation, const Shape& shape);
+                              const Shape& shape);
 
   static XlaOp BuildAllGatherStart(
       XlaBuilder* builder, XlaOp operand, int64_t all_gather_dimension,

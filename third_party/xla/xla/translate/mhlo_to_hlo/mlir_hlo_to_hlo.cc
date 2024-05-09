@@ -1162,19 +1162,7 @@ LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
   for (auto* user : op.getResult().getUsers()) {
-    if (auto asyncOp = dyn_cast_or_null<AsyncDoneOp>(user)) {
-      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
-        return op.emitOpError()
-               << "Users of AsyncStart's return value must have "
-                  "the same called_computation";
-      }
-    } else if (auto asyncOp = dyn_cast_or_null<AsyncUpdateOp>(user)) {
-      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
-        return op.emitOpError()
-               << "Users of AsyncStart's return value must have "
-                  "the same called_computation";
-      }
-    } else {
+    if (!isa<AsyncUpdateOp, AsyncDoneOp>(user)) {
       return op.emitOpError() << "Users of AsyncStart's return value must be "
                               << "async_update or async_done";
     }
@@ -1309,19 +1297,7 @@ LogicalResult ExportXlaOp(AsyncUpdateOp op, OpLoweringContext ctx) {
   }
 
   for (auto* user : op.getResult().getUsers()) {
-    if (auto asyncOp = dyn_cast_or_null<AsyncDoneOp>(user)) {
-      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
-        return op.emitOpError()
-               << "Users of AsyncUpdate's return value must have "
-                  "the same group_id and called_computation";
-      }
-    } else if (auto asyncOp = dyn_cast_or_null<AsyncUpdateOp>(user)) {
-      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
-        return op.emitOpError()
-               << "Users of AsyncUpdate's return value must have "
-                  "the same group_id and called_computation";
-      }
-    } else {
+    if (!isa<AsyncUpdateOp, AsyncDoneOp>(user)) {
       return op.emitOpError() << "Users of AsyncUpdate's return value must be "
                               << "async_update or async_done";
     }
@@ -1333,14 +1309,8 @@ LogicalResult ExportXlaOp(AsyncUpdateOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getBundle(), value_map, &operand, op)))
     return failure();
 
-  mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
-      FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
-  xla::XlaComputation& computation =
-      ctx.converter->GetLoweredComputation(callee);
   value_map[result] = xla::internal::XlaBuilderFriend::BuildAsyncUpdate(
-      ctx.builder, operand, op.getExecutionThread().str(),
-      computation.proto().computations(0).id(),
-      xla::TypeToShape(result.getType()));
+      ctx.builder, operand, xla::TypeToShape(result.getType()));
   return success();
 }
 
@@ -1361,8 +1331,23 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getBundle(), value_map, &operand, op)))
     return failure();
 
-  mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
-      FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
+  // Find the AsyncStartOp that starts the async chain.
+  Operation* start = op;
+  while (start != nullptr && !isa<AsyncStartOp>(start)) {
+    start = start->getOperand(0).getDefiningOp();
+    if (start == nullptr || !isa<AsyncStartOp, AsyncUpdateOp>(start)) {
+      return op.emitError() << "Defining op of AsyncDone's operand must be "
+                            << "async_start or async_update";
+    }
+  }
+
+  if (!isa<AsyncStartOp>(start)) {
+    return op.emitError() << "Could not find async chain start";
+  }
+
+  mlir::func::FuncOp callee =
+      ctx.converter->LookUpSymbol(FlatSymbolRefAttr::get(
+          op->getContext(), cast<AsyncStartOp>(start).getCalledComputation()));
 
   auto all_gather_op =
       dyn_cast_or_null<AllGatherOp>(callee.getBody().front().front());
@@ -1425,8 +1410,6 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
     return success();
   }
 
-  xla::XlaComputation& computation =
-      ctx.converter->GetLoweredComputation(callee);
   std::vector<xla::Shape> subshapes;
   for (const auto& item : op.getResults().getType()) {
     subshapes.push_back(xla::TypeToShape(item));
@@ -1434,8 +1417,7 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   xla::Shape data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
   xla::XlaOp exportedOp = xla::internal::XlaBuilderFriend::BuildAsyncDone(
-      ctx.builder, operand, op.getExecutionThread().str(),
-      computation.proto().computations(0).id(), data_shape);
+      ctx.builder, operand, data_shape);
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = exportedOp;
   } else {

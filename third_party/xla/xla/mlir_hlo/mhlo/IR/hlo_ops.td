@@ -1293,11 +1293,7 @@ def MHLO_AsyncUpdateOp : MHLO_Op<"async_update", [DeclareOpInterfaceMethods<Infe
     See the documentation for AsyncStart for more information.
   }];
 
-  let arguments = (ins
-    MHLO_AsyncBundle:$bundle,
-    FlatSymbolRefAttr:$called_computation,
-    StrAttr:$execution_thread
-    );
+  let arguments = (ins MHLO_AsyncBundle:$bundle);
 
   let results = (outs MHLO_AsyncBundle);
 
@@ -1317,11 +1313,7 @@ def MHLO_AsyncDoneOp : MHLO_Op<"async_done", [DeclareOpInterfaceMethods<InferTyp
     See the documentation for AsyncStart for more information.
   }];
 
-  let arguments = (ins
-    MHLO_AsyncBundle:$bundle,
-    FlatSymbolRefAttr:$called_computation,
-    StrAttr:$execution_thread
-    );
+  let arguments = (ins MHLO_AsyncBundle:$bundle);
 
   let results = (outs Variadic<MHLO_TensorOrTokenOrTuple>);
   let hasVerifier = 1;

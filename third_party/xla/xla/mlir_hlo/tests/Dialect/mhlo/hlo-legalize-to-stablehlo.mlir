@@ -1978,47 +1978,13 @@ func.func @op_async_done(%arg0: tensor<16xf32>) -> tensor<16xf32> {
     called_computation = @async_computation,
     execution_thread = "main"
   } : (tensor<16xf32>) -> !mhlo.async_bundle<tensor<16xf32>, tensor<16xf32>>
-  // At the moment, mhlo.async_done requires its defining op to be non-empty.
-  // As a result, it's impossible to test it in isolation from other async ops.
-  // However, if we test it together with other async ops, we cannot get an
-  // async_done-specific legalization error.
-  %1 = "mhlo.async_done"(%0) {
-    called_computation = @async_computation,
-    execution_thread = "main"
-  } : (!mhlo.async_bundle<tensor<16xf32>, tensor<16xf32>>) -> tensor<16xf32>
-  func.return %1 : tensor<16xf32>
-}
-
-// -----
-
-func.func @async_computation(%arg0: tensor<16xf32>) -> tensor<16xf32>
-  attributes {execution_thread = "main"} {
-  return %arg0 : tensor<16xf32>
-}
-
-// expected-error@+1 {{failed to legalize operation 'func.func' that was explicitly marked illegal}}
-func.func @op_async_start(%arg0: tensor<16xf32>) -> !mhlo.async_bundle<tensor<16xf32>, tensor<16xf32>> {
-  %0 = "mhlo.async_start"(%arg0) {
-    called_computation = @async_computation,
-    execution_thread = "main"
-  } : (tensor<16xf32>) -> !mhlo.async_bundle<tensor<16xf32>, tensor<16xf32>>
-  func.return %0 : !mhlo.async_bundle<tensor<16xf32>, tensor<16xf32>>
-}
-
-// -----
-
-func.func @async_computation(%arg0: tensor<16xf32>) -> tensor<16xf32>
-  attributes {execution_thread = "main"} {
-  return %arg0 : tensor<16xf32>
-}
-
-// expected-error@+1 {{failed to legalize operation 'func.func' that was explicitly marked illegal}}
-func.func @op_async_update(%arg0: !mhlo.async_bundle<tensor<16xf32>, tensor<16xf32>>) -> !mhlo.async_bundle<tensor<16xf32>, tensor<16xf32>> {
-  %0 = "mhlo.async_update"(%arg0) {
-    called_computation = @async_computation,
-    execution_thread = "main"
-  } : (!mhlo.async_bundle<tensor<16xf32>, tensor<16xf32>>) -> !mhlo.async_bundle<tensor<16xf32>, tensor<16xf32>>
-  func.return %0 : !mhlo.async_bundle<tensor<16xf32>, tensor<16xf32>>
+  // At the moment, mhlo.async_update and mhlo.async_done require its defining
+  // op to be non-empty. As a result, it's impossible to test it in isolation
+  // from other async ops.  However, if we test it together with other async
+  // ops, we cannot get an async_update/async_done-specific legalization error.
+  %1 = "mhlo.async_update"(%0) : (!mhlo.async_bundle<tensor<16xf32>, tensor<16xf32>>) -> !mhlo.async_bundle<tensor<16xf32>, tensor<16xf32>>
+  %2 = "mhlo.async_done"(%1) : (!mhlo.async_bundle<tensor<16xf32>, tensor<16xf32>>) -> tensor<16xf32>
+  func.return %2 : tensor<16xf32>
 }
 
 // -----
