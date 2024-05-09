@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/tools/versioning/op_signature.h"
@@ -446,6 +447,14 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       if (op_sig.inputs.size() != 2) {
         return absl::UnimplementedError("ADD requires two input tensors.");
       }
+      const auto& input0 = op_sig.inputs.at(0);
+      const auto& input1 = op_sig.inputs.at(1);
+      if (input0.dims.size() != input1.dims.size()) {
+        return absl::UnimplementedError(
+            absl::StrCat("ADD doesn't support broadcasting - input0: [",
+                         absl::StrJoin(input0.dims, ","), "], input1: [",
+                         absl::StrJoin(input1.dims, ","), "]"));
+      }
       const TfLiteAddParams* tf_options;
       return RetrieveBuiltinData(op_sig, &tf_options);
     }
@@ -690,6 +699,11 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
               "MUL requires one tensor that not less than second in all "
               "dimensions.");
         }
+      } else {
+        return absl::UnimplementedError(
+            absl::StrCat("MUL doesn't support broadcasting - input0: [",
+                         absl::StrJoin(input0.dims, ","), "], input1: [",
+                         absl::StrJoin(input1.dims, ","), "]"));
       }
       const TfLiteMulParams* tf_options;
       RETURN_IF_ERROR(RetrieveBuiltinData(op_sig, &tf_options));
