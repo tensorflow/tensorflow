@@ -260,6 +260,54 @@ XLA_TEST_F(CustomCallTest, LayoutConstrained) {
   LiteralTestUtil::ExpectR2Equal<float>({{3.f, 4.f}, {5.f, 6.f}}, result);
 }
 
+XLA_TEST_F(CustomCallTest, R2Dimensions_3x4) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto input_3x4 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(S32, {3, 4}), "arg3x4"));
+
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      ShapeUtil::MakeTupleShape({}), {input_3x4},
+      "__xla_test$$VerifyR2Dimensions",
+      /*opaque=*/"{rows = 3 : i32, cols = 4 : i32}",
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
+
+  module->AddEntryComputation(builder.Build());
+
+  Literal arg3x4 = LiteralUtil::CreateR2<int>({
+      {0, 0, 0, 0},  //
+      {0, 0, 0, 0},  //
+      {0, 0, 0, 0},  //
+  });
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&arg3x4}));
+}
+
+XLA_TEST_F(CustomCallTest, R2Dimensions_5x2) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto input_5x2 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(S32, {5, 2}), "arg5x2"));
+
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      ShapeUtil::MakeTupleShape({}), {input_5x2},
+      "__xla_test$$VerifyR2Dimensions",
+      /*opaque=*/"{rows = 5 : i32, cols = 2 : i32}",
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
+
+  module->AddEntryComputation(builder.Build());
+
+  Literal arg5x2 = LiteralUtil::CreateR2<int>({
+      {0, 0},  //
+      {0, 0},  //
+      {0, 0},  //
+      {0, 0},  //
+      {0, 0},  //
+  });
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&arg5x2}));
+}
+
 XLA_TEST_F(CustomCallTest, TupleOutput) {
   const char* kModuleStr = R"(
     HloModule m
@@ -640,6 +688,37 @@ XLA_FFI_DEFINE_HANDLER(kFfiTupleRotate, FfiTupleRotate,
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiTupleRotate",
                          "Host", kFfiTupleRotate);
+
+static absl::Status VerifyR2Dimensions(ffi::BufferBase in, int32_t rows,
+                                       int32_t cols) {
+  std::string message;
+  if (in.dimensions.size() != 2) {
+    message += absl::StrFormat("dimensions.size() != 2 because %d != 2\n",
+                               in.dimensions.size());
+  }
+  if (in.dimensions.front() != rows) {
+    message += absl::StrFormat("dimensions.front() != rows because %d != %d\n",
+                               in.dimensions.front(), rows);
+  }
+  if (in.dimensions.back() != cols) {
+    message += absl::StrFormat("dimensions.back() != cols because %d != %d\n",
+                               in.dimensions.back(), cols);
+  }
+  if (!message.empty()) {
+    return absl::Status(absl::StatusCode::kFailedPrecondition,
+                        std::move(message));
+  }
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kVerifyR2Dimensions, VerifyR2Dimensions,
+                       ffi::Ffi::Bind()
+                           .Arg<ffi::BufferBase>()  // in
+                           .Attr<int32_t>("rows")
+                           .Attr<int32_t>("cols"));
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$VerifyR2Dimensions",
+                         "Host", kVerifyR2Dimensions);
 
 }  // namespace
 
