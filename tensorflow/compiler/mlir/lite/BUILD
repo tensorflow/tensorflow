@@ -1071,21 +1071,6 @@ tf_native_cc_binary(
 )
 
 cc_library(
-    name = "emit_error_reporter",
-    srcs = [
-        "emit_error_reporter.cc",
-    ],
-    hdrs = [
-        "emit_error_reporter.h",
-    ],
-    deps = [
-        "//tensorflow/lite/core/api",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
     name = "flatbuffer_export",
     srcs = [
         "flatbuffer_export.cc",

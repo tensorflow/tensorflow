@@ -56,9 +56,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Returns whether GpuExecutable runs with Xla Runtime.
-bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config);
-
 // GPU-targeting implementation of the XLA Executable interface.
 //
 // Launches the given GPU kernel via the StreamExecutor.
