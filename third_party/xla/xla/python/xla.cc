@@ -644,7 +644,7 @@ NB_MODULE(xla_extension, m_nb) {
           "wait_at_barrier",
           [](DistributedRuntimeClient& client, std::string barrier_id,
              int64_t timeout_in_ms,
-             std::optional<absl::Span<const int32_t>> process_ids) {
+             std::optional<std::vector<int32_t>> process_ids) {
             nb::gil_scoped_release gil_release;
             xla::ThrowIfError(client.WaitAtBarrier(
                 barrier_id, absl::Milliseconds(timeout_in_ms), process_ids));
