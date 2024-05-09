@@ -673,7 +673,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
     const HloCustomCallInstruction* instr) {
   TF_ASSIGN_OR_RETURN(const auto gpu_config,
                       instr->backend_config<xla::gpu::GpuBackendConfig>());
-  xla::gpu::GemmBackendConfig config = gpu_config.gemm_backend_config();
+  const xla::gpu::GemmBackendConfig& config = gpu_config.gemm_backend_config();
   xla::gpu::GemmBackendConfig_Epilogue epilogue = config.epilogue();
 
   TF_ASSIGN_OR_RETURN(bool has_vector_bias,
@@ -750,7 +750,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
                instr->operand_count() == 8);
   TF_ASSIGN_OR_RETURN(const auto gpu_config,
                       instr->backend_config<xla::gpu::GpuBackendConfig>());
-  xla::gpu::GemmBackendConfig config = gpu_config.gemm_backend_config();
+  const xla::gpu::GemmBackendConfig& config = gpu_config.gemm_backend_config();
   xla::gpu::GemmBackendConfig_Epilogue epilogue = config.epilogue();
 
   TF_ASSIGN_OR_RETURN(bool has_vector_bias,
@@ -1281,7 +1281,7 @@ absl::Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
 
 absl::Status IrEmitterUnnested::EmitCustomCallThunk(
     const HloCustomCallInstruction* instr) {
-  const std::string call_target_name = instr->custom_call_target();
+  const std::string& call_target_name = instr->custom_call_target();
 
   // Typed FFI custom calls is a replacement for legacy custom calls with
   // a rich type safe API. It's under construction and not fully supported.
@@ -1545,7 +1545,7 @@ absl::Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
 absl::Status IrEmitterUnnested::EmitTopKCustomCall(
     const HloCustomCallInstruction* instr) {
   auto operands = instr->operands();
-  auto shape = instr->shape();
+  const auto& shape = instr->shape();
   TF_RET_CHECK(operands.size() == 1)
       << "Expect only 1 operand for TopK custom call.";
   TF_RET_CHECK(shape.IsTuple())
@@ -1911,7 +1911,7 @@ absl::Status IrEmitterUnnested::EmitSelectAndScatter(
           Load(selected_index_address->getAllocatedType(),
                selected_index_address_slot));
     }
-    const Shape output_shape = instr->shape();
+    const Shape& output_shape = instr->shape();
     llvm::Value* source_value_address =
         source_array.EmitArrayElementAddress(source_index, &b_);
     llvm_ir::IrArray::Index selected_index(selected_multi_index, output_shape,
@@ -2353,7 +2353,7 @@ absl::Status IrEmitterUnnested::EmitWaitForStreamsThunk(
   if (is_async_done) {
     wait_on_streams.push_back(
         ExecutionStreamId(gpu_config.operation_queue_id()));
-  } else if (gpu_config.wait_on_operation_queues().size() == 0) {
+  } else if (gpu_config.wait_on_operation_queues().empty()) {
     // If wait on queue is empty, we just synchronize on the main compute
     // stream from the execution stream.
     wait_on_streams.push_back(Thunk::kDefaultExecutionStreamId);
