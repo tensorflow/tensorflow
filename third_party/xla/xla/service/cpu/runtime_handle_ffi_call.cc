@@ -55,17 +55,51 @@ absl::StatusOr<AttributesMap> BuildAttributesMap(mlir::DictionaryAttr dict) {
   for (auto& kv : dict) {
     std::string_view name = kv.getName().strref();
 
+    auto boolean = [&](mlir::BoolAttr boolean) {
+      attributes[name] = static_cast<bool>(boolean.getValue());
+      return absl::OkStatus();
+    };
+
     auto integer = [&](mlir::IntegerAttr integer) {
-      switch (integer.getType().getIntOrFloatBitWidth()) {
-        case 32:
-          attributes[name] = static_cast<int32_t>(integer.getInt());
-          return absl::OkStatus();
-        case 64:
-          attributes[name] = static_cast<int64_t>(integer.getInt());
-          return absl::OkStatus();
-        default:
-          return absl::InvalidArgumentError(absl::StrCat(
-              "Unsupported integer attribute bit width for attribute: ", name));
+      const bool is_unsigned = integer.getType().isUnsignedInteger();
+      if (is_unsigned) {
+        switch (integer.getType().getIntOrFloatBitWidth()) {
+          case 8:
+            attributes[name] = static_cast<uint8_t>(integer.getUInt());
+            return absl::OkStatus();
+          case 16:
+            attributes[name] = static_cast<uint16_t>(integer.getUInt());
+            return absl::OkStatus();
+          case 32:
+            attributes[name] = static_cast<uint32_t>(integer.getUInt());
+            return absl::OkStatus();
+          case 64:
+            attributes[name] = static_cast<uint64_t>(integer.getUInt());
+            return absl::OkStatus();
+          default:
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Unsupported integer attribute bit width for attribute: ",
+                name));
+        }
+      } else {
+        switch (integer.getType().getIntOrFloatBitWidth()) {
+          case 8:
+            attributes[name] = static_cast<int8_t>(integer.getInt());
+            return absl::OkStatus();
+          case 16:
+            attributes[name] = static_cast<int16_t>(integer.getInt());
+            return absl::OkStatus();
+          case 32:
+            attributes[name] = static_cast<int32_t>(integer.getInt());
+            return absl::OkStatus();
+          case 64:
+            attributes[name] = static_cast<int64_t>(integer.getInt());
+            return absl::OkStatus();
+          default:
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Unsupported integer attribute bit width for attribute: ",
+                name));
+        }
       }
     };
 
@@ -87,6 +121,7 @@ absl::StatusOr<AttributesMap> BuildAttributesMap(mlir::DictionaryAttr dict) {
 
     TF_RETURN_IF_ERROR(
         llvm::TypeSwitch<mlir::Attribute, absl::Status>(kv.getValue())
+            .Case<mlir::BoolAttr>(boolean)
             .Case<mlir::IntegerAttr>(integer)
             .Case<mlir::FloatAttr>(fp)
             .Case<mlir::StringAttr>(str)

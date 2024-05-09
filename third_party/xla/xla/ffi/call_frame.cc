@@ -133,17 +133,13 @@ struct CallFrame::Dictionary {
 };
 
 struct CallFrame::Array {
-  std::variant<std::vector<int8_t>, std::vector<int16_t>, std::vector<int32_t>,
-               std::vector<int64_t>, std::vector<float>,
-               std::vector<double>>
-      value;  // XLA_FFI_Array::data
+  CallFrameBuilder::Array value;  // XLA_FFI_Array::data
 
   XLA_FFI_Array array = {XLA_FFI_Array_STRUCT_SIZE, nullptr};
 };
 
 struct CallFrame::Scalar {
-  std::variant<bool, int8_t, int16_t, int32_t, int64_t, float, double>
-      value;  // XLA_FFI_Scalar::value
+  CallFrameBuilder::Scalar value;  // XLA_FFI_Scalar::value
 
   XLA_FFI_Scalar scalar = {XLA_FFI_Scalar_STRUCT_SIZE, nullptr};
 };
@@ -372,6 +368,14 @@ static XLA_FFI_DataType GetDataType() {
     return XLA_FFI_DataType_S32;
   } else if constexpr (std::is_same_v<int64_t, T>) {
     return XLA_FFI_DataType_S64;
+  } else if constexpr (std::is_same_v<uint8_t, T>) {
+    return XLA_FFI_DataType_U8;
+  } else if constexpr (std::is_same_v<uint16_t, T>) {
+    return XLA_FFI_DataType_U16;
+  } else if constexpr (std::is_same_v<uint32_t, T>) {
+    return XLA_FFI_DataType_U32;
+  } else if constexpr (std::is_same_v<uint64_t, T>) {
+    return XLA_FFI_DataType_U64;
   } else if constexpr (std::is_same_v<float, T>) {
     return XLA_FFI_DataType_F32;
   } else if constexpr (std::is_same_v<double, T>) {
