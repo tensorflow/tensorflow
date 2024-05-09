@@ -44,21 +44,44 @@ else
     fi
 fi
 
+export PYTHON_BIN_PATH=`which python3`
 PYTHON_VERSION=`python3 -c "import sys;print(f'{sys.version_info.major}.{sys.version_info.minor}')"`
 export TF_PYTHON_VERSION=$PYTHON_VERSION
 export TF_NEED_ROCM=1
 export ROCM_PATH=$ROCM_INSTALL_DIR
 
+if [ -f /usertools/rocm.bazelrc ]; then
+        # Use the bazelrc files in /usertools if available
+	if [ ! -d /tf ];then
+           # The bazelrc files in /usertools expect /tf to exist
+           mkdir /tf
+        fi
+ 
+	bazel \
+    		--bazelrc=/usertools/rocm.bazelrc \
+        	test \
+    		--config=sigbuild_local_cache \
+    		--config=rocm \
+    		--config=xla_cpp_filters \
+    		--test_output=errors \
+    		--local_test_jobs=${N_TEST_JOBS} \
+    		--test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
+    		--test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
+    		--action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
+    		-- @local_xla//xla/...
+else
 
-bazel \
-    --bazelrc=/usertools/rocm.bazelrc \
-        test \
-    --config=sigbuild_local_cache \
-    --config=rocm \
-    --config=xla_cpp_filters \
-    --test_output=errors \
-    --local_test_jobs=${N_TEST_JOBS} \
-    --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
-    --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
-    --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
-    -- @local_xla//xla/...
+        yes "" | $PYTHON_BIN_PATH configure.py
+	bazel \
+        	test \
+		-k \
+		--test_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-no_rocm --keep_going \
+		--build_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-no_rocm \
+    		--config=rocm \
+    		--test_output=errors \
+    		--local_test_jobs=${N_TEST_JOBS} \
+    		--test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
+    		--test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
+    		--action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
+    		-- @local_xla//xla/... @local_xla//build_tools/...
+fi
