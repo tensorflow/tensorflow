@@ -119,6 +119,10 @@ class Span {
     return size() == other.size() && std::equal(begin(), end(), other.begin());
   }
 
+  T& front() const { return data_[0]; }
+  T& back() const { return data_[size_ - 1]; }
+  Span<T> first(size_t n) const { return Span<T>(data_, n); }
+  Span<T> last(size_t n) const { return Span<T>(data_ + size_ - n, n); }
   size_t size() const { return size_; }
 
   T* begin() const { return data_; }
