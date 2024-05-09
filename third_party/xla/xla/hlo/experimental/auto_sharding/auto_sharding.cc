@@ -4503,8 +4503,7 @@ absl::StatusOr<bool> AutoSharding::Run(
 
   absl::StatusOr<bool> module_is_changed;
   if (skip_auto_sharding) {
-    LOG(FATAL) << "The auto-sharding solver has timed out without a solution.";
-    module_is_changed = false;
+    module_is_changed = false;  // The auto-sharding solver timed out.
   } else {
     std::string trying_to_find;
     if (option_.try_multiple_mesh_shapes) {
@@ -4584,6 +4583,10 @@ absl::StatusOr<bool> AutoSharding::Run(
 
   XLA_VLOG_LINES(6, absl::StrCat("After auto sharding:\n", module->ToString()));
   DumpHloModuleIfEnabled(*module, "after_auto_spmd_sharding");
+
+  if (skip_auto_sharding) {
+    LOG(FATAL) << "The auto-sharding solver has timed out without a solution.";
+  }
 
   return module_is_changed;
 }
