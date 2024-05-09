@@ -62,12 +62,12 @@ mlir::LogicalResult ShouldMergeClusters(mlir::tf_device::ClusterOp cluster_a,
   auto mesh_a_or_status = ExtractDeviceMeshFromOp(cluster_a.getOperation());
   if (!mesh_a_or_status.ok())
     return cluster_a.emitOpError(
-        tsl::NullTerminatedMessage(mesh_a_or_status.status()));
+        absl::StatusMessageAsCStr(mesh_a_or_status.status()));
 
   auto mesh_b_or_status = ExtractDeviceMeshFromOp(cluster_b.getOperation());
   if (!mesh_b_or_status.ok())
     return cluster_b.emitOpError(
-        tsl::NullTerminatedMessage(mesh_b_or_status.status()));
+        absl::StatusMessageAsCStr(mesh_b_or_status.status()));
 
   auto mesh_a = mesh_a_or_status.value();
   auto mesh_b = mesh_b_or_status.value();
