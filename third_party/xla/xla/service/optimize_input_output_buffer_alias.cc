@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -44,13 +45,13 @@ absl::StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
     return false;
   }
 
-  // Collects all buffer donors in a vector.
+  // For each memory space, collects all buffer donors in a vector.
   struct DonorEntry {
     int64_t param_number;
     ShapeIndex index;
     int64_t shape_size;
   };
-  std::vector<DonorEntry> donor_vectors;
+  absl::flat_hash_map<int64_t, std::vector<DonorEntry>> donors;
 
   for (int64_t param_number = 0; param_number < input_shapes.size();
        ++param_number) {
@@ -69,17 +70,18 @@ absl::StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
           !buffer_donor_config->ParameterIsBufferDonor(param_number, index)) {
         return;
       }
-      donor_vectors.emplace_back(
+      int64_t memory_space = subshape.layout().memory_space();
+      donors[memory_space].emplace_back(
           DonorEntry{param_number, index, shape_size_fn_(subshape)});
     });
   }
 
-  // Collects all buffer donees in a vector.
+  // For each memory space, collects all buffer donees in a vector.
   struct DoneeEntry {
     ShapeIndex index;
     int64_t shape_size;
   };
-  std::vector<DoneeEntry> donee_vectors;
+  absl::flat_hash_map<int64_t, std::vector<DoneeEntry>> donees;
   TF_RET_CHECK(LayoutUtil::HasLayout(output_shape));
   VLOG(1) << "output_shape: " << output_shape.ToString();
   ShapeUtil::ForEachSubshape(
@@ -90,40 +92,50 @@ absl::StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
         if (alias_config->OutputHasAlias(index)) {
           return;
         }
-        donee_vectors.emplace_back(DoneeEntry{index, shape_size_fn_(subshape)});
+        int64_t memory_space = subshape.layout().memory_space();
+        donees[memory_space].emplace_back(
+            DoneeEntry{index, shape_size_fn_(subshape)});
       });
 
-  // Sort donor and donees by their shape size in non-increasing order.
-  absl::c_stable_sort(donor_vectors,
-                      [](const DonorEntry& a, const DonorEntry& b) -> bool {
-                        return a.shape_size > b.shape_size;
-                      });
-  absl::c_stable_sort(donee_vectors,
-                      [](const DoneeEntry& a, const DoneeEntry& b) -> bool {
-                        return a.shape_size > b.shape_size;
-                      });
+  for (auto& [memory_space, donor_vector] : donors) {
+    auto donee_it = donees.find(memory_space);
+    if (donee_it == donees.end()) {
+      continue;
+    }
+    auto& donee_vector = donee_it->second;
 
-  // Match donors and donees with two pointers. The larger size a donee has, the
-  // more prioritized the donee will get matched.
-  int64_t donor_vector_index = 0;
-  int64_t donee_vector_index = 0;
-  while (donor_vector_index < donor_vectors.size() &&
-         donee_vector_index < donee_vectors.size()) {
-    const auto& donor = donor_vectors[donor_vector_index];
-    const auto& donee = donee_vectors[donee_vector_index];
-    if (donor.shape_size > donee.shape_size) {
-      donor_vector_index += 1;
-    } else if (donor.shape_size < donee.shape_size) {
-      donee_vector_index += 1;
-    } else {
-      // The current donor and donee match.
-      TF_RETURN_IF_ERROR(alias_config->SetUpAlias(
-          donee.index, donor.param_number, donor.index));
-      TF_RETURN_IF_ERROR(buffer_donor_config->RemoveBufferDonor(
-          donor.param_number, donor.index));
-      donor_vector_index += 1;
-      donee_vector_index += 1;
-      changed = true;
+    // Sort donor and donees by their shape size in non-increasing order.
+    absl::c_stable_sort(donor_vector,
+                        [](const DonorEntry& a, const DonorEntry& b) -> bool {
+                          return a.shape_size > b.shape_size;
+                        });
+    absl::c_stable_sort(donee_vector,
+                        [](const DoneeEntry& a, const DoneeEntry& b) -> bool {
+                          return a.shape_size > b.shape_size;
+                        });
+
+    // Match donors and donees with two pointers. The larger size a donee has,
+    // the more prioritized the donee will get matched.
+    int64_t donor_vector_index = 0;
+    int64_t donee_vector_index = 0;
+    while (donor_vector_index < donor_vector.size() &&
+           donee_vector_index < donee_vector.size()) {
+      const auto& donor = donor_vector[donor_vector_index];
+      const auto& donee = donee_vector[donee_vector_index];
+      if (donor.shape_size > donee.shape_size) {
+        donor_vector_index += 1;
+      } else if (donor.shape_size < donee.shape_size) {
+        donee_vector_index += 1;
+      } else {
+        // The current donor and donee match.
+        TF_RETURN_IF_ERROR(alias_config->SetUpAlias(
+            donee.index, donor.param_number, donor.index));
+        TF_RETURN_IF_ERROR(buffer_donor_config->RemoveBufferDonor(
+            donor.param_number, donor.index));
+        donor_vector_index += 1;
+        donee_vector_index += 1;
+        changed = true;
+      }
     }
   }
 
