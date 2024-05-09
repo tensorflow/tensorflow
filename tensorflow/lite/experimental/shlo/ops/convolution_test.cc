@@ -307,6 +307,88 @@ TYPED_TEST_SUITE(NonQuantizedIntConvolutionTest, IntTestTypes, TestParamNames);
 TYPED_TEST(NonQuantizedIntConvolutionTest, IntTestTypesTensorsWork1) {
   using StorageT = typename TypeParam::StorageT;
 
+  const Shape shape_lhs({1, 4, 4, 1});
+  const Shape shape_rhs({4, 2, 1, 1});
+  const Shape shape_padding({2, 2});
+  const Shape shape_parametrs({2});
+  const Shape shape_result({1, 4, 2, 1});
+
+  Vector<int64_t> lhs_data_int{1, 3, 10, 12, 2, 4, 11, 13,
+                               5, 7, 14, 16, 6, 8, 15, 17};
+  Vector<StorageT> lhs_data(lhs_data_int.begin(), lhs_data_int.end());
+  Vector<int64_t> rhs_data_int{1, 1, 1, 1, 1, 1, 1, 1};
+  Vector<StorageT> rhs_data(rhs_data_int.begin(), rhs_data_int.end());
+  Vector<StorageT> output_data(shape_result.NumElements());
+  Vector<int64_t> window_stride_values({4, 4});
+  Vector<int64_t> padding_values({0, 0, 0, 0});
+  Vector<int64_t> lhs_dilation_values({2, 2});
+  Vector<int64_t> rhs_dilation_values({1, 1});
+  int64_t input_batch_dimension = 0;
+  int64_t input_feature_dimension = 1;
+  Vector<int64_t> input_spatial_dimensions_values({2, 3});
+  int64_t kernel_input_feature_dimension = 1;
+  int64_t kernel_output_feature_dimension = 0;
+  Vector<int64_t> kernel_spatial_dimensions_values({2, 3});
+  int64_t output_batch_dimension = 0;
+  int64_t output_feature_dimension = 1;
+  Vector<int64_t> output_spatial_dimensions_values({2, 3});
+  int64_t feature_group_count = 2;
+  int64_t batch_group_count = 1;
+
+  Tensor lhs{.type = TensorType{.shape = shape_lhs,
+                                .element_type = TypeParam::kStorage},
+             .data = lhs_data.data()};
+  Tensor rhs{.type = TensorType{.shape = shape_rhs,
+                                .element_type = TypeParam::kStorage},
+             .data = rhs_data.data()};
+  absl::Span<int64_t> window_stride(window_stride_values);
+  Tensor padding{.type = TensorType{.shape = shape_padding,
+                                    .element_type = DataType::kSI64},
+                 .data = padding_values.data()};
+  absl::Span<int64_t> lhs_dilation(lhs_dilation_values);
+  absl::Span<int64_t> rhs_dilation(rhs_dilation_values);
+  absl::Span<int64_t> input_spatial_dimensions(input_spatial_dimensions_values);
+  absl::Span<int64_t> kernel_spatial_dimensions(
+      kernel_spatial_dimensions_values);
+  absl::Span<int64_t> output_spatial_dimensions(
+      output_spatial_dimensions_values);
+  Tensor output_tensor{.type = TensorType{.shape = shape_result,
+                                          .element_type = TypeParam::kStorage},
+                       .data = output_data.data()};
+
+  std::array<PrecisionTypes, 2> precision_configs = {PrecisionTypes::DEFAULT,
+                                                     PrecisionTypes::DEFAULT};
+
+  auto op = Create(ConvolutionOp::Attributes{
+      .window_strides = window_stride,
+      .padding = padding,
+      .lhs_dilation = lhs_dilation,
+      .rhs_dilation = rhs_dilation,
+      .input_batch_dimension = input_batch_dimension,
+      .input_feature_dimension = input_feature_dimension,
+      .input_spatial_dimensions = input_spatial_dimensions,
+      .kernel_input_feature_dimension = kernel_input_feature_dimension,
+      .kernel_output_feature_dimension = kernel_output_feature_dimension,
+      .kernel_spatial_dimensions = kernel_spatial_dimensions,
+      .output_batch_dimension = output_batch_dimension,
+      .output_feature_dimension = output_feature_dimension,
+      .output_spatial_dimensions = output_spatial_dimensions,
+      .feature_group_count = feature_group_count,
+      .batch_group_count = batch_group_count,
+      .precision_configs = precision_configs});
+
+  Vector<int64_t> expected_data_int{3, 21, 3, 21, 11, 29, 11, 29};
+  Vector<StorageT> expected_data(expected_data_int.begin(),
+                                 expected_data_int.end());
+
+  ASSERT_OK(Prepare(op, lhs, rhs, output_tensor));
+  ASSERT_OK(Evaluate(op, lhs, rhs, output_tensor));
+  EXPECT_THAT(output_data, Pointwise(Eq(), expected_data));
+}
+
+TYPED_TEST(NonQuantizedIntConvolutionTest, IntTestTypesTensorsWork2) {
+  using StorageT = typename TypeParam::StorageT;
+
   const Shape shape_lhs({1, 1, 10});
   const Shape shape_rhs({1, 1, 1});
   const Shape shape_padding({1, 2});
