@@ -30,21 +30,21 @@ enum class PrecisionTypes {
 class DotGeneralOp {
  public:
   struct Attributes {
-    absl::Span<int64_t> lhs_batching_dimensions;
-    absl::Span<int64_t> rhs_batching_dimensions;
-    absl::Span<int64_t> lhs_contracting_dimensions;
-    absl::Span<int64_t> rhs_contracting_dimensions;
+    absl::Span<const Axis> lhs_batching_dimensions;
+    absl::Span<const Axis> rhs_batching_dimensions;
+    absl::Span<const Axis> lhs_contracting_dimensions;
+    absl::Span<const Axis> rhs_contracting_dimensions;
     std::array<PrecisionTypes, 2> precision_configs;
   };
   Attributes attributes;
-  absl::InlinedVector<size_t, 6> lhs_result_dims;
-  absl::InlinedVector<size_t, 6> rhs_result_dims;
-  absl::InlinedVector<size_t, 6> lhs_index;
-  absl::InlinedVector<size_t, 6> rhs_index;
-  absl::InlinedVector<size_t, 6> lhs_index_helper;
-  absl::InlinedVector<size_t, 6> rhs_index_helper;
-  absl::InlinedVector<size_t, 6> output_index;
-  absl::InlinedVector<size_t, 6> output_shape;
+  Tensor lhs_dequantized;
+  Tensor rhs_dequantized;
+  Tensor output_dequantized;
+  absl::InlinedVector<Axis, kMaxNumDimensions> lhs_result_dims;
+  absl::InlinedVector<Axis, kMaxNumDimensions> rhs_result_dims;
+  std::vector<std::byte> lhs_dequantized_data;
+  std::vector<std::byte> rhs_dequantized_data;
+  std::vector<std::byte> output_dequantized_data;
 };
 
 DotGeneralOp Create(DotGeneralOp::Attributes attributes);

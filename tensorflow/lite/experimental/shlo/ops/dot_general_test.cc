@@ -1,4 +1,4 @@
-/*Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -61,14 +61,14 @@ TYPED_TEST(NonQuantizedBoolDotGeneralTest, BoolTestTypesTensorsWork1) {
                                true, true, true, true, true, true, true,
                                true, true, true, true, true, true, true};
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{0};
-  Vector<int64_t> rhsb_dim{0};
-  Vector<int64_t> lhsc_dim{2};
-  Vector<int64_t> rhsc_dim{1};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{0};
+  Vector<Axis> rhsb_dim{0};
+  Vector<Axis> lhsc_dim{2};
+  Vector<Axis> rhsc_dim{1};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
@@ -110,14 +110,14 @@ TYPED_TEST(NonQuantizedBoolDotGeneralTest, BoolTestTypesTensorsWork2) {
   Vector<StorageT> rhs_data = {true, true,  true, false,
                                true, false, true, false};
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{};
-  Vector<int64_t> rhsb_dim{};
-  Vector<int64_t> lhsc_dim{1};
-  Vector<int64_t> rhsc_dim{0};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{};
+  Vector<Axis> rhsb_dim{};
+  Vector<Axis> lhsc_dim{1};
+  Vector<Axis> rhsc_dim{0};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
              .data = lhs_data.data()};
@@ -159,14 +159,14 @@ TYPED_TEST(NonQuantizedIntDotGeneralTest, IntTestTypesTensorsWork1) {
   Vector<int64_t> rhs_data_int{1, 0, 0, 1};
   Vector<StorageT> rhs_data(rhs_data_int.begin(), rhs_data_int.end());
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{};
-  Vector<int64_t> rhsb_dim{};
-  Vector<int64_t> lhsc_dim{};
-  Vector<int64_t> rhsc_dim{};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{};
+  Vector<Axis> rhsb_dim{};
+  Vector<Axis> lhsc_dim{};
+  Vector<Axis> rhsc_dim{};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
@@ -215,14 +215,14 @@ TYPED_TEST(NonQuantizedIntDotGeneralTest, IntTestTypesTensorsWork2) {
                                -3, 0, 3,  -1, 2,  1,  -2, -3};
   Vector<StorageT> rhs_data(rhs_data_int.begin(), rhs_data_int.end());
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{0};
-  Vector<int64_t> rhsb_dim{0};
-  Vector<int64_t> lhsc_dim{2};
-  Vector<int64_t> rhsc_dim{1};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{0};
+  Vector<Axis> rhsb_dim{0};
+  Vector<Axis> lhsc_dim{2};
+  Vector<Axis> rhsc_dim{1};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
@@ -266,14 +266,21 @@ TYPED_TEST(NonQuantizedIntDotGeneralTest, IntTestTypesTensorsWork3) {
   Vector<int64_t> rhs_data_int{2, 1, 1, 2, 2, 2, 1, 1};
   Vector<StorageT> rhs_data(rhs_data_int.begin(), rhs_data_int.end());
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{};
-  Vector<int64_t> rhsb_dim{};
-  Vector<int64_t> lhsc_dim{1};
-  Vector<int64_t> rhsc_dim{1};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<int64_t> expected_data_int{4,  5,  6,  3,  10, 11, 14, 7,
+                                    16, 17, 22, 11, 22, 23, 30, 15};
+  Vector<StorageT> expected_data(expected_data_int.begin(),
+                                 expected_data_int.end());
+
+  Vector<Axis> lhsb_dim{};
+  Vector<Axis> rhsb_dim{};
+  Vector<Axis> lhsc_dim{1};
+  Vector<Axis> rhsc_dim{1};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
+  std::array<PrecisionTypes, 2> precision_configs = {PrecisionTypes::DEFAULT,
+                                                     PrecisionTypes::DEFAULT};
 
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
@@ -284,8 +291,6 @@ TYPED_TEST(NonQuantizedIntDotGeneralTest, IntTestTypesTensorsWork3) {
   Tensor output_tensor{
       .type = TensorType{.shape = shape_r, .element_type = TypeParam::kStorage},
       .data = output_data.data()};
-  std::array<PrecisionTypes, 2> precision_configs = {PrecisionTypes::DEFAULT,
-                                                     PrecisionTypes::DEFAULT};
 
   auto op = Create(DotGeneralOp::Attributes{
       .lhs_batching_dimensions = lhs_batching_dimensions,
@@ -293,11 +298,6 @@ TYPED_TEST(NonQuantizedIntDotGeneralTest, IntTestTypesTensorsWork3) {
       .lhs_contracting_dimensions = lhs_contracting_dimensions,
       .rhs_contracting_dimensions = rhs_contracting_dimensions,
       .precision_configs = precision_configs});
-
-  Vector<int64_t> expected_data_int{4,  5,  6,  3,  10, 11, 14, 7,
-                                    16, 17, 22, 11, 22, 23, 30, 15};
-  Vector<StorageT> expected_data(expected_data_int.begin(),
-                                 expected_data_int.end());
 
   ASSERT_OK(Prepare(op, lhs, rhs, output_tensor));
   ASSERT_OK(Evaluate(op, lhs, rhs, output_tensor));
@@ -316,14 +316,14 @@ TYPED_TEST(NonQuantizedIntDotGeneralTest, IntTestTypesTensorsWork4) {
   Vector<int64_t> rhs_data_int{0, 4, 2, 3, 3, 3, -6, -2, 1, -1, 1, 0};
   Vector<StorageT> rhs_data(rhs_data_int.begin(), rhs_data_int.end());
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{0};
-  Vector<int64_t> rhsb_dim{0};
-  Vector<int64_t> lhsc_dim{2, 1};
-  Vector<int64_t> rhsc_dim{1, 2};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{0};
+  Vector<Axis> rhsb_dim{0};
+  Vector<Axis> lhsc_dim{2, 1};
+  Vector<Axis> rhsc_dim{1, 2};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
@@ -369,14 +369,14 @@ TYPED_TEST(NonQuantizedkF32DotGeneralTest, kF32TestTypesTensorsWork1) {
   Vector<StorageT> lhs_data{-1.73818827, 6.32115507, 2.81545162, -1.37914991};
   Vector<StorageT> rhs_data{-4.02553225, -2.70646834, 3.14252234, 1.59961236};
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{};
-  Vector<int64_t> rhsb_dim{};
-  Vector<int64_t> lhsc_dim{0};
-  Vector<int64_t> rhsc_dim{0};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{};
+  Vector<Axis> rhsb_dim{};
+  Vector<Axis> lhsc_dim{0};
+  Vector<Axis> rhsc_dim{0};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
@@ -837,14 +837,14 @@ TYPED_TEST(NonQuantizedkF32DotGeneralTest, kF32TestTypesTensorsWork2) {
       3.7247982,     1.82866955,     -1.18727612,   -0.131878763,
       2.83965039,    0.092409797,    -1.11850524,   0.138695642};
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{0, 1};
-  Vector<int64_t> rhsb_dim{1, 0};
-  Vector<int64_t> lhsc_dim{4, 3};
-  Vector<int64_t> rhsc_dim{3, 2};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{0, 1};
+  Vector<Axis> rhsb_dim{1, 0};
+  Vector<Axis> lhsc_dim{4, 3};
+  Vector<Axis> rhsc_dim{3, 2};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
@@ -1142,14 +1142,14 @@ TYPED_TEST(NonQuantizedkF32DotGeneralTest, kF32TestTypesTensorsWork3) {
       0.864559352,   -1.84499454,   -3.90309215,  0.50124079,    1.65204442,
       3.63313937,    -3.55344439,   2.04770899,   -1.08008444};
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{0, 1, 2};
-  Vector<int64_t> rhsb_dim{0, 1, 2};
-  Vector<int64_t> lhsc_dim{4};
-  Vector<int64_t> rhsc_dim{3};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{0, 1, 2};
+  Vector<Axis> rhsb_dim{0, 1, 2};
+  Vector<Axis> lhsc_dim{4};
+  Vector<Axis> rhsc_dim{3};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
@@ -1245,14 +1245,14 @@ TYPED_TEST(NonQuantizedkF32DotGeneralTest, kF32TestTypesTensorsWork4) {
   Vector<StorageT> lhs_data{1.1, 2.2, 3.3, 4.3, 5.5, 6, 7, 8};
   Vector<StorageT> rhs_data{1.2, 0, 0, 1.2, 1.2, 0, 0, 1.2};
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{0};
-  Vector<int64_t> rhsb_dim{0};
-  Vector<int64_t> lhsc_dim{2};
-  Vector<int64_t> rhsc_dim{1};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{0};
+  Vector<Axis> rhsb_dim{0};
+  Vector<Axis> lhsc_dim{2};
+  Vector<Axis> rhsc_dim{1};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
@@ -1294,14 +1294,14 @@ TYPED_TEST(NonQuantizedkF32DotGeneralTest, kF32TestTypesTensorsWork5) {
       -6.15009593,  -5.9722824, -0.454436153, -1.66895545,
       1.09934378,   5.87006092, -3.10807371,  0.333222806};
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{};
-  Vector<int64_t> rhsb_dim{};
-  Vector<int64_t> lhsc_dim{0};
-  Vector<int64_t> rhsc_dim{0};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{};
+  Vector<Axis> rhsb_dim{};
+  Vector<Axis> lhsc_dim{0};
+  Vector<Axis> rhsc_dim{0};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
@@ -1349,14 +1349,14 @@ TYPED_TEST(NonQuantizedkBF16DotGeneralTest, kBF16TestTypesTensorsWork1) {
   Vector<float> rhs_data_float{8.476560e-01, -3.171880e+00, 8.984370e-01};
   Vector<StorageT> rhs_data(rhs_data_float.begin(), rhs_data_float.end());
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{};
-  Vector<int64_t> rhsb_dim{};
-  Vector<int64_t> lhsc_dim{0};
-  Vector<int64_t> rhsc_dim{0};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{};
+  Vector<Axis> rhsb_dim{};
+  Vector<Axis> lhsc_dim{0};
+  Vector<Axis> rhsc_dim{0};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
@@ -1402,14 +1402,14 @@ TYPED_TEST(NonQuantizedkBF16DotGeneralTest, kBF16TestTypesTensorsWork2) {
                                4.902340e-01,  -5.968750e+00, -3.671880e+00};
   Vector<StorageT> rhs_data(rhs_data_float.begin(), rhs_data_float.end());
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{0};
-  Vector<int64_t> rhsb_dim{0};
-  Vector<int64_t> lhsc_dim{2, 1};
-  Vector<int64_t> rhsc_dim{1, 2};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{0};
+  Vector<Axis> rhsb_dim{0};
+  Vector<Axis> lhsc_dim{2, 1};
+  Vector<Axis> rhsc_dim{1, 2};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
@@ -1459,14 +1459,14 @@ TYPED_TEST(NonQuantizedkF16DotGeneralTest, kF16TestTypesTensorsWork1) {
                                1.2, 0, 0, 1.2, 1.2, 0, 0, 1.2};
   Vector<StorageT> rhs_data(rhs_data_float.begin(), rhs_data_float.end());
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{0, 3};
-  Vector<int64_t> rhsb_dim{0, 3};
-  Vector<int64_t> lhsc_dim{2};
-  Vector<int64_t> rhsc_dim{2};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{0, 3};
+  Vector<Axis> rhsb_dim{0, 3};
+  Vector<Axis> lhsc_dim{2};
+  Vector<Axis> rhsc_dim{2};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
@@ -1515,14 +1515,14 @@ TYPED_TEST(NonQuantizedkF16DotGeneralTest, kF16TestTypesTensorsWork2) {
                                -2.01860809};
   Vector<StorageT> rhs_data(rhs_data_float.begin(), rhs_data_float.end());
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{};
-  Vector<int64_t> rhsb_dim{};
-  Vector<int64_t> lhsc_dim{1};
-  Vector<int64_t> rhsc_dim{0};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{};
+  Vector<Axis> rhsb_dim{};
+  Vector<Axis> lhsc_dim{1};
+  Vector<Axis> rhsc_dim{0};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   Tensor lhs{.type = TensorType{.shape = shape_lhs,
                                 .element_type = TypeParam::kStorage},
@@ -1570,14 +1570,14 @@ TYPED_TEST(QuantizedIntDotGeneralTest, QuantizedTestTypesTensorsWork1) {
   Vector<StorageT> lhs_data = Vector<StorageT>{10, 8, 1, 2};
   Vector<StorageT> rhs_data = Vector<StorageT>{1, 0, 1, 1};
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{0};
-  Vector<int64_t> rhsb_dim{0};
-  Vector<int64_t> lhsc_dim{1};
-  Vector<int64_t> rhsc_dim{1};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{0};
+  Vector<Axis> rhsb_dim{0};
+  Vector<Axis> lhsc_dim{1};
+  Vector<Axis> rhsc_dim{1};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
   const ExpressedT scale = static_cast<ExpressedT>(2);
   const StorageT zero_point = static_cast<StorageT>(0);
   const QuantizedElementTypePerTensor tensor_type =
@@ -1629,14 +1629,14 @@ TYPED_TEST(QuantizedIntDotGeneralTest, QuantizedTestTypesTensorsWork2) {
   Vector<StorageT> lhs_data =
       Vector<StorageT>{0, 0, 2, 0, 1, 2, 4, 2, 0, 1, 2, 6};
   Vector<StorageT> rhs_data = Vector<StorageT>{1, 1, 0};
-  Vector<int64_t> lhsb_dim{};
-  Vector<int64_t> rhsb_dim{};
-  Vector<int64_t> lhsc_dim{1};
-  Vector<int64_t> rhsc_dim{0};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{};
+  Vector<Axis> rhsb_dim{};
+  Vector<Axis> lhsc_dim{1};
+  Vector<Axis> rhsc_dim{0};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
   Vector<StorageT> output_data(shape_r.NumElements());
 
   const ExpressedT scale = static_cast<ExpressedT>(1.2);
@@ -1694,14 +1694,14 @@ TYPED_TEST(QuantizedIntDotGeneralTest, QuantizedTestTypesTensorsWork3) {
   Vector<StorageT> lhs_data = Vector<StorageT>{1, 2, 3, 4, 5, 6, 7, 8};
   Vector<StorageT> rhs_data = Vector<StorageT>{2, 0, 0, 2, 2, 0, 0, 2};
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{0};
-  Vector<int64_t> rhsb_dim{0};
-  Vector<int64_t> lhsc_dim{2};
-  Vector<int64_t> rhsc_dim{1};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{0};
+  Vector<Axis> rhsb_dim{0};
+  Vector<Axis> lhsc_dim{2};
+  Vector<Axis> rhsc_dim{1};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
   const ExpressedT scale = static_cast<ExpressedT>(1.3);
   const StorageT zero_point = static_cast<StorageT>(0);
   std::initializer_list<float> zero_points = {0, 0};
@@ -1760,14 +1760,14 @@ TYPED_TEST(QuantizedIntDotGeneralTest, QuantizedTestTypesTensorsWork4) {
   Vector<StorageT> lhs_data = Vector<StorageT>{1, 2, 3, 4, 5, 6, 7, 8};
   Vector<StorageT> rhs_data = Vector<StorageT>{2, 0, 0, 2, 2, 0, 0, 2};
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{0};
-  Vector<int64_t> rhsb_dim{0};
-  Vector<int64_t> lhsc_dim{2};
-  Vector<int64_t> rhsc_dim{1};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{0};
+  Vector<Axis> rhsb_dim{0};
+  Vector<Axis> lhsc_dim{2};
+  Vector<Axis> rhsc_dim{1};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   const ExpressedT scale = static_cast<ExpressedT>(1.4);
   const StorageT zero_point = static_cast<StorageT>(0);
@@ -1833,14 +1833,14 @@ TYPED_TEST(QuantizedIntDotGeneralTest, QuantizedTestTypesTensorsWork5) {
   Vector<StorageT> lhs_data{2, 0, 0, 0, 5, -3, 0, 4, -1, 0, 0, -1};
   Vector<StorageT> rhs_data{0, 4, 2, 3, 3, 3, -6, -2, 1, -1, 1, 0};
   Vector<StorageT> output_data(shape_r.NumElements());
-  Vector<int64_t> lhsb_dim{0};
-  Vector<int64_t> rhsb_dim{0};
-  Vector<int64_t> lhsc_dim{2, 1};
-  Vector<int64_t> rhsc_dim{1, 2};
-  absl::Span<int64_t> lhs_batching_dimensions(lhsb_dim);
-  absl::Span<int64_t> rhs_batching_dimensions(rhsb_dim);
-  absl::Span<int64_t> lhs_contracting_dimensions(lhsc_dim);
-  absl::Span<int64_t> rhs_contracting_dimensions(rhsc_dim);
+  Vector<Axis> lhsb_dim{0};
+  Vector<Axis> rhsb_dim{0};
+  Vector<Axis> lhsc_dim{2, 1};
+  Vector<Axis> rhsc_dim{1, 2};
+  absl::Span<const Axis> lhs_batching_dimensions(lhsb_dim);
+  absl::Span<const Axis> rhs_batching_dimensions(rhsb_dim);
+  absl::Span<const Axis> lhs_contracting_dimensions(lhsc_dim);
+  absl::Span<const Axis> rhs_contracting_dimensions(rhsc_dim);
 
   const ExpressedT scale = static_cast<ExpressedT>(1.4);
   const StorageT zero_point = static_cast<StorageT>(0);

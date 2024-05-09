@@ -117,6 +117,36 @@ TensorElementTypeVariant Tensor::element_type() const {
       type);
 }
 
+void Tensor::GetNdIndex(
+    size_t index, absl::InlinedVector<Axis, kMaxNumDimensions>& indices) const {
+  size_t divisor = 1, dim = 0;
+  Axis rank = Rank();
+  for (int64_t i = static_cast<int64_t>(rank) - 1; i >= 0; --i) {
+    dim = shape().Dim(i);
+    indices[i] = (index / divisor) % dim;
+    divisor *= dim;
+  }
+  return;
+}
+
+DimensionSize Tensor::FlattenIndex(
+    absl::InlinedVector<Axis, kMaxNumDimensions>& indices) const {
+  DimensionSize index = 0;
+  if (shape().empty()) {
+    return index;
+  }
+  size_t rank = Rank();
+  absl::InlinedVector<Axis, kMaxNumDimensions> strides(rank);
+  strides[rank - 1] = 1;
+  for (int64_t i = static_cast<int64_t>(rank) - 2; i >= 0; --i) {
+    strides[i] = strides[i + 1] * shape()[i + 1];
+  }
+  for (size_t i = 0; i < indices.size(); ++i) {
+    index += strides[i] * indices[i];
+  }
+  return index;
+}
+
 bool operator==(const TensorType& lhs, const TensorType& rhs) {
   return lhs.element_type == rhs.element_type && lhs.shape == rhs.shape;
 }
