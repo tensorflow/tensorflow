@@ -19563,6 +19563,10 @@ func GatherV2BatchDims(value int64) GatherV2Attr {
 // On GPU, if an out of bound index is found, a 0 is stored in the
 // corresponding output value.
 //
+// Note that on TPU, if any dimension of `params` is of size 0 then the output will
+// be the expected shape filled with zeros. On CPU and GPU an error will be
+// returned.
+//
 // See also `tf.batch_gather` and `tf.gather_nd`.
 //
 // Arguments:
