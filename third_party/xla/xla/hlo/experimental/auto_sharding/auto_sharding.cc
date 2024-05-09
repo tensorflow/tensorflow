@@ -4261,6 +4261,18 @@ bool ModuleHasUserShardings(const HloModule* module) {
   return has_shardings;
 }
 
+bool ModuleIsManuallyPartitioned(const HloModule* module) {
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (spmd::IsSPMDFullToShardShapeCustomCall(instruction) ||
+          spmd::IsSPMDShardToFullShapeCustomCall(instruction)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 bool IsSmallTensor(const HloInstruction* ins,
                    const AutoShardingOption& option) {
   return spmd::GetInstructionSize(ins->shape()) <=
@@ -4361,8 +4373,9 @@ absl::StatusOr<bool> AutoSharding::Run(
     }
   }
 
+  bool module_is_manually_partitioned = ModuleIsManuallyPartitioned(module);
   std::vector<std::vector<int64_t>> mesh_shapes;
-  if (option_.try_multiple_mesh_shapes) {
+  if (option_.try_multiple_mesh_shapes || module_is_manually_partitioned) {
     bool asymmetrical_mesh_dims = false;
     for (size_t i = 0; i < option_.device_mesh_shape.size(); ++i) {
       if (option_.device_mesh_beta[0] != option_.device_mesh_beta[i] ||
@@ -4381,6 +4394,11 @@ absl::StatusOr<bool> AutoSharding::Run(
   } else {
     mesh_shapes.push_back(option_.device_mesh_shape);
   }
+
+  CHECK(option_.try_multiple_mesh_shapes || mesh_shapes.size() == 1)
+      << "Auto-sharding cannot infer a single appropriate mesh shape for this "
+         "HLO, and AutoShardingption::try_multiple_mesh_shapes is set to "
+         "false. Please re-run with the option set to true.";
 
   if (module->entry_computation()->num_parameters() > 0) {
     HloInstruction* parameter_instruction =
