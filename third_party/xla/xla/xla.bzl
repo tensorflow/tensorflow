@@ -86,3 +86,6 @@ def xla_cub_deps():
 def xla_internal(targets, otherwise = []):
     _ = targets  # buildifier: disable=unused-variable
     return otherwise
+
+def tests_build_defs_bzl_deps():
+    return []
