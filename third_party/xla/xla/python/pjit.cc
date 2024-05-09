@@ -886,8 +886,10 @@ void PjitFunction_tp_dealloc(PyObject* self) {
   PyObject_ClearWeakRefs(self);
 #if PY_VERSION_HEX < 0x030C0000
   Py_CLEAR(o->dict);
-#else
+#elif PY_VERSION_HEX < 0x030D0000
   _PyObject_ClearManagedDict(self);
+#else
+  PyObject_ClearManagedDict(self);
 #endif  // PY_VERSION_HEX < 0x030C0000
   o->fun.~PjitFunction();
   tp->tp_free(self);
@@ -903,8 +905,10 @@ int PjitFunction_tp_traverse(PyObject* self, visitproc visit, void* arg) {
   Py_VISIT(Py_TYPE(self));
 #if PY_VERSION_HEX < 0x030C0000
   Py_VISIT(o->dict);
-#else
+#elif PY_VERSION_HEX < 0x030D0000
   _PyObject_VisitManagedDict(self, visit, arg);
+#else
+  PyObject_VisitManagedDict(self, visit, arg);
 #endif  // PY_VERSION_HEX < 0x030C0000
   Py_VISIT(o->fun.cache_miss().ptr());
   Py_VISIT(o->fun.shard_arg_fallback().ptr());
@@ -918,8 +922,10 @@ int PjitFunction_tp_clear(PyObject* self) {
   PjitFunctionObject* o = reinterpret_cast<PjitFunctionObject*>(self);
 #if PY_VERSION_HEX < 0x030C0000
   Py_CLEAR(o->dict);
-#else
+#elif PY_VERSION_HEX < 0x030D0000
   _PyObject_ClearManagedDict(self);
+#else
+  PyObject_ClearManagedDict(self);
 #endif  // PY_VERSION_HEX < 0x030C0000
   o->fun.ClearPythonReferences();
   return 0;
