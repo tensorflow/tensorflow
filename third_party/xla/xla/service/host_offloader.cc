@@ -244,13 +244,6 @@ Status HostOffloader::HandleMoveToHostCustomCall(HloInstruction* custom_call) {
   // Save a pointer to this custom call for when we want to remove it later.
   custom_calls_to_remove_.emplace(custom_call);
 
-  // Skip this custom call if we've already handled it in output streaming.
-  if (annotations_for_copy_to_host_to_insert_.contains(custom_call)) {
-    VLOG(4) << "Skipping MoveToHost custom call that was already handled: "
-            << custom_call->name();
-    return OkStatus();
-  }
-
   // We expect that either the custom call is the root or the DUS is the only
   // user of this custom call.
   if (!custom_call->IsRoot() && custom_call->user_count() != 1) {
@@ -382,7 +375,8 @@ Status HostOffloader::MemoryOnlyOffloadStartingWithDus(
                              out->append(inst->name());
                            })
           << ']';
-  if (consuming_slices.empty()) {
+  if (!dus_for_streamed_buffer_.contains(dynamic_update_slice) &&
+      consuming_slices.empty()) {
     return Internal(
         "The dynamic-update-slice (%s) never feeds into a slice nor "
         "dynamic-slice.",
@@ -651,7 +645,7 @@ Status HostOffloader::HandleStreamedBuffer(const HloBuffer& unique_buffer) {
       std::optional<HloInstruction*> dus =
           FindAnnotationFromDUS(value->defining_instruction());
       if (dus.has_value()) {
-        annotations_for_copy_to_host_to_insert_.emplace(dus.value());
+        dus_for_streamed_buffer_.emplace(value->defining_instruction());
         AddAllPositionsToBeMovedToHostMemory(unique_buffer);
       }
     }
