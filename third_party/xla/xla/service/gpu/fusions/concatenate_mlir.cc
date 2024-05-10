@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <optional>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
