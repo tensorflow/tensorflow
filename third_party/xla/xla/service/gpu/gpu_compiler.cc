@@ -191,6 +191,7 @@ limitations under the License.
 #include "xla/service/reduce_decomposer.h"
 #include "xla/service/reduce_scatter_combiner.h"
 #include "xla/service/reduce_scatter_reassociate.h"
+#include "xla/service/reduce_window_rewriter.h"
 #include "xla/service/reshape_decomposer.h"
 #include "xla/service/reshape_mover.h"
 #include "xla/service/result_caster.h"
@@ -708,11 +709,11 @@ absl::Status RunSPMDPasses(
 absl::Status RunOptimizationPasses(
     HloModule* hlo_module, const Compiler::TargetConfig& gpu_target_config,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts) {
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+
   HloPassPipeline pipeline("optimization");
   AddHloVerifier(&pipeline);
-  if (hlo_module->config()
-          .debug_options()
-          .xla_gpu_multi_streamed_windowed_einsum()) {
+  if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
     pipeline.AddPass<GpuWindowedEinsumHandler>();
   }
   pipeline.AddPass<TopKSplitter>();
@@ -752,7 +753,7 @@ absl::Status RunOptimizationPasses(
   // handle it.
   pipeline.AddPass<ZeroSizedHloElimination>();
 
-  if (hlo_module->config().debug_options().xla_gpu_deterministic_ops()) {
+  if (debug_options.xla_gpu_deterministic_ops()) {
     // Scatter can be indeterministic if indices are not unique or a non
     // associative combiner function is used. Eliminate these Scatter ops.
     pipeline.AddPass<ScatterExpander>(
@@ -790,9 +791,14 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
 
+  if (debug_options.xla_reduce_window_rewrite_base_length() != 0) {
+    pipeline.AddPass<HloPassFix<ReduceWindowRewriter>>(
+        debug_options.xla_reduce_window_rewrite_base_length());
+  }
+
   DynamicPadderOptions dynamic_padder_options;
 
-  switch (hlo_module->config().debug_options().xla_gpu_shape_checks()) {
+  switch (debug_options.xla_gpu_shape_checks()) {
     case DebugOptions::IGNORE:
       dynamic_padder_options.shape_check_mode =
           DynamicDimensionInference::ShapeCheckMode::kIgnore;

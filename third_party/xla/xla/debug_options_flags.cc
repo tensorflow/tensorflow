@@ -251,6 +251,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_use_memcpy_local_p2p(false);
 
+  opts.set_xla_reduce_window_rewrite_base_length(32);
+
   return opts;
 }
 
@@ -1692,6 +1694,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_dump_autotune_logs_to(),
       "File to write autotune logs to. It will be a binary file unless the "
       "name ends with .txt or .textproto."));
+  flag_list->push_back(tsl::Flag(
+      "xla_reduce_window_rewrite_base_length",
+      int64_setter_for(
+          &DebugOptions::set_xla_reduce_window_rewrite_base_length),
+      debug_options->xla_reduce_window_rewrite_base_length(),
+      "Base length to rewrite the reduce window to, no rewrite if set to 0."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

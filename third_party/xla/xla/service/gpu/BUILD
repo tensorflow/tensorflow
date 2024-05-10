@@ -3542,6 +3542,7 @@ cc_library(
         "//xla/service:qr_expander",
         "//xla/service:real_imag_expander",
         "//xla/service:reduce_decomposer",
+        "//xla/service:reduce_window_rewriter",
         "//xla/service:reduce_scatter_combiner",
         "//xla/service:reduce_scatter_reassociate",
         "//xla/service:reshape_decomposer",

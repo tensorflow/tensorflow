@@ -1597,6 +1597,24 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "reduce_window_rewriter_execution_test",
+    srcs = ["reduce_window_rewriter_execution_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":xla_internal_test_main",
+        "//xla:error_spec",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
 # External xla_test targets can add "reduce_window_test_library" to xla_test_library_deps, in order
 # to refer to the cc_library compiled with the correct backend macros. The following test target
 # "reduce_window_test" is an example.

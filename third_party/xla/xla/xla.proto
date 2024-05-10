@@ -764,7 +764,10 @@ message DebugOptions {
   // File to write autotune logs to. It will stored in txt format.
   string xla_gpu_dump_autotune_logs_to = 292;
 
-  // Next id: 293
+  // Base length to rewrite the reduce window to, no rewrite if set to 0.
+  int64 xla_reduce_window_rewrite_base_length = 293;
+
+  // Next id: 294
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
