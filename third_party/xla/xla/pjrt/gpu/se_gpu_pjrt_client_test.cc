@@ -21,39 +21,48 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <numeric>
-#include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/client/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
+#include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
-#include "xla/pjrt/utils.h"
+#include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
 absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
@@ -107,6 +116,23 @@ static constexpr char const* kProgram = R"(HloModule HostTransfer
 
       ROOT result = f32[2] get-tuple-element(recv-done), index=0
     })";
+
+TEST(StreamExecutorGpuClientTest, MemorySpace) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_GE(client->devices().size(), 1);
+
+  for (auto* device : client->devices()) {
+    TF_ASSERT_OK_AND_ASSIGN(auto* memory_space, device->default_memory_space());
+    EXPECT_THAT(device->memory_spaces(), ElementsAre(memory_space));
+    EXPECT_EQ(memory_space->kind(), StreamExecutorGpuHbmMemorySpace::kKind);
+    EXPECT_EQ(memory_space->kind_id(),
+              StreamExecutorGpuHbmMemorySpace::kKindId);
+    EXPECT_THAT(
+        device->memory_space_by_kind(StreamExecutorGpuHbmMemorySpace::kKind),
+        IsOkAndHolds(memory_space));
+  }
+}
 
 TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
@@ -375,6 +401,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
         literals[i]->Relayout(src_literals[i].shape().layout()).data<float>());
   }
 }
+
 TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
@@ -504,9 +531,10 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
     src_literals.emplace_back(LiteralUtil::CreateR1<float>(data));
     src_shapes.push_back(src_literals.back().shape());
   }
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              src_shapes, client->addressable_devices()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto transfer_manager,
+      client->CreateBuffersForAsyncHostToDevice(
+          src_shapes, client->addressable_devices()[0]->memory_spaces()[0]));
   std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   for (int i = 0; i < src_shapes.size(); ++i) {
     buffers.emplace_back(transfer_manager->RetrieveBuffer(i));

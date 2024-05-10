@@ -670,7 +670,8 @@ Status PreparePjRtExecutableArguments(
         std::unique_ptr<xla::PjRtBuffer> pjrt_buffer =
             std::make_unique<xla::PjRtStreamExecutorBuffer>(
                 device_shape, std::move(device_buffer), pjrt_client,
-                pjrt_device);
+                pjrt_device,
+                pjrt_device->default_memory_space().value_or(nullptr));
         owned_args->push_back(std::move(pjrt_buffer));
         args->push_back(owned_args->back().get());
       }

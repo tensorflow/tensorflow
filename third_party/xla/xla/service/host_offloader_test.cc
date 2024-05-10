@@ -2382,6 +2382,84 @@ TEST_F(HostOffloaderTest, OutputStreamingCustomCallRoot) {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
+TEST_F(HostOffloaderTest, OutputStreamingInUnrolledScanLoop) {
+  const std::string& hlo_string = R"(
+HloModule m,
+entry_computation_layout={(s32[16,16,8]{1,2,0:T(8,128)})->s32[16,16,8]{1,2,0:T(8,128)S(5)}},
+allow_spmd_sharding_propagation_to_output={true}, num_partitions=2
+
+body {
+  loop_peel_param = (s32[]{:T(256)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[]{:T(256)}, s32[16,8]{0,1:T(8,128)}) parameter(0)
+  get-tuple-element.12 = s32[]{:T(256)} get-tuple-element(loop_peel_param), index=0
+  constant.29 = s32[]{:T(256)} constant(1)
+  add.5 = s32[]{:T(256)} add(get-tuple-element.12, constant.29)
+  get-tuple-element.13 = s32[16,16,8]{1,2,0:T(8,128)} get-tuple-element(loop_peel_param), index=1
+  get-tuple-element.18 = s32[16,8]{0,1:T(8,128)} get-tuple-element(loop_peel_param), index=4
+  custom-call.3 = s32[16,8]{0,1:T(8,128)} custom-call(get-tuple-element.18), custom_call_target="MoveToHost"
+  bitcast = s32[1,16,8]{1,2,0:T(8,128)} bitcast(custom-call.3)
+  get-tuple-element.15 = s32[]{:T(256)} get-tuple-element(loop_peel_param), index=3
+  constant.30 = s32[]{:T(256)} constant(0)
+  dynamic-update-slice.2 = s32[16,16,8]{1,2,0:T(8,128)} dynamic-update-slice(get-tuple-element.13, bitcast, get-tuple-element.15, constant.30, constant.30), backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"0","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"}]},"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+  get-tuple-element.14 = s32[16,16,8]{1,2,0:T(8,128)} get-tuple-element(loop_peel_param), index=2
+  dynamic-slice.2 = s32[1,16,8]{1,2,0:T(8,128)} dynamic-slice(get-tuple-element.14, get-tuple-element.12, constant.30, constant.30), dynamic_slice_sizes={1,16,8}
+  broadcast.8 = s32[1,16,8]{1,2,0:T(8,128)} broadcast(constant.29), dimensions={}
+  add.6 = s32[1,16,8]{1,2,0:T(8,128)} add(dynamic-slice.2, broadcast.8)
+  bitcast.1 = s32[16,8]{0,1:T(8,128)} bitcast(add.6)
+  ROOT tuple.3 = (s32[]{:T(256)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[]{:T(256)}, s32[16,8]{0,1:T(8,128)}) tuple(add.5, dynamic-update-slice.2, get-tuple-element.14, get-tuple-element.12, bitcast.1)
+} // body
+
+condition {
+  loop_peel_cond_param = (s32[]{:T(256)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[]{:T(256)}, s32[16,8]{0,1:T(8,128)}) parameter(0)
+  get-tuple-element.11 = s32[]{:T(256)} get-tuple-element(loop_peel_cond_param), index=0
+  constant.28 = s32[]{:T(256)} constant(16)
+  ROOT compare.1 = pred[]{:T(1024)} compare(get-tuple-element.11, constant.28), direction=LT
+}
+
+ENTRY entry {
+  constant.26 = s32[]{:T(256)} constant(1)
+  constant.24 = s32[]{:T(256)} constant(0)
+  broadcast.6 = s32[16,16,8]{1,2,0:T(8,128)} broadcast(constant.24), dimensions={}
+  param.2 = s32[16,16,8]{1,2,0:T(8,128)} parameter(0), sharding={devices=[1,1,2]<=[2]}
+  slice = s32[1,16,8]{1,2,0:T(8,128)} slice(param.2), slice={[0:1], [0:16], [0:8]}
+  broadcast.7 = s32[1,16,8]{1,2,0:T(8,128)} broadcast(constant.26), dimensions={}
+  add.4 = s32[1,16,8]{1,2,0:T(8,128)} add(slice, broadcast.7)
+  bitcast.2 = s32[16,8]{0,1:T(8,128)} bitcast(add.4)
+  tuple.4 = (s32[]{:T(256)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[]{:T(256)}, s32[16,8]{0,1:T(8,128)}) tuple(constant.26, broadcast.6, param.2, constant.24, bitcast.2)
+  while.1 = (s32[]{:T(256)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[16,16,8]{1,2,0:T(8,128)}, s32[]{:T(256)}, s32[16,8]{0,1:T(8,128)}) while(tuple.4), condition=condition, body=body
+  get-tuple-element.17 = s32[16,16,8]{1,2,0:T(8,128)} get-tuple-element(while.1), index=1
+  get-tuple-element.19 = s32[16,8]{0,1:T(8,128)} get-tuple-element(while.1), index=4
+  custom-call.4 = s32[16,8]{0,1:T(8,128)} custom-call(get-tuple-element.19), custom_call_target="MoveToHost"
+  bitcast.3 = s32[1,16,8]{1,2,0:T(8,128)} bitcast(custom-call.4)
+  get-tuple-element.16 = s32[]{:T(256)} get-tuple-element(while.1), index=3
+  ROOT dynamic-update-slice.3 = s32[16,16,8]{1,2,0:T(8,128)} dynamic-update-slice(get-tuple-element.17, bitcast.3, get-tuple-element.16, constant.24, constant.24), backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"0","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"}]},"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[]}
+} // entry
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  HloInstruction* bitcast;
+  HloInstruction* gte_0;
+  HloInstruction* gte_1;
+  HloInstruction* dus;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicUpdateSlice(
+                  &dus, m::GetTupleElement(&gte_0), m::Bitcast(&bitcast),
+                  m::GetTupleElement(&gte_1), m::ConstantScalar(0),
+                  m::ConstantScalar(0))));
+
+  TestShapeHasMemorySpace(bitcast->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(gte_0->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(dus->shape(), kHostMemorySpaceColor);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
 }  // namespace
 
 }  // namespace xla
