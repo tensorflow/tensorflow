@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <vector>
 
+#include "llvm/ADT/DenseSet.h"
+#include "mlir/Support/TypeID.h"  // from @llvm-project
+
 namespace mlir {
 namespace TF {
 
