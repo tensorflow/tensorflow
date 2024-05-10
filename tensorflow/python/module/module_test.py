@@ -535,8 +535,6 @@ class FlattenTest(parameterized.TestCase, test_util.TensorFlowTestCase):
                       ("decoder", "w", 0, 0, "k"): mod.decoder.w[0][0]["k"],
                       ("decoder", "w", 0, 1, "k"): mod.decoder.w[0][1]["k"]},)
 
-  @unittest.skipIf(sys.version_info.major == 3 and sys.version_info.minor == 12,
-                   reason="b/313658911: _TupleWrapper __dict__ attribute error")
   def test_cycles_with_path(self):
     mod = module.Module()
     mod.w = variables.Variable(1.)

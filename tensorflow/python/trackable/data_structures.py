@@ -1055,6 +1055,17 @@ class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
   def __deepcopy__(self, memo):
     return _TupleWrapper(copy.deepcopy(self.__wrapped__, memo))
 
+  @property
+  def __dict__(self):
+    # Python 3.12 inspect._check_instance() method only expects and handles
+    # AttributeError but TypeError was raised when the method looks for
+    # `__dict__` on the data structure proxy wrapper. Thus we overrides the
+    # `__dict__` property and forwarding the `__dict__` lookup to the underlying
+    # wrapped TrackalbeDataStructure. AttributeError will be raised when
+    # TrackableDataStructure does not support `__dict__` and thus will be
+    # handled properly.
+    return self.__wrapped__.__dict__
+
   def __reduce_ex__(self, protocol):
     return (self.__class__,
             (self.__wrapped__,))
