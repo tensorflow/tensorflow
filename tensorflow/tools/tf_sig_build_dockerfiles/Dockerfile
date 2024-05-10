@@ -1,5 +1,5 @@
 ################################################################################
-FROM ubuntu:22.04 as builder
+FROM ubuntu:22.04@sha256:a6d2b38300ce017add71440577d5b0a90460d0e57fd7aec21dd0d1b0761bbfb2 as builder
 ################################################################################
 
 # Install devtoolset build dependencies
@@ -16,7 +16,7 @@ COPY builder.devtoolset/glibc2.17-inline.patch /glibc2.17-inline.patch
 RUN /build_devtoolset.sh devtoolset-9 /dt9
 
 ################################################################################
-FROM nvidia/cuda:12.3.1-base-ubuntu22.04 as devel
+FROM nvidia/cuda:12.3.1-base-ubuntu22.04@sha256:6a7febf317514458233b87819ce47d5441357dd7763e91800c35f6745f34bbbd as devel
 ################################################################################
 COPY --from=builder /dt9 /dt9
 
