@@ -1392,8 +1392,21 @@ std::optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
   }
   int32_t dim = dim_elem.getValues<IntegerAttr>()[0].getInt();
   int32_t input_size = input_shape.size();
+
+  // check: -1-input_size <= dim <= input_size
+  if (dim < (-1 - input_size)) {
+    (void)rewriter.notifyMatchFailure(
+        op, "dimension to expand cannot be less than -1-input.dims().");
+    return std::nullopt;
+  }
+  if (dim > input_size) {
+    (void)rewriter.notifyMatchFailure(
+        op, "dimension to expand cannot be greater than input.dims().");
+    return std::nullopt;
+  }
+
   SmallVector<int64_t> reshape_dims;
-  if (dim >= input_size) {  // add dim at end of tensor
+  if (dim == input_size || dim == -1) {  // add dim at end of tensor
     dim = input_size;
     for (int i = 0; i < input_shape.size(); i++) {
       reshape_dims.emplace_back(input_shape[i]);
@@ -1401,12 +1414,7 @@ std::optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
     reshape_dims.emplace_back(1);
   } else {
     if (dim < 0) {
-      dim += input_size;
-      if (dim < 0) {
-        (void)rewriter.notifyMatchFailure(
-            op, "dimension to expand + size of input shape < 0");
-        return std::nullopt;
-      }
+      dim += (input_size + 1);  // dim=-2 => dim=input_size-1
     }
     for (int i = 0; i < input_size; i++) {
       if (i == dim) {

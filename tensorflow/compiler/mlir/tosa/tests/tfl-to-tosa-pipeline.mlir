@@ -1484,6 +1484,61 @@ func.func @test_expand_dims(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 
 // -----
 
+// CHECK-LABEL: test_expand_dims_minus_1
+// CHECK-DAG: %[[SHAPE:.*]] = tosa.const_shape {value = dense<[13, 21, 3, 1]> : tensor<4xindex>}
+// CHECK: %[[VAR0:.*]] = tosa.reshape %arg0, %[[SHAPE]]
+func.func @test_expand_dims_minus_1(%arg0: tensor<13x21x3xf32>) -> tensor<?x?x?x?xf32> {
+  %cst = "tfl.pseudo_const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tfl.expand_dims"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<?x?x?x?xf32>
+  func.return %0 : tensor<?x?x?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_expand_dims_minus_2
+// CHECK-DAG: %[[SHAPE:.*]] = tosa.const_shape {value = dense<[13, 21, 1, 3]> : tensor<4xindex>}
+// CHECK: %[[VAR0:.*]] = tosa.reshape %arg0, %[[SHAPE]]
+func.func @test_expand_dims_minus_2(%arg0: tensor<13x21x3xf32>) -> tensor<?x?x?x?xf32> {
+  %cst = "tfl.pseudo_const"() {value = dense<-2> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tfl.expand_dims"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<?x?x?x?xf32>
+  func.return %0 : tensor<?x?x?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_expand_dims_0
+// CHECK-DAG: %[[SHAPE:.*]] = tosa.const_shape {value = dense<[1, 13, 21, 3]> : tensor<4xindex>}
+// CHECK: %[[VAR0:.*]] = tosa.reshape %arg0, %[[SHAPE]]
+func.func @test_expand_dims_0(%arg0: tensor<13x21x3xf32>) -> tensor<?x?x?x?xf32> {
+  %cst = "tfl.pseudo_const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tfl.expand_dims"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<?x?x?x?xf32>
+  func.return %0 : tensor<?x?x?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_expand_dims_2
+// CHECK-DAG: %[[SHAPE:.*]] = tosa.const_shape {value = dense<[13, 21, 1, 3]> : tensor<4xindex>}
+// CHECK: %[[VAR0:.*]] = tosa.reshape %arg0, %[[SHAPE]]
+func.func @test_expand_dims_2(%arg0: tensor<13x21x3xf32>) -> tensor<?x?x?x?xf32> {
+  %cst = "tfl.pseudo_const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tfl.expand_dims"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<?x?x?x?xf32>
+  func.return %0 : tensor<?x?x?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_expand_dims_size
+// CHECK-DAG: %[[SHAPE:.*]] = tosa.const_shape {value = dense<[13, 21, 3, 1]> : tensor<4xindex>}
+// CHECK: %[[VAR0:.*]] = tosa.reshape %arg0, %[[SHAPE]]
+func.func @test_expand_dims_size(%arg0: tensor<13x21x3xf32>) -> tensor<?x?x?x?xf32> {
+  %cst = "tfl.pseudo_const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tfl.expand_dims"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<?x?x?x?xf32>
+  func.return %0 : tensor<?x?x?x?xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_shape
 // CHECK: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[13, 21, 3]> : tensor<3xi32>}>
 func.func @test_shape() -> tensor<3xi32> {

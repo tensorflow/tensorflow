@@ -714,7 +714,7 @@ func.func @test_expand_dims(%arg0: tensor<13x21x3xf32>) -> tensor<1x13x21x3xf32>
 // -----
 
 // CHECK-LABEL: test_expand_dims_negative_index
-// CHECK-DAG: %[[SHAPE:.*]] = tosa.const_shape  {value = dense<[13, 1, 21, 3]> : tensor<4xindex>}
+// CHECK-DAG: %[[SHAPE:.*]] = tosa.const_shape  {value = dense<[13, 21, 1, 3]> : tensor<4xindex>}
 // CHECK: %[[VAR0:.*]] = tosa.reshape %arg0, %[[SHAPE]]
 func.func @test_expand_dims_negative_index(%arg0: tensor<13x21x3xf32>) -> tensor<13x1x21x3xf32> {
   %2 = "tf.Const"()  {value = dense<-2> : tensor<1xi32>}  : () -> tensor<1xi32>
