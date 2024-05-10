@@ -39,7 +39,7 @@ ENTRY reduce.1 {
 // CHECK:       wrapped_reduce.in_bounds-after:                   ; preds = %[[VAL_9]], %[[VAL_11:.*]]
 // CHECK:         ret void
 // CHECK:       wrapped_reduce.in_bounds-true:                    ; preds = %[[VAL_11]]
-// CHECK:         %[[VAL_12:.*]] = load float, ptr %[[VAL_13:.*]], align 4, !invariant.load !5
+// CHECK:         %[[VAL_12:.*]] = load float, ptr %[[VAL_13:.*]], align 4, !invariant.load
 // CHECK:         store float %[[VAL_12]], ptr %[[VAL_14:.*]], align 4
 // CHECK:         br label %[[VAL_10]]
 // CHECK:       entry:
