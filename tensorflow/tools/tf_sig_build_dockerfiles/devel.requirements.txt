@@ -34,7 +34,6 @@ gast == 0.4.0
 # be the latest version.
 keras-nightly >= 3.2.0.dev
 tb-nightly ~= 2.17.0.a
-tf-keras-nightly ~= 2.17.0.dev
 # Test dependencies
 grpcio ~= 1.59.0 # Earliest version for Python 3.12
 portpicker ~= 1.6.0
