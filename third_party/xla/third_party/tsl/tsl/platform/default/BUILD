@@ -235,8 +235,11 @@ cc_library(
     deps = [
         "//tsl/platform:errors",
         "//tsl/platform:protobuf",
-        "//tsl/platform:status",
         "//tsl/platform:strcat",
+        "//tsl/platform:stringpiece",
+        "//tsl/platform:types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
