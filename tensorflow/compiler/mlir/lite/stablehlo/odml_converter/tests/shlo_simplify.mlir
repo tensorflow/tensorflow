@@ -69,3 +69,28 @@ func.func @foldDivI32() -> tensor<2xi32> {
 
 // CHECK-LABEL: foldDivI32
 // CHECK: stablehlo.constant dense<[2, 0]> : tensor<2xi32>
+
+// -----
+
+func.func @divideToMulReciprocalSplat(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = stablehlo.constant dense<2.0> : tensor<2xf32>
+  %2 = stablehlo.divide %arg0, %0 : tensor<2xf32>
+  return %2 : tensor<2xf32>
+}
+
+// CHECK-LABEL: divideToMulReciprocalSplat
+// CHECK: stablehlo.constant dense<5.000000e-01> : tensor<2xf32>
+// CHECK: stablehlo.multiply
+
+// -----
+
+func.func @divideToMulReciprocal(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = stablehlo.constant dense<[2.0, 3.0]> : tensor<2xf32>
+  %2 = stablehlo.divide %arg0, %0 : tensor<2xf32>
+  return %2 : tensor<2xf32>
+}
+
+// CHECK-LABEL: divideToMulReciprocal
+// CHECK: stablehlo.constant dense<[5.000000e-01, 0.333333343]> : tensor<2xf32>
+// CHECK: stablehlo.multiply
+

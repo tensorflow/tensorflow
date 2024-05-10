@@ -18,8 +18,10 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/odml_converter/folders.h"
 
 namespace mlir {
@@ -28,6 +30,7 @@ namespace {
 
 #define GEN_PASS_DEF_SHLOSIMPLIFYPASS
 #include "tensorflow/compiler/mlir/lite/stablehlo/odml_converter/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/odml_converter/transforms/generated_shlo_simplify.inc"
 
 // Performs misc odml "cleanup" on shlo dialect. This is a functional standin
 // for canonicalization and folding which is not offered directly by the
@@ -39,8 +42,11 @@ class SHLOSimplifyPass : public impl::SHLOSimplifyPassBase<SHLOSimplifyPass> {
   void runOnOperation() override {
     ModuleOp module = getOperation();
     RewritePatternSet patterns(&getContext());
+    populateWithGenerated(patterns);
     PopulateFolderPatterns(patterns);
-    (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+      signalPassFailure();
+    }
   }
 };
 

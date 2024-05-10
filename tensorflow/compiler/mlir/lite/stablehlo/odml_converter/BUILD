@@ -74,13 +74,29 @@ cc_library(
     deps = [
         ":folders",
         ":passes_inc_gen",
+        ":shlo_simplify_inc_gen",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = 1,
+)
+
+gentbl_cc_library(
+    name = "shlo_simplify_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "transforms/generated_shlo_simplify.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/shlo_simplify.td",
+    deps = ["@stablehlo//:stablehlo_ops_td_files"],
 )
 
 cc_library(
