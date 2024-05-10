@@ -96,4 +96,5 @@ else
     echo "Install Requirements"
     # Disable the cache dir to save image space, and install packages
     python3 -m pip install --no-cache-dir -r $REQUIREMENTS -U
+    python3 -m pip install --no-cache-dir --no-deps tf-keras==2.16.0
 fi

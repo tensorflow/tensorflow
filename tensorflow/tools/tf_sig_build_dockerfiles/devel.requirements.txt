@@ -33,7 +33,6 @@ gast == 0.4.0
 # Note that the CACHEBUSTER variable, set in the CI builds, will force these to
 # be the latest version.
 keras ~= 3.0.0
-tf-keras ~= 2.16.0
 tensorboard ~= 2.16.0
 # Test dependencies
 grpcio ~= 1.59.0 # Earliest version for Python 3.12
