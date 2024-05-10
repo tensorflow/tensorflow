@@ -1923,9 +1923,11 @@ Status BaseGPUDeviceFactory::CreateDevices(
 #else   // TENSORFLOW_USE_ROCM
       auto platform_name = xla::CudaName();
 #endif  // TENSORFLOW_USE_ROCM
+      auto memory_spaces = xla::BuildMemorySpaces(pjrt_devices);
       std::unique_ptr<xla::PjRtClient> pjrt_client =
           std::make_unique<xla::StreamExecutorGpuClient>(
               platform_name, xla_client, std::move(pjrt_devices),
+              std::move(memory_spaces),
               /*process_index=*/numa_node,
               /*allocator=*/std::move(allocator_adapter),
               /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),
@@ -2019,8 +2021,8 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
       tf_device_id, GetShortDeviceDescription(platform_device_id, *desc),
       gpu_allocator, ProcessState::singleton()->GetCPUAllocator(numa_node));
   LOG(INFO) << "Created device " << device_name << " with "
-            << (bytes_limit >> 20) << " MB memory: "
-            << " -> " << GetShortDeviceDescription(platform_device_id, *desc);
+            << (bytes_limit >> 20) << " MB memory: " << " -> "
+            << GetShortDeviceDescription(platform_device_id, *desc);
 #ifdef TF_GPU_USE_PJRT
   TF_RETURN_IF_ERROR(gpu_device->Init(options, xla_local_device_state));
 #else
@@ -2309,9 +2311,9 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
 
     auto description = std::move(description_status).value();
 #if GOOGLE_CUDA
-    VLOG(1) << "Found device " << i << " with properties: "
-            << "\npciBusID: " << description->pci_bus_id()
-            << " name: " << description->name() << " computeCapability: "
+    VLOG(1) << "Found device " << i << " with properties: " << "\npciBusID: "
+            << description->pci_bus_id() << " name: " << description->name()
+            << " computeCapability: "
             << description->cuda_compute_capability().ToString()
             << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
             << " coreCount: " << description->core_count()
@@ -2323,9 +2325,8 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
 #elif TENSORFLOW_USE_ROCM
     std::string gcn_arch_name =
         description->rocm_compute_capability().gcn_arch_name();
-    VLOG(1) << "Found device " << i << " with properties: "
-            << "\npciBusID: " << description->pci_bus_id()
-            << " name: " << description->name()
+    VLOG(1) << "Found device " << i << " with properties: " << "\npciBusID: "
+            << description->pci_bus_id() << " name: " << description->name()
             << "     ROCm AMDGPU Arch: " << gcn_arch_name
             << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
             << " coreCount: " << description->core_count()
@@ -2383,9 +2384,8 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     // Only GPUs with no less than the minimum supported compute capability is
     // accepted.
     if (desc->cuda_compute_capability() < min_supported_capability) {
-      LOG(INFO) << "Ignoring visible gpu device "
-                << "(" << GetShortDeviceDescription(visible_gpu_id, *desc)
-                << ") "
+      LOG(INFO) << "Ignoring visible gpu device " << "("
+                << GetShortDeviceDescription(visible_gpu_id, *desc) << ") "
                 << "with Cuda compute capability "
                 << desc->cuda_compute_capability().ToString()
                 << ". The minimum required Cuda capability is "
@@ -2396,9 +2396,8 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     // Only GPUs with supported gfx versions are accepted.
     auto rocm_compute_capability = desc->rocm_compute_capability();
     if (!rocm_compute_capability.is_supported_gfx_version()) {
-      LOG(INFO) << "Ignoring visible gpu device "
-                << "(" << GetShortDeviceDescription(visible_gpu_id, *desc)
-                << ") "
+      LOG(INFO) << "Ignoring visible gpu device " << "("
+                << GetShortDeviceDescription(visible_gpu_id, *desc) << ") "
                 << "with AMDGPU version : "
                 << rocm_compute_capability.gfx_version()
                 << ". The supported AMDGPU versions are "
@@ -2412,9 +2411,8 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     // multiprocessors. If the TF_MIN_GPU_MULTIPROCESSOR_COUNT environment
     // variable is set, its value will be used to filter out GPUs.
     if (desc->core_count() < min_gpu_core_count) {
-      LOG(INFO) << "Ignoring visible gpu device "
-                << "(" << GetShortDeviceDescription(visible_gpu_id, *desc)
-                << ") "
+      LOG(INFO) << "Ignoring visible gpu device " << "("
+                << GetShortDeviceDescription(visible_gpu_id, *desc) << ") "
                 << "with core count: " << desc->core_count()
                 << ". The minimum required count is " << min_gpu_core_count
                 << ". You can adjust this requirement with the env var "
