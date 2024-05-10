@@ -224,6 +224,7 @@ cc_library(
         ":pjrt_c_api_gpu_extension_hdrs",
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
+        ":pjrt_c_api_layouts_extension_hdrs",
         ":pjrt_c_api_profiler_extension_hdrs",
         ":pjrt_c_api_stream_extension_hdrs",
         ":pjrt_c_api_wrapper_impl",
@@ -251,7 +252,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:errors",
     ],
 )
 
