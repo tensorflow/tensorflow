@@ -25,10 +25,10 @@ cc_library(
     deps = [
         ":stablehlo_util",
         "//tensorflow/compiler/mlir/tensorflow",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
     alwayslink = 1,
 )
@@ -228,7 +228,7 @@ cc_library(
         ":stablehlo_util",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -346,7 +346,6 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
     ],
     alwayslink = 1,
@@ -375,7 +374,6 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
     ],
     alwayslink = 1,

@@ -1197,14 +1197,14 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   Executor::Args exec_args;
   ExecutorArgsFromOptions(run_opts, frame, &exec_args);
 
-  profiler::TraceMeProducer activity(
+  tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&run_opts] {
-        return profiler::TraceMeEncode("FunctionRun",
-                                       {{"id", run_opts.step_id}, {"_r", 1}});
+        return tsl::profiler::TraceMeEncode(
+            "FunctionRun", {{"id", run_opts.step_id}, {"_r", 1}});
       },
       profiler::ContextType::kTfExecutor, *exec_args.function_trace_id,
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
 
   bool allow_dead_tensors = run_opts.allow_dead_tensors;
   item->exec->RunAsync(
@@ -1269,14 +1269,14 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
 
   Executor::Args exec_args;
   ExecutorArgsFromOptions(run_opts, frame, &exec_args);
-  profiler::TraceMeProducer activity(
+  tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&opts] {
-        return profiler::TraceMeEncode("FunctionRun",
-                                       {{"id", opts.step_id}, {"_r", 1}});
+        return tsl::profiler::TraceMeEncode("FunctionRun",
+                                            {{"id", opts.step_id}, {"_r", 1}});
       },
       profiler::ContextType::kTfExecutor, *exec_args.function_trace_id,
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
 
   item->exec->RunAsync(exec_args, std::move(done));
 }
