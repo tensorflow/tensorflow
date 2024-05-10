@@ -86,14 +86,14 @@ class FixedShardsPartitioner(Partitioner):
 
   Examples:
 
-  >>> # standalone usage:
-  >>> partitioner = FixedShardsPartitioner(num_shards=2)
-  >>> partitions = partitioner(tf.TensorShape([10, 3]), tf.float32)
-  >>> [2, 1]
-  >>>
-  >>> # use in ParameterServerStrategy
-  >>> # strategy = tf.distribute.experimental.ParameterServerStrategy(
-  >>> #   cluster_resolver=cluster_resolver, variable_partitioner=partitioner)
+  ### # standalone usage:
+  ### partitioner = FixedShardsPartitioner(num_shards=2)
+  ### partitions = partitioner(tf.TensorShape([10, 3]), tf.float32)
+  ### [2, 1]
+  ###
+  ### # use in ParameterServerStrategy
+  ### # strategy = tf.distribute.experimental.ParameterServerStrategy(
+  ### #   cluster_resolver=cluster_resolver, variable_partitioner=partitioner)
   """
 
   def __init__(self, num_shards):
@@ -122,16 +122,16 @@ class MinSizePartitioner(Partitioner):
 
   Examples:
 
-  >>> partitioner = MinSizePartitioner(min_shard_bytes=4, max_shards=2)
-  >>> partitions = partitioner(tf.TensorShape([6, 1]), tf.float32)
-  >>> [2, 1]
-  >>> partitioner = MinSizePartitioner(min_shard_bytes=4, max_shards=10)
-  >>> partitions = partitioner(tf.TensorShape([6, 1]), tf.float32)
-  >>> [6, 1]
-  >>>
-  >>> # use in ParameterServerStrategy
-  >>> # strategy = tf.distribute.experimental.ParameterServerStrategy(
-  >>> #   cluster_resolver=cluster_resolver, variable_partitioner=partitioner)
+  ### partitioner = MinSizePartitioner(min_shard_bytes=4, max_shards=2)
+  ### partitions = partitioner(tf.TensorShape([6, 1]), tf.float32)
+  ### [2, 1]
+  ### partitioner = MinSizePartitioner(min_shard_bytes=4, max_shards=10)
+  ### partitions = partitioner(tf.TensorShape([6, 1]), tf.float32)
+  ### [6, 1]
+  ###
+  ### # use in ParameterServerStrategy
+  ### # strategy = tf.distribute.experimental.ParameterServerStrategy(
+  ### #   cluster_resolver=cluster_resolver, variable_partitioner=partitioner)
   """
 
   def __init__(
@@ -186,19 +186,19 @@ class MaxSizePartitioner(Partitioner):
 
   Examples:
 
-  >>> partitioner = MaxSizePartitioner(max_shard_bytes=4)
-  >>> partitions = partitioner(tf.TensorShape([6, 1]), tf.float32)
-  >>> [6, 1]
-  >>> partitioner = MaxSizePartitioner(max_shard_bytes=4, max_shards=2)
-  >>> partitions = partitioner(tf.TensorShape([6, 1]), tf.float32)
-  >>> [2, 1]
-  >>> partitioner = MaxSizePartitioner(max_shard_bytes=1024)
-  >>> partitions = partitioner(tf.TensorShape([6, 1]), tf.float32)
-  >>> [1, 1]
-  >>>
-  >>> # use in ParameterServerStrategy
-  >>> # strategy = tf.distribute.experimental.ParameterServerStrategy(
-  >>> #   cluster_resolver=cluster_resolver, variable_partitioner=partitioner)
+  ### partitioner = MaxSizePartitioner(max_shard_bytes=4)
+  ### partitions = partitioner(tf.TensorShape([6, 1]), tf.float32)
+  ### [6, 1]
+  ### partitioner = MaxSizePartitioner(max_shard_bytes=4, max_shards=2)
+  ### partitions = partitioner(tf.TensorShape([6, 1]), tf.float32)
+  ### [2, 1]
+  ### partitioner = MaxSizePartitioner(max_shard_bytes=1024)
+  ### partitions = partitioner(tf.TensorShape([6, 1]), tf.float32)
+  ### [1, 1]
+  ###
+  ### # use in ParameterServerStrategy
+  ### # strategy = tf.distribute.experimental.ParameterServerStrategy(
+  ### #   cluster_resolver=cluster_resolver, variable_partitioner=partitioner)
   """
 
   def __init__(self, max_shard_bytes, max_shards=None, bytes_per_string=16):
@@ -866,26 +866,26 @@ class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
 
   Sharding is only supported along the first dimension.
 
-  >>> class Model(tf.Module):
-  ...   def __init__(self):
-  ...     self.sharded_variable = ShardedVariable([
-  ...       tf.Variable([3.0], dtype=tf.float32),
-  ...       tf.Variable([2.0], dtype=tf.float32)
-  ...     ])
+  ### class Model(tf.Module):
+  ###  def __init__(self):
+  ###    self.sharded_variable = ShardedVariable([
+  ###      tf.Variable([3.0], dtype=tf.float32),
+  ###      tf.Variable([2.0], dtype=tf.float32)
+  ###    ])
   ...
-  ...   @tf.function(input_signature=[tf.TensorSpec([], dtype=tf.int32)])
-  ...   def fn(self, x):
-  ...     return tf.nn.embedding_lookup(self.sharded_variable.variables, x)
+  ###  @tf.function(input_signature=[tf.TensorSpec([], dtype=tf.int32)])
+  ###  def fn(self, x):
+  ###    return tf.nn.embedding_lookup(self.sharded_variable.variables, x)
   ...
-  ...   @tf.function(input_signature=[tf.TensorSpec([], dtype=tf.int32)])
-  ...   def serve_fn(self, x):
-  ...     return tf.nn.embedding_lookup(self.sharded_variable.variables, x)
-  >>>
-  >>> model = Model()
-  >>> model.fn(1).numpy()
+  ###  @tf.function(input_signature=[tf.TensorSpec([], dtype=tf.int32)])
+  ###  def serve_fn(self, x):
+  ###    return tf.nn.embedding_lookup(self.sharded_variable.variables, x)
+  ###
+  ### model = Model()
+  ### model.fn(1).numpy()
   2.0
-  >>> tf.saved_model.save(model, export_dir='/tmp/saved_model',
-  ...   signatures=model.serve_fn)
+  ### tf.saved_model.save(model, export_dir='/tmp/saved_model',
+  ###  signatures=model.serve_fn)
   """
 
   @property

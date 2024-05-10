@@ -116,14 +116,14 @@ class TPUClusterResolver(cluster_resolver_lib.ClusterResolver):
     This API will connect to remote TPU cluster and initialize the TPU
     hardwares. Example usage:
 
-    >>> resolver = tf.distribute.cluster_resolver.TPUClusterResolver.connect(
-    ...     tpu='')
+    ### resolver = tf.distribute.cluster_resolver.TPUClusterResolver.connect(
+    ###    tpu='')
 
     It can be viewed as convenient wrapper of the following code:
 
-    >>> resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
-    >>> tf.config.experimental_connect_to_cluster(resolver)
-    >>> tf.tpu.experimental.initialize_tpu_system(resolver)
+    ### resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    ### tf.config.experimental_connect_to_cluster(resolver)
+    ### tf.tpu.experimental.initialize_tpu_system(resolver)
 
     Args:
       tpu: A string corresponding to the TPU to use. It can be the TPU name or
@@ -144,7 +144,7 @@ class TPUClusterResolver(cluster_resolver_lib.ClusterResolver):
     """
     resolver = TPUClusterResolver(tpu, zone, project)
     remote.connect_to_cluster(resolver)
-    tpu_strategy_util.initialize_tpu_system_impl(resolver)
+    tpu_strategy_util.initialize_tpu_system_impl(resolver, None)
     return resolver
 
   @staticmethod

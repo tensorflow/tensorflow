@@ -8,7 +8,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
-        "//tensorflow/core:__pkg__",
+        "//tensorflow/core:__subpackages__",
         # tensorflow/core/platform:monitoring depends on this package
         "//tensorflow/core/platform:__subpackages__",
         # tensorflow/compiler/xla/pjrt:metrics depends on this package

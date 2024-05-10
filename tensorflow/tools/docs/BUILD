@@ -96,7 +96,7 @@ py_strict_test(
     srcs = ["tf_doctest.py"],
     args = [
         "--module=distribute.",
-        "--module_prefix_skip=" + ",".join(tpu_module),
+        "--module_prefix_skip=tpu.,distribute.tpu_strategy,distribute.cluster_resolver.tpu,distribute.cluster_resolver.tpu_oss",
         "--required_gpus=2",
     ],
     main = "tf_doctest.py",

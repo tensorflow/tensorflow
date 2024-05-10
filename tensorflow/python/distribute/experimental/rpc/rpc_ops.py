@@ -72,19 +72,18 @@ class Server(object):
 
     Example usage:
 
-      >>> import portpicker
-      >>> @tf.function(input_signature=[
-      ...      tf.TensorSpec([], tf.int32),
-      ...      tf.TensorSpec([], tf.int32)])
-      ... def remote_fn(a, b):
-      ...   return tf.add(a, b)
+      ###import portpicker
+      ###@tf.function(input_signature=[
+      ###     tf.TensorSpec([], tf.int32),
+      ###     tf.TensorSpec([], tf.int32)])
+      ###def remote_fn(a, b):
+      ###  return tf.add(a, b)
 
-      >>> port = portpicker.pick_unused_port()
-      >>> address = "localhost:{}".format(port)
-      >>> server = tf.distribute.experimental.rpc.Server.create("grpc", address)
-      >>> server.register("addition", remote_fn)
-      >>> server.start()
-
+      ###port = portpicker.pick_unused_port()
+      ###address = "localhost:{}".format(port)
+      ###server = tf.distribute.experimental.rpc.Server.create("grpc", address)
+      ###server.register("addition", remote_fn)
+      ###server.start()
     """
     if rpc_layer != "grpc":
       raise ValueError("Only GRPC backend is supported at the moment.")
@@ -166,41 +165,41 @@ class Client(object):
           creating and listing client methods.
 
     Example usage:
-      >>> # Have server already started.
-      >>> import portpicker
-      >>> @tf.function(input_signature=[
-      ...      tf.TensorSpec([], tf.int32),
-      ...      tf.TensorSpec([], tf.int32)])
-      ... def remote_fn(a, b):
-      ...   return tf.add(a, b)
+      #### Have server already started.
+      ###import portpicker
+      ###@tf.function(input_signature=[
+      ###     tf.TensorSpec([], tf.int32),
+      ###     tf.TensorSpec([], tf.int32)])
+      ###def remote_fn(a, b):
+      ###  return tf.add(a, b)
 
-      >>> port = portpicker.pick_unused_port()
-      >>> address = "localhost:{}".format(port)
-      >>> server = tf.distribute.experimental.rpc.Server.create("grpc", address)
-      >>> server.register("addition", remote_fn)
-      >>> server.start()
+      ###port = portpicker.pick_unused_port()
+      ###address = "localhost:{}".format(port)
+      ###server = tf.distribute.experimental.rpc.Server.create("grpc", address)
+      ###server.register("addition", remote_fn)
+      ###server.start()
 
-      >>> # Start client
-      >>> client = tf.distribute.experimental.rpc.Client.create("grpc",
-      ...      address=address, name="test_client")
+      #### Start client
+      ###client = tf.distribute.experimental.rpc.Client.create("grpc",
+      ###     address=address, name="test_client")
 
-      >>> a = tf.constant(2, dtype=tf.int32)
-      >>> b = tf.constant(3, dtype=tf.int32)
+      ###a = tf.constant(2, dtype=tf.int32)
+      ###b = tf.constant(3, dtype=tf.int32)
 
-      >>> result = client.call(
-      ...    args=[a, b],
-      ...    method_name="addition",
-      ...    output_specs=tf.TensorSpec((), tf.int32))
+      ###result = client.call(
+      ###   args=[a, b],
+      ###   method_name="addition",
+      ###   output_specs=tf.TensorSpec((), tf.int32))
 
-      >>> if result.is_ok():
-      ...   result.get_value()
+      ###if result.is_ok():
+      ###  result.get_value()
 
-      >>> result = client.addition(a, b)
+      ###result = client.addition(a, b)
 
-      >>> if result.is_ok():
-      ...   result.get_value()
+      ###if result.is_ok():
+      ###  result.get_value()
 
-      >>> value = client.addition_blocking(a, b)
+      ###value = client.addition_blocking(a, b)
     """
     if rpc_layer != "grpc":
       raise ValueError("Only GRPC backend is supported at the moment.")

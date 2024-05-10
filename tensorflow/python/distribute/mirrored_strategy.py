@@ -211,10 +211,10 @@ class MirroredStrategy(distribute_lib.Strategy):
   will use the available CPUs. Note that TensorFlow treats all CPUs on a
   machine as a single device, and uses threads internally for parallelism.
 
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-  >>> with strategy.scope():
-  ...   x = tf.Variable(1.)
-  >>> x
+  ### strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+  ### with strategy.scope():
+  ###  x = tf.Variable(1.)
+  ### x
   MirroredVariable:{
     0: <tf.Variable ... shape=() dtype=float32, numpy=1.0>,
     1: <tf.Variable ... shape=() dtype=float32, numpy=1.0>
@@ -227,16 +227,16 @@ class MirroredStrategy(distribute_lib.Strategy):
   Variables created inside a `MirroredStrategy` which is wrapped with a
   `tf.function` are still `MirroredVariables`.
 
-  >>> x = []
-  >>> @tf.function  # Wrap the function with tf.function.
-  ... def create_variable():
-  ...   if not x:
-  ...     x.append(tf.Variable(1.))
-  ...   return x[0]
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-  >>> with strategy.scope():
-  ...   _ = create_variable()
-  ...   print(x[0])
+  ### x = []
+  ### @tf.function  # Wrap the function with tf.function.
+  ###def create_variable():
+  ###  if not x:
+  ###    x.append(tf.Variable(1.))
+  ###  return x[0]
+  ### strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+  ### with strategy.scope():
+  ###  _ = create_variable()
+  ###  print(x[0])
   MirroredVariable:{
     0: <tf.Variable ... shape=() dtype=float32, numpy=1.0>,
     1: <tf.Variable ... shape=() dtype=float32, numpy=1.0>
@@ -275,8 +275,8 @@ class MirroredStrategy(distribute_lib.Strategy):
       `None`, all available GPUs are used. If no GPUs are found, CPU is used.
     cross_device_ops: optional, a descendant of `CrossDeviceOps`. If this is not
       set, `NcclAllReduce()` will be used by default.  One would customize this
-      if NCCL isn't available or if a special implementation that exploits
-      the particular hardware is available.
+      if NCCL isn't available or if a special implementation that exploits the
+      particular hardware is available.
   """
 
   # Only set this in tests.
