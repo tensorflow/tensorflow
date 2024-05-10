@@ -360,7 +360,6 @@ class StreamExecutorInterface {
   // Each call creates a new instance of the platform-specific implementation of
   // the corresponding interface type.
   virtual std::unique_ptr<EventInterface> CreateEventImplementation() = 0;
-  virtual std::unique_ptr<StreamInterface> GetStreamImplementation() = 0;
 
   // Creates a new Kernel object.
   // TODO(klucke) Combine with GetKernel.

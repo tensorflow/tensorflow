@@ -78,11 +78,4 @@ const DeviceDescription& StreamExecutor::GetDeviceDescription() const {
   return *device_description_;
 }
 
-absl::StatusOr<std::unique_ptr<Stream>> StreamExecutor::CreateStream(
-    std::optional<std::variant<StreamPriority, int>> priority) {
-  auto stream = std::make_unique<Stream>(this);
-  TF_RETURN_IF_ERROR(stream->Initialize(priority));
-  return std::move(stream);
-}
-
 }  // namespace stream_executor

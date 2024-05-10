@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -958,8 +959,19 @@ std::unique_ptr<EventInterface> GpuExecutor::CreateEventImplementation() {
   return std::unique_ptr<EventInterface>(new GpuEvent(this));
 }
 
-std::unique_ptr<StreamInterface> GpuExecutor::GetStreamImplementation() {
-  return std::unique_ptr<StreamInterface>(new GpuStream(this));
+absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(
+    std::optional<std::variant<StreamPriority, int>> priority) {
+  auto gpu_stream = std::make_unique<GpuStream>(this);
+  if (priority.has_value()) {
+    if (std::holds_alternative<StreamPriority>(*priority)) {
+      gpu_stream->SetPriority(std::get<StreamPriority>(*priority));
+    } else {
+      gpu_stream->SetPriority(std::get<int>(*priority));
+    }
+  }
+  auto stream = std::make_unique<Stream>(this, std::move(gpu_stream));
+  TF_RETURN_IF_ERROR(stream->Initialize(priority));
+  return std::move(stream);
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> GpuExecutor::CreateKernel() {

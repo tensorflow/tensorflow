@@ -70,9 +70,6 @@ class StreamExecutor : public StreamExecutorInterface {
 
   const Platform* GetPlatform() const override { return platform_; }
   const DeviceDescription& GetDeviceDescription() const override;
-  absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
-      std::optional<std::variant<StreamPriority, int>> priority =
-          std::nullopt) override;
   int64_t GetMemoryLimitBytes() const override { return memory_limit_bytes_; }
 
  private:

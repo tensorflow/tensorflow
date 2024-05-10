@@ -134,20 +134,16 @@ Status TpuExecutor::WaitForEvent(Stream* stream,
   return status.status();
 }
 
-// Implementations for Stream, Event
-// We need to map these implementations to internal equivalents -- thus we
-// allocate the internal Stream and Event operations here, and map
-// the implementations to the internal values. The "wrapper" interfaces are
-// responsible for deallocating the internal value when they are destroyed.
-
-// Called by Stream::Stream
-std::unique_ptr<StreamInterface> TpuExecutor::GetStreamImplementation() {
+absl::StatusOr<std::unique_ptr<Stream>> TpuExecutor::CreateStream(
+    std::optional<std::variant<StreamPriority, int>> priority) {
   SE_Stream* tpu_stream = ExecutorApiFn()->TpuStream_NewFn(executor_);
   auto ptr = std::make_unique<tensorflow::tpu::TpuStream>(tpu_stream);
   tpu_platform().mutex().Lock();
   stream_map()[ptr.get()] = tpu_stream;
   tpu_platform().mutex().Unlock();
-  return ptr;
+  auto stream = std::make_unique<Stream>(this, std::move(ptr));
+  TF_RETURN_IF_ERROR(stream->Initialize(priority));
+  return std::move(stream);
 }
 
 // Called by Event::Event

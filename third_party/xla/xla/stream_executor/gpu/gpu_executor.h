@@ -275,7 +275,9 @@ class GpuExecutor : public StreamExecutor {
 
   std::unique_ptr<EventInterface> CreateEventImplementation() override;
 
-  std::unique_ptr<StreamInterface> GetStreamImplementation() override;
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority =
+          std::nullopt) override;
 
   absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() override;
 

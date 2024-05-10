@@ -164,8 +164,6 @@ class MockStreamExecutor : public StreamExecutorInterface {
   MOCK_METHOD(dnn::DnnSupport*, AsDnn, (), (override));
   MOCK_METHOD(std::unique_ptr<EventInterface>, CreateEventImplementation, (),
               (override));
-  MOCK_METHOD(std::unique_ptr<StreamInterface>, GetStreamImplementation, (),
-              (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Kernel>>, CreateKernel, (),
               (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<CommandBuffer>>,
