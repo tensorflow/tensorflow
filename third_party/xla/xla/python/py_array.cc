@@ -980,6 +980,11 @@ PyArray::Storage::~PyArray_Storage() {
   if (next) {
     next->prev = prev;
   }
+  // Release GIL and then explicitly destroy `ifrt_array` to prevent deadlock on
+  // CPU backend caused by interactions between argument donations and host
+  // callbacks.
+  nb::gil_scoped_release gil_release;
+  ifrt_array.reset();
 }
 
 StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(ifrt::DeviceList devices,
