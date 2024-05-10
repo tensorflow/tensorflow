@@ -340,7 +340,8 @@ struct CtxDecoding<UserData<T>> {
         api->internal_api->XLA_FFI_INTERNAL_ExecutionContext_Get(ctx));
 
     if (execution_context == nullptr) {
-      return diagnostic.Emit("Failed to get execution context");
+      return diagnostic.Emit(
+          "Execution context must be not null to fetch UserData parameter");
     }
 
     auto user_data = execution_context->Lookup<T>();

@@ -589,7 +589,7 @@ struct CtxDecoding<UserData<id, T>> {
     args.data = nullptr;
 
     if (XLA_FFI_Error* err = api->XLA_FFI_ExecutionContext_Get(&args); err) {
-      diagnostic.Emit("Failed to get platform stream: ")
+      diagnostic.Emit("Failed to get user data from execution context: ")
           << internal::ErrorUtil::GetErrorMessage(api, err);
       internal::ErrorUtil::DestroyError(api, err);
       return std::nullopt;

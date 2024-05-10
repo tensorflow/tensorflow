@@ -634,8 +634,10 @@ TEST(FfiTest, UserData) {
 
   auto handler = Ffi::Bind().Ctx<UserData<MyData>>().To(fn);
 
-  CallOptions options;
-  options.execution_context = &execution_context;
+  ServiceExecutableRunOptions opts;
+  opts.mutable_run_options()->set_ffi_execution_context(&execution_context);
+
+  CallOptions options = {&opts};
   auto status = Call(*handler, call_frame, options);
 
   TF_ASSERT_OK(status);

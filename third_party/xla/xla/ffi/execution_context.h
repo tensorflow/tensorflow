@@ -31,8 +31,10 @@ limitations under the License.
 namespace xla::ffi {
 
 // Execution context is a container for forwarding arbitrary user data to FFI
-// handlers in the scope of a single execution. There are two kinds of user data
-// that can be passed to FFI handlers:
+// handlers in the scope of a single execution. Execution context allows to pass
+// arbitrary user data to FFI handlers via the side channel that does not
+// require modifying HLO modules. There are two kinds of user data that can be
+// passed to FFI handlers:
 //
 // 1. Opaque data. This is a wrapper for an opaque user data pointer that is
 //    useful when FFI handler is registered in the dynamically loaded library
@@ -45,6 +47,10 @@ namespace xla::ffi {
 //
 // For internal FFI handlers we always use typed data, and use opaque data only
 // if FFI handler has to be defined in a separate dynamically loaded library.
+//
+// Examples: FFI handler can register a per-execution cache in the execution
+// context and get access to it in the FFI handler, with a guarantee that it is
+// unique between separate calls to XLA execute.
 class ExecutionContext {
  public:
   // A base class for typed user data used for FFI handlers registered in the

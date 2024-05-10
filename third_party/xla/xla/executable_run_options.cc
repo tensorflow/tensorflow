@@ -135,6 +135,17 @@ ExecutableRunOptions::cpu_executable_run_options() const {
   return cpu_executable_run_options_;
 }
 
+ExecutableRunOptions& ExecutableRunOptions::set_ffi_execution_context(
+    const ffi::ExecutionContext* ffi_execution_context) {
+  ffi_execution_context_ = ffi_execution_context;
+  return *this;
+}
+
+const ffi::ExecutionContext* ExecutableRunOptions::ffi_execution_context()
+    const {
+  return ffi_execution_context_;
+}
+
 ExecutableRunOptions& ExecutableRunOptions::set_rng_seed(int rng_seed) {
   rng_seed_ = rng_seed;
   return *this;

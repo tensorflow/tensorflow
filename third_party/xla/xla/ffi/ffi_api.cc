@@ -71,20 +71,44 @@ Status TakeStatus(XLA_FFI_Error* error) {
 }
 
 Status Call(Ffi& handler, CallFrame& call_frame, const CallOptions& options) {
-  XLA_FFI_ExecutionContext ctx = {options.run_options,
-                                  options.called_computation,
-                                  options.execution_context};
+  XLA_FFI_ExecutionContext ctx = {
+      options.run_options, options.called_computation,
+      internal::ScopedExecutionContext::GetCallExecutionContext(options)};
   XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(GetXlaFfiApi(), &ctx);
   return TakeStatus(handler.Call(&ffi_call_frame));
 }
 
 Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
             const CallOptions& options) {
-  XLA_FFI_ExecutionContext ctx = {options.run_options,
-                                  options.called_computation};
+  XLA_FFI_ExecutionContext ctx = {
+      options.run_options, options.called_computation,
+      internal::ScopedExecutionContext::GetCallExecutionContext(options)};
   XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(GetXlaFfiApi(), &ctx);
   return TakeStatus((*handler)(&ffi_call_frame));
 }
+
+namespace internal {
+static thread_local const ExecutionContext* scoped_execution_context = nullptr;
+
+ScopedExecutionContext::ScopedExecutionContext(const ExecutionContext* context)
+    : recover_(scoped_execution_context) {
+  scoped_execution_context = context;
+}
+
+ScopedExecutionContext::~ScopedExecutionContext() {
+  scoped_execution_context = recover_;
+}
+
+const ExecutionContext* ScopedExecutionContext::GetCallExecutionContext(
+    const CallOptions& options) {
+  if (scoped_execution_context != nullptr) {
+    return scoped_execution_context;
+  }
+  return options.run_options
+             ? options.run_options->run_options().ffi_execution_context()
+             : nullptr;
+}
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // XLA FFI registry
