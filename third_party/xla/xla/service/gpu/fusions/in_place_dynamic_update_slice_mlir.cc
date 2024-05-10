@@ -76,7 +76,7 @@ LaunchDimensions MlirInPlaceDynamicUpdateSliceFusion::launch_dimensions()
 std::optional<IndexingMap>
 MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
-    mlir::MLIRContext* mlir_context) const {
+    mlir::MLIRContext* indexing_context) const {
   // TODO(b/331355203): Implement thread ID -> operand indexing.
   if (hero_operand_index != kDUSUpdateIndex) {
     return std::nullopt;
@@ -86,7 +86,7 @@ MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
   const auto& update_shape =
       dus_ops_.front()->operand(kDUSUpdateIndex)->shape();
   return GetDefaultThreadIdIndexingMap(launch_dims, /*unroll_factor=*/1,
-                                       update_shape, mlir_context);
+                                       update_shape, indexing_context);
 }
 
 std::vector<mlir_converter::EpilogueSpecification>
