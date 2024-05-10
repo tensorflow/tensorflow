@@ -251,8 +251,9 @@ absl::StatusOr<SmallVector<Value>> EmitReduce(
   auto body =
       [&](ValueRange iter_args, ValueRange dim_values,
           ValueRange symbol_values) -> absl::StatusOr<SmallVector<Value>> {
-    auto indices = ApplyAffineMap(indexing_map.GetAffineMap(), dim_values,
-                                  symbol_values, b);
+    auto indices =
+        b.create<ApplyIndexingOp>(dim_values, symbol_values, indexing_map)
+            .getResults();
 
     SmallVector<Value> args{iter_args};
     for (int i = 0; i < instr->operand_count() / 2; ++i) {
@@ -311,8 +312,9 @@ absl::StatusOr<SmallVector<Value>> EmitReduceWindow(
   auto body =
       [&](ValueRange iter_args, ValueRange dim_values,
           ValueRange symbol_values) -> absl::StatusOr<SmallVector<Value>> {
-    auto indices = ApplyAffineMap(indexing_map.GetAffineMap(), dim_values,
-                                  symbol_values, b);
+    auto indices =
+        b.create<ApplyIndexingOp>(dim_values, symbol_values, indexing_map)
+            .getResults();
 
     SmallVector<Value> args{iter_args};
     for (auto [index, input] : llvm::enumerate(reduce_window->inputs())) {
@@ -589,18 +591,20 @@ absl::StatusOr<SmallVector<Value>> EmitDotLoop(
   auto body =
       [&](ValueRange iter_args, ValueRange dim_values,
           ValueRange symbol_values) -> absl::StatusOr<SmallVector<Value>> {
-    llvm::SmallVector<Value> lhs_indices = ApplyAffineMap(
-        lhs_indexing_map.GetAffineMap(), dim_values, symbol_values, b);
-    llvm::SmallVector<Value> rhs_indices =
-        ApplyAffineMap(rhs_indexing_map.GetAffineMap(), dim_values,
-                       symbol_values.take_front(rhs_symbol_count), b);
+    auto lhs_indices =
+        b.create<ApplyIndexingOp>(dim_values, symbol_values, lhs_indexing_map);
+    auto rhs_indices = b.create<ApplyIndexingOp>(
+        dim_values, symbol_values.take_front(rhs_symbol_count),
+        rhs_indexing_map);
 
-    TF_ASSIGN_OR_RETURN(Value lhs_value, GetSingleOperandValue(
-                                             operand_provider, instr,
-                                             /*operand_index=*/0, lhs_indices));
-    TF_ASSIGN_OR_RETURN(Value rhs_value, GetSingleOperandValue(
-                                             operand_provider, instr,
-                                             /*operand_index=*/1, rhs_indices));
+    TF_ASSIGN_OR_RETURN(
+        Value lhs_value,
+        GetSingleOperandValue(operand_provider, instr,
+                              /*operand_index=*/0, lhs_indices.getResults()));
+    TF_ASSIGN_OR_RETURN(
+        Value rhs_value,
+        GetSingleOperandValue(operand_provider, instr,
+                              /*operand_index=*/1, rhs_indices.getResults()));
     Value accum = iter_args[0];
 
     TF_ASSIGN_OR_RETURN(
@@ -845,7 +849,8 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
           auto operand_map = GetBitcastMap(
               first_shape, instr->operand(i)->shape(), mlir_context);
           operand_indices =
-              ApplyAffineMap(operand_map.GetAffineMap(), indices, {}, builder);
+              builder.create<ApplyIndexingOp>(indices, operand_map)
+                  .getResults();
         } else {
           operand_indices = indices;
         }
