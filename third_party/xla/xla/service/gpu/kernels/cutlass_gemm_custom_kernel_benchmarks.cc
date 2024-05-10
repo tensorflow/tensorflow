@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
 namespace xla::gpu::kernel::gemm_universal {
