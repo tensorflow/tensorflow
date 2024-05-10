@@ -718,7 +718,7 @@ NB_MODULE(xla_extension, m_nb) {
           "key_value_delete",
           [](DistributedRuntimeClient& client, std::string_view key) {
             nb::gil_scoped_release gil_release;
-            return client.KeyValueDelete(key);
+            return xla::ThrowIfError(client.KeyValueDelete(key));
           },
           nb::arg("key"));
 
