@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -215,66 +216,40 @@ std::optional<HloInstruction*> FindDUSFromAnnotation(HloInstruction* hlo) {
   return std::nullopt;
 }
 
-}  // namespace
-
-absl::StatusOr<bool> HostOffloader::TryOutputStreaming(
-    HloInstruction* custom_call) {
-  // Check if this custom call traces down to a dynamic-update-slice. If so, we
-  // must use HloAliasAnalysis on the buffer of that dynamic-update-slice.
-  std::optional<HloInstruction*> dus = FindDUSFromAnnotation(custom_call);
-  const HloBuffer& unique_buffer =
-      alias_analysis_->GetUniqueBufferAt(dus.value_or(custom_call));
-  bool is_used_as_output_with_host_memory_space = false;
-  const HloComputation* const entry_computation =
-      custom_call->GetModule()->entry_computation();
-  for (const HloValue* value : unique_buffer.values()) {
-    // Check if this is memory-only.
-    if (!AllPositionsAreAllowed(value)) {
-      // Found a position which is not allowed.
-      return false;
+// Starting from a dynamic-update-slice, trace the graph up reshapes,
+// bitcasts and reduces to return the MoveToHost custom call that feeds into the
+// DUS, if it exists. If no MoveToHost call is found, returns an empty optional.
+std::optional<HloInstruction*> FindAnnotationFromDUS(HloInstruction* hlo) {
+  CHECK(hlo->opcode() == HloOpcode::kDynamicUpdateSlice)
+      << "Expected a dynamic-update-slice as input.";
+  // We expect the custom call to come from the written slice, i.e. operand 1.
+  hlo = hlo->mutable_operand(1);
+  while (!hlo->IsCustomCall(kMoveToHostCustomCallTarget)) {
+    if (!CanTraverseOpBetweenAnnotation(hlo)) {
+      break;
     }
-
-    // Look for a value used as a output.
-    for (const auto& position : value->positions()) {
-      const HloInstruction* instruction = position.instruction;
-      const ShapeIndex& index = position.index;
-      if (instruction->parent() == entry_computation && instruction->IsRoot()) {
-        const Shape& output_shape =
-            ShapeUtil::GetSubshape(entry_computation->parent()
-                                       ->entry_computation_layout()
-                                       .result_shape(),
-                                   index);
-        CHECK(output_shape.has_layout());
-
-        if (output_shape.layout().memory_space() != kHostMemorySpaceColor) {
-          return FailedPrecondition(
-              "Output buffer is annotated with %s but is not marked with host "
-              "memory space in the entry computation.",
-              custom_call->name());
-        }
-        is_used_as_output_with_host_memory_space = true;
-      }
-    }
+    hlo = hlo->mutable_operand(0);
   }
-  if (!is_used_as_output_with_host_memory_space) {
-    VLOG(1) << "Buffer annotated by " << custom_call->name()
-            << " is not used as an output with host memory space.";
-    return false;
+  if (hlo->IsCustomCall(kMoveToHostCustomCallTarget)) {
+    return hlo;
   }
-
-  VLOG(3) << "Found an output buffer annotated with " << custom_call->name()
-          << ". Expecting that we'll need to insert copies.";
-
-  annotations_for_copy_to_host_to_insert_.emplace(custom_call);
-  AddAllPositionsToBeMovedToHostMemory(unique_buffer);
-  return true;
+  return std::nullopt;
 }
+
+}  // namespace
 
 Status HostOffloader::HandleMoveToHostCustomCall(HloInstruction* custom_call) {
   VLOG(2) << "Found a custom call annotating start-of-host-offload: "
           << custom_call->ToString();
   // Save a pointer to this custom call for when we want to remove it later.
   custom_calls_to_remove_.emplace(custom_call);
+
+  // Skip this custom call if we've already handled it in output streaming.
+  if (annotations_for_copy_to_host_to_insert_.contains(custom_call)) {
+    VLOG(4) << "Skipping MoveToHost custom call that was already handled: "
+            << custom_call->name();
+    return OkStatus();
+  }
 
   // We expect that either the custom call is the root or the DUS is the only
   // user of this custom call.
@@ -305,11 +280,7 @@ Status HostOffloader::HandleMoveToHostCustomCall(HloInstruction* custom_call) {
   } else if (consumer != nullptr && consumer->opcode() == HloOpcode::kCopy) {
     TF_RETURN_IF_ERROR(MemoryOnlyOffloadStartingWithCopy(consumer));
   } else {
-    TF_ASSIGN_OR_RETURN(bool did_output_streaming,
-                        TryOutputStreaming(custom_call));
-    if (!did_output_streaming) {
-      TF_RETURN_IF_ERROR(MemoryOnlyOffloadInsertCopies(custom_call));
-    }
+    TF_RETURN_IF_ERROR(MemoryOnlyOffloadInsertCopies(custom_call));
   }
   return OkStatus();
 }
@@ -668,6 +639,24 @@ Status HostOffloader::CreateCopyForInputStreaming(HloInstruction* custom_call) {
 Status HostOffloader::HandleStreamedBuffer(const HloBuffer& unique_buffer) {
   // Find all move-to-device custom calls that are using this buffer.
   for (const HloValue* value : unique_buffer.values()) {
+    // First, handle the defining instruction of this buffer, as a potential
+    // move-to-host custom call.
+    if (value->defining_instruction()->IsCustomCall(
+            kMoveToHostCustomCallTarget)) {
+      annotations_for_copy_to_host_to_insert_.emplace(
+          value->defining_instruction());
+      AddAllPositionsToBeMovedToHostMemory(unique_buffer);
+    } else if (value->defining_instruction()->opcode() ==
+               HloOpcode::kDynamicUpdateSlice) {
+      std::optional<HloInstruction*> dus =
+          FindAnnotationFromDUS(value->defining_instruction());
+      if (dus.has_value()) {
+        annotations_for_copy_to_host_to_insert_.emplace(dus.value());
+        AddAllPositionsToBeMovedToHostMemory(unique_buffer);
+      }
+    }
+    // Next, handle uses of this buffer as potential move-to-device custom
+    // calls.
     for (const HloUse& use : value->GetUses()) {
       if (use.instruction->IsCustomCall(
               host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
@@ -745,6 +734,28 @@ Status HostOffloader::HandleInputStreaming(HloComputation* computation) {
   return OkStatus();
 }
 
+// Starts from the result of the entry computation and looks for a case of
+// output streaming. This function will not change any hlo, it will only mark
+// instructions to be converted to host memory space.
+Status HostOffloader::HandleOutputStreaming(HloComputation* computation) {
+  const ComputationLayout& entry_computation_layout =
+      computation->parent()->entry_computation_layout();
+
+  ShapeUtil::ForEachSubshape(
+      entry_computation_layout.result_shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.has_layout() &&
+            subshape.layout().memory_space() == kHostMemorySpaceColor) {
+          VLOG(4) << "Handling streamed element in result with shape: "
+                  << subshape.ToString(true);
+          const HloBuffer& unique_buffer = alias_analysis_->GetUniqueBufferAt(
+              computation->root_instruction(), {index});
+          TF_CHECK_OK(HandleStreamedBuffer(unique_buffer));
+        }
+      });
+  return OkStatus();
+}
+
 absl::StatusOr<bool> HostOffloader::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -755,12 +766,12 @@ absl::StatusOr<bool> HostOffloader::Run(
   // Run HloAliasAnalysis on module.
   TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));
 
+  TF_RETURN_IF_ERROR(HandleInputStreaming(module->entry_computation()));
+  TF_RETURN_IF_ERROR(HandleOutputStreaming(module->entry_computation()));
+
   // Iterate over all instructions and look for XLA host offload annotations.
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    if (computation->IsEntryComputation()) {
-      TF_RETURN_IF_ERROR(HandleInputStreaming(computation));
-    }
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() != HloOpcode::kCustomCall) {
