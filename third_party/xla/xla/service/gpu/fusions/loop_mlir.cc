@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/loop_mlir.h"
 
 #include <iterator>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
