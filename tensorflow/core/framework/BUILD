@@ -1118,6 +1118,19 @@ cc_library(
     deps = ["//tensorflow/core/platform:macros"],
 )
 
+tf_cc_test(
+    name = "op_requires_test",
+    srcs = ["op_requires_test.cc"],
+    deps = [
+        ":op_requires",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/gtl:cleanup",
+        "//tensorflow/core/platform:status_matchers",
+        "@com_google_absl//absl/status",
+    ],
+)
+
 # Files whose users still need to be migrated from core:framework to the
 # above targets.
 # TODO(gonnet): Remove these files once targets depending on them have
@@ -1572,8 +1585,6 @@ tf_proto_library(
     srcs = ["graph_debug_info.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = [
-    ],
 )
 
 tf_proto_library(
