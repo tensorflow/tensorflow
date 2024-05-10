@@ -158,8 +158,8 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
   for (const auto& [root_index, hero] :
        llvm::enumerate(fusion_analysis.fusion_heroes())) {
     for (const auto& [hero_operand_index, hero_operand] :
-         llvm::enumerate(hero.GetOperands())) {
-      if (hero_operand.shape().rank() == 0) {
+         llvm::enumerate(hero->operands())) {
+      if (hero_operand->shape().rank() == 0) {
         continue;
       }
       // Compute thread ID -> hero operand indexing map.
@@ -170,9 +170,11 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
         return std::nullopt;
       }
       // Compute indexing from output to inputs for logical layout.
+      HloInstructionAdaptor hero_operand_adaptor(*hero_operand,
+                                                 &fusion_adaptor);
       GroupedByOpIndexingMap instr_indexing_keyed_by_operands =
-          ComputeGroupedOutputToInputIndexing(fusion_adaptor, hero_operand,
-                                              mlir_context);
+          ComputeGroupedOutputToInputIndexing(
+              fusion_adaptor, hero_operand_adaptor, mlir_context);
       // For every operand compute thread ID -> physical layout of operand
       // indexing map.
       for (const HloInstruction* operand : operands) {

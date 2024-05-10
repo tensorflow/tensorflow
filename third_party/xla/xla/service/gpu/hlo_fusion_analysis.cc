@@ -23,11 +23,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -48,19 +46,16 @@ namespace {
 
 // Returns true if the fusion output contains non-strided slices only.
 bool IsInputFusibleNonStridedSlices(
-    const absl::Span<const HloInstructionAdaptor> fusion_roots) {
-  return absl::c_all_of(fusion_roots, [&](const HloInstructionAdaptor& root) {
-    return IsSliceWithUnitStrides(&root.instruction());
-  });
+    const std::vector<const HloInstruction*>& fusion_roots) {
+  return absl::c_all_of(fusion_roots, IsSliceWithUnitStrides);
 }
 
 // Returns true if all slice inputs in a tuple are equal (ignoring type).
 bool AllSliceInputsAreCompatible(
-    const absl::Span<const HloInstructionAdaptor> fusion_roots) {
-  const Shape& first_slice_operand_shape =
-      fusion_roots[0].GetOperand(0).shape();
-  return absl::c_all_of(fusion_roots, [&](const HloInstructionAdaptor& slice) {
-    return ShapeUtil::EqualIgnoringElementType(slice.GetOperand(0).shape(),
+    const std::vector<const HloInstruction*>& fusion_roots) {
+  const Shape& first_slice_operand_shape = fusion_roots[0]->operand(0)->shape();
+  return absl::c_all_of(fusion_roots, [&](const HloInstruction* slice) {
+    return ShapeUtil::EqualIgnoringElementType(slice->operand(0)->shape(),
                                                first_slice_operand_shape);
   });
 }
@@ -71,14 +66,13 @@ bool AllSliceInputsAreCompatible(
 //   * Either the root has a traspose hero with the same normalized dimensions
 //   * Or the root output shape is equal to the the transpose input shape
 std::optional<TransposeDescription> FindConsistentTransposeHero(
-    const absl::InlinedVector<HloInstructionAdaptor, 2>& hlo_roots,
-    const absl::InlinedVector<HloInstructionAdaptor, 2>& heroes) {
+    const std::vector<const HloInstruction*>& hlo_roots,
+    const std::vector<const HloInstruction*>& heroes) {
   std::optional<TransposeDescription> tiled_transpose_hero;
   std::vector<const HloInstruction*> non_transpose_roots;
 
   for (auto [root, hero] : llvm::zip(hlo_roots, heroes)) {
-    if (auto tr = GetDescriptionForTiledTransposeEmitter(root.instruction(),
-                                                         hero.instruction())) {
+    if (auto tr = GetDescriptionForTiledTransposeEmitter(*root, *hero)) {
       if (!tiled_transpose_hero) {
         // First transpose hero found.
         tiled_transpose_hero = tr;
@@ -87,7 +81,7 @@ std::optional<TransposeDescription> FindConsistentTransposeHero(
         return std::nullopt;
       }
     } else {
-      non_transpose_roots.push_back(&root.instruction());
+      non_transpose_roots.push_back(root);
     }
   }
 
@@ -106,14 +100,14 @@ std::optional<TransposeDescription> FindConsistentTransposeHero(
   return tiled_transpose_hero;
 }
 
-int SmallestBitWidth(absl::Span<HloInstructionAdaptor const> args) {
+int SmallestBitWidth(absl::Span<const HloInstruction* const> args) {
   int bits = std::numeric_limits<int>::max();
-  for (const HloInstructionAdaptor& operand : args) {
-    if (!operand.shape().IsArray()) continue;
+  for (const HloInstruction* operand : args) {
+    if (!operand->shape().IsArray()) continue;
     bits = std::min(
-        bits, operand.shape().element_type() == PRED
+        bits, operand->shape().element_type() == PRED
                   ? 8
-                  : primitive_util::BitWidth(operand.shape().element_type()));
+                  : primitive_util::BitWidth(operand->shape().element_type()));
   }
   return bits;
 }
@@ -123,8 +117,8 @@ int SmallestBitWidth(absl::Span<HloInstructionAdaptor const> args) {
 HloFusionAnalysis::HloFusionAnalysis(
     FusionBackendConfig fusion_backend_config,
     std::unique_ptr<HloFusionAdaptor> fusion,
-    absl::InlinedVector<HloInstructionAdaptor, 2> fusion_roots,
-    absl::InlinedVector<HloInstructionAdaptor, 2> fusion_heroes,
+    std::vector<const HloInstruction*> fusion_roots,
+    std::vector<const HloInstruction*> fusion_heroes,
     const se::DeviceDescription* device_info,
     std::optional<TransposeDescription> tiled_transpose,
     HloFusionAnalysis::InputOutputInfo input_output_info)
@@ -141,15 +135,16 @@ HloFusionAnalysis HloFusionAnalysis::Create(
     FusionBackendConfig backend_config,
     std::unique_ptr<HloFusionAdaptor> fusion,
     const se::DeviceDescription* device_info) {
-  absl::InlinedVector<HloInstructionAdaptor, 2> roots = fusion->GetRoots();
-  absl::InlinedVector<HloInstructionAdaptor, 2> heroes;
-  for (auto root : roots) {
-    heroes.push_back(FindNonTrivialHero(root));
+  std::vector<const HloInstruction*> roots;
+  std::vector<const HloInstruction*> heroes;
+  for (auto root : fusion->GetRoots()) {
+    roots.push_back(&root.instruction());
+    heroes.push_back(&FindNonTrivialHero(root).instruction());
   }
 
-  absl::InlinedVector<HloInstructionAdaptor, 2> fusion_arguments;
-  FindFusionArguments(*fusion, [&](const HloInstructionAdaptor& argument) {
-    fusion_arguments.push_back(argument);
+  std::vector<const HloInstruction*> fusion_arguments;
+  FindFusionArguments(*fusion, [&](auto argument) {
+    fusion_arguments.push_back(&argument.instruction());
   });
 
   InputOutputInfo input_output_info{
@@ -184,15 +179,15 @@ bool HloFusionAnalysis::HasConsistentTransposeHeros() const {
 }
 
 static bool UseConcatenateFusion(
-    absl::Span<const HloInstructionAdaptor> roots,
-    absl::Span<const HloInstructionAdaptor> heroes) {
+    const std::vector<const HloInstruction*>& roots,
+    const std::vector<const HloInstruction*>& heroes) {
   if (heroes.size() != 1) return false;
-  if (heroes.front().opcode() != HloOpcode::kConcatenate) return false;
+  if (heroes.front()->opcode() != HloOpcode::kConcatenate) return false;
   // The concat emitter does not support multiple outputs yet. TODO(csigg): fix.
-  if (roots.front().shape().IsTuple()) return false;
+  if (roots.front()->shape().IsTuple()) return false;
   // Limit the number of operands because the concat emitter produces code for
   // each operand, hurting occupancy.
-  if (heroes.front().instruction().operand_count() > 4) return false;
+  if (heroes.front()->operand_count() > 4) return false;
   // The loop emitter is faster when warp divergence and occupancy are both low.
   // TODO(csigg): exclude this case.
   return true;
@@ -228,30 +223,30 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kLoop;
   }
 
-  std::optional<HloInstructionAdaptor> first_reduce_hero;
+  const HloInstruction* first_reduce_hero = nullptr;
   for (auto [root, hero] : llvm::zip(fusion_roots_, fusion_heroes_)) {
-    if (IsRealReductionHero(root.instruction(), hero.instruction())) {
+    if (IsRealReductionHero(*root, *hero)) {
       first_reduce_hero = hero;
       break;
     }
   }
-  if (first_reduce_hero.has_value()) {
+  if (first_reduce_hero != nullptr) {
     bool valid_shapes = true;
-    Shape hero_operand_shape = first_reduce_hero->GetOperand(0).shape();
+    Shape hero_operand_shape = first_reduce_hero->operand(0)->shape();
     for (auto [root, hero] : llvm::zip(fusion_roots_, fusion_heroes_)) {
-      if (root == *first_reduce_hero) {
+      if (root == first_reduce_hero) {
         continue;
       }
-      if (!IsRealReductionHero(root.instruction(), hero.instruction())) {
+      if (!IsRealReductionHero(*root, *hero)) {
         // Needs to have a compatible shape to the reduce operand (compatible
         // meaning same number of elements).
-        if (ShapeUtil::ElementsIn(root.shape()) !=
+        if (ShapeUtil::ElementsIn(root->shape()) !=
             ShapeUtil::ElementsIn(hero_operand_shape)) {
           valid_shapes = false;
           break;
         }
-      } else if (!AreReductionsMultiOutputFusionCompatible(
-                     &hero.instruction(), &first_reduce_hero->instruction())) {
+      } else if (!AreReductionsMultiOutputFusionCompatible(hero,
+                                                           first_reduce_hero)) {
         valid_shapes = false;
         break;
       }
@@ -274,7 +269,7 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kLoop;
   }
 
-  if (fusion_roots_[0].opcode() == HloOpcode::kScatter) {
+  if (fusion_roots_[0]->opcode() == HloOpcode::kScatter) {
     return EmitterFusionKind::kScatter;
   }
 
@@ -289,15 +284,15 @@ const HloInstruction* HloFusionAnalysis::FindHeroReduction() const {
   if (GetEmitterFusionKind() != EmitterFusionKind::kReduction) {
     return nullptr;
   }
-  const auto& roots = fusion_roots();
+  auto roots = fusion_roots();
   CHECK(!roots.empty());
   // We always use the first reduce root that triggers unnested reduction
   // emitter as the hero reduction, since all the reductions are required to
   // have the same shape and layout as verified by
   // `IsFusedReductionOutputConsistent()`.
   for (auto [root, hero] : llvm::zip(roots, fusion_heroes_)) {
-    if (IsRealReductionHero(root.instruction(), hero.instruction())) {
-      return &hero.instruction();
+    if (IsRealReductionHero(*root, *hero)) {
+      return hero;
     }
   }
   LOG(FATAL) << "Did not find a hero reduction";

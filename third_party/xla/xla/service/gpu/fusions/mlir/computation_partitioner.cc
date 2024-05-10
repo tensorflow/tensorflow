@@ -131,11 +131,11 @@ EpilogueSpecification EpilogueSpecification::FromOutputIndexing(
       root_to_hero;
   for (auto [root, hero] :
        llvm::zip(analysis.fusion_roots(), analysis.fusion_heroes())) {
-    root_to_hero[&root.instruction()] = &hero.instruction();
+    root_to_hero[root] = hero;
   }
   absl::flat_hash_map<const HloInstruction*, int> root_to_index;
   for (auto [index, root] : llvm::enumerate(analysis.fusion_roots())) {
-    root_to_index[&root.instruction()] = root_to_index.size();
+    root_to_index[root] = root_to_index.size();
   }
 
   result.root_indexing.reserve(roots.size());

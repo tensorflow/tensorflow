@@ -134,7 +134,7 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
     disjoint_sets[root].Get() = root;
     reachable_outputs[root].insert(root);
     result.is_reduction_root.push_back(
-        IsRealReductionHero(root.instruction(), hero.instruction()));
+        IsRealReductionHero(root.instruction(), *hero));
     if (result.is_reduction_root.back()) {
       roots_with_reduction.insert(root);
     } else if (first_non_reduction_root) {
@@ -337,7 +337,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
     auto map = ComposeIndexingMaps(
         GetIndexingMapForTiling(tiling_, ctx),
         GetBitcastMap(tiling_.GetXlaShape(),
-                      analysis_.fusion_root(root_index).shape(), ctx));
+                      analysis_.fusion_roots()[root_index]->shape(), ctx));
     AddGroupIdConstraint(map, root_index, ctx);
     return map;
   }
@@ -432,8 +432,8 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToInputIndexing(
   if (!groups_.is_reduction_root[root_index]) {
     return ComposeIndexingMaps(
         *ComputeThreadIdToOutputIndexing(root_index, ctx),
-        *ComputeOutputToInputIndexing(
-             &analysis_.fusion_root(root_index).instruction(), 0, ctx)
+        *ComputeOutputToInputIndexing(analysis_.fusion_roots()[root_index], 0,
+                                      ctx)
              .indexing_maps[hero_operand_index]
              .begin());
   }

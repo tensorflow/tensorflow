@@ -111,9 +111,8 @@ absl::Status ConcatenateFusion::EmitKernel(
       for (const auto& [output, root] :
            llvm::zip_equal(outputs, analysis_.fusion_roots())) {
         llvm_ir::IrArray::Index root_index = result_index.SourceIndexOfBitcast(
-            concat.shape(), root.shape(), builder);
-        TF_ASSIGN_OR_RETURN(auto generator,
-                            fused_emitter.GetGenerator(root.instruction()));
+            concat.shape(), root->shape(), builder);
+        TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(*root));
         TF_ASSIGN_OR_RETURN(llvm::Value * value, generator(root_index));
         output.EmitWriteArrayElement(root_index, value, builder);
       }

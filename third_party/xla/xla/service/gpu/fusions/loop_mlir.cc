@@ -63,7 +63,7 @@ std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToOutputIndexing(
   auto launch_dims = launch_dimensions();
   return GetDefaultThreadIdIndexingMap(
       launch_dims, config_.unroll_factor,
-      GetIndexShape(analysis_.fusion_root(root_index).shape()), ctx);
+      GetIndexShape(analysis_.fusion_roots()[root_index]->shape()), ctx);
 }
 
 std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToInputIndexing(
@@ -91,8 +91,8 @@ std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToInputIndexing(
 
 LaunchDimensions MlirLoopFusion::launch_dimensions() const {
   return CalculateLaunchDimensions(
-      GetIndexShape(analysis_.fusion_root(0).shape()), analysis_.device_info(),
-      config_);
+      GetIndexShape(analysis_.fusion_roots()[0]->shape()),
+      analysis_.device_info(), config_);
 }
 
 absl::Status MlirLoopFusion::EmitEntryFunction(
@@ -111,13 +111,13 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
   auto output_tensor_args =
       entry_function.getArguments().drop_front(num_inputs);
   llvm::SmallVector<const Shape*> result_shapes;
-  for (const HloInstructionAdaptor& root : analysis_.fusion_roots()) {
-    if (root.shape().IsTuple()) {
-      for (const auto& shape : root.shape().tuple_shapes()) {
+  for (const auto* root : analysis_.fusion_roots()) {
+    if (root->shape().IsTuple()) {
+      for (const auto& shape : root->shape().tuple_shapes()) {
         result_shapes.push_back(&shape);
       }
     } else {
-      result_shapes.push_back(&root.shape());
+      result_shapes.push_back(&root->shape());
     }
   }
 

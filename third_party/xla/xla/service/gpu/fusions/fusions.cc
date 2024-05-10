@@ -77,7 +77,7 @@ bool IsParameterOrGteOfParameter(const HloInstruction* instr) {
 
 bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
   return absl::c_all_of(
-      analysis.fusion_roots(), [](const HloInstructionAdaptor& root) {
+      analysis.fusion_root_adaptors(), [](const HloInstructionAdaptor& root) {
         return root.opcode() == HloOpcode::kDynamicUpdateSlice ||
                (root.opcode() == HloOpcode::kBitcast &&
                 root.GetOperand(0).opcode() == HloOpcode::kDynamicUpdateSlice);
@@ -89,17 +89,16 @@ bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
 std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
 HloFusionInfo::GetCopyFusion() const {
   std::vector<BufferAllocation::Slice> src_buffers;
-  for (const HloInstructionAdaptor& root : analysis().fusion_roots()) {
-    const HloInstruction* root_operand = root.instruction().operand(0);
-    if (root.opcode() != HloOpcode::kCopy ||
-        root_operand->opcode() != HloOpcode::kParameter ||
-        !LayoutUtil::Equal(root_operand->shape().layout(),
-                           root.shape().layout())) {
+  for (auto* root : analysis().fusion_roots()) {
+    if (root->opcode() != HloOpcode::kCopy ||
+        root->operand(0)->opcode() != HloOpcode::kParameter ||
+        !LayoutUtil::Equal(root->operand(0)->shape().layout(),
+                           root->shape().layout())) {
       return std::nullopt;
     }
 
     const HloInstruction* src_instr =
-        instr_->operand(root_operand->parameter_number());
+        instr_->operands()[root->operand(0)->parameter_number()];
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                         buffer_assignment_->GetUniqueSlice(src_instr, {}));
     src_buffers.push_back(slice);
@@ -128,7 +127,7 @@ HloFusionInfo::GetCopyFusion() const {
 
 bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
   auto ret = CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-      instr_, buffer_assignment_, analysis().fusion_roots());
+      instr_, buffer_assignment_, analysis().fusion_root_adaptors());
   return ret.ok() && *ret;
 }
 
