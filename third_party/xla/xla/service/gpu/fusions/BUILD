@@ -1,5 +1,4 @@
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load("@local_tsl//tsl/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
@@ -37,7 +36,7 @@ cc_library(
 xla_cc_test(
     name = "in_place_dynamic_update_slice_test",
     srcs = ["in_place_dynamic_update_slice_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":fusions",
         ":in_place_dynamic_update_slice",
@@ -85,7 +84,7 @@ cc_library(
 xla_cc_test(
     name = "in_place_dynamic_update_slice_mlir_test",
     srcs = ["in_place_dynamic_update_slice_mlir_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":in_place_dynamic_update_slice_mlir",
         ":mlir_emitter_test_base",
@@ -385,7 +384,7 @@ cc_library(
 xla_cc_test(
     name = "loop_mlir_test",
     srcs = ["loop_mlir_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":loop_mlir",
         ":mlir_emitter_test_base",
@@ -436,7 +435,7 @@ cc_library(
 xla_cc_test(
     name = "scatter_mlir_test",
     srcs = ["scatter_mlir_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":mlir_emitter_test_base",
         ":scatter_mlir",
@@ -489,7 +488,7 @@ cc_library(
 xla_cc_test(
     name = "transpose_mlir_test",
     srcs = ["transpose_mlir_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":mlir_emitter_test_base",
         ":transpose_mlir",
@@ -864,7 +863,7 @@ xla_cc_test(
     name = "reduction_mlir_test",
     srcs = ["reduction_mlir_test.cc"],
     shard_count = 11,
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":mlir_emitter_test_base",
         ":reduction_mlir",
@@ -952,7 +951,7 @@ cc_library(
 xla_cc_test(
     name = "concatenate_mlir_test",
     srcs = ["concatenate_mlir_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":concatenate_mlir",
         ":mlir_emitter_test_base",
@@ -1087,7 +1086,7 @@ cc_library(
 xla_cc_test(
     name = "input_slices_mlir_test",
     srcs = ["input_slices_mlir_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":input_slices_mlir",
         ":mlir_emitter_test_base",

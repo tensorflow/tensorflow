@@ -1,6 +1,5 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load("@local_tsl//tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -177,7 +176,7 @@ gpu_kernel_library(
 xla_cc_test(
     name = "topk_kernel_test",
     srcs = if_gpu_is_configured(["topk_kernel_test.cc"]),
-    tags = tf_gpu_tests_tags(),
+    use_gpu = True,
     deps = [
         ":topk_kernel",
         "//xla:types",

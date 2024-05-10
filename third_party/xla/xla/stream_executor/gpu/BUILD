@@ -13,7 +13,6 @@ load(
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
-    "tf_gpu_tests_tags",
 )
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
@@ -557,7 +556,7 @@ gpu_only_cc_library(
 xla_cc_test(
     name = "redzone_allocator_test",
     srcs = ["redzone_allocator_test.cc"],
-    tags = tf_gpu_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_asm_opts",
         ":gpu_init",
@@ -720,7 +719,7 @@ xla_cc_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    tags = tf_gpu_tests_tags(),
+    use_gpu = True,
     deps = [
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
@@ -743,9 +742,7 @@ xla_cc_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    tags = tf_gpu_tests_tags() + [
-        "requires-gpu-nvidia",
-    ],
+    use_gpu = True,
     deps = [
         "//xla/stream_executor",
         "//xla/stream_executor/host:host_platform",

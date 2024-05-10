@@ -5,10 +5,6 @@ load(
     "tf_additional_device_tracer_srcs",
 )
 load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
-)
-load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
@@ -105,10 +101,11 @@ xla_cc_test(
     size = "small",
     srcs = ["cupti_error_manager_test.cc"],
     copts = tf_profiler_copts() + tsl_copts(),
-    tags = tf_cuda_tests_tags() + [
+    tags = [
         "gpu_cupti",
         "nomac",
     ],
+    use_gpu = True,
     deps = [
         ":cupti_interface",
         "@local_tsl//tsl/platform:test",

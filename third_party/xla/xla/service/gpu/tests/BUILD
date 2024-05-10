@@ -8,7 +8,6 @@ load(
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
-    "tf_gpu_tests_tags",
 )
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
@@ -70,7 +69,7 @@ cc_library(
 xla_cc_test(
     name = "element_wise_row_vectorization_test",
     srcs = ["element_wise_row_vectorization_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         "//xla:error_spec",
         "//xla/tests:hlo_test_base",
@@ -81,7 +80,7 @@ xla_cc_test(
 xla_cc_test(
     name = "pred_arithmetic_test",
     srcs = ["pred_arithmetic_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:literal_util",
@@ -145,7 +144,7 @@ xla_cc_test(
     name = "gpu_spmd_e2e_compile_test",
     size = "small",
     srcs = ["gpu_spmd_e2e_compile_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:debug_options_flags",
@@ -207,7 +206,7 @@ xla_cc_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    tags = tf_gpu_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -226,7 +225,7 @@ xla_cc_test(
     srcs = [
         "gpu_too_many_blocks_test.cc",
     ],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla/hlo/ir:hlo",
@@ -263,7 +262,7 @@ xla_cc_test(
     srcs = [
         "reduction_layout_normalizer_test.cc",
     ],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         "//xla:error_spec",
         "//xla/hlo/ir:hlo",
@@ -305,7 +304,8 @@ xla_cc_test(
     srcs = [
         "swap_conv_operands_test.cc",
     ],
-    tags = ["no_rocm"] + tf_cuda_tests_tags(),
+    tags = ["no_rocm"],
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -320,7 +320,7 @@ xla_cc_test(
     srcs = [
         "reduction_vectorization_test.cc",
     ],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -364,7 +364,7 @@ xla_cc_test(
     srcs = [
         "parallel_reduction_test.cc",
     ],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -386,7 +386,7 @@ xla_cc_test(
     srcs = [
         "gpu_compilation_parallelism_test.cc",
     ],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -401,7 +401,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_copy_test",
     srcs = ["gpu_copy_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -420,7 +420,7 @@ xla_cc_test(
     srcs = [
         "gpu_copy_alone_test.cc",
     ],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -435,7 +435,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_dyn_shape_test",
     srcs = ["gpu_dyn_shape_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
@@ -472,7 +472,7 @@ xla_test(
 xla_cc_test(
     name = "gpu_ftz_test",
     srcs = ["gpu_ftz_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
@@ -485,7 +485,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_index_test",
     srcs = ["gpu_index_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:comparison_util",
@@ -505,7 +505,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_infeed_test",
     srcs = ["infeed_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",  # build_cleaner: keep
         "//xla:array3d",
@@ -547,7 +547,7 @@ xla_test(
 xla_cc_test(
     name = "concatenate_emitter_test",
     srcs = ["concatenate_emitter_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -560,7 +560,7 @@ xla_cc_test(
 xla_cc_test(
     name = "transpose_emitter_test",
     srcs = ["transpose_emitter_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -573,7 +573,7 @@ xla_cc_test(
 xla_cc_test(
     name = "reduction_emitter_test",
     srcs = ["reduction_emitter_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -586,7 +586,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_ldg_test",
     srcs = ["gpu_ldg_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:literal",
@@ -603,7 +603,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_noalias_test",
     srcs = ["gpu_noalias_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:literal",
@@ -618,7 +618,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_fusion_test",
     srcs = ["gpu_fusion_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
@@ -634,7 +634,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_fusion_pipeline_test",
     srcs = ["gpu_fusion_pipeline_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
@@ -653,7 +653,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_unrolling_test",
     srcs = ["gpu_unrolling_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:debug_options_flags",
@@ -668,7 +668,7 @@ xla_cc_test(
     name = "gpu_alignment_test",
     testonly = True,
     srcs = ["gpu_alignment_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla/service:custom_call_target_registry",
@@ -683,7 +683,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_atomic_test",
     srcs = ["gpu_atomic_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla/tests:filecheck",
@@ -695,7 +695,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_input_fusible_slice_test",
     srcs = ["gpu_input_fusible_slice_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -732,7 +732,7 @@ xla_test(
 xla_cc_test(
     name = "select_and_scatter_test",
     srcs = ["select_and_scatter_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -747,7 +747,7 @@ xla_cc_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -847,7 +847,7 @@ lit_test_suite(
 xla_cc_test(
     name = "kernel_launch_test",
     srcs = ["kernel_launch_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -859,7 +859,7 @@ xla_cc_test(
 xla_cc_test(
     name = "mock_custom_call_test",
     srcs = ["mock_custom_call_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "//xla/tests:hlo_test_base",
@@ -870,7 +870,7 @@ xla_cc_test(
 xla_cc_test(
     name = "in_place_op_test",
     srcs = ["in_place_op_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         "//xla:debug_options_flags",
         "//xla/service:gpu_plugin",
@@ -882,7 +882,7 @@ xla_cc_test(
 xla_cc_test(
     name = "dynamic_shared_memory_test",
     srcs = if_cuda_is_configured(["dynamic_shared_memory_test.cc"]),
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         "//xla:shape_util",
         "//xla:types",
@@ -1053,7 +1053,7 @@ xla_test(
 xla_cc_test(
     name = "gpu_int4_test",
     srcs = ["gpu_int4_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_codegen_test",
         "@local_tsl//tsl/platform:test",
@@ -1064,7 +1064,7 @@ xla_cc_test(
 xla_cc_test(
     name = "simplify_fp_conversions_test",
     srcs = ["simplify_fp_conversions_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         "//xla:xla_proto_cc",
         "//xla/service:gpu_plugin",
@@ -1076,7 +1076,7 @@ xla_cc_test(
 xla_cc_test(
     name = "nop_custom_call_test",
     srcs = ["nop_custom_call_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         "//xla:xla_proto_cc",
         "//xla/service:gpu_plugin",

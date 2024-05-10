@@ -16,8 +16,6 @@ load(
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
-    "tf_cuda_tests_tags",
-    "tf_gpu_tests_tags",
 )
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
@@ -161,7 +159,7 @@ xla_cc_test(
     name = "custom_call_test",
     srcs = if_gpu_is_configured(["custom_call_test.cc"]),
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         "//xla:debug_options_flags",
         "//xla:shape_util",
@@ -201,7 +199,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_copy_insertion_test",
     srcs = ["gpu_copy_insertion_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":buffer_sharing",
         "//xla:test",
@@ -1799,7 +1797,7 @@ cc_library(
 xla_cc_test(
     name = "dot_dimension_sorter_test",
     srcs = ["dot_dimension_sorter_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":dot_dimension_sorter",
         "//xla:error_spec",
@@ -1833,7 +1831,7 @@ cc_library(
 xla_cc_test(
     name = "dot_sparsity_rewriter_test",
     srcs = ["dot_sparsity_rewriter_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":dot_sparsity_rewriter",
         "//xla/hlo/ir:hlo",
@@ -3703,7 +3701,8 @@ xla_test(
 xla_cc_test(
     name = "auto_sharding_gpu_compiler_test",
     srcs = ["auto_sharding_gpu_compiler_test.cc"],
-    tags = tf_cuda_tests_tags() + ["no_oss"],  # TODO(b/277355322): Make autosharding work in OSS
+    tags = ["no_oss"],  # TODO(b/277355322): Make autosharding work in OSS
+    use_gpu = True,
     deps = [
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
@@ -4159,7 +4158,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_layout_assignment_test",
     srcs = ["gpu_layout_assignment_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_layout_assignment",
         ":stream_executor_util",
@@ -4263,7 +4262,7 @@ xla_cc_test(
     srcs = [
         "gpu_hlo_schedule_test.cc",
     ],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_hlo_schedule",
         "//xla:shape_util",
@@ -4510,7 +4509,7 @@ xla_cc_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    tags = tf_gpu_tests_tags(),
+    use_gpu = True,
     deps = [
         ":stream_executor_util",
         "//xla:shape_util",
@@ -4724,7 +4723,7 @@ xla_cc_test(
     name = "cudnn_norm_rewriter_test",
     srcs = ["cudnn_norm_rewriter_test.cc"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":cublas_cudnn",
         ":cudnn_norm_rewriter",
@@ -4875,7 +4874,7 @@ xla_test(
 xla_cc_test(
     name = "conv_layout_normalization_test",
     srcs = ["conv_layout_normalization_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         "//xla:error_spec",
         "//xla/hlo/ir:hlo",
@@ -5046,7 +5045,7 @@ cc_library(
 xla_cc_test(
     name = "horizontal_loop_fusion_test",
     srcs = ["horizontal_loop_fusion_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_device_info_for_tests",
         ":horizontal_loop_fusion",
@@ -5098,7 +5097,7 @@ cc_library(
 xla_cc_test(
     name = "horizontal_input_fusion_test",
     srcs = ["horizontal_input_fusion_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":gpu_device_info_for_tests",
         ":horizontal_input_fusion",
@@ -5399,7 +5398,7 @@ tsl_gpu_library(
 xla_cc_test(
     name = "runtime_intrinsics_test",
     srcs = ["runtime_intrinsics_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":runtime_intrinsics",
         "//xla/hlo/ir:hlo",
@@ -5579,7 +5578,7 @@ xla_cc_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    tags = tf_gpu_tests_tags(),
+    use_gpu = True,
     deps = [
         ":topk_specializer",
         "//xla:shape_util",
