@@ -22,6 +22,7 @@ lit_test_suite(
             "verify_call_loaded_executable.mlir",
             "verify_disassemble.mlir",
             "verify_loaded_executable.mlir",
+            "verify_remap_arrays.mlir",
             "verify_reshard.mlir",
         ],
         include = [
