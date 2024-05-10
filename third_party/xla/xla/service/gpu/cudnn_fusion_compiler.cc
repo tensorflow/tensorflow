@@ -553,8 +553,8 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
   return *graph;
 }
 
-StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
-                                       const int64_t workspace_size) {
+absl::StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
+                                             const int64_t workspace_size) {
   if (workspace_size == 0 || fusion.shape().IsTuple()) {
     return &fusion;
   }

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 
 #include <memory>
+#include <optional>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -828,7 +829,7 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
       continue;
     }
 
-    absl::optional<bool> constrain_to_host;
+    std::optional<bool> constrain_to_host;
 
     // This is a list of special nodes that we know to have no HostMemory
     // inputs, so if they receive a host-only data type, they must necessarily
