@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
@@ -499,6 +500,317 @@ class OptimizeForInferenceTest(test.TestCase):
     for node in optimized_graph_def.node:
       self.assertNotEqual("Conv2D", node.op)
       self.assertNotEqual("ResizeBilinear", node.op)
+
+  def count_batchnorm_relavant_ops(self, graph_def):
+    """Return the count of FusedBatchNorm op and the count of primitive
+
+    ops which may make up batchnorm computation in a given graph.
+    """
+    batchnorm_count = 0
+    decompose_count = 0
+    for node in graph_def.node:
+      if node.op == "FusedBatchNorm":
+        batchnorm_count += 1
+      if node.op in ["Add", "Rsqrt", "Mul", "Sub"]:
+        decompose_count += 1
+    return batchnorm_count, decompose_count
+
+  @test_util.run_deprecated_v1
+  def create_base_for_fuse_batchnorm(self, pattern_match_mode="MATCH_ALL"):
+    """Create testing graph and compute the result from original graph.
+
+    Args:
+      pattern_match_mode: A label string to indicate which batchnorm composition
+        pattern to create in the resulting graph. "MATCH_ALL" - Create a graph
+        matching the decomposed batchnorm pattern with full set of primitive
+        ops. "MATCH_NO_GAMMA" - Create a graph matching the decomposed batchnorm
+        pattern when gamma factor is 1 and multiplication with gamma is omitted.
+        "MATCH_SWITCH_ORDER" - Create a graph matching the decomposed batchnorm
+        pattern with a different order of inputs to the root Add node.
+        "MISMATCH_PATTERN" - Create a graph with same set of primitive ops which
+        makes up the decomposed batchnorm, but not matching the pattern.
+        "MISMATCH_FORMAT" - Create a graph with NCHW format as input.
+
+    Returns:
+      A GraphDef as original graph to run the decomposed batchnorm test cases.
+      Computation result from executing the original graph defined by GraphDef.
+    """
+    with self.cached_session() as sess:
+      data_format = "NHWC"
+      if pattern_match_mode == "MISMATCH_FORMAT":
+        data_format = "NCHW"
+      inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
+      input_op = constant_op.constant(
+          np.array(inputs),
+          shape=[1, 1, 6, 2] if data_format == "NHWC" else [1, 2, 1, 6],
+          dtype=dtypes.float32,
+      )
+      weights = [1, 2, 3, 4, 0.1, 0.2, 0.3, 0.4]
+      weights_op = constant_op.constant(
+          np.array(weights), shape=[1, 2, 2, 2], dtype=dtypes.float32
+      )
+      conv_op = nn_ops.conv2d(
+          input_op,
+          weights_op,
+          [1, 1, 1, 1],
+          data_format=data_format,
+          padding="SAME",
+          name="conv_op",
+      )
+
+      const_op_1 = None
+      const_op_2 = constant_op.constant(0.00001, dtype=dtypes.float32)
+      const_op_3 = None
+      const_op_4 = None
+      const_op_5 = None
+      const_op_6 = None
+
+      if data_format == "NHWC":
+        const_op_1 = constant_op.constant(
+            np.array([0.25, 0.5]), shape=[2], dtype=dtypes.float32
+        )
+        const_op_3 = constant_op.constant(
+            np.array([10, 20]), shape=[2], dtype=dtypes.float32
+        )
+        const_op_4 = constant_op.constant(
+            np.array([0.1, 0.6]), shape=[2], dtype=dtypes.float32
+        )
+        const_op_5 = constant_op.constant(
+            np.array([1.0, 2.0]), shape=[2], dtype=dtypes.float32
+        )
+        const_op_6 = constant_op.constant(
+            np.array([0.2, 0.5]), shape=[2], dtype=dtypes.float32
+        )
+      else:
+        const_op_1 = constant_op.constant(
+            np.array([0.25, 0.5, 0.6, 0.7, 0.8, 0.9]),
+            shape=[6],
+            dtype=dtypes.float32,
+        )
+        const_op_3 = constant_op.constant(
+            np.array([10, 20, 30, 40, 50, 60]), shape=[6], dtype=dtypes.float32
+        )
+        const_op_4 = constant_op.constant(
+            np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6]),
+            shape=[6],
+            dtype=dtypes.float32,
+        )
+        const_op_5 = constant_op.constant(
+            np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
+            shape=[6],
+            dtype=dtypes.float32,
+        )
+        const_op_6 = constant_op.constant(
+            np.array([0.2, 0.4, 0.5, 0.6, 0.7, 0.8]),
+            shape=[6],
+            dtype=dtypes.float32,
+        )
+
+      add_op_1 = gen_math_ops.add(const_op_1, const_op_2)
+      rsqrt_op = math_ops.rsqrt(add_op_1)
+
+      variable_op = None
+      if pattern_match_mode == "MATCH_NO_GAMMA":
+        variable_op = rsqrt_op
+      else:
+        variable_op = math_ops.multiply(rsqrt_op, const_op_5)
+
+      mul_op_1 = math_ops.multiply(conv_op, variable_op)
+
+      mul_op_2 = None
+      if pattern_match_mode == "MISMATCH_PATTERN":
+        mul_op_2 = math_ops.multiply(const_op_3, const_op_6)
+      else:
+        mul_op_2 = math_ops.multiply(const_op_3, variable_op)
+
+      sub_op = math_ops.subtract(const_op_4, mul_op_2)
+
+      if pattern_match_mode == "MATCH_SWITCH_ORDER":
+        gen_math_ops.add(sub_op, mul_op_1, name="output")
+      else:
+        gen_math_ops.add(mul_op_1, sub_op, name="output")
+
+      test_util.set_producer_version(ops.get_default_graph(), 8)
+
+      original_graph = sess.graph_def
+      original_result = sess.run(["output:0"])
+
+      return original_graph, original_result
+
+  @test_util.run_deprecated_v1
+  def testFuseDecomposedBatchNorm_MatchAll(self):
+    original_graph_def, original_result = self.create_base_for_fuse_batchnorm(
+        "MATCH_ALL"
+    )
+
+    # Test correctness of fusing individual ops to FusedBatchNorm.
+    optimized_graph_def = optimize_for_inference_lib.fuse_decomposed_batch_norm(
+        original_graph_def
+    )
+
+    batchnorm_count, decompose_count = self.count_batchnorm_relavant_ops(
+        optimized_graph_def
+    )
+    self.assertEqual(batchnorm_count, 1)
+    self.assertEqual(decompose_count, 0)
+
+    with self.cached_session() as sess:
+      _ = importer.import_graph_def(
+          optimized_graph_def, input_map={}, name="optimized"
+      )
+      optimized_result = sess.run(["optimized/output:0"])
+
+    self.assertAllClose(original_result, optimized_result)
+
+    # Test correctness of fusing individual ops to FusedBatchNorm followed by
+    # folding FusedBatchNorm.
+    optimized_graph_def = optimize_for_inference_lib.fold_batch_norms(
+        optimized_graph_def
+    )
+    for node in optimized_graph_def.node:
+      self.assertNotEqual("FusedBatchNorm", node.op)
+
+    with self.cached_session() as sess:
+      _ = importer.import_graph_def(
+          optimized_graph_def, input_map={}, name="optimized2"
+      )
+      optimized_result = sess.run(["optimized2/output:0"])
+
+    self.assertAllClose(
+        original_result, optimized_result, rtol=1e-04, atol=1e-06
+    )
+
+  @test_util.run_deprecated_v1
+  def testFuseDecomposedBatchNorm_MatchNoGamma(self):
+    original_graph_def, original_result = self.create_base_for_fuse_batchnorm(
+        "MATCH_NO_GAMMA"
+    )
+
+    # Test correctness of fusing individual ops to FusedBatchNorm.
+    optimized_graph_def = optimize_for_inference_lib.fuse_decomposed_batch_norm(
+        original_graph_def
+    )
+
+    batchnorm_count, decompose_count = self.count_batchnorm_relavant_ops(
+        optimized_graph_def
+    )
+    self.assertEqual(batchnorm_count, 1)
+    self.assertEqual(decompose_count, 0)
+
+    with self.cached_session() as sess:
+      _ = importer.import_graph_def(
+          optimized_graph_def, input_map={}, name="optimized"
+      )
+      optimized_result = sess.run(["optimized/output:0"])
+
+    self.assertAllClose(original_result, optimized_result)
+
+    # Test correctness of fusing individual ops to FusedBatchNorm followed by
+    # folding FusedBatchNorm.
+    optimized_graph_def = optimize_for_inference_lib.fold_batch_norms(
+        optimized_graph_def
+    )
+    for node in optimized_graph_def.node:
+      self.assertNotEqual("FusedBatchNorm", node.op)
+
+    with self.cached_session() as sess:
+      _ = importer.import_graph_def(
+          optimized_graph_def, input_map={}, name="optimized2"
+      )
+      optimized_result = sess.run(["optimized2/output:0"])
+
+    self.assertAllClose(
+        original_result, optimized_result, rtol=1e-04, atol=1e-06
+    )
+
+  @test_util.run_deprecated_v1
+  def testFuseDecomposedBatchNorm_MatchSwitchOrder(self):
+    original_graph_def, original_result = self.create_base_for_fuse_batchnorm(
+        "MATCH_SWITCH_ORDER"
+    )
+
+    # Test correctness of fusing individual ops to FusedBatchNorm.
+    optimized_graph_def = optimize_for_inference_lib.fuse_decomposed_batch_norm(
+        original_graph_def
+    )
+
+    batchnorm_count, decompose_count = self.count_batchnorm_relavant_ops(
+        optimized_graph_def
+    )
+    self.assertEqual(batchnorm_count, 1)
+    self.assertEqual(decompose_count, 0)
+
+    with self.cached_session() as sess:
+      _ = importer.import_graph_def(
+          optimized_graph_def, input_map={}, name="optimized"
+      )
+      optimized_result = sess.run(["optimized/output:0"])
+
+    self.assertAllClose(original_result, optimized_result)
+
+    # Test correctness of fusing individual ops to FusedBatchNorm followed by
+    # folding FusedBatchNorm.
+    optimized_graph_def = optimize_for_inference_lib.fold_batch_norms(
+        optimized_graph_def
+    )
+    for node in optimized_graph_def.node:
+      self.assertNotEqual("FusedBatchNorm", node.op)
+
+    with self.cached_session() as sess:
+      _ = importer.import_graph_def(
+          optimized_graph_def, input_map={}, name="optimized2"
+      )
+      optimized_result = sess.run(["optimized2/output:0"])
+
+    self.assertAllClose(
+        original_result, optimized_result, rtol=1e-04, atol=1e-06
+    )
+
+  @test_util.run_deprecated_v1
+  def testFuseDecomposedBatchNorm_PatternMismatchCase(self):
+    original_graph_def, original_result = self.create_base_for_fuse_batchnorm(
+        "MISMATCH_PATTERN"
+    )
+
+    # Test for not to fuse ops if graph has same types of ops but pattern mismatch.
+    optimized_graph_def = optimize_for_inference_lib.fuse_decomposed_batch_norm(
+        original_graph_def
+    )
+
+    batchnorm_count, math_op_count = self.count_batchnorm_relavant_ops(
+        optimized_graph_def
+    )
+    self.assertEqual(batchnorm_count, 0)
+    self.assertEqual(math_op_count, 7)
+
+    with self.cached_session() as sess:
+      _ = importer.import_graph_def(
+          optimized_graph_def, input_map={}, name="optimized"
+      )
+      optimized_result = sess.run(["optimized/output:0"])
+
+    self.assertAllClose(original_result, optimized_result)
+
+  @test_util.run_deprecated_v1
+  def testFuseDecomposedBatchNorm_FormatUnsupportedCase(self):
+    if not test_util.IsMklEnabled():
+      # Non-Mkl build doesn't support NCHW format on CPU.
+      self.skipTest("Skip test for non-Mkl build.")
+
+    original_graph_def, original_result = self.create_base_for_fuse_batchnorm(
+        "MISMATCH_FORMAT"
+    )
+
+    # Test for not to fuse ops if graph has same types of ops but pattern mismatch.
+    optimized_graph_def = optimize_for_inference_lib.fuse_decomposed_batch_norm(
+        original_graph_def
+    )
+
+    batchnorm_count, math_op_count = self.count_batchnorm_relavant_ops(
+        optimized_graph_def
+    )
+    self.assertEqual(batchnorm_count, 0)
+    self.assertEqual(math_op_count, 7)
 
 
 if __name__ == "__main__":
