@@ -530,7 +530,8 @@ TEST_F(WhileLoopUnrollerTest, GetUnrollableLoops) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  auto unrollable_loops = GetUnrollableLoops(module.get(), {});
+  auto unrollable_loops =
+      WhileLoopUnroller::GetUnrollableLoops(module.get(), {});
   // Only while1 and while2 are unrollable
   EXPECT_EQ(unrollable_loops.size(), 2);
 }
@@ -591,7 +592,8 @@ TEST_F(WhileLoopUnrollerTest, UnrollMutipleLoops) {
   // Unroll the first loop
   TF_ASSERT_OK_AND_ASSIGN(
       bool unrolled1,
-      Unroll(module->entry_computation()->GetInstructionWithName("while1")));
+      WhileLoopUnroller::Unroll(
+          module->entry_computation()->GetInstructionWithName("while1")));
   EXPECT_TRUE(unrolled1);
 
   // There should be no call instructions after unrolling either loops since we
@@ -606,7 +608,8 @@ TEST_F(WhileLoopUnrollerTest, UnrollMutipleLoops) {
   // Unroll the second loop
   TF_ASSERT_OK_AND_ASSIGN(
       bool unrolled2,
-      Unroll(module->entry_computation()->GetInstructionWithName("while2")));
+      WhileLoopUnroller::Unroll(
+          module->entry_computation()->GetInstructionWithName("while2")));
   EXPECT_TRUE(unrolled2);
   std::vector<HloInstruction*> call_instrs_2;
   for (auto* comp : module->MakeComputationPostOrder()) {

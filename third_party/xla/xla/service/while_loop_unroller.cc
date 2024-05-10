@@ -67,98 +67,6 @@ const int kUnrollTripCountThreshold = 64;
 const int kUnrollInstructionCountThreshold = 800;
 const int kUnrollExpandFactorThreshold = 10000;
 
-// A utility function that decides whether a loop is unrollable or not.
-std::optional<WhileLoopConfig> IsLoopUnrollable(HloInstruction* while_op) {
-  CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
-
-  // TODO(b/300668690): Add support for unrolling loops with control dependency.
-  // For now, we bail.
-  //
-  // Finding all the while loops where other instructions have explicit control
-  // dependencies on them.
-  std::vector<HloInstruction*> while_dependees;
-  for (HloComputation* comp : while_op->GetModule()->computations()) {
-    for (HloInstruction* instr : comp->instructions()) {
-      for (HloInstruction* control_dep : instr->control_predecessors()) {
-        if (control_dep->opcode() == HloOpcode::kWhile) {
-          while_dependees.push_back(control_dep);
-        }
-      }
-    }
-  }
-  if (absl::linear_search(while_dependees.begin(), while_dependees.end(),
-                          while_op)) {
-    VLOG(2) << "Not attempting to unroll " << while_op->name()
-            << " due to control dependency: " << while_op->ToShortString();
-    return std::nullopt;
-  }
-
-  // We can't remove while loops that contain send/recv nodes, because we
-  // rely on the particular loop structure around the node matching on the
-  // send and recv sides.
-  if (ContainsInstrWithOpcode(while_op->while_body(),
-                              {HloOpcode::kSend, HloOpcode::kSendDone,
-                               HloOpcode::kRecv, HloOpcode::kRecvDone}) ||
-      ContainsInstrWithOpcode(while_op->while_condition(),
-                              {HloOpcode::kSend, HloOpcode::kSendDone,
-                               HloOpcode::kRecv, HloOpcode::kRecvDone})) {
-    VLOG(2) << "Not attempting to unroll " << while_op->name()
-            << " because it contains a send/recv node: "
-            << while_op->ToShortString();
-    return std::nullopt;
-  }
-
-  if (while_op->operand(0)->opcode() != HloOpcode::kTuple) {
-    VLOG(2) << "Not attempting to unroll " << while_op->name()
-            << " because the operand is not a tuple: "
-            << while_op->ToShortString();
-    return std::nullopt;
-  }
-
-  // We cannot unroll loops that have side effecting condition because the
-  // condition will be removed after unrolling. This might be relaxed
-  // later when we add partial unrolling.
-  if (while_op->while_condition()->HasSideEffect()) {
-    VLOG(2) << "Not attempting to remove while loop whose condition contains "
-               "side-effecting instructions: "
-            << while_op->ToShortString();
-    return std::nullopt;
-  }
-
-  std::optional<int64_t> indvar_tuple_idx =
-      GetLoopInductionVarTupleIdx(while_op);
-  if (!indvar_tuple_idx.has_value()) {
-    return std::nullopt;
-  }
-
-  HloEvaluator evaluator(/*max_loop_iterations=*/0);
-  const HloInstruction* while_init = while_op->operand(0);
-  const HloInstruction* indvar_init = while_init->operand(*indvar_tuple_idx);
-  absl::StatusOr<Literal> indvar_init_result = evaluator.Evaluate(indvar_init);
-  if (!indvar_init_result.ok()) {
-    VLOG(2) << "Couldn't evaluate induction variable init, "
-            << indvar_init_result.status() << ", " << indvar_init->ToString();
-    return std::nullopt;
-  }
-  Literal indvar_iter_val = std::move(indvar_init_result).value();
-
-  std::optional<int64_t> trip_count =
-      MatchTrivialLoopTripCount(while_op, *indvar_tuple_idx, indvar_iter_val);
-  if (!trip_count.has_value()) {
-    return std::nullopt;
-  }
-
-  VLOG(3) << "Loop trip count " << trip_count.value();
-
-  WhileLoopConfig config;
-  config.init =
-      LiteralUtil::LiteralAsScalarInt64(std::move(indvar_iter_val)).value();
-  config.trip_count = trip_count.value();
-  config.induction_var_idx = *indvar_tuple_idx;
-
-  return config;
-}
-
 std::unique_ptr<HloInstruction> GetConstantWithShape(const Shape& shape,
                                                      int64_t value) {
   return primitive_util::PrimitiveTypeSwitch<std::unique_ptr<HloInstruction>>(
@@ -425,7 +333,99 @@ absl::StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
 
 };  // namespace
 
-absl::StatusOr<bool> PrepareModuleForUnrolling(
+/*static*/ std::optional<WhileLoopConfig> WhileLoopUnroller::IsLoopUnrollable(
+    HloInstruction* while_op) {
+  CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
+
+  // TODO(b/300668690): Add support for unrolling loops with control dependency.
+  // For now, we bail.
+  //
+  // Finding all the while loops where other instructions have explicit control
+  // dependencies on them.
+  std::vector<HloInstruction*> while_dependees;
+  for (HloComputation* comp : while_op->GetModule()->computations()) {
+    for (HloInstruction* instr : comp->instructions()) {
+      for (HloInstruction* control_dep : instr->control_predecessors()) {
+        if (control_dep->opcode() == HloOpcode::kWhile) {
+          while_dependees.push_back(control_dep);
+        }
+      }
+    }
+  }
+  if (absl::linear_search(while_dependees.begin(), while_dependees.end(),
+                          while_op)) {
+    VLOG(2) << "Not attempting to unroll " << while_op->name()
+            << " due to control dependency: " << while_op->ToShortString();
+    return std::nullopt;
+  }
+
+  // We can't remove while loops that contain send/recv nodes, because we
+  // rely on the particular loop structure around the node matching on the
+  // send and recv sides.
+  if (ContainsInstrWithOpcode(while_op->while_body(),
+                              {HloOpcode::kSend, HloOpcode::kSendDone,
+                               HloOpcode::kRecv, HloOpcode::kRecvDone}) ||
+      ContainsInstrWithOpcode(while_op->while_condition(),
+                              {HloOpcode::kSend, HloOpcode::kSendDone,
+                               HloOpcode::kRecv, HloOpcode::kRecvDone})) {
+    VLOG(2) << "Not attempting to unroll " << while_op->name()
+            << " because it contains a send/recv node: "
+            << while_op->ToShortString();
+    return std::nullopt;
+  }
+
+  if (while_op->operand(0)->opcode() != HloOpcode::kTuple) {
+    VLOG(2) << "Not attempting to unroll " << while_op->name()
+            << " because the operand is not a tuple: "
+            << while_op->ToShortString();
+    return std::nullopt;
+  }
+
+  // We cannot unroll loops that have side effecting condition because the
+  // condition will be removed after unrolling. This might be relaxed
+  // later when we add partial unrolling.
+  if (while_op->while_condition()->HasSideEffect()) {
+    VLOG(2) << "Not attempting to remove while loop whose condition contains "
+               "side-effecting instructions: "
+            << while_op->ToShortString();
+    return std::nullopt;
+  }
+
+  std::optional<int64_t> indvar_tuple_idx =
+      GetLoopInductionVarTupleIdx(while_op);
+  if (!indvar_tuple_idx.has_value()) {
+    return std::nullopt;
+  }
+
+  HloEvaluator evaluator(/*max_loop_iterations=*/0);
+  const HloInstruction* while_init = while_op->operand(0);
+  const HloInstruction* indvar_init = while_init->operand(*indvar_tuple_idx);
+  absl::StatusOr<Literal> indvar_init_result = evaluator.Evaluate(indvar_init);
+  if (!indvar_init_result.ok()) {
+    VLOG(2) << "Couldn't evaluate induction variable init, "
+            << indvar_init_result.status() << ", " << indvar_init->ToString();
+    return std::nullopt;
+  }
+  Literal indvar_iter_val = std::move(indvar_init_result).value();
+
+  std::optional<int64_t> trip_count =
+      MatchTrivialLoopTripCount(while_op, *indvar_tuple_idx, indvar_iter_val);
+  if (!trip_count.has_value()) {
+    return std::nullopt;
+  }
+
+  VLOG(3) << "Loop trip count " << trip_count.value();
+
+  WhileLoopConfig config;
+  config.init =
+      LiteralUtil::LiteralAsScalarInt64(std::move(indvar_iter_val)).value();
+  config.trip_count = trip_count.value();
+  config.induction_var_idx = *indvar_tuple_idx;
+
+  return config;
+}
+
+/*static*/ absl::StatusOr<bool> WhileLoopUnroller::PrepareModuleForUnrolling(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -458,7 +458,8 @@ absl::StatusOr<bool> PrepareModuleForUnrolling(
   return changed;
 }
 
-std::vector<std::pair<HloInstruction*, WhileLoopConfig>> GetUnrollableLoops(
+/*static*/ std::vector<std::pair<HloInstruction*, WhileLoopConfig>>
+WhileLoopUnroller::GetUnrollableLoops(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Processing the while loops in the reverse topological order. If the body
@@ -479,8 +480,9 @@ std::vector<std::pair<HloInstruction*, WhileLoopConfig>> GetUnrollableLoops(
   return while_loop_configs;
 }
 
-absl::StatusOr<bool> Unroll(HloInstruction* while_op, int64_t unroll_factor,
-                            bool wrap_in_trivial_loop) {
+/*static*/ absl::StatusOr<bool> WhileLoopUnroller::Unroll(
+    HloInstruction* while_op, int64_t unroll_factor,
+    bool wrap_in_trivial_loop) {
   bool changed = false;
   HloModule* module = while_op->GetModule();
 
