@@ -38,6 +38,11 @@ except ImportError:
   custom_call_for_test = None
 
 try:
+  from xla.python import typed_ffi_custom_calls
+except ImportError:
+  typed_ffi_custom_calls = None
+
+try:
   from xla.python import xla_extension
   from xla.python import xla_gpu_extension
 
@@ -125,7 +130,13 @@ def TestFactory(xla_backend,
       global _CUSTOM_CALLS_REGISTERED
       if self.backend.platform == "cpu" and not _CUSTOM_CALLS_REGISTERED:
         for name, fn in custom_call_for_test.cpu_custom_call_targets.items():
-          xla_client.register_custom_call_target(name, fn, platform="cpu")
+          xla_client.register_custom_call_target(
+              name, fn, platform="cpu", api_version=0
+          )
+        for name, fn in typed_ffi_custom_calls.registrations().items():
+          xla_client.register_custom_call_target(
+              name, fn, platform="cpu", api_version=1
+          )
         _CUSTOM_CALLS_REGISTERED = True
 
     def _NewComputation(self, name=None):
@@ -439,6 +450,27 @@ def TestFactory(xla_backend,
           .API_VERSION_STATUS_RETURNING)
       self._ExecuteAndCompareClose(c, expected=[0.75])
 
+    def testCustomCallWithUnifiedApiUnknownTarget(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"not_existing",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion
+          .API_VERSION_STATUS_RETURNING_UNIFIED,
+      )
+      with self.assertRaisesRegex(
+          xla_client.XlaRuntimeError, expected_regex="INVALID_ARGUMENT"
+      ):
+        self._Execute(c, arguments=())
+
     def testCustomCallWithUnifiedApi(self):
       if self.backend.platform != "cpu":
         self.skipTest("Test requires cpu platform")
@@ -464,6 +496,83 @@ def TestFactory(xla_backend,
           .API_VERSION_STATUS_RETURNING_UNIFIED)
       self._ExecuteAndCompareClose(c, expected=[1.25 + len(opaque_str)])
 
+    def testCustomCallTypedFfiUnknownTarget(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"not_existing",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+      with self.assertRaises(xla_client.XlaRuntimeError):
+        self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiAlwaysFail(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"xla_client_test$$AlwaysFail",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+
+      with self.assertRaisesRegex(
+          Exception, expected_regex="Failed intentionally"
+      ):
+        self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiAlwaysSucceed(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"xla_client_test$$AlwaysSucceed",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+
+      self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiSubtract(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"xla_client_test$$subtract_n_f32",
+          operands=[ops.Constant(c, np.float32(1.25))],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[
+              xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
+          ],
+          opaque=b"{n = 3.0 : f32}",
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+      self._ExecuteAndCompareClose(c, expected=[-1.75])
+
     def testCustomCallLookup(self):
       if self.backend.platform != "cpu":
         self.skipTest("Test requires cpu platform")
@@ -477,6 +586,10 @@ def TestFactory(xla_backend,
               call.decode()
               for call in custom_call_for_test.cpu_custom_call_targets.keys()
           ],
+          xla_client.custom_call_targets("Host").keys(),
+      )
+      self.assertContainsSubset(
+          list(typed_ffi_custom_calls.registrations().keys()),
           xla_client.custom_call_targets("Host").keys(),
       )
 
