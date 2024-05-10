@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -54,9 +55,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_sharding_util {
@@ -3145,6 +3147,43 @@ Shape TileLeafShape(const HloSharding& sharding, const Shape& shape) {
         i, shape.dimensions(i) / sharding.tile_assignment().dim(i));
   }
   return result_shape;
+}
+
+Status CanonicalizeLayoutAfterShardingPropagation(
+    HloModule* module, bool update_output_layout,
+    bool update_parameters_layout) {
+  if (!update_output_layout && !update_parameters_layout) {
+    return OkStatus();
+  }
+  if (!module->layout_canonicalization_callback()) {
+    LOG(INFO) << "There is no registered layout_canonicalization_callback.";
+    return OkStatus();
+  }
+  TF_ASSIGN_OR_RETURN(auto shapes_with_layout,
+                      module->layout_canonicalization_callback()(*module));
+
+  if (update_output_layout &&
+      module->entry_computation_layout().result_layout().LayoutIsSet()) {
+    TF_RETURN_IF_ERROR(module->mutable_entry_computation_layout()
+                           ->mutable_result_layout()
+                           ->CopyLayoutFromShape(shapes_with_layout.second));
+  }
+
+  if (update_parameters_layout) {
+    for (int64_t i = 0; i < module->entry_computation()->num_parameters();
+         ++i) {
+      if (module->entry_computation_layout()
+              .parameter_layout(i)
+              .LayoutIsSet()) {
+        TF_RETURN_IF_ERROR(
+            module->mutable_entry_computation_layout()
+                ->mutable_parameter_layout(i)
+                ->CopyLayoutFromShape(shapes_with_layout.first[i]));
+      }
+    }
+  }
+
+  return OkStatus();
 }
 
 }  // namespace hlo_sharding_util

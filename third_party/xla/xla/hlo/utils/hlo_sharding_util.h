@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/call_graph.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
+#include "xla/status.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -486,6 +486,16 @@ Shape TileShape(const HloSharding& sharding, const Shape& shape);
 // Returns the tiled shape.
 // REQUIRES: !sharding.IsTuple()
 Shape TileLeafShape(const HloSharding& sharding, const Shape& shape);
+
+// Canonicalizes entry_computation_layout by calling
+// module->layout_canonicalization_callback(), which gives canonicalized
+// argument and result layouts based on current module. Currently used by PJRT
+// that assigns layouts based on runtime shapes. Refer to
+// DetermineArgumentLayoutsFromCompileOptions() in
+// tensorflow/compiler/xla/pjrt/utils.h.
+Status CanonicalizeLayoutAfterShardingPropagation(
+    HloModule* module, bool update_output_layout,
+    bool update_parameters_layout);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla
