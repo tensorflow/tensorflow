@@ -154,9 +154,9 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
               ProvideParameter(root_computation, dus_instr, kDUSUpdateIndex,
                                input_indices, call_targets, entry_function, b);
           // Handle bitcasts under the DUS.
-          if (dus_instr->shape() != root->shape()) {
+          if (dus_instr->shape() != root.shape()) {
             update_indices = ApplyAffineMap(
-                GetBitcastMap(dus_instr->shape(), root->shape(), b.getContext())
+                GetBitcastMap(dus_instr->shape(), root.shape(), b.getContext())
                     .GetAffineMap(),
                 update_indices, {}, b);
           }
