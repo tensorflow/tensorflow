@@ -74,10 +74,12 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
@@ -280,13 +282,19 @@ RankedTensorType DropFirstDimension(Type type) {
                                               ranked_type.getElementType());
 }
 
-Operation* InsertCast(OpBuilder& b, Location loc, Type dst_type, Value input) {
+Operation* InsertCast(OpBuilder& b, Location loc, Type dst_type, Value input,
+                      std::optional<Attribute> device = std::nullopt) {
   Type element_type = getElementTypeOrSelf(dst_type);
   if (mlir::isa<IndexType>(element_type))
     return b.create<tensor::CastOp>(loc, dst_type, input);
-  if (isa<TensorFlowDialect, BuiltinDialect>(element_type.getDialect()))
-    return b.create<TF::CastOp>(loc, dst_type, input,
-                                /*truncate=*/b.getBoolAttr(false));
+  if (isa<TensorFlowDialect, BuiltinDialect>(element_type.getDialect())) {
+    Operation* op = b.create<TF::CastOp>(loc, dst_type, input,
+                                         /*truncate=*/b.getBoolAttr(false));
+    // TODO: apply this device attribute to other code paths
+    //       to avoid potential cross-host communications.
+    if (device.has_value()) op->setAttr(kDeviceAttr, device.value());
+    return op;
+  }
   return nullptr;
 }
 
@@ -1071,7 +1079,13 @@ bool ShapeInference::UpdateTypeAndInsertIncompatibleUseCasts(Type new_type,
         Operation* op = result.getDefiningOp();
         OpBuilder b(op);
         b.setInsertionPointAfter(op);
-        cast_op = InsertCast(b, op->getLoc(), result.getType(), result);
+
+        cast_op =
+            InsertCast(b, op->getLoc(), result.getType(), result,
+                       op->hasAttr(kDeviceAttr)
+                           ? std::optional<Attribute>(op->getAttr(kDeviceAttr))
+                           : std::nullopt);
+
         if (!cast_op) return false;
       }
       use.set(Value(cast_op->getResult(0)));

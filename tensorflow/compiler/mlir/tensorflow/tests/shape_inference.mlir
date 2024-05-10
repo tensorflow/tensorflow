@@ -879,7 +879,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       tf_device.return %2 : tensor<1x8x2xf32>
     // CHECK: () -> tensor<1x8x2xf32>
     }) {device = "/device:CPU:0"} : () -> tensor<*xf32>
-    // CHECK: "tf.Cast"(%{{.*}}) <{Truncate = false}> : (tensor<1x8x2xf32>) -> tensor<*xf32>
+    // CHECK: "tf.Cast"(%{{.*}}) <{Truncate = false}> {device = "/device:CPU:0"} : (tensor<1x8x2xf32>) -> tensor<*xf32>
     // CHECK: (tensor<i32>, tensor<1x8x2xf32>) -> (tensor<1x8x1xf32>, tensor<1x8x1xf32>)
     %3:2 = "tf.Split"(%0, %1) {device = ""} : (tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
     %4 = tensor.cast %1 : tensor<*xf32> to tensor<?x?x?xf32>
