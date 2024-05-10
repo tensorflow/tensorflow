@@ -2066,10 +2066,10 @@ class HloInstruction {
 
   bool has_backend_config() const { return !backend_config_.empty(); }
 
-  void clear_backend_config() { backend_config_.clear(); }
+  void clear_backend_config() { backend_config_ = BackendConfigWrapper(); }
 
   void CopyBackendConfigFrom(const HloInstruction* other) {
-    backend_config_ = other->backend_config_.Clone();
+    backend_config_ = BackendConfigWrapper(other->backend_config_);
   }
 
   void set_frontend_attributes(FrontendAttributes frontend_attributes) {
@@ -2132,12 +2132,12 @@ class HloInstruction {
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
-    TF_RETURN_IF_ERROR(GetBackendConfigInternal(&proto));
+    TF_RETURN_IF_ERROR(backend_config_.GetProto(&proto));
     return std::move(proto);
   }
 
   Status set_backend_config(const tsl::protobuf::Message& proto) {
-    backend_config_ = proto;
+    backend_config_ = BackendConfigWrapper(proto);
     return OkStatus();
   }
 
@@ -2147,7 +2147,7 @@ class HloInstruction {
     return backend_config_.GetRawString();
   }
   void set_raw_backend_config_string(std::string config_str) {
-    backend_config_ = std::move(config_str);
+    backend_config_ = BackendConfigWrapper(std::move(config_str));
   }
 
   bool is_default_config() const { return is_default_config_; }
@@ -2778,7 +2778,7 @@ class HloInstruction {
 
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
-  mutable BackendConfigWrapper backend_config_;
+  BackendConfigWrapper backend_config_;
 
   // String identifier for instruction.
   std::string name_;
