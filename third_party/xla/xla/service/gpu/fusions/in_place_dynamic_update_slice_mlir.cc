@@ -50,7 +50,6 @@ namespace {
 
 using llvm::SmallVector;
 using mlir::ImplicitLocOpBuilder;
-using mlir::MLIRContext;
 using mlir::Value;
 using mlir::ValueRange;
 using mlir::arith::AddIOp;
