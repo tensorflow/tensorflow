@@ -232,7 +232,7 @@ LogicalResult ApplyVhloToVersionPatterns(ModuleOp module,
   PassManager pm(module.getContext());
   pm.addPass(stablehlo::createVhloToVersionPass({version}));
   if (failed(pm.run(module))) {
-    return module->emitError("Failed VHLO to version") << version;
+    return module->emitError("Failed VHLO to version ") << version;
   }
   return success();
 }
