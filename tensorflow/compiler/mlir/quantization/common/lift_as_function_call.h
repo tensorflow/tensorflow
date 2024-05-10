@@ -19,9 +19,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -105,6 +107,9 @@ bool HasWeightOnlyPtqMethod(TF::XlaCallModuleOp xla_call_module_op);
 // Checks if an op is a `tf.XlaCallModule` op, contains 'conv' or 'dot_general'
 // in its name and has `Method` with `WeightOnlyPtq`.
 bool IsWeightOnlyQuantizableOp(const Operation& op);
+
+// Lists the functions in a ModuleOp sorted by their names.
+SmallVector<func::FuncOp> GetSortedFunctions(ModuleOp module_op);
 
 }  // namespace mlir::quant
 

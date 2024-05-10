@@ -47,6 +47,8 @@ namespace {
 using ::stablehlo::quantization::Method;
 using ::testing::HasSubstr;
 using ::testing::NotNull;
+using ::testing::SizeIs;
+using ::testing::StrEq;
 using ::tsl::protobuf::util::MessageDifferencer;
 using ::tsl::testing::IsOk;
 using ::tsl::testing::StatusIs;
@@ -490,6 +492,41 @@ TEST_F(LiftAsFunctionCallTest, IsWeightOnlyQuantizableOpNoConvNoDot) {
 
   auto call_op = *main_fn.getOps<TF::XlaCallModuleOp>().begin();
   EXPECT_FALSE(IsWeightOnlyQuantizableOp(*call_op));
+}
+
+TEST_F(LiftAsFunctionCallTest, GetSortedFunctions) {
+  constexpr absl::string_view kModuleXlaCallModule = R"mlir(
+    module {
+      func.func @conv_3_fn(%arg0: tensor<1x3x3x4xf32>) -> tensor<1x3x3x4xf32> {
+        %0 = stablehlo.constant dense<2.000000e+00> : tensor<3x3x4x4xf32>
+        %1 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x4x4xf32>) -> tensor<1x3x3x4xf32>
+        %2 = stablehlo.convolution(%1, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x4x4xf32>) -> tensor<1x3x3x4xf32>
+        func.return %2: tensor<1x3x3x4xf32>
+      }
+
+      func.func @conv_1_fn(%arg0: tensor<1x3x3x4xf32>) -> tensor<1x3x3x4xf32> {
+        %0 = stablehlo.constant dense<2.000000e+00> : tensor<3x3x4x4xf32>
+        %1 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x4x4xf32>) -> tensor<1x3x3x4xf32>
+        %2 = stablehlo.convolution(%1, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x4x4xf32>) -> tensor<1x3x3x4xf32>
+        func.return %2: tensor<1x3x3x4xf32>
+      }
+
+      func.func @conv_2_fn(%arg0: tensor<1x3x3x4xf32>) -> tensor<1x3x3x4xf32> {
+        %0 = stablehlo.constant dense<2.000000e+00> : tensor<3x3x4x4xf32>
+        %1 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x4x4xf32>) -> tensor<1x3x3x4xf32>
+        %2 = stablehlo.convolution(%1, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x4x4xf32>) -> tensor<1x3x3x4xf32>
+        func.return %2: tensor<1x3x3x4xf32>
+      }
+    }
+  )mlir";
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleXlaCallModule);
+  ASSERT_TRUE(module_op);
+
+  SmallVector<func::FuncOp> funcs = GetSortedFunctions(*module_op);
+  ASSERT_THAT(funcs, SizeIs(3));
+  EXPECT_THAT(funcs[0].getSymName(), StrEq("conv_1_fn"));
+  EXPECT_THAT(funcs[1].getSymName(), StrEq("conv_2_fn"));
+  EXPECT_THAT(funcs[2].getSymName(), StrEq("conv_3_fn"));
 }
 
 }  // namespace
