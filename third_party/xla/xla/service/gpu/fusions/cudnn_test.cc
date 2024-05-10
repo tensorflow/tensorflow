@@ -681,12 +681,12 @@ ENTRY e {
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteF32, UnaryElementwiseTest,
     ::testing::Combine(::testing::Values(F32),
-                       ::testing::ValuesIn({HloOpcode::kAbs, HloOpcode::kCos,
-                                            HloOpcode::kExp, HloOpcode::kLog,
-                                            HloOpcode::kNegate,
-                                            HloOpcode::kRsqrt, HloOpcode::kSin,
-                                            HloOpcode::kSqrt, HloOpcode::kTan,
-                                            HloOpcode::kTanh}),
+                       ::testing::ValuesIn(
+                           {HloOpcode::kAbs, HloOpcode::kCeil, HloOpcode::kCos,
+                            HloOpcode::kExp, HloOpcode::kFloor, HloOpcode::kLog,
+                            HloOpcode::kNegate, HloOpcode::kRsqrt,
+                            HloOpcode::kSin, HloOpcode::kSqrt, HloOpcode::kTan,
+                            HloOpcode::kTanh}),
                        ::testing::Values(5e-4)),
     ElementwiseTestParamsToString);
 

@@ -91,7 +91,8 @@ std::vector<HloOpcode> TritonSupportedUnaryElementwise(
       element_type == PrimitiveType::BF16 ||
       element_type == PrimitiveType::F64) {
     absl::c_copy(std::vector<HloOpcode>{HloOpcode::kCos, HloOpcode::kExp,
-                                        HloOpcode::kExpm1, HloOpcode::kLog,
+                                        HloOpcode::kExpm1, HloOpcode::kFloor,
+                                        HloOpcode::kCeil, HloOpcode::kLog,
                                         HloOpcode::kLog1p, HloOpcode::kRsqrt,
                                         HloOpcode::kSin, HloOpcode::kSqrt,
                                         HloOpcode::kCbrt, HloOpcode::kTan,

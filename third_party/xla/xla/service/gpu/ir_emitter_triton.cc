@@ -447,6 +447,10 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
         return b.create<mm::AbsIOp>(inputs[0]);
       }
       return b.create<mm::AbsFOp>(inputs[0]);
+    case HloOpcode::kCeil:
+      return b.create<mm::CeilOp>(inputs[0]);
+    case HloOpcode::kFloor:
+      return b.create<mm::FloorOp>(inputs[0]);
     case HloOpcode::kNot:
       return b.create<ma::XOrIOp>(inputs[0], OnesLike(b, inputs[0]));
     case HloOpcode::kNegate:
