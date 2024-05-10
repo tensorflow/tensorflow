@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/loop.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <tuple>
 #include <utility>
 #include <vector>
 
