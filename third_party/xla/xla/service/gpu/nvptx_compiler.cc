@@ -41,7 +41,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/convert_mover.h"
 #include "xla/service/dot_dimension_merger.h"
@@ -66,6 +65,7 @@ limitations under the License.
 #include "xla/service/gpu/dot_sparsity_rewriter.h"
 #include "xla/service/gpu/gemm_algorithm_picker.h"
 #include "xla/service/gpu/gemm_fusion_autotuner.h"
+#include "xla/service/gpu/gpu_algebraic_simplifier.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_conv_padding_legalization.h"
@@ -213,7 +213,8 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       GetAlgebraicSimplifierOptions(hlo_module->config());
   algsimp_options.set_enable_conv_operand_swap(false);
   algsimp_options.set_enable_unconditional_reduce_of_concat_replacement(false);
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
+  pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
+                                                       gpu_version);
 
   // CudnnSimplifyPadding gets rid of some padding introduced by
   // CudnnPadForConvolutions and used by CudnnVectorizeConvolutions.  The
@@ -230,7 +231,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     ReshapeMoverOptions reshape_mover_options;
     reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
     pipeline.AddPass<ReshapeMover>(reshape_mover_options);
-    pipeline.AddPass<AlgebraicSimplifier>(algsimp_options);
+    pipeline.AddPass<GpuAlgebraicSimplifier>(algsimp_options, gpu_version);
   }();
 
   // The reshapes and transposes can possibly be eliminated using
@@ -241,7 +242,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   [&, &pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
           "simplify_after_conv_canonicalization")] {
     pipeline.AddPass<ConvertMover>();
-    pipeline.AddPass<AlgebraicSimplifier>(algsimp_options);
+    pipeline.AddPass<GpuAlgebraicSimplifier>(algsimp_options, gpu_version);
   }();
 
   // GpuConvRewriter, GpuConvPaddingLegalization and
@@ -279,8 +280,10 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
         false);
 
     mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
-    mha_fusion_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-        alg_sim_options);
+    se::GpuComputeCapability gpu_version =
+        gpu_target_config.device_description.gpu_compute_capability();
+    mha_fusion_pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(
+        alg_sim_options, gpu_version);
     mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
     // Rewrite Multi-Headed Attention modules to Fused MHA custom-calls.
     if (stream_exec) {
@@ -290,7 +293,8 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(
           cuda_compute_capability, gpu_target_config.dnn_version_info);
     }
-    mha_fusion_pipeline.AddPass<AlgebraicSimplifier>(alg_sim_options);
+    mha_fusion_pipeline.AddPass<GpuAlgebraicSimplifier>(alg_sim_options,
+                                                        gpu_version);
     mha_fusion_pipeline.AddPass<CudnnFusedMHATransposeFusion>();
     mha_fusion_pipeline.AddPass<HloDCE>();
     mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
