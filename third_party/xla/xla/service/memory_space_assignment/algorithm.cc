@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
-#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
@@ -1708,16 +1707,15 @@ MsaAlgorithm::GetInefficientAllocationSites(
           const HloPosition& defining_position =
               allocation->defining_position();
           int64_t accessed =
-              options_.cost_analysis->hlo_cost_analysis().output_bytes_accessed(
+              options_.cost_analysis->base_costs().OutputBytesAccessed(
                   *defining_position.instruction, defining_position.index);
           VLOG(3) << "  pos: " << defining_position.ToString()
                   << ", accessed: " << accessed << " / " << size;
         }
         for (const HloUse& use : allocation->uses()) {
           int64_t accessed =
-              options_.cost_analysis->hlo_cost_analysis()
-                  .operand_bytes_accessed(*use.instruction, use.operand_number,
-                                          use.operand_index);
+              options_.cost_analysis->base_costs().OperandBytesAccessed(
+                  *use.instruction, use.operand_number, use.operand_index);
           VLOG(3) << "  use: " << use.ToString() << ", accessed: " << accessed
                   << " / " << size;
         }
@@ -1745,17 +1743,15 @@ MsaAlgorithm::GetInefficientAllocationSites(
         copy_bytes += size;
       }
       if (position_memory_space == MemorySpace::kAlternate) {
-        use_bytes +=
-            options_.cost_analysis->hlo_cost_analysis().output_bytes_accessed(
-                *allocation->defining_position().instruction,
-                allocation->defining_position().index);
+        use_bytes += options_.cost_analysis->base_costs().OutputBytesAccessed(
+            *allocation->defining_position().instruction,
+            allocation->defining_position().index);
       }
       if (allocation->memory_space() == MemorySpace::kAlternate) {
         for (const HloUse& use : allocation->uses()) {
           use_bytes +=
-              options_.cost_analysis->hlo_cost_analysis()
-                  .operand_bytes_accessed(*use.instruction, use.operand_number,
-                                          use.operand_index);
+              options_.cost_analysis->base_costs().OperandBytesAccessed(
+                  *use.instruction, use.operand_number, use.operand_index);
         }
       }
     }
@@ -3626,13 +3622,12 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(
             << " use benefit = "
             << options_.cost_analysis->GetAlternateMemoryBenefit(
                    request.use->hlo_use);
-    VLOG(3)
-        << "Definition bytes accessed = "
-        << options_.cost_analysis->hlo_cost_analysis().output_bytes_accessed(
-               *defining_position.instruction, defining_position.index)
-        << ", use bytes accessed = "
-        << options_.cost_analysis->hlo_cost_analysis().operand_bytes_accessed(
-               *use.instruction, use.operand_number, use.operand_index);
+    VLOG(3) << "Definition bytes accessed = "
+            << options_.cost_analysis->base_costs().OutputBytesAccessed(
+                   *defining_position.instruction, defining_position.index)
+            << ", use bytes accessed = "
+            << options_.cost_analysis->base_costs().OperandBytesAccessed(
+                   *use.instruction, use.operand_number, use.operand_index);
   }
 
   // There could be a requirement to pin this buffer to default memory either
