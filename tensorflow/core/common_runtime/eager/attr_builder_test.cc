@@ -132,7 +132,7 @@ TEST(AttrBuilder, GetTypeAndNumber) {
 
 TEST(AttrBuilder, GetTypeList) {
   AttrBuilder a("IdentityN");
-  a.Set("T", gtl::ArraySlice<DataType>({DT_FLOAT, DT_INT64}));
+  a.Set("T", absl::Span<const DataType>({DT_FLOAT, DT_INT64}));
   absl::InlinedVector<DataType, 4> type_list;
   Status s = a.GetTypeList("T", &type_list);
   ASSERT_TRUE(s.ok()) << s;
