@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 
@@ -30,6 +31,10 @@ class MklQuantizeV2OpTest : public OpsTestBase,
 
 TEST_P(MklQuantizeV2OpTest, small_uint8) {
   const auto dtype = GetParam();
+  if (!IsDataTypeSupportedByOneDNNOnThisCPU(dtype)) {
+    GTEST_SKIP() << "Input type " << DataTypeString(dtype)
+                 << " is not supported by oneDNN on this CPU.";
+  }
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
                    .Input(FakeInput(dtype))
                    .Input(FakeInput(DT_FLOAT))
@@ -69,6 +74,10 @@ TEST_P(MklQuantizeV2OpTest, small_uint8) {
 
 TEST_P(MklQuantizeV2OpTest, small_int8) {
   const auto dtype = GetParam();
+  if (!IsDataTypeSupportedByOneDNNOnThisCPU(dtype)) {
+    GTEST_SKIP() << "Input type " << DataTypeString(dtype)
+                 << " is not supported by oneDNN on this CPU.";
+  }
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
                    .Input(FakeInput(dtype))
                    .Input(FakeInput(DT_FLOAT))
@@ -104,6 +113,10 @@ TEST_P(MklQuantizeV2OpTest, small_int8) {
 
 TEST_P(MklQuantizeV2OpTest, small_minfirst) {
   const auto dtype = GetParam();
+  if (!IsDataTypeSupportedByOneDNNOnThisCPU(dtype)) {
+    GTEST_SKIP() << "Input type " << DataTypeString(dtype)
+                 << " is not supported by oneDNN on this CPU.";
+  }
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
                    .Input(FakeInput(dtype))
                    .Input(FakeInput(DT_FLOAT))
@@ -136,6 +149,10 @@ TEST_P(MklQuantizeV2OpTest, small_minfirst) {
 
 TEST_P(MklQuantizeV2OpTest, small_minfirst_uint) {
   const auto dtype = GetParam();
+  if (!IsDataTypeSupportedByOneDNNOnThisCPU(dtype)) {
+    GTEST_SKIP() << "Input type " << DataTypeString(dtype)
+                 << " is not supported by oneDNN on this CPU.";
+  }
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
                    .Input(FakeInput(dtype))
                    .Input(FakeInput(DT_FLOAT))
@@ -168,6 +185,10 @@ TEST_P(MklQuantizeV2OpTest, small_minfirst_uint) {
 
 TEST_P(MklQuantizeV2OpTest, small_minfirst_int) {
   const auto dtype = GetParam();
+  if (!IsDataTypeSupportedByOneDNNOnThisCPU(dtype)) {
+    GTEST_SKIP() << "Input type " << DataTypeString(dtype)
+                 << " is not supported by oneDNN on this CPU.";
+  }
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
                    .Input(FakeInput(dtype))
                    .Input(FakeInput(DT_FLOAT))
