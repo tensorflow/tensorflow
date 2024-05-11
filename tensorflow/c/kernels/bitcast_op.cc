@@ -15,13 +15,13 @@ limitations under the License.
 
 #include <sstream>
 
+#include "absl/log/check.h"
 #include "tensorflow/c/kernels.h"
-#include "tensorflow/c/ops.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
-#include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/registration/registration.h"
-#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
 
 // BitcastOp implements a bitcast kernel, creating an output tensor that shares
