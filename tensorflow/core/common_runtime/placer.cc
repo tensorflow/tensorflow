@@ -291,8 +291,8 @@ Status Placer::Run(const GraphOptimizationPassOptions& options) {
     // to perform good placement we can add an interface for this.
     int assigned_device = -1;
 
-    // Heuristic B: If the node only operates on metadata, not data,
-    // then it is desirable to place that metadata node with its
+    // Heuristic B: If the node only operates on metadata (not data) or is
+    // an identity node, then it is desirable to place that node with its
     // input.
     if (IsMetadata(node) || MatchIdentityOperation(node)) {
       // Make sure that the input device type is in the list of supported
