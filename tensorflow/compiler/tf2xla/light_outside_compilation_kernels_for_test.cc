@@ -16,10 +16,28 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/kernels/light_outside_compilation.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 // Sample kernels for the light outside compilation test.
 

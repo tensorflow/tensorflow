@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_MLIR_XLA_OP_KERNEL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_MLIR_XLA_OP_KERNEL_H_
 
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 

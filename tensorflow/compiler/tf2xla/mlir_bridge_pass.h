@@ -20,8 +20,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
+#include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
