@@ -80,7 +80,7 @@ bool FileInputYielder::NextItem(GrapplerItem* item) {
   }
   if (!s.ok()) {
     LOG(WARNING) << "Failed to read MetaGraphDef from " << filename << ": "
-                 << s.ToString();
+                 << s;
     // Attempt to process the next item on the list
     bad_inputs_ += 1;
     return NextItem(item);
