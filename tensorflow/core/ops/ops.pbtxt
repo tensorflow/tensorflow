@@ -1,4 +1,4 @@
-go/debugproto    
+go/nodeserialize   
 op {
   name: "Abort"
   attr {
@@ -22414,6 +22414,13 @@ op {
     type: "int"
     has_minimum: true
     minimum: 1
+  }
+}
+op {
+  name: "GetTpuTaskId"
+  output_arg {
+    name: "tpu_task_id"
+    type: DT_INT32
   }
 }
 op {
@@ -65953,6 +65960,21 @@ op {
     name: "output_handle"
     type: DT_VARIANT
   }
+}
+op {
+  name: "UpdateTaskIdAndGlobalCoreArray"
+  input_arg {
+    name: "tpu_task_id_to_shard_id"
+    type: DT_INT32
+    number_attr: "task_count"
+  }
+  attr {
+    name: "task_count"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
 }
 op {
   name: "UpperBound"
