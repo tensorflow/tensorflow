@@ -158,7 +158,8 @@ absl::StatusOr<std::vector<HloInstruction*>> GetBufferUsersOfType(
 // And the buffer is passed through the first operand.
 // This is used to trace the graph between an annotation and its relevant slice.
 bool CanTraverseOpBetweenAnnotation(HloInstruction* hlo) {
-  if (hlo->opcode() == HloOpcode::kBitcast) {
+  if (hlo->opcode() == HloOpcode::kBitcast ||
+      hlo->opcode() == HloOpcode::kCopy) {
     return true;
   } else if (hlo->opcode() == HloOpcode::kReshape) {
     return ShapeUtil::ReshapeIsBitcast(hlo->operand(0)->shape(), hlo->shape());
