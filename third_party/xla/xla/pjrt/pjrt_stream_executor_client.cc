@@ -1343,6 +1343,9 @@ absl::Span<PjRtMemorySpace* const> PjRtStreamExecutorDevice::memory_spaces()
 
 StatusOr<PjRtMemorySpace*> PjRtStreamExecutorDevice::default_memory_space()
     const {
+  if (memory_spaces_.size() == 1) {
+    return memory_spaces_.front();
+  }
   return Unimplemented("default_memory_space is not supported.");
 }
 
