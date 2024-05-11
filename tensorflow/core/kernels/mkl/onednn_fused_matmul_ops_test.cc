@@ -491,7 +491,6 @@ class FusedMatMulOpsTest : public OpsTestBase {
                          string output_quant_mode = "SCALED",
                          bool is_bias_quantized = false,
                          bool is_perchannel = false, bool requantize = false) {
-    srand(1234);
     DataType dtype = DataTypeToEnum<T>::v();
     TensorShape x_shape = TensorShape(x_dims);
     TensorShape y_shape = TensorShape(y_dims);
@@ -532,13 +531,13 @@ class FusedMatMulOpsTest : public OpsTestBase {
         output_min = static_cast<float>(min);
         output_max = static_cast<float>(max);
       }
-      // Run quantized fusion
+      // Run quantized fusion.
       run_fused(x_tensor, y_tensor, fused_ops_and_tensors, &fused_result,
                 transpose_x, transpose_y, input_quant_mode, output_quant_mode,
                 is_bias_quantized, is_perchannel, requantize, output_min,
                 output_max);
     } else {
-      // Run realnumber type fusion
+      // Run realnumber type fusion.
       run_fused(x_tensor, y_tensor, fused_ops_and_tensors, &fused_result,
                 transpose_x, transpose_y);
     }

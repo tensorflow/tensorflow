@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/mkl/mkl_matmul_ops_common.h"
 #include "tensorflow/core/kernels/mkl/mkl_quantized_conv_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -409,14 +409,14 @@ class QuantizedFusedMatMulOp
     struct OperandInfo {
       int idx = -1;  // Operand tensor index if needed by a post-op.
       // Indices of min and max value tensors, if the operand is quantized.
-      gtl::InlinedVector<int, 4> min_max_indices;
+      absl::InlinedVector<int, 4> min_max_indices;
     } operand_info;
     // Indices of output min and max value tensors. It is used when requantize
     // is fused.
-    gtl::InlinedVector<int, 4> min_max_indices;
+    absl::InlinedVector<int, 4> min_max_indices;
   };
 
-  gtl::InlinedVector<PostOpInfo, 4> post_op_info_list_;
+  absl::InlinedVector<PostOpInfo, 4> post_op_info_list_;
 
   void Initialize(OpKernelConstruction* context) {
     OP_REQUIRES_OK(context,

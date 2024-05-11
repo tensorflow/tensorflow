@@ -102,7 +102,7 @@ struct MklDnnMatMulFwdParams {
   struct PostOpParam {
     string name;
     std::vector<float> param;
-    string partial_key = string("");
+    string partial_key;
   };
   std::vector<PostOpParam> post_op_params;
   string input_quant_mode;
