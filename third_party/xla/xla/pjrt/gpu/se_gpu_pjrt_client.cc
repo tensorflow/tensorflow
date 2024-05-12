@@ -393,8 +393,8 @@ class AsyncHostToDeviceTransferManager
                                                                 event.value());
 
     auto cleanup = [this, buffer_index, event = std::move(event).value(),
-                    stream, is_last_transfer,
-                    on_done = std::move(on_done)]() mutable {
+                    stream, is_last_transfer, on_done = std::move(on_done),
+                    staging_buffer = std::move(staging_buffer)]() mutable {
       CleanUp(buffer_index, std::move(event), stream, is_last_transfer,
               std::move(on_done));
     };

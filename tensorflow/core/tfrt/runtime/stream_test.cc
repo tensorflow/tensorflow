@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/stream.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -26,10 +27,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/tfrt/runtime/step_id.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tensorflow/core/tfrt/utils/thread_pool.h"
 #include "tsl/platform/env.h"
@@ -44,27 +48,17 @@ using ::testing::AnyOf;
 using ::testing::ElementsAreArray;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
-
-class TestStreamInterface : public StreamControllerInterface {
- public:
-  TestStreamInterface() : StreamControllerInterface("test_address") {}
-};
-
-const bool kUnused = []() {
-  GetGlobalStreamInterfaceFactory().RegisterController(
-      []() { return std::make_unique<TestStreamInterface>(); });
-  return true;
-}();
+using ::testing::status::StatusIs;
 
 TEST(StreamTest, Simple) {
   StreamCallbackId callback_id(1234);
   StepId step_id(5678);
 
   std::vector<absl::flat_hash_map<std::string, tensorflow::Tensor>> outputs;
-
+  ScopedStreamCallback scoped_stream_callback;
   {
     TF_ASSERT_OK_AND_ASSIGN(
-        auto scoped_stream_callback,
+        scoped_stream_callback,
         GetGlobalStreamCallbackRegistry().Register(
             "test_model", callback_id, step_id,
             [&](absl::flat_hash_map<std::string, tensorflow::Tensor> arg) {
@@ -91,6 +85,16 @@ TEST(StreamTest, Simple) {
               ElementsAreArray({200}));
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[1]["c"]),
               ElementsAreArray({300}));
+
+  ScopedStreamCallback scoped_stream_callback_copy;
+  scoped_stream_callback_copy = std::move(scoped_stream_callback);
+
+  auto status = GetGlobalStreamCallbackRegistry().Register(
+      "test_model", callback_id, step_id,
+      [&](absl::flat_hash_map<std::string, tensorflow::Tensor> arg) {
+        outputs.push_back(std::move(arg));
+      });
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kAlreadyExists));
 }
 
 TEST(StreamTest, MultipleWriters) {
@@ -142,6 +146,63 @@ TEST(StreamTest, MultipleWriters) {
   }
 }
 
+class TestStreamControllerInterface : public StreamControllerInterface {
+ public:
+  TestStreamControllerInterface()
+      : StreamControllerInterface("test_controller_address") {}
+};
+
+TEST(StreamControllerInterface, Initialize) {
+  GetGlobalStreamInterfaceFactory().RegisterController(
+      []() { return std::make_unique<TestStreamControllerInterface>(); });
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto controller_interface,
+      GetGlobalStreamInterfaceFactory().CreateControllerStreamInterface());
+  EXPECT_EQ(controller_interface->controller_address(),
+            "test_controller_address");
+}
+
+class TestStreamWorkerInterface : public StreamWorkerInterface {
+ public:
+  explicit TestStreamWorkerInterface(std::string worker_address)
+      : StreamWorkerInterface(worker_address) {}
+  absl::Status InvokeStreamCallback(
+      const StreamCallbackId& callback_id,
+      const std::vector<std::string>& names,
+      const std::vector<std::pair<int64_t, std::vector<tensorflow::Tensor>>>&
+          responses) override {
+    return absl::OkStatus();
+  }
+};
+
+TEST(StreamWorkerInterface, Initialize) {
+  GetGlobalStreamInterfaceFactory().RegisterWorker(
+      [](absl::string_view address)
+          -> absl::StatusOr<std::unique_ptr<TestStreamWorkerInterface>> {
+        return std::make_unique<TestStreamWorkerInterface>(
+            "test_worker_address");
+      });
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto worker_interface,
+      GetGlobalStreamInterfaceFactory().CreateWorkerStreamInterface()(
+          "test_worker_address"));
+  EXPECT_EQ(worker_interface->controller_address(), "test_worker_address");
+}
+
+TEST(StepId, Generate) {
+  StepId step_id(1234);
+  EXPECT_EQ(step_id.id, 1234);
+  StepIdGenerator step_id_generator;
+  EXPECT_EQ(step_id_generator.GetNextStepId(), StepId(1));
+  EXPECT_EQ(step_id_generator.GetNextStepId(), StepId(2));
+  EXPECT_EQ(step_id_generator.GetNextStepId(), StepId(3));
+}
+
+TEST(StepId, GlobalInitial) {
+  EXPECT_EQ(GetGlobalInitialStepId(), 0);
+  TEST_ScopedInitialStepId test_id(127);
+  EXPECT_EQ(GetGlobalInitialStepId(), 127);
+}
 }  // namespace
 }  // namespace tfrt_stub
 }  // namespace tensorflow
