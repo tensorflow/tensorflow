@@ -102,6 +102,7 @@ cc_library(
         ":opt_lib",
         "//xla/service:cpu_plugin",
         "//xla/service:hlo_graph_dumper",
+        "//xla/service/cpu:cpu_executable",
         "//xla/stream_executor/host:host_platform",
         "//xla/stream_executor/platform",
     ],
@@ -149,6 +150,7 @@ lit_test_suite(
     srcs = enforce_glob(
         [
             "cpu_hlo.hlo",
+            "cpu_llvm.hlo",
             "gpu_hlo.hlo",
             "gpu_hlo_backend.hlo",
             "gpu_hlo_buffers.hlo",
