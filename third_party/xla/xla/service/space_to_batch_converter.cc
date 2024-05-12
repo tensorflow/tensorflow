@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -112,6 +113,8 @@ class ConvolutionVisitor {
   // This function checks if the HLO instruction supports propagation.
   bool SupportedOpForPropagation(HloInstruction* consumer,
                                  HloInstruction* producer);
+  bool SupportedDotForPropagation(HloInstruction* consumer,
+                                  HloInstruction* producer);
 
   // Method that checks validity of Broadcast propagation.
   bool IsBroadcastPropagatable(HloInstruction* broadcast,
@@ -1561,11 +1564,53 @@ bool ConvolutionVisitor::IsOpcodeNonPropagatable(HloInstruction* consumer) {
   switch (consumer->opcode()) {
     case HloOpcode::kCustomCall:
       return true;
-    case HloOpcode::kDot:
-      return !ctrl_.enable_propagations_on_dots;
     default:
       return false;
   }
+}
+
+bool ConvolutionVisitor::SupportedDotForPropagation(HloInstruction* consumer,
+                                                    HloInstruction* producer) {
+  if (consumer->opcode() != HloOpcode::kDot) {
+    return false;
+  }
+  auto operand = consumer->mutable_operand(0);
+  if (operand != producer || !instr_to_dim_map_.contains(operand)) {
+    return false;
+  }
+  const auto& dnums = consumer->dot_dimension_numbers();
+  const auto& contracting_dims = dnums.lhs_contracting_dimensions();
+  const auto& batch_dims = dnums.lhs_batch_dimensions();
+  auto result = instr_to_dim_map_[operand];
+  const int64_t old_batch_dim = result[DimMapper(SpaceToBatchDimMap::kBatch)];
+  const int64_t old_space_dim = result[DimMapper(SpaceToBatchDimMap::kSpace0)];
+  const int64_t old_feature_dim =
+      result[DimMapper(SpaceToBatchDimMap::kFeature)];
+  // No feature dimension in output
+  if (consumer->operand(1)->shape().rank() ==
+      batch_dims.size() + contracting_dims.size()) {
+    return false;
+  }
+  // If the convolution space or batch dimension are contracting or batch on
+  // the dot, do not propagate.
+  bool found = false;
+  for (auto dim : batch_dims) {
+    if (dim == old_batch_dim || dim == old_space_dim) {
+      return false;
+    }
+    if (dim == old_feature_dim) {
+      found = true;
+    }
+  }
+  if (!found) {
+    return false;
+  }
+  for (auto dim : contracting_dims) {
+    if (dim == old_batch_dim || dim == old_space_dim) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
@@ -1679,6 +1724,10 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
         operand->shape().dimensions(old_space_dim)) {
       return false;
     }
+    return true;
+  }
+
+  if (SupportedDotForPropagation(consumer, producer)) {
     return true;
   }
 
@@ -1961,6 +2010,50 @@ absl::StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
 
   if (consumer->opcode() == HloOpcode::kReverse) {
     TF_CHECK_OK(PropagateOnReverse(consumer));
+    return true;
+  }
+
+  if (consumer->opcode() == HloOpcode::kDot) {
+    auto dim_map_val = instr_to_dim_map_[producer];
+    const int64_t old_batch_dim =
+        dim_map_val[DimMapper(SpaceToBatchDimMap::kBatch)];
+    const int64_t old_space_dim =
+        dim_map_val[DimMapper(SpaceToBatchDimMap::kSpace0)];
+    int64_t new_batch_dim = -1;
+    int64_t new_space_dim = -1;
+    int64_t outer = 0;
+    for (int64_t i = 0; i < producer->shape().rank(); ++i) {
+      if (absl::c_linear_search(
+              consumer->dot_dimension_numbers().lhs_batch_dimensions(), i) ||
+          absl::c_linear_search(
+              consumer->dot_dimension_numbers().lhs_contracting_dimensions(),
+              i)) {
+        continue;
+      }
+      if (i == old_batch_dim) {
+        new_batch_dim =
+            outer +
+            consumer->dot_dimension_numbers().lhs_batch_dimensions_size();
+      }
+      if (i == old_space_dim) {
+        new_batch_dim =
+            outer +
+            consumer->dot_dimension_numbers().lhs_batch_dimensions_size();
+      }
+      ++outer;
+    }
+    std::vector<int64_t> dim_map(NumMappedDims());
+    dim_map[DimMapper(SpaceToBatchDimMap::kBatch)] = new_batch_dim;
+    dim_map[DimMapper(SpaceToBatchDimMap::kSpace0)] = new_space_dim;
+    dim_map[DimMapper(SpaceToBatchDimMap::kFeature)] =
+        consumer->shape().rank() - 1;
+    instr_to_dim_map_[consumer] = dim_map;
+    auto new_consumer = computation->AddInstruction(consumer->Clone());
+    new_consumer->mutable_shape()->mutable_dimensions()[new_batch_dim] =
+        producer->shape().dimensions(old_batch_dim);
+    new_consumer->mutable_shape()->mutable_dimensions()[new_space_dim] =
+        producer->shape().dimensions(old_space_dim);
+    old_to_new_instrs_[consumer] = new_consumer;
     return true;
   }
 
@@ -3619,7 +3712,8 @@ ConvolutionVisitor::DoesConvolutionFeedReduceWindowOrSelectAndScatter(
     // Stop the search if these ops are encountered.
     if (user->opcode() == HloOpcode::kConvolution ||
         user->opcode() == HloOpcode::kPad ||
-        user->opcode() == HloOpcode::kTranspose) {
+        user->opcode() == HloOpcode::kTranspose ||
+        user->opcode() == HloOpcode::kDot) {
       continue;
     }
     auto ret =
@@ -3985,7 +4079,6 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
     non_propagatable_instrs_.erase(convolution);
   }
   TF_CHECK_OK(PropagateOnUsers(original_conv));
-
 
   return OkStatus();
 }
