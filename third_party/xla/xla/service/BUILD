@@ -102,6 +102,7 @@ cc_library(
     srcs = ["collective_opt_utils.cc"],
     hdrs = ["collective_opt_utils.h"],
     deps = [
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
     ],
