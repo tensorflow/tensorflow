@@ -19,8 +19,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/platform/errors.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/saved_model.pb.h"
 
 namespace tensorflow {
 namespace saved_model {

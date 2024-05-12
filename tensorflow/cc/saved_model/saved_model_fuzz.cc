@@ -19,8 +19,13 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow::fuzzing {
 namespace {

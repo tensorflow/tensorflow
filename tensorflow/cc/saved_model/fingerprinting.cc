@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "third_party/protobuf/io/coded_stream.h"
+#include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/regularization/simple_delete.h"

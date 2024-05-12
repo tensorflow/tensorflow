@@ -16,15 +16,17 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/reader.h"
 
 #include <gmock/gmock.h>
-#include "tensorflow/cc/saved_model/constants.h"
+#include <gtest/gtest.h>
+#include "absl/strings/match.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/resource_loader.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {

@@ -20,8 +20,11 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
-#include "absl/memory/memory.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/cc/saved_model/util.h"
@@ -30,18 +33,19 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 // Placeholder for protosplitter merger include.
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 #define IS_OSS true
 
