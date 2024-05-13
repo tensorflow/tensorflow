@@ -274,7 +274,9 @@ CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
   }
 
   // Create a new empty command buffer.
-  TF_ASSIGN_OR_RETURN(auto command_buffer, se::CommandBuffer::Create(executor));
+  TF_ASSIGN_OR_RETURN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
   auto emplaced = state_->command_buffers.emplace(
       executor,
       std::make_shared<ExecutorCommandBuffer>(std::move(command_buffer)));
