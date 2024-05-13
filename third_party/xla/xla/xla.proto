@@ -114,8 +114,7 @@ message DebugOptions {
   // Generate calls to MKL-DNN in the CPU backend.
   bool xla_cpu_use_mkl_dnn = 97;
 
-  // Enable XLA Runtime in the CPU backend.
-  bool xla_cpu_use_xla_runtime = 177;
+  reserved 177;  // Was xla_cpu_use_xla_runtime
 
   reserved 98;  // Was xla_gpu_max_kernel_unroll_factor
 
@@ -165,12 +164,7 @@ message DebugOptions {
   // above!
   bool xla_gpu_enable_fast_min_max = 100;
 
-  // Defines the number of CUDA threads that can be used to accelerate
-  // a sparse computation compiled for the XLA Runtime and CPU backend.
-  // By default (value 0), no acceleration is used. Otherwise, this
-  // many threads may be used to accelerate sparse operations, typically
-  // useful when accelerating structured sparsity.
-  int32 xla_cpu_sparse_cuda_threads = 207;
+  reserved 207;  // Was xla_cpu_sparse_cuda_threads
 
   // Allows xla to increase the output precision of floating point operations
   // and all floating-point conversions to be simplified, including those
@@ -454,8 +448,7 @@ message DebugOptions {
   reserved 161;  // Was xla_gpu_bef_executable
   reserved 162;  // Was xla_gpu_bef_thunk
 
-  // If true, use XLA runtime for XLA:GPU backend.
-  bool xla_gpu_enable_xla_runtime_executable = 169;
+  reserved 169;  // Was xla_gpu_enable_xla_runtime_executable
 
   // If true, XLA will try to pattern match subgraphs of HLO operations into
   // custom fusions registered in the current process (pre-compiled hand written
@@ -466,7 +459,8 @@ message DebugOptions {
   // if `xla_gpu_enable_custom_fusion` set to true.
   string xla_gpu_enable_custom_fusions_re = 264;
 
-  // If true, use XLA runtime for XLA:GPU backend.
+  // Enables address computation fusion to optimize dynamic-slice and
+  // dynamic-update-slice operations around library calls.
   bool xla_gpu_enable_address_computation_fusion = 105;
 
   reserved 233;  // was xla_gpu_enable_gpu2_runtime
@@ -500,10 +494,7 @@ message DebugOptions {
   // Determine the types of commands that are recorded into command buffers.
   repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
 
-  // Only instantiates a GPU graph after the captured function execution count
-  // reaches the threshold. This constant is a heuristic to avoid creating a
-  // large number of CUDA graph instances in memory.
-  int32 xla_gpu_graph_num_runs_to_instantiate = 202;
+  reserved 202;  // Was xla_gpu_graph_num_runs_to_instantiate
 
   // This number determines how many moved instructions like fusion kernels are
   // required for a region to be captured as a function to be launched as a GPU
@@ -513,10 +504,7 @@ message DebugOptions {
   // Identify concurrent regions in GPU graphs and execute them concurrently.
   bool xla_gpu_graph_enable_concurrent_region = 215;
 
-  // Timeout in seconds to evict instantiated Gpu graphs from device. When XLA
-  // instantiates new Gpu graphs, it evicts graphs that were not recently
-  // executed to free space on device.
-  int32 xla_gpu_graph_eviction_timeout_seconds = 230;
+  reserved 230;  // Was xla_gpu_graph_eviction_timeout_seconds
 
   // Size threshold (in megabytes) for the GPU redzone scratch allocator.
   int64 xla_gpu_redzone_scratch_max_megabytes = 167;

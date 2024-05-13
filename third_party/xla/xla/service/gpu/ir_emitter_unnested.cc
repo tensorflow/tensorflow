@@ -1307,12 +1307,6 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
       return absl::OkStatus();
     }
 
-    // TODO(ezhulenev): Custom calls registered with an XLA runtime are not part
-    // of a legacy registry, or an FFI registry. For now we simply ignore them.
-    if (debug_options.xla_gpu_enable_xla_runtime_executable()) {
-      return absl::OkStatus();
-    }
-
     return absl::UnimplementedError(
         absl::StrCat("No registered implementation for custom call to ",
                      call_target_name, " for platform ", platform_name()));
