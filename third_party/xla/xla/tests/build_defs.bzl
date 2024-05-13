@@ -29,7 +29,7 @@ GPU_DEFAULT_BACKENDS = [
 
 _DEFAULT_BACKENDS = ["cpu"] + GPU_DEFAULT_BACKENDS
 
-_ALL_BACKENDS = ["cpu"] + GPU_BACKENDS + list(plugins.keys())
+_ALL_BACKENDS = ["cpu", "interpreter"] + GPU_BACKENDS + list(plugins.keys())
 
 # buildifier: disable=function-docstring
 def prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args):
@@ -199,6 +199,11 @@ def xla_test(
             ])
             this_backend_tags += tf_gpu_tests_tags()
             this_backend_copts.append("-DXLA_TEST_BACKEND_GPU=1")
+        elif backend == "interpreter":
+            backend_deps += [
+                "//xla/service:interpreter_plugin",
+                "//xla/tests:test_macros_interpreter",
+            ]
         elif backend in plugins:
             backend_deps += plugins[backend]["deps"]
             this_backend_copts += plugins[backend]["copts"]
@@ -206,8 +211,7 @@ def xla_test(
             this_backend_args += plugins[backend]["args"]
             this_backend_data += plugins[backend]["data"]
         else:
-            # Ignore unknown backends. TODO(b/289028518): Change back to fail.
-            continue
+            fail("Unknown backend %s" % backend)
 
         if xla_test_library_deps:
             for lib_dep in xla_test_library_deps:
@@ -288,6 +292,8 @@ def xla_test_library(
             backend_deps = ["//xla/tests:test_macros_cpu"]
         elif backend in GPU_BACKENDS:
             backend_deps = ["//xla/tests:test_macros_%s" % backend]
+        elif backend == "interpreter":
+            backend_deps = ["//xla/tests:test_macros_interpreter"]
         elif backend in plugins:
             backend_deps = plugins[backend]["deps"]
             this_backend_copts += plugins[backend]["copts"]
