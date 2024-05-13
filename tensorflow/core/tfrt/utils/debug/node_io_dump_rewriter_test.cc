@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/resource_loader.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
@@ -150,7 +150,7 @@ TEST(NodeIoDumpRewriterTest, OnGraph) {
 TEST(NodeIoDumpRewriterTest, OnSavedModelV1) {
   // Read meta_graph_def.
   std::string saved_model_dir = GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
   MetaGraphDef meta_graph_def;
   TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(saved_model_dir, {"serve"},
                                               &meta_graph_def));

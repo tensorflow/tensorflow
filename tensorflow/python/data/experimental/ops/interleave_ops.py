@@ -14,6 +14,7 @@
 # ==============================================================================
 """Non-deterministic dataset transformations."""
 from tensorflow.python import tf2
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.util import deprecation
@@ -245,3 +246,16 @@ if tf2.enabled():
 else:
   choose_from_datasets = choose_from_datasets_v1
   sample_from_datasets = sample_from_datasets_v1
+
+
+def _tf2_callback():
+  global choose_from_datasets, sample_from_datasets
+  if tf2.enabled():
+    choose_from_datasets = choose_from_datasets_v2
+    sample_from_datasets = sample_from_datasets_v2
+  else:
+    choose_from_datasets = choose_from_datasets_v1
+    sample_from_datasets = sample_from_datasets_v1
+
+
+v2_compat.register_data_v2_callback(_tf2_callback)

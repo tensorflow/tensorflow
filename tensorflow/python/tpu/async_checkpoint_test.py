@@ -33,13 +33,13 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.tpu import async_checkpoint
-from tensorflow.python.tpu import tpu_config
-from tensorflow.python.tpu import tpu_estimator
 from tensorflow.python.tpu import tpu_optimizer
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import training
 from tensorflow_estimator.python.estimator import estimator as estimator_lib
 from tensorflow_estimator.python.estimator import model_fn as model_fn_lib
+from tensorflow_estimator.python.estimator.tpu import tpu_config
+from tensorflow_estimator.python.estimator.tpu import tpu_estimator
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('tpu', '', 'TPU to use in this test.')

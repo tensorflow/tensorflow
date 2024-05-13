@@ -1,11 +1,26 @@
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "op_resolver_internal_visibility_allowlist")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
+)
+
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = [
+        ":error_reporter.cc",
+        ":error_reporter.h",
+        ":op_resolver.cc",
+        ":op_resolver.h",
+        ":op_resolver_internal.h",
+        ":verifier.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
 )
 
 cc_library(
@@ -33,7 +48,6 @@ cc_library(
         # central location.
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
     ],
 )
 
@@ -138,7 +152,11 @@ cc_test(
     deps = [
         ":api",
         "//tensorflow/lite:string",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
     ],
 )

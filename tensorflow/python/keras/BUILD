@@ -354,7 +354,7 @@ py_library(
         "//tensorflow/python/keras/engine:base_layer_utils",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/optimizer_v2",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//third_party/py/numpy",
     ],
 )

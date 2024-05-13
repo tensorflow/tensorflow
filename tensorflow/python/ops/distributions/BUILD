@@ -61,7 +61,7 @@ py_strict_library(
         "//tensorflow/python/ops:linalg_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
     ],
 )
@@ -75,8 +75,8 @@ py_strict_library(
         "//tensorflow/python/ops:control_flow_assert",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
@@ -249,8 +249,8 @@ py_strict_library(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
     ],
 )

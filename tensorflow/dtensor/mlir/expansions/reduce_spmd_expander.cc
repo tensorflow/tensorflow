@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
@@ -69,14 +70,14 @@ absl::string_view DefiningOpName(mlir::Value operand) {
 
 Status AssertReplicated(mlir::Value operand) {
   TF_ASSIGN_OR_RETURN(auto layout, ExtractLayoutFromOperand(operand));
-  if (!layout) return OkStatus();
+  if (!layout) return absl::OkStatus();
 
   if (!layout->IsFullyReplicated()) {
     return errors::InvalidArgument(
         "Expected layout for ", DefiningOpName(operand),
         " to be fully replicated, but found ", layout->ToString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::flat_hash_set<std::string> ReducedMeshDimensions(
@@ -95,7 +96,7 @@ template <typename OpType>
 Status ExtractDims(mlir::Operation* op,
                    llvm::SmallVector<int64_t, 4>* reduced_dims, bool* keep_dims,
                    bool* matched) {
-  if (!llvm::isa<OpType>(op)) return OkStatus();
+  if (!llvm::isa<OpType>(op)) return absl::OkStatus();
   auto reduce_op = llvm::cast<OpType>(op);
   *keep_dims = reduce_op.getKeepDims();
   TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(
@@ -103,14 +104,14 @@ Status ExtractDims(mlir::Operation* op,
   TF_RETURN_IF_ERROR(AssertReplicated(reduce_op.getReductionIndices()));
   *matched = true;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
 Status ExtractDims<mlir::TF::L2LossOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
-  if (!llvm::isa<mlir::TF::L2LossOp>(op)) return OkStatus();
+  if (!llvm::isa<mlir::TF::L2LossOp>(op)) return absl::OkStatus();
   auto loss_op = llvm::cast<mlir::TF::L2LossOp>(op);
   *reduced_dims = llvm::SmallVector<int64_t, 4>{};
   reduced_dims->resize(ValueRank(loss_op->getOperand(0)));
@@ -119,14 +120,14 @@ Status ExtractDims<mlir::TF::L2LossOp>(
   }
   *keep_dims = false;
   *matched = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
 Status ExtractDims<mlir::TF::BiasAddGradOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
-  if (!llvm::isa<mlir::TF::BiasAddGradOp>(op)) return OkStatus();
+  if (!llvm::isa<mlir::TF::BiasAddGradOp>(op)) return absl::OkStatus();
   auto bias_add_grad_op = llvm::cast<mlir::TF::BiasAddGradOp>(op);
   auto data_format = bias_add_grad_op.getDataFormat();
   // rank is at least 2 (required by BiasAddGrad).
@@ -146,18 +147,18 @@ Status ExtractDims<mlir::TF::BiasAddGradOp>(
   }
   *keep_dims = false;
   *matched = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
 Status ExtractDims<mlir::TF::EncodePngOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
-  if (!llvm::isa<mlir::TF::EncodePngOp>(op)) return OkStatus();
+  if (!llvm::isa<mlir::TF::EncodePngOp>(op)) return absl::OkStatus();
   *reduced_dims = {-3, -2, -1};
   *keep_dims = false;
   *matched = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExtractReductionParameters(mlir::Operation* op,
@@ -191,7 +192,7 @@ Status ExtractReductionParameters(mlir::Operation* op,
                                  " not yet implemented.");
 
   reduced_dims_set.insert(reduced_dims.begin(), reduced_dims.end());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<Layout> ComputeResultLayout(mlir::Operation* op,
@@ -218,7 +219,7 @@ StatusOr<mlir::Operation*> ReduceSPMDExpander::ExpandOp(mlir::Operation* op) {
   // Generate an error message for TPU int64.
   if (input_layout->mesh().is_tpu_mesh()) {
     if (auto tensor_type =
-            op->getOperand(0).getType().dyn_cast<mlir::TensorType>()) {
+            mlir::dyn_cast<mlir::TensorType>(op->getOperand(0).getType())) {
       if (tensor_type.getElementType().isInteger(64)) {
         return errors::InvalidArgument(
             "ReduceOp on TPU does not support int64 as dtype.");

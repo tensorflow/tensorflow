@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_REGISTER_H_
 #define TENSORFLOW_LITE_KERNELS_REGISTER_H_
 
-#include "tensorflow/lite/core/kernels/register.h"
+/// For documentation, see third_party/tensorflow/lite/core/kernels/register.h
+
+#include "tensorflow/lite/core/kernels/register.h"  // IWYU pragma: export
 
 namespace tflite {
 namespace ops {

@@ -10,9 +10,9 @@ func.func @main() -> tensor<3xf32> {
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
   // CHECK: "tf.AssignVariableOp"(%[[VAR]], %[[BUFFER]])
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
-  // CHECK: %[[IND:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[IND:.*]] = "tf.Const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  // CHECK: %[[VAL:.*]] = "tf.Const"() {value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<3xf32>} : () -> tensor<3xf32>
+  // CHECK: %[[VAL:.*]] = "tf.Const"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<3xf32>}> : () -> tensor<3xf32>
   %value = "tf.Const"() {value = dense<[1.0, 2.0, 3.0]> : tensor<3xf32>} : () -> tensor<3xf32>
   // CHECK: %[[READ_VAR:.*]] = "tf.ReadVariableOp"(%[[VAR]])
   // CHECK: %[[UPDATE_SLICE:.*]] = "tf.Reshape"(%[[VAL]]
@@ -46,7 +46,7 @@ func.func @main() -> tensor<i32> {
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %value = "tf.Const"() {value = dense<[1.0, 2.0, 3.0]> : tensor<3xf32>} : () -> tensor<3xf32>
   %write = "tf.TensorArrayWriteV3"(%ta#0, %index, %value, %ta#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
-  // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[SIZE:.*]] = "tf.Const"() <{value = dense<5> : tensor<i32>}> : () -> tensor<i32>
   %size_out = "tf.TensorArraySizeV3"(%ta#0, %write) : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<i32>
   // CHECK: return %[[SIZE]] : tensor<i32>
   func.return %size_out : tensor<i32>
@@ -110,7 +110,7 @@ func.func @main() -> () {
   // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[VAR]]) : (tensor<!tf_type.resource<tensor<5x3xf32>>>) -> tensor<5x3xf32>
   // CHECK: %[[CONCAT_RESHAPE:.*]] = "tf.Reshape"(%[[READ]],
   // CHECK-SAME: -> tensor<15xf32>
-  // CHECK: %[[LENS:.*]] = "tf.Const"() {value = dense<3> : tensor<5xi64>} : () -> tensor<5xi64>
+  // CHECK: %[[LENS:.*]] = "tf.Const"() <{value = dense<3> : tensor<5xi64>}> : () -> tensor<5xi64>
   %concat:2 = "tf.TensorArrayConcatV3"(%ta#0, %ta#1) {element_shape_except0 = #tf_type.shape<*>} : (tensor<!tf_type.resource>, tensor<f32>) -> (tensor<*xf32>, tensor<*xi64>)
   // CHECK: %[[SPLIT_RESHAPE:.*]] = "tf.Reshape"(%[[CONCAT_RESHAPE]],
   // CHECK-SAME: -> tensor<5x3xf32>
@@ -153,33 +153,33 @@ func.func @main() -> () {
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
   // CHECK: "tf.AssignVariableOp"
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
-  // CHECK: %[[INDS:.*]] = "tf.Const"() {value = dense<[2, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK: %[[INDS:.*]] = "tf.Const"() <{value = dense<[2, 1]> : tensor<2xi32>}> : () -> tensor<2xi32>
   %indices = "tf.Const"() {value = dense<[2, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
   // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[VAR]]) : (tensor<!tf_type.resource<tensor<5x3xf32>>>) -> tensor<5x3xf32>
-  // CHECK: %[[AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
   // CHECK: %[[GATHER:.*]] = "tf.GatherV2"(%[[READ]], %[[INDS]], %[[AXIS]]) : (tensor<5x3xf32>, tensor<2xi32>, tensor<i32>) -> tensor<2x3xf32>
   %gather = "tf.TensorArrayGatherV3"(%ta#0, %indices, %ta#1) {element_shape = #tf_type.shape<*>} : (tensor<!tf_type.resource>, tensor<2xi32>, tensor<f32>) -> tensor<*xf32>
   // CHECK: %[[READ2:.*]] = "tf.ReadVariableOp"(%[[VAR]]) : (tensor<!tf_type.resource<tensor<5x3xf32>>>) -> tensor<5x3xf32>
-  // CHECK-DAG: %[[SLICE_SIZE:.*]] = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>} : () -> tensor<2xi32>
-  // CHECK-DAG: %[[IND_SLICE0_START:.*]] = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
-  // CHECK-DAG: %[[IND_SLICE0_SIZE:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-DAG: %[[SLICE_SIZE:.*]] = "tf.Const"() <{value = dense<[1, 3]> : tensor<2xi32>}> : () -> tensor<2xi32>
+  // CHECK-DAG: %[[IND_SLICE0_START:.*]] = "tf.Const"() <{value = dense<0> : tensor<1xi32>}> : () -> tensor<1xi32>
+  // CHECK-DAG: %[[IND_SLICE0_SIZE:.*]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}> : () -> tensor<1xi32>
   // CHECK: %[[IND_SLICE0:.*]] = "tf.Slice"(%[[INDS]], %[[IND_SLICE0_START]], %[[IND_SLICE0_SIZE]]) : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
   // CHECK: %[[SLICE0_START:.*]] = "tf.ConcatV2"(%[[IND_SLICE0]],
   // CHECK: %[[OLD_SLICE0:.*]] = "tf.Slice"(%[[READ2]], %[[SLICE0_START]],
   // CHECK-SAME: (tensor<5x3xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x3xf32>
-  // CHECK: %[[UPDATE_SLICE0_START:.*]] = "tf.Const"() {value = dense<0> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK: %[[UPDATE_SLICE0_START:.*]] = "tf.Const"() <{value = dense<0> : tensor<2xi32>}> : () -> tensor<2xi32>
   // CHECK: %[[UPDATE_SLICE0:.*]] = "tf.Slice"(%[[GATHER]], %[[UPDATE_SLICE0_START]], %[[SLICE_SIZE]]) : (tensor<2x3xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x3xf32>
   // CHECK: %[[ADD0:.*]] = "tf.AddV2"(%[[OLD_SLICE0]], %[[UPDATE_SLICE0]])
   // CHECK: %[[UPDATE0:.*]] = "tf.XlaDynamicUpdateSlice"(%[[READ2]], %[[ADD0]]
   // CHECK-SAME: (tensor<5x3xf32>, tensor<1x3xf32>, tensor<2xi32>) -> tensor<5x3xf32>
 
-  // CHECK-DAG: %[[IND_SLICE1_START:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
-  // CHECK-DAG: %[[IND_SLICE1_SIZE:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-DAG: %[[IND_SLICE1_START:.*]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}> : () -> tensor<1xi32>
+  // CHECK-DAG: %[[IND_SLICE1_SIZE:.*]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}> : () -> tensor<1xi32>
   // CHECK: %[[IND_SLICE1:.*]] = "tf.Slice"(%[[INDS]], %[[IND_SLICE1_START]], %[[IND_SLICE1_SIZE]]) : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
   // CHECK: %[[SLICE1_START:.*]] = "tf.ConcatV2"(%[[IND_SLICE1]],
   // CHECK: %[[OLD_SLICE1:.*]] = "tf.Slice"(%[[UPDATE0]], %[[SLICE1_START]],
   // CHECK-SAME: (tensor<5x3xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x3xf32>
-  // CHECK: %[[UPDATE_SLICE1_START:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK: %[[UPDATE_SLICE1_START:.*]] = "tf.Const"() <{value = dense<[1, 0]> : tensor<2xi32>}> : () -> tensor<2xi32>
   // CHECK: %[[UPDATE_SLICE1:.*]] = "tf.Slice"(%[[GATHER]], %[[UPDATE_SLICE1_START]], %[[SLICE_SIZE]]) : (tensor<2x3xf32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x3xf32>
   // CHECK: %[[ADD1:.*]] = "tf.AddV2"(%[[OLD_SLICE1]], %[[UPDATE_SLICE1]])
   // CHECK: %[[UPDATE1:.*]] = "tf.XlaDynamicUpdateSlice"(%[[UPDATE0]], %[[ADD1]]
@@ -200,7 +200,7 @@ func.func @main() {
   // CHECK: "tf.AssignVariableOp"(%[[VAR]],
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  // CHECK: %[[VALUE:.*]] = "tf.Const"() {value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<3xf32>} : () -> tensor<3xf32>
+  // CHECK: %[[VALUE:.*]] = "tf.Const"() <{value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<3xf32>}> : () -> tensor<3xf32>
   %value = "tf.Const"() {value = dense<[1.0, 2.0, 3.0]> : tensor<3xf32>} : () -> tensor<3xf32>
   // CHECK: %[[GVAR1:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
   // CHECK: "tf.AssignVariableOp"(%[[GVAR1]],
@@ -240,7 +240,7 @@ func.func @main() {
 
 // CHECK-LABEL: func @main
 func.func @main() -> () {
-  // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[SIZE:.*]] = "tf.Const"() <{value = dense<5> : tensor<i32>}> : () -> tensor<i32>
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
@@ -257,7 +257,7 @@ func.func @main() -> () {
 }
 // CHECK: func @while_body(%[[BARG0:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[BARG1:.*]]: tensor<i32>, %[[BARG2:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>)
 func.func @while_body(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> (tensor<!tf_type.resource>, tensor<i32>) {
-  // CHECK: %[[CONST1:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[CONST1:.*]] = "tf.Const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
   %const1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[SUB:.*]] = "tf.Sub"(%[[BARG1]], %[[CONST1]])
   %sub = "tf.Sub"(%arg1, %const1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
@@ -288,7 +288,7 @@ func.func @while_cond(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> t
 
 // CHECK-LABEL: func @main
 func.func @main() -> () {
-  // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[SIZE:.*]] = "tf.Const"() <{value = dense<5> : tensor<i32>}> : () -> tensor<i32>
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
@@ -328,7 +328,7 @@ func.func @then_branch(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.reso
 }
 // CHECK: func @else_branch(%[[EARG0:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[EARG1:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[EARG2:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>)
 func.func @else_branch(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
-  // CHECK: %[[CONST1:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[CONST1:.*]] = "tf.Const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
   %const1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %elem = "tf._SomeOp"() : () -> tensor<3xf32>
   %flow = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
@@ -348,14 +348,14 @@ func.func @else_branch(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.reso
 
 // CHECK-LABEL: func @main
 func.func @main() -> () {
-  // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>}
+  // CHECK: %[[SIZE:.*]] = "tf.Const"() <{value = dense<5> : tensor<i32>}>
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
   // CHECK-NOT: tf.TensorArrayV3
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
-  // CHECK: %[[FLOW_INIT:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
-  // CHECK: %[[WHILE:.*]]:2 = "tf.WhileRegion"(%[[FLOW_INIT]], %[[SIZE]]) ({
+  // CHECK: %[[FLOW_INIT:.*]] = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}>
+  // CHECK: %[[WHILE:.*]]:2 = "tf.WhileRegion"(%[[FLOW_INIT]], %[[SIZE]]) {{.*}} ({
   %while:2 = "tf.WhileRegion"(%ta#1, %size) ({
   // CHECK: ^bb0(%[[BARG0:.*]]: tensor<f32>, %[[BARG1:.*]]: tensor<i32>):
   ^bb0(%barg0: tensor<f32>, %barg1: tensor<i32>):
@@ -402,8 +402,8 @@ func.func @main(%arg0: tensor<i1>) -> () {
   // CHECK: "tf.AssignVariableOp"(%[[TA_BUFFER]]
   // CHECK-NOT: tf.TensorArrayV3
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
-  // CHECK: "tf.IfRegion"(%[[PRED]]) ({
-  %case_op = "tf.IfRegion"(%arg0) ({
+  // CHECK: "tf.IfRegion"(%[[PRED]]) <{is_stateless = false}> ({
+  %case_op = "tf.IfRegion"(%arg0) <{is_stateless = false}> ({
       // CHECK: %[[TA_VAL:.*]] = "tf.ReadVariableOp"(%[[TA_BUFFER]])
       // CHECK: "tf.Slice"(%[[TA_VAL]]
       // CHECK-NOT: tf.TensorArrayReadV3
@@ -420,8 +420,8 @@ func.func @main(%arg0: tensor<i1>) -> () {
       %elem = "tf._SomeOp"() : () -> tensor<3xf32>
       %write = "tf.TensorArrayWriteV3"(%ta#0, %idx, %elem, %ta#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
       "tf.Yield"(%write) : (tensor<f32>) -> ()
-    // CHECK: }) {is_stateless = false} : (tensor<i1>) -> tensor<f32>
-    }) {is_stateless = false} : (tensor<i1>) -> tensor<f32>
+    // CHECK: }) : (tensor<i1>) -> tensor<f32>
+    }) : (tensor<i1>) -> tensor<f32>
   %idx = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
   // CHECK-NOT: tf.TensorArrayReadV3
   %read_val = "tf.TensorArrayReadV3"(%ta#0, %idx, %case_op) : (tensor<!tf_type.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
@@ -436,7 +436,7 @@ func.func @main(%arg0: tensor<i1>) -> () {
 
 // CHECK-LABEL: func @main
 func.func @main() -> () {
-  // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[SIZE:.*]] = "tf.Const"() <{value = dense<5> : tensor<i32>}> : () -> tensor<i32>
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
@@ -486,7 +486,7 @@ func.func @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource>
 
 // CHECK-LABEL: func @main
 func.func @main() -> () {
-  // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[SIZE:.*]] = "tf.Const"() <{value = dense<5> : tensor<i32>}> : () -> tensor<i32>
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
@@ -543,7 +543,7 @@ func.func @callee() -> tensor<i32> {
   // CHECK: "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5xf32>>>
   // CHECK: "tf.AssignVariableOp"
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
-  // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[SIZE:.*]] = "tf.Const"() <{value = dense<5> : tensor<i32>}> : () -> tensor<i32>
   %size_out = "tf.TensorArraySizeV3"(%ta#0, %ta#1) : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<i32>
   // CHECK: return %[[SIZE]] : tensor<i32>
   func.return %size_out : tensor<i32>
@@ -553,7 +553,7 @@ func.func @callee() -> tensor<i32> {
 
 // CHECK-LABEL: func @main
 func.func @main() -> () {
-  // CHECK: "tf.PartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> tensor<*xf32>
+  // CHECK: "tf.PartitionedCall"() <{config = "", config_proto = "", executor_type = "", f = @callee}> : () -> tensor<*xf32>
   %call = "tf.PartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> (tensor<*xf32>)
   func.return
 }
@@ -567,7 +567,7 @@ func.func private @callee() -> (tensor<*xf32>) {
   // CHECK: "tf.AssignVariableOp"(%[[LOCAL_VAR]], %[[UPDATE]]) : (tensor<!tf_type.resource<tensor<5x3xf32>>>, tensor<5x3xf32>) -> ()
   %flow = "tf.TensorArrayWriteV3"(%ta#0, %index, %value, %ta#1) : (tensor<!tf_type.resource<tensor<*xf32>>>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
   // CHECK: %[[SLICE:.*]] = "tf.Slice"
-  // CHECK: %[[ELEM_SHAPE:.*]] = "tf.Const"() {value = dense<3> : tensor<1xi32>}
+  // CHECK: %[[ELEM_SHAPE:.*]] = "tf.Const"() <{value = dense<3> : tensor<1xi32>}>
   // CHECK: %[[ELEM:.*]] = "tf.Reshape"(%[[SLICE]], %[[ELEM_SHAPE]])
   %val = "tf.TensorArrayReadV3"(%ta#0, %index, %ta#1) : (tensor<!tf_type.resource<tensor<*xf32>>>, tensor<i32>, tensor<f32>) -> tensor<*xf32>
   // CHECK: %[[CAST:.*]] = tensor.cast %[[ELEM]] : tensor<3xf32> to tensor<*xf32>
@@ -604,7 +604,7 @@ func.func private @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.r
   %flow = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
   // CHECK: %[[BR_INDEX:.*]] = "tf.SomeOp"() : () -> tensor<i32>
   %branch_index = "tf.SomeOp"() : () -> tensor<i32>
-  // CHECK: "tf.CaseRegion"(%[[BR_INDEX]]) ({
+  // CHECK: "tf.CaseRegion"(%[[BR_INDEX]]) {{.*}} ({
   "tf.CaseRegion"(%branch_index) ({
     // CHECK: %[[READ_GVAR:.*]] = "tf.ReadVariableOp"(%[[GVAR]])
     // CHECK: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"(%[[READ_GVAR]],

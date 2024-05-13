@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,11 +35,12 @@ class VerifiedHloModule : public HloModule {
   VerifiedHloModule(const std::string& name, const HloModuleConfig& config,
                     bool verifier_layout_sensitive,
                     bool allow_mixed_precision_in_hlo_verifier,
-                    std::function<int64_t(const Shape&)> shape_size_function)
+                    std::function<int64_t(const Shape&)> shape_size_function,
+                    HloPredicate instruction_can_change_layout_func = {})
       : HloModule(name, config),
-        verifier_(
-            verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier,
-            /*instruction_can_change_layout_func=*/{}, shape_size_function) {}
+        verifier_(verifier_layout_sensitive,
+                  allow_mixed_precision_in_hlo_verifier,
+                  instruction_can_change_layout_func, shape_size_function) {}
 
   ~VerifiedHloModule() override { VerifyOrAddFailure("in destructor"); }
 

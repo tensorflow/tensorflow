@@ -43,20 +43,48 @@ struct GraphViewerParams {
 };
 
 // Parse tool options to get the parameters for graph viewer.
-StatusOr<GraphViewerParams> ParseGraphViewerParams(const ToolOptions& options);
+absl::StatusOr<GraphViewerParams> ParseGraphViewerParams(
+    const ToolOptions& options);
 
 // Get graph render format.
 xla::RenderedGraphFormat GetRenderFormat(const std::string& format_string);
 
 // Convert `hlo_proto` to GraphView with the provided render options.
-tensorflow::StatusOr<std::string> ConvertHloProtoToGraph(
+absl::StatusOr<std::string> ConvertHloProtoToGraph(
     const xla::HloProto& hlo_proto, const std::string& node_name,
     int graph_width, const xla::HloRenderOptions& render_options,
     const xla::RenderedGraphFormat& format);
 
+// Render graph with the provided render options.
+absl::StatusOr<std::string> RenderGraphView(
+    const xla::HloComputation& computation, absl::string_view label,
+    const xla::DebugOptions& debug_options, xla::RenderedGraphFormat format,
+    xla::HloRenderOptions hlo_render_options = {});
+
+// Render graph with centered node and depth
+absl::StatusOr<std::string> RenderGraphNeighborhoodAround(
+    const xla::HloInstruction& node, int radius,
+    xla::RenderedGraphFormat format,
+    xla::HloRenderOptions hlo_render_options = {},
+    const absl::flat_hash_set<const xla::HloInstruction*>& boundary = {});
+
 // Convert `hlo_proto` to StringView.
-tensorflow::StatusOr<std::string> ConvertHloProtoToStringView(
+absl::StatusOr<std::string> ConvertHloProtoToStringView(
     const xla::HloProto& hlo_proto, bool verbose, bool metadata);
+
+// Convert dot into certain format
+absl::StatusOr<std::string> WrapDotInFormat(std::string dot,
+                                            xla::RenderedGraphFormat format);
+
+// Convert dot into visual graph in html
+std::string WrapDotInHtml(std::string dot);
+
+// Registers a function which implements RenderedGraphFormat::kUrl.
+// The input to the function is dot, and the output should be a URL or an error.
+// There can only be one active renderer, and the last call to this function
+// wins.
+void RegisterGraphvizURLRenderer(
+    std::function<absl::StatusOr<std::string>(absl::string_view dot)> renderer);
 
 }  // namespace profiler
 }  // namespace tensorflow

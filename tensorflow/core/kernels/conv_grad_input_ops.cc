@@ -131,6 +131,8 @@ void LaunchConv2DBackpropInputOpGpuImpl(
         "without cudnn"));
     return;
   }
+  auto* blas = stream->parent()->AsBlas();
+  OP_REQUIRES(ctx, blas != nullptr, absl::InternalError("No BLAS for stream."));
 
   // If the filter in-depth (filter_shape.dim_size(2)) is 1 and smaller than the
   // input depth, it's a depthwise convolution. More generally, if the filter
@@ -158,8 +160,9 @@ void LaunchConv2DBackpropInputOpGpuImpl(
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
     OP_REQUIRES_OK(
-        ctx, stream->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr, k,
-                                  a_ptr, k, &c_ptr, n, GetNumericOptions()));
+        ctx, blas->BlasGemm(stream, transpose, no_transpose, n, m, k, b_ptr, k,
+                            a_ptr, k, &c_ptr, n, GetNumericOptions(),
+                            se::blas::CallContext::kNone));
     return;
   } else if (dims.spatial_dims[0].filter_size ==
                  dims.spatial_dims[0].input_size &&
@@ -185,8 +188,9 @@ void LaunchConv2DBackpropInputOpGpuImpl(
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
     OP_REQUIRES_OK(
-        ctx, stream->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr, k,
-                                  a_ptr, k, &c_ptr, n, GetNumericOptions()));
+        ctx, blas->BlasGemm(stream, transpose, no_transpose, n, m, k, b_ptr, k,
+                            a_ptr, k, &c_ptr, n, GetNumericOptions(),
+                            se::blas::CallContext::kNone));
     return;
   }
 
@@ -461,11 +465,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, Eigen::bfloat16>::operator()(
     int col_dilation, int row_stride, int col_stride, const Padding& padding,
     const std::vector<int64_t>& explicit_paddings, Tensor* in_backprop,
     TensorFormat data_format) {
-  // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-  // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
   auto* stream = ctx->op_device_context()->stream();
-  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
+  const bool cast_to_float = !IsBF16SupportedInOps(stream);
 
   if (cast_to_float) {
     Tensor casted_out_backprop = out_backprop;

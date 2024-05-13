@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,14 +15,22 @@ limitations under the License.
 
 #include "xla/service/gpu/fusion_merger.h"
 
+#include <cstdint>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -1125,6 +1133,27 @@ TEST_F(FusionMergerTest, MergeDUSFusionWithElementwiseFusion) {
     )")
                     .value();
   EXPECT_TRUE(fusion_merger_.Run(module.get()).value());
+}
+
+TEST_F(FusionMergerTest, DoNotMergeTwoReduces) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add.13235 = f32[] add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = f32[8,4,128,226]{3,2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r0 = f32[8,4,128]{2,1,0} reduce(p0, c0), dimensions={3}, to_apply=add
+      ROOT r1 = f32[8,4]{1,0} reduce(r0, c0), dimensions={2}, to_apply=add
+    }
+    )")
+                    .value();
+  EXPECT_FALSE(fusion_merger_.Run(module.get()).value());
 }
 
 }  // namespace

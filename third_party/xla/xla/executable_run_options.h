@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -51,9 +51,17 @@ class DeviceAssignment;
 class ExecutionProfile;
 class Shape;
 
+namespace cpu {
+class CpuExecutableRunOptions;
+}  // namespace cpu
+
 namespace gpu {
 class GpuExecutableRunOptions;
 }  // namespace gpu
+
+namespace ffi {
+class ExecutionContext;
+}  // namespace ffi
 
 // A unique identifier for a particular "logical execution" of an XLA model.
 //
@@ -210,11 +218,24 @@ class ExecutableRunOptions {
     return recv_device_memory_function_;
   }
 
+  // CPU-backend specific options. These are kept out-of-line to avoid bloating
+  // the size of this dependency for CPU-only AOT builds.
+  ExecutableRunOptions& set_cpu_executable_run_options(
+      const cpu::CpuExecutableRunOptions* cpu_executable_run_options);
+  const cpu::CpuExecutableRunOptions* cpu_executable_run_options() const;
+
   // GPU-backend specific options. These are kept out-of-line to avoid bloating
   // the size of this dependency for CPU-only AOT builds.
   ExecutableRunOptions& set_gpu_executable_run_options(
       const gpu::GpuExecutableRunOptions* gpu_executable_run_options);
   const gpu::GpuExecutableRunOptions* gpu_executable_run_options() const;
+
+  // XLA FFI specific execution context that allows to pass auxiliary data to
+  // FFI handlers. It's a caller responsibility to ensure that the XLA FFI
+  // execution context stays alive while the executable is running.
+  ExecutableRunOptions& set_ffi_execution_context(
+      const ffi::ExecutionContext* ffi_execution_context);
+  const ffi::ExecutionContext* ffi_execution_context() const;
 
  private:
   stream_executor::DeviceMemoryAllocator* allocator_ = nullptr;
@@ -231,7 +252,9 @@ class ExecutableRunOptions {
   SendDeviceMemoryFunction* send_device_memory_function_ = nullptr;
   RecvDeviceMemoryFunction* recv_device_memory_function_ = nullptr;
   RunId run_id_;
+  const cpu::CpuExecutableRunOptions* cpu_executable_run_options_ = nullptr;
   const gpu::GpuExecutableRunOptions* gpu_executable_run_options_ = nullptr;
+  const ffi::ExecutionContext* ffi_execution_context_ = nullptr;
 };
 
 }  // namespace xla

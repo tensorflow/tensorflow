@@ -28,7 +28,7 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
-#include "tsl/platform/errors.h"
+#include "absl/status/status.h"
 #include "tsl/platform/windows/wide_char.h"
 
 #pragma comment(lib, "Shlwapi.lib")
@@ -37,8 +37,8 @@ namespace tsl {
 
 namespace internal {
 
-Status LoadDynamicLibrary(const char* library_filename, void** handle) {
-  string file_name = library_filename;
+absl::Status LoadDynamicLibrary(const char* library_filename, void** handle) {
+  std::string file_name = library_filename;
   std::replace(file_name.begin(), file_name.end(), '/', '\\');
 
   std::wstring ws_file_name(tsl::Utf8ToWideChar(file_name));
@@ -46,26 +46,27 @@ Status LoadDynamicLibrary(const char* library_filename, void** handle) {
   HMODULE hModule =
       LoadLibraryExW(ws_file_name.c_str(), NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
   if (!hModule) {
-    return tsl::errors::NotFound(file_name + " not found");
+    return absl::NotFoundError(file_name + " not found");
   }
   *handle = hModule;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
-                            void** symbol) {
+absl::Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
+                                  void** symbol) {
   FARPROC found_symbol;
 
   found_symbol = GetProcAddress((HMODULE)handle, symbol_name);
   if (found_symbol == NULL) {
-    return tsl::errors::NotFound(std::string(symbol_name) + " not found");
+    return absl::NotFoundError(std::string(symbol_name) + " not found");
   }
   *symbol = (void**)found_symbol;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-string FormatLibraryFileName(const string& name, const string& version) {
-  string filename;
+std::string FormatLibraryFileName(const std::string& name,
+                                  const std::string& version) {
+  std::string filename;
   if (version.size() == 0) {
     filename = name + ".dll";
   } else {

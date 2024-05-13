@@ -171,7 +171,7 @@ def _tf_sysroot(repository_ctx):
     return get_host_environ(repository_ctx, _TF_SYSROOT, "")
 
 def _tpl_path(repository_ctx, filename):
-    return repository_ctx.path(Label("//tensorflow/tools/toolchains/cpus/aarch64/%s.tpl" % filename))
+    return repository_ctx.path(Label("//tools/toolchains/cpus/aarch64/%s.tpl" % filename))
 
 def _create_local_aarch64_repository(repository_ctx):
     """Creates the repository containing files set up to build with gcc."""

@@ -1,30 +1,39 @@
 # Description:
 #    LLVM-based CPU backend for XLA.
 
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load(
-    "//xla:xla.bzl",
-    "ORC_JIT_MEMORY_MAPPER_TARGETS",
-    "xla_cc_binary",
-    "xla_cc_test",
+    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "if_llvm_aarch64_available",
+    "if_llvm_powerpc_available",
+    "if_llvm_system_z_available",
+    "if_llvm_x86_available",
 )
-load(
-    "@local_tsl//tsl/mkl:build_defs.bzl",
-    "mkl_deps",
-)
-load("@local_tsl//tsl:tsl.bzl", "tf_openmp_copts", "tsl_copts")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",
     "if_enable_acl",
 )
+load(
+    "//xla:xla.bzl",
+    "xla_cc_binary",
+    "xla_cc_test",
+    "xla_internal",
+)
+load("//xla/tsl:tsl.bzl", "internal_visibility", "tf_openmp_copts", "tsl_copts")
+load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load(
+    "//xla/tsl/mkl:build_defs.bzl",
+    "mkl_deps",
+)
 load(":build_defs.bzl", "runtime_copts")
-load("@local_tsl//tsl/platform:build_config.bzl", "if_llvm_system_z_available", "tf_proto_library")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -42,17 +51,24 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-    visibility = ["//visibility:public"],
+)
+
+bool_flag(
+    name = "experimental_mlir_gpu",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "experimental_mlir_gpu_enabled",
+    flag_values = {
+        ":experimental_mlir_gpu": "True",
+    },
 )
 
 cc_library(
     name = "test_header_helper",
     testonly = True,
     hdrs = ["test_target_triple_helper.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@local_tsl//tsl/platform:test",
-    ],
 )
 
 # When using mlir based HloLowering, the following utils will sometimes be needed to define used symbols.
@@ -95,8 +111,9 @@ filegroup(
         "runtime_matmul_f64.cc",
         "runtime_matmul_s32.cc",
         "runtime_fork_join.cc",
+        #"runtime_handle_ffi_call.cc", # TODO(b/338344732): Add  "runtime_handle_ffi_call.cc".
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([":friends"]),
 )
 
 filegroup(
@@ -107,7 +124,6 @@ filegroup(
         # Single-threaded support.
         "runtime_custom_call_status.h",
         "runtime_conv_impl.h",
-        "runtime_fft_impl.h",
         "runtime_fp16.h",
         "runtime_key_value_sort.h",
         "runtime_pow.h",
@@ -123,15 +139,20 @@ filegroup(
         "runtime_fork_join.h",
         "runtime_lightweight_check.h",
         "runtime_matmul.h",
+        #"runtime_handle_ffi_call.h", # TODO(b/338344732): Add  "runtime_handle_ffi_call.h"
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([":friends"]),
+)
+
+cc_library(
+    name = "cpu_event",
+    hdrs = ["cpu_event.h"],
 )
 
 cc_library(
     name = "cpu_xfeed",
     srcs = ["cpu_xfeed.cc"],
     hdrs = ["cpu_xfeed.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":cpu_runtime",
         "//xla:literal",
@@ -142,13 +163,10 @@ cc_library(
         "//xla:statusor",
         "//xla:types",
         "//xla:util",
-        "//xla:xla_data_proto_cc",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:shaped_buffer",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:notification",
@@ -159,7 +177,6 @@ cc_library(
     name = "cpu_transfer_manager",
     srcs = ["cpu_transfer_manager.cc"],
     hdrs = ["cpu_transfer_manager.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":cpu_runtime",
         ":cpu_xfeed",
@@ -175,9 +192,9 @@ cc_library(
         "//xla/service:generic_transfer_manager",
         "//xla/service:transfer_manager",
         "//xla/stream_executor",
+        "//xla/stream_executor:platform_manager",
         "//xla/stream_executor/host:host_platform_id",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
@@ -189,7 +206,6 @@ cc_library(
     name = "buffer_info_util",
     srcs = ["buffer_info_util.cc"],
     hdrs = ["buffer_info_util.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:cpu_function_runtime",
         "//xla/hlo/ir:hlo",
@@ -203,21 +219,21 @@ cc_library(
     srcs = ["cpu_compiler.cc"],
     hdrs = ["cpu_compiler.h"],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         ":buffer_info_util",
         ":compiler_functor",
         ":conv_canonicalization",
         ":cpu_executable",
+        ":cpu_float_support",
         ":cpu_instruction_fusion",
         ":cpu_layout_assignment",
         ":cpu_options",
         ":dot_op_emitter",
         ":executable_proto_cc",
-        ":hlo_xla_runtime_pipeline",
         ":ir_emission_utils",
         ":ir_emitter",
-        ":onednn_rewriter",
+        ":onednn_matmul_rewriter",
+        ":onednn_ops_rewriter",
         ":parallel_task_assignment",
         ":simple_orc_jit",
         ":target_machine_features",
@@ -236,24 +252,11 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
-        "//xla/mlir/framework/ir:xla_framework",
-        "//xla/mlir/runtime/ir:rt",
-        "//xla/mlir/runtime/transforms:calling_convention",
-        "//xla/mlir/runtime/transforms:compilation_pipeline_cpu",
-        "//xla/mlir/runtime/transforms:compiler",
-        "//xla/mlir/runtime/transforms:jit_compiler",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:all_passes",
-        "//xla/mlir_hlo:gml_st_passes",
-        "//xla/mlir_hlo:lhlo",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/mlir_hlo:transforms_passes",
-        "//xla/runtime:custom_call_registry",
-        "//xla/runtime:executable",
-        "//xla/runtime:ffi",
-        "//xla/runtime:jit_executable",
         "//xla/service:algebraic_simplifier",
-        "//xla/service:all_gather_decomposer",
         "//xla/service:all_reduce_promotion",
         "//xla/service:all_to_all_decomposer",
         "//xla/service:batch_dot_simplification",
@@ -307,9 +310,10 @@ cc_library(
         "//xla/service:map_inliner",
         "//xla/service:operand_upcaster",
         "//xla/service:optimization_barrier_expander",
+        "//xla/service:optimize_input_output_buffer_alias",
         "//xla/service:qr_expander",
         "//xla/service:reduce_decomposer",
-        "//xla/service:reduce_scatter_decomposer",
+        "//xla/service:reduce_window_rewriter",
         "//xla/service:reshape_decomposer",
         "//xla/service:reshape_mover",
         "//xla/service:result_caster",
@@ -319,10 +323,12 @@ cc_library(
         "//xla/service:select_and_scatter_expander",
         "//xla/service:sharding_propagation",
         "//xla/service:sharding_remover",
+        "//xla/service:simplify_fp_conversions",
         "//xla/service:slice_sinker",
         "//xla/service:slow_operation_alarm",
         "//xla/service:sort_simplifier",
         "//xla/service:stochastic_convert_decomposer",
+        "//xla/service:sub_byte_normalization",
         "//xla/service:topk_rewriter",
         "//xla/service:transpose_folding",
         "//xla/service:tree_reduction_rewriter",
@@ -332,13 +338,6 @@ cc_library(
         "//xla/service:while_loop_invariant_code_motion",
         "//xla/service:while_loop_simplifier",
         "//xla/service:zero_sized_hlo_elimination",
-        "//xla/service/cpu/runtime:collectives",
-        "//xla/service/cpu/runtime:convolution_call",
-        "//xla/service/cpu/runtime:custom_call",
-        "//xla/service/cpu/runtime:fft_call",
-        "//xla/service/cpu/runtime:retain",
-        "//xla/service/cpu/runtime:rng_call",
-        "//xla/service/cpu/runtime:xfeed",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/spmd:stateful_rng_spmd_partitioner",
@@ -351,6 +350,7 @@ cc_library(
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -364,7 +364,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:ArithDialect",
@@ -394,20 +393,14 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
-    ] + select({
-        "@local_tsl//tsl:arm_any": [
-            "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-        ],
-        "@local_tsl//tsl:linux_ppc64le": [
-            "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
-        ],
-        "@local_tsl//tsl:macos_arm64": [
-            "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-        ],
-        "//conditions:default": [
-        ],
-    }) + if_llvm_system_z_available([
+    ] + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
+    ]) + if_llvm_powerpc_available([
+        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+    ]) + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]) + if_llvm_x86_available([
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ]),
 )
 
@@ -418,15 +411,16 @@ cc_library(
     name = "cpu_compiler",
     srcs = ["cpu_compiler_registerer.cc"],
     hdrs = ["cpu_compiler.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "cpu_compiler_pure",
         ":executable_proto_cc",
         ":target_machine_features",
+        ":xla_framework",
         "//xla:cpu_function_runtime",
         "//xla:status",
         "//xla:statusor",
         "//xla:util",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
         "//xla/service:buffer_assignment",
@@ -436,6 +430,7 @@ cc_library(
         "//xla/service:hlo_profile_printer_data_cc",
         "//xla/service:hlo_proto_cc",
         "//xla/service:llvm_compiler",
+        "//xla/service:reduce_window_rewriter",
         "//xla/stream_executor",
         "//xla/stream_executor/host:host_platform_id",
         "@llvm-project//llvm:Target",
@@ -450,65 +445,20 @@ tf_proto_library(
     protodeps = [
         ":xla_framework_proto",
         "//xla/service:hlo_proto",
+        "//xla:xla_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
     name = "xla_framework_proto",
     srcs = ["xla_framework.proto"],
     cc_api_version = 2,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "xla_framework",
     hdrs = ["xla_framework.h"],
-    visibility = ["//visibility:public"],
     deps = [":xla_framework_proto_cc"],
-)
-
-cc_library(
-    name = "hlo_xla_runtime_pipeline",
-    srcs = ["hlo_xla_runtime_pipeline.cc"],
-    hdrs = ["hlo_xla_runtime_pipeline.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla:status",
-        "//xla/mlir/backends/cpu/transforms:passes",
-        "//xla/mlir/runtime/transforms:compiler",
-        "//xla/mlir_hlo:all_passes",
-        "//xla/mlir_hlo:gml_st_bufferizable_op_interface",
-        "//xla/mlir_hlo:mhlo_passes",
-        "//xla/mlir_hlo:thlo_bufferizable_op_interface",
-        "//xla/mlir_hlo:transforms_passes",
-        "//xla/runtime:compiler",
-        "@llvm-project//mlir:ArithTransforms",
-        "@llvm-project//mlir:BufferizationToMemRef",
-        "@llvm-project//mlir:BufferizationTransforms",
-        "@llvm-project//mlir:ComplexToStandard",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:FuncTransforms",
-        "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:GPUToNVVMTransforms",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:MemRefTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ReconcileUnrealizedCasts",
-        "@llvm-project//mlir:SCFToControlFlow",
-        "@llvm-project//mlir:SCFTransforms",
-        "@llvm-project//mlir:ShapeToStandard",
-        "@llvm-project//mlir:ShapeTransforms",
-        "@llvm-project//mlir:SparseTensorTransforms",
-        "@llvm-project//mlir:TensorToLinalg",
-        "@llvm-project//mlir:TensorTransforms",
-        "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:VectorToLLVM",
-        "@llvm-project//mlir:VectorTransforms",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-    ],
-    alwayslink = 1,  # has pipeline registration
 )
 
 cc_library(
@@ -520,11 +470,12 @@ cc_library(
     ],
     hdrs = ["simple_orc_jit.h"],
     copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]) + tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
+        ":onednn_layer_norm",
         ":onednn_matmul",
+        ":onednn_softmax",
         ":orc_jit_memory_mapper",
         ":runtime_conv2d",
         ":runtime_conv2d_acl",
@@ -534,6 +485,7 @@ cc_library(
         ":runtime_fft",
         ":runtime_fork_join",
         ":runtime_fp16",
+        ":runtime_handle_ffi_call",
         ":runtime_key_value_sort",
         ":runtime_matmul",
         ":runtime_matmul_acl",
@@ -546,7 +498,9 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla/service:custom_call_target_registry",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:MC",  # fixdeps: keep
@@ -556,7 +510,7 @@ cc_library(
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@local_tsl//tsl/platform:logging",
-    ] + ORC_JIT_MEMORY_MAPPER_TARGETS,
+    ] + xla_internal(["service/cpu:named_orc_jit_memory_mapper"]),
 )
 
 cc_library(
@@ -564,7 +518,6 @@ cc_library(
     hdrs = ["runtime_lightweight_check.h"],
     compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -576,7 +529,6 @@ cc_library(
         "runtime_fp16.h",
     ],
     copts = runtime_copts(),
-    visibility = ["//visibility:public"],
     deps = ["@com_google_absl//absl/base:core_headers"],
 )
 
@@ -589,21 +541,18 @@ cc_library(
         "runtime_pow.h",
     ],
     copts = runtime_copts(),
-    visibility = ["//visibility:public"],
     deps = ["@com_google_absl//absl/base:core_headers"],
 )
 
 cc_library(
     name = "buffer_desc",
     hdrs = ["buffer_desc.h"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cpu_executable",
     srcs = ["cpu_executable.cc"],
     hdrs = ["cpu_executable.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":buffer_desc",
         ":simple_orc_jit",
@@ -616,10 +565,6 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/mlir/runtime/transforms:compiler",
-        "//xla/runtime:executable",
-        "//xla/runtime:ffi",
-        "//xla/runtime:jit_executable",
         "//xla/service:buffer_assignment",
         "//xla/service:computation_layout",
         "//xla/service:custom_call_status_internal",
@@ -657,7 +602,6 @@ cc_library(
         "ir_emitter.h",
     ],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         ":backend_config_proto_cc",
         ":cpu_options",
@@ -668,6 +612,7 @@ cc_library(
         ":onednn_memory_util",
         ":parallel_loop_emitter",
         ":target_machine_features",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:statusor",
@@ -691,10 +636,13 @@ cc_library(
         "//xla/service/llvm_ir:llvm_type_conversion_util",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:loop_emitter",
+        "//xla/service/llvm_ir:math_ops",
         "//xla/service/llvm_ir:tuple_ops",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -713,7 +661,6 @@ cc_library(
         "target_machine_features.cc",
     ],
     hdrs = ["target_machine_features.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:cpu_function_runtime",
         "//xla:shape_util",
@@ -728,7 +675,6 @@ cc_library(
     name = "target_machine_features_fake",
     testonly = 1,
     hdrs = ["target_machine_features_fake.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":target_machine_features",
     ],
@@ -738,7 +684,6 @@ cc_library(
     name = "ir_function",
     srcs = ["ir_function.cc"],
     hdrs = ["ir_function.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":cpu_runtime",
         ":ir_emission_utils",
@@ -759,7 +704,6 @@ cc_library(
     name = "parallel_loop_emitter",
     srcs = ["parallel_loop_emitter.cc"],
     hdrs = ["parallel_loop_emitter.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":ir_emission_utils",
         "//xla/service/llvm_ir:ir_array",
@@ -768,7 +712,6 @@ cc_library(
         "//xla/service/llvm_ir:loop_emitter",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Core",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -776,7 +719,6 @@ cc_library(
     name = "tiled_dot_emitter",
     srcs = ["tiled_dot_emitter.cc"],
     hdrs = ["tiled_dot_emitter.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":vector_support_library",
         "//xla:xla_data_proto_cc",
@@ -785,7 +727,6 @@ cc_library(
         "//xla/service/llvm_ir:kernel_support_library",
         "//xla/service/llvm_ir:llvm_util",
         "@llvm-project//llvm:Core",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -795,7 +736,6 @@ cc_library(
     hdrs = [
         "dot_op_emitter.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":backend_config_proto_cc",
         ":cpu_options",
@@ -861,20 +801,17 @@ cc_library(
     name = "compiler_functor",
     srcs = ["compiler_functor.cc"],
     hdrs = ["compiler_functor.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":cpu_runtime",
         ":llvm_ir_runtime",
         "//xla:statusor",
         "//xla:types",
         "//xla:util",
-        "//xla/runtime:execution_engine",
         "//xla/service:llvm_compiler",
         "//xla/service/llvm_ir:llvm_util",
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/functional:any_invocable",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:IPO",
         "@llvm-project//llvm:Instrumentation",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Object",
@@ -897,30 +834,33 @@ cc_library(
         "xfeed_manager.h",
     ],
     copts = runtime_copts(),
-    visibility = ["//visibility:public"],
     deps = [
+        ":collectives_interface",
+        ":cpu_executable_run_options",
+        ":in_process_collectives",
         "//xla:executable_run_options",
-        "//xla:refcounting_hash_map",
         "//xla:shape_util",
         "//xla:statusor",
         "//xla:types",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer",
+        "//xla/service:global_device_id",
         "//xla/service:hlo_parser",
-        "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:mutex",
-        "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
@@ -934,7 +874,6 @@ cc_library(
     hdrs = [
         "llvm_ir_runtime.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":vector_support_library",
         "//xla/service/llvm_ir:llvm_util",
@@ -957,12 +896,11 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//xla:executable_run_options",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/framework/contraction:eigen_contraction_kernel",
         "@local_tsl//tsl/framework/convolution:eigen_helpers",
-        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:mutex",  # build_cleaner: keep
     ],
 )
 
@@ -978,12 +916,11 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//xla:executable_run_options",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/framework/contraction:eigen_contraction_kernel",
         "@local_tsl//tsl/framework/convolution:eigen_helpers",
-        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:mutex",  # build_cleaner: keep
     ],
 )
 
@@ -995,7 +932,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/service:custom_call_status_internal",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
     ],
 )
@@ -1023,19 +959,15 @@ cc_library(
     name = "runtime_fft",
     srcs = [
         "runtime_fft.cc",
-        "runtime_fft_impl.h",
     ],
     hdrs = ["runtime_fft.h"],
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":runtime_lightweight_check",
         "//xla:executable_run_options",
-        "//xla:types",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
+        "@ducc//:fft_wrapper",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:mutex",
     ],
 )
 
@@ -1060,7 +992,7 @@ cc_library(
         "@com_google_absl//absl/base:dynamic_annotations",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/framework/contraction:eigen_contraction_kernel",
-        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:mutex",  # build_cleaner: keep
     ],
 )
 
@@ -1074,6 +1006,7 @@ cc_library(
         ":runtime_lightweight_check",
         ":runtime_matmul",
         "//xla:executable_run_options",
+        "@com_google_absl//absl/base",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:dynamic_annotations",
         "@local_tsl//tsl/platform:logging",
@@ -1091,8 +1024,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_conv2d",
+        ":runtime_lightweight_check",
         ":runtime_single_threaded_conv2d",
         "//xla:executable_run_options",
+        "@com_google_absl//absl/base",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/framework/convolution:eigen_helpers",
         "@local_tsl//tsl/platform:dynamic_annotations",
@@ -1111,12 +1046,11 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":runtime_lightweight_check",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/framework/contraction:eigen_contraction_kernel",
         "@local_tsl//tsl/framework/convolution:eigen_helpers",
+        "@local_tsl//tsl/platform:mutex",  # build_cleaner: keep
     ],
 )
 
@@ -1130,30 +1064,25 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":runtime_lightweight_check",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/framework/contraction:eigen_contraction_kernel",
         "@local_tsl//tsl/framework/convolution:eigen_helpers",
+        "@local_tsl//tsl/platform:mutex",  # build_cleaner: keep
     ],
 )
 
 cc_library(
     name = "runtime_single_threaded_fft",
     srcs = [
-        "runtime_fft_impl.h",
         "runtime_single_threaded_fft.cc",
     ],
     hdrs = ["runtime_single_threaded_fft.h"],
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
+        ":runtime_fft",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -1172,10 +1101,11 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
     linkstatic = 1,
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = [
         "@com_google_absl//absl/base:core_headers",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/framework/contraction:eigen_contraction_kernel_no_mkl",
     ],
 )
 
@@ -1187,9 +1117,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_single_threaded_matmul_impl",
-        "@com_google_absl//absl/base:core_headers",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/framework/contraction:eigen_contraction_kernel",
     ],
 )
 
@@ -1238,14 +1166,39 @@ cc_library(
     deps = [
         "//xla:executable_run_options",
         "//xla/service:custom_call_status_internal",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:mutex",
+    ],
+)
+
+cc_library(
+    name = "runtime_handle_ffi_call",
+    srcs = ["runtime_handle_ffi_call.cc"],
+    hdrs = ["runtime_handle_ffi_call.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/ffi:call_frame",
+        "//xla/ffi:ffi_api",
+        "//xla/service:custom_call_status_public_headers",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AsmParser",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -1262,11 +1215,9 @@ xla_cc_test(
         ":runtime_single_threaded_matmul",
         "//xla:array2d",
         "//xla:types",
-        "//xla:util",
         "//xla/client:local_client",
         "//xla/service:custom_call_status_internal",
         "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:env",
@@ -1276,25 +1227,9 @@ xla_cc_test(
 )
 
 xla_cc_test(
-    name = "runtime_fft_test",
-    srcs = [
-        "runtime_fft_impl.h",
-        "runtime_fft_test.cc",
-    ],
-    deps = [
-        ":runtime_single_threaded_fft",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/tests:xla_internal_test_main",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:test",
-    ],
-)
-
-xla_cc_test(
     name = "cpu_instruction_fusion_test",
     srcs = ["cpu_instruction_fusion_test.cc"],
+    tags = ["no_aarch64"],
     deps = [
         ":cpu_instruction_fusion",
         "//xla:shape_util",
@@ -1305,7 +1240,6 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -1328,9 +1262,7 @@ cc_library(
     name = "cpu_instruction_fusion",
     srcs = ["cpu_instruction_fusion.cc"],
     hdrs = ["cpu_instruction_fusion.h"],
-    visibility = ["//visibility:public"],
     deps = [
-        ":ir_emission_utils",
         "//xla/hlo/ir:hlo",
         "//xla/service:fusion_node_indexing_evaluation",
         "//xla/service:instruction_fusion",
@@ -1343,7 +1275,6 @@ cc_library(
     name = "ir_emission_utils",
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":cpu_runtime",
         ":target_machine_features",
@@ -1361,10 +1292,6 @@ xla_cc_test(
         ":ir_emission_utils",
         ":target_machine_features_fake",
         "//xla:test",
-        "//xla:test_helpers",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
     ],
@@ -1374,12 +1301,13 @@ cc_library(
     name = "cpu_layout_assignment",
     srcs = ["cpu_layout_assignment.cc"],
     hdrs = ["cpu_layout_assignment.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":dot_op_emitter",
         ":ir_emission_utils",
         ":target_machine_features",
+        "//xla:shape_util",
         "//xla:util",
+        "//xla/hlo/ir:hlo",
         "//xla/service:computation_layout",
         "//xla/service:layout_assignment",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1418,7 +1346,6 @@ cc_library(
     name = "conv_canonicalization",
     srcs = ["conv_canonicalization.cc"],
     hdrs = ["conv_canonicalization.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":cpu_runtime",
         ":ir_emission_utils",
@@ -1430,7 +1357,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_pass",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -1453,7 +1379,6 @@ cc_library(
     name = "shape_partition",
     srcs = ["shape_partition.cc"],
     hdrs = ["shape_partition.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
     ],
@@ -1475,7 +1400,6 @@ cc_library(
     name = "parallel_task_assignment",
     srcs = ["parallel_task_assignment.cc"],
     hdrs = ["parallel_task_assignment.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":backend_config_proto_cc",
         ":ir_emission_utils",
@@ -1505,23 +1429,10 @@ xla_cc_test(
         ":cpu_executable",
         ":parallel_task_assignment",
         ":target_machine_features_fake",
-        "//xla:literal",
-        "//xla:shape_layout",
-        "//xla:shape_util",
         "//xla:test",
-        "//xla:test_helpers",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_matchers",
-        "//xla/service:algebraic_simplifier",
-        "//xla/service:computation_layout",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -1529,11 +1440,9 @@ cc_library(
     name = "cpu_options",
     srcs = ["cpu_options.cc"],
     hdrs = ["cpu_options.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/service:hlo_module_config",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -1541,7 +1450,6 @@ cc_library(
     name = "orc_jit_memory_mapper",
     srcs = ["orc_jit_memory_mapper.cc"],
     hdrs = ["orc_jit_memory_mapper.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
@@ -1554,7 +1462,6 @@ cc_library(
     name = "vector_support_library",
     srcs = ["vector_support_library.cc"],
     hdrs = ["vector_support_library.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":target_machine_features",
         "//xla:shape_util",
@@ -1565,7 +1472,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -1596,7 +1502,6 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:MC",
-        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
     ],
 )
@@ -1605,7 +1510,6 @@ cc_library(
     name = "mlir_emitter",
     srcs = ["mlir_emitter.cc"],
     hdrs = ["mlir_emitter.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla:status",
@@ -1630,7 +1534,25 @@ tf_proto_library(
     name = "backend_config_proto",
     srcs = ["backend_config.proto"],
     cc_api_version = 2,
+)
+
+cc_library(
+    name = "onednn_util",
+    srcs = ["onednn_util.cc"],
+    hdrs = [
+        "onednn_util.h",
+        "//xla/tsl/util:onednn_util_hdrs",
+    ],
+    copts = runtime_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:blocking_counter",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:platform_port",
+    ] + mkl_deps(),
 )
 
 cc_library(
@@ -1641,6 +1563,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_lightweight_check",
+        "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:statusor",
@@ -1665,9 +1588,33 @@ cc_library(
 cc_library(
     name = "onednn_matmul",
     srcs = ["onednn_matmul.cc"],
+    hdrs = ["onednn_matmul.h"],
+    copts = runtime_copts() + tsl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":backend_config_proto_cc",
+        ":onednn_memory_util",
+        ":onednn_util",
+        ":runtime_lightweight_check",
+        "//xla:executable_run_options",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:blocking_counter",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
+    ] + mkl_deps(),
+)
+
+cc_library(
+    name = "onednn_layer_norm",
+    srcs = ["onednn_layer_norm.cc"],
     hdrs = [
-        "onednn_matmul.h",
-        "@local_tsl//tsl/util:onednn_util_hdrs",
+        "onednn_layer_norm.h",
+        "//xla/tsl/util:onednn_util_hdrs",
     ],
     copts = runtime_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
@@ -1686,19 +1633,141 @@ cc_library(
 )
 
 cc_library(
-    name = "onednn_rewriter",
-    srcs = ["onednn_rewriter.cc"],
-    hdrs = ["onednn_rewriter.h"],
-    copts = tsl_copts(),
+    name = "onednn_softmax",
+    srcs = ["onednn_softmax.cc"],
+    hdrs = [
+        "onednn_softmax.h",
+        "//xla/tsl/util:onednn_util_hdrs",
+    ],
+    copts = runtime_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":backend_config_proto_cc",
         ":onednn_memory_util",
+        ":runtime_lightweight_check",
+        "//xla:executable_run_options",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/log:check",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:blocking_counter",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:platform_port",
+    ] + mkl_deps(),
+)
+
+cc_library(
+    name = "onednn_matmul_rewriter",
+    srcs = ["onednn_matmul_rewriter.cc"],
+    hdrs = [
+        "onednn_matmul.h",
+        "onednn_matmul_rewriter.h",
+        "//xla/tsl/util:onednn_util_hdrs",
+    ],
+    copts = tsl_copts(),
+    deps = [
+        ":backend_config_proto_cc",
+        ":onednn_matmul",
+        ":onednn_memory_util",
+        ":onednn_util",
+        "//xla:executable_run_options",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/evaluator:hlo_evaluator",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service:hlo_creation_utils",
+        "//xla/service:hlo_pass",
+        "//xla/service:pattern_matcher",
+        "@com_google_absl//absl/algorithm:container",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:blocking_counter",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
+    ] + mkl_deps(),
+)
+
+cc_library(
+    name = "onednn_ops_rewriter",
+    srcs = ["onednn_ops_rewriter.cc"],
+    hdrs = ["onednn_ops_rewriter.h"],
+    copts = tsl_copts(),
+    deps = [
+        ":backend_config_proto_cc",
+        ":onednn_memory_util",
+        ":onednn_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_creation_utils",
         "//xla/service:hlo_pass",
         "//xla/service:pattern_matcher",
+        "@com_google_absl//absl/algorithm:container",
+        "@local_tsl//tsl/platform:platform_port",
     ] + mkl_deps(),
+)
+
+cc_library(
+    name = "cpu_float_support",
+    srcs = ["cpu_float_support.cc"],
+    hdrs = ["cpu_float_support.h"],
+    copts = tsl_copts(),
+    deps = [
+        ":onednn_matmul_rewriter",
+        "//xla/service:float_support",
+    ],
+)
+
+cc_library(
+    name = "cpu_symbol_repository",
+    hdrs = ["cpu_symbol_repository.h"],
+    deps = [
+        "//xla:xla_proto_cc",
+        "//xla/service:symbol_repository",
+    ],
+)
+
+cc_library(
+    name = "collectives_interface",
+    hdrs = ["collectives_interface.h"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:global_device_id",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "in_process_collectives",
+    srcs = ["in_process_collectives.cc"],
+    hdrs = ["in_process_collectives.h"],
+    deps = [
+        ":collectives_interface",
+        "//xla:refcounting_hash_map",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:global_device_id",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+cc_library(
+    name = "cpu_executable_run_options",
+    hdrs = ["cpu_executable_run_options.h"],
+    deps = [":collectives_interface"],
 )

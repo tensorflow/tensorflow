@@ -61,6 +61,8 @@ int64_t JobUid() { return -1; }
 
 int64_t TaskId() { return -1; }
 
+IOStatistics GetIOStatistics() { return IOStatistics(); }
+
 int NumSchedulableCPUs() {
   SYSTEM_INFO system_info;
   GetSystemInfo(&system_info);
@@ -122,7 +124,6 @@ void NUMAFree(void* ptr, size_t size) { tsl::port::Free(ptr); }
 
 int NUMAGetMemAffinity(const void* addr) { return kNUMANoAffinity; }
 
-
 bool Snappy_Compress(const char* input, size_t length, string* output) {
 #ifdef TF_USE_SNAPPY
   output->resize(snappy::MaxCompressedLength(length));
@@ -183,7 +184,7 @@ string Demangle(const char* mangled) { return mangled; }
 double NominalCPUFrequency() {
   DWORD data;
   DWORD data_size = sizeof(data);
-  #pragma comment(lib, "shlwapi.lib")  // For SHGetValue().
+#pragma comment(lib, "shlwapi.lib")  // For SHGetValue().
   if (SUCCEEDED(
           SHGetValueA(HKEY_LOCAL_MACHINE,
                       "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",

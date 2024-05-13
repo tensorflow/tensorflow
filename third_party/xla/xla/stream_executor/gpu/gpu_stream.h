@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,8 +21,10 @@ limitations under the License.
 
 #include <variant>
 
+#include "absl/log/check.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -33,7 +35,7 @@ class GpuExecutor;
 // StreamInterface.
 //
 // Thread-safe post-initialization.
-class GpuStream : public internal::StreamInterface {
+class GpuStream : public StreamInterface {
  public:
   explicit GpuStream(GpuExecutor* parent)
       : parent_(parent), gpu_stream_(nullptr), completed_event_(nullptr) {}
@@ -41,10 +43,7 @@ class GpuStream : public internal::StreamInterface {
   // Note: teardown is handled by a parent's call to DeallocateStream.
   ~GpuStream() override = default;
 
-  void* GpuStreamHack() override { return gpu_stream_; }
-  void** GpuStreamMemberHack() override {
-    return reinterpret_cast<void**>(&gpu_stream_);
-  }
+  void* platform_specific_stream() override { return gpu_stream_; }
 
   // Explicitly initialize the CUDA resources associated with this stream, used
   // by StreamExecutor::AllocateStream().

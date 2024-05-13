@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
@@ -53,7 +54,8 @@ StatusOr<mlir::Operation*> NullarySPMDExpander::ExpandOp(mlir::Operation* op) {
   if (all_operands_fully_replicated) return op;
 
   if (auto const_op = mlir::dyn_cast<mlir::TF::ConstOp>(op)) {
-    if (auto dense = const_op.getValue().dyn_cast<mlir::DenseElementsAttr>()) {
+    if (auto dense =
+            mlir::dyn_cast<mlir::DenseElementsAttr>(const_op.getValue())) {
       if (dense.isSplat()) {
         // A 'splat' value for a DenseElementsAttr, has a single value for
         // all its elements. For these inputs, we don't need to slice. We just
@@ -120,7 +122,7 @@ StatusOr<llvm::DenseMap<int, Layout>> NullarySPMDExpander::ComputeLayoutForward(
   // Nullary ops always output replicated layout for output values.
   for (auto i = 0; i < op->getNumResults(); ++i) {
     auto output_ranked_type =
-        op->getResult(i).getType().dyn_cast<mlir::RankedTensorType>();
+        mlir::dyn_cast<mlir::RankedTensorType>(op->getResult(i).getType());
     if (!output_ranked_type) {
       return errors::InvalidArgument(
           llvm::formatv("requires output type to have statically known rank, "

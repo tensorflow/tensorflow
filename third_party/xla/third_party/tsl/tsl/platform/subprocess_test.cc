@@ -16,9 +16,9 @@ limitations under the License.
 #include "tsl/platform/subprocess.h"
 
 #include <stdlib.h>
-#include <string.h>
 
 #include <algorithm>
+#include <string>
 
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/path.h"
@@ -36,48 +36,43 @@ limitations under the License.
 namespace tsl {
 namespace {
 
-static string GetDataFilePath(const string& relative_path) {
-#ifdef PLATFORM_WINDOWS
-  // While CreateProcess on windows is resilient to not having ".exe" suffix,
-  // Bazel_tools has to have the exact file path to return the resource.
-  return strings::StrCat(relative_path, ".exe");
-#else
-  return relative_path;
-#endif
-}
 
 string EchoProgram() {
-  return io::JoinPath(testing::TslSrcRoot(), "platform", "testdata",
-                      "test_echo");
+  std::string path =
+      io::JoinPath(testing::TslSrcRoot(), "platform", "testdata", "test_echo");
+  return tsl::io::AppendDotExeIfWindows(path);
 }
 
 string EchoArgv1Program() {
-  return io::JoinPath(testing::TslSrcRoot(), "platform", "testdata",
-                      "test_echo_argv_1");
+  std::string path = io::JoinPath(testing::TslSrcRoot(), "platform", "testdata",
+                                  "test_echo_argv_1");
+  return tsl::io::AppendDotExeIfWindows(path);
 }
 
 string NoopProgram() {
-  return io::JoinPath(testing::TslSrcRoot(), "platform", "testdata",
-                      "test_noop");
+  std::string path =
+      io::JoinPath(testing::TslSrcRoot(), "platform", "testdata", "test_noop");
+  return tsl::io::AppendDotExeIfWindows(path);
 }
 
 string StdErrProgram() {
-  return io::JoinPath(testing::TslSrcRoot(), "platform", "testdata",
-                      "test_stderr");
+  std::string path = io::JoinPath(testing::TslSrcRoot(), "platform", "testdata",
+                                  "test_stderr");
+  return tsl::io::AppendDotExeIfWindows(path);
 }
 
 class SubProcessTest : public ::testing::Test {};
 
 TEST_F(SubProcessTest, NoOutputNoComm) {
   tsl::SubProcess proc;
-  proc.SetProgram(GetDataFilePath(NoopProgram()).c_str(), {NoopProgram()});
+  proc.SetProgram(NoopProgram().c_str(), {NoopProgram()});
   EXPECT_TRUE(proc.Start());
   EXPECT_TRUE(proc.Wait());
 }
 
 TEST_F(SubProcessTest, NoOutput) {
   tsl::SubProcess proc;
-  proc.SetProgram(GetDataFilePath(NoopProgram()).c_str(), {NoopProgram()});
+  proc.SetProgram(NoopProgram().c_str(), {NoopProgram()});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -93,7 +88,7 @@ TEST_F(SubProcessTest, NoOutput) {
 TEST_F(SubProcessTest, Stdout) {
   tsl::SubProcess proc;
   const char test_string[] = "hello_world";
-  proc.SetProgram(GetDataFilePath(EchoArgv1Program()).c_str(),
+  proc.SetProgram(EchoArgv1Program().c_str(),
                   {EchoArgv1Program(), test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
@@ -110,7 +105,7 @@ TEST_F(SubProcessTest, Stdout) {
 TEST_F(SubProcessTest, StdoutIgnored) {
   tsl::SubProcess proc;
   const char test_string[] = "hello_world";
-  proc.SetProgram(GetDataFilePath(EchoArgv1Program()).c_str(),
+  proc.SetProgram(EchoArgv1Program().c_str(),
                   {EchoArgv1Program(), test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
@@ -124,8 +119,7 @@ TEST_F(SubProcessTest, StdoutIgnored) {
 TEST_F(SubProcessTest, Stderr) {
   tsl::SubProcess proc;
   const char test_string[] = "muh_failure!";
-  proc.SetProgram(GetDataFilePath(StdErrProgram()).c_str(),
-                  {StdErrProgram(), test_string});
+  proc.SetProgram(StdErrProgram().c_str(), {StdErrProgram(), test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -141,8 +135,7 @@ TEST_F(SubProcessTest, Stderr) {
 TEST_F(SubProcessTest, StderrIgnored) {
   tsl::SubProcess proc;
   const char test_string[] = "muh_failure!";
-  proc.SetProgram(GetDataFilePath(StdErrProgram()).c_str(),
-                  {StdErrProgram(), test_string});
+  proc.SetProgram(StdErrProgram().c_str(), {StdErrProgram(), test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -154,7 +147,7 @@ TEST_F(SubProcessTest, StderrIgnored) {
 
 TEST_F(SubProcessTest, Stdin) {
   tsl::SubProcess proc;
-  proc.SetProgram(GetDataFilePath(EchoProgram()).c_str(), {EchoProgram()});
+  proc.SetProgram(EchoProgram().c_str(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
@@ -166,7 +159,7 @@ TEST_F(SubProcessTest, Stdin) {
 
 TEST_F(SubProcessTest, StdinStdout) {
   tsl::SubProcess proc;
-  proc.SetProgram(GetDataFilePath(EchoProgram()).c_str(), {EchoProgram()});
+  proc.SetProgram(EchoProgram().c_str(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -183,7 +176,7 @@ TEST_F(SubProcessTest, StdinStdout) {
 
 TEST_F(SubProcessTest, StdinChildExit) {
   tsl::SubProcess proc;
-  proc.SetProgram(GetDataFilePath(NoopProgram()).c_str(), {NoopProgram()});
+  proc.SetProgram(NoopProgram().c_str(), {NoopProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
@@ -202,7 +195,7 @@ TEST_F(SubProcessTest, StdinChildExit) {
 
 TEST_F(SubProcessTest, StdinStdoutOverlap) {
   tsl::SubProcess proc;
-  proc.SetProgram(GetDataFilePath(EchoProgram()).c_str(), {EchoProgram()});
+  proc.SetProgram(EchoProgram().c_str(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -226,7 +219,7 @@ TEST_F(SubProcessTest, StdinStdoutOverlap) {
 
 TEST_F(SubProcessTest, KillProc) {
   tsl::SubProcess proc;
-  proc.SetProgram(GetDataFilePath(EchoProgram()).c_str(), {EchoProgram()});
+  proc.SetProgram(EchoProgram().c_str(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());

@@ -26,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import resource_variables_toggle
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variable_v1
@@ -59,7 +60,7 @@ def default_variable_creator(next_creator=None, **kwargs):
   if use_resource is None:
     use_resource = variable_scope.get_variable_scope().use_resource
   if use_resource is None:
-    use_resource = variable_scope._DEFAULT_USE_RESOURCE  # pylint: disable=protected-access
+    use_resource = resource_variables_toggle.resource_variables_enabled()
   use_resource = use_resource or context.executing_eagerly()
   if use_resource:
     distribute_strategy = kwargs.get("distribute_strategy", None)
@@ -94,9 +95,6 @@ def default_variable_creator(next_creator=None, **kwargs):
         synchronization=synchronization,
         aggregation=aggregation,
         shape=shape)
-
-
-variable_v1.default_variable_creator = default_variable_creator
 
 
 def _to_proto_fn(v, export_scope=None):
@@ -1345,6 +1343,3 @@ class RefVariable(variable_v1.VariableV1, core.Tensor):
 # allowing instances of the class to be used as tensors.
 tensor_conversion_registry.register_tensor_conversion_function(
     RefVariable, RefVariable._TensorConversionFunction)  # pylint: disable=protected-access
-
-
-variable_v1.set_variable_from_proto_fn(RefVariable)

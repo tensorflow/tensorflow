@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,27 +16,18 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUPTI_TRACER_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUPTI_TRACER_H_
 
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/include/nvtx3/nvToolsExt.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
-#include "tsl/profiler/utils/buffer_pool.h"
 
 namespace xla {
 namespace profiler {
 
 struct CuptiTracerOptions {
-  bool enable_activity_api = true;
-
-  // Use cuda events to enclose the kernel/memcpy to measure device activity.
-  // enable_event_based_activity, if true, will override the enable_activity_api
-  // setting.
-  bool enable_event_based_activity = false;
-
   bool required_callback_api_events = true;
   // The callback ids that will be enabled and monitored, if empty, all
   // Callback ids to be enabled using Callback API.
@@ -59,18 +50,18 @@ class CuptiDriverApiHook {
  public:
   virtual ~CuptiDriverApiHook() {}
 
-  virtual tsl::Status OnDriverApiEnter(
+  virtual absl::Status OnDriverApiEnter(
       int device_id, CUpti_CallbackDomain domain, CUpti_CallbackId cbid,
       const CUpti_CallbackData* callback_info) = 0;
-  virtual tsl::Status OnDriverApiExit(
+  virtual absl::Status OnDriverApiExit(
       int device_id, CUpti_CallbackDomain domain, CUpti_CallbackId cbid,
       const CUpti_CallbackData* callback_info) = 0;
-  virtual tsl::Status SyncAndFlush() = 0;
+  virtual absl::Status SyncAndFlush() = 0;
 
  protected:
-  static tsl::Status AddDriverApiCallbackEvent(
+  static absl::Status AddDriverApiCallbackEvent(
       CuptiTraceCollector* collector, CuptiInterface* cupti_interface,
-      int device_id, tsl::uint64 start_tsc, tsl::uint64 end_tsc,
+      int device_id, uint64_t start_tsc, uint64_t end_tsc,
       CUpti_CallbackDomain domain, CUpti_CallbackId cbid,
       const CUpti_CallbackData* callback_info);
 };
@@ -94,8 +85,9 @@ class CuptiTracer {
   void Enable(const CuptiTracerOptions& option, CuptiTraceCollector* collector);
   void Disable();
 
-  tsl::Status HandleCallback(CUpti_CallbackDomain domain, CUpti_CallbackId cbid,
-                             const CUpti_CallbackData* callback_info);
+  absl::Status HandleCallback(CUpti_CallbackDomain domain,
+                              CUpti_CallbackId cbid,
+                              const CUpti_CallbackData* callback_info);
 
   // Returns a buffer and its size for CUPTI to store activities. This buffer
   // will be reclaimed when CUPTI makes a callback to ProcessActivityBuffer.
@@ -104,8 +96,8 @@ class CuptiTracer {
   // Parses CUPTI activity events from activity buffer, and emits events for
   // CuptiTraceCollector. This function is public because called from registered
   // callback.
-  tsl::Status ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
-                                    uint8_t* buffer, size_t size);
+  absl::Status ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
+                                     uint8_t* buffer, size_t size);
 
   static uint64_t GetTimestamp();
   static int NumGpus();
@@ -120,14 +112,25 @@ class CuptiTracer {
   // Buffer size and alignment, 32K and 8 as in CUPTI samples.
   static constexpr size_t kBufferSizeInBytes = 32 * 1024;
 
-  tsl::Status EnableApiTracing();
-  tsl::Status EnableActivityTracing();
-  tsl::Status DisableApiTracing();
-  tsl::Status DisableActivityTracing();
-  tsl::Status Finalize();
+  std::unique_ptr<CuptiActivityBufferManager> activity_buffers_;
+  static_assert(std::atomic<size_t>::is_always_lock_free,
+                "std::atomic<size_t> is not lock free! This may cause very bad"
+                " profiling overhead in some circumstances.");
+  std::atomic<size_t> cupti_dropped_activity_event_count_ = 0;
+  std::atomic<size_t> num_activity_events_in_dropped_buffer_ = 0;
+  std::atomic<size_t> num_activity_events_in_cached_buffer_ = 0;
+
+  // Clear activity_buffers, reset activity event counters.
+  void PrepareActivityStart();
+
+  absl::Status EnableApiTracing();
+  absl::Status EnableActivityTracing();
+  absl::Status DisableApiTracing();
+  absl::Status DisableActivityTracing();
+  absl::Status Finalize();
   void ConfigureActivityUnifiedMemoryCounter(bool enable);
-  tsl::Status HandleNVTXCallback(CUpti_CallbackId cbid,
-                                 const CUpti_CallbackData* cbdata);
+  absl::Status HandleNVTXCallback(CUpti_CallbackId cbid,
+                                  const CUpti_CallbackData* cbdata);
 
   int num_gpus_;
   std::optional<CuptiTracerOptions> option_;
@@ -146,8 +149,6 @@ class CuptiTracer {
   bool activity_tracing_enabled_ = false;
 
   std::unique_ptr<CuptiDriverApiHook> cupti_driver_api_hook_;
-
-  tsl::profiler::BufferPool buffer_pool_;
 };
 
 }  // namespace profiler

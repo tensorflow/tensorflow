@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -36,11 +37,15 @@ constexpr const char kGrpcTransferProtocol[] = "grpc";
 // Client for communicating with the tf.data service worker.
 class DataServiceWorkerClient : public DataServiceClientBase {
  public:
-  DataServiceWorkerClient(const std::string& address,
-                          const std::string& protocol,
-                          const std::string& transfer_protocol)
+  DataServiceWorkerClient(
+      const std::string& address, const std::string& protocol,
+      const std::string& transfer_protocol,
+      const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
+      Allocator* allocator)
       : DataServiceClientBase(address, protocol),
-        transfer_protocol_(transfer_protocol) {}
+        transfer_protocol_(transfer_protocol),
+        accelerator_device_info_(accelerator_device_info),
+        allocator_(allocator) {}
 
   // Fetches an element from the worker.
   Status GetElement(const GetElementRequest& req, GetElementResult& result);
@@ -62,7 +67,10 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   Status EnsureInitialized() override;
 
  private:
-  const std::string transfer_protocol_;
+  std::string transfer_protocol_;
+  const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info_;
+  Allocator* allocator_;
+
   mutex mu_;
   // Initialization is guarded by `mu_`, but using the stub does not require
   // holding `mu_`
@@ -72,8 +80,10 @@ class DataServiceWorkerClient : public DataServiceClientBase {
 // Creates and initializes a new tf.data service worker client to read
 // from the data transfer server specified in `info`.
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
-CreateDataServiceWorkerClient(const std::string& dispatcher_protocol,
-                              const DataTransferServerInfo& info);
+CreateDataServiceWorkerClient(
+    const std::string& dispatcher_protocol, const DataTransferServerInfo& info,
+    const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
+    Allocator* allocator);
 
 }  // namespace data
 }  // namespace tensorflow

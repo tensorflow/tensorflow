@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2023 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -86,6 +86,11 @@ class PyTreeTest(absltest.TestCase):
     self.roundtrip_node_data(o)
     self.roundtrip_node_data(ExampleType(field0=o, field1=o))
     self.roundtrip_node_data(ExampleType2(field0=o, field1=o))
+
+  def testCompose(self):
+    x = registry.flatten(0)[1]
+    y = registry.flatten((0, 0))[1]
+    self.assertEqual((x.compose(y)).num_leaves, 2)
 
 
 if __name__ == "__main__":

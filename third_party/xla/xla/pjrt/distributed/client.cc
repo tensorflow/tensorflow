@@ -16,32 +16,30 @@ limitations under the License.
 #include "xla/pjrt/distributed/client.h"
 
 #include <algorithm>
-#include <chrono>  // NOLINT
+#include <cstdint>
 #include <memory>
 #include <optional>
-#include <random>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "absl/synchronization/mutex.h"
-#include "absl/synchronization/notification.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "grpcpp/channel.h"
-#include "xla/pjrt/distributed/protocol.h"
-#include "xla/pjrt/distributed/util.h"
-#include "xla/util.h"
-#include "tsl/distributed_runtime/coordination/coordination_client.h"
-#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tsl/distributed_runtime/coordination/coordination_service_error_util.h"
-#include "tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/random.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 #include "tsl/protobuf/coordination_service.pb.h"
 
 namespace xla {
-
 
 class DistributedRuntimeCoordinationServiceClient
     : public DistributedRuntimeClient {
@@ -53,19 +51,19 @@ class DistributedRuntimeCoordinationServiceClient
       : DistributedRuntimeCoordinationServiceClient(channel, Options()) {}
   ~DistributedRuntimeCoordinationServiceClient() override;
 
-  xla::Status Connect() override;
-  xla::Status Shutdown() override;
-  xla::Status EnumerateDevices(const LocalTopologyProto& local_topology,
-                               GlobalTopologyProto* global_topology) override;
-  xla::StatusOr<std::string> BlockingKeyValueGet(
-      std::string key, absl::Duration timeout) override;
-  xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
-  KeyValueDirGet(absl::string_view key) override;
-  xla::Status KeyValueSet(std::string key, std::string value) override;
-  xla::Status KeyValueDelete(std::string key) override;
-  xla::Status WaitAtBarrier(std::string barrier_id,
-                            absl::Duration timeout) override;
-  xla::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
+  absl::Status Connect() override;
+  absl::Status Shutdown() override;
+  absl::StatusOr<std::string> BlockingKeyValueGet(
+      std::string_view key, absl::Duration timeout) override;
+  absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
+  KeyValueDirGet(std::string_view key) override;
+  absl::Status KeyValueSet(std::string_view key,
+                           std::string_view value) override;
+  absl::Status KeyValueDelete(std::string_view key) override;
+  absl::Status WaitAtBarrier(
+      std::string barrier_id, absl::Duration timeout,
+      std::optional<absl::Span<const int32_t>> process_ids) override;
+  absl::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
       override;
 
  private:
@@ -113,7 +111,7 @@ DistributedRuntimeCoordinationServiceClient::
 DistributedRuntimeCoordinationServiceClient::
     ~DistributedRuntimeCoordinationServiceClient() = default;
 
-xla::Status DistributedRuntimeCoordinationServiceClient::Connect() {
+absl::Status DistributedRuntimeCoordinationServiceClient::Connect() {
   const absl::Time deadline =
       absl::Now() +
       absl::Milliseconds(config_.cluster_register_timeout_in_ms());
@@ -136,42 +134,22 @@ xla::Status DistributedRuntimeCoordinationServiceClient::Connect() {
   return s;
 }
 
-xla::Status DistributedRuntimeCoordinationServiceClient::Shutdown() {
+absl::Status DistributedRuntimeCoordinationServiceClient::Shutdown() {
   LOG(INFO) << "Distributed task shutdown initiated.";
   Status s = coord_agent_->Shutdown();
   LOG(INFO) << "Distributed task shutdown result: " << s;
   return s;
 }
 
-xla::Status DistributedRuntimeCoordinationServiceClient::EnumerateDevices(
-    const LocalTopologyProto& local_topology,
-    GlobalTopologyProto* global_topology) {
-  LocalTopologyProto local_device = local_topology;
-  local_device.set_node_id(task_id_);
-  tensorflow::DeviceInfo devices;
-  devices.mutable_device()->Add()->PackFrom(local_device);
-  // Client sends LocalTopologyProto.
-  Status s = coord_agent_->WaitForAllTasks(devices);
-  if (!s.ok()) return s;
-  // Server responds with GlobalTopologyProto (refer to service.cc for details).
-  tensorflow::DeviceInfo global_devices = coord_agent_->GetClusterDeviceInfo();
-  if (global_devices.device_size() != 1) {
-    return tsl::errors::Internal(
-        "Unexpected cluster device response from EnumerateDevices().");
-  }
-  global_devices.device().Get(0).UnpackTo(global_topology);
-  return OkStatus();
-}
-
-xla::StatusOr<std::string>
+absl::StatusOr<std::string>
 DistributedRuntimeCoordinationServiceClient::BlockingKeyValueGet(
-    std::string key, absl::Duration timeout) {
+    std::string_view key, absl::Duration timeout) {
   return coord_agent_->GetKeyValue(key, timeout);
 }
 
-xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
 DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
-    absl::string_view key) {
+    std::string_view key) {
   // TODO(hanyangtay): Migrate to string_view for both client and coordination
   // agent APIs.
   TF_ASSIGN_OR_RETURN(const auto results,
@@ -188,22 +166,33 @@ DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
   return kvs;
 }
 
-xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueDelete(
-    std::string key) {
+absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueDelete(
+    std::string_view key) {
   return coord_agent_->DeleteKeyValue(key);
 }
 
-xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
-    std::string key, std::string value) {
+absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
+    std::string_view key, std::string_view value) {
   return coord_agent_->InsertKeyValue(key, value);
 }
 
-xla::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
-    std::string barrier_id, absl::Duration timeout) {
-  return coord_agent_->WaitAtBarrier(barrier_id, timeout, /*tasks=*/{});
+absl::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
+    std::string barrier_id, absl::Duration timeout,
+    std::optional<absl::Span<const int32_t>> process_ids) {
+  std::vector<tensorflow::CoordinatedTask> tasks;
+  if (process_ids.has_value()) {
+    tasks.reserve(process_ids->size());
+    for (int32_t process_id : process_ids.value()) {
+      tensorflow::CoordinatedTask task;
+      task.set_job_name("jax_worker");
+      task.set_task_id(process_id);
+      tasks.push_back(std::move(task));
+    }
+  }
+  return coord_agent_->WaitAtBarrier(barrier_id, timeout, tasks);
 }
 
-xla::StatusOr<tsl::CoordinationServiceAgent*>
+absl::StatusOr<tsl::CoordinationServiceAgent*>
 DistributedRuntimeCoordinationServiceClient::GetCoordinationServiceAgent() {
   return coord_agent_.get();
 }
@@ -214,4 +203,35 @@ std::unique_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
   return std::make_unique<xla::DistributedRuntimeCoordinationServiceClient>(
       channel, options);
 }
+
+namespace {
+
+class DistributedKeyValueStore : public KeyValueStoreInterface {
+ public:
+  DistributedKeyValueStore(std::shared_ptr<DistributedRuntimeClient> client,
+                           std::string prefix)
+      : client_(std::move(client)), prefix_(std::move(prefix)) {}
+
+  absl::StatusOr<std::string> Get(std::string_view key,
+                                  absl::Duration timeout) override {
+    return client_->BlockingKeyValueGet(absl::StrCat(prefix_, key), timeout);
+  }
+
+  absl::Status Set(std::string_view key, std::string_view value) override {
+    return client_->KeyValueSet(absl::StrCat(prefix_, key), value);
+  }
+
+ private:
+  std::shared_ptr<DistributedRuntimeClient> client_;
+  std::string prefix_;
+};
+
+}  // namespace
+
+std::shared_ptr<KeyValueStoreInterface> GetDistributedKeyValueStore(
+    std::shared_ptr<DistributedRuntimeClient> client, std::string prefix) {
+  return std::make_shared<DistributedKeyValueStore>(std::move(client),
+                                                    std::move(prefix));
+}
+
 }  // namespace xla

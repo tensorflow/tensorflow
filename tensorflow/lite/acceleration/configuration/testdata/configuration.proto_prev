@@ -510,6 +510,22 @@ message EdgeTpuSettings {
   // 4. Please try to use a unique name so that it's easier to identify the
   // model during debugging.
   optional string public_model_id = 9;
+
+  // Layer IR (intermediate representation) TGC (tensor graph in C++) backend
+  // options.
+  // * If set to YES, compile as per layer IR -> TGC -> codegen flow.
+  // * If set to NO, compile as per layer IR -> layer IR -> codegen flow.
+  // * If set to AUTO, we try to run as per layer IR -> TGC -> codegen flow. If
+  // not successful, we will fallback to layer IR -> layer IR -> codegen flow.
+  // * If UNSPECIFIED, it is same as NO for now.
+  enum UseLayerIrTgcBackend {
+    USE_LAYER_IR_TGC_BACKEND_UNSPECIFIED = 0;
+    USE_LAYER_IR_TGC_BACKEND_NO = 1;
+    USE_LAYER_IR_TGC_BACKEND_YES = 2;
+    USE_LAYER_IR_TGC_BACKEND_AUTO = 3;
+  }
+  optional UseLayerIrTgcBackend use_layer_ir_tgc_backend = 10
+      [default = USE_LAYER_IR_TGC_BACKEND_UNSPECIFIED];
 }
 
 // Google EdgeTPU delegate settings.
@@ -588,6 +604,11 @@ message GoogleEdgeTpuSettings {
   // TFLite Async API.
   optional TriState prefer_cache_coherency_for_inputs = 9;
   optional TriState prefer_cache_coherency_for_outputs = 10;
+
+  // Whether to allow the accelerator to optionally use lower-precision
+  // float16 (16-bit floating point) arithmetic when doing calculations on
+  // float32 (32-bit floating point).
+  optional bool allow_fp16_precision_for_fp32 = 11 [default = false];
 }
 
 // Coral Dev Board / USB accelerator delegate settings.
@@ -695,6 +716,9 @@ message TFLiteSettings {
 
   // Compilation caching settings.
   optional CompilationCachingSettings compilation_caching_settings = 15;
+
+  // For configuring the Arm NN delegate.
+  optional ArmNNSettings armnn_settings = 16;
 }
 
 // Whether to automatically fallback to TFLite CPU path on delegation errors.

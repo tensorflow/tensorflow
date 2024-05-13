@@ -1,0 +1,472 @@
+This is patching changes upstream from different PRs that fix issues with
+pipelining internally. Required changes are upto and including this commit
+https://github.com/openai/triton/commit/70f0b7b6e333fe2155c79dfa8bec6ad388073670
+The patch can be removed with the integration that includes these changes.
+
+diff --git a/include/triton/Analysis/Utility.h b/include/triton/Analysis/Utility.h
+--- a/include/triton/Analysis/Utility.h
++++ b/include/triton/Analysis/Utility.h
+@@ -8,6 +8,18 @@
+ 
+ namespace mlir {
+ 
++inline bool isZeroConst(Value v) {
++  auto constantOp = v.getDefiningOp<arith::ConstantOp>();
++  if (!constantOp)
++    return false;
++  if (auto denseAttr = dyn_cast<DenseFPElementsAttr>(constantOp.getValueAttr()))
++    return denseAttr.isSplat() && denseAttr.getSplatValue<APFloat>().isZero();
++  if (auto denseAttr =
++          dyn_cast<DenseIntElementsAttr>(constantOp.getValueAttr()))
++    return denseAttr.isSplat() && denseAttr.getSplatValue<APInt>().isZero();
++  return false;
++}
++
+ class ReduceOpHelper {
+ public:
+   explicit ReduceOpHelper(triton::ReduceOp op)
+diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td b/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
+--- a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
++++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
+@@ -45,6 +45,8 @@ def TTG_AsyncWaitOp : TTG_Op<"async_wait
+ 
+   let arguments = (ins Variadic<TTG_AsyncToken>:$asyncToken, I32Attr:$num);
+ 
++  let results = (outs TTG_AsyncToken:$retToken);
++
+   let assemblyFormat = "$asyncToken attr-dict";
+ 
+   let extraClassDeclaration = [{
+@@ -229,10 +231,16 @@ def TTG_LocalLoadOp : TTG_Op<"local_load
+   let description = [{
+     Load a tensor from the local memory descriptor into a distributed tensor.
+   }];
+-  let arguments = (ins TT_MemDescType:$src);
++  let arguments = (ins TT_MemDescType:$src, Optional<TTG_AsyncToken> :$token);
++
++  let builders = [
++      OpBuilder<(ins "Type":$retType, "Value":$src),
++      [{
++      build($_builder, $_state, retType, src, /*token=*/static_cast<mlir::Value>(nullptr));
++      }]>];
+ 
+   // Use qualified() otherwise "!tt.memdesc<X>" is printed as "<X>".
+-  let assemblyFormat = [{$src attr-dict `:` qualified(type($src)) `->` type($result)}];
++  let assemblyFormat = [{$src (`token` $token^)? attr-dict `:` qualified(type($src)) `->` type($result)}];
+ 
+   let results = (outs TT_Tensor:$result);
+ }
+diff --git a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp b/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
+--- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
+@@ -8,6 +8,7 @@
+ #include "mlir/Interfaces/SideEffectInterfaces.h"
+ #include "mlir/Support/LLVM.h"
+ #include "triton/Analysis/AxisInfo.h"
++#include "triton/Analysis/Utility.h"
+ #include "triton/Dialect/Triton/IR/Types.h"
+ #include "triton/Dialect/Triton/IR/Utility.h"
+ #include "triton/Dialect/TritonGPU/IR/Attributes.h"
+@@ -84,12 +85,13 @@ createAsyncCopy(scf::ForOp &forOp, tt::L
+   Location loc = loadOp.getLoc();
+   Value src = loadOp.getPtr();
+   Value mask = loadOp.getMask();
++  Value other = loadOp.getOther();
+   if (!isExpensiveLoadOrStore(loadOp) && opToInfo[loadOp].blockedEncoding) {
+     // For inexpensive loads that do not directly feed into dot ops
+     // we want to use optimal layout for the data.
+     ttg::BlockedEncodingAttr encoding = opToInfo[loadOp].blockedEncoding;
+     auto convertBlockLayout = [&](Value src) {
+-      auto ty = src.getType().cast<RankedTensorType>();
++      auto ty = cast<RankedTensorType>(src.getType());
+       auto newTy =
+           RankedTensorType::get(ty.getShape(), ty.getElementType(), encoding);
+       auto cvt =
+@@ -99,9 +101,11 @@ createAsyncCopy(scf::ForOp &forOp, tt::L
+     src = convertBlockLayout(src);
+     if (mask)
+       mask = convertBlockLayout(mask);
++    if (other)
++      other = convertBlockLayout(other);
+   }
+ 
+-  tt::MemDescType allocTy = alloc.getType().cast<tt::MemDescType>();
++  tt::MemDescType allocTy = cast<tt::MemDescType>(alloc.getType());
+   SmallVector<Value> copyOffsets(allocTy.getRank(), zero);
+   copyOffsets[0] = insertIdx;
+   tt::MemDescType subviewTy = tt::MemDescType::get(
+@@ -110,11 +114,12 @@ createAsyncCopy(scf::ForOp &forOp, tt::L
+   auto view =
+       builder.create<ttg::MemDescSubviewOp>(loc, subviewTy, alloc, copyOffsets);
+   Operation *copy = builder.create<ttg::AsyncCopyGlobalToLocalOp>(
+-      loc, src, view, mask, loadOp.getOther(), loadOp.getCache(),
+-      loadOp.getEvict(), loadOp.getIsVolatile());
++      loc, src, view, mask, other, loadOp.getCache(), loadOp.getEvict(),
++      loadOp.getIsVolatile());
+   Operation *commmit =
+       builder.create<ttg::AsyncCommitGroupOp>(loc, copy->getResult(0));
+-  builder.create<ttg::AsyncWaitOp>(loc, commmit->getResult(0), 0);
++  Operation *wait =
++      builder.create<ttg::AsyncWaitOp>(loc, commmit->getResult(0), 0);
+ 
+   int stage = opToInfo[loadOp].stage;
+   bool isMMV3Load = opToInfo[loadOp].loadIsMMAV3;
+@@ -142,9 +147,21 @@ createAsyncCopy(scf::ForOp &forOp, tt::L
+     for (auto alloc : allocsToErase) {
+       alloc.erase();
+     }
+-    auto sharedLoad =
+-        builder.create<ttg::LocalLoadOp>(loc, loadOp.getType(), viewLoad);
+-    loadOp->replaceAllUsesWith(sharedLoad->getResults());
++
++    auto sharedLoad = builder.create<ttg::LocalLoadOp>(
++        loc, loadOp.getType(), viewLoad, wait->getResult(0));
++    auto result = sharedLoad->getResults();
++
++    // Create a select for non-zero other values as they are not handled by
++    // AsyncCopyGlobalToLocalOp for now.
++    Value other = loadOp.getOther();
++    if (other && !isZeroConst(other)) {
++      auto select = builder.create<arith::SelectOp>(
++          loc, loadOp.getType(), mask, sharedLoad.getResult(), other);
++      result = select->getResults();
++    }
++
++    loadOp->replaceAllUsesWith(result);
+   }
+   loadOp.erase();
+ }
+@@ -160,7 +177,7 @@ getSharedEncIfAllUsersAreDotEnc(Value va
+     if (user->getNumResults() != 1)
+       return std::nullopt;
+     if (auto memDesc =
+-            user->getResult(0).getType().dyn_cast<triton::MemDescType>()) {
++            dyn_cast<triton::MemDescType>(user->getResult(0).getType())) {
+       // First time we find a shared encoding in the chain, save it and try to
+       // use it if it is compatible with the other users.
+       tempAttr = memDesc.getEncoding().cast<ttg::SharedEncodingAttr>();
+@@ -203,7 +220,7 @@ getSharedEncIfAllUsersAreDotEnc(Value va
+ static ttg::BlockedEncodingAttr
+ getBlockedEncoding(tt::LoadOp loadOp, tt::ModuleAxisInfoAnalysis &axisInfo) {
+   Value src = loadOp.getPtr();
+-  auto ty = src.getType().cast<RankedTensorType>();
++  auto ty = cast<RankedTensorType>(src.getType());
+   auto mod = loadOp->getParentOfType<ModuleOp>();
+   int numWarps = ttg::TritonGPUDialect::getNumWarps(mod);
+   int threadsPerWarp = ttg::TritonGPUDialect::getThreadsPerWarp(mod);
+@@ -221,7 +238,7 @@ getBlockedEncoding(tt::LoadOp loadOp, tt
+ 
+ static std::optional<ttg::SharedEncodingAttr>
+ getSharedEncoding(tt::LoadOp loadOp, bool isMMAV3) {
+-  auto ty = loadOp.getType().cast<RankedTensorType>();
++  auto ty = cast<RankedTensorType>(loadOp.getType());
+   auto ctaLayout = ttg::getCTALayout(ty.getEncoding());
+   auto blockedOrder = ttg::getOrder(ty.getEncoding());
+   SmallVector<unsigned> order;
+@@ -285,11 +302,10 @@ loadOpsToDistanceAndUse(scf::ForOp forOp
+     if (auto mask = loadOp.getMask())
+       vec = std::min<unsigned>(vec, axisInfoAnalysis.getMaskAlignment(mask));
+ 
+-    auto tensorTy = ptr.getType().dyn_cast<RankedTensorType>();
++    auto tensorTy = dyn_cast<RankedTensorType>(ptr.getType());
+     if (!tensorTy)
+       return false;
+-    auto ty =
+-        tensorTy.getElementType().cast<tt::PointerType>().getPointeeType();
++    auto ty = cast<tt::PointerType>(tensorTy.getElementType()).getPointeeType();
+     unsigned width = vec * ty.getIntOrFloatBitWidth();
+ 
+     // We do not pipeline all loads for the following reasons:
+@@ -353,7 +369,7 @@ static bool loadIsMMAv3(tt::LoadOp loadO
+ 
+   // MMA V3 case.
+   auto newOrder = sharedEnc.getOrder();
+-  auto ty = loadOp.getType().cast<RankedTensorType>();
++  auto ty = cast<RankedTensorType>(loadOp.getType());
+   auto oldOrder = ttg::getOrder(ty.getEncoding());
+ 
+   // The operand of MMAv3 is in SharedEncoding and its order should not
+@@ -497,7 +513,7 @@ collectOpsToPipeline(scf::ForOp forOp,
+ static Value createAlloc(scf::ForOp &forOp, tt::LoadOp loadOp,
+                          ttg::SharedEncodingAttr sharedEnc, unsigned distance) {
+   OpBuilder builder(forOp);
+-  auto ty = loadOp.getType().cast<RankedTensorType>();
++  auto ty = cast<RankedTensorType>(loadOp.getType());
+   SmallVector<int64_t> bufferShape(ty.getShape().begin(), ty.getShape().end());
+   bufferShape.insert(bufferShape.begin(), distance);
+   Type memdescType = mlir::triton::MemDescType::get(
+@@ -669,12 +685,23 @@ createSchedule(scf::ForOp forOp, int num
+     }
+   });
+ 
++  auto getNestedOperands = [](Operation *op) -> SmallVector<Value> {
++    SmallVector<Value> operands;
++    op->walk([&](Operation *nestedOp) {
++      for (Value operand : nestedOp->getOperands()) {
++        if (operand.getParentBlock()->getParentOp()->isAncestor(nestedOp))
++          operands.push_back(operand);
++      }
++    });
++    return operands;
++  };
++
+   // Find dependencies with distance of 1.
+   SmallVector<DenseSet<Operation *>> distanceOneUsers(numStages);
+   for (int stage = 0; stage < numStages - 1; stage++) {
+     auto &group = insertAndDeps[stage];
+     for (Operation *op : group) {
+-      for (Value operand : op->getOperands()) {
++      for (Value operand : getNestedOperands(op)) {
+         if (auto arg = operand.dyn_cast<BlockArgument>()) {
+           if (arg.getArgNumber() > 0 && arg.getOwner() == op->getBlock()) {
+             auto yieldOp = op->getBlock()->getTerminator();
+@@ -905,7 +932,7 @@ static int minNumInterleavedCommitOps(Op
+ // Look for consecutive wait ops and combine them into a single wait op.
+ static void
+ combineRedundantWaitOps(llvm::SmallSetVector<ttg::AsyncWaitOp, 8> &waitOps) {
+-  llvm::SmallSetVector<ttg::AsyncWaitOp, 8> toDelete;
++  llvm::MapVector<ttg::AsyncWaitOp, ttg::AsyncWaitOp> toDelete;
+   for (auto waitOp : waitOps) {
+     if (toDelete.count(waitOp))
+       continue;
+@@ -927,10 +954,13 @@ combineRedundantWaitOps(llvm::SmallSetVe
+     OpBuilder builder(waitGroup.back());
+     auto newWaitOp = builder.create<ttg::AsyncWaitOp>(waitOp.getLoc(),
+                                                       depTokens, minWaitNumber);
+-    toDelete.insert(waitGroup.begin(), waitGroup.end());
++    for (auto waitOp : waitGroup) {
++      toDelete[waitOp] = newWaitOp;
++    }
+   }
+   for (auto waitOp : toDelete) {
+-    waitOp->erase();
++    waitOp.first->replaceAllUsesWith(waitOp.second);
++    waitOp.first->erase();
+   }
+ }
+ 
+@@ -1010,7 +1040,7 @@ static void threadValuesThroughWait(ttng
+ 
+   for (ttng::DotAsyncOp dot : asyncDots) {
+     for (Value operand : dot.getOperands()) {
+-      if (operand.getType().isa<tt::MemDescType>()) {
++      if (isa<tt::MemDescType>(operand.getType())) {
+         newOperands.insert(operand);
+       }
+     }
+@@ -1020,15 +1050,21 @@ static void threadValuesThroughWait(ttng
+   // values in the operation.
+   auto newWait = builder.create<ttng::DotWaitOp>(
+       wait.getLoc(), llvm::to_vector(newOperands), wait.getPendings());
++
++  auto dominatedByNewWait = [&](OpOperand &operand) {
++    auto opInThisBlock =
++        newWait->getBlock()->findAncestorOpInBlock(*operand.getOwner());
++    return opInThisBlock && newWait->isBeforeInBlock(opInThisBlock);
++  };
+   for (int i = 0; i < origNumOperands; i++) {
+     Value operand = wait.getResult(i);
+-    if (!operand.getType().isa<tt::MemDescType>())
++    if (!isa<tt::MemDescType>(operand.getType()))
+       operand.replaceAllUsesWith(newWait.getResult(i));
+   }
+   for (int i = origNumOperands; i < newOperands.size(); i++) {
+     Value operand = newWait.getOperand(i);
+-    if (!operand.getType().isa<tt::MemDescType>())
+-      operand.replaceAllUsesExcept(newWait.getResult(i), newWait);
++    if (!isa<tt::MemDescType>(operand.getType()))
++      operand.replaceUsesWithIf(newWait.getResult(i), dominatedByNewWait);
+   }
+   wait->erase();
+ }
+@@ -1047,8 +1083,8 @@ static void threadValuesThroughWait(ttng
+ //  1. All operands that touch shared memory are multi-buffered, i.e. can't read
+ //     an incomplete value while it's being written asynchronously by a load.
+ //
+-//  2. During iteration i, nothing other than the loop's `yield` reads the
+-//     result of the dot.
++//  2. If the dot is used by any op in the loop, it must be used under an `if`,
++//     and will be synced with a `wait 0` at the beginning of the `if` block.
+ //
+ //  3. During iteration i, between the start of the loop up until the first
+ //     `ttng.dot_wait {pendings=0}` op, the result of the dot from iteration i-1
+@@ -1079,7 +1115,7 @@ static std::optional<int> dotCanBeProper
+   // Rule 1: All shmem operands are multi-buffered.
+   auto checkOperand = [&](Value operand) {
+     if (!isa<ttg::SharedEncodingAttr>(
+-            operand.getType().cast<TensorOrMemDesc>().getEncoding())) {
++            cast<TensorOrMemDesc>(operand.getType()).getEncoding())) {
+       return true;
+     }
+ 
+@@ -1103,17 +1139,41 @@ static std::optional<int> dotCanBeProper
+     return std::nullopt;
+   }
+ 
+-  // Rule 2: The dot should only be used by the for loop's `yield`.
+-  if (!dotOp->hasOneUse() ||
+-      *dotOp->getUsers().begin() != forOp.getBody()->getTerminator()) {
+-    LDBG("Can't make dot async because it is not used only by the loop's "
+-         "`yield`.");
+-    return std::nullopt;
++  // Rule 2: The dot cannot be unconditionally used by any op in the loop.
++  // Uses under `if` are allowed, as can be explicitly synced with a `wait 0`.
++  int iterArgIdx = -1;
++  Value iterArg = nullptr;
++  SmallVector<std::pair<Operation *, int>> queue;
++  for (auto &use : dotOp->getUses()) {
++    queue.push_back({use.getOwner(), use.getOperandNumber()});
+   }
+-
+-  // The result of the dot becomes this loop carry value.
+-  auto iterArgIdx = dotOp->getUses().begin()->getOperandNumber();
+-  auto iterArg = forOp.getRegionIterArg(iterArgIdx);
++  while (!queue.empty()) {
++    auto [user, argIdx] = queue.pop_back_val();
++    if (user->getParentOp() == forOp) {
++      if (isa<scf::YieldOp>(user)) {
++        if (iterArg) {
++          // The dot is used by the loop's yield, but we can't have any other
++          // uses.
++          return std::nullopt;
++        }
++        iterArgIdx = argIdx;
++        iterArg = forOp.getRegionIterArg(argIdx);
++        continue;
++      }
++      return std::nullopt;
++    }
++    if (auto ifOp = dyn_cast<scf::IfOp>(user->getParentOp())) {
++      if (isa<scf::YieldOp>(user)) {
++        // The result is returned by the if, follow it further.
++        auto uses = ifOp.getResult(argIdx).getUses();
++        for (auto &use : uses) {
++          queue.push_back({use.getOwner(), use.getOperandNumber()});
++        }
++      }
++    } else {
++      return std::nullopt;
++    }
++  }
+ 
+   // Rule 3a: Are the only users of the dot's result from iteration i-1 other
+   // MMAv3 dots?  If so, we're done, this dot can be properly async.
+@@ -1181,6 +1241,32 @@ static void insertAsyncDotWaitInLoop(
+     return;
+   }
+ 
++  // Insert waits before the users of the properly async dots other than loop
++  // yield.
++  for (auto [asyncDot, iterArgIdx] : properlyAsyncDots) {
++    SmallVector<OpOperand *> uses;
++    for (auto &use : asyncDot->getUses()) {
++      if (auto yieldOp = dyn_cast<scf::YieldOp>(use.getOwner())) {
++        continue;
++      }
++      uses.push_back(&use);
++    }
++
++    DenseMap<Block *, SmallVector<Value>> blockToUsers;
++    for (auto use : uses) {
++      auto block = use->getOwner()->getBlock();
++      blockToUsers[block].push_back(use->get());
++    }
++
++    for (auto [block, users] : blockToUsers) {
++      OpBuilder builder(block, block->begin());
++      auto newWait = builder.create<ttng::DotWaitOp>(asyncDot->getLoc(),
++                                                     ArrayRef<Value>{}, 0);
++
++      threadValuesThroughWait(newWait, users);
++    }
++  }
++
+   // Add the wait right after the last properly-async dot.  This only needs to
+   // wait for all properly-async dots from the i-1'th iteration to complete, IOW
+   // we wait until there are most `asyncDots.size()` dots in flight.
+diff --git a/test/TritonGPU/loop-pipeline.mlir b/test/TritonGPU/loop-pipeline.mlir
+--- a/test/TritonGPU/loop-pipeline.mlir
++++ b/test/TritonGPU/loop-pipeline.mlir
+@@ -349,16 +349,21 @@ tt.func @indirect_bmm_scalar_dist_one(%7
+ // CHECK: triton_gpu.async_copy_global_to_local
+ // CHECK: triton_gpu.async_copy_global_to_local
+ // CHECK: triton_gpu.async_commit_group
++// CHECK: triton_gpu.async_wait {{.*}} {num = 1 : i32}
++// CHECK: scf.for
++// CHECK: tt.dot
+ // CHECK: %[[NEXT_BUFFER_1:.*]] = tt.addptr %{{.*}}, {{.*}}
+ // CHECK: triton_gpu.async_copy_global_to_local %[[NEXT_BUFFER_1]]
+-// CHECK: %[[IND_BUFFER_0:.*]] = triton_gpu.memdesc_subview
+-// CHECK: %[[IND_BUFFER_1:.*]] = triton_gpu.local_load %[[IND_BUFFER_0]]
++// CHECK-DAG: %[[IND_BUFFER_WAIT_TOKEN:.*]] = triton_gpu.async_wait {{.*}} {num = 1 : i32}
++// CHECK-DAG: %[[IND_BUFFER_0:.*]] = triton_gpu.memdesc_subview
++// CHECK: %[[IND_BUFFER_1:.*]] = triton_gpu.local_load %[[IND_BUFFER_0]] token %[[IND_BUFFER_WAIT_TOKEN]]
+ // CHECK: %[[IND_BUFFER_2:.*]] = tt.expand_dims %[[IND_BUFFER_1]] {axis = 1 : i32}
+ // CHECK: %[[IND_BUFFER_3:.*]] = tt.broadcast %[[IND_BUFFER_2]]
+ // CHECK: %[[IND_BUFFER_4:.*]] = arith.muli {{.*}}, %[[IND_BUFFER_3]]
+ // CHECK: %[[NEXT_BUFFER_0:.*]] = tt.addptr {{.*}}, %[[IND_BUFFER_4]]
+ // CHECK: triton_gpu.async_copy_global_to_local %[[NEXT_BUFFER_0]]
+ // CHECK: triton_gpu.async_wait {{.*}} {num = 1 : i32}
++// CHECK: scf.yield
+ tt.func @indirect_bmm_vector(%77: tensor<16x16xi64, #BL> {tt.divisibility=16: i32, tt.constancy=16: i32},
+                    %76: index,
+                    %49: tensor<16x16x!tt.ptr<f16>, #AL> {tt.divisibility=16: i32, tt.contiguity=2 : i32},
+diff --git a/test/TritonGPU/reorder-instructions.mlir b/test/TritonGPU/reorder-instructions.mlir
+--- a/test/TritonGPU/reorder-instructions.mlir
++++ b/test/TritonGPU/reorder-instructions.mlir
+@@ -28,7 +28,7 @@ module attributes {"triton_gpu.num-warps
+ //       CHECK: triton_gpu.async_wait {num = 0 : i32}
+ //       CHECK: triton_gpu.local_dealloc %0 : !tt.memdesc<4x128x64xf16, #shared>
+ //       CHECK: triton_gpu.local_dealloc %1 : !tt.memdesc<4x128x64xf16, #shared>
+-//       CHECK: %2 = triton_gpu.convert_layout %arg0 : tensor<32x32xf32, #blocked> -> tensor<32x32xf32, #blocked1>
++//       CHECK: %3 = triton_gpu.convert_layout %arg0 : tensor<32x32xf32, #blocked> -> tensor<32x32xf32, #blocked1>
+ #blocked = #triton_gpu.blocked<{sizePerThread = [1, 1], threadsPerWarp = [32, 1], warpsPerCTA = [1, 4], order = [0, 1]}>
+ #blocked1 = #triton_gpu.blocked<{sizePerThread = [1, 1], threadsPerWarp = [32, 1], warpsPerCTA = [1, 4], order = [1, 0]}>
+ #shared = #triton_gpu.shared<{vec = 8, perPhase = 1, maxPhase = 4, order = [0, 1]}>
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp
+@@ -333,17 +333,6 @@ static Value faddAccumulate(ConversionPa
+   return newStruct;
+ }
+ 
+-static bool isZero(Value v) {
+-  auto constantOp = v.getDefiningOp<arith::ConstantOp>();
+-  if (!constantOp)
+-    return false;
+-  if (auto denseAttr = dyn_cast<DenseFPElementsAttr>(constantOp.getValueAttr()))
+-    return denseAttr.isSplat() && denseAttr.getSplatValue<APFloat>().isZero();
+-  if (auto denseAttr =
+-          dyn_cast<DenseIntElementsAttr>(constantOp.getValueAttr()))
+-    return denseAttr.isSplat() && denseAttr.getSplatValue<APInt>().isZero();
+-  return false;
+-}
+ 
+ static SmallVector<Value> emitWait(ConversionPatternRewriter &rewriter,
+                                    Location loc, SmallVector<Value> acc,
+@@ -402,7 +391,7 @@ LogicalResult convertDot(const LLVMTypeC
+   int M = 4 * instrShape[0];
+   int N = instrShape[1];
+   int K = instrShape[2];
+-  bool zeroAcc = isZero(c);
++  bool zeroAcc = isZeroConst(c);
+   auto shapePerCTATile = getShapePerCTATile(mmaEncoding);
+   int numRepM = ceil<unsigned>(dShapePerCTA[0], shapePerCTATile[0]);
+   int numRepN = ceil<unsigned>(dShapePerCTA[1], shapePerCTATile[1]);
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
+@@ -924,8 +924,11 @@ struct AsyncWaitOpConversion
+     auto voidTy = void_ty(ctx);
+     ptxBuilder.launch(rewriter, loc, voidTy);
+ 
+-    // Safe to remove the op since it doesn't have any return value.
+-    rewriter.eraseOp(op);
++    // Drop the result token.
++    Value zero = rewriter.create<LLVM::ConstantOp>(
++        op.getLoc(), IntegerType::get(op.getContext(), 32),
++        rewriter.getI32IntegerAttr(0));
++    rewriter.replaceOp(op, zero);
+     return success();
+   }
+ };

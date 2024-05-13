@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace Eigen {
@@ -45,9 +46,12 @@ class DeviceSimple : public DeviceBase {
     return cpu_allocator();
   }
 
+  const std::string& device_type() const override { return device_type_; }
+
  private:
   DeviceBase::CpuWorkerThreads eigen_worker_threads_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
+  const std::string device_type_ = DEVICE_CPU;
 };
 
 Status EvaluateNode(const NodeDef& node,

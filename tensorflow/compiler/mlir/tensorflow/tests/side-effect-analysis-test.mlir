@@ -2909,7 +2909,7 @@ func.func @tpu_execute_effect(
 
 // -----
 
-// Tests that we don't create dependencies between any two instances of an op with `TF_RandomGeneratorSideEffect` trait.
+// Tests that we don't create dependencies between any two `RandomUniform` ops.
 func.func @random_uniform_ordering_effect() -> (tensor<3xf32>) {
   // expected-remark@above {{ID: 9}}
   %graph = tf_executor.graph {
@@ -2963,4 +2963,84 @@ func.func @global_iter_id_effect() -> () {
   func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-remark@above {{ID: 2}}
+  %sum = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  func.return %sum : tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+func.func @intermediary(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-remark@above {{ID: 2}}
+  %result = "tf.StatefulPartitionedCall"(%arg0, %arg1) {config="", config_proto="", executor_type="", f=@add} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  func.return %result : tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// CHECK-LABEL: func @call_pure_function
+func.func @call_pure_function(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+  // expected-remark@above {{ID: 5}}
+  %one = "tf.Const"() { value = dense<1.0> : tensor<1xf32> } : () -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  %r1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  %two = "tf.StatefulPartitionedCall"(%one, %one) {config="", config_proto="", executor_type="", f=@intermediary} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 2}}
+  %r2 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 3}}
+  func.return %arg0 : tensor<!tf_type.resource>
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Sinks: {1,3}}}
+}
+
+// -----
+
+func.func @assert(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<i1> {
+  // expected-remark@above {{ID: 3}}
+  %cond = builtin.unrealized_conversion_cast to tensor<i1>
+  // expected-remark@above {{ID: 0}}
+  "tf.Assert"(%cond, %arg1) {device = "/job:localhost/replica:0/task:0/device:CPU:0", summarize = 3 : i64} : (tensor<i1>, tensor<1xf32>) -> ()
+  // expected-remark@above {{ID: 1}}
+  func.return %cond : tensor<i1>
+  // expected-remark@above {{ID: 2}}
+  // expected-remark@above {{Sinks: {1}}}
+}
+
+func.func @intermediary(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-remark@above {{ID: 3}}
+  %cond = builtin.unrealized_conversion_cast to tensor<i1>
+  // expected-remark@above {{ID: 0}}
+  %sum = "tf.If"(%cond, %arg0, %arg1) {
+      then_branch = @assert,
+      else_branch = @assert,
+      is_stateless = false
+  } : (tensor<i1>, tensor<1xf32>, tensor<1xf32>) -> tensor<i1>
+  // expected-remark@-5 {{ID: 1}}
+  func.return %arg0 : tensor<1xf32>
+  // expected-remark@above {{ID: 2}}
+  // expected-remark@above {{Sinks: {1}}}
+}
+
+// CHECK-LABEL: func @assert_within_if
+func.func @assert_within_if(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+  // expected-remark@above {{ID: 5}}
+  %one = "tf.Const"() { value = dense<1.0> : tensor<1xf32> } : () -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  %r1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  %result = "tf.StatefulPartitionedCall"(%one, %one) {config="", config_proto="", executor_type="", f=@intermediary} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 2}}
+  %r2 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 3}}
+  func.return %arg0 : tensor<!tf_type.resource>
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Sinks: {1,3}}}
 }

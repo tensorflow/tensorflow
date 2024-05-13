@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -97,7 +97,8 @@ xla::XlaOp BatchDot(
 xla::XlaOp BatchDot(
     xla::XlaOp x, bool transpose_x, xla::XlaOp y, bool transpose_y,
     xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT,
-    std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+    std::optional<PrimitiveType> preferred_element_type = std::nullopt,
+    bool grad_x = false, bool grad_y = false);
 
 // Parse an einsum string into dimension numbers:
 //   "ab,cb->ac"
@@ -116,7 +117,7 @@ xla::XlaOp BatchDot(
 // NOTE: This function is meant for testing, there is no need to call it
 // directly.
 
-StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
+absl::StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
     absl::string_view einsum_config, int64_t x_rank, int64_t y_rank);
 
 // If an einsum config does not contain an -> one will be added and the output
@@ -128,11 +129,11 @@ std::string NormalizeEinsumString(absl::string_view einsum_config);
 xla::XlaOp Einsum(
     xla::XlaOp x, xla::XlaOp y, absl::string_view einsum_config,
     xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT,
-    std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+    std::optional<PrimitiveType> preferred_element_type = std::nullopt,
+    bool grad_x = false, bool grad_y = false);
 xla::XlaOp Einsum(
     xla::XlaOp x, absl::string_view einsum_config,
     xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
-
 
 // Same as above but supporting numeric labels on dimensions. So "ab,cb->ac"
 // becomes:
@@ -143,7 +144,8 @@ xla::XlaOp Einsum(
     xla::XlaOp x, absl::Span<const int64_t> x_config, xla::XlaOp y,
     absl::Span<const int64_t> y_config, absl::Span<const int64_t> output_config,
     xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT,
-    std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+    std::optional<PrimitiveType> preferred_element_type = std::nullopt,
+    bool grad_x = false, bool grad_y = false);
 
 // Transposes a stack of matrices `x` by swapping the last two dimensions.
 xla::XlaOp TransposeInMinorDims(xla::XlaOp x);

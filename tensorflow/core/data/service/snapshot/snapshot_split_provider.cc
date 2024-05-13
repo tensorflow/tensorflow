@@ -219,7 +219,8 @@ absl::Status SnapshotSplitProvider::ValidateSplitFiles(
 absl::Status SnapshotSplitProvider::Reset() {
   mutex_lock l(mu_);
   ++repetition_index_;
-  LOG(INFO) << "Reset tf.data snapshot split provider for repetition "
+  LOG(INFO) << "Reset tf.data snapshot split provider for snapshot "
+            << snapshot_task_.ShortDebugString() << ", repetition "
             << repetition_index_ << ".";
   return absl::OkStatus();
 }
@@ -248,7 +249,8 @@ absl::Status SnapshotSplitProvider::Restore(
   next_split_index_ = next_split_index;
   repetition_index_ = repetition_index;
   TF_ASSIGN_OR_RETURN(split_to_file_map_, GetSplitsFiles(next_split_index_));
-  LOG(INFO) << "Restored snapshot split provider for split "
+  LOG(INFO) << "Restored snapshot split provider for snapshot "
+            << snapshot_task_.ShortDebugString() << ", next split "
             << next_split_index_ << ", repetition " << repetition_index_ << ".";
   return absl::OkStatus();
 }

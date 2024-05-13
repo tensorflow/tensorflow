@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -98,7 +98,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
 // EmitFusedDynamicUpdateSliceInPlace.
 //
 // Emits a sequential loop if launch_dimensions is null.
-using IndexGenerator = std::function<StatusOr<llvm::Value*>(int64_t)>;
+using IndexGenerator = std::function<absl::StatusOr<llvm::Value*>(int64_t)>;
 
 static Status EmitDynamicUpdateSliceInPlaceImpl(
     const Shape& update_shape, const IndexGenerator& start_indices_generator,
@@ -235,7 +235,7 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
                         fused_emitter->GetGenerator(*update));
 
     IndexGenerator start_indices_generator =
-        [&](int64_t index) -> StatusOr<llvm::Value*> {
+        [&](int64_t index) -> absl::StatusOr<llvm::Value*> {
       TF_ASSIGN_OR_RETURN(ElementGenerator element_generator,
                           fused_emitter->GetGenerator(
                               *dynamic_update_slice->operand(2 + index)));

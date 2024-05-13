@@ -78,6 +78,11 @@ const DeviceNameUtils::ParsedName& DeviceBase::parsed_name() const {
   std::abort();
 }
 
+const std::string& DeviceBase::device_type() const {
+  LOG(FATAL) << "DeviceBase does not implement device_type()";  // Crash OK
+  std::abort();
+}
+
 void DeviceBase::set_eigen_cpu_device(Eigen::ThreadPoolDevice* d) {
   // Eigen::ThreadPoolDevice is a very cheap struct (two pointers and
   // an int).  Therefore, we can afford a pre-allocated array of

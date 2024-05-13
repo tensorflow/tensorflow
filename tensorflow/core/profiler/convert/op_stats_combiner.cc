@@ -104,7 +104,9 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
   dst->mutable_hostnames()->insert(src.hostnames().begin(),
                                    src.hostnames().end());
   dst->set_host_count(dst->hostnames_size());
-  if (src.device_type() != "CPU") {
+  // Ignore CPU and Unknown Device type for device type selection if the
+  // destination does not have a device type already.
+  if (src.device_type() != "CPU" && src.device_type() != "Device") {
     dst->set_device_type(src.device_type());
     dst->set_device_core_count(src.device_core_count() +
                                dst->device_core_count());

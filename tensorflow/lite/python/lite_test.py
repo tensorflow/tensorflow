@@ -31,6 +31,7 @@ from tensorflow.lite.python import util
 from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.lite.python.interpreter import OpResolverType
 from tensorflow.lite.python.util import get_conversion_metadata
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
@@ -399,7 +400,14 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                                         disable_per_channel=False,
                                         enable_mlir_quantizer=False,
                                         representative_dataset=True):
-    k_conv_name = 'Conv2D1'
+    if enable_mlir_quantizer:
+      if disable_per_channel:
+        k_conv_name = 'output1'
+      else:
+        k_conv_name = 'tfl.pseudo_qconst1'
+    else:
+      k_conv_name = 'Conv2D1'
+
     # Dynamic range quant requires total num elements of filters > 1024.
     k_num_filters = 38
     with ops.Graph().as_default():
@@ -419,10 +427,15 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
-    interpreter = Interpreter(model_content=quantized_tflite_model)
-    interpreter.allocate_tensors()
-    detail = next((d for d in interpreter.get_tensor_details()
-                   if d['name'] == k_conv_name))
+    # Do not apply delegates as XNNPack converts per tensor to per channel.
+    interp = Interpreter(
+        model_content=quantized_tflite_model,
+        experimental_op_resolver_type=OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES,
+    )
+    interp.allocate_tensors()
+    detail = next(
+        (d for d in interp.get_tensor_details() if d['name'] == k_conv_name)
+    )
     quant_params = detail['quantization_parameters']
     expected_num_params = 1 if disable_per_channel else k_num_filters
     self.assertLen(quant_params['scales'], expected_num_params)
@@ -1183,6 +1196,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       interpreter.allocate_tensors()
 
       # MLIR quantizer has different bias index.
+      bias_name = 'tfl.pseudo_qconst' if enable_mlir_quantizer else 'Conv2D'
       bias_tensor = [
           tensor for tensor in interpreter.get_tensor_details()
           if tensor['name'] == bias_name

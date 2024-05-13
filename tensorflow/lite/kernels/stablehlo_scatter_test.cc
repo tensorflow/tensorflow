@@ -69,13 +69,15 @@ class StablehloScatterOpModel : public SingleOpModel {
     int* dummy = nullptr;
     AddSubgraphs(1, dummy);
     if (op_type == StablehloScatterOpType::kAdd) {
-      subgraph_builder_.BuildAddSubgraph(interpreter_->subgraph(1));
+      subgraph_builder_.BuildStablehloAddSubgraph(interpreter_->subgraph(1));
     } else if (op_type == StablehloScatterOpType::kMul) {
-      subgraph_builder_.BuildMulSubgraph(interpreter_->subgraph(1));
+      subgraph_builder_.BuildStablehloMulSubgraph(interpreter_->subgraph(1));
     } else if (op_type == StablehloScatterOpType::kMax) {
-      subgraph_builder_.BuildMaximumSubgraph(interpreter_->subgraph(1));
+      subgraph_builder_.BuildStablehloMaximumSubgraph(
+          interpreter_->subgraph(1));
     } else if (op_type == StablehloScatterOpType::kMin) {
-      subgraph_builder_.BuildMinimumSubgraph(interpreter_->subgraph(1));
+      subgraph_builder_.BuildStablehloMinimumSubgraph(
+          interpreter_->subgraph(1));
     } else if (op_type == StablehloScatterOpType::kUpdate) {
       subgraph_builder_.BuildOutputIsSecondInputSubgraph(
           interpreter_->subgraph(1));

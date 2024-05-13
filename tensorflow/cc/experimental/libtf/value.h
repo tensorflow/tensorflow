@@ -56,7 +56,7 @@ using Dict =
 using DictPtr = std::shared_ptr<Dict>;
 using TuplePtr = std::shared_ptr<Tuple>;
 using Func =
-    std::function<tensorflow::StatusOr<TaggedValue>(TaggedValue, TaggedValue)>;
+    std::function<absl::StatusOr<TaggedValue>(TaggedValue, TaggedValue)>;
 // A capsule holds a pointer and a destructor for the pointer (i.e. a generic
 // shared_ptr to void with a custom deleter).
 using Capsule = std::shared_ptr<void>;

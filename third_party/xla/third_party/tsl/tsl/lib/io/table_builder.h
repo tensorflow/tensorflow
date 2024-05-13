@@ -60,12 +60,12 @@ class TableBuilder {
   void Flush();
 
   // Return non-ok iff some error has been detected.
-  Status status() const;
+  absl::Status status() const;
 
   // Finish building the table.  Stops using the file passed to the
   // constructor after this function returns.
   // REQUIRES: Finish(), Abandon() have not been called
-  Status Finish();
+  absl::Status Finish();
 
   // Indicate that the contents of this builder should be abandoned.  Stops
   // using the file passed to the constructor after this function returns.

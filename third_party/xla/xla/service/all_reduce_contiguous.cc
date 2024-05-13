@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ Status ReplaceWithContiguousAllReduce(HloAllReduceInstruction* all_reduce) {
   HloInstruction* new_all_reduce =
       computation.AddInstruction(HloInstruction::CreateAllReduce(
           concat_shape, {concatenated}, all_reduce->to_apply(),
-          all_reduce->replica_groups(),
+          all_reduce->device_list(),
           /*constrain_layout=*/false, all_reduce->channel_id(),
           all_reduce->use_global_device_ids()));
 
@@ -83,7 +83,7 @@ Status ReplaceWithContiguousAllReduce(HloAllReduceInstruction* all_reduce) {
 }
 }  // namespace
 
-StatusOr<bool> AllReduceContiguous::Run(
+absl::StatusOr<bool> AllReduceContiguous::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running AllReduceContiguous";

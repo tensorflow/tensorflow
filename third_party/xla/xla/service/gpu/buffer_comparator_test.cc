@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,16 +15,24 @@ limitations under the License.
 
 #include "xla/service/gpu/buffer_comparator.h"
 
+#include <cmath>
 #include <complex>
 #include <cstdint>
 #include <limits>
-#include <string>
+#include <vector>
 
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/types.h"
+#include "tsl/platform/ml_dtypes.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -34,33 +42,40 @@ namespace {
 class BufferComparatorTest : public testing::Test {
  protected:
   BufferComparatorTest()
-      : platform_(se::MultiPlatformManager::PlatformWithName("cuda").value()),
-        stream_exec_(platform_->ExecutorForDevice(0).value()) {}
+#if GOOGLE_CUDA
+      : platform_(se::PlatformManager::PlatformWithName("CUDA").value()),
+#elif TENSORFLOW_USE_ROCM
+      : platform_(se::PlatformManager::PlatformWithName("ROCM").value()),
+#endif
+        stream_exec_(platform_->ExecutorForDevice(0).value()) {
+  }
 
   // Take floats only for convenience. Still uses ElementType internally.
   template <typename ElementType>
   bool CompareEqualBuffers(const std::vector<ElementType>& current,
                            const std::vector<ElementType>& expected) {
-    se::Stream stream(stream_exec_);
-    stream.Init();
+    auto stream = stream_exec_->CreateStream().value();
 
-    se::ScopedDeviceMemory<ElementType> current_buffer =
-        stream_exec_->AllocateOwnedArray<ElementType>(current.size());
-    se::ScopedDeviceMemory<ElementType> expected_buffer =
-        stream_exec_->AllocateOwnedArray<ElementType>(expected.size());
+    se::DeviceMemoryHandle current_buffer(
+        stream_exec_, stream_exec_->AllocateArray<ElementType>(current.size()));
+    se::DeviceMemoryHandle expected_buffer(
+        stream_exec_,
+        stream_exec_->AllocateArray<ElementType>(expected.size()));
 
-    stream.ThenMemcpy(current_buffer.ptr(), current.data(),
-                      current_buffer->size());
-    stream.ThenMemcpy(expected_buffer.ptr(), expected.data(),
-                      expected_buffer->size());
-    TF_CHECK_OK(stream.BlockHostUntilDone());
+    TF_CHECK_OK(stream->Memcpy(current_buffer.memory_ptr(), current.data(),
+                               current_buffer.memory().size()));
+    TF_CHECK_OK(stream->Memcpy(expected_buffer.memory_ptr(), expected.data(),
+                               expected_buffer.memory().size()));
+    TF_CHECK_OK(stream->BlockHostUntilDone());
 
     BufferComparator comparator(
         ShapeUtil::MakeShape(
             primitive_util::NativeToPrimitiveType<ElementType>(),
-            {static_cast<int64_t>(current_buffer->ElementCount())}),
+            {static_cast<int64_t>(current.size())}),
         HloModuleConfig());
-    return comparator.CompareEqual(&stream, *current_buffer, *expected_buffer)
+    return comparator
+        .CompareEqual(stream.get(), current_buffer.memory(),
+                      expected_buffer.memory())
         .value();
   }
 
@@ -162,7 +177,7 @@ TEST_F(BufferComparatorTest, TestInfs) {
   EXPECT_FALSE(CompareEqualFloatBuffers<double>({inf}, {-20}));
   EXPECT_FALSE(CompareEqualFloatBuffers<double>({-inf}, {20}));
   EXPECT_FALSE(CompareEqualFloatBuffers<double>({-inf}, {-20}));
-
+#if GOOGLE_CUDA
   EXPECT_TRUE(
       CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {std::nanf("")}));
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {inf}));
@@ -182,6 +197,7 @@ TEST_F(BufferComparatorTest, TestInfs) {
   EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {-20}));
   EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({-inf}, {20}));
   EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({-inf}, {-20}));
+#endif  // GOOGLE_CUDA
 }
 
 TEST_F(BufferComparatorTest, TestNumbers) {
@@ -209,7 +225,7 @@ TEST_F(BufferComparatorTest, TestNumbers) {
   EXPECT_TRUE(CompareEqualFloatBuffers<int8_t>({90}, {100}));
   EXPECT_TRUE(CompareEqualFloatBuffers<int8_t>({100}, {90}));
   EXPECT_FALSE(CompareEqualFloatBuffers<int8_t>({-128}, {127}));
-
+#if GOOGLE_CUDA
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({20}, {20.1}));
   EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({0}, {1}));
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({0.9}, {1}));
@@ -221,6 +237,7 @@ TEST_F(BufferComparatorTest, TestNumbers) {
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({0.9}, {1}));
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({11}, {12}));
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({12}, {11}));
+#endif  // GOOGLE_CUDA
 }
 
 TEST_F(BufferComparatorTest, TestMultiple) {
@@ -291,7 +308,7 @@ TEST_F(BufferComparatorTest, TestMultiple) {
       rhs[i] = 0;
     }
   }
-
+#if GOOGLE_CUDA
   {
     EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>(
         {20, 30, 40, 50, 60}, {20.1, 30.1, 40.1, 50.1, 60.1}));
@@ -325,27 +342,29 @@ TEST_F(BufferComparatorTest, TestMultiple) {
       rhs[i] = 0;
     }
   }
+#endif  // GOOGLE_CUDA
 }
 
 TEST_F(BufferComparatorTest, BF16) {
   const int element_count = 3123;
   int64_t rng_state = 0;
 
-  se::Stream stream(stream_exec_);
-  stream.Init();
+  auto stream = stream_exec_->CreateStream().value();
 
-  se::ScopedDeviceMemory<Eigen::bfloat16> lhs =
-      stream_exec_->AllocateOwnedArray<Eigen::bfloat16>(element_count);
-  InitializeBuffer(&stream, BF16, &rng_state, *lhs.ptr());
+  se::DeviceMemoryHandle lhs(
+      stream_exec_,
+      stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
+  InitializeBuffer(stream.get(), BF16, &rng_state, lhs.memory());
 
-  se::ScopedDeviceMemory<Eigen::bfloat16> rhs =
-      stream_exec_->AllocateOwnedArray<Eigen::bfloat16>(element_count);
-  InitializeBuffer(&stream, BF16, &rng_state, *rhs.ptr());
+  se::DeviceMemoryHandle rhs(
+      stream_exec_,
+      stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
+  InitializeBuffer(stream.get(), BF16, &rng_state, rhs.memory());
 
   BufferComparator comparator(ShapeUtil::MakeShape(BF16, {element_count}),
                               HloModuleConfig());
-  EXPECT_FALSE(
-      comparator.CompareEqual(&stream, *lhs.ptr(), *rhs.ptr()).value());
+  EXPECT_FALSE(comparator.CompareEqual(stream.get(), lhs.memory(), rhs.memory())
+                   .value());
 }
 
 }  // namespace

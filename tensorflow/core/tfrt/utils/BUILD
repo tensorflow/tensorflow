@@ -270,6 +270,7 @@ tf_cc_test(
     deps = [
         ":fallback_tensor",
         "//tensorflow/core/common_runtime:dma_helper",
+        "//tensorflow/core/framework:tensor_shape",
         "@com_google_googletest//:gtest_main",
     ],
 )

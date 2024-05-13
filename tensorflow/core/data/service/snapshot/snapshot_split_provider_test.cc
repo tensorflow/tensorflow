@@ -23,13 +23,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/test_util.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/lib/io/compression.h"
@@ -188,7 +191,56 @@ TEST(SnapshotSplitProviderTest, SplitNotFound) {
                        HasSubstr("not all splits between [0, 10] are found")));
 }
 
-// TODO(b/266126556): Add a test for checkpointing the split provider.
+std::string full_name(const std::string& name) {
+  return FullName("test", name);
+}
+
+TEST(SnapshotSplitProviderTest, SaveRestore) {
+  const SnapshotTaskDef snapshot_task = TestSnapshotTask();
+  Tensor split(int64_t{9});
+  auto mock_dispatcher_ptr = std::make_unique<MockDispatcherClient>();
+  MockDispatcherClient* mock_dispatcher = mock_dispatcher_ptr.get();
+  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _, _))
+      .WillOnce(DoAll(SetArgReferee<5>(split),
+                      SetArgReferee<6>(9),      // local_split_index
+                      SetArgReferee<7>(false),  // end_of_splits
+                      Return(absl::OkStatus())));
+  TF_ASSERT_OK(WriteSplits(snapshot_task, /*num_splits=*/10));
+
+  SnapshotSplitProvider split_provider(
+      "worker_address", snapshot_task, /*source_index=*/0,
+      /*timeout=*/absl::Seconds(10), std::move(mock_dispatcher_ptr),
+      Env::Default());
+
+  // Reads splits 0--4 and then saves.
+  for (int64_t i = 0; i < 5; ++i) {
+    Tensor result;
+    bool end_of_splits = false;
+    TF_EXPECT_OK(split_provider.GetNext(&result, &end_of_splits));
+    test::ExpectTensorEqual<int64_t>(result, Tensor(int64_t{i}));
+    EXPECT_FALSE(end_of_splits);
+  }
+
+  VariantTensorDataWriter writer;
+  TF_ASSERT_OK(split_provider.Save(full_name, &writer));
+  std::vector<const VariantTensorData*> variants;
+  writer.GetData(&variants);
+  VariantTensorDataReader reader(variants);
+
+  // Reads splits 5--9.
+  SnapshotSplitProvider restored_split_provider(
+      "worker_address", snapshot_task, /*source_index=*/0,
+      /*timeout=*/absl::Seconds(10), std::make_unique<MockDispatcherClient>(),
+      Env::Default());
+  TF_ASSERT_OK(restored_split_provider.Restore(full_name, &reader));
+  for (int64_t i = 5; i <= 9; ++i) {
+    Tensor result;
+    bool end_of_splits = false;
+    TF_EXPECT_OK(split_provider.GetNext(&result, &end_of_splits));
+    test::ExpectTensorEqual<int64_t>(result, Tensor(int64_t{i}));
+    EXPECT_FALSE(end_of_splits);
+  }
+}
 
 }  // namespace
 }  // namespace data

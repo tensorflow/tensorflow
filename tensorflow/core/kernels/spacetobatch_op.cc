@@ -68,8 +68,8 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
 
   // To avoid out-of-bounds access in the case that the block_shape and/or
   // paddings tensors are concurrently modified, we must copy the values.
-  gtl::InlinedVector<int64_t, 4> block_shape;
-  gtl::InlinedVector<int64_t, 8> paddings;
+  absl::InlinedVector<int64_t, 4> block_shape;
+  absl::InlinedVector<int64_t, 8> paddings;
   internal::spacetobatch::SubtleMustCopyFlat(orig_block_shape, &block_shape);
   internal::spacetobatch::SubtleMustCopyFlat(orig_paddings, &paddings);
 
@@ -123,7 +123,7 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
 
   if (internal_block_dims == 0) {
     context->set_output(0, orig_input_tensor);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // For the purpose of computing the result, the input will be treated as
@@ -212,7 +212,7 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
     TF_SPACETOBATCH_FOR_EACH_NUM_BLOCK_DIMS(TF_SPACETOBATCH_BLOCK_DIMS_CASE)
 #undef TF_SPACETOBATCH_BLOCK_DIMS_CASE
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

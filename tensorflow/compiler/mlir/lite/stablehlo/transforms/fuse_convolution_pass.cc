@@ -13,24 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iterator>
 #include <memory>
 #include <utility>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
@@ -44,7 +51,8 @@ class FuseMhloMulAndConvolutionPattern : public OpRewritePattern<mhlo::MulOp> {
                                 PatternRewriter &rewriter) const override {
     // Variables for capturing values and attributes used while creating ops.
     mhlo::ConvolutionOp conv_op;
-    mhlo::BroadcastInDimOp broadcast_op;
+    Operation *bcast_or_const_op;
+    shape::ShapeOfOp shape_of_op;
     mhlo::ConstantOp filter;
     mhlo::ConstantOp multiplier;
     mlir::ElementsAttr filter_value, mul_value;
@@ -61,14 +69,18 @@ class FuseMhloMulAndConvolutionPattern : public OpRewritePattern<mhlo::MulOp> {
     if (filter == nullptr) {
       return failure();
     }
-    broadcast_op = rhs.getDefiningOp<mhlo::BroadcastInDimOp>();
-    multiplier =
-        (broadcast_op == nullptr)
-            ? rhs.getDefiningOp<mhlo::ConstantOp>()
-            : broadcast_op.getOperand().getDefiningOp<mhlo::ConstantOp>();
+    // Try to match static broadcast or dynamic broadcast.
+    bcast_or_const_op = rhs.getDefiningOp();
+    bool is_dynamic_broadcast =
+        isa<mhlo::DynamicBroadcastInDimOp>(bcast_or_const_op);
+    multiplier = isa<mhlo::ConstantOp>(bcast_or_const_op)
+                     ? dyn_cast_or_null<mhlo::ConstantOp>(bcast_or_const_op)
+                     : bcast_or_const_op->getOperand(0)
+                           .getDefiningOp<mhlo::ConstantOp>();
     if (multiplier == nullptr) {
       return failure();
     }
+
     auto result_type = OpTrait::util::getBroadcastedType(filter.getType(),
                                                          multiplier.getType());
     if (!result_type) {
@@ -90,15 +102,33 @@ class FuseMhloMulAndConvolutionPattern : public OpRewritePattern<mhlo::MulOp> {
                 "unsupported dimensions";
       });
     }
-    if (!((*conv_op.getODSResults(0).begin()).hasOneUse())) {
+    if (!is_dynamic_broadcast &&
+        !((*conv_op.getODSResults(0).begin()).hasOneUse())) {
       return rewriter.notifyMatchFailure(mul_op, [&](::mlir::Diagnostic &diag) {
         diag << "entities 'conv' failed to satisfy constraint: has one use";
       });
     }
+    // For dynamic case, the result of conv should be used by shape_of and mul.
+    if (is_dynamic_broadcast) {
+      auto conv_uses = (*conv_op.getODSResults(0).begin()).getUses();
+      if (std::distance(conv_uses.begin(), conv_uses.end()) != 2 ||
+          quant::FindUserOfType<shape::ShapeOfOp>(conv_op) == nullptr ||
+          quant::FindUserOfType<mhlo::MulOp>(conv_op) == nullptr) {
+        return rewriter.notifyMatchFailure(mul_op, [&](::mlir::Diagnostic
+                                                           &diag) {
+          diag << "entities 'conv' failed to satisfy constraint: has two uses "
+                  "for dynamic case";
+        });
+      }
+    }
 
     // Rewrite
+    // For dynamic case, we use filter's shape to create a static broadcast.
     broadcast_dims =
-        broadcast_op ? broadcast_op.getBroadcastDimensions() : nullptr;
+        !isa<mhlo::ConstantOp>(bcast_or_const_op) && !is_dynamic_broadcast
+            ? dyn_cast_or_null<mhlo::BroadcastInDimOp>(bcast_or_const_op)
+                  .getBroadcastDimensions()
+            : nullptr;
     if (broadcast_dims == nullptr) {
       const auto filter_rank = filter_value.getShapedType().getRank();
       auto dimsType = RankedTensorType::get({1}, rewriter.getIntegerType(64));
@@ -115,7 +145,26 @@ class FuseMhloMulAndConvolutionPattern : public OpRewritePattern<mhlo::MulOp> {
         conv_op.getWindowReversalAttr(), conv_op.getDimensionNumbers(),
         conv_op.getFeatureGroupCount(), conv_op.getBatchGroupCount(),
         conv_op.getPrecisionConfigAttr());
-    rewriter.replaceOp(mul_op, {new_conv});
+    // For static case, replace the convolution op now.
+    if (!is_dynamic_broadcast) {
+      rewriter.replaceOp(mul_op, {new_conv});
+    } else {
+      // For dynamic case, create new shape_of op and replace uses.
+      shape_of_op =
+          dyn_cast_or_null<mhlo::DynamicBroadcastInDimOp>(bcast_or_const_op)
+              .getOutputDimensions()
+              .getDefiningOp<shape::ShapeOfOp>();
+      // Check if the shape come from the original conv op.
+      if (!shape_of_op ||
+          shape_of_op.getArg().getDefiningOp<mhlo::ConvolutionOp>() !=
+              conv_op) {
+        return failure();
+      }
+      Value new_shape_of = rewriter.create<shape::ShapeOfOp>(
+          mul_op.getLoc(), shape_of_op.getType(), new_conv);
+      shape_of_op.replaceAllUsesWith(new_shape_of);
+      rewriter.replaceOp(mul_op, {new_conv});
+    }
 
     return success();
   }

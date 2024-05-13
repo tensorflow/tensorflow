@@ -10,6 +10,7 @@ package_group(
     name = "internal",
     packages = [
         "//learning/brain/experimental/tfrt/native_lowering/kernels/...",
+        "//tensorflow/compiler/mlir/tfrt/tests/tfrt_fallback/...",
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/utils/...",
     ],
@@ -206,6 +207,7 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:errors",
+        "@com_google_googletest//:gtest_main",
         "@tf_runtime//:bef",
         "@tf_runtime//:bef_attr_encoder",
         "@tf_runtime//:core_runtime",

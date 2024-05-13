@@ -20,6 +20,9 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/status/status.h"
+#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/tools/delegates/compatibility/protos/compatibility_result.pb.h"
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 #include "tensorflow/lite/tools/versioning/op_signature.h"
 

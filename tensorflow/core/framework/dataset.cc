@@ -709,6 +709,10 @@ void WarnProtoConflicts(const protobuf::Message& src, protobuf::Message* dst) {
                         set_dst.end(), std::back_inserter(in_both));
 
   for (auto field : in_both) {
+    // Used for Job Instrumentation, users should not be warned.
+    if (field->name() == "framework_type") {
+      continue;
+    }
     if (field->type() == protobuf::FieldDescriptor::TYPE_MESSAGE) {
       WarnProtoConflicts(reflection->GetMessage(src, field),
                          reflection->MutableMessage(dst, field));
@@ -827,13 +831,19 @@ Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
 
 Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
                         std::vector<Tensor>* out_tensors) const {
-  return errors::Unimplemented(
-      "Random access is not implemented for this dataset.");
+  return errors::Unimplemented("Random access is not implemented for dataset ",
+                               DebugString());
 }
 
-StatusOr<DatasetBase*> DatasetBase::Finalize(
+Status DatasetBase::Get(AnyContext ctx, int64 index,
+                        std::vector<Tensor>* out_tensors) const {
+  return errors::Unimplemented("Random access is not implemented for dataset ",
+                               DebugString());
+}
+
+absl::StatusOr<DatasetBase*> DatasetBase::Finalize(
     OpKernelContext* ctx,
-    std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
+    std::function<absl::StatusOr<core::RefCountPtr<DatasetBase>>()>
         make_finalized_dataset) const {
   mutex_lock l(mu_);
   if (!finalized_dataset_) {
@@ -910,6 +920,30 @@ Status DatasetBase::MakeSplitProviders(
         "), and no custom implementation of `MakeSplitProvider` is defined.");
   }
   return inputs[0]->MakeSplitProviders(split_providers);
+}
+
+std::optional<int64_t> DatasetBase::GetEstimatedElementSize() const {
+  const auto& shapes = output_shapes();
+  const auto& dtypes = output_dtypes();
+  if (shapes.size() != dtypes.size()) {
+    LOG(ERROR) << "This should not happen because the sizes of output_shapes() "
+                  "and output_dtypes() should always be "
+                  "the same.";
+    return std::nullopt;
+  }
+
+  size_t num_outputs = shapes.size();
+  int64_t element_size = 0;
+  for (int i = 0; i < num_outputs; ++i) {
+    const auto& partial_shape = shapes[i];
+    const auto& dtype = dtypes[i];
+    auto num_elements = partial_shape.num_elements();
+    if (num_elements == -1) {
+      return std::nullopt;
+    }
+    element_size += num_elements * DataTypeSize(dtype);
+  }
+  return element_size;
 }
 
 int64_t DatasetBase::Cardinality() const {
@@ -1243,8 +1277,30 @@ bool DatasetOpKernel::IsDatasetOp(const OpDef& op_def) {
   if (op_def.output_arg_size() != 1) return false;
   if (op_def.output_arg(0).type() != DT_VARIANT) return false;
   absl::string_view op_name = op_def.name();
+
+  // When running eager ops as a function, we check if the current op is a
+  // Dataset op by unwrapping it. Below are some example op names when running
+  // eager ops as a function:
+  // 1. __wrapped__MapDataset_Targuments_0_device<...>
+  // 2. __wrapped__FlatMapDataset_Targuments_0_device<...>
+  // 3. __wrapped__ParallelMapDatasetV2_Targuments_0_device<...>
+  //
+  // Below are the corresponding unwrapped op names:
+  // 1. MapDataset
+  // 2. FlatMapDataset
+  // 3. ParallelMapDatasetV2
+
+  std::vector<std::string> v1, v2;  // Declared here so that v2 outlives op_name
+  if (absl::StartsWith(op_name, "__wrapped__")) {
+    v1 = absl::StrSplit(op_name, "__wrapped__", absl::SkipEmpty());
+    if (v1.empty()) return false;
+    v2 = absl::StrSplit(v1[0], "_", absl::SkipEmpty());
+    op_name = v2.empty() ? v1[0] : v2[0];
+  }
+
   if (op_name == "DatasetFromGraph") return true;
   if (absl::EndsWith(op_name, "Dataset")) return true;
+
   // Check if the suffix matches "DatasetV[0-9]+".
   size_t index = op_name.length() - 1;
   while (index >= 0 && isdigit(op_name[index])) {

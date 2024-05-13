@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
@@ -113,7 +114,7 @@ Status CreateSplitOp(const int num_split, const int split_dimension,
   // Correctly set output shapes of split op output if input shape is statically
   // known.
   mlir::Type output_type;
-  auto input_type = src_input.getType().cast<mlir::TensorType>();
+  auto input_type = mlir::cast<mlir::TensorType>(src_input.getType());
 
   if (input_type.hasRank()) {
     if (input_type.getShape()[split_dimension] == mlir::ShapedType::kDynamic) {
@@ -141,7 +142,7 @@ Status CreateSplitOp(const int num_split, const int split_dimension,
   llvm::SmallVector<mlir::Type, 4> output_types(num_split, output_type);
   *split_op = builder->create<mlir::TF::SplitOp>(
       location, output_types, split_dimension_op.getOutput(), src_input);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Given layouts + shapes, determines if the two are broadcasting compatible.
@@ -680,9 +681,9 @@ mlir::StringAttr GetUniqueControlflowFnName(const std::string& prefix,
 
 Status SetBuilderInsertionAfterValue(mlir::Value value,
                                      mlir::OpBuilder& builder) {
-  if (value.isa<mlir::OpResult>()) {
+  if (mlir::isa<mlir::OpResult>(value)) {
     builder.setInsertionPointAfterValue(value);
-    return OkStatus();
+    return absl::OkStatus();
   }
   mlir::tf_device::ClusterOp cluster;
   for (mlir::Operation* op : value.getUsers()) {
@@ -696,7 +697,7 @@ Status SetBuilderInsertionAfterValue(mlir::Value value,
   if (!cluster) return errors::Internal("value not used in any cluster");
 
   builder.setInsertionPointToStart(cluster.SingleBlock::getBody());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PrintTensor(mlir::Value value, const std::string& format_string = "%s") {
@@ -713,13 +714,13 @@ Status PrintTensor(mlir::Value value, const std::string& format_string = "%s") {
   builder.create<mlir::TF::PrintV2Op>(value.getLoc(), format.getOutput(),
                                       /*output_stream=*/"log(info)",
                                       /*end=*/"\n");
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExtractConstStringVectorFromValue(
     mlir::Value value, llvm::SmallVectorImpl<std::string>& out_vector) {
   value = GetForwardedDTensorLayoutInput(value);
-  if (value.isa<mlir::BlockArgument>())
+  if (mlir::isa<mlir::BlockArgument>(value))
     return errors::Internal("Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
@@ -731,12 +732,12 @@ Status ExtractConstStringVectorFromValue(
   for (const auto& str : attr.getRawStringData()) {
     out_vector.push_back(str.str());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value) {
   value = GetForwardedDTensorLayoutInput(value);
-  if (value.isa<mlir::BlockArgument>())
+  if (mlir::isa<mlir::BlockArgument>(value))
     return errors::Internal("Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {

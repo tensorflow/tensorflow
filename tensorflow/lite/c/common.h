@@ -21,6 +21,9 @@ limitations under the License.
 /// interpreter and the operations are C.
 ///
 /// For documentation, see tensorflow/lite/core/c/common.h.
+///
+/// See also c_api_opaque.h which has more ABI-stable variants of some of these
+/// APIs.
 
 #ifndef TENSORFLOW_LITE_C_COMMON_H_
 #define TENSORFLOW_LITE_C_COMMON_H_

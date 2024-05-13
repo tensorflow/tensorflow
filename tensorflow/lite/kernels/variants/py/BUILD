@@ -22,12 +22,12 @@ py_strict_test(
     tags = ["nochromiumos_arm"],
     deps = [
         ":register_list_ops_py",
+        "@absl_py//absl/testing:parameterized",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:interpreter",
         "//tensorflow/python/ops:list_ops",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/types:core",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

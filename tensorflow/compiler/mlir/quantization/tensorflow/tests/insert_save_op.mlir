@@ -30,8 +30,8 @@ module attributes {tf_saved_model.semantics} {
 // CHECK: %[[VAR_HANDLE:.*]] = "tf.VarHandleOp"()
 // CHECK-SAME: {{.*shared_name = "var_0".*}}
 // CHECK: %[[READ_VARIABLE:.*]] = "tf.ReadVariableOp"(%[[VAR_HANDLE]]) : (tensor<!tf_type.resource<tensor<2xf32>>>) -> tensor<2xf32>
-// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() {{{.*value = dense<"var_0"> : tensor<1x!tf_type.string>.*}}}
-// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() {{{.*value = dense<""> : tensor<1x!tf_type.string>.*}}}
+// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() <{{{.*value = dense<"var_0"> : tensor<1x!tf_type.string>.*}}}>
+// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() <{{{.*value = dense<""> : tensor<1x!tf_type.string>.*}}}>
 // CHECK: "tf.SaveV2"(%[[ARG]], %[[CONST_0]], %[[CONST_1]], %[[READ_VARIABLE]])
 // CHECK: return
 }
@@ -73,8 +73,8 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-DAG: %[[READ_VARIABLE_0:.*]] = "tf.ReadVariableOp"(%[[VAR_HANDLE_0]]) : (tensor<!tf_type.resource<tensor<2xf32>>>) -> tensor<2xf32>
 // CHECK-DAG: %[[READ_VARIABLE_1:.*]] = "tf.ReadVariableOp"(%[[VAR_HANDLE_1]]) : (tensor<!tf_type.resource<tensor<3xf32>>>) -> tensor<3xf32>
 
-// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() {{{.*value = dense<\["var_0", "var_1"\]> : tensor<2x!tf_type.string>.*}}}
-// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() {{{.*value = dense<""> : tensor<2x!tf_type.string>.*}}}
+// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() <{{{.*value = dense<\["var_0", "var_1"\]> : tensor<2x!tf_type.string>.*}}}>
+// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() <{{{.*value = dense<""> : tensor<2x!tf_type.string>.*}}}>
 // CHECK: "tf.SaveV2"(%[[ARG]], %[[CONST_0]], %[[CONST_1]], %[[READ_VARIABLE_0]], %[[READ_VARIABLE_1]])
 // CHECK: return
 }

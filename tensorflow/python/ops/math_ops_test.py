@@ -373,6 +373,120 @@ class MatMulTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class SampledADDMMTest(test_util.TensorFlowTestCase):
+  """Test for sampled_addmm."""
+
+  SUPPORTED_DTYPES = [
+      dtypes.bfloat16,
+      dtypes.float16,
+      dtypes.float32,
+      dtypes.float64,
+  ]
+
+  def sampledADDMMRef(
+      self,
+      indices,
+      values,
+      dense_shape,
+      mat1,
+      mat2,
+      beta=1.0,
+      alpha=1.0,
+      output_type=dtypes.float32,
+  ):
+    dense = math_ops.matmul(mat1, mat2, output_type=output_type)
+    dense_vals = array_ops.gather_nd(dense, indices, batch_dims=dense.ndim - 2)
+    return alpha * dense_vals + beta * values
+
+  def testSampledADDMM2D(self):
+    for dtype in self.SUPPORTED_DTYPES:
+      indices = constant_op.constant([[0, 0], [1, 1]])
+      values = constant_op.constant([0.5, 0.3], dtype=dtype)
+      dense_shape = constant_op.constant([2, 2])
+      mat1 = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
+      mat2 = constant_op.constant(
+          [7, 8, 9, 10, 11, 12], shape=[3, 2], dtype=dtype
+      )
+      alpha = 0.75
+      beta = 0.25
+
+      _, res, _ = math_ops.sampled_addmm(
+          indices,
+          values,
+          dense_shape,
+          mat1,
+          mat2,
+          beta=beta,
+          alpha=alpha,
+          output_type=dtype,
+      )
+      ref = self.sampledADDMMRef(
+          indices,
+          values,
+          dense_shape,
+          mat1,
+          mat2,
+          beta=beta,
+          alpha=alpha,
+          output_type=dtype,
+      )
+      self.assertAllClose(res, ref, atol=1e-2)
+
+  def testBatchSampledADDMM(self):
+    for dtype in self.SUPPORTED_DTYPES:
+      indices = constant_op.constant([[[0, 1], [1, 0]], [[0, 0], [1, 0]]])
+      values = constant_op.constant([[3, 5], [2, 7]], dtype=dtype)
+      dense_shape = constant_op.constant([2, 2])
+      mat1 = constant_op.constant(
+          np.arange(1, 13), shape=[2, 2, 3], dtype=dtype
+      )
+      mat2 = constant_op.constant(
+          np.arange(13, 25), shape=[2, 3, 2], dtype=dtype
+      )
+      alpha = 0.4
+      beta = 0.6
+
+      _, res, _ = math_ops.sampled_addmm(
+          indices,
+          values,
+          dense_shape,
+          mat1,
+          mat2,
+          beta=beta,
+          alpha=alpha,
+          output_type=dtype,
+      )
+      ref = self.sampledADDMMRef(
+          indices,
+          values,
+          dense_shape,
+          mat1,
+          mat2,
+          beta=beta,
+          alpha=alpha,
+          output_type=dtype,
+      )
+      self.assertAllClose(res, ref, atol=1e-2)
+
+  def testInvalidDenseShape(self):
+    for dtype in self.SUPPORTED_DTYPES:
+      indices = constant_op.constant([[[0, 1], [1, 0]], [[0, 0], [1, 0]]])
+      values = constant_op.constant([[3, 5], [2, 7]], dtype=dtype)
+      dense_shape = constant_op.constant([1, 2])
+      mat1 = constant_op.constant(
+          np.arange(1, 13), shape=[2, 2, 3], dtype=dtype
+      )
+      mat2 = constant_op.constant(
+          np.arange(13, 25), shape=[2, 3, 2], dtype=dtype
+      )
+
+      with self.assertRaisesRegex(ValueError, "does not match output shape"):
+        math_ops.sampled_addmm(
+            indices, values, dense_shape, mat1, mat2, output_type=dtype
+        )
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class ModTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -791,16 +905,38 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
   def intEdgeTestData(self, dtype):
     """Edge-case test data for integer types."""
-    # INT_MIN/-1 expected to produce signed-integer overflow,
-    # INT_MIN/INT_MAX expected to work.
-    nums = np.array([np.iinfo(dtype).min, -1, 1,
-                     np.iinfo(dtype).max],
-                    dtype=dtype).reshape([4, 1])
-    divs = nums.reshape([1, 4])
+    # INT_MIN/-1 will produce signed-integer overflow, so we instead test
+    # (INT_MIN + 1) / -1.
+    nums = np.array(
+        [
+            [np.iinfo(dtype).min, -1, 1, np.iinfo(dtype).max],
+            [np.iinfo(dtype).min + 1, -1, 1, np.iinfo(dtype).max],
+            [np.iinfo(dtype).min, -1, 1, np.iinfo(dtype).max],
+            [np.iinfo(dtype).min, -1, 1, np.iinfo(dtype).max],
+        ],
+        dtype=dtype,
+    )
+    divs = np.array(
+        [
+            [
+                np.iinfo(dtype).min,
+                np.iinfo(dtype).min,
+                np.iinfo(dtype).min,
+                np.iinfo(dtype).min,
+            ],
+            [-1, -1, -1, -1],
+            [1, 1, 1, 1],
+            [
+                np.iinfo(dtype).max,
+                np.iinfo(dtype).max,
+                np.iinfo(dtype).max,
+                np.iinfo(dtype).max,
+            ],
+        ],
+        dtype=dtype,
+    )
     return nums, divs
 
-  @test_util.disable_asan("Expected signed integer overflow.")
-  @test_util.disable_ubsan("Expected signed integer overflow.")
   def testFloorDivModIntEdges(self):
     for dtype in [np.int32, np.int64]:
       x, y = self.intEdgeTestData(dtype)
@@ -810,12 +946,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       tf_floor_mod = math_ops.floormod(x, y)
       np_floor_mod = self.numpySafeFloorModInt(x, y)
       self.assertAllEqual(tf_floor_mod, np_floor_mod)
-      z = math_ops.add(math_ops.multiply(tf_floor_div, y), tf_floor_mod)
-      # x = floor_div(x, y) * y + floor_mod(x, y)
-      self.assertAllEqual(z, np.broadcast_to(x, z.shape))
 
-  @test_util.disable_asan("Expected signed integer overflow.")
-  @test_util.disable_ubsan("Expected signed integer overflow.")
   def testTruncateDivModIntEdges(self):
     for dtype in [np.int32, np.int64]:
       x, y = self.intEdgeTestData(dtype)
@@ -825,9 +956,6 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       tf_truncate_mod = math_ops.truncatemod(x, y)
       np_truncate_mod = self.numpySafeTruncateModInt(x, y)
       self.assertAllEqual(tf_truncate_mod, np_truncate_mod)
-      z = math_ops.add(math_ops.multiply(tf_truncate_div, y), tf_truncate_mod)
-      # x = truncatediv(x, y) * y + truncatemod(x, y)
-      self.assertAllEqual(z, np.broadcast_to(x, z.shape))
 
 
 @test_util.run_all_in_graph_and_eager_modes

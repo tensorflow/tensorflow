@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,15 +16,14 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_SCRATCH_ALLOCATOR_H_
 #define XLA_STREAM_EXECUTOR_SCRATCH_ALLOCATOR_H_
 
+#include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/temporary_device_memory.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -51,32 +50,8 @@ class ScratchAllocator {
   //
   // This is a temporary allocation, and the caller is responsible for
   // deallocating at some known-safe point. See the class comment above.
-  virtual tsl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
+  virtual absl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
       int64_t byte_size) = 0;
-};
-
-// Allocates a single temporary memory allocation -- this memory is deallocated
-// at the next stream synchronization point after this object has gone out of
-// scope. This satisfies the lifetime and deallocation properties given in the
-// class comment above.
-//
-// Thread-compatible, but not thread-safe (use in scenarios where only one
-// thread will request the scratch allocation).
-class OneTimeScratchAllocator : public ScratchAllocator {
- public:
-  explicit OneTimeScratchAllocator(Stream* stream) : stream_(stream) {}
-
-  int64_t GetMemoryLimitInBytes() override { return -1; }
-
-  tsl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
-      int64_t byte_size) override;
-
- private:
-  std::unique_ptr<TemporaryDeviceMemory<uint8_t>> temporary_;
-  Stream* stream_;
-
-  OneTimeScratchAllocator(const OneTimeScratchAllocator&) = delete;
-  void operator=(const OneTimeScratchAllocator&) = delete;
 };
 
 // Can allocate several times -- this memory is deallocated when the scratch
@@ -90,9 +65,12 @@ class OwningScratchAllocator : public ScratchAllocator {
   OwningScratchAllocator(int device_ordinal, DeviceMemoryAllocator* allocator)
       : device_ordinal_(device_ordinal), allocator_(allocator) {}
 
+  OwningScratchAllocator(OwningScratchAllocator&&) = default;
+  OwningScratchAllocator& operator=(OwningScratchAllocator&&) = default;
+
   int64_t GetMemoryLimitInBytes() override { return -1; }
 
-  tsl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
+  absl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
     TF_ASSIGN_OR_RETURN(OwningDeviceMemory buffer,
                         allocator_->Allocate(device_ordinal_, byte_size,
@@ -105,9 +83,6 @@ class OwningScratchAllocator : public ScratchAllocator {
   int device_ordinal_;
   DeviceMemoryAllocator* allocator_;
   absl::InlinedVector<OwningDeviceMemory, N> buffers_;
-
-  OwningScratchAllocator(const OwningScratchAllocator&) = delete;
-  void operator=(const OwningScratchAllocator&) = delete;
 };
 
 }  // namespace stream_executor

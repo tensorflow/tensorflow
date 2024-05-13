@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -128,16 +128,6 @@ struct TpuPartitionedCall_Params {
 // API respectively.
 TFTPU_CAPI_EXPORT void TpuCompile_CompileAndBuild(
     TpuSerializedProto compilation_request, const XLA_TpuMeshState* mesh_state,
-    XLA_TpuProgram** tpu_programs[], size_t* count, TF_Status* status);
-
-// Compiles a HLO IR and returns `count` number of TPU programs ready for
-// execution. The API allocates the `XLA_TpuProgram*[]` array `tpu_programs` and
-// creates `XLA_TpuProgram` object(s) using the `TpuProgram_New` API. The caller
-// is responsible to deallocate both the `XLA_TpuProgram*[]` array and the
-// `XLA_TpuProgram` object(s) using `TpuProgram_FreeArray` and `TpuProgram_Free`
-// API respectively.
-TFTPU_CAPI_EXPORT void TpuCompile_XrtCompileAndBuild(
-    TpuSerializedProto xrt_computation, const XLA_TpuMeshState* mesh_state,
     XLA_TpuProgram** tpu_programs[], size_t* count, TF_Status* status);
 
 // Creates a new TPU mesh state object.
@@ -442,6 +432,10 @@ TFTPU_CAPI_EXPORT bool TpuCompile_ShouldTpuCompileOpIgnoreCancellation();
 TFTPU_CAPI_EXPORT int TpuTopology_AvailableCoreCount(
     const XLA_TpuMeshState* mesh_state, TpuCoreTypeEnum tpu_core_type);
 
+// Returns the number of cores per Chip.
+TFTPU_CAPI_EXPORT int TpuTopology_AvailableCoresPerChip(
+    TpuCoreTypeEnum tpu_core_type);
+
 // Recycle unused service port.
 TFTPU_CAPI_EXPORT void TpuNetUtil_RecycleUnusedPort(int port);
 
@@ -644,6 +638,9 @@ typedef struct TpuEmbeddingEngine_RecvActivationsComputation_Params {
   void* priv;
 
   TpuSerializedProto tpu_embedding_config;
+  TpuSerializedProto embedding_partitions;
+  TpuSerializedProto hbm_buffers_config;
+  TpuSerializedProto tpu_topology;
   XLA_Shape* deduplication_data_shape;
   TpuSerializedProto* op_sharding;
 
@@ -661,6 +658,9 @@ typedef struct
   void* priv;
 
   TpuSerializedProto tpu_embedding_config;
+  TpuSerializedProto embedding_partitions;
+  TpuSerializedProto hbm_buffers_config;
+  TpuSerializedProto tpu_topology;
   TpuSerializedProto* op_sharding;
   // out
   TpuSerializedProto* xla_computation;
@@ -678,6 +678,9 @@ typedef struct TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params {
 
   int32_t num_inputs;
   TpuSerializedProto tpu_embedding_config;
+  TpuSerializedProto embedding_partitions;
+  TpuSerializedProto hbm_buffers_config;
+  TpuSerializedProto tpu_topology;
   XLA_Shape* learning_rate_tuple_shape;
   XLA_Shape* deduplication_data_shape;
   XLA_Shape* gradient_tuple_shape;
@@ -690,11 +693,30 @@ typedef struct TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params {
 TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation(
     TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params* params);
 
+typedef struct TpuEmbeddingEngine_DedupDataSizeComputation_Params {
+  int32_t struct_size;
+  void* priv;
+
+  TpuSerializedProto tpu_embedding_config;
+  TpuSerializedProto embedding_partitions;
+  TpuSerializedProto hbm_buffers_config;
+  TpuSerializedProto tpu_topology;
+  // out
+  int32_t* num_elements;
+  TF_Status* status;
+} TpuEmbeddingEngine_DedupDataSizeComputation_Params;
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_DedupDataSizeComputation(
+    TpuEmbeddingEngine_DedupDataSizeComputation_Params* params);
+
 typedef struct TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params {
   int32_t struct_size;
   void* priv;
 
   TpuSerializedProto tpu_embedding_config;
+  TpuSerializedProto embedding_partitions;
+  TpuSerializedProto hbm_buffers_config;
+  TpuSerializedProto tpu_topology;
   // out
   TpuSerializedProto* xla_computation;
   TF_Status* status;
@@ -721,7 +743,6 @@ TFTPU_CAPI_EXPORT void SparseCore_GetMaxIdsAndUniques(
 
 struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAndBuild);
-  TFTPU_ADD_FN_IN_STRUCT(TpuCompile_XrtCompileAndBuild);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_Create);
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_Free);
@@ -780,6 +801,7 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_IsTpuCompilationEnabled);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_AvailableCoreCount);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_AvailableCoresPerChip);
   TFTPU_ADD_FN_IN_STRUCT(TpuNetUtil_RecycleUnusedPort);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CreateCompilationCacheKey);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_DestroyCompilationCacheKey);
@@ -818,6 +840,7 @@ struct TfTpu_OpsApiFn {
       TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation);
   TFTPU_ADD_FN_IN_STRUCT(
       TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_DedupDataSizeComputation);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_DedupDataTupleMaskComputation);
 
   TFTPU_ADD_FN_IN_STRUCT(SparseCore_GetMaxIdsAndUniques);

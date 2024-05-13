@@ -32,10 +32,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @nodep_single_outside_compilation() -> () {
      // CHECK: "tf_device.parallel_execute"
      // CHECK-NEXT: "tf_device.launch"
+     // CHECK-SAME: device = "/job:worker/replica:0/task:0/device:CPU:0"
      // CHECK-NEXT: "tf.B"
      // CHECK-NOT: _xla_outside_compilation
      // CHECK-NEXT:   tf_device.return
-     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
      // CHECK: "tf_device.cluster"
      // CHECK-NEXT: "tf.A"
      // CHECK: device_assignment =  [], num_cores_per_replica = 1 : i64, topology =  ""
@@ -102,9 +102,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
+    // CHECK-SAME:     device = "TPU_REPLICATED_HOST_0"
     // CHECK:            "tf.B"
     // CHECK-NEXT:       tf_device.return
-    // CHECK-NEXT:     device = "TPU_REPLICATED_HOST_0"
     // CHECK:          %[[TPU_CLUSTER_OUTPUT:[0-9]*]] = "tf_device.cluster"
     // CHECK:            tf_device.return
     // CHECK:          tf_device.return %[[TPU_CLUSTER_OUTPUT]]
@@ -484,7 +484,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:            %[[RECV_OUTPUT_2:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:       key = "host_compute_channel_1_args"
     // CHECK:           "tf.D"(%[[RECV_OUTPUT_2]])
-    // CHECK:          "tf_device.cluster"
+    // CHECK:          "tf_device.cluster"()
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
     // CHECK:            "tf._XlaHostComputeMlir"(%[[A_OUTPUT]])
     // CHECK-SAME:       send_key = "host_compute_channel_0_args"
@@ -581,14 +581,14 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT:      %[[PREDICATE_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:      key = "if_predicate_channel_1"
     // CHECK-NEXT:       tf.IfRegion"(%[[PREDICATE_RECV_OUTPUT]])
+    // CHECK:            _else_func_name = "test_else_name"
+    // CHECK-SAME:       _then_func_name = "test_then_name"
+    // CHECK-SAME:       is_stateless = false
     // CHECK-NEXT:         %[[ARG_RECV_OUTPUT:[0-9]*]]:2 = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:         key = "host_compute_channel_0_args"
     // CHECK:              "tf.D"(%[[ARG_RECV_OUTPUT]]#0, %[[ARG_RECV_OUTPUT]]#1)
     // CHECK-NOT:          "tf._XlaSendFromHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK:              "tf.Yield"() : () -> ()
-    // CHECK:            _else_func_name = "test_else_name"
-    // CHECK-SAME:       _then_func_name = "test_then_name"
-    // CHECK-SAME:       is_stateless = false
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"
@@ -596,11 +596,11 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:            "tf._XlaHostComputeMlir"
     // CHECK-SAME:       key = "if_predicate_channel_1"
     // CHECK-NEXT:       tf.IfRegion"(%[[G_OUTPUT]])
+    // CHECK:            is_stateless = false
     // CHECK:              "tf._XlaHostComputeMlir"(%[[B_OUTPUT]], %[[A_OUTPUT]])
     // CHECK-SAME:         recv_key = "host_compute_channel_0_retvals"
     // CHECK-SAME:         send_key = "host_compute_channel_0_args"
     // CHECK-NEXT:         "tf.Yield"() : () -> ()
-    // CHECK:            is_stateless = false
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
       %2 = "tf_device.cluster"() ({
         %3 = "tf.A"() : () -> (tensor<2xi32>)
@@ -637,13 +637,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT:      %[[PREDICATE_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:      key = "if_predicate_channel_1"
     // CHECK-NEXT:       tf.IfRegion"(%[[PREDICATE_RECV_OUTPUT]])
+    // CHECK:            _else_func_name = "test_else_name"
+    // CHECK-SAME        _then_func_name = "test_then_name"
     // CHECK-NEXT:         %[[ARG_RECV_OUTPUT:[0-9]*]]:2 = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:         key = "host_compute_channel_0_args"
     // CHECK:              "tf.D"(%[[ARG_RECV_OUTPUT]]#0, %[[ARG_RECV_OUTPUT]]#1)
     // CHECK-NOT:          "tf._XlaSendFromHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK:              "tf.Yield"() : () -> ()
-    // CHECK:            _else_func_name = "test_else_name"
-    // CHECK-SAME        _then_func_name = "test_then_name"
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"
@@ -1044,6 +1044,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-DAG:        %[[PROGRAM_OUTPUT:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK-DAG:        %[[DEVICE_ORDINAL:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-NEXT:       tf.WhileRegion"
+    // CHECK:            is_stateless = false
     // CHECK-NEXT:         %[[COND_RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-SAME:         key = "while_condition_channel_0"
     // CHECK:              "tf.Yield"(%[[COND_RECV_OUTPUT]])
@@ -1051,19 +1052,18 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:              %[[D_OUTPUT:[0-9]*]] = "tf.D"
     // CHECK:              "tf._XlaSendFromHostV2"(%[[D_OUTPUT]], %[[PROGRAM_OUTPUT]], %[[DEVICE_ORDINAL]])
     // CHECK-NEXT:         "tf.Yield"
-    // CHECK:            is_stateless = false
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"
     // CHECK:            %[[G_OUTPUT:[0-9]*]] = "tf.G"
     // CHECK-NEXT:       tf.WhileRegion"(%[[B_OUTPUT]], %[[A_OUTPUT]])
+    // CHECK:            is_stateless = false
     // CHECK:              %[[H_OUTPUT:[0-9]*]] = "tf.H"
     // CHECK-NEXT:         "tf.XlaSendToHost"(%[[H_OUTPUT]])
     // CHECK-NEXT:         "tf.Yield"(%[[H_OUTPUT]])
     // CHECK:              %[[C_OUTPUT:[0-9]*]] = "tf.C"
     // CHECK-NEXT:         %[[HOST_COMPUTE_OUTPUT:[0-9]*]] = "tf._XlaHostComputeMlir"
     // CHECK-NEXT:         "tf.Yield"(%[[C_OUTPUT]], %[[HOST_COMPUTE_OUTPUT]])
-    // CHECK:            is_stateless = false
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
       %2 = "tf_device.cluster"() ({
         %3 = "tf.A"() : () -> (tensor<3xf32>)
@@ -1839,10 +1839,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @outside_compilation_model_parallelism() -> () {
      // CHECK: "tf_device.parallel_execute"
      // CHECK-NEXT: "tf_device.launch"
+     // CHECK-SAME: device = "/job:worker/replica:0/task:0/device:CPU:0"
      // CHECK-NEXT: "tf.B"
      // CHECK-NOT: _xla_outside_compilation
      // CHECK-NEXT:   tf_device.return
-     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
      // CHECK: "tf_device.cluster"
      // CHECK-NEXT: "tf.A"
      // CHECK: num_cores_per_replica = 2 : i64
@@ -2118,34 +2118,34 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0",
     // CHECK:         "tf_device.launch"
     // CHECK:           %[[PROGRAM0:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK:           %[[RECV0:.+]] = "tf._XlaRecvAtHost"(%[[PROGRAM0]])
-    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK-SAME:        device_ordinal = 0
     // CHECK-SAME:        key = "host_compute_channel_0_args"
+    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK:           %[[B0:.+]] = "tf.OpB"(%[[RECV0]]) : (tensor<2x2xi64>) -> tensor<2x2xi64>
     // CHECK:           "tf._XlaSendFromHost"(%[[B0]], %[[PROGRAM0]])
-    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK-SAME:        device_ordinal = 0
     // CHECK-SAME:        key = "host_compute_channel_0_retvals"
+    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK:         }, {
     // CHECK:           %[[PROGRAM1:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK:           %[[RECV1:.+]] = "tf._XlaRecvAtHost"(%[[PROGRAM1]])
-    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK-SAME:        device_ordinal = 1
     // CHECK-SAME:        key = "host_compute_channel_0_args"
+    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK:           %[[B1:.+]] = "tf.OpB"(%[[RECV1]]) : (tensor<2x2xi64>) -> tensor<2x2xi64>
     // CHECK:           "tf._XlaSendFromHost"(%[[B1]], %[[PROGRAM1]])
-    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK-SAME:        device_ordinal = 1
     // CHECK-SAME:        key = "host_compute_channel_0_retvals"
+    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK:         }, {
     // CHECK:           "tf_device.cluster"
     // CHECK:             %[[A:.+]] = "tf.OpA"
-    // CHECK:             %[[A_SHARD:.+]] = "tf.XlaSpmdFullToShardShape"(%[[A]]) {dim = -1 : i64, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xi64>) -> tensor<1x2xi64>
+    // CHECK:             %[[A_SHARD:.+]] = "tf.XlaSpmdFullToShardShape"(%[[A]]) <{dim = -1 : i64, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []}> : (tensor<2x2xi64>) -> tensor<1x2xi64>
     // CHECK:             %[[B:.+]] = "tf._XlaHostComputeMlir"(%[[A_SHARD]])
     // CHECK-SAME:          manual_sharding = true
     // CHECK-SAME:          recv_key = "host_compute_channel_0_retvals"
     // CHECK-SAME:          send_key = "host_compute_channel_0_args"
-    // CHECK:             %[[B_FULL:.+]] = "tf.XlaSpmdShardToFullShape"(%[[B]]) {dim = -1 : i64, full_shape = #tf_type.shape<2x2>, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<1x2xi64>) -> tensor<2x2xi64>
+    // CHECK:             %[[B_FULL:.+]] = "tf.XlaSpmdShardToFullShape"(%[[B]]) <{dim = -1 : i64, full_shape = #tf_type.shape<2x2>, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []}> : (tensor<1x2xi64>) -> tensor<2x2xi64>
     // CHECK:             "tf.OpC"(%[[B_FULL]])
     "tf_device.cluster"() ({
       %0 = "tf.OpA"() {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01"} : () -> tensor<2x2xi64>
@@ -2178,32 +2178,32 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0",
     // CHECK:           %[[DEVICE0:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-SAME:        logical_core = 0
     // CHECK:           %[[RECV0:.+]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM0]], %[[DEVICE0]])
-    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK-SAME:        key = "host_compute_channel_0_args"
+    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK:           %[[B0:.+]] = "tf.OpB"(%[[RECV0]]) : (tensor<2x2xi64>) -> tensor<2x2xi64>
     // CHECK:           "tf._XlaSendFromHostV2"(%[[B0]], %[[PROGRAM0]], %[[DEVICE0]])
-    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK-SAME:        key = "host_compute_channel_0_retvals"
+    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK:         }, {
     // CHECK:           %[[PROGRAM1:.+]] = "tf._XlaCompileMlirPlaceholderProgramKey"
     // CHECK:           %[[DEVICE1:.+]] = "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK-SAME:        logical_core = 1
     // CHECK:           %[[RECV1:.+]] = "tf._XlaRecvAtHostV2"(%[[PROGRAM1]], %[[DEVICE1]])
-    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK-SAME:        key = "host_compute_channel_0_args"
+    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK:           %[[B1:.+]] = "tf.OpB"(%[[RECV1]]) : (tensor<2x2xi64>) -> tensor<2x2xi64>
     // CHECK:           "tf._XlaSendFromHostV2"(%[[B1]], %[[PROGRAM1]], %[[DEVICE1]])
-    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK-SAME:        key = "host_compute_channel_0_retvals"
+    // CHECK-SAME:        _xla_has_host_transfer = true
     // CHECK:         }, {
     // CHECK:           "tf_device.cluster"
     // CHECK:             %[[A:.+]] = "tf.OpA"
-    // CHECK:             %[[A_SHARD:.+]] = "tf.XlaSpmdFullToShardShape"(%[[A]]) {dim = -1 : i64, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xi64>) -> tensor<1x2xi64>
+    // CHECK:             %[[A_SHARD:.+]] = "tf.XlaSpmdFullToShardShape"(%[[A]]) <{dim = -1 : i64, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []}> : (tensor<2x2xi64>) -> tensor<1x2xi64>
     // CHECK:             %[[B:.+]] = "tf._XlaHostComputeMlir"(%[[A_SHARD]])
     // CHECK-SAME:          manual_sharding = true
     // CHECK-SAME:          recv_key = "host_compute_channel_0_retvals"
     // CHECK-SAME:          send_key = "host_compute_channel_0_args"
-    // CHECK:             %[[B_FULL:.+]] = "tf.XlaSpmdShardToFullShape"(%[[B]]) {dim = -1 : i64, full_shape = #tf_type.shape<2x2>, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<1x2xi64>) -> tensor<2x2xi64>
+    // CHECK:             %[[B_FULL:.+]] = "tf.XlaSpmdShardToFullShape"(%[[B]]) <{dim = -1 : i64, full_shape = #tf_type.shape<2x2>, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []}> : (tensor<1x2xi64>) -> tensor<2x2xi64>
     // CHECK:             "tf.OpC"(%[[B_FULL]])
     tf_device.replicate() {n = 4 : i32} {
       "tf_device.cluster"() ({

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -74,6 +74,7 @@ HloModule::HloModule(const std::string& name,
       config_(std::move(config)),
       unique_id_(next_unique_module_id_++),
       metadata_(tsl::Env::Default()),
+      autofdo_fingerprint_(""),
       comp_envs_(std::move(comp_envs)) {
   metadata_.set_canonical_module_id(unique_id_);
 }
@@ -187,7 +188,7 @@ HloComputation* HloModule::AddEntryComputationWithLayouts(
 }
 
 Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
-  if (has_schedule() && !to_remove->IsCalledComputation()) {
+  if (has_schedule()) {
     schedule_->remove_computation(to_remove);
   }
 
@@ -369,6 +370,15 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
     entry_computation_layout().Print(printer);
     printer->Append("}");
   }
+  if (config.allow_spmd_sharding_propagation_to_parameters().size() != 1 ||
+      config.allow_spmd_sharding_propagation_to_parameters().back()) {
+    printer->Append(", allow_spmd_sharding_propagation_to_parameters={");
+    AppendJoin(printer, config.allow_spmd_sharding_propagation_to_parameters(),
+               ",", [](Printer* printer, bool i) {
+                 printer->Append(i ? "true" : "false");
+               });
+    printer->Append("}");
+  }
   if (config.allow_spmd_sharding_propagation_to_output().size() != 1 ||
       config.allow_spmd_sharding_propagation_to_output().back()) {
     printer->Append(", allow_spmd_sharding_propagation_to_output={");
@@ -377,6 +387,14 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
                  printer->Append(i ? "true" : "false");
                });
     printer->Append("}");
+  }
+  if (config.replica_count() != 1) {
+    printer->Append(", replica_count=");
+    printer->Append(config.replica_count());
+  }
+  if (config.num_partitions() != 1) {
+    printer->Append(", num_partitions=");
+    printer->Append(config.num_partitions());
   }
   if (!frontend_attributes_.map().empty()) {
     AppendCat(printer, ", frontend_attributes=",
@@ -471,6 +489,7 @@ HloModuleProto HloModule::ToProto() const {
     profile_info_proto.set_relative_speedup(profile_info.relative_speedup());
     profile_info_proto.set_profile_source(profile_info.profile_source());
     profile_info_proto.set_compilation_event(profile_info.compilation_event());
+    profile_info_proto.set_fingerprint(profile_info.fingerprint());
   }
   if (config_.get().has_static_device_assignment()) {
     DeviceAssignmentProto device_assignment;
@@ -485,7 +504,7 @@ HloModuleProto HloModule::ToProto() const {
   return proto;
 }
 
-StatusOr<HloModuleProtoWithConfig> HloModule::ToProtoWithConfig() const {
+absl::StatusOr<HloModuleProtoWithConfig> HloModule::ToProtoWithConfig() const {
   HloModuleProtoWithConfig result;
   TF_ASSIGN_OR_RETURN(*result.mutable_config(), config_.get().ToProto());
   *result.mutable_hlo_module() = ToProto();
@@ -521,7 +540,7 @@ Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
 }
 
 /* static */
-StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
+absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     const HloModuleProto& proto, const HloModuleConfig& module_config,
     bool prohibit_empty_literal) {
   VLOG(2) << "CreateFromProto()";
@@ -665,7 +684,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 }
 
 /* static */
-StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
+absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     const ProgramShape& program_shape, const DebugOptions& debug_options,
     const ExecutionOptions* execution_options) {
   HloModuleConfig module_config(ProgramShape{program_shape});
@@ -681,17 +700,18 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
         execution_options->use_spmd_partitioning());
     module_config.set_use_auto_spmd_partitioning(
         execution_options->use_auto_spmd_partitioning());
-    std::vector<int64_t> mesh_shape;
-    for (auto t : execution_options->auto_spmd_partitioning_mesh_shape()) {
-      mesh_shape.push_back(t);
-    }
-    module_config.set_auto_spmd_partitioning_mesh_shape(mesh_shape);
-    std::vector<int64_t> mesh_ids;
-    for (auto t : execution_options->auto_spmd_partitioning_mesh_ids()) {
-      mesh_ids.push_back(t);
-    }
-    module_config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
+    module_config.set_auto_spmd_partitioning_mesh_shape(std::vector<int64_t>(
+        execution_options->auto_spmd_partitioning_mesh_shape().begin(),
+        execution_options->auto_spmd_partitioning_mesh_shape().end()));
+    module_config.set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t>(
+        execution_options->auto_spmd_partitioning_mesh_ids().begin(),
+        execution_options->auto_spmd_partitioning_mesh_ids().end()));
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
+    if (!execution_options->allow_spmd_sharding_propagation_to_parameters()
+             .empty()) {
+      module_config.set_allow_spmd_sharding_propagation_to_parameters(
+          execution_options->allow_spmd_sharding_propagation_to_parameters());
+    }
     if (!execution_options->allow_spmd_sharding_propagation_to_output()
              .empty()) {
       module_config.set_allow_spmd_sharding_propagation_to_output(
@@ -711,11 +731,10 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
                  module_config.num_partitions());
       }
     }
-    std::vector<bool> param_requires_broadcast_via_collectives(
+    module_config.set_param_requires_broadcast_via_collectives(std::vector<
+                                                               bool>(
         execution_options->param_requires_broadcast_via_collectives().begin(),
-        execution_options->param_requires_broadcast_via_collectives().end());
-    module_config.set_param_requires_broadcast_via_collectives(
-        param_requires_broadcast_via_collectives);
+        execution_options->param_requires_broadcast_via_collectives().end()));
     module_config.set_allow_separate_sharding_programs(
         execution_options->allow_separate_sharding_programs());
     HloModuleConfig::AssignStructShardableValueUpdatePairs(
@@ -737,7 +756,7 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
 }
 
 /* static */
-StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
+absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module, const DebugOptions& debug_options,
     const ExecutionOptions* execution_options) {
   if (!module.has_host_program_shape()) {
@@ -760,9 +779,9 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   return config;
 }
 
-StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProtoWithConfig(
+absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProtoWithConfig(
     const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal) {
-  auto hlo_module_proto = proto.hlo_module();
+  const auto& hlo_module_proto = proto.hlo_module();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> config_ptr,
                       HloModuleConfig::CreateFromProto(proto.config()));
   return HloModule::CreateFromProto(hlo_module_proto, *config_ptr,
@@ -904,10 +923,12 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
   absl::flat_hash_set<HloComputation*> nonroot_computations;
   nonroot_computations.reserve(computations_.size() - 1);
   for (auto& computation : computations_) {
-    for (auto* instruction : computation->instructions()) {
-      for (HloComputation* called_computation :
-           instruction->called_computations()) {
-        nonroot_computations.insert(called_computation);
+    for (const HloInstructionInfo& inst :
+         computation->instructions_with_info()) {
+      if (HloInstruction::MightHaveCalledComputations(inst.opcode())) {
+        for (HloComputation* called_computation : inst->called_computations()) {
+          nonroot_computations.insert(called_computation);
+        }
       }
     }
   }

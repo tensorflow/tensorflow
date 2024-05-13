@@ -135,11 +135,14 @@ class IFFTOp : public GenericFftOp {
   explicit IFFTOp(OpKernelConstruction* ctx)
       : GenericFftOp(ctx, /*fft_type=*/FftType::IFFT, /*fft_rank=*/FFTRank) {}
 };
-REGISTER_XLA_OP(Name("IFFT").TypeConstraint("Tcomplex", DT_COMPLEX64),
+REGISTER_XLA_OP(Name("IFFT").TypeConstraint("Tcomplex",
+                                            {DT_COMPLEX64, DT_COMPLEX128}),
                 MlirXlaOpKernel);
-REGISTER_XLA_OP(Name("IFFT2D").TypeConstraint("Tcomplex", DT_COMPLEX64),
+REGISTER_XLA_OP(Name("IFFT2D").TypeConstraint("Tcomplex",
+                                              {DT_COMPLEX64, DT_COMPLEX128}),
                 IFFTOp<2>);
-REGISTER_XLA_OP(Name("IFFT3D").TypeConstraint("Tcomplex", DT_COMPLEX64),
+REGISTER_XLA_OP(Name("IFFT3D").TypeConstraint("Tcomplex",
+                                              {DT_COMPLEX64, DT_COMPLEX128}),
                 IFFTOp<3>);
 
 template <int FFTRank>
@@ -149,18 +152,18 @@ class RFFTOp : public GenericFftOp {
       : GenericFftOp(ctx, /*fft_type=*/FftType::RFFT, /*fft_rank=*/FFTRank) {}
 };
 REGISTER_XLA_OP(Name("RFFT")
-                    .TypeConstraint("Treal", DT_FLOAT)
-                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .TypeConstraint("Treal", {DT_FLOAT, DT_DOUBLE})
+                    .TypeConstraint("Tcomplex", {DT_COMPLEX64, DT_COMPLEX128})
                     .CompileTimeConstantInput("fft_length"),
                 RFFTOp<1>);
 REGISTER_XLA_OP(Name("RFFT2D")
-                    .TypeConstraint("Treal", DT_FLOAT)
-                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .TypeConstraint("Treal", {DT_FLOAT, DT_DOUBLE})
+                    .TypeConstraint("Tcomplex", {DT_COMPLEX64, DT_COMPLEX128})
                     .CompileTimeConstantInput("fft_length"),
                 RFFTOp<2>);
 REGISTER_XLA_OP(Name("RFFT3D")
-                    .TypeConstraint("Treal", DT_FLOAT)
-                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .TypeConstraint("Treal", {DT_FLOAT, DT_DOUBLE})
+                    .TypeConstraint("Tcomplex", {DT_COMPLEX64, DT_COMPLEX128})
                     .CompileTimeConstantInput("fft_length"),
                 RFFTOp<3>);
 
@@ -171,18 +174,18 @@ class IRFFTOp : public GenericFftOp {
       : GenericFftOp(ctx, /*fft_type=*/FftType::IRFFT, /*fft_rank=*/FFTRank) {}
 };
 REGISTER_XLA_OP(Name("IRFFT")
-                    .TypeConstraint("Treal", DT_FLOAT)
-                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .TypeConstraint("Treal", {DT_FLOAT, DT_DOUBLE})
+                    .TypeConstraint("Tcomplex", {DT_COMPLEX64, DT_COMPLEX128})
                     .CompileTimeConstantInput("fft_length"),
                 IRFFTOp<1>);
 REGISTER_XLA_OP(Name("IRFFT2D")
-                    .TypeConstraint("Treal", DT_FLOAT)
-                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .TypeConstraint("Treal", {DT_FLOAT, DT_DOUBLE})
+                    .TypeConstraint("Tcomplex", {DT_COMPLEX64, DT_COMPLEX128})
                     .CompileTimeConstantInput("fft_length"),
                 IRFFTOp<2>);
 REGISTER_XLA_OP(Name("IRFFT3D")
-                    .TypeConstraint("Treal", DT_FLOAT)
-                    .TypeConstraint("Tcomplex", DT_COMPLEX64)
+                    .TypeConstraint("Treal", {DT_FLOAT, DT_DOUBLE})
+                    .TypeConstraint("Tcomplex", {DT_COMPLEX64, DT_COMPLEX128})
                     .CompileTimeConstantInput("fft_length"),
                 IRFFTOp<3>);
 

@@ -36,7 +36,7 @@ TEST(FunctionOptimizationPassRegistry, NoPassSet) {
       /*flib_def=*/nullptr,
       /*control_ret_node_names=*/nullptr, /*control_rets_updated=*/nullptr);
 
-  EXPECT_EQ(status, OkStatus());
+  EXPECT_EQ(status, absl::OkStatus());
 }
 
 }  // namespace tensorflow

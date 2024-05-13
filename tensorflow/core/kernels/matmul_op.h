@@ -59,61 +59,6 @@ struct MatMulFunctor {
 }  // end namespace functor
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-// Encapsulate all the shape information that is used in matmul operations.
-class MatmulParameters {
- public:
-  MatmulParameters(bool transa, bool transb, uint64 m, uint64 n, uint64 k,
-                   DataType dtype, int device_id)
-      : transa_(transa),
-        transb_(transb),
-        m_(m),
-        n_(n),
-        k_(k),
-        dtype_(dtype),
-        device_id_(device_id) {
-    hash_code_ = transa;
-    hash_code_ = Hash64Combine(hash_code_, transb);
-    hash_code_ = Hash64Combine(hash_code_, m);
-    hash_code_ = Hash64Combine(hash_code_, n);
-    hash_code_ = Hash64Combine(hash_code_, k);
-    hash_code_ = Hash64Combine(hash_code_, dtype);
-    hash_code_ = Hash64Combine(hash_code_, device_id);
-  }
-  bool operator==(const MatmulParameters& other) const {
-    return this->get_data_as_tuple() == other.get_data_as_tuple();
-  }
-
-  bool operator!=(const MatmulParameters& other) const {
-    return !(*this == other);
-  }
-  uint64 hash() const { return hash_code_; }
-
-  string ToString() const {
-    // clang-format off
-    return strings::StrCat(
-        transa_, ", ", transb_, ", ",
-        m_, ", ", n_, ", ", k_,
-        dtype_, ", ", device_id_);
-    // clang-format on
-  }
-
- private:
-  typedef std::tuple<bool, bool, int64, int64, int64, DataType, int>
-      ParameterDataType;
-
-  ParameterDataType get_data_as_tuple() const {
-    return std::make_tuple(transa_, transb_, m_, n_, k_, dtype_, device_id_);
-  }
-
-  bool transa_;
-  bool transb_;
-  uint64 m_;
-  uint64 n_;
-  uint64 k_;
-  DataType dtype_;
-  int device_id_;
-  uint64 hash_code_;
-};
 
 typedef Eigen::GpuDevice GPUDevice;
 

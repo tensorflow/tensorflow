@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "deallocation/IR/deallocation_ops.h"
 #include "deallocation/transforms/passes.h"
 #include "deallocation/utils/util.h"
 #include "llvm/ADT/STLExtras.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -373,14 +373,8 @@ void promoteToStack(memref::DeallocOp dealloc) {
   auto alloc = dealloc.getMemref().getDefiningOp<memref::AllocOp>();
   OpBuilder b(alloc);
   auto alloca = b.create<memref::AllocaOp>(
-      alloc->getLoc(), alloc->getResultTypes()[0].cast<MemRefType>(),
+      alloc->getLoc(), mlir::cast<MemRefType>(alloc->getResultTypes()[0]),
       alloc.getAlignmentAttr());
-  for (auto* user : alloc->getUsers()) {
-    if (auto ownership = llvm::dyn_cast<OwnOp>(user)) {
-      b.setInsertionPoint(ownership);
-      ownership->replaceAllUsesWith(b.create<NullOp>(ownership.getLoc()));
-    }
-  }
   alloc->replaceAllUsesWith(ValueRange{alloca.getResult()});
   alloc->erase();
   dealloc->erase();

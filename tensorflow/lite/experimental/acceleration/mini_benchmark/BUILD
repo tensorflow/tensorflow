@@ -14,11 +14,11 @@
 # ==============================================================================
 
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("//tensorflow:tensorflow.bzl", "clean_dep")
 
 # Mini benchmarking helps in validating HW acceleration across Android and iOS.
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("build_defs.bzl", "cc_library_with_forced_in_process_benchmark_variant", "embedded_binary")
 load("special_rules.bzl", "libjpeg_deps", "libjpeg_handle_deps", "libjpeg_hdrs_deps", "minibenchmark_visibility_allowlist")
 
@@ -1012,6 +1012,10 @@ cc_test(
 cc_test(
     name = "validator_runner_impl_test",
     srcs = ["validator_runner_impl_test.cc"],
+    # Disable odr violation check because of a libc++ symbol (b/337114862).
+    env = {
+        "ASAN_OPTIONS": "detect_odr_violation=0",
+    },
     deps = [
         ":benchmark_result_evaluator",
         ":embedded_mobilenet_model",

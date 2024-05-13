@@ -111,6 +111,9 @@ void SetOpMetadataFromHloEventMetadata(
   hlo_event_metadata.ForEachStat([&](const XStatVisitor& stat) {
     if (stat.Type().has_value()) {
       switch (static_cast<StatType>(*stat.Type())) {
+        case StatType::kProgramId:
+          op_metrics->set_hlo_module_id(stat.IntOrUintValue());
+          break;
         case StatType::kHloCategory:
           op_metrics->set_category(std::string(stat.StrOrRefValue()));
           break;
@@ -250,7 +253,8 @@ OpMetricsDb XEventsOpMetricsDbBuilder::Finalize() {
 }
 
 double IdleTimeRatio(const OpMetricsDb& db) {
-  return 1.0 - SafeDivide(db.total_op_time_ps(), db.total_time_ps());
+  return 1.0 -
+         tsl::profiler::SafeDivide(db.total_op_time_ps(), db.total_time_ps());
 }
 
 uint64 IdleTimePs(const OpMetricsDb& db) {
@@ -271,14 +275,15 @@ void AddIdleOp(OpMetricsDb& db) {
   SetIdleOp(idle_time_ps, *db.add_metrics_db());
 }
 
-absl::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db) {
+std::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db) {
   if (db.total_host_infeed_enq_start_timestamp_ps_diff() > 0) {
     // We use total_host_infeed_enq_start_timestamp_ps_diff to approximate the
     // total host time.
-    return SafeDivide(db.total_host_infeed_enq_duration_ps(),
-                      db.total_host_infeed_enq_start_timestamp_ps_diff());
+    return tsl::profiler::SafeDivide(
+        db.total_host_infeed_enq_duration_ps(),
+        db.total_host_infeed_enq_start_timestamp_ps_diff());
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(

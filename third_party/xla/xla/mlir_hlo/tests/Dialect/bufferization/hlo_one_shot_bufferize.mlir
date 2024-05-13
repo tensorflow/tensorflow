@@ -114,6 +114,6 @@ func.func @user_dynamic(%arg : tensor<?xf32>, %init : tensor<?xf32>)
 // CHECK:         %[[RES:.*]] = call @user_fusion_0(%[[ARG_CAST]], %[[INIT_CAST]])
 // CHECK:         %[[C0:.*]] = arith.constant 0 : index
 // CHECK:         %[[DIM:.*]] = memref.dim %[[RES]], %[[C0]]
-// CHECK:         %[[ALLOC:.*]] = memref.alloc(%[[DIM]]) : memref<?xf32>
+// CHECK:         %[[ALLOC:.*]] = memref.alloc(%[[DIM]]) {{.*}} : memref<?xf32>
 // CHECK:         memref.copy %[[RES]], %[[ALLOC]]
 // CHECK:         return %[[ALLOC]] : memref<?xf32>

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -973,7 +973,9 @@ ENTRY main {
 void BM_DynamicSlice(::testing::benchmark::State& state) {
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
   auto executors = PlatformUtil::GetStreamExecutors(platform).value();
-  se::StreamExecutorMemoryAllocator allocator(platform, executors);
+  se::StreamExecutorMemoryAllocator allocator(
+      platform, std::vector<se::StreamExecutorInterface*>(executors.begin(),
+                                                          executors.end()));
   LocalClient* client = ClientLibrary::GetOrCreateLocalClient(platform).value();
   auto* transfer_manager = TransferManager::GetForPlatform(platform).value();
   int device_ordinal = client->default_device_ordinal();

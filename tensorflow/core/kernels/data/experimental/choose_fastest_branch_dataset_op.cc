@@ -56,10 +56,10 @@ class WrapperDataset : public DatasetBase {
   string DebugString() const override { return "WrapperDataset"; }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override { return OkStatus(); }
+  Status CheckExternalState() const override { return absl::OkStatus(); }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -93,7 +93,7 @@ class WrapperDataset : public DatasetBase {
             "Make sure the branches to ChooseFastestDataset do not expect the "
             "input to repeat.");
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -111,12 +111,12 @@ class WrapperDataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -252,7 +252,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -351,7 +351,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
               ctx, &instantiated_captured_funcs_[i]));
         }
 
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // The first num_elements_per_branch * num_branches iterations, we run
@@ -422,7 +422,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -449,7 +449,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
           }
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, current_iterator_));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:
@@ -545,7 +545,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
               &current_iterator_, /*node=*/nullptr));
         }
 
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       mutex mu_;

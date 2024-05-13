@@ -46,8 +46,9 @@ py_strict_library(
         "//tensorflow/python/autograph/utils:ag_logging",
         "//tensorflow/python/eager/polymorphic_function:tf_method_target",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//tensorflow/python/util:tf_stack",
     ],
 )
@@ -55,9 +56,7 @@ py_strict_library(
 py_strict_library(
     name = "conversion",
     srcs = ["conversion.py"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/python/autograph/core:config",
         "//tensorflow/python/autograph/pyct:cache",
@@ -94,7 +93,8 @@ tf_py_strict_test(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:function_utils",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
     ],
 )

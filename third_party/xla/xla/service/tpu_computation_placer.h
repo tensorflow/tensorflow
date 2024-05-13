@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ namespace tpu {
 class TpuComputationPlacer : public xla::ComputationPlacer {
  public:
   template <typename T>
-  using StatusOr = xla::StatusOr<T>;
+  using StatusOr = absl::StatusOr<T>;
 
   TpuComputationPlacer();
   ~TpuComputationPlacer() override;

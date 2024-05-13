@@ -17,34 +17,136 @@ limitations under the License.
 
 // See docs in ../ops/fft_ops.cc.
 
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "ducc/google/fft.h"  // from @ducc
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "unsupported/Eigen/CXX11/ThreadPool"  // from @eigen_archive
-#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/fft_impl.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/env_var.h"
-#include "tsl/framework/numeric_types.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/env_var.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if defined(GOOGLE_CUDA) && GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"  // CUDA_VERSION
 #endif
 
 namespace tensorflow {
+
+namespace {
+
+using std::size_t;
+using Shape = ducc0::google::Shape;
+using Stride = ducc0::google::Stride;
+absl::Status DuccFftImpl(const Eigen::ThreadPoolDevice& device,
+                         const Tensor& in, Tensor* out,
+                         const uint64_t* fft_shape,
+                         const std::vector<size_t>& axes, bool forward) {
+  const size_t fft_rank = axes.size();
+  Shape in_shape(in.dims());
+  Stride in_stride(in.dims());
+  Shape out_shape(out->dims());
+  Stride out_stride(out->dims());
+
+  size_t next_stride = 1;
+  for (int i = in.dims(); i-- > 0;) {
+    in_shape[i] = in.dim_size(i);
+    in_stride[i] = next_stride;
+    next_stride *= in_shape[i];
+  }
+  next_stride = 1;
+  for (int i = out->dims(); i-- > 0;) {
+    out_shape[i] = out->dim_size(i);
+    out_stride[i] = next_stride;
+    next_stride *= out_shape[i];
+  }
+
+  // DUCC doesn't handle the case where fft_size[i] < input_size[i],
+  // so manually adjust inputs if required.  If doing irfft, the limit
+  // of the last axis is actually fft_size[i]/2 + 1.
+  const bool is_iffrt = !(forward || out->dtype() == DT_COMPLEX128 ||
+                          out->dtype() == DT_COMPLEX64);
+  for (int i = 0; i < fft_rank; ++i) {
+    int limit = (is_iffrt && (i == (fft_rank - 1))) ? fft_shape[i] / 2 + 1
+                                                    : fft_shape[i];
+    if (in_shape[axes[i]] > limit) {
+      in_shape[axes[i]] = limit;
+    }
+  }
+
+  double inv_scale = 1.0;
+  for (int i = 0; i < fft_rank; ++i) {
+    inv_scale *= out_shape[axes[i]];
+  }
+  double scale = forward ? 1.0 : 1.0 / inv_scale;
+
+  Eigen::ThreadPoolInterface* thread_pool = device.getPool();
+
+  if (in.dtype() == DT_COMPLEX128 && out->dtype() == DT_COMPLEX128) {
+    auto input = in.template flat<complex128>();
+    auto output = out->template flat<complex128>();
+    ducc0::google::c2c<double>(input.data(), in_shape, in_stride, output.data(),
+                               out_shape, out_stride, axes, forward, scale,
+                               thread_pool);
+  } else if (in.dtype() == DT_COMPLEX64 && out->dtype() == DT_COMPLEX64) {
+    auto input = in.template flat<complex64>();
+    auto output = out->template flat<complex64>();
+    ducc0::google::c2c<float>(input.data(), in_shape, in_stride, output.data(),
+                              out_shape, out_stride, axes, forward,
+                              static_cast<float>(scale), thread_pool);
+  } else if (in.dtype() == DT_DOUBLE && out->dtype() == DT_COMPLEX128 &&
+             forward) {
+    auto input = in.flat<double>();
+    auto output = out->flat<complex128>();
+    ducc0::google::r2c<double>(input.data(), in_shape, in_stride, output.data(),
+                               out_shape, out_stride, axes, forward, scale,
+                               thread_pool);
+  } else if (in.dtype() == DT_FLOAT && out->dtype() == DT_COMPLEX64 &&
+             forward) {
+    auto input = in.flat<float>();
+    auto output = out->flat<complex64>();
+    ducc0::google::r2c<float>(input.data(), in_shape, in_stride, output.data(),
+                              out_shape, out_stride, axes, forward,
+                              static_cast<float>(scale), thread_pool);
+  } else if (in.dtype() == DT_COMPLEX128 && out->dtype() == DT_DOUBLE &&
+             !forward) {
+    auto input = in.flat<complex128>();
+    auto output = out->flat<double>();
+    ducc0::google::c2r<double>(input.data(), in_shape, in_stride, output.data(),
+                               out_shape, out_stride, axes, forward, scale,
+                               thread_pool);
+  } else if (in.dtype() == DT_COMPLEX64 && out->dtype() == DT_FLOAT &&
+             !forward) {
+    auto input = in.flat<complex64>();
+    auto output = out->flat<float>();
+    ducc0::google::c2r<float>(input.data(), in_shape, in_stride, output.data(),
+                              out_shape, out_stride, axes, forward,
+                              static_cast<float>(scale), thread_pool);
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid FFT parameters, in.dtype=", in.dtype(),
+                     ", out->dtype=", out->dtype(), ", forward=", forward));
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
 
 class FFTBase : public OpKernel {
  public:
@@ -297,9 +399,8 @@ class FFTCPU : public FFTBase {
       axes[i] = batch_dims + i;
     }
 
-    OP_REQUIRES_OK(
-        ctx, internal::FftImpl<CPUDevice>(ctx->eigen_device<CPUDevice>(), in,
-                                          out, fft_shape, axes, Forward));
+    OP_REQUIRES_OK(ctx, DuccFftImpl(ctx->eigen_device<CPUDevice>(), in, out,
+                                    fft_shape, axes, Forward));
   }
 };
 
@@ -626,14 +727,16 @@ class FFTGPUBase : public FFTBase {
 
     // Create a new plan if one doesn't exist.  Otherwise, we need only set
     // the scratch allocator.
+    auto fft = stream->parent()->AsFft();
+    OP_REQUIRES(ctx, fft != nullptr, absl::InternalError("No FFT for stream."));
     if (plan == nullptr) {
-      plan = stream->parent()->AsFft()->CreateBatchedPlanWithScratchAllocator(
+      plan = fft->CreateBatchedPlanWithScratchAllocator(
           stream, fft_rank, fft_shape, input_embed, input_stride,
           input_distance, output_embed, output_stride, output_distance,
           kFftType, kInPlaceFft, batch_size, &scratch_allocator);
     } else {
-      stream->parent()->AsFft()->UpdatePlanWithScratchAllocator(
-          stream, plan.get(), &scratch_allocator);
+      fft->UpdatePlanWithScratchAllocator(stream, plan.get(),
+                                          &scratch_allocator);
     }
 
     OP_REQUIRES(
@@ -706,17 +809,21 @@ class FFTGPUBase : public FFTBase {
         AsDeviceMemory<InT>(in.flat<InT>().data(), input_shape.num_elements());
     auto dst = AsDeviceMemory<OutT>(out->flat<OutT>().data(),
                                     output_shape.num_elements());
+    auto fft = stream->parent()->AsFft();
+    OP_REQUIRES(ctx, fft != nullptr, absl::InternalError("No FFT for stream."));
     OP_REQUIRES(
-        ctx, stream->ThenFft(plan, src, &dst).ok(),
+        ctx, fft->DoFft(stream, plan, src, &dst),
         errors::Internal("fft failed : type=", static_cast<int>(fft_type),
                          " in.shape=", input_shape.DebugString()));
     if (!IsForward()) {
       typedef typename RealTypeFromComplexType<OutT>::RealT RealT;
       RealT alpha = 1.0 / output_distance;
+      auto blas = stream->parent()->AsBlas();
+      OP_REQUIRES(ctx, blas != nullptr,
+                  absl::InternalError("No Blas for stream."));
       OP_REQUIRES(
           ctx,
-          stream->ThenBlasScal(output_shape.num_elements(), alpha, &dst, 1)
-              .ok(),
+          blas->DoBlasScal(stream, output_shape.num_elements(), alpha, &dst, 1),
           errors::Internal("BlasScal failed : in.shape=",
                            input_shape.DebugString()));
     }
@@ -808,16 +915,18 @@ class FFTNGPUBase : public FFTNBase {
         plan = std::move(*plan_or);
       }
     }
+    auto fft = stream->parent()->AsFft();
+    OP_REQUIRES(ctx, fft != nullptr, absl::InternalError("No FFT for stream."));
     // Create a new plan if one doesn't exist.  Otherwise, we need only set
     // the scratch allocator.
     if (plan == nullptr) {
-      plan = stream->parent()->AsFft()->CreateBatchedPlanWithScratchAllocator(
+      plan = fft->CreateBatchedPlanWithScratchAllocator(
           stream, fft_rank, fft_shape, input_embed, input_stride,
           input_distance, output_embed, output_stride, output_distance,
           kFftType, kInPlaceFft, batch_size, &scratch_allocator);
     } else {
-      stream->parent()->AsFft()->UpdatePlanWithScratchAllocator(
-          stream, plan.get(), &scratch_allocator);
+      fft->UpdatePlanWithScratchAllocator(stream, plan.get(),
+                                          &scratch_allocator);
     }
 
     OP_REQUIRES(
@@ -888,17 +997,21 @@ class FFTNGPUBase : public FFTNBase {
         AsDeviceMemory<InT>(in.flat<InT>().data(), input_shape.num_elements());
     auto dst = AsDeviceMemory<OutT>(out->flat<OutT>().data(),
                                     output_shape.num_elements());
-    OP_REQUIRES(ctx, stream->ThenFft(plan, src, &dst).ok(),
+    auto fft = stream->parent()->AsFft();
+    OP_REQUIRES(ctx, fft != nullptr, absl::InternalError("No FFT for stream."));
+    OP_REQUIRES(ctx, fft->DoFft(stream, plan, src, &dst),
                 absl::InternalError(absl::StrCat(
                     "fft failed : type=", static_cast<int>(fft_type),
                     " in.shape=", input_shape.DebugString())));
     if (!IsForward()) {
       typedef typename RealTypeFromComplexType<OutT>::RealT RealT;
       RealT alpha = 1.0 / output_distance;
+      auto blas = stream->parent()->AsBlas();
+      OP_REQUIRES(ctx, blas != nullptr,
+                  absl::InternalError("No blas for stream."));
       OP_REQUIRES(
           ctx,
-          stream->ThenBlasScal(output_shape.num_elements(), alpha, &dst, 1)
-              .ok(),
+          blas->DoBlasScal(stream, output_shape.num_elements(), alpha, &dst, 1),
           absl::InternalError(absl::StrCat("BlasScal failed : in.shape=",
                                            input_shape.DebugString())));
     }
@@ -1007,4 +1120,4 @@ REGISTER_KERNEL_BUILDER(Name("BatchIFFT3D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<false, false, 3>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-}  // end namespace tensorflow
+}  // namespace tensorflow

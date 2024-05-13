@@ -385,7 +385,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     expected = self.evaluate(sum_gather())
     self.assertAllEqual(expected, self.evaluate(defined()))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testCallOptionsMemory(self):
     @compiled_fn
     def model(x):

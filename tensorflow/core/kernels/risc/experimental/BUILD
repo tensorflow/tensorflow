@@ -15,6 +15,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -25,6 +26,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -35,6 +37,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -45,17 +48,14 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
 tf_kernel_library(
     name = "risc_bitcast_op",
     srcs = ["risc_bitcast_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
@@ -65,17 +65,14 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
 tf_kernel_library(
     name = "risc_cast_op",
     srcs = ["risc_cast_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
@@ -85,6 +82,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -95,6 +93,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -105,27 +104,20 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
 tf_kernel_library(
     name = "risc_condition_op",
     srcs = ["risc_condition_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
     name = "risc_conv_op",
     srcs = ["risc_conv_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
@@ -135,6 +127,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -145,6 +138,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -155,6 +149,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -165,17 +160,14 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
 tf_kernel_library(
     name = "risc_fft_op",
     srcs = ["risc_fft_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
@@ -185,37 +177,26 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
 tf_kernel_library(
     name = "risc_gather_op",
     srcs = ["risc_gather_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
     name = "risc_imag_op",
     srcs = ["risc_imag_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
     name = "risc_is_finite_op",
     srcs = ["risc_is_finite_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
@@ -225,37 +206,26 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
 tf_kernel_library(
     name = "risc_logical_and_op",
     srcs = ["risc_logical_and_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
     name = "risc_logical_not_op",
     srcs = ["risc_logical_not_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
     name = "risc_logical_or_op",
     srcs = ["risc_logical_or_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
@@ -265,6 +235,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -275,6 +246,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -285,6 +257,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -295,6 +268,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -305,6 +279,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -315,6 +290,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -325,37 +301,26 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
 tf_kernel_library(
     name = "risc_random_uniform_op",
     srcs = ["risc_random_uniform_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
     name = "risc_real_op",
     srcs = ["risc_real_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
     name = "risc_reduce_op",
     srcs = ["risc_reduce_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
@@ -365,6 +330,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -381,21 +347,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "risc_reverse_op",
     srcs = ["risc_reverse_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
     name = "risc_scatter_op",
     srcs = ["risc_scatter_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
@@ -415,6 +373,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -425,27 +384,20 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
 tf_kernel_library(
     name = "risc_sort_op",
     srcs = ["risc_sort_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
     name = "risc_squeeze_op",
     srcs = ["risc_squeeze_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
@@ -455,47 +407,32 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@eigen_archive//:eigen3",
     ],
 )
 
 tf_kernel_library(
     name = "risc_transpose_op",
     srcs = ["risc_transpose_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
     name = "risc_triangular_solve_op",
     srcs = ["risc_triangular_solve_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
     name = "risc_unary_op",
     srcs = ["risc_unary_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(
     name = "risc_while_op",
     srcs = ["risc_while_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = ["//tensorflow/core:framework"],
 )
 
 tf_kernel_library(

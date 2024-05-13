@@ -30,7 +30,7 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK:      "tf_device.cluster"
   // CHECK-NEXT: %[[MESH_SIZES:.*]] = "tf.Const"()
   // CHECK-SAME: 4, 2, 2
-  // CHECK-NEXT: %[[MESH_SIZES_RUNNING_PRODUCT:.*]] = "tf.Const"() {value =
+  // CHECK-NEXT: %[[MESH_SIZES_RUNNING_PRODUCT:.*]] = "tf.Const"() <{value =
   // CHECK-SAME: 4, 2, 1
   // CHECK-NEXT: %[[MESH_COORDS_PRE_MOD:.*]] = "tf.Div"(%arg0, %[[MESH_SIZES_RUNNING_PRODUCT]])
   // CHECK-NEXT: %[[MESH_COORDS:.*]] = "tf.FloorMod"(%[[MESH_COORDS_PRE_MOD]], %[[MESH_SIZES]])
@@ -38,15 +38,15 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT: %[[MESH_MULTIPLER:.*]] = "tf.Const"()
   // CHECK-SAME [65536], [0], [262144]
   // CHECK-NEXT: %[[DEVICE_SEED:.*]] = "tf.MatMul"(%[[MESH_COORDS]], %[[MESH_MULTIPLER]])
-  // CHECK-NEXT: %[[PRIME:.*]] = "tf.Const"() {value = dense<65521>
+  // CHECK-NEXT: %[[PRIME:.*]] = "tf.Const"() <{value = dense<65521>
   // CHECK-NEXT: %[[DEVICE_SEED_PRIME:.*]] = "tf.AddV2"(%[[DEVICE_SEED]], %[[PRIME]])
-  // CHECK-NEXT: %[[DEVICE_SEED_SQUEEZE:.*]] = "tf.Squeeze"(%[[DEVICE_SEED_PRIME]]) {
+  // CHECK-NEXT: %[[DEVICE_SEED_SQUEEZE:.*]] = "tf.Squeeze"(%[[DEVICE_SEED_PRIME]]) <{
   // CHECK-NOT: dtensor.device_seed_for_mesh_dims
   // CHECK-SAME: }
   // CHECK-NEXT: %[[OLD_SHAPE:.*]] = "tf.Const"(
   // CHECK-NEXT: %[[DEVICE_SEED_CAST:.*]] = "tf.Cast"(%[[DEVICE_SEED_SQUEEZE]])
   // CHECK-NEXT: %[[NEW_SEED:.*]] = "tf.BitwiseXor"(%arg1, %[[DEVICE_SEED_CAST]])
-  // CHECK-NEXT: %[[NEW_SHAPE:.*]] = "tf.Const"() {value = dense<[8, 32, 32]>
+  // CHECK-NEXT: %[[NEW_SHAPE:.*]] = "tf.Const"() <{value = dense<[8, 32, 32]>
   // CHECK-NEXT: %[[RANDOM:.*]] = "tf.StatelessRandomUniform"(%[[NEW_SHAPE]], %[[NEW_SEED]])
   // CHECK-NEXT: tf_device.return
   // CHECK-SAME: %[[RANDOM]]

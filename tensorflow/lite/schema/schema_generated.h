@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,9 +22,9 @@ limitations under the License.
 
 // Ensure the included flatbuffers.h is the same version as when this file was
 // generated, otherwise it may not be compatible.
-static_assert(FLATBUFFERS_VERSION_MAJOR == 23 &&
-              FLATBUFFERS_VERSION_MINOR == 5 &&
-              FLATBUFFERS_VERSION_REVISION == 26,
+static_assert(FLATBUFFERS_VERSION_MAJOR == 24 &&
+              FLATBUFFERS_VERSION_MINOR == 3 &&
+              FLATBUFFERS_VERSION_REVISION == 25,
              "Non-compatible flatbuffers version included");
 
 namespace tflite {
@@ -653,6 +653,10 @@ struct OperatorCode;
 struct OperatorCodeBuilder;
 struct OperatorCodeT;
 
+struct StableHLOCompositeOptions;
+struct StableHLOCompositeOptionsBuilder;
+struct StableHLOCompositeOptionsT;
+
 struct Operator;
 struct OperatorBuilder;
 struct OperatorT;
@@ -700,11 +704,12 @@ enum TensorType : int8_t {
   TensorType_UINT32 = 15,
   TensorType_UINT16 = 16,
   TensorType_INT4 = 17,
+  TensorType_BFLOAT16 = 18,
   TensorType_MIN = TensorType_FLOAT32,
-  TensorType_MAX = TensorType_INT4
+  TensorType_MAX = TensorType_BFLOAT16
 };
 
-inline const TensorType (&EnumValuesTensorType())[18] {
+inline const TensorType (&EnumValuesTensorType())[19] {
   static const TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
@@ -723,13 +728,14 @@ inline const TensorType (&EnumValuesTensorType())[18] {
     TensorType_VARIANT,
     TensorType_UINT32,
     TensorType_UINT16,
-    TensorType_INT4
+    TensorType_INT4,
+    TensorType_BFLOAT16
   };
   return values;
 }
 
 inline const char * const *EnumNamesTensorType() {
-  static const char * const names[19] = {
+  static const char * const names[20] = {
     "FLOAT32",
     "FLOAT16",
     "INT32",
@@ -748,13 +754,14 @@ inline const char * const *EnumNamesTensorType() {
     "UINT32",
     "UINT16",
     "INT4",
+    "BFLOAT16",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameTensorType(TensorType e) {
-  if (::flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_INT4)) return "";
+  if (::flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_BFLOAT16)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorType()[index];
 }
@@ -1212,11 +1219,12 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_DILATE = 203,
   BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR = 204,
   BuiltinOperator_REDUCE_WINDOW = 205,
+  BuiltinOperator_STABLEHLO_COMPOSITE = 206,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_REDUCE_WINDOW
+  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_COMPOSITE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[206] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[207] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1423,13 +1431,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[206] {
     BuiltinOperator_STABLEHLO_TRANSPOSE,
     BuiltinOperator_DILATE,
     BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR,
-    BuiltinOperator_REDUCE_WINDOW
+    BuiltinOperator_REDUCE_WINDOW,
+    BuiltinOperator_STABLEHLO_COMPOSITE
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[207] = {
+  static const char * const names[208] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1636,13 +1645,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "DILATE",
     "STABLEHLO_RNG_BIT_GENERATOR",
     "REDUCE_WINDOW",
+    "STABLEHLO_COMPOSITE",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_REDUCE_WINDOW)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_COMPOSITE)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -4133,11 +4143,12 @@ enum BuiltinOptions2 : uint8_t {
   BuiltinOptions2_DilateOptions = 18,
   BuiltinOptions2_StablehloRngBitGeneratorOptions = 19,
   BuiltinOptions2_ReduceWindowOptions = 20,
+  BuiltinOptions2_StableHLOCompositeOptions = 21,
   BuiltinOptions2_MIN = BuiltinOptions2_NONE,
-  BuiltinOptions2_MAX = BuiltinOptions2_ReduceWindowOptions
+  BuiltinOptions2_MAX = BuiltinOptions2_StableHLOCompositeOptions
 };
 
-inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[21] {
+inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[22] {
   static const BuiltinOptions2 values[] = {
     BuiltinOptions2_NONE,
     BuiltinOptions2_StablehloConcatenateOptions,
@@ -4159,13 +4170,14 @@ inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[21] {
     BuiltinOptions2_StablehloTransposeOptions,
     BuiltinOptions2_DilateOptions,
     BuiltinOptions2_StablehloRngBitGeneratorOptions,
-    BuiltinOptions2_ReduceWindowOptions
+    BuiltinOptions2_ReduceWindowOptions,
+    BuiltinOptions2_StableHLOCompositeOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions2() {
-  static const char * const names[22] = {
+  static const char * const names[23] = {
     "NONE",
     "StablehloConcatenateOptions",
     "StablehloBroadcastInDimOptions",
@@ -4187,13 +4199,14 @@ inline const char * const *EnumNamesBuiltinOptions2() {
     "DilateOptions",
     "StablehloRngBitGeneratorOptions",
     "ReduceWindowOptions",
+    "StableHLOCompositeOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions2(BuiltinOptions2 e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOptions2_NONE, BuiltinOptions2_ReduceWindowOptions)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOptions2_NONE, BuiltinOptions2_StableHLOCompositeOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions2()[index];
 }
@@ -4282,6 +4295,10 @@ template<> struct BuiltinOptions2Traits<tflite::ReduceWindowOptions> {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_ReduceWindowOptions;
 };
 
+template<> struct BuiltinOptions2Traits<tflite::StableHLOCompositeOptions> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_StableHLOCompositeOptions;
+};
+
 template<typename T> struct BuiltinOptions2UnionTraits {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_NONE;
 };
@@ -4364,6 +4381,10 @@ template<> struct BuiltinOptions2UnionTraits<tflite::StablehloRngBitGeneratorOpt
 
 template<> struct BuiltinOptions2UnionTraits<tflite::ReduceWindowOptionsT> {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_ReduceWindowOptions;
+};
+
+template<> struct BuiltinOptions2UnionTraits<tflite::StableHLOCompositeOptionsT> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_StableHLOCompositeOptions;
 };
 
 struct BuiltinOptions2Union {
@@ -4555,6 +4576,14 @@ struct BuiltinOptions2Union {
   const tflite::ReduceWindowOptionsT *AsReduceWindowOptions() const {
     return type == BuiltinOptions2_ReduceWindowOptions ?
       reinterpret_cast<const tflite::ReduceWindowOptionsT *>(value) : nullptr;
+  }
+  tflite::StableHLOCompositeOptionsT *AsStableHLOCompositeOptions() {
+    return type == BuiltinOptions2_StableHLOCompositeOptions ?
+      reinterpret_cast<tflite::StableHLOCompositeOptionsT *>(value) : nullptr;
+  }
+  const tflite::StableHLOCompositeOptionsT *AsStableHLOCompositeOptions() const {
+    return type == BuiltinOptions2_StableHLOCompositeOptions ?
+      reinterpret_cast<const tflite::StableHLOCompositeOptionsT *>(value) : nullptr;
   }
 };
 
@@ -14609,6 +14638,122 @@ inline ::flatbuffers::Offset<OperatorCode> CreateOperatorCodeDirect(
 
 ::flatbuffers::Offset<OperatorCode> CreateOperatorCode(::flatbuffers::FlatBufferBuilder &_fbb, const OperatorCodeT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct StableHLOCompositeOptionsT : public ::flatbuffers::NativeTable {
+  typedef StableHLOCompositeOptions TableType;
+  std::string name{};
+  int32_t decomposition_subgraph_index = 0;
+  std::vector<uint8_t> composite_attributes{};
+  tflite::CustomOptionsFormat composite_attributes_format = tflite::CustomOptionsFormat_FLEXBUFFERS;
+  int32_t version = 0;
+};
+
+struct StableHLOCompositeOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef StableHLOCompositeOptionsT NativeTableType;
+  typedef StableHLOCompositeOptionsBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_NAME = 4,
+    VT_DECOMPOSITION_SUBGRAPH_INDEX = 6,
+    VT_COMPOSITE_ATTRIBUTES = 8,
+    VT_COMPOSITE_ATTRIBUTES_FORMAT = 10,
+    VT_VERSION = 12
+  };
+  const ::flatbuffers::String *name() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_NAME);
+  }
+  int32_t decomposition_subgraph_index() const {
+    return GetField<int32_t>(VT_DECOMPOSITION_SUBGRAPH_INDEX, 0);
+  }
+  const ::flatbuffers::Vector<uint8_t> *composite_attributes() const {
+    return GetPointer<const ::flatbuffers::Vector<uint8_t> *>(VT_COMPOSITE_ATTRIBUTES);
+  }
+  tflite::CustomOptionsFormat composite_attributes_format() const {
+    return static_cast<tflite::CustomOptionsFormat>(GetField<int8_t>(VT_COMPOSITE_ATTRIBUTES_FORMAT, 0));
+  }
+  int32_t version() const {
+    return GetField<int32_t>(VT_VERSION, 0);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_NAME) &&
+           verifier.VerifyString(name()) &&
+           VerifyField<int32_t>(verifier, VT_DECOMPOSITION_SUBGRAPH_INDEX, 4) &&
+           VerifyOffset(verifier, VT_COMPOSITE_ATTRIBUTES) &&
+           verifier.VerifyVector(composite_attributes()) &&
+           VerifyField<int8_t>(verifier, VT_COMPOSITE_ATTRIBUTES_FORMAT, 1) &&
+           VerifyField<int32_t>(verifier, VT_VERSION, 4) &&
+           verifier.EndTable();
+  }
+  StableHLOCompositeOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(StableHLOCompositeOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<StableHLOCompositeOptions> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StableHLOCompositeOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct StableHLOCompositeOptionsBuilder {
+  typedef StableHLOCompositeOptions Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_name(::flatbuffers::Offset<::flatbuffers::String> name) {
+    fbb_.AddOffset(StableHLOCompositeOptions::VT_NAME, name);
+  }
+  void add_decomposition_subgraph_index(int32_t decomposition_subgraph_index) {
+    fbb_.AddElement<int32_t>(StableHLOCompositeOptions::VT_DECOMPOSITION_SUBGRAPH_INDEX, decomposition_subgraph_index, 0);
+  }
+  void add_composite_attributes(::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> composite_attributes) {
+    fbb_.AddOffset(StableHLOCompositeOptions::VT_COMPOSITE_ATTRIBUTES, composite_attributes);
+  }
+  void add_composite_attributes_format(tflite::CustomOptionsFormat composite_attributes_format) {
+    fbb_.AddElement<int8_t>(StableHLOCompositeOptions::VT_COMPOSITE_ATTRIBUTES_FORMAT, static_cast<int8_t>(composite_attributes_format), 0);
+  }
+  void add_version(int32_t version) {
+    fbb_.AddElement<int32_t>(StableHLOCompositeOptions::VT_VERSION, version, 0);
+  }
+  explicit StableHLOCompositeOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<StableHLOCompositeOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<StableHLOCompositeOptions>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<StableHLOCompositeOptions> CreateStableHLOCompositeOptions(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> name = 0,
+    int32_t decomposition_subgraph_index = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> composite_attributes = 0,
+    tflite::CustomOptionsFormat composite_attributes_format = tflite::CustomOptionsFormat_FLEXBUFFERS,
+    int32_t version = 0) {
+  StableHLOCompositeOptionsBuilder builder_(_fbb);
+  builder_.add_version(version);
+  builder_.add_composite_attributes(composite_attributes);
+  builder_.add_decomposition_subgraph_index(decomposition_subgraph_index);
+  builder_.add_name(name);
+  builder_.add_composite_attributes_format(composite_attributes_format);
+  return builder_.Finish();
+}
+
+inline ::flatbuffers::Offset<StableHLOCompositeOptions> CreateStableHLOCompositeOptionsDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const char *name = nullptr,
+    int32_t decomposition_subgraph_index = 0,
+    const std::vector<uint8_t> *composite_attributes = nullptr,
+    tflite::CustomOptionsFormat composite_attributes_format = tflite::CustomOptionsFormat_FLEXBUFFERS,
+    int32_t version = 0) {
+  auto name__ = name ? _fbb.CreateString(name) : 0;
+  auto composite_attributes__ = composite_attributes ? _fbb.CreateVector<uint8_t>(*composite_attributes) : 0;
+  return tflite::CreateStableHLOCompositeOptions(
+      _fbb,
+      name__,
+      decomposition_subgraph_index,
+      composite_attributes__,
+      composite_attributes_format,
+      version);
+}
+
+::flatbuffers::Offset<StableHLOCompositeOptions> CreateStableHLOCompositeOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StableHLOCompositeOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorT : public ::flatbuffers::NativeTable {
   typedef Operator TableType;
   uint32_t opcode_index = 0;
@@ -15120,6 +15265,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   }
   const tflite::ReduceWindowOptions *builtin_options_2_as_ReduceWindowOptions() const {
     return builtin_options_2_type() == tflite::BuiltinOptions2_ReduceWindowOptions ? static_cast<const tflite::ReduceWindowOptions *>(builtin_options_2()) : nullptr;
+  }
+  const tflite::StableHLOCompositeOptions *builtin_options_2_as_StableHLOCompositeOptions() const {
+    return builtin_options_2_type() == tflite::BuiltinOptions2_StableHLOCompositeOptions ? static_cast<const tflite::StableHLOCompositeOptions *>(builtin_options_2()) : nullptr;
   }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -15732,6 +15880,10 @@ template<> inline const tflite::StablehloRngBitGeneratorOptions *Operator::built
 
 template<> inline const tflite::ReduceWindowOptions *Operator::builtin_options_2_as<tflite::ReduceWindowOptions>() const {
   return builtin_options_2_as_ReduceWindowOptions();
+}
+
+template<> inline const tflite::StableHLOCompositeOptions *Operator::builtin_options_2_as<tflite::StableHLOCompositeOptions>() const {
+  return builtin_options_2_as_StableHLOCompositeOptions();
 }
 
 struct OperatorBuilder {
@@ -20906,6 +21058,44 @@ inline ::flatbuffers::Offset<OperatorCode> CreateOperatorCode(::flatbuffers::Fla
       _builtin_code);
 }
 
+inline StableHLOCompositeOptionsT *StableHLOCompositeOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<StableHLOCompositeOptionsT>(new StableHLOCompositeOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void StableHLOCompositeOptions::UnPackTo(StableHLOCompositeOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = name(); if (_e) _o->name = _e->str(); }
+  { auto _e = decomposition_subgraph_index(); _o->decomposition_subgraph_index = _e; }
+  { auto _e = composite_attributes(); if (_e) { _o->composite_attributes.resize(_e->size()); std::copy(_e->begin(), _e->end(), _o->composite_attributes.begin()); } }
+  { auto _e = composite_attributes_format(); _o->composite_attributes_format = _e; }
+  { auto _e = version(); _o->version = _e; }
+}
+
+inline ::flatbuffers::Offset<StableHLOCompositeOptions> StableHLOCompositeOptions::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StableHLOCompositeOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateStableHLOCompositeOptions(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<StableHLOCompositeOptions> CreateStableHLOCompositeOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StableHLOCompositeOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const StableHLOCompositeOptionsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _name = _o->name.empty() ? 0 : _fbb.CreateString(_o->name);
+  auto _decomposition_subgraph_index = _o->decomposition_subgraph_index;
+  auto _composite_attributes = _o->composite_attributes.size() ? _fbb.CreateVector(_o->composite_attributes) : 0;
+  auto _composite_attributes_format = _o->composite_attributes_format;
+  auto _version = _o->version;
+  return tflite::CreateStableHLOCompositeOptions(
+      _fbb,
+      _name,
+      _decomposition_subgraph_index,
+      _composite_attributes,
+      _composite_attributes_format,
+      _version);
+}
+
 inline OperatorT *Operator::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<OperatorT>(new OperatorT());
   UnPackTo(_o.get(), _resolver);
@@ -24208,6 +24398,10 @@ inline bool VerifyBuiltinOptions2(::flatbuffers::Verifier &verifier, const void 
       auto ptr = reinterpret_cast<const tflite::ReduceWindowOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions2_StableHLOCompositeOptions: {
+      auto ptr = reinterpret_cast<const tflite::StableHLOCompositeOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -24307,6 +24501,10 @@ inline void *BuiltinOptions2Union::UnPack(const void *obj, BuiltinOptions2 type,
       auto ptr = reinterpret_cast<const tflite::ReduceWindowOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions2_StableHLOCompositeOptions: {
+      auto ptr = reinterpret_cast<const tflite::StableHLOCompositeOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -24394,6 +24592,10 @@ inline ::flatbuffers::Offset<void> BuiltinOptions2Union::Pack(::flatbuffers::Fla
       auto ptr = reinterpret_cast<const tflite::ReduceWindowOptionsT *>(value);
       return CreateReduceWindowOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions2_StableHLOCompositeOptions: {
+      auto ptr = reinterpret_cast<const tflite::StableHLOCompositeOptionsT *>(value);
+      return CreateStableHLOCompositeOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -24478,6 +24680,10 @@ inline BuiltinOptions2Union::BuiltinOptions2Union(const BuiltinOptions2Union &u)
     }
     case BuiltinOptions2_ReduceWindowOptions: {
       value = new tflite::ReduceWindowOptionsT(*reinterpret_cast<tflite::ReduceWindowOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions2_StableHLOCompositeOptions: {
+      value = new tflite::StableHLOCompositeOptionsT(*reinterpret_cast<tflite::StableHLOCompositeOptionsT *>(u.value));
       break;
     }
     default:
@@ -24584,6 +24790,11 @@ inline void BuiltinOptions2Union::Reset() {
     }
     case BuiltinOptions2_ReduceWindowOptions: {
       auto ptr = reinterpret_cast<tflite::ReduceWindowOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions2_StableHLOCompositeOptions: {
+      auto ptr = reinterpret_cast<tflite::StableHLOCompositeOptionsT *>(value);
       delete ptr;
       break;
     }

@@ -14,37 +14,29 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 
+#include "absl/algorithm/container.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
-namespace mlir {
-namespace quant {
+namespace mlir::quant {
 namespace {
 
 using ::mlir::tf_saved_model::AssetOp;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::LookupBoundInputOfType;
 using ::tensorflow::AssetFileDef;
-using ::tensorflow::kImportModelDefaultGraphFuncName;
-
-// Gets the "main" function from the module. Returns an empty op iff it doesn't
-// exist.
-func::FuncOp GetMainFunction(ModuleOp module_op) {
-  const auto main_func_id =
-      StringAttr::get(module_op.getContext(), kImportModelDefaultGraphFuncName);
-  auto func_ops = module_op.getOps<func::FuncOp>();
-  auto main_func_itr = absl::c_find_if(func_ops, [&main_func_id](auto func_op) {
-    return func_op.getName() == main_func_id;
-  });
-
-  if (main_func_itr == func_ops.end()) return {};
-  return *main_func_itr;
-}
 
 // Given argument attributes `arg_attrs`, returns a new set of argument
 // attributes where the "tf_saved_model.bound_input" attribute has been replaced
@@ -101,8 +93,7 @@ SmallVector<StringRef> GetEntryFunctionInputs(func::FuncOp func_op) {
       func_op->getAttrOfType<DictionaryAttr>("tf.entry_function");
 
   SmallVector<StringRef> inputs;
-  entry_function_attr.get("inputs")
-      .dyn_cast_or_null<StringAttr>()
+  mlir::dyn_cast_or_null<StringAttr>(entry_function_attr.get("inputs"))
       .strref()
       .split(inputs, /*Separator=*/",");
 
@@ -124,7 +115,7 @@ void ConvertMainArgAttrs(func::FuncOp main_func_op, const int arg_idx,
 }  // namespace
 
 FailureOr<SmallVector<AssetFileDef>> ConvertAssetArgs(ModuleOp module_op) {
-  func::FuncOp main_func_op = GetMainFunction(module_op);
+  func::FuncOp main_func_op = FindMainFuncOp(module_op);
   if (!main_func_op) return failure();
 
   SmallVector<StringRef> input_names = GetEntryFunctionInputs(main_func_op);
@@ -149,5 +140,4 @@ FailureOr<SmallVector<AssetFileDef>> ConvertAssetArgs(ModuleOp module_op) {
   return asset_file_defs;
 }
 
-}  // namespace quant
-}  // namespace mlir
+}  // namespace mlir::quant

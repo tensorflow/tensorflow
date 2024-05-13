@@ -352,7 +352,7 @@ class Interpreter:
   Models obtained from `TfLiteConverter` can be run in Python with
   `Interpreter`.
 
-  As an example, lets generate a simple Keras model and convert it to TFLite
+  As an example, let's generate a simple Keras model and convert it to TFLite
   (`TfLiteConverter` also supports other input formats with `from_saved_model`
   and `from_concrete_function`)
 
@@ -396,6 +396,7 @@ class Interpreter:
       experimental_op_resolver_type=OpResolverType.AUTO,
       experimental_preserve_all_tensors=False,
       experimental_disable_delegate_clustering=False,
+      experimental_default_delegate_latest_features=False,
   ):
     """Constructor.
 
@@ -437,6 +438,8 @@ class Interpreter:
         this flag is currently experimental, and it might be removed/updated if
         the TF Lite converter doesn't drop such control dependencies in the
         model. Default is False.
+      experimental_default_delegate_latest_features: If true, default delegates
+        may enable all flag protected features. Default is False;
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -454,6 +457,12 @@ class Interpreter:
       raise ValueError('Unrecognized passed in op resolver type: {}'.format(
           experimental_op_resolver_type))
 
+    if num_threads is not None:
+      if not isinstance(num_threads, int):
+        raise ValueError('type of num_threads should be int')
+      if num_threads < 1:
+        raise ValueError('num_threads should >= 1')
+
     if model_path and not model_content:
       custom_op_registerers_by_name = [
           x for x in self._custom_op_registerers if isinstance(x, str)
@@ -468,6 +477,8 @@ class Interpreter:
           custom_op_registerers_by_func,
           experimental_preserve_all_tensors,
           experimental_disable_delegate_clustering,
+          int(num_threads or 1),
+          experimental_default_delegate_latest_features,
       )
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
@@ -489,18 +500,13 @@ class Interpreter:
           custom_op_registerers_by_func,
           experimental_preserve_all_tensors,
           experimental_disable_delegate_clustering,
+          int(num_threads or 1),
+          experimental_default_delegate_latest_features,
       )
     elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
       raise ValueError('Can\'t both provide `model_path` and `model_content`')
-
-    if num_threads is not None:
-      if not isinstance(num_threads, int):
-        raise ValueError('type of num_threads should be int')
-      if num_threads < 1:
-        raise ValueError('num_threads should >= 1')
-      self._interpreter.SetNumThreads(num_threads)
 
     # Each delegate is a wrapper that owns the delegates that have been loaded
     # as plugins. The interpreter wrapper will be using them, but we need to
@@ -567,20 +573,26 @@ class Interpreter:
 
     Returns:
       a dictionary containing the index, op name, and arrays with lists of the
-      indices for the inputs and outputs of the op/node.
+      indices and types for the inputs and outputs of the op/nodes.
     """
-    op_index = int(op_index)
-    op_name = self._interpreter.NodeName(op_index)
-    op_inputs = self._interpreter.NodeInputs(op_index)
-    op_outputs = self._interpreter.NodeOutputs(op_index)
-
+    operand_types = [
+        self._get_tensor_details(tensor_idx, subgraph_index=0)['dtype']
+        for tensor_idx in self._interpreter.NodeInputs(op_index)
+        if tensor_idx != -1
+    ]
+    result_types = [
+        self._get_tensor_details(tensor_idx, subgraph_index=0)['dtype']
+        for tensor_idx in self._interpreter.NodeOutputs(op_index)
+        if tensor_idx != -1
+    ]
     details = {
-        'index': op_index,
-        'op_name': op_name,
-        'inputs': op_inputs,
-        'outputs': op_outputs,
+        'index': int(op_index),
+        'op_name': self._interpreter.NodeName(op_index),
+        'inputs': self._interpreter.NodeInputs(op_index),
+        'outputs': self._interpreter.NodeOutputs(op_index),
+        'operand_types': operand_types,
+        'result_types': result_types,
     }
-
     return details
 
   def _get_tensor_details(self, tensor_index, subgraph_index):
@@ -597,7 +609,7 @@ class Interpreter:
         'shape': The shape of the tensor.
         'quantization': Deprecated, use 'quantization_parameters'. This field
             only works for per-tensor quantization, whereas
-            'quantization_parameters' works in all cases.
+            'quantization_parameters' work in all cases.
         'quantization_parameters': The parameters used to quantize the tensor:
           'scales': List of scales (one if per-tensor quantization)
           'zero_points': List of zero_points (one if per-tensor quantization)
@@ -762,7 +774,7 @@ class Interpreter:
     ]
 
   def get_signature_list(self):
-    """Gets list of SignatureDefs in the model.
+    """Gets the list of SignatureDefs in the model.
 
     Example,
     ```
@@ -780,7 +792,7 @@ class Interpreter:
     Returns:
       A list of SignatureDef details in a dictionary structure.
       It is keyed on the SignatureDef method name, and the value holds
-      dictionary of inputs and outputs.
+      a dictionary of inputs and outputs.
     """
     full_signature_defs = self._interpreter.GetSignatureDefs()
     for _, signature_def in full_signature_defs.items():
@@ -830,19 +842,19 @@ class Interpreter:
     None can be passed for signature_key if the model has a single Signature
     only.
 
-    All names used are this specific SignatureDef names.
+    All names used are these specific SignatureDef names.
 
 
     Args:
       signature_key: Signature key for the SignatureDef, it can be None if and
-        only if the model has a single SignatureDef. Default value is None.
+        only if the model has a single SignatureDef. The Default value is None.
 
     Returns:
       This returns a callable that can run inference for SignatureDef defined
       by argument 'signature_key'.
       The callable will take key arguments corresponding to the arguments of the
       SignatureDef, that should have numpy values.
-      The callable will returns dictionary that maps from output names to numpy
+      The callable will return dictionary that maps from output names to numpy
       values of the computed results.
 
     Raises:
@@ -878,9 +890,9 @@ class Interpreter:
   def tensor(self, tensor_index):
     """Returns function that gives a numpy view of the current tensor buffer.
 
-    This allows reading and writing to this tensors w/o copies. This more
+    This allows reading and writing to these tensors w/o copies. This more
     closely mirrors the C++ Interpreter class interface's tensor() member, hence
-    the name. Be careful to not hold these output references through calls
+    the name. Be careful not to hold these output references through calls
     to `allocate_tensors()` and `invoke()`. This function cannot be used to read
     intermediate results.
 
@@ -901,7 +913,7 @@ class Interpreter:
     than necessary. If you do, then the interpreter can no longer be invoked,
     because it is possible the interpreter would resize and invalidate the
     referenced tensors. The NumPy API doesn't allow any mutability of the
-    the underlying buffers.
+    underlying buffers.
 
     WRONG:
 
@@ -911,7 +923,7 @@ class Interpreter:
     interpreter.allocate_tensors()  # This will throw RuntimeError
     for i in range(10):
       input.fill(3.)
-      interpreter.invoke()  # this will throw RuntimeError since input,output
+      interpreter.invoke()  # this will throw RuntimeError since input, output
     ```
 
     Args:

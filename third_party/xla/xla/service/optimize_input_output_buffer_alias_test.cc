@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -241,6 +241,21 @@ TEST_F(OptimizeInputOutputBufferAliasTest, DynamicShapeBufferInput) {
   CreatePassAndBufferDonorConfig(false);
   std::vector<Shape> input = {d3f32_};
   Shape output = d1f32_;
+  bool changed = BuildAliasConfig(input, output);
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(AliasCount(), 0);
+}
+
+// Shapes are the same, but are in different memory spaces.
+TEST_F(OptimizeInputOutputBufferAliasTest, AllDifferentMemorySpaces) {
+  CreatePassAndBufferDonorConfig(false);
+  std::vector<Shape> input = {
+      ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})};
+  Shape output = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
+  for (int i = 0; i < output.tuple_shapes_size(); ++i) {
+    output.mutable_tuple_shapes(i)->mutable_layout()->set_memory_space(
+        Layout::kHostMemorySpace);
+  }
   bool changed = BuildAliasConfig(input, output);
   EXPECT_FALSE(changed);
   EXPECT_EQ(AliasCount(), 0);

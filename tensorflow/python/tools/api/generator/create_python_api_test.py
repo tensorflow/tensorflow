@@ -14,9 +14,9 @@
 # =============================================================================
 """Tests for create_python_api."""
 
-import imp
 import os
 import sys
+import types
 
 from tensorflow.python.platform import test
 from tensorflow.python.tools.api.generator import create_python_api
@@ -46,7 +46,7 @@ class CreatePythonApiTest(test.TestCase):
 
   def setUp(self):
     # Add fake op to a module that has 'tensorflow' in the name.
-    sys.modules[_MODULE_NAME] = imp.new_module(_MODULE_NAME)
+    sys.modules[_MODULE_NAME] = types.ModuleType(_MODULE_NAME)
     setattr(sys.modules[_MODULE_NAME], 'test_op', test_op)
     setattr(sys.modules[_MODULE_NAME], 'deprecated_test_op', deprecated_test_op)
     setattr(sys.modules[_MODULE_NAME], 'TestClass', TestClass)

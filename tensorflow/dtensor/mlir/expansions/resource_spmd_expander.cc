@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
@@ -153,7 +154,7 @@ Status ValidateAndAssignResourceInputLayout(mlir::tf_device::ClusterOp op,
     add_layout_as_attributes(mutable_input_layouts, mutable_input_indices,
                              resource_arg_index, layout_string);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -238,7 +239,7 @@ StatusOr<mlir::Operation*> ResourceSPMDExpander::ExpandOp(mlir::Operation* op) {
       TF_RETURN_WITH_CONTEXT(errors::Internal(
           "if both resource and value layout are set they must be equal"));
 
-    auto block_arg = input_resource_value.dyn_cast<mlir::BlockArgument>();
+    auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(input_resource_value);
     auto enclosing_device_cluster =
         op->getParentOfType<mlir::tf_device::ClusterOp>();
 

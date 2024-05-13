@@ -14,13 +14,13 @@
 # ==============================================================================
 """Implmentation for defining get_compiler_ir."""
 from typing import List, Optional
+import warnings
 
 from tensorflow.core.function import trace_type
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import random_ops
-
 from tensorflow.python.util import nest
 
 
@@ -87,10 +87,30 @@ def from_concrete_function(
         f"Only support static input shape but got inputs = {concrete_fn.inputs}"
     )
 
-  def compiler_ir_generator(stage="hlo", device_name=None):
+  def compiler_ir_generator(stage="hlo", device_name=None, platform_name=None):
+    """Gets the compiler IR bytes.
+
+    Args:
+      stage: The exported stage for the given function.
+      device_name: The name of the device with the form as
+        "/job:localhost/replica:0/task:0/device:CPU:0", "/device:TPU:0" etc.
+        When this is used, actual device is needed for getting the compiler IR.
+      platform_name: The name of the platform, e.g. "TPU". See the comment in
+        `get_compiler_ir` in `context.py`.
+
+    Returns:
+      The compiler IR bytes.
+    """
+    if device_name is not None:
+      if platform_name is not None:
+        raise ValueError(
+            "device_name and platform_name cannot be provided at the same time."
+        )
+      warnings.warn("device_name is being deprecated. Use platform_name.")
     device_name = maybe_get_device_name(device_name)
     res_bytes = context.context().get_compiler_ir(
         device_name=device_name,
+        platform_name=platform_name,
         function_name=fn_name,
         flat_args=filtered_flat_specs,
         captured_inputs=concrete_fn.captured_inputs,

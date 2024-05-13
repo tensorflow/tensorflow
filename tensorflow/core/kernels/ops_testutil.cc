@@ -82,7 +82,7 @@ OpsTestBase::OpsTestBase() : device_type_(DEVICE_CPU) {
   allocator_ = device_->GetAllocator(AllocatorAttributes());
 
   flib_def_ = std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
-                                                          FunctionDefLibrary{});
+                                                          FunctionDefLibrary());
   pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions());
@@ -149,7 +149,7 @@ Status OpsTestBase::InitOpWithGraphVersion(int graph_def_version) {
       device_->resource_manager(), props, graph_def_version, &kernel));
   kernel_.reset(kernel);
   input_types_ = kernel_->input_types();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static std::function<void(std::function<void()>)>* GetDefaultRunner() {

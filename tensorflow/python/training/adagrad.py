@@ -17,10 +17,10 @@
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
-from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -158,7 +158,7 @@ class AdagradOptimizer(optimizer.Optimizer):
 
   def _apply_dense(self, grad, var):
     acc = self.get_slot(var, "accumulator")
-    return training_ops.apply_adagrad(
+    return gen_training_ops.apply_adagrad(
         var,
         acc,
         math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
@@ -167,7 +167,7 @@ class AdagradOptimizer(optimizer.Optimizer):
 
   def _resource_apply_dense(self, grad, var):
     acc = self.get_slot(var, "accumulator")
-    return training_ops.resource_apply_adagrad(
+    return gen_training_ops.resource_apply_adagrad(
         var.handle,
         acc.handle,
         math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
@@ -176,7 +176,7 @@ class AdagradOptimizer(optimizer.Optimizer):
 
   def _apply_sparse(self, grad, var):
     acc = self.get_slot(var, "accumulator")
-    return training_ops.sparse_apply_adagrad(
+    return gen_training_ops.sparse_apply_adagrad(
         var,
         acc,
         math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
@@ -186,7 +186,7 @@ class AdagradOptimizer(optimizer.Optimizer):
 
   def _resource_apply_sparse(self, grad, var, indices):
     acc = self.get_slot(var, "accumulator")
-    return training_ops.resource_sparse_apply_adagrad(
+    return gen_training_ops.resource_sparse_apply_adagrad(
         var.handle,
         acc.handle,
         math_ops.cast(self._learning_rate_tensor, grad.dtype),

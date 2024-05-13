@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,11 +45,13 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
  public:
   explicit TestAllocator(se::Platform* platform)
       : se::StreamExecutorMemoryAllocator(
-            platform, PlatformUtil::GetStreamExecutors(platform).value()) {}
+            platform, GetInterfaceVectorFromExecutors(
+                          PlatformUtil::GetStreamExecutors(platform).value())) {
+  }
 
-  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
-                                            bool retry_on_failure,
-                                            int64_t memory_space) override;
+  absl::StatusOr<se::OwningDeviceMemory> Allocate(
+      int device_ordinal, uint64_t size, bool retry_on_failure,
+      int64_t memory_space) override;
   Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
 
   // Return the number of allocations that have been performed.
@@ -61,6 +63,13 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
   int64_t deallocation_count(int device_ordinal) const;
 
  private:
+  // Helper function to turn a vector<StreamExecutor*> into a
+  // vector<StreamExecutorInterface*>.
+  std::vector<se::StreamExecutorInterface*> GetInterfaceVectorFromExecutors(
+      const std::vector<se::StreamExecutor*>& executors) {
+    return std::vector<se::StreamExecutorInterface*>(executors.begin(),
+                                                     executors.end());
+  }
   mutable absl::Mutex count_mutex_;
 
   // Global counts of allocations and deallocations.
@@ -93,10 +102,10 @@ class LocalClientTestBase : public ManifestCheckingTest {
 
   // Execute the given computation on the local client. With and without
   // options.
-  StatusOr<ScopedShapedBuffer> ExecuteLocally(
+  absl::StatusOr<ScopedShapedBuffer> ExecuteLocally(
       const XlaComputation& computation,
       absl::Span<const ShapedBuffer* const> arguments);
-  StatusOr<ScopedShapedBuffer> ExecuteLocally(
+  absl::StatusOr<ScopedShapedBuffer> ExecuteLocally(
       const XlaComputation& computation,
       absl::Span<const ShapedBuffer* const> arguments,
       const ExecutableBuildOptions& build_options,
@@ -112,10 +121,11 @@ class LocalClientTestBase : public ManifestCheckingTest {
       const ExecutableRunOptions& run_options);
 
   // Parses the given string and returns module as a VerifiedHloModule.
-  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text);
-  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text, const HloModuleConfig& config);
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
+  ParseAndReturnVerifiedModule(absl::string_view hlo_text);
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
+  ParseAndReturnVerifiedModule(absl::string_view hlo_text,
+                               const HloModuleConfig& config);
 
   // Returns a default set of execute options.
   ExecutableBuildOptions DefaultExecutableBuildOptions() const;

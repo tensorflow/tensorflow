@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/device_caps_utils.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
+#include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -56,8 +57,6 @@ std::string Hostname(const XSpace& space) {
   if (space.hostnames().empty()) return "localhost";
   DCHECK_EQ(space.hostnames_size(), 1);
   const std::string& hostname = space.hostnames(0);
-  // This shouldn't be a taskname in host:port format.
-  DCHECK(!absl::StrContains(hostname, ':'));
   return hostname;
 }
 
@@ -71,7 +70,7 @@ PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
   for (const auto bw : peak_bws) {
     result.add_peak_bws_giga_bytes_per_second(bw);
   }
-  result.set_ridge_point(TeraToGiga(peak_tera_flops_per_second) /
+  result.set_ridge_point(tsl::profiler::TeraToGiga(peak_tera_flops_per_second) /
                          peak_bws[MemBwType::MEM_BW_TYPE_HBM_RW]);
   return result;
 }
@@ -80,10 +79,13 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
   DeviceCapabilities cap = GetDeviceCaps(device_plane);
   if (!absl::StartsWith(device_plane.name(), kTpuPlanePrefix)) {
     return MakePerfEnv(
-        GigaToTera(GetFlopMaxThroughputPerSM(cap)) * cap.num_cores(),
+        tsl::profiler::GigaToTera(GetFlopMaxThroughputPerSM(cap)) *
+            cap.num_cores(),
         // Ideally, the cap should report separate hbm BW, for now set to same.
-        {UniToGiga(cap.memory_bandwidth()), UniToGiga(cap.memory_bandwidth()),
-         UniToGiga(cap.memory_bandwidth()), UniToGiga(cap.memory_bandwidth())});
+        {tsl::profiler::UniToGiga(cap.memory_bandwidth()),
+         tsl::profiler::UniToGiga(cap.memory_bandwidth()),
+         tsl::profiler::UniToGiga(cap.memory_bandwidth()),
+         tsl::profiler::UniToGiga(cap.memory_bandwidth())});
   } else {
     XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(&device_plane);
     auto peak_tera_flops_per_second =
@@ -163,6 +165,15 @@ void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
     unique_warnings.insert(space.warnings().begin(), space.warnings().end());
     *op_stats->mutable_diagnostics()->mutable_warnings() = {
         unique_warnings.begin(), unique_warnings.end()};
+  }
+}
+
+// This function should be idempotent to be called
+void SetProgramIdToNameMap(const HloProtoMap& hlo_proto_map,
+                           tensorflow::profiler::OpStats& op_stats) {
+  auto& program_id_to_name_map = *op_stats.mutable_program_id_to_name_map();
+  for (const auto& [program_id, hlo_proto] : hlo_proto_map) {
+    program_id_to_name_map[program_id] = hlo_proto->hlo_module().name();
   }
 }
 
@@ -259,6 +270,13 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
         (*op_stats.mutable_core_id_to_details())[kDefaultGpuLocalCoreId];
     details.set_hostname(Hostname(space));
   }
+
+  // Set program_id_to_name map in OpStats from Xspace
+  // Will be non-op if the space does not have materialized device traces
+  HloProtoMap hlo_proto_map;
+  hlo_proto_map.AddHloProtosFromXSpace(space);
+  SetProgramIdToNameMap(hlo_proto_map, op_stats);
+
   return op_stats;
 }
 

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,12 @@ limitations under the License.
 #include "xla/python/ifrt/ir/constants.h"
 
 // Generated definitions.
-#include "xla/python/ifrt/ir/ifrt_interfaces.cc.inc"
+
+#define GET_ATTR_INTERFACE_CLASSES
+#include "xla/python/ifrt/ir/ifrt_attr_interfaces.cc.inc"
+
+#define GET_OP_INTERFACE_CLASSES
+#include "xla/python/ifrt/ir/ifrt_op_interfaces.cc.inc"
 
 namespace mlir {
 namespace OpTrait {

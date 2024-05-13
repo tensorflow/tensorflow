@@ -22,6 +22,8 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_config
+# Ensure parsing_ops gradients are registered
+from tensorflow.python.ops import parsing_grad  # pylint: disable=unused-import
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_parsing_ops import *
@@ -29,14 +31,6 @@ from tensorflow.python.ops.gen_parsing_ops import *
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
-
-
-ops.NotDifferentiable("DecodeRaw")
-ops.NotDifferentiable("DecodePaddedRaw")
-ops.NotDifferentiable("ParseTensor")
-ops.NotDifferentiable("SerializeTensor")
-ops.NotDifferentiable("StringToNumber")
-
 
 VarLenFeature = parsing_config.VarLenFeature
 RaggedFeature = parsing_config.RaggedFeature
@@ -301,7 +295,8 @@ def parse_example_v2(serialized, features, example_names=None, name=None):
     ValueError: if any feature is invalid.
   """
   if not features:
-    raise ValueError("Argument `features` cannot be None.")
+    raise ValueError(
+        "Argument `features` cannot be None or falsy. Got %s" % features)
   features = _prepend_none_dimension(features)
   params = _ParseOpParams.from_features(features, [
       VarLenFeature, SparseFeature, FixedLenFeature, FixedLenSequenceFeature,

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,11 +18,14 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
+#include "absl/base/attributes.h"
+#include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "xla/types.h"
+#include "xla/status.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/stacktrace.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace status_macros {

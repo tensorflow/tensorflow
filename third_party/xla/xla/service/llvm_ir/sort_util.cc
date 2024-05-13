@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -165,7 +165,8 @@ Status EmitTiledCompareLoop(
   llvm::Value* thread_id = gpu::EmitCallToTargetIntrinsic(
       gpu::TargetIntrinsicID::kThreadIdx, {}, {}, b);
   llvm_ir::AddRangeMetadata(0, tile_size / 2,
-                            llvm::cast<llvm::Instruction>(thread_id));
+                            llvm::cast<llvm::Instruction>(thread_id),
+                            b->GetInsertBlock()->getModule());
   thread_id = b->CreateIntCast(thread_id, tiled_keys_index.GetType(),
                                /*isSigned=*/true, "thread.id.x");
 
@@ -227,10 +228,11 @@ Status EmitTiledCompareLoop(
     // We need a generic pointer with address space 0 instead of a pointer to
     // shared memory (address space 3) so that we can pass it to the comparison
     // computation.
-    return b->CreateAddrSpaceCast(shared_memory_address,
-                                  llvm::PointerType::getWithSamePointeeType(
-                                      llvm::cast<llvm::PointerType>(ptr_type),
-                                      /*AddressSpace=*/0));
+    return b->CreateAddrSpaceCast(
+        shared_memory_address,
+        llvm::PointerType::get(
+            llvm::cast<llvm::PointerType>(ptr_type)->getContext(),
+            /*AddressSpace=*/0));
   };
   auto element_address_pointee_type = [&](int64_t operand, llvm::Value* index) {
     return llvm::GetElementPtrInst::getIndexedType(

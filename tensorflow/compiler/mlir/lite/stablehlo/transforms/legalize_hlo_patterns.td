@@ -23,7 +23,7 @@ include "mhlo/IR/hlo_ops.td"
 
 // Check if broadcasting is compatible with TF ops.
 def IsLegalNumpyRankedBroadcast :
-    Constraint<CPred<"hlo::isLegalNumpyRankedBroadcast($0, $1, $2)">,
+    Constraint<CPred<"hlo::isLegalNumpyRankedBroadcast($0, $1, $2 ? $2.asArrayRef() : ArrayRef<int64_t>{})">,
     "broadcasting should be compatible with TF ops">;
 
 // Return a constant op that carries the shape of the given value.
@@ -32,6 +32,9 @@ def ShapeToConst : NativeCodeCall<"ShapeToConst($_builder, $0)">;
 // Check if broadcast dimensions match Tensorflow convention.
 def IsTFStyleBroadcast : Constraint<CPred<"IsTFStyleBroadcast($0, $1)">,
     "new dimensions are added as prefix">;
+
+def IsNotWithinScatterRegion : Constraint<CPred<"!IsWithinOpRegion<mhlo::ScatterOp>($0)">,
+    "binary ops within scatter regions are not converted">;
 
 // Check if broadcast dimensions do not match Tensorflow convention.
 def IsNotTFStyleBroadcast : Constraint<Neg<CPred<"IsTFStyleBroadcast($0, $1)">>,
@@ -60,7 +63,9 @@ foreach fromToBinPair = [[MHLO_AddOp, CHLO_BroadcastAddOp, TF_AddV2Op],
                          [MHLO_PowOp, CHLO_BroadcastPowOp, TF_PowOp],
                          [MHLO_SubtractOp, CHLO_BroadcastSubOp, TF_SubOp],
                          [MHLO_Atan2Op, CHLO_BroadcastAtan2Op, TF_Atan2Op]] in {
-  def : Pat<(fromToBinPair[0] $l, $r), (fromToBinPair[2] $l, $r)>;
+  def : Pat<(fromToBinPair[0]:$result $l, $r),
+            (fromToBinPair[2] $l, $r),
+            [(IsNotWithinScatterRegion $result)]>;
   def : Pat<(fromToBinPair[1] $l, $r, $broadcast_dimensions),
             (fromToBinPair[2] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;

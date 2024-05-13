@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
-#include <limits>
 #include <vector>
 
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -85,9 +85,12 @@ int DynamicBuffer::WriteToBuffer(char** buffer) {
   //   * num of strings (int32_t).
   int32_t bytes = data_.size()                            // size of content
                   + sizeof(int32_t) * (num_strings + 2);  // size of header
-
   // Caller will take ownership of buffer.
   *buffer = reinterpret_cast<char*>(malloc(bytes));
+
+  if (*buffer == nullptr) {
+    return -1;
+  }
 
   // Set num of string
   //

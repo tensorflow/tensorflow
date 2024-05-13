@@ -39,7 +39,7 @@ std::string SessionNameFromMetadata(const SessionMetadata* session_metadata);
 std::string ProtoKeyForComputation(const std::string& key, int core);
 
 // Returns a TpuCompilationCacheKey parsed from given key or an error.
-xla::StatusOr<TpuCompilationCacheKey> ParseCompilationCacheKey(
+absl::StatusOr<TpuCompilationCacheKey> ParseCompilationCacheKey(
     const std::string& key);
 
 xla::CompileOnlyClient::AotXlaComputationInstance
@@ -58,7 +58,7 @@ Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
                                    std::vector<TensorShape>* shapes);
 
 // Creates gRPC ServerBuilder.
-xla::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> CreateServerBuilder(
+absl::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> CreateServerBuilder(
     int serving_port);
 }  // namespace tpu
 }  // namespace tensorflow

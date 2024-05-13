@@ -16,6 +16,7 @@
 import os
 
 from tensorflow.python import tf2
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import from_tensor_slices_op
 from tensorflow.python.data.ops import structured_function
@@ -705,3 +706,18 @@ else:
   FixedLengthRecordDataset = FixedLengthRecordDatasetV1
   TFRecordDataset = TFRecordDatasetV1
   TextLineDataset = TextLineDatasetV1
+
+
+def _tf2_callback():
+  global FixedLengthRecordDataset, TFRecordDataset, TextLineDataset
+  if tf2.enabled():
+    FixedLengthRecordDataset = FixedLengthRecordDatasetV2
+    TFRecordDataset = TFRecordDatasetV2
+    TextLineDataset = TextLineDatasetV2
+  else:
+    FixedLengthRecordDataset = FixedLengthRecordDatasetV1
+    TFRecordDataset = TFRecordDatasetV1
+    TextLineDataset = TextLineDatasetV1
+
+
+v2_compat.register_data_v2_callback(_tf2_callback)

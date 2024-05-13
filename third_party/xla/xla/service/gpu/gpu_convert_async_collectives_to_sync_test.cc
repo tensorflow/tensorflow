@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,10 +17,17 @@ limitations under the License.
 
 #include <string_view>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/util.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -30,16 +37,16 @@ using ::testing::IsFalse;
 using ::testing::IsTrue;
 
 // Note: The pass only processes modules that are already scheduled. If the test
-// does not work as epxected, make sure to check if "is_scheduled=true" is added
+// does not work as expected, make sure to check if "is_scheduled=true" is added
 // to the HLO module string.
 class GpuConvertAsyncCollectivesToSyncTest : public HloTestBase {
  public:
-  Status RunPass(HloModule *module, bool expect_change,
-                 HloPredicate is_nop = {}) {
+  absl::Status RunPass(HloModule *module, bool expect_change,
+                       HloPredicate is_nop = {}) {
     TF_ASSIGN_OR_RETURN(bool changed,
                         GpuConvertAsyncCollectivesToSync{is_nop}.Run(module));
     EXPECT_EQ(changed, expect_change);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns true if the instruction with the given name is synchronous.
@@ -48,8 +55,9 @@ class GpuConvertAsyncCollectivesToSyncTest : public HloTestBase {
     if (inst == nullptr) {
       return false;
     }
-    auto backend_config =
-        inst->backend_config<CollectiveBackendConfig>().value();
+    auto backend_config = inst->backend_config<GpuBackendConfig>()
+                              .value()
+                              .collective_backend_config();
     return backend_config.is_sync();
   }
 
@@ -101,6 +109,26 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNop) {
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true, is_nop_simple_));
   EXPECT_THAT(IsSync(module.get(), "start"), IsTrue());
+}
+TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleCollectiveBroadcast) {
+  const absl::string_view hlo_string = R"(
+  HloModule test, is_scheduled=true
+
+  collective_broadcast {
+    p0 = u32[8] parameter(0)
+    ROOT result = u32[8] collective-broadcast(p0), replica_groups={{0,1}, {2,3}}
+  }
+
+  ENTRY main {
+    data = u32[8] parameter(0)
+    cb-start = ((u32[8]{0}), u32[8]{0}) async-start(u32[8]{0} %data), calls=collective_broadcast
+    ROOT %ars = u32[8]{0} async-done(((u32[8]{0}), u32[8]{0}) %cb-start), calls=collective_broadcast
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  EXPECT_THAT(IsSync(module.get(), "cb-start"), IsTrue());
 }
 
 TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNonNop) {

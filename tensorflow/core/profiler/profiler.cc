@@ -162,7 +162,7 @@ int Run(int argc, char** argv) {
   string output_type;
   std::map<string, string> output_options;
   Status s = ParseOutput(FLAGS_output, &output_type, &output_options);
-  CHECK(s.ok()) << s.ToString();
+  CHECK(s.ok()) << s;
 
   string cmd = "";
   if (argc == 1 && FLAGS_graph_path.empty() && FLAGS_profile_path.empty() &&

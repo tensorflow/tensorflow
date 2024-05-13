@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/hash/hash.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -78,6 +77,9 @@ TF_CONST_INIT extern const absl::string_view kCounterEventsLineName;
 TF_CONST_INIT extern const absl::string_view kDeviceVendorNvidia;
 TF_CONST_INIT extern const absl::string_view kDeviceVendorAMD;
 
+// Name of Xplane that contains environment information
+TF_CONST_INIT extern const absl::string_view kTaskEnvPlaneName;
+
 // Max collectives to display per TPU.
 // Since in most cases there will be more than 9 collectives, the last line
 // contains all collectives that did not qualify to get their own line.
@@ -132,6 +134,7 @@ enum HostEventType {
   // Batching related.
   kBatchingSessionRun,
   kProcessBatch,
+  kBrainSessionRun,
   kConcatInputTensors,
   kMergeInputTensors,
   kScheduleWithoutSplit,
@@ -253,6 +256,7 @@ enum StatType {
   kTfFunctionCall,
   kTfFunctionTracingCount,
   kFlops,
+  kModelFlops,
   kBytesAccessed,
   kMemoryAccessBreakdown,
   kSourceInfo,
@@ -260,6 +264,7 @@ enum StatType {
   kModelVersion,
   kBytesTransferred,
   kDmaQueue,
+  kDcnCollectiveInfo,
   // Performance counter related.
   kRawValue,
   kScaledValue,
@@ -312,7 +317,40 @@ enum StatType {
   kDcnLoopIndex,
   kEdgeTpuModelInfo,
   kEdgeTpuModelProfileInfo,
-  kLastStatType = kEdgeTpuModelProfileInfo,
+  kEdgeTpuMlir,
+  kDroppedTraces,
+  kLastStatType = kDroppedTraces,
+};
+
+enum MegaScaleStatType : uint8_t {
+  kMegaScaleGraphKey,
+  kFirstMegaScaleStatType = kMegaScaleGraphKey,
+  kMegaScaleLocalDeviceId,
+  kMegaScaleNumActions,
+  kMegaScaleCollectiveType,
+  kMegaScaleInputSize,
+  kMegaScaleSlackUs,
+  kMegaScaleActionType,
+  kMegaScaleStartEndType,
+  kMegaScaleActionIndex,
+  kMegaScaleActionDurationNs,
+  kMegaScaleActionInputs,
+  kMegaScaleTransferSource,
+  kMegaScaleTransferDestinations,
+  kMegaScaleBufferSizes,
+  kMegaScaleComputeOperation,
+  kMegaScaleChunk,
+  kMegaScaleLaunchId,
+  kMegaScaleLoopIteration,
+  kMegaScaleGraphProtos,
+  kLastMegaScaleStatType = kMegaScaleGraphProtos,
+};
+
+enum TaskEnvStatType {
+  kFirstTaskEnvStatType = 1,
+  kEnvProfileStartTime = kFirstTaskEnvStatType,
+  kEnvProfileStopTime,
+  kLastTaskEnvStatType = kEnvProfileStopTime,
 };
 
 static constexpr uint32_t kLineIdOffset = 10000;
@@ -360,11 +398,24 @@ inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
 
 std::optional<int64_t> FindStatType(absl::string_view stat_name);
 
+absl::string_view GetMegaScaleStatTypeStr(MegaScaleStatType stat_type);
+
+inline bool IsMegaScaleStatType(MegaScaleStatType stat_type,
+                                absl::string_view stat_name) {
+  return GetMegaScaleStatTypeStr(stat_type) == stat_name;
+}
+
+std::optional<int64_t> FindMegaScaleStatType(absl::string_view stat_name);
+
 // Returns true if the given event shouldn't be shown in the trace viewer.
 bool IsInternalEvent(std::optional<int64_t> event_type);
 
 // Returns true if the given stat shouldn't be shown in the trace viewer.
 bool IsInternalStat(std::optional<int64_t> stat_type);
+
+absl::string_view GetTaskEnvStatTypeStr(TaskEnvStatType stat_type);
+
+std::optional<int64_t> FindTaskEnvStatType(absl::string_view stat_name);
 
 // Support for flow events:
 // This class enables encoding/decoding the flow id and direction, stored as
@@ -440,6 +491,8 @@ class XFlow {
 TF_CONST_INIT extern const absl::string_view kMegaScaleDcnReceive;
 TF_CONST_INIT extern const absl::string_view kMegaScaleDcnSend;
 TF_CONST_INIT extern const absl::string_view kMegaScaleDcnSendFinished;
+TF_CONST_INIT extern const absl::string_view kMegaScaleDcnMemAllocate;
+TF_CONST_INIT extern const absl::string_view kMegaScaleDcnMemCopy;
 TF_CONST_INIT extern const absl::string_view kMegaScaleTopologyDiscovery;
 TF_CONST_INIT extern const absl::string_view kMegaScaleBarrier;
 TF_CONST_INIT extern const absl::string_view kMegaScaleHostCommand;
@@ -447,10 +500,22 @@ TF_CONST_INIT extern const absl::string_view kMegaScaleD2HTransferStart;
 TF_CONST_INIT extern const absl::string_view kMegaScaleD2HTransferFinished;
 TF_CONST_INIT extern const absl::string_view kMegaScaleH2DTransferStart;
 TF_CONST_INIT extern const absl::string_view kMegaScaleH2DTransferFinished;
+TF_CONST_INIT extern const absl::string_view kMegaScaleReductionStart;
+TF_CONST_INIT extern const absl::string_view kMegaScaleReductionFinished;
+TF_CONST_INIT extern const absl::string_view kMegaScaleCompressionStart;
+TF_CONST_INIT extern const absl::string_view kMegaScaleCompressionFinished;
+TF_CONST_INIT extern const absl::string_view kMegaScaleDecompressionStart;
+TF_CONST_INIT extern const absl::string_view kMegaScaleDecompressionFinished;
 TF_CONST_INIT extern const char kXProfMetadataKey[];
 TF_CONST_INIT extern const char kXProfMetadataFlow[];
 TF_CONST_INIT extern const char kXProfMetadataTransfers[];
 TF_CONST_INIT extern const char kXProfMetadataBufferSize[];
+
+// String constants for threadpool_listener events
+TF_CONST_INIT extern const absl::string_view kThreadpoolListenerRecord;
+TF_CONST_INIT extern const absl::string_view kThreadpoolListenerStartRegion;
+TF_CONST_INIT extern const absl::string_view kThreadpoolListenerStopRegion;
+TF_CONST_INIT extern const absl::string_view kThreadpoolListenerRegion;
 
 }  // namespace profiler
 }  // namespace tsl

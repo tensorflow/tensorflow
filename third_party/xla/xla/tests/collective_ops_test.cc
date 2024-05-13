@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -480,7 +480,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {&input_literal}, /*num_replicas=*/4,
-                        /*use_threads=*/true));
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
 
   ASSERT_EQ(results.size(), 4);
 
@@ -522,7 +522,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_Degenerate) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {}, /*num_replicas=*/kNumReplicas,
-                        /*use_threads=*/true));
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
 
   ASSERT_EQ(results.size(), kNumReplicas);
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -618,14 +618,55 @@ XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(std::move(module), {}, num_devices_,
-                                            /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, num_devices_,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
 
   ASSERT_EQ(results.size(), num_devices_);
   for (uint32_t i = 0; i < num_devices_; ++i) {
     EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0(i), results[i]));
   }
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectiveBroadcast_Simple)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  collective_broadcast {
+    p0 = u32[2] parameter(0)
+    ROOT result = u32[2] collective-broadcast(p0), replica_groups={{1, 0, 2, 3}}
+  }
+
+  ENTRY test_computation {
+    replica = u32[] replica-id()
+    ten = u32[] constant(10)
+    sum = u32[] add(replica, ten)
+    p = u32[2] broadcast(sum), dimensions={}
+    cb = ((u32[2]), u32[2]) async-start(u32[2] %p), calls=collective_broadcast
+    ROOT res = u32[2] async-done(cb), calls=collective_broadcast
+  }
+  )";
+  const int64_t kNumReplicas = 4;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                                            /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({11, 11}),
+                                     results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({11, 11}),
+                                     results[1]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({11, 11}),
+                                     results[2]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({11, 11}),
+                                     results[3]));
 }
 
 XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
@@ -648,9 +689,10 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
-                                            /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({11, 11}),
                                      results[0]));
@@ -683,9 +725,10 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Degenerate) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
-                                            /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({10, 10}),
                                      results[0]));
@@ -717,9 +760,10 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_NotDegenerate) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
-                                            /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({10, 10}),
                                      results[0]));
@@ -752,9 +796,10 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Rotate) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
-                                            /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({13, 13}),
                                      results[0]));
@@ -829,9 +874,10 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_EmptyReplicaGroups) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
-                                            /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16, 12, 17, 13, 18},
                                            results[0]);
@@ -873,9 +919,10 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_OrderedReplicaGroups) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
-                                            /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({43, 48, 42, 47, 41, 46, 40, 45},
                                            results[0]);
@@ -911,9 +958,10 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_TwoReplicaGroups) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
-                                            /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({23, 28, 20, 25}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({22, 27, 21, 26}, results[1]);
@@ -941,9 +989,10 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_SplitDimension)) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
-                                            /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16, 12, 17, 13, 18},
                                            results[0]);
@@ -964,6 +1013,34 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim0) {
     a0 = u32[1, 2] constant({{10, 15}})
     a1 = u32[1, 2] add(id2, a0)
     allgather = u32[2, 2] all-gather(a1), dimensions={0}
+    ROOT out = u32[4] reshape(allgather)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (const Literal& result : results) {
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, result);
+  }
+}
+
+XLA_TEST_F(CollectiveOpsTest, AllGather_Dim0_UseGlobalDevices) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[1, 2] broadcast(id), dimensions={}
+    a0 = u32[1, 2] constant({{10, 15}})
+    a1 = u32[1, 2] add(id2, a0)
+    allgather = u32[2, 2] all-gather(a1), dimensions={0}, use_global_device_ids=true, channel_id=7, replica_groups={{0, 1}}
     ROOT out = u32[4] reshape(allgather)
   }
   )";
@@ -1844,16 +1921,16 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_Simple)) {
     %p = u32[2] broadcast(%sum), dimensions={}
 
     %after-all = token[] after-all()
-    %recv = (u32[2], u32[], token[]) recv(%after-all), channel_id=1, frontend_attributes={
+    %recv = (u32[2], u32[], token[]) recv(%after-all), channel_id=0, frontend_attributes={
       _xla_send_recv_source_target_pairs="{{1,0}}"
     }
-    %send = (u32[2], u32[], token[]) send(%p, %after-all), channel_id=1, control-predecessors={%recv}, frontend_attributes={
+    %send = (u32[2], u32[], token[]) send(%p, %after-all), channel_id=0, control-predecessors={%recv}, frontend_attributes={
       _xla_send_recv_source_target_pairs="{{1,0}}"
     }
 
-    %recv-done = (u32[2], token[]) recv-done(%recv), channel_id=1
+    %recv-done = (u32[2], token[]) recv-done(%recv), channel_id=0
     %recv-data = u32[2] get-tuple-element(%recv-done), index=0
-    %send-done = token[] send-done(%send), channel_id=1, control-predecessors={%recv}
+    %send-done = token[] send-done(%send), channel_id=0, control-predecessors={%recv}
     ROOT copy = u32[2] copy(%recv-data)
   }
   )";
@@ -1873,6 +1950,227 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_Simple)) {
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({11, 11}),
                                      results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({0, 0}),
+                                     results[1]));
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_TwoConcurrentChains)) {
+  const char* const kModuleStr = R"(
+  HloModule test, is_scheduled=true
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    c1 = u32[] constant(1)
+    replica = u32[] replica-id()
+    a = u32[] add(c1, replica)
+    send-data = u32[2] broadcast(a), dimensions={}
+
+    after-all.0 = token[] after-all()
+    recv.0 = (u32[2], u32[], token[]) recv(after-all.0), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_pipeline="1"
+      }
+    send.0 = (u32[2], u32[], token[]) send(send-data, after-all.0),
+      channel_id=0, frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_pipeline="1"
+      }
+
+    after-all.1 = token[] after-all()
+    recv.1 = (u32[2], u32[], token[]) recv(after-all.1), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}}"
+      }
+    send.1 = (u32[2], u32[], token[]) send(send-data, after-all.1),
+      channel_id=0, frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}}"
+      }
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=0
+    recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
+    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=0
+    recv-data.1 = u32[2] get-tuple-element(recv-done.1), index=0
+
+    compare0 = pred[] compare(replica, c0), direction=EQ
+    compare = pred[2] broadcast(compare0), dimensions={}
+    recv-data = u32[2] select(compare, recv-data.0, recv-data.1)
+
+    send-done.0 = token[] send-done(send.0), channel_id=0
+    send-done.1 = token[] send-done(send.1), channel_id=0
+
+    c1b = u32[2] broadcast(c1), dimensions={}
+    ROOT result = u32[2] add(c1b, recv-data)
+  })";
+
+  const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/false));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({3, 3}),
+                                     results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({2, 2}),
+                                     results[1]));
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_ValidationAttr1)) {
+  const char* const kModuleStr = R"(
+  HloModule test, is_scheduled=true
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    c1 = u32[] constant(1)
+    replica = u32[] replica-id()
+    a = u32[] add(c1, replica)
+    send-data = u32[2] broadcast(a), dimensions={}
+
+    after-all.0 = token[] after-all()
+    recv.0 = (u32[2], u32[], token[]) recv(after-all.0), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_validation="invalid"
+      }
+    send.0 = (u32[2], u32[], token[]) send(send-data, after-all.0),
+      channel_id=0, frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_validation="invalid"
+      }
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=0
+    recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
+    send-done.0 = token[] send-done(send.0), channel_id=0
+
+    after-all.1 = token[] after-all()
+    recv.1 = (u32[2], u32[], token[]) recv(after-all.1), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}}"
+      }
+    send.1 = (u32[2], u32[], token[]) send(send-data, after-all.1),
+      channel_id=0, frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}}"
+      }
+    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=0
+    recv-data.1 = u32[2] get-tuple-element(recv-done.1), index=0
+
+    compare0 = pred[] compare(replica, c0), direction=EQ
+    compare = pred[2] broadcast(compare0), dimensions={}
+    recv-data = u32[2] select(compare, recv-data.0, recv-data.1)
+    send-done.1 = token[] send-done(send.1), channel_id=0
+
+    c1b = u32[2] broadcast(c1), dimensions={}
+    ROOT result = u32[2] add(c1b, recv-data)
+  })";
+
+  const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/false));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  // Skip checking the result for device 0 as it has garabage value as the
+  // Recv operation is marked for skipping at runtime.
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({2, 2}),
+                                     results[1]));
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_ValidationAttr2)) {
+  const char* const kModuleStr = R"(
+  HloModule test, is_scheduled=true
+cond {
+    param = (u32[], u32[2]) parameter(0)
+    count = get-tuple-element(%param), index=0
+    ub = u32[] constant(2)
+    ROOT result = pred[] compare(count, ub), direction=LT
+ }
+
+body {
+    param = (u32[], u32[2]) parameter(0)
+    count = get-tuple-element(%param), index=0
+    send-data = get-tuple-element(%param), index=1
+
+    after-all.0 = token[] after-all()
+    recv.0 = (u32[2], u32[], token[]) recv(after-all.0), channel_id=0,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_validation="{{0,1}}"
+      }
+    send.0 = (u32[2], u32[], token[]) send(send-data, after-all.0),
+      channel_id=0,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_validation="{{0,1}}"
+      }
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=0
+    recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
+    send-done.0 = token[] send-done(send.0), channel_id=0
+
+    after-all.1 = token[] after-all()
+    recv.1 = (u32[2], u32[], token[]) recv(after-all.1), channel_id=0,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}}"
+      }
+    send.1 = (u32[2], u32[], token[]) send(send-data, after-all.1),
+      channel_id=0,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}}"
+      }
+    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=0
+    recv-data.1 = u32[2] get-tuple-element(recv-done.1), index=0
+
+    replica = u32[] replica-id()
+    constant0 = u32[] constant(0)
+    compare0 = pred[] compare(replica, constant0), direction=EQ
+    compare = pred[2] broadcast(compare0), dimensions={}
+    recv-data = u32[2] select(compare, recv-data.0, recv-data.1)
+
+    c1 = u32[] constant(1)
+    new_count = u32[] add(count, c1)
+
+    r = u32[2] broadcast(c1), dimensions={}
+    s = u32[2] add(r, recv-data)
+
+    send-done.1 = token[] send-done(send.1), channel_id=0
+    ROOT result = (u32[], u32[2]) tuple(new_count, s)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    r = u32[] replica-id()
+    init = u32[2] broadcast(r), dimensions={}
+    while_init = (u32[], u32[2]) tuple(c0, init)
+    while_result = (u32[], u32[2]) while(while_init), body=body, condition=cond
+    ROOT result = u32[2] get-tuple-element(while_result), index=1
+  })";
+
+  const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/false));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({2, 2}),
+                                     results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({3, 3}),
                                      results[1]));
 }
 

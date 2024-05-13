@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -109,7 +109,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   int64_t reduce_window_size_;
 };
 
-StatusOr<bool> TreeReductionRewriter::Run(
+absl::StatusOr<bool> TreeReductionRewriter::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   ReductionRewriterVisitor visitor(reduce_window_size_);

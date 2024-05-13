@@ -7,7 +7,9 @@ is intended to *complement* NNAPI functionality, particularly for devices where
 NNAPI DSP acceleration is unavailable (e.g., on older devices, or devices that
 don’t yet have a DSP NNAPI driver).
 
-Note: This delegate is in experimental (beta) phase.
+Caution: The currently released versions of the Hexagon delegate, [up to version
+1.20.0.1](#hexagon_versions), are no longer supported. An updated version of this
+delegate is expected soon.
 
 **Supported devices:**
 
@@ -32,7 +34,7 @@ including those generated using
 [post-training integer quantization](https://www.tensorflow.org/lite/performance/post_training_integer_quant).
 UInt8 models trained with the legacy
 [quantization-aware training](https://github.com/tensorflow/tensorflow/tree/r1.13/tensorflow/contrib/quantize)
-path are also supported, for e.g.,
+path are also supported, for example,
 [these quantized versions](https://www.tensorflow.org/lite/guide/hosted_models#quantized_models)
 on our Hosted Models page.
 
@@ -71,7 +73,7 @@ dependencies {
 }
 ```
 
-#### Step 2. Add Hexagon libraries to your Android app
+#### Step 2. Add Hexagon libraries to your Android app {:#hexagon_versions}
 
 *   Download and run hexagon_nn_skel.run. It should provide 3 different shared
     libraries “libhexagon_nn_skel.so”, “libhexagon_nn_skel_v65.so”,
@@ -82,9 +84,11 @@ dependencies {
     *   [v1.20](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.20.0.0.run)
     *   [v1.20.0.1](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.20.0.1.run)
 
-Note: You will need to accept the license agreement.
+Caution: The currently released versions of the Hexagon delegate, up to version
+1.20.0.1, are no longer supported. An updated version of this delegate is
+expected soon.
 
-Note: As of 02/23/2021 you should use v1.20.0.1.
+Note: You must accept the license agreement before using the delegate.
 
 Note: You must use the hexagon_nn libraries with the compatible version of
 interface library. Interface library is part of the AAR and fetched by bazel
@@ -97,8 +101,8 @@ The version in the bazel config is the version you should use.
     The delegate will automatically pick the one with best performance depending
     on the device.
 
-Note: If your app will be built for both 32 and 64-bit ARM devices, then you
-will need to add the Hexagon shared libs to both 32 and 64-bit lib folders.
+Note: If your app will be built for both 32 and 64-bit ARM devices, then
+add the Hexagon shared libs to both 32 and 64-bit lib folders.
 
 #### Step 3. Create a delegate and initialize a TensorFlow Lite Interpreter
 
@@ -190,9 +194,11 @@ dependencies {
     *   [v1.20](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.20.0.0.run)
     *   [v1.20.0.1](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.20.0.1.run)
 
-Note: You will need to accept the license agreement.
+Caution: The currently released versions of the Hexagon delegate, up to version
+1.20.0.1, are no longer supported. An updated version of this delegate is
+expected soon.
 
-Note: As of 02/23/2021 you should use v1.20.0.1.
+Note: You must accept the license agreement before using the delegate.
 
 Note: You must use the hexagon_nn libraries with the compatible version of
 interface library. Interface library is part of the AAR and fetched by bazel
@@ -205,8 +211,8 @@ The version in the bazel config is the version you should use.
     The delegate will automatically pick the one with best performance depending
     on the device.
 
-Note: If your app will be built for both 32 and 64-bit ARM devices, then you
-will need to add the Hexagon shared libs to both 32 and 64-bit lib folders.
+Note: If your app will be built for both 32 and 64-bit ARM devices, then
+add the Hexagon shared libs to both 32 and 64-bit lib folders.
 
 #### Step 3. Include the C header
 
@@ -233,8 +239,8 @@ const char[] library_directory_path = "/data/local/tmp/";
 TfLiteHexagonInitWithPath(library_directory_path);  // Needed once at startup.
 ::tflite::TfLiteHexagonDelegateOptions params = {0};
 // 'delegate_ptr' Need to outlive the interpreter. For example,
-// If use case will need to resize input or anything that can trigger
-// re-applying delegates then 'delegate_ptr' need to outlive the interpreter.
+// If your use case requires resizing the input or anything that can trigger
+// re-applying delegates then 'delegate_ptr' must outlive the interpreter.
 auto* delegate_ptr = ::tflite::TfLiteHexagonDelegateCreate(&params);
 Interpreter::TfLiteDelegatePtr delegate(delegate_ptr,
   [](TfLiteDelegate* delegate) {

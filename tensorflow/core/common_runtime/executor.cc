@@ -152,7 +152,7 @@ class ExecutorImpl : public Executor {
   Status Initialize(const Graph& graph) {
     TF_RETURN_IF_ERROR(immutable_state_.Initialize(graph));
     kernel_stats_.Initialize(immutable_state_.graph_view());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -373,6 +373,7 @@ class ExecutorState {
   // Not owned.
   RendezvousInterface* rendezvous_;
   CollectiveExecutor* collective_executor_ = nullptr;
+  const ConfigProto* const session_config_;
   SessionState* session_state_;
   string session_handle_;
   const SessionMetadata* session_metadata_ = nullptr;
@@ -427,6 +428,7 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       deadline_(args.deadline),
       rendezvous_(args.rendezvous),
       collective_executor_(args.collective_executor),
+      session_config_(args.session_config),
       session_state_(args.session_state),
       session_handle_(args.session_handle),
       session_metadata_(immutable_state.params().session_metadata),
@@ -507,7 +509,7 @@ void ExecutorState<PropagatorStateType>::RunAsync(Executor::DoneCallback done) {
   num_outstanding_ops_ = ready.size();
   if (ready.empty()) {
     delete this;
-    done(OkStatus());
+    done(absl::OkStatus());
   } else {
     done_cb_ = std::move(done);
     // Schedule to run all the ready ops in thread pool.
@@ -574,7 +576,7 @@ bool MightTrace(const tracing::EventCollector* event_collector,
     return true;
   }
 
-  if (profiler::ScopedAnnotation::IsEnabled()) return true;
+  if (tsl::profiler::ScopedAnnotation::IsEnabled()) return true;
 
   return profiler::TraceMe::Active(profiler::GetTFTraceMeLevel(is_expensive));
 }
@@ -759,6 +761,7 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
   params->log_memory = log_memory_;
   params->rendezvous = rendezvous_;
   params->collective_executor = collective_executor_;
+  params->session_config = session_config_;
   params->session_state = session_state_;
   params->session_handle = session_handle_;
   params->session_metadata = session_metadata_;
@@ -1077,7 +1080,7 @@ Status ExecutorState<PropagatorStateType>::PrepareInputs(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <class PropagatorStateType>
@@ -1565,7 +1568,7 @@ class DefaultExecutorRegistrar {
       Executor* ret = nullptr;
       TF_RETURN_IF_ERROR(NewLocalExecutor(params, std::move(graph), &ret));
       out_executor->reset(ret);
-      return OkStatus();
+      return absl::OkStatus();
     }
   };
 };

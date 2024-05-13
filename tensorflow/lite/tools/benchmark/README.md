@@ -25,6 +25,13 @@ The binary takes the following required parameters:
 
 and the following optional parameters:
 
+*   `signature_to_run_for`: `string` (default="") \
+    If the model contains multiple signatures, use this flag to specify the
+    signature to benchmark.
+    - If multiple signatures are present and this flag is not specified, the
+    benchmark will throw an error.
+    - If only one signature is present and this flag is not specified, the
+    default signature will be used.
 *   `num_threads`: `int` (default=-1) \
     The number of threads to use for running TFLite interpreter. By default,
     this is set to the platform default value -1.
@@ -105,6 +112,12 @@ and the following optional parameters:
 *   `optimize_memory_for_large_tensors`: `int` (default=0) \
     Whether to optimize memory usage for large tensors with sacrificing latency.
     When the feature is enabled, `release_dynamic_tensors` is also enabled.
+
+*   `enable_builtin_cast_constant_cache`: `bool` (default=false) \
+    Configure the builtin TFLite CAST operation to cache its output if its input
+    is a constant tensor.
+
+    WARNING: This is an experimental option that may be removed at any time.
 
 This list of parameters is not exhaustive. See
 [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/benchmark/benchmark_model.cc)
@@ -200,13 +213,16 @@ For libhexagon_interface.so it needs to be on a path that can be loaded from
 example: put it in LD_LIBRARY_PATH.
 
 #### XNNPACK delegate
+
 *   `use_xnnpack`: `bool` (default=false) \
-Note if this option is explicitly set to `false`, the TfLite runtime will use
-its original CPU kernels for model execution. In other words, after enabling
-the feature that the XNNPACK delegate is applied by default in TfLite runtime,
-explictly setting this flag to `false` will cause the benchmark tool to disable
-the feature at runtime, and to use the original non-delegated CPU execution path
-for model benchmarking.
+    Note if this option is explicitly set to `false`, the TfLite runtime will
+    use its original CPU kernels for model execution. In other words, after
+    enabling the feature that the XNNPACK delegate is applied by default in
+    TfLite runtime, explictly setting this flag to `false` will cause the
+    benchmark tool to disable the feature at runtime, and to use the original
+    non-delegated CPU execution path for model benchmarking.
+*   `xnnpack_force_fp16`: `bool` (default=false) \
+    Enforce float16 inference.
 
 #### CoreML delegate
 *   `use_coreml`: `bool` (default=false)

@@ -23,7 +23,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import resource_variables_toggle
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
@@ -39,7 +39,7 @@ class SessionManagerTest(test.TestCase):
   @classmethod
   def setUpClass(cls):
     super(SessionManagerTest, cls).setUpClass()
-    variable_scope.disable_resource_variables()
+    resource_variables_toggle.disable_resource_variables()
 
   def testPrepareSessionSucceeds(self):
     with ops.Graph().as_default():
@@ -678,7 +678,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
   @classmethod
   def setUpClass(cls):
     super(ObsoleteSessionManagerTest, cls).setUpClass()
-    variable_scope.disable_resource_variables()
+    resource_variables_toggle.disable_resource_variables()
 
   def testPrepareSessionSucceeds(self):
     with ops.Graph().as_default():

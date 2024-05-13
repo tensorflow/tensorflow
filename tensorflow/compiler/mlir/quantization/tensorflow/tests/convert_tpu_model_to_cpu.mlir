@@ -26,8 +26,8 @@ func.func private @tpu_func_0_optim0(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x2
 }
 
 // CHECK: func @tpu_conv(%[[ARG0:.*]]: tensor<1x3x4x3xf32>)
-// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {device = "", value = dense_resource<__elided__> : tensor<2x3x3x2xbf16>} : () -> tensor<2x3x3x2xbf16>
-// CHECK: %[[cast:.*]] = "tf.Cast"(%[[cst]]) {Truncate = false} : (tensor<2x3x3x2xbf16>) -> tensor<2x3x3x2xf32>
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() <{value = dense_resource<__elided__> : tensor<2x3x3x2xbf16>}> {device = ""} : () -> tensor<2x3x3x2xbf16>
+// CHECK: %[[cast:.*]] = "tf.Cast"(%[[cst]]) <{Truncate = false}> : (tensor<2x3x3x2xbf16>) -> tensor<2x3x3x2xf32>
 // CHECK: %[[conv:.*]] = "tf.Conv2D"(%[[ARG0]], %[[cast]])
 // CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[conv]]) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
 // CHECK: return %[[identity]] : tensor<1x3x2x2xf32>

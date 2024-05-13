@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,12 @@ limitations under the License.
 #include "mhlo/analysis/shape_component_analysis.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <vector>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Matchers.h"
+#include "mlir/Support/LLVM.h"
 
 using namespace mlir;
 
@@ -80,7 +83,8 @@ struct ShapeVisitor {
       // Skip irrelevant cases early.
       Value value = transitivelyRequestedInfo.value();
       Type ty = value.getType();
-      if (!ty.isIntOrIndexOrFloat() && !ty.isa<RankedTensorType>()) continue;
+      if (!ty.isIntOrIndexOrFloat() && !mlir::isa<RankedTensorType>(ty))
+        continue;
 
       // Handle shapes.
       if (transitivelyRequestedInfo.isShapeInfo()) {
@@ -98,7 +102,7 @@ struct ShapeVisitor {
           backwardTransposeShape(transpose);
         } else if (auto select = value.getDefiningOp<mhlo::SelectOp>()) {
           backwardSelectShape(select);
-        } else if (auto arg = value.dyn_cast<BlockArgument>()) {
+        } else if (auto arg = mlir::dyn_cast<BlockArgument>(value)) {
           backwardBlockArgumentShape(arg);
         } else if (value.getDefiningOp() &&
                    value.getDefiningOp()
@@ -111,7 +115,7 @@ struct ShapeVisitor {
       }
 
       // Skip irrelevant cases early.
-      auto rankedTy = ty.dyn_cast<RankedTensorType>();
+      auto rankedTy = mlir::dyn_cast<RankedTensorType>(ty);
       bool isPossiblyInterestingScalar = ty.isIntOrIndex();
       bool isPossiblyInterestingTensor =
           rankedTy && rankedTy.getRank() <= 1 && rankedTy.hasStaticShape();
@@ -242,7 +246,7 @@ struct ShapeVisitor {
 
   void backwardAssumingShape(Value op) {
     auto assumingOp = op.getDefiningOp<shape::AssumingOp>();
-    auto number = op.cast<OpResult>().getResultNumber();
+    auto number = mlir::cast<OpResult>(op).getResultNumber();
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
     backwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(
         cast<shape::AssumingYieldOp>(
@@ -251,7 +255,7 @@ struct ShapeVisitor {
   }
   void forwardAssumingShape(Value op) {
     auto assumingOp = op.getDefiningOp<shape::AssumingOp>();
-    auto number = op.cast<OpResult>().getResultNumber();
+    auto number = mlir::cast<OpResult>(op).getResultNumber();
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     dims = lookup(ShapeOrValueInfo::getShapeInfoOf(
         cast<shape::AssumingYieldOp>(
@@ -335,7 +339,7 @@ struct ShapeVisitor {
         ShapeOrValueInfo::getValueInfoOf(op.getOutputShape()));
   }
   void forwardDynamicReshapeShape(mhlo::DynamicReshapeOp op) {
-    auto rankedTy = op.getResult().getType().cast<RankedTensorType>();
+    auto rankedTy = mlir::cast<RankedTensorType>(op.getResult().getType());
     auto shapeDims =
         lookup(ShapeOrValueInfo::getValueInfoOf(op.getOutputShape()));
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
@@ -367,7 +371,7 @@ struct ShapeVisitor {
   void forwardTransposeShape(mhlo::TransposeOp op) {
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     auto in = lookup(ShapeOrValueInfo::getShapeInfoOf(op.getOperand()));
-    auto elem = op.getPermutation().cast<DenseIntElementsAttr>();
+    auto elem = mlir::cast<DenseIntElementsAttr>(op.getPermutation());
     for (const auto &val : elem) dims.push_back(in[val.getZExtValue()]);
   }
   void backwardSelectShape(mhlo::SelectOp op) {
@@ -437,7 +441,7 @@ struct ShapeVisitor {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(v));
   }
   void forwardUnknownShape(Value v) {
-    auto rankedTy = v.getType().dyn_cast<RankedTensorType>();
+    auto rankedTy = mlir::dyn_cast<RankedTensorType>(v.getType());
     if (!rankedTy) return;
     auto id = getAffineSymbolExpr(0, v.getContext());
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(v));
@@ -462,7 +466,7 @@ struct ShapeVisitor {
     backwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op.getArg()));
   }
   void forwardShapeOf(shape::ShapeOfOp op) {
-    auto rankedTy = op.getArg().getType().cast<RankedTensorType>();
+    auto rankedTy = mlir::cast<RankedTensorType>(op.getArg().getType());
     auto arg = lookup(ShapeOrValueInfo::getShapeInfoOf(op.getArg()));
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
     return dimsFromStaticShape(rankedTy, arg, &dims);
@@ -480,7 +484,7 @@ struct ShapeVisitor {
     SymbolicExpr dim;
     for (auto &it : in) {
       // For constant expressions, we can accumulate a concrete product.
-      if (auto cexpr = it.expr.dyn_cast<AffineConstantExpr>()) {
+      if (auto cexpr = dyn_cast<AffineConstantExpr>(it.expr)) {
         assert(cexpr.getValue() > 0 && "shape value must be positive");
         concreteProduct *= cexpr.getValue();
         continue;
@@ -518,8 +522,10 @@ struct ShapeVisitor {
   void forwardDim(tensor::DimOp op) {
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
     if (auto index = op.getIndex().getDefiningOp<arith::ConstantOp>()) {
-      int64_t i = index.getValue().cast<IntegerAttr>().getInt();
+      int64_t i = mlir::cast<IntegerAttr>(index.getValue()).getInt();
       auto in = lookup(ShapeOrValueInfo::getShapeInfoOf(op.getSource()));
+      if (i >= static_cast<int64_t>(in.size()) || i < 0)
+        llvm::report_fatal_error("tensor dim out of bounds");
       dims.push_back({in[i].symbols, in[i].expr});
     } else {
       forwardUnknown(op);
@@ -586,7 +592,7 @@ struct ShapeVisitor {
     assert(op.getIndices().size() == 1);
     if (auto index =
             op.getIndices().front().getDefiningOp<arith::ConstantOp>()) {
-      int64_t i = index.getValue().cast<IntegerAttr>().getInt();
+      int64_t i = mlir::cast<IntegerAttr>(index.getValue()).getInt();
       // We asssume this is in bounds.
       auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.getTensor()));
       dims.push_back({in[i].symbols, in[i].expr});
@@ -656,7 +662,7 @@ struct ShapeVisitor {
     }
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
     auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.getOperand()));
-    auto elem = op.getStartIndices().cast<DenseIntElementsAttr>();
+    auto elem = mlir::cast<DenseIntElementsAttr>(op.getStartIndices());
     auto i = (*elem.begin()).getZExtValue();
     if (i >= in.size()) {  // Bounds check.
       return forwardUnknown(op);
@@ -706,7 +712,7 @@ struct ShapeVisitor {
 
   // Return the size of the first dimension. Returns 1 for scalars.
   static int64_t dim0size(Type type) {
-    if (auto rankedType = type.dyn_cast<RankedTensorType>())
+    if (auto rankedType = mlir::dyn_cast<RankedTensorType>(type))
       return rankedType.getRank() == 0 ? 1 : rankedType.getDimSize(0);
     return 1;
   }
@@ -764,8 +770,8 @@ void ShapeComponentAnalysis::reset() {
 }
 
 bool SymbolicExpr::isConstant(int64_t value) const {
-  return expr.isa<AffineConstantExpr>() &&
-         expr.cast<AffineConstantExpr>().getValue() == value;
+  return isa<AffineConstantExpr>(expr) &&
+         cast<AffineConstantExpr>(expr).getValue() == value;
 }
 
 bool SymbolicExpr::isKnownNotNegativeOne() const {
@@ -776,16 +782,15 @@ bool SymbolicExpr::isKnownNotNegativeOne() const {
     if (symbol.source.isShapeInfo()) return true;
     Operation *op = symbol.source.value().getDefiningOp();
     if (op == nullptr) return false;
-    return llvm::isa<shape::ShapeOfOp, mhlo::ComputeReshapeShapeOp,
-                     shape::NumElementsOp>(op);
+    return llvm::isa<shape::ShapeOfOp, shape::NumElementsOp>(op);
   };
 
   // For constants we know if it's -1 or not. Checking the sign is sufficient
   // here and allows for reuse below. This is correct, not complete.
   auto isGoodSymbolOrGoodConstantExpr = [&](AffineExpr expr) {
-    if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>())
+    if (auto symExpr = dyn_cast<AffineSymbolExpr>(expr))
       return isGoodSymbol(symbols[symExpr.getPosition()]);
-    if (auto constExpr = expr.dyn_cast<AffineConstantExpr>())
+    if (auto constExpr = dyn_cast<AffineConstantExpr>(expr))
       return constExpr.getValue() >= 0;
     return false;
   };
@@ -795,7 +800,7 @@ bool SymbolicExpr::isKnownNotNegativeOne() const {
   // Multiplying non-negative symbols and non-negative constants will always
   // give a positive result. This is correct, not complete.
   // TODO(kramerb): Could the analysis provide a generic interface for this?
-  if (auto bexpr = expr.dyn_cast<AffineBinaryOpExpr>()) {
+  if (auto bexpr = dyn_cast<AffineBinaryOpExpr>(expr)) {
     return bexpr.getKind() == AffineExprKind::Mul &&
            isGoodSymbolOrGoodConstantExpr(bexpr.getLHS()) &&
            isGoodSymbolOrGoodConstantExpr(bexpr.getRHS());
@@ -805,15 +810,15 @@ bool SymbolicExpr::isKnownNotNegativeOne() const {
 }
 
 bool SymbolicExpr::isKnownNotOne() const {
-  if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+  if (auto constExpr = dyn_cast<AffineConstantExpr>(expr)) {
     return constExpr.getValue() != 1;
   }
   return false;
 }
 
 std::optional<Symbol> SymbolicExpr::singleton() const {
-  if (expr.isa<AffineSymbolExpr>() &&
-      expr.cast<AffineSymbolExpr>().getPosition() == 0) {
+  if (isa<AffineSymbolExpr>(expr) &&
+      cast<AffineSymbolExpr>(expr).getPosition() == 0) {
     assert(symbols.size() == 1);
     return symbols[0];
   }

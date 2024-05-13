@@ -148,6 +148,12 @@ class InferenceContext {
   void InitRecordableQueue(Environment* env);
 
   absl::Status ProfileTime(ProfilingCommandQueue* queue, ProfilingInfo* result);
+  absl::Status ClarifyTimeMultipleEnqueue(double ops_total_duration_ms,
+                                          int min_ops, int max_ops,
+                                          ProfilingCommandQueue* queue,
+                                          ProfilingInfo* result);
+  absl::Status ClarifyTimeWithCommandBuffer(ProfilingCommandQueue* queue,
+                                            ProfilingInfo* result);
 
   struct ExecutionHints {
     bool need_flush = false;

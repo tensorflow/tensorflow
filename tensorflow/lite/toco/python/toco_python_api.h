@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
+
 namespace toco {
 
 // Convert a model represented in `input_contents`. `model_flags_proto`
@@ -36,7 +38,9 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
                       PyObject* input_contents_txt_raw,
                       bool extended_return = false,
                       PyObject* debug_info_txt_raw = nullptr,
-                      bool enable_mlir_converter = false);
+                      bool enable_mlir_converter = false,
+                      const tensorflow::quantization::PyFunctionLibrary*
+                          quantization_py_function_library = nullptr);
 
 // Quantize the model with calibration data. Throw errors if `fully_quantize`
 // is specified by the calibration data are not sufficient to quantize the
@@ -48,7 +52,8 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             bool enable_whole_model_verify = false,
                             PyObject* op_denylist = nullptr,
                             PyObject* node_denylist = nullptr,
-                            bool enable_variable_quantization = false);
+                            bool enable_variable_quantization = false,
+                            bool disable_per_channel_for_dense_layers = false);
 
 // Sparsifies model to encode sparse tensors with proper format. Throws error if
 // sparsification fails.

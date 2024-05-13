@@ -2,9 +2,12 @@
 #   XLA’s HLO Intermediate Representation implementation.
 
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -18,6 +21,7 @@ package_group(
 cc_library(
     name = "hlo",
     srcs = [
+        "collective_device_list.cc",
         "dfs_hlo_visitor.cc",
         "dynamic_parameter_binding.cc",
         "hlo_computation.cc",
@@ -34,6 +38,7 @@ cc_library(
         "hlo_sharding_metadata.cc",
     ],
     hdrs = [
+        "collective_device_list.h",
         "dfs_hlo_visitor.h",
         "dfs_hlo_visitor_with_default.h",
         "dynamic_parameter_binding.h",
@@ -53,8 +58,9 @@ cc_library(
         "hlo_sharding.h",
         "hlo_sharding_metadata.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
+        ":backend_config",
+        ":ptrvec",
         ":tile_assignment",
         "//xla:array",
         "//xla:comparison_util",
@@ -81,12 +87,16 @@ cc_library(
         "//xla/service:name_uniquer",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
@@ -105,10 +115,39 @@ cc_library(
 )
 
 cc_library(
+    name = "backend_config",
+    srcs = ["backend_config.cc"],
+    hdrs = ["backend_config.h"],
+    deps = [
+        "//xla:util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:human_readable_json",
+        "@local_tsl//tsl/platform:protobuf",
+    ],
+)
+
+xla_cc_test(
+    name = "backend_config_test",
+    srcs = ["backend_config_test.cc"],
+    deps = [
+        ":backend_config",
+        "//xla/service/gpu:backend_configs_cc",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "hlo_module_group",
     srcs = ["hlo_module_group.cc"],
     hdrs = ["hlo_module_group.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo",
         "//xla/service:hlo_proto_cc",
@@ -121,7 +160,6 @@ cc_library(
     name = "hlo_reachability",
     srcs = ["hlo_reachability.cc"],
     hdrs = ["hlo_reachability.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo",
         "//xla:types",
@@ -132,10 +170,43 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_dfs_reachability",
+    srcs = ["hlo_dfs_reachability.cc"],
+    hdrs = ["hlo_dfs_reachability.h"],
+    deps = [
+        ":hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "ptrvec",
+    hdrs = ["ptrvec.h"],
+    deps = [
+        "@com_google_absl//absl/log:check",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_test(
+    name = "ptrvec_test",
+    srcs = ["ptrvec_test.cc"],
+    deps = [
+        ":ptrvec",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "tile_assignment",
     srcs = ["tile_assignment.cc"],
     hdrs = ["tile_assignment.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:array",
         "//xla:printer",

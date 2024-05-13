@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <deque>
 
+#include "xla/literal.h"
 #include "xla/service/transfer_manager.h"
+#include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/tpu/noncopyable_buffer.h"
@@ -36,6 +38,8 @@ class TpuTransferManagerInterface : public xla::TransferManager {
       std::deque<tensorflow::tpu::NoncopyableBuffer>* buffers) = 0;
 
   static TpuTransferManagerInterface* GetRegisteredTpuTransferManager();
+
+  bool PackSubbyteTypes() const override { return true; }
 };
 
 }  // namespace xla

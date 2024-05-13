@@ -37,6 +37,8 @@ class MeshAttr
   using Base::Base;
   using Mesh = tensorflow::dtensor::Mesh;
 
+  static constexpr StringLiteral name = "dtensor.mesh";
+
   // Constructor of attribute
   static MeshAttr get(MLIRContext* context, const Mesh& mesh);
 
@@ -51,6 +53,8 @@ class LayoutAttr : public Attribute::AttrBase<LayoutAttr, Attribute,
   using Base::Base;
   using Layout = tensorflow::dtensor::Layout;
   using Mesh = tensorflow::dtensor::Mesh;
+
+  static constexpr StringLiteral name = "dtensor.layout";
 
   // Create a layout attribute.
   static LayoutAttr get(MLIRContext* context, Layout layout);

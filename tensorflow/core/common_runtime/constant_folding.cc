@@ -53,7 +53,9 @@ const char kScopedAllocatorAttrName[] = "_scoped_allocator";
 // For stateless RNGs ops, they are pure but device-dependent. Those ops are not
 // constant-foldable.
 static absl::flat_hash_set<std::string>* kBlockList =
-    new absl::flat_hash_set<std::string>({"StatelessRandomGetKeyCounter"});
+    new absl::flat_hash_set<std::string>({
+        "StatelessRandomGetKeyCounter",
+    });
 
 // Always allow these ops to fold even if their shape information is incomplete.
 static absl::flat_hash_set<std::string>* kAllowList =
@@ -642,7 +644,7 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
     VLOG(1) << "No constant foldable nodes found";
     *was_mutated = false;
     // This is not an error, so return the status as OK.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::map<NodeAndOutput, NodeAndOutput> tensors_to_fetch;
@@ -655,7 +657,7 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
     VLOG(1) << "No constant nodes found that feed into the original graph.";
     *was_mutated = false;
     // This is not an error, so return the status as OK.
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(1) << "Constant foldable " << constant_graph->num_node_ids() << " : "
           << graph->num_node_ids();
@@ -712,7 +714,7 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
   DumpGraph("After", graph);
 
   *was_mutated = (num_nodes_replaced > 0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

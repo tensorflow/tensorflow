@@ -179,10 +179,7 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
               not text.startswith("tf.compat.v2") and
               text not in self.v2_symbols and
               # Ignore any symbol that contains __internal__
-              "__internal__" not in text and
-              # Builds currently install old version of estimator that doesn't
-              # have some 2.0 symbols.
-              not text.startswith("tf.estimator")):
+              "__internal__" not in text):
             self.assertFalse(
                 True, "Symbol %s generated from %s not in v2 API" % (
                     text, name))
@@ -210,7 +207,6 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
             if (text and
                 not text.startswith("tf.compat.v1") and
                 not text.startswith("tf.compat.v2") and
-                not text.startswith("tf.estimator") and
                 text not in v1_symbols):
               self.assertFalse(
                   True, "Symbol %s generated from %s not in v1 API" % (
@@ -687,169 +683,6 @@ bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
       self.assertIn(
           "tf.losses have been replaced with object oriented versions", report)
 
-  def testEstimatorLossReductionChange(self):
-    classes = [
-        "LinearClassifier", "LinearRegressor", "DNNLinearCombinedClassifier",
-        "DNNLinearCombinedRegressor", "DNNRegressor", "DNNClassifier",
-        "BaselineClassifier", "BaselineRegressor"
-    ]
-    for c in classes:
-      ns = "tf.estimator." + c
-      text = ns + "()"
-      expected_text = ns + "(loss_reduction=tf.keras.losses.Reduction.SUM)"
-      _, report, errors, new_text = self._upgrade(text)
-      self.assertEqual(expected_text, new_text)
-
-      text = ns + "(loss_reduction=TEST)"
-      expected_text = ns + "(loss_reduction=TEST)"
-      _, report, errors, new_text = self._upgrade(text)
-      self.assertEqual(text, new_text)
-    text = "tf.estimator.BaselineClassifier(m, c, w, v, o, c, lr)"
-    expected_text = (
-        "tf.compat.v1.estimator.BaselineClassifier("
-        "model_dir=m, n_classes=c, weight_column=w, label_vocabulary=v, "
-        "optimizer=o, config=c, loss_reduction=lr)")
-    _, report, errors, new_text = self._upgrade(text)
-    self.assertEqual(expected_text, new_text)
-
-    text = "tf.estimator.BaselineClassifier(model_dir=model_dir)"
-    expected_text = ("tf.estimator.BaselineClassifier(" +
-                     "model_dir=model_dir, "
-                     "loss_reduction=tf.keras.losses.Reduction.SUM)")
-    _, report, errors, new_text = self._upgrade(text)
-    self.assertEqual(expected_text, new_text)
-
-  def testBaseEstimatorPartitioner(self):
-    classes = ["LinearEstimator", "DNNLinearCombinedEstimator", "DNNEstimator"]
-    for c in classes:
-      ns = "tf.estimator." + c
-      suffix = "(input_layer_partitioner=TEST)"
-      text = ns + suffix
-      expected_text = "tf.compat.v1.estimator." + c + suffix
-      _, unused_report, unused_errors, new_text = self._upgrade(text)
-      self.assertEqual(new_text, expected_text)
-
-  def testCannedEstimatorPartitioner(self):
-    classes = [
-        "LinearClassifier", "LinearRegressor", "DNNLinearCombinedClassifier",
-        "DNNLinearCombinedRegressor", "DNNRegressor", "DNNClassifier"
-    ]
-
-    for c in classes:
-      ns = "tf.estimator." + c
-      suffix = "(input_layer_partitioner=TEST)"
-      text = ns + suffix
-      suffix = ("(input_layer_partitioner=TEST, "
-                "loss_reduction=tf.keras.losses.Reduction.SUM)")
-      expected_text = "tf.compat.v1.estimator." + c + suffix
-      _, unused_report, unused_errors, new_text = self._upgrade(text)
-      self.assertEqual(new_text, expected_text)
-
-  def testBaseEstimatorOptimizer(self):
-    classes = ["BaselineEstimator", "LinearEstimator", "DNNEstimator"]
-    for c in classes:
-      ns = "tf.estimator." + c
-      suffix = "(optimizer=TEST)"
-      text = ns + suffix
-      expected_text = "tf.compat.v1.estimator." + c + suffix
-      _, unused_report, unused_errors, new_text = self._upgrade(text)
-      self.assertEqual(new_text, expected_text)
-
-  def testDNNLinearCombinedEstimatorOptimizer(self):
-    classes = ["DNNLinearCombinedEstimator"]
-    for c in classes:
-      ns = "tf.estimator." + c
-      suffix = "(dnn_optimizer=TEST, linear_optimizer=Test)"
-      text = ns + suffix
-      expected_text = "tf.compat.v1.estimator." + c + suffix
-      _, unused_report, unused_errors, new_text = self._upgrade(text)
-      self.assertEqual(new_text, expected_text)
-
-  def testCannedEstimatorOptimizer(self):
-    classes = [
-        "BaselineClassifier", "BaselineRegressor", "LinearClassifier",
-        "LinearRegressor", "DNNRegressor", "DNNClassifier"
-    ]
-
-    for c in classes:
-      ns = "tf.estimator." + c
-      suffix = "(optimizer=TEST)"
-      text = ns + suffix
-      suffix = ("(optimizer=TEST, "
-                "loss_reduction=tf.keras.losses.Reduction.SUM)")
-      expected_text = "tf.compat.v1.estimator." + c + suffix
-      _, unused_report, unused_errors, new_text = self._upgrade(text)
-      self.assertEqual(new_text, expected_text)
-
-  def testDNNLinearCombinedOptimizer(self):
-    classes = [
-        "DNNLinearCombinedClassifier",
-        "DNNLinearCombinedRegressor",
-    ]
-    for c in classes:
-      ns = "tf.estimator." + c
-      suffix = "(dnn_optimizer=TEST, linear_optimizer=Test)"
-      text = ns + suffix
-      suffix = ("(dnn_optimizer=TEST, linear_optimizer=Test, "
-                "loss_reduction=tf.keras.losses.Reduction.SUM)")
-      expected_text = "tf.compat.v1.estimator." + c + suffix
-      _, unused_report, unused_errors, new_text = self._upgrade(text)
-      self.assertEqual(new_text, expected_text)
-
-  def testBaseEstimatorPartitionerAndOptimizer(self):
-    classes = ["LinearEstimator", "DNNEstimator"]
-    for c in classes:
-      ns = "tf.estimator." + c
-      suffix = "(input_layer_partitioner=TEST, optimizer=TEST)"
-      text = ns + suffix
-      expected_text = "tf.compat.v1.estimator." + c + suffix
-      _, unused_report, unused_errors, new_text = self._upgrade(text)
-      self.assertEqual(new_text, expected_text)
-
-  def testDNNLinearCombinedEstimatorPartitionerAndOptimizer(self):
-    classes = ["DNNLinearCombinedEstimator"]
-    for c in classes:
-      ns = "tf.estimator." + c
-      suffix = ("(input_layer_partitioner=TEST, dnn_optimizer=TEST, "
-                "linear_optimizer=TEST)")
-      text = ns + suffix
-      expected_text = "tf.compat.v1.estimator." + c + suffix
-      _, unused_report, unused_errors, new_text = self._upgrade(text)
-      self.assertEqual(new_text, expected_text)
-
-  def testCannedEstimatorPartitionerAndOptimizer(self):
-    classes = [
-        "LinearClassifier", "LinearRegressor", "DNNRegressor", "DNNClassifier"
-    ]
-
-    for c in classes:
-      ns = "tf.estimator." + c
-      suffix = "(input_layer_partitioner=TEST, optimizer=TEST)"
-      text = ns + suffix
-      suffix = ("(input_layer_partitioner=TEST, optimizer=TEST, "
-                "loss_reduction=tf.keras.losses.Reduction.SUM)")
-      expected_text = "tf.compat.v1.estimator." + c + suffix
-      _, unused_report, unused_errors, new_text = self._upgrade(text)
-      self.assertEqual(new_text, expected_text)
-
-  def testDNNLinearCombinedPartitionerAndOptimizer(self):
-    classes = [
-        "DNNLinearCombinedClassifier",
-        "DNNLinearCombinedRegressor",
-    ]
-
-    for c in classes:
-      ns = "tf.estimator." + c
-      suffix = ("(input_layer_partitioner=TEST, dnn_optimizer=TEST, "
-                "linear_optimizer=TEST)")
-      text = ns + suffix
-      suffix = ("(input_layer_partitioner=TEST, dnn_optimizer=TEST, "
-                "linear_optimizer=TEST, "
-                "loss_reduction=tf.keras.losses.Reduction.SUM)")
-      expected_text = "tf.compat.v1.estimator." + c + suffix
-      _, unused_report, unused_errors, new_text = self._upgrade(text)
-      self.assertEqual(new_text, expected_text)
-
   def testExtractGlimpse(self):
     text = ("tf.image.extract_glimpse(x, size, off, False, "
             "False, False, name=\"foo\")\n")
@@ -1120,13 +953,6 @@ bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
     self.assertEqual("tf.hessians(ys=a, xs=b)\n", new_text)
     self.assertIn("tf.hessians no longer takes", report)
 
-  def testExportSavedModelRename(self):
-    text = "self.est.export_savedmodel(path)"
-    _, report, unused_errors, unused_new_text = self._upgrade(text)
-    self.assertIn(
-        "rename the method export_savedmodel() to export_saved_model()",
-        report)
-
   def testArgmin(self):
     text = "tf.argmin(input, name=n, dimension=1, output_type=type)"
     expected_text = "tf.argmin(input, name=n, axis=1, output_type=type)"
@@ -1178,17 +1004,6 @@ bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
     text = ("tf.autograph.to_code"
             "(f, False, arg_values=None, arg_types=None, indentation=' ')")
     expected_text = "tf.autograph.to_code(f, False)"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual(new_text, expected_text)
-
-  def testEstimatorInputs(self):
-    text = "tf.estimator.inputs.numpy_input_fn(0)"
-    expected_text = "tf.compat.v1.estimator.inputs.numpy_input_fn(0)"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual(new_text, expected_text)
-
-    text = "tf.estimator.inputs.pandas_input_fn(0)"
-    expected_text = "tf.compat.v1.estimator.inputs.pandas_input_fn(0)"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
@@ -1694,17 +1509,6 @@ def _log_prob(self, x):
     _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
     self.assertIn("tf.flags and tf.app.flags have been removed", errors[0])
 
-  def test_contrib_estimator_head_deprecation(self):
-    for contrib_alias in ["tf.contrib.", "contrib_"]:
-      api_symbols = ["binary_classification_head", "logistic_regression_head",
-                     "multi_class_head", "multi_head", "multi_label_head",
-                     "poisson_regression_head", "regression_head"]
-      for symbol in api_symbols:
-        text = contrib_alias + "estimator." + symbol
-        _, report, _, _ = self._upgrade(text)
-        self.assertIn("`tf.contrib.estimator.*_head` has been deprecated",
-                      report)
-
   def test_contrib_layers_layer_norm_deprecation(self):
     for contrib_alias in ["tf.contrib.", "contrib_"]:
       _, report, _, _ = self._upgrade(contrib_alias + "layers.layer_norm")
@@ -1724,19 +1528,6 @@ def _log_prob(self, x):
     expected_text = "tf.nn.max_pool2d(input=4)"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
-
-  def test_contrib_estimator_early_stopping(self):
-    for contrib_alias in ["tf.contrib.", "contrib_"]:
-      api_symbols = [
-          "make_early_stopping_hook", "stop_if_higher_hook",
-          "stop_if_lower_hook",
-          "stop_if_no_decrease_hook", "stop_if_no_increase_hook"
-      ]
-      for symbol in api_symbols:
-        text = contrib_alias + "estimator." + symbol
-        expected_text = "tf.estimator.experimental." + symbol
-        _, _, _, new_text = self._upgrade(text)
-        self.assertEqual(expected_text, new_text)
 
   def test_contrib_rnn_cell(self):
     api_symbols = ["RNNCell", "BasicLSTMCell", "BasicRNNCell", "GRUCell",
@@ -2392,12 +2183,6 @@ def _log_prob(self, x):
     result_a, result_b = results[0], results[1]
     self.assertEqual(result_a[3], expected_text_a)
     self.assertEqual(result_b[3], expected_text_b)
-
-  def test_model_to_estimator_checkpoint_warning(self):
-    text = "tf.keras.estimator.model_to_estimator(model)"
-    _, report, _, _ = self._upgrade(text)
-    expected_info = "will save object-based checkpoints"
-    self.assertIn(expected_info, report)
 
   def test_keras_experimental_export_warning(self):
     text = "tf.keras.experimental.export_saved_model"

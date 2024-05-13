@@ -159,7 +159,7 @@ class ReshapeOp : public OpKernel {
         (*product) *= size;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

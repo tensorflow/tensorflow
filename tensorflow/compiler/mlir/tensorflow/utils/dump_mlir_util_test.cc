@@ -125,7 +125,7 @@ TEST(DumpCrashReproducerTest, RoundtripDumpAndReadValid) {
   EXPECT_TRUE(mlir::MlirOptMain(output_stream->os(), std::move(input_file),
                                 registry,
                                 mlir::MlirOptMainConfig{}
-                                    .splitInputFile(false)
+                                    .splitInputFile("")
                                     .verifyDiagnostics(false)
                                     .verifyPasses(false)
                                     .allowUnregisteredDialects(false)

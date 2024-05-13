@@ -369,8 +369,8 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
 #if TENSORFLOW_USE_ROCM
       nccl_stream->stream = collective->participants[i]->context->nccl_stream();
 #else
-      nccl_stream->stream.reset(new se::Stream(executor));
-      nccl_stream->stream->Init();
+      TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+      nccl_stream->stream = std::move(stream);
 #endif
 
       streams.emplace_back(nccl_stream);
@@ -652,7 +652,7 @@ void NcclManager::RunCollective(Collective* collective) {
       // Wait to ensure that the kernel that produces the data in the input
       // tensor has finished running before the nccl kernel runs on the
       // communication stream.
-      nccl_stream->stream->ThenWaitFor(p->tensor_stream);
+      status = nccl_stream->stream->WaitFor(p->tensor_stream);
     }
     if (p->root) {
       if (collective->root_rank == -1) {

@@ -109,8 +109,15 @@ class DebugEventsReader:
         wall_times.append(debug_event.wall_time)
         run_ids.append(debug_event.debug_metadata.tfdbg_run_id)
         tensorflow_versions.append(
-            debug_event.debug_metadata.tensorflow_version)
+            debug_event.debug_metadata.tensorflow_version
+        )
         file_versions.append(debug_event.debug_metadata.file_version)
+      except Exception as e:
+        raise errors.DataLossError(
+            None,
+            None,
+            "Error reading tfdbg metadata from paths %s" % metadata_paths,
+        ) from e
       finally:
         reader.close()
     self._starting_wall_time = wall_times[0]

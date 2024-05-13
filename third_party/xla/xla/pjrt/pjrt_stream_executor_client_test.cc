@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,16 +33,16 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
 namespace {
 
-xla::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
+absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("Host"));
@@ -56,11 +56,16 @@ xla::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
       /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
   auto device = std::make_unique<PjRtStreamExecutorDevice>(
       0, std::move(device_state), "cpu");
+  auto memory_space = std::make_unique<PjRtStreamExecutorMemorySpace>(
+      0, device.get(), "device", 1234);
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   devices.emplace_back(std::move(device));
+  std::vector<std::unique_ptr<PjRtStreamExecutorMemorySpace>> memory_spaces;
+  memory_spaces.emplace_back(std::move(memory_space));
   return std::make_unique<PjRtStreamExecutorClient>(
-      "cpu", local_client, std::move(devices), /*process_index=*/0,
-      /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
+      "cpu", local_client, std::move(devices), std::move(memory_spaces),
+      /*process_index=*/0, /*allocator=*/nullptr,
+      /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
       /*gpu_run_options=*/nullptr);
 }
@@ -87,7 +92,8 @@ Status ExecuteWithSameInputBuffer(
     absl::AnyInvocable<void(XlaBuilder&)> set_up_aliases) {
   auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
   TF_ASSIGN_OR_RETURN(auto client, GetClient());
-  TF_ASSIGN_OR_RETURN(auto* device0, client->LookupDevice(0));
+  TF_RET_CHECK(!client->addressable_devices().empty());
+  auto* device0 = client->addressable_devices().front();
   TF_ASSIGN_OR_RETURN(auto buffer,
                       client->CreateUninitializedBuffer(shape, device0));
   TF_ASSIGN_OR_RETURN(auto executable,
@@ -130,8 +136,8 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
 
-  auto avr = tsl::MakeUnconstructedAsyncValueRef<absl::Status>();
-  PjRtFuture<absl::Status> future(avr);
+  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+  PjRtFuture<> future(promise);
   auto blocked_buffer =
       std::move(*(buffer->DonateWithControlDependency(future)));
   EXPECT_TRUE(buffer->IsDeleted());
@@ -141,7 +147,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
   auto result_literal = std::make_shared<Literal>(
       ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
   bool got_literal = false;
-  blocked_buffer->ToLiteral(result_literal.get(), [&](absl::Status s) {
+  blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
     absl::MutexLock l(&mu);
     TF_ASSERT_OK(s);
     got_literal = true;
@@ -150,7 +156,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
 
   EXPECT_FALSE(got_literal);
 
-  avr.emplace(tsl::OkStatus());
+  promise.Set();
   EXPECT_TRUE(future.IsReady());
 
   {

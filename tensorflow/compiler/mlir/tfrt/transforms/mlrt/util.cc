@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/util.h"
 
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h.inc"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h.inc"
 
 namespace tensorflow {
 namespace mlrt_compiler {
@@ -29,14 +30,14 @@ bool UseFallback(mlir::Operation *op) {
 
   // TODO(b/173017701): have a centralized place to hold the information
   // whether a TF op should be lowered to FallbackExecute op.
-  // LINT.IfChange(fallback_allow_list)
-  return !llvm::isa<mlir::TF::_TfrtSetResourceOp, mlir::TF::_TfrtGetResourceOp,
-                    mlir::TF::BatchFunctionOp, mlir::TF::CaseOp,
-                    mlir::TF::StatefulPartitionedCallOp,
-                    mlir::TF::PartitionedCallOp, mlir::TF::LegacyCallOp,
-                    mlir::TF::IfOp, mlir::TF::WhileOp,
-                    mlir::TF::TPUCompileMlirAndExecuteOp>(op);
-  // LINT.ThenChange(tf_to_mlrt.cc:fallback_allow_list)
+  // TODO(b/319045348): Define trait to reflect that IfrtLoadVariableOp has no
+  // TF kernels so that we don't need to check every op here.
+  return !llvm::isa<
+      mlir::TF::_TfrtSetResourceOp, mlir::TF::_TfrtGetResourceOp,
+      mlir::TF::BatchFunctionOp, mlir::TF::CaseOp,
+      mlir::TF::IfrtRestoreVariableOp, mlir::TF::StatefulPartitionedCallOp,
+      mlir::TF::PartitionedCallOp, mlir::TF::LegacyCallOp, mlir::TF::IfOp,
+      mlir::TF::WhileOp, mlir::TF::TPUCompileMlirAndExecuteOp>(op);
 }
 
 }  // namespace mlrt_compiler

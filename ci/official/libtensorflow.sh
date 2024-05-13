@@ -25,14 +25,12 @@ if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
   tfrun python3 tensorflow/tools/ci_build/update_version.py --nightly
 fi
 
-tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" test "${TFCI_BAZEL_COMMON_ARGS[@]}" --config=linux_libtensorflow_test
-tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" build "${TFCI_BAZEL_COMMON_ARGS[@]}" --config=linux_libtensorflow_build
+tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS --config=linux_libtensorflow_test
+tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=linux_libtensorflow_build
 
 tfrun ./ci/official/utilities/repack_libtensorflow.sh "$TFCI_OUTPUT_DIR" "$TFCI_LIB_SUFFIX"
 
-if [[ "$TFCI_UPLOAD_LIB_ENABLE" == 1 ]]; then
-  gsutil cp "$TFCI_OUTPUT_DIR"/*.tar.gz "$TFCI_UPLOAD_LIB_GCS_URI"
-  if [[ "$TFCI_UPLOAD_LIB_LATEST_ENABLE" == 1 ]]; then
-    gsutil cp "$TFCI_OUTPUT_DIR"/*.tar.gz "$TFCI_UPLOAD_LIB_LATEST_GCS_URI"
-  fi
+if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
+  # Note: -n disables overwriting previously created files.
+  gsutil cp "$TFCI_OUTPUT_DIR"/*.tar.gz "$TFCI_ARTIFACT_STAGING_GCS_URI"
 fi

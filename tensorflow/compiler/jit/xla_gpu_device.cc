@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -48,20 +49,19 @@ Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set "
                "and XLA devices creation not required";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  auto platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName());
+  auto platform = se::PlatformManager::PlatformWithName(se::GpuPlatformName());
   if (!platform.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
     VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int device_count = platform.value()->VisibleDeviceCount();
   if (device_count <= 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   for (int i = 0; i < device_count; ++i) {
@@ -69,7 +69,7 @@ Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
         absl::StrCat("/physical_device:", DEVICE_XLA_GPU, ":", i));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaGpuDeviceFactory::CreateDevices(
@@ -78,7 +78,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   XlaOpRegistry::DeviceRegistration registration;
@@ -100,19 +100,18 @@ Status XlaGpuDeviceFactory::CreateDevices(
       RegisterXlaDeviceKernels(DEVICE_XLA_GPU, DEVICE_GPU_XLA_JIT);
   (void)registrations;
 
-  auto platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName());
+  auto platform = se::PlatformManager::PlatformWithName(se::GpuPlatformName());
   if (!platform.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
     VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   auto iter = session_options.config.device_count().find("GPU");
   if (iter != session_options.config.device_count().end() &&
       iter->second == 0) {
     // Device count for GPU is 0.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string allowed_gpus =
@@ -149,7 +148,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
 
     devices->push_back(std::move(device));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_GPU, XlaGpuDeviceFactory);

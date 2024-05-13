@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,9 +27,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/runtime/executable.h"
-#include "xla/runtime/ffi.h"
-#include "xla/runtime/jit_executable.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/buffer_desc.h"
 #include "xla/service/cpu/simple_orc_jit.h"
@@ -47,98 +44,13 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-class XlaRuntimeCpuExecutable {
-  using FfiModulesState = ::xla::runtime::ffi::FfiModulesState;
-
- public:
-  explicit XlaRuntimeCpuExecutable(
-      std::unique_ptr<runtime::JitExecutable> jit_executable,
-      const XlaFrameworkMapping& xla_framework_mapping,
-      FfiModulesState ffi_modules_state)
-      : executable_(std::move(jit_executable)),
-        xla_framework_mapping_(xla_framework_mapping),
-        ffi_modules_state_(std::move(ffi_modules_state)) {
-    runtime::ffi::ExportFfiModules(dynamic_custom_calls_);
-  }
-
-  explicit XlaRuntimeCpuExecutable(
-      std::unique_ptr<runtime::Executable> executable,
-      const XlaFrameworkMapping& xla_framework_mapping,
-      FfiModulesState ffi_modules_state)
-      : executable_(std::move(executable)),
-        xla_framework_mapping_(xla_framework_mapping),
-        ffi_modules_state_(std::move(ffi_modules_state)) {
-    runtime::ffi::ExportFfiModules(dynamic_custom_calls_);
-  }
-
-  Status Execute(const std::vector<BufferDesc>& descriptor_table,
-                 const ExecutableRunOptions* run_options);
-
-  runtime::Executable& GetExecutable() {
-    if (std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
-            executable_)) {
-      runtime::JitExecutable* jit_executable =
-          std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
-      return *jit_executable->DefaultExecutable();
-    } else {
-      runtime::Executable* aot_executable =
-          std::get<std::unique_ptr<runtime::Executable>>(executable_).get();
-      return *aot_executable;
-    }
-  }
-
-  StatusOr<std::string_view> GetObjFile() const {
-    if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
-            executable_)) {
-      return InternalError("No JitExecutable");
-    }
-
-    runtime::JitExecutable* jit_executable =
-        std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
-    std::unique_ptr<llvm::MemoryBuffer> obj_file =
-        jit_executable->DefaultExecutable()->obj_file();
-    if (!obj_file)
-      return InternalError("XlaRuntimeCpuExecutable didn't save the obj file");
-
-    return std::string_view(obj_file->getBuffer());
-  }
-
-  StatusOr<std::string_view> GetMlirModule() const {
-    if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
-            executable_)) {
-      return InternalError("No JitExecutable");
-    }
-
-    runtime::JitExecutable* jit_executable =
-        std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
-    return jit_executable->mlir_module();
-  }
-
-  XlaFrameworkMapping xla_framework_mapping() { return xla_framework_mapping_; }
-
- private:
-  // In JIT compilation mode `JitExecutable` is used. In AOT compilation mode
-  // `Executable` is used.
-  std::variant<std::unique_ptr<runtime::JitExecutable>,
-               std::unique_ptr<runtime::Executable>>
-      executable_;
-
-  XlaFrameworkMapping xla_framework_mapping_;
-
-  // Keeps an executable state for all registered FFI modules.
-  FfiModulesState ffi_modules_state_;
-
-  // Dynamic custom calls exported from XLA runtime modules (and FFI modules).
-  runtime::DynamicCustomCallRegistry dynamic_custom_calls_;
-};
-
 // CPU-targeting implementation of the XLA Executable interface.
 //
 // Wraps a JIT-ed object that can be executed "on device". We JIT for the host
 // architecture, so JIT-ed code and host code share the same ABI.
 class CpuExecutable : public Executable {
  public:
-  static StatusOr<std::unique_ptr<CpuExecutable>> Create(
+  static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
       std::unique_ptr<SimpleOrcJIT> jit,
       std::unique_ptr<const BufferAssignment> assignment,
       std::unique_ptr<HloModule> hlo_module,
@@ -146,24 +58,15 @@ class CpuExecutable : public Executable {
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
       std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   // XLA Runtime factory method.
-  static StatusOr<std::unique_ptr<CpuExecutable>> Create(
+  static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
       std::unique_ptr<HloModule> hlo_module,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
       std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-      std::unique_ptr<const BufferAssignment> assignment,
-      std::unique_ptr<XlaRuntimeCpuExecutable> xla_runtime_executable);
+      std::unique_ptr<const BufferAssignment> assignment);
 
   ~CpuExecutable() override;
 
-  bool IsXlaRuntime() const { return xla_runtime_executable_ != nullptr; }
-
-  Status ExecuteXlaRuntime(
-      const std::vector<BufferDesc>& descriptor_table,
-      const ExecutableRunOptions* run_options = nullptr) const {
-    return xla_runtime_executable_->Execute(descriptor_table, run_options);
-  }
-
-  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+  absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
@@ -175,14 +78,11 @@ class CpuExecutable : public Executable {
       absl::Span<MaybeOwningDeviceMemory const> buffers,
       HloExecutionProfile* hlo_execution_profile);
 
-  // Returns an Executable that is loaded from an object file (XLA program
-  // compiled to a native function using the XLA Runtime stack).
-  static StatusOr<std::unique_ptr<Executable>> LoadFromObjFile(
-      std::unique_ptr<HloModule> hlo_module, absl::string_view obj_file,
-      absl::string_view mlir_module,
-      std::unique_ptr<BufferAssignment> buffer_assignment,
-      XlaFrameworkMapping xla_framework_mapping,
-      runtime::JitExecutable::Options opts);
+  absl::Span<const std::string> obj_files() const { return obj_files_; }
+
+  void set_obj_files(std::vector<std::string> obj_files) {
+    obj_files_ = std::move(obj_files);
+  }
 
   // This should be called after set_ir_module_string.
   const std::string& ir_module_string() const { return ir_module_string_; }
@@ -190,6 +90,8 @@ class CpuExecutable : public Executable {
   void set_ir_module_string(const std::string& ir_module_string) {
     ir_module_string_ = ir_module_string;
   }
+
+  const std::string& module_name() const { return module_name_; }
 
   static int64_t ShapeSizeBytes(const Shape& shape);
 
@@ -206,21 +108,6 @@ class CpuExecutable : public Executable {
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
-
-  StatusOr<std::string_view> GetObjFile() const {
-    if (!IsXlaRuntime()) return Unimplemented("Not an XLA Runtime executable");
-    return xla_runtime_executable_->GetObjFile();
-  }
-
-  StatusOr<std::string_view> GetMlirModule() const {
-    if (!IsXlaRuntime()) return Unimplemented("Not an XLA Runtime executable");
-    return xla_runtime_executable_->GetMlirModule();
-  }
-
-  StatusOr<XlaFrameworkMapping> GetXlaFrameworkMapping() const {
-    if (!IsXlaRuntime()) return Unimplemented("Not an XLA Runtime executable");
-    return xla_runtime_executable_->xla_framework_mapping();
-  }
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
@@ -240,7 +127,7 @@ class CpuExecutable : public Executable {
   //
   //  - buffers_to_free: buffers whose ownership was donated by the caller that
   //    are to be freed by the caller.
-  StatusOr<std::vector<MaybeOwningDeviceMemory>> CreateBufferTable(
+  absl::StatusOr<std::vector<MaybeOwningDeviceMemory>> CreateBufferTable(
       se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
       absl::Span<ExecutionInput const> arguments);
 
@@ -248,7 +135,7 @@ class CpuExecutable : public Executable {
   // result of the computation, moving buffers out of allocated_buffers and into
   // the result as appropriate.  The addresses are set according to buffer
   // assignment.
-  StatusOr<ExecutionOutput> CreateResultShapedBuffer(
+  absl::StatusOr<ExecutionOutput> CreateResultShapedBuffer(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<MaybeOwningDeviceMemory> buffers,
       absl::Span<ExecutionInput> arguments);
@@ -260,10 +147,13 @@ class CpuExecutable : public Executable {
   // The JIT containing compiled modules.
   std::unique_ptr<SimpleOrcJIT> jit_;
 
+  // Object files (machine code) compiled from an HLO module by the JIT
+  // compiler. We capture all object files created by SimpleOrcJIT so we can
+  // export them to AOT compilation result.
+  std::vector<std::string> obj_files_;
+
   // Buffer assignment for the buffers we need to allocate.
   const std::unique_ptr<const BufferAssignment> assignment_;
-
-  std::shared_ptr<const BufferAssignmentProto> buffer_assignment_;
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving
@@ -278,9 +168,6 @@ class CpuExecutable : public Executable {
 
   // Entry function name for the computation.
   const std::string entry_function_name_;
-
-  // If not null, XLA Runtime is enabled.
-  std::unique_ptr<XlaRuntimeCpuExecutable> xla_runtime_executable_;
 
   CpuExecutable(std::unique_ptr<HloModule> hlo_module,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,

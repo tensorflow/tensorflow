@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -109,7 +109,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     auto loc = op.getLoc();
     // Find maximum rank / number of loops.
     auto getRank = [](Value v) {
-      return v.getType().cast<ShapedType>().getRank();
+      return mlir::cast<ShapedType>(v.getType()).getRank();
     };
     auto isScalar = [&](Value v) { return getRank(v) == 0; };
     auto it = llvm::find_if_not(adaptor.getOperands(), isScalar);
@@ -129,13 +129,13 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
 
     // Find result type, if on tensors.
     std::optional<ShapedType> resultTy;
-    resultTy = this->typeConverter->convertType(op->getResultTypes().front())
-                   .template dyn_cast<ShapedType>();
+    resultTy = mlir::dyn_cast<ShapedType>(
+        this->typeConverter->convertType(op->getResultTypes().front()));
 
     // Check result type compatibility.
     if (!resultTy || !resultTy->hasRank() || resultTy->getRank() != nloops ||
         !(resultTy->getElementType().isSignlessIntOrFloat() ||
-          resultTy->getElementType().isa<ComplexType>())) {
+          isa<ComplexType>(resultTy->getElementType()))) {
       return rewriter.notifyMatchFailure(
           op, "mismatched operand/result types or iterator count");
     }

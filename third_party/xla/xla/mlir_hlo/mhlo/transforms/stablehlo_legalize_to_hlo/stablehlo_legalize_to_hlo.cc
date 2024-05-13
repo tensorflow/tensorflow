@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -44,22 +45,37 @@ namespace {
   return mhlo::Name##Attr::get(attr.getContext(), hloValue.value())
 
 Attribute convertAttr(Attribute stablehloAttr) {
+  // StableHLO uses DenseArray for some attributes, MHLO is in the process
+  // of integrating this change. In the meantime, convert DenseArray to
+  // DenseElementsAttr.
+  if (auto attr = mlir::dyn_cast<DenseI64ArrayAttr>(stablehloAttr)) {
+    return DenseIntElementsAttr::get(
+        RankedTensorType::get(attr.getSize(), attr.getElementType()),
+        attr.asArrayRef());
+  }
+  if (auto attr = mlir::dyn_cast<DenseBoolArrayAttr>(stablehloAttr)) {
+    return DenseIntElementsAttr::get(
+        RankedTensorType::get(attr.getSize(), attr.getElementType()),
+        attr.asArrayRef());
+  }
+
   // Handle StableHLO attributes.
   // The logic that handles attributes from other dialects (e.g. builtin
   // attributes) lives below.
-  if (auto attr = stablehloAttr.dyn_cast<stablehlo::ChannelHandleAttr>()) {
+  if (auto attr = mlir::dyn_cast<stablehlo::ChannelHandleAttr>(stablehloAttr)) {
     return mhlo::ChannelHandleAttr::get(attr.getContext(), attr.getHandle(),
                                         attr.getType());
   }
   if (auto attr =
-          stablehloAttr.dyn_cast<stablehlo::ComparisonDirectionAttr>()) {
+          mlir::dyn_cast<stablehlo::ComparisonDirectionAttr>(stablehloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(ComparisonDirection);
   }
-  if (auto attr = stablehloAttr.dyn_cast<stablehlo::ComparisonTypeAttr>()) {
+  if (auto attr =
+          mlir::dyn_cast<stablehlo::ComparisonTypeAttr>(stablehloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(ComparisonType);
   }
   if (auto attr =
-          stablehloAttr.dyn_cast<stablehlo::ConvDimensionNumbersAttr>()) {
+          mlir::dyn_cast<stablehlo::ConvDimensionNumbersAttr>(stablehloAttr)) {
     return mhlo::ConvDimensionNumbersAttr::get(
         attr.getContext(), attr.getInputBatchDimension(),
         attr.getInputFeatureDimension(), attr.getInputSpatialDimensions(),
@@ -69,47 +85,49 @@ Attribute convertAttr(Attribute stablehloAttr) {
         attr.getOutputFeatureDimension(), attr.getOutputSpatialDimensions());
   }
   if (auto attr =
-          stablehloAttr.dyn_cast<stablehlo::CustomCallApiVersionAttr>()) {
+          mlir::dyn_cast<stablehlo::CustomCallApiVersionAttr>(stablehloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(CustomCallApiVersion);
   }
   if (auto attr =
-          stablehloAttr.dyn_cast<stablehlo::DotDimensionNumbersAttr>()) {
+          mlir::dyn_cast<stablehlo::DotDimensionNumbersAttr>(stablehloAttr)) {
     return mhlo::DotDimensionNumbersAttr::get(
         attr.getContext(), attr.getLhsBatchingDimensions(),
         attr.getRhsBatchingDimensions(), attr.getLhsContractingDimensions(),
         attr.getRhsContractingDimensions());
   }
-  if (auto attr = stablehloAttr.dyn_cast<stablehlo::FftTypeAttr>()) {
+  if (auto attr = mlir::dyn_cast<stablehlo::FftTypeAttr>(stablehloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(FftType);
   }
-  if (auto attr =
-          stablehloAttr.dyn_cast<stablehlo::GatherDimensionNumbersAttr>()) {
+  if (auto attr = mlir::dyn_cast<stablehlo::GatherDimensionNumbersAttr>(
+          stablehloAttr)) {
     return mhlo::GatherDimensionNumbersAttr::get(
         attr.getContext(), attr.getOffsetDims(), attr.getCollapsedSliceDims(),
         attr.getStartIndexMap(), attr.getIndexVectorDim());
   }
-  if (auto attr = stablehloAttr.dyn_cast<stablehlo::OutputOperandAliasAttr>()) {
+  if (auto attr =
+          mlir::dyn_cast<stablehlo::OutputOperandAliasAttr>(stablehloAttr)) {
     return mhlo::OutputOperandAliasAttr::get(
         attr.getContext(), attr.getOutputTupleIndices(), attr.getOperandIndex(),
         attr.getOperandTupleIndices());
   }
-  if (auto attr = stablehloAttr.dyn_cast<stablehlo::PrecisionAttr>()) {
+  if (auto attr = mlir::dyn_cast<stablehlo::PrecisionAttr>(stablehloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(Precision);
   }
-  if (auto attr = stablehloAttr.dyn_cast<stablehlo::RngAlgorithmAttr>()) {
+  if (auto attr = mlir::dyn_cast<stablehlo::RngAlgorithmAttr>(stablehloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(RngAlgorithm);
   }
-  if (auto attr = stablehloAttr.dyn_cast<stablehlo::RngDistributionAttr>()) {
+  if (auto attr =
+          mlir::dyn_cast<stablehlo::RngDistributionAttr>(stablehloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(RngDistribution);
   }
-  if (auto attr =
-          stablehloAttr.dyn_cast<stablehlo::ScatterDimensionNumbersAttr>()) {
+  if (auto attr = mlir::dyn_cast<stablehlo::ScatterDimensionNumbersAttr>(
+          stablehloAttr)) {
     return mhlo::ScatterDimensionNumbersAttr::get(
         attr.getContext(), attr.getUpdateWindowDims(),
         attr.getInsertedWindowDims(), attr.getScatterDimsToOperandDims(),
         attr.getIndexVectorDim());
   }
-  if (auto attr = stablehloAttr.dyn_cast<stablehlo::TransposeAttr>()) {
+  if (auto attr = mlir::dyn_cast<stablehlo::TransposeAttr>(stablehloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(Transpose);
   }
   if (stablehloAttr.getDialect().getNamespace() ==
@@ -123,7 +141,7 @@ Attribute convertAttr(Attribute stablehloAttr) {
   // Handle non-StableHLO attributes.
   // If an attribute is not defined in StableHLO, then it is unchanged,
   // with the exception of ArrayAttr which is converted recursively.
-  if (auto stablehloAttrs = stablehloAttr.dyn_cast<ArrayAttr>()) {
+  if (auto stablehloAttrs = mlir::dyn_cast<ArrayAttr>(stablehloAttr)) {
     SmallVector<Attribute> hloAttrs;
     for (auto stablehloAttr : stablehloAttrs) {
       auto hloAttr = convertAttr(stablehloAttr);
@@ -140,11 +158,11 @@ Attribute convertAttr(Attribute stablehloAttr) {
 // Convert array of enum strings to array of enum attrs
 //   ["PACKED_NIBBLE"] --> [#mhlo<precision PACKED_NIBBLE>]
 Attribute decodePrecisionConfig(Attribute stablehloAttr) {
-  auto arrayAttr = stablehloAttr.dyn_cast<ArrayAttr>();
+  auto arrayAttr = mlir::dyn_cast<ArrayAttr>(stablehloAttr);
   if (!arrayAttr) return {};
   SmallVector<Attribute> hloAttrs;
   for (auto attr : arrayAttr) {
-    auto precisionStr = attr.dyn_cast<StringAttr>();
+    auto precisionStr = mlir::dyn_cast<StringAttr>(attr);
     if (!precisionStr) return {};
     auto precisionOpt = mhlo::symbolizePrecision(precisionStr.getValue());
     if (!precisionOpt.has_value()) return {};
@@ -215,8 +233,8 @@ LogicalResult rewriteCustomCallAsMhloOp(stablehlo::CustomCallOp stablehloOp,
     return failure();
   }
 
-  auto stablehloConvertedAttrs = stablehloOp->getAttr("mhlo.attributes")
-                                     .dyn_cast_or_null<DictionaryAttr>();
+  auto stablehloConvertedAttrs = mlir::dyn_cast_or_null<DictionaryAttr>(
+      stablehloOp->getAttr("mhlo.attributes"));
   if (!stablehloConvertedAttrs) {
     return failure();
   }
@@ -254,12 +272,39 @@ LogicalResult rewriteCustomCallAsMhloOp(stablehlo::CustomCallOp stablehloOp,
   if (stablehloHasRegion) {
     auto stablehloRegionOp =
         stablehloOp->getParentOfType<ModuleOp>().lookupSymbol<func::FuncOp>(
-            stablehloCalledComputations[0].cast<FlatSymbolRefAttr>());
+            mlir::cast<FlatSymbolRefAttr>(stablehloCalledComputations[0]));
     if (failed(convertFuncToStablehloRegion(hloOp, stablehloRegionOp, rewriter,
                                             typeConverter)))
       return failure();
   }
 
+  return success();
+}
+
+// Preserve backward compatibility of typed_ffi custom calls by converting:
+// `stablehlo.custom_call @foo(%arg0) { mhlo.backend_config = {...} }`
+// ==>
+// `mhlo.custom_call @foo(%arg0) { backend_config = {...}, api_version = 4}`
+//
+// Fails if StableHLO op has non-empty backend_config, or uses API version
+// other than API_VERSION_ORIGINAL.
+LogicalResult fixupMhloBackendConfig(stablehlo::CustomCallOp stablehloOp,
+                                     mhlo::CustomCallOp hloOp) {
+  auto stablehloBackendConfig = stablehloOp->getAttr("mhlo.backend_config");
+  if (stablehloBackendConfig) {
+    if (auto oldHloBackendConfig =
+            mlir::dyn_cast_or_null<StringAttr>(hloOp.getBackendConfigAttr())) {
+      if (!oldHloBackendConfig.empty()) return failure();
+    } else {
+      return failure();
+    }
+    if (stablehloOp.getApiVersion() !=
+        stablehlo::CustomCallApiVersion::API_VERSION_ORIGINAL)
+      return failure();
+
+    hloOp.setBackendConfigAttr(stablehloBackendConfig);
+    hloOp.setApiVersion(mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  }
   return success();
 }
 
@@ -315,31 +360,17 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     // for the generic builder.
     StablehloToHloOp<StablehloOpTy> hloOp;
     if constexpr (std::is_same<StablehloOpTy, stablehlo::CaseOp>::value) {
-      hloOp = rewriter.replaceOpWithNewOp<mhlo::CaseOp>(
-          stablehloOp, hloTypes, hloOperands, hloAttrs,
-          stablehloOp.getBranches().size());
+      hloOp = rewriter.create<mhlo::CaseOp>(stablehloOp.getLoc(), hloTypes,
+                                            hloOperands, hloAttrs,
+                                            stablehloOp.getBranches().size());
     } else {
-      hloOp = rewriter.replaceOpWithNewOp<StablehloToHloOp<StablehloOpTy>>(
-          stablehloOp, hloTypes, hloOperands, hloAttrs);
+      hloOp = rewriter.create<StablehloToHloOp<StablehloOpTy>>(
+          stablehloOp.getLoc(), hloTypes, hloOperands, hloAttrs);
     }
 
+    // For backward compatibility, fix custom call with mhlo.backend_config
     if constexpr (std::is_same<StablehloOpTy, stablehlo::CustomCallOp>::value) {
-      auto stablehloBackendConfig = stablehloOp->getAttr("mhlo.backend_config");
-      if (stablehloBackendConfig) {
-        if (auto oldHloBackendConfig =
-                hloOp.getBackendConfigAttr()
-                    .template dyn_cast_or_null<StringAttr>()) {
-          if (oldHloBackendConfig != "") return failure();
-        } else {
-          return failure();
-        }
-        if (stablehloOp.getApiVersion() !=
-            stablehlo::CustomCallApiVersion::API_VERSION_ORIGINAL)
-          return failure();
-
-        hloOp.setBackendConfigAttr(stablehloBackendConfig);
-        hloOp.setApiVersion(mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI);
-      }
+      if (failed(fixupMhloBackendConfig(stablehloOp, hloOp))) return failure();
     }
 
     // Finally, populate the regions while converting argument types
@@ -351,6 +382,8 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
                                              /*entryConversion=*/nullptr)))
         return failure();
     }
+
+    rewriter.replaceOp(stablehloOp, hloOp);
     return success();
   }
 };

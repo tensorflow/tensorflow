@@ -425,7 +425,10 @@ class SingleOpModel {
       buffer_id = buffers_.size();
       // When the quantization parameter is set for the added tensor, we
       // quantize the given data.
-      bool is_quantized = (t.min != 0 || t.max != 0 || t.scale != 0);
+      bool is_quantized = (t.min != 0 || t.max != 0 || t.scale != 0 ||
+                           (t.per_channel_quantization &&
+                            !t.per_channel_quantization_scales.empty() &&
+                            !t.per_channel_quantization_offsets.empty()));
       if (symmetric_quantize) {
         const int length = sparse_data.size();
         std::vector<int8_t> q(length);
@@ -443,14 +446,43 @@ class SingleOpModel {
       } else if (is_quantized) {
         CHECK_EQ(t.type, TensorType_INT8)
             << "The INT8 quantization is only supported for sparsified tensor";
-        auto q = Quantize<int8_t>(sparse_data, t.scale, t.zero_point);
-        std::vector<float> scales{t.scale};
-        std::vector<int64_t> zero_points{0};
+        std::vector<int8_t> quantized_output(sparse_data.size());
+        std::vector<float> scales;
+        std::vector<int64_t> zero_points;
+        if (t.per_channel_quantization) {
+          CHECK_EQ(t.per_channel_quantization_scales.size(),  // NOLINT
+                   t.per_channel_quantization_offsets.size())
+              << "Per channel quantization scales and offsets should have the "
+                 "same size";
+          std::vector<int8_t> temp_data(dense_data.size());
+          const int32_t num_channel = t.shape[t.channel_index];
+          std::vector<float> scales_inv(num_channel);
+          for (int i = 0; i < num_channel; ++i) {
+            scales_inv[i] = 1.0f / t.per_channel_quantization_scales[i];
+          }
+          optimize::utils::SymmetricPerChannelQuantizeValues(
+              dense_data.data(), scales_inv, t.shape, t.channel_index,
+              &temp_data, kTfLiteInt8);
+
+          tflite::internal::sparsity::FormatConverter<int8_t> quant_converter(
+              t.shape, t.traversal_order, t.format, t.block_size, t.block_map);
+          quant_converter.DenseToSparse(temp_data.data());
+          quantized_output = std::move(quant_converter.GetData());
+          scales = t.per_channel_quantization_scales;
+          zero_points = t.per_channel_quantization_offsets;
+
+        } else {
+          quantized_output =
+              std::move(Quantize<int8_t>(sparse_data, t.scale, t.zero_point));
+          scales = {t.scale};
+          zero_points = {0};
+        }
         q_params = CreateQuantizationParameters(
             builder_, t.min, t.max, builder_.CreateVector<float>(scales),
             builder_.CreateVector<int64_t>(zero_points));
         auto data_buffer = builder_.CreateVector(
-            reinterpret_cast<const uint8_t*>(q.data()), q.size());
+            reinterpret_cast<const uint8_t*>(quantized_output.data()),
+            quantized_output.size());
         buffers_.push_back(CreateBuffer(builder_, data_buffer));
       } else {
         auto data_buffer = builder_.CreateVector(
@@ -1100,24 +1132,38 @@ class SingleOpTest : public ::testing::TestWithParam<string> {
   }
 };
 
+// Maps the native C++ types to the corresponding TFLite tensor type enum
+// values.
+template <class T>
+struct TensorTypeFor;
+
+#define TFLITE_TENSOR_TYPE_ASSOC(CPP_TYPE, TENSORTYPE_VALUE) \
+  template <>                                                \
+  struct TensorTypeFor<CPP_TYPE> {                           \
+    static constexpr TensorType value = TENSORTYPE_VALUE;    \
+  };
+
+TFLITE_TENSOR_TYPE_ASSOC(bool, TensorType_BOOL);
+TFLITE_TENSOR_TYPE_ASSOC(int8_t, TensorType_INT8);
+TFLITE_TENSOR_TYPE_ASSOC(int16_t, TensorType_INT16);
+TFLITE_TENSOR_TYPE_ASSOC(int32_t, TensorType_INT32);
+TFLITE_TENSOR_TYPE_ASSOC(int64_t, TensorType_INT64);
+TFLITE_TENSOR_TYPE_ASSOC(uint8_t, TensorType_UINT8);
+TFLITE_TENSOR_TYPE_ASSOC(uint16_t, TensorType_UINT16);
+TFLITE_TENSOR_TYPE_ASSOC(uint32_t, TensorType_UINT32);
+TFLITE_TENSOR_TYPE_ASSOC(uint64_t, TensorType_UINT64);
+TFLITE_TENSOR_TYPE_ASSOC(TfLiteFloat16, TensorType_FLOAT16);
+TFLITE_TENSOR_TYPE_ASSOC(Eigen::half, TensorType_FLOAT16);
+TFLITE_TENSOR_TYPE_ASSOC(float, TensorType_FLOAT32);
+TFLITE_TENSOR_TYPE_ASSOC(double, TensorType_FLOAT64);
+TFLITE_TENSOR_TYPE_ASSOC(std::string, TensorType_STRING);
+
+#undef TFLITE_TENSOR_TYPE_ASSOC
+
 // Returns the corresponding TensorType given the type T.
 template <typename T>
-TensorType GetTensorType() {
-  if (std::is_same<T, float>::value) return TensorType_FLOAT32;
-  if (std::is_same<T, TfLiteFloat16>::value) return TensorType_FLOAT16;
-  if (std::is_same<T, Eigen::half>::value) return TensorType_FLOAT16;
-  if (std::is_same<T, double>::value) return TensorType_FLOAT64;
-  if (std::is_same<T, int8_t>::value) return TensorType_INT8;
-  if (std::is_same<T, int16_t>::value) return TensorType_INT16;
-  if (std::is_same<T, uint16_t>::value) return TensorType_UINT16;
-  if (std::is_same<T, int32_t>::value) return TensorType_INT32;
-  if (std::is_same<T, uint32_t>::value) return TensorType_UINT32;
-  if (std::is_same<T, int64_t>::value) return TensorType_INT64;
-  if (std::is_same<T, uint64_t>::value) return TensorType_UINT64;
-  if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
-  if (std::is_same<T, string>::value) return TensorType_STRING;
-  if (std::is_same<T, bool>::value) return TensorType_BOOL;
-  return TensorType_MIN;  // default value
+constexpr TensorType GetTensorType() {
+  return TensorTypeFor<T>::value;
 }
 
 // Strings have a special implementation that is in test_util.cc

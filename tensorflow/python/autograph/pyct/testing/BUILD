@@ -45,7 +45,8 @@ py_strict_test(
     ],
     deps = [
         ":codegen",
-        "//tensorflow/python/platform:client_testlib",
+        #internal proto upb dep
         "//third_party/py/numpy",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

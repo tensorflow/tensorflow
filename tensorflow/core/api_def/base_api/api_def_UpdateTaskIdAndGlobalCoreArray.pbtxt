@@ -1,0 +1,20 @@
+op {
+  graph_op_name: "UpdateTaskIdAndGlobalCoreArray"
+  visibility: HIDDEN
+  in_arg {
+    name: "tpu_task_id_to_shard_id"
+    description: <<END
+An array of int32 that maps TPU task ID to shard ID.
+END
+  }
+  attr {
+    name: "task_count"
+    description: <<END
+The number of tasks.
+END
+  }
+  summary: "An op to update the task ID and global core array."
+  description: <<END
+This op is to update the task ID and global core array.
+END
+}

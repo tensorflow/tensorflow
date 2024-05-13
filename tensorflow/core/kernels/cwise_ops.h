@@ -422,7 +422,7 @@ struct functor_traits<google_floor_div_real<Scalar>> {
                    Scalar, packet_traits<Scalar>::HasDiv>::value +
            2 * NumTraits<Scalar>::AddCost,
     PacketAccess =
-        packet_traits<Scalar>::HasDiv && packet_traits<Scalar>::HasFloor
+        packet_traits<Scalar>::HasDiv && packet_traits<Scalar>::HasRound
   };
 };
 
@@ -489,9 +489,9 @@ struct functor_traits<google_truncate_div_real<Scalar>> {
     Cost = 2 * Eigen::internal::scalar_div_cost<
                    Scalar, packet_traits<Scalar>::HasDiv>::value +
            3 * NumTraits<Scalar>::AddCost,
-    PacketAccess =
-        packet_traits<Scalar>::HasDiv && packet_traits<Scalar>::HasFloor &&
-        packet_traits<Scalar>::HasCeil && packet_traits<Scalar>::HasCmp
+    PacketAccess = packet_traits<Scalar>::HasDiv &&
+                   packet_traits<Scalar>::HasRound &&
+                   packet_traits<Scalar>::HasCmp
   };
 };
 
@@ -506,7 +506,7 @@ struct functor_traits<google_truncate_div_real<Scalar>> {
 #endif
 
 template <typename Scalar, bool IsInteger = Eigen::NumTraits<Scalar>::IsInteger,
-          bool HasRint = packet_traits<Scalar>::HasRint>
+          bool HasRint = packet_traits<Scalar>::HasRound>
 struct scalar_round_half_to_even_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
@@ -568,7 +568,7 @@ struct functor_traits<scalar_round_half_to_even_op<Scalar>> {
   enum {
     Cost = Eigen::NumTraits<Scalar>::IsInteger ? 0
                                                : 4 * NumTraits<Scalar>::AddCost,
-    PacketAccess = packet_traits<Scalar>::HasFloor &&
+    PacketAccess = packet_traits<Scalar>::HasRound &&
                    packet_traits<Scalar>::HasAdd &&
                    packet_traits<Scalar>::HasMul,
   };
@@ -606,7 +606,7 @@ template <typename Scalar, bool IsInteger>
 struct functor_traits<scalar_round_up_op<Scalar, IsInteger>> {
   enum {
     Cost = IsInteger ? 0 : 4 * NumTraits<Scalar>::AddCost,
-    PacketAccess = IsInteger || packet_traits<Scalar>::HasFloor
+    PacketAccess = IsInteger || packet_traits<Scalar>::HasRound
   };
 };
 

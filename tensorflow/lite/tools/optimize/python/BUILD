@@ -40,10 +40,11 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":modify_model_interface_lib",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
-        "//third_party/py/numpy",
     ],
 )
 

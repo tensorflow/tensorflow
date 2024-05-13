@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ namespace stream_executor {
 namespace gpu {
 
 hipFuncCache_t GpuKernel::GetGpuCacheConfig() const {
-  switch (preferred_cache_config_) {
+  switch (cache_config()) {
     case KernelCacheConfig::kNoPreference:
       return hipFuncCachePreferNone;
     case KernelCacheConfig::kPreferShared:
@@ -30,8 +30,20 @@ hipFuncCache_t GpuKernel::GetGpuCacheConfig() const {
       return hipFuncCachePreferEqual;
     default:
       LOG(FATAL) << "Unknown KernelCacheConfig"
-                 << static_cast<int32>(preferred_cache_config_);
+                 << static_cast<int32>(cache_config());
   }
+}
+
+absl::StatusOr<int32_t> GpuKernel::GetMaxOccupiedBlocksPerCore(
+    ThreadDim threads, size_t dynamic_shared_memory_bytes) const {
+  int32_t threads_per_block = threads.x * threads.y * threads.z;
+  VLOG(0) << "Get kernel block occupancy: " << name_
+          << "; threads_per_block: " << threads_per_block
+          << "; dynamic_shared_memory_bytes: " << dynamic_shared_memory_bytes;
+
+  return GpuDriver::GetMaxOccupiedBlocksPerCore(gpu_context_, gpu_function_,
+                                                threads_per_block,
+                                                dynamic_shared_memory_bytes);
 }
 
 }  // namespace gpu

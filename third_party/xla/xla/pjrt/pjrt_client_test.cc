@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -176,7 +176,7 @@ TEST_P(PjRtClientTest, ExecuteWithTupleZeroCopy) {
                        /*byte_strides=*/std::nullopt,
                        // Use kZeroCopy to test the correctness of
                        // `on_done_with_host_buffer`.
-                       PjRtClient::HostBufferSemantics::kZeroCopy,
+                       PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
                        /*on_done_with_host_buffer=*/
                        [&data]() {
                          // Deliberately modifying the content of `data`. A
@@ -216,8 +216,8 @@ TEST_P(PjRtClientTest, ExecuteWithDonation) {
       auto buffer, client->BufferFromHostBuffer(
                        data.data(), shape.element_type(), shape.dimensions(),
                        /*byte_strides=*/std::nullopt,
-                       PjRtClient::HostBufferSemantics::kZeroCopy, nullptr,
-                       client->addressable_devices()[0]));
+                       PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
+                       nullptr, client->addressable_devices()[0]));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -249,8 +249,8 @@ TEST_P(PjRtClientTest, ExecuteWithDonationAbort) {
       auto buffer, client->BufferFromHostBuffer(
                        data.data(), shape.element_type(), shape.dimensions(),
                        /*byte_strides=*/std::nullopt,
-                       PjRtClient::HostBufferSemantics::kZeroCopy, nullptr,
-                       client->addressable_devices()[0]));
+                       PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
+                       nullptr, client->addressable_devices()[0]));
 
   auto external_reference = buffer->AcquireExternalReference();
 
@@ -323,8 +323,8 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
       auto buffer, client->BufferFromHostBuffer(
                        data.data(), shape.element_type(), shape.dimensions(),
                        /*byte_strides=*/std::nullopt,
-                       PjRtClient::HostBufferSemantics::kZeroCopy, nullptr,
-                       client->addressable_devices()[0]));
+                       PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
+                       nullptr, client->addressable_devices()[0]));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -562,6 +562,8 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
                 ::testing::HasSubstr("f(donate(a), a)"));
   }
 }
+
+TEST(PjRtClientTest, GetDefaultLayout) {}
 
 }  // namespace
 }  // namespace xla

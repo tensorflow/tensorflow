@@ -182,8 +182,6 @@ def _get_main_op_tensor(
     RuntimeError: If the collection def corresponding to the main op key has
         other than exactly one tensor.
   """
-  # TODO(kathywu): Rename this method to _get_op_from_collection when
-  # dependency from SavedModelEstimator is removed.
   collection_def = meta_graph_def_to_load.collection_def
   init_op = None
   if init_op_key in collection_def:

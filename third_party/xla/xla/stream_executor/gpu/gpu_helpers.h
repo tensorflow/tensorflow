@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <complex>
+#include <cstdint>
 
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "tsl/platform/logging.h"

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -523,21 +524,15 @@ TEST(Scalar, Standalone) {
     GraphDef graph_def;
     protobuf::TextFormat::ParseFromString(test_case.graph_string, &graph_def);
     std::unique_ptr<Dataset> dataset;
-    auto s = Dataset::FromGraph({}, graph_def, &dataset);
-    TF_EXPECT_OK(s);
+    TF_EXPECT_OK(Dataset::FromGraph({}, graph_def, &dataset));
     std::unique_ptr<Iterator> iterator;
-    s = dataset->MakeIterator(&iterator);
-    TF_EXPECT_OK(s);
-
-    std::optional<double> processing_time_nsec =
-        iterator->GetProcessingTimeNsec();
-    EXPECT_EQ(processing_time_nsec, std::nullopt);
+    TF_EXPECT_OK(dataset->MakeIterator(&iterator));
+    EXPECT_DOUBLE_EQ(iterator->model()->ComputeSnapshotProcessingTimeNsec(), 0);
 
     bool end_of_input = false;
     for (int num_outputs = 0; !end_of_input; ++num_outputs) {
       std::vector<tensorflow::Tensor> outputs;
-      s = iterator->GetNext(&outputs, &end_of_input);
-      TF_EXPECT_OK(s);
+      TF_EXPECT_OK(iterator->GetNext(&outputs, &end_of_input));
       if (!end_of_input) {
         EXPECT_EQ(outputs[0].scalar<int64_t>()(),
                   test_case.expected_outputs[num_outputs]);
@@ -548,9 +543,7 @@ TEST(Scalar, Standalone) {
 
     // Wait for an optimization round in the pipeline model.
     absl::SleepFor(absl::Seconds(1));
-    processing_time_nsec = iterator->GetProcessingTimeNsec();
-    EXPECT_NE(processing_time_nsec, std::nullopt);
-    EXPECT_LT(0, processing_time_nsec.value());
+    EXPECT_GT(iterator->model()->ComputeSnapshotProcessingTimeNsec(), 0);
   }
 }
 
@@ -562,10 +555,7 @@ TEST(NoAutotune, Standalone) {
   TF_EXPECT_OK(Dataset::FromGraph({}, graph_def, &dataset));
   std::unique_ptr<Iterator> iterator;
   TF_EXPECT_OK(dataset->MakeIterator(&iterator));
-
-  std::optional<double> processing_time_nsec =
-      iterator->GetProcessingTimeNsec();
-  EXPECT_EQ(processing_time_nsec, std::nullopt);
+  EXPECT_EQ(iterator->model(), nullptr);
 
   bool end_of_input = false;
   for (int num_outputs = 0; !end_of_input; ++num_outputs) {
@@ -580,10 +570,8 @@ TEST(NoAutotune, Standalone) {
 
   // Wait for an optimization round in the pipeline model.
   absl::SleepFor(absl::Seconds(1));
-  processing_time_nsec = iterator->GetProcessingTimeNsec();
-  // Model should not be created and `GetProcessingTimeNsec()` should return
-  // `nullopt`.
-  EXPECT_EQ(processing_time_nsec, std::nullopt);
+  // Model should not be created.
+  EXPECT_EQ(iterator->model(), nullptr);
 }
 
 }  // namespace

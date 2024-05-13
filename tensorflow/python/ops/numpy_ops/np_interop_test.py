@@ -287,7 +287,7 @@ class InteropTest(tf.test.TestCase):
     output_layer = tf.keras.layers.Lambda(np.square)(inputs)
     model = tf.keras.Model([inputs], output_layer)
 
-    values = onp.arange(10, dtype=onp.float32)
+    values = onp.arange(10, dtype=onp.float32).reshape((1, 10))
     values_as_array = np.asarray(values)
 
     result = model(values)

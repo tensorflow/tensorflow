@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -99,8 +100,7 @@ func::FuncOp GetOrCreateSessionInitFunc(ModuleOp module) {
     // tf_saved_model.initializer_type attribute was introduced.
     SymbolTable symbol_table(module);
     return symbol_table.lookup<func::FuncOp>(
-        session_init_op.getInitializers()[0]
-            .cast<FlatSymbolRefAttr>()
+        mlir::cast<FlatSymbolRefAttr>(session_init_op.getInitializers()[0])
             .getValue());
   } else {
     return CreateSessionInitFunc(module);

@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
@@ -59,7 +60,7 @@ Status SetTypeAttribute(absl::string_view name, ContainerT types,
   assert(result.second && "cannot have multiple attributes with the same name");
   (void)result;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Sets shape list attribute with the given `name` to the given `shapes`. If the
@@ -97,7 +98,7 @@ Status GetUnregisteredAttrs(
     absl::flat_hash_set<absl::string_view>* attrs_to_ignore) {
   if (!op_reg_data) {
     // This is likely a function call node, so we should continue.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Collect all the registered attributes.
@@ -114,12 +115,12 @@ Status GetUnregisteredAttrs(
           absl::string_view(attr.getName().data(), attr.getName().size()));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Collects all attribute names to ignore in an MLIR operation when exporting to
 // a TensorFlow NodeDef.
-StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
+absl::StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
     mlir::Operation* inst, mlir::DictionaryAttr derived_attrs,
     const tensorflow::OpRegistrationData* op_reg_data,
     bool ignore_unregistered_attrs) {
@@ -183,7 +184,7 @@ Status PopulateDerivedAttributes(mlir::Operation* inst, llvm::StringRef name,
     auto values = inst->getResults();
     auto begin = values.begin();
     auto end = values.begin();
-    while (end != values.end() && (*end).getType().isa<mlir::ShapedType>())
+    while (end != values.end() && mlir::isa<mlir::ShapedType>((*end).getType()))
       end++;
     if (begin != end) {
       mlir::TF::ResultShapeRange output_shapes = {
@@ -193,7 +194,7 @@ Status PopulateDerivedAttributes(mlir::Operation* inst, llvm::StringRef name,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // A `Cast` with DstT == SrcT can be introduced in MLIR as a shape cast. But
@@ -253,10 +254,10 @@ Status GetAttrValuesFromOperation(
     value.mutable_func()->set_name("");
     (*attributes)[kShapeInferenceGraph] = value;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
+absl::StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
     mlir::Operation* inst, llvm::StringRef name,
     bool ignore_unregistered_attrs) {
   TF_ASSIGN_OR_RETURN(auto node_def, GetOperationNodeDef(inst, name));

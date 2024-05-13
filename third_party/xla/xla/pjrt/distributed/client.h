@@ -16,15 +16,19 @@ limitations under the License.
 #ifndef XLA_PJRT_DISTRIBUTED_CLIENT_H_
 #define XLA_PJRT_DISTRIBUTED_CLIENT_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "grpcpp/channel.h"
-#include "xla/pjrt/distributed/protocol.grpc.pb.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/statusor.h"
 #include "xla/types.h"
 #include "tsl/platform/env.h"
@@ -70,9 +74,9 @@ class DistributedRuntimeClient {
     // is reported by the coordinator, or we have not heard from the coordinator
     // recently. `coordinator_reported_failure` is true in the former case.
     // Exposed so tests can override this behavior to something non-fatal.
-    std::function<void(xla::Status, bool coordinator_reported_failure)>
+    std::function<void(absl::Status, bool coordinator_reported_failure)>
         missed_heartbeat_callback =
-            [](xla::Status status, bool coordinator_reported_failure) {
+            [](absl::Status status, bool coordinator_reported_failure) {
               if (coordinator_reported_failure) {
                 LOG(QFATAL)
                     << "Terminating process because the coordinator detected "
@@ -101,51 +105,48 @@ class DistributedRuntimeClient {
 
   // Connects to the master, and blocks until all clients have successfully
   // connected.
-  // Not thread-safe, i.e., calls to Connect()/Shutdown()/EnumerateDevices()
-  // must be serialized by some other means.
-  virtual xla::Status Connect() = 0;
+  // Not thread-safe, i.e., calls to Connect()/Shutdown() must be serialized by
+  // some other means.
+  virtual absl::Status Connect() = 0;
 
   // Reports to the master that the client is ready to shutdown, and blocks
   // until all clients are ready to shutdown or the shutdown timeout expires.
   // Not thread-safe.
-  virtual xla::Status Shutdown() = 0;
-
-  // Blocking enumeration of global devices. Used by the GPU platform.
-  // Not thread-safe.
-  virtual xla::Status EnumerateDevices(
-      const LocalTopologyProto& local_topology,
-      GlobalTopologyProto* global_topology) = 0;
+  virtual absl::Status Shutdown() = 0;
 
   // The following APIs are thread-safe.
 
   // Key-value store API.
   // There are no concurrency guarantees. To avoid a race / impose an ordering
   // on potentially concurrent ops (e.g. set, delete), use WaitAtBarrier().
-  virtual xla::StatusOr<std::string> BlockingKeyValueGet(
-      std::string key, absl::Duration timeout) = 0;
+  virtual absl::StatusOr<std::string> BlockingKeyValueGet(
+      std::string_view key, absl::Duration timeout) = 0;
 
   // Get all key-value pairs under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
   // the directory.
   // This is not a blocking call. If no keys are found, an empty vector is
   // returned immediately.
-  virtual xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
-  KeyValueDirGet(absl::string_view key) = 0;
+  virtual absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
+  KeyValueDirGet(std::string_view key) = 0;
 
-  virtual xla::Status KeyValueSet(std::string key, std::string value) = 0;
+  virtual absl::Status KeyValueSet(std::string_view key,
+                                   std::string_view value) = 0;
 
   // Delete the key-value. If the key is a directory, recursively clean
   // up all key-values under the directory.
-  virtual xla::Status KeyValueDelete(std::string key) = 0;
+  virtual absl::Status KeyValueDelete(std::string_view key) = 0;
 
-  // Blocks until all nodes are at the barrier or the barrier times out.
-  // `barrier_id` should be unique across barriers.
-  virtual xla::Status WaitAtBarrier(std::string barrier_id,
-                                    absl::Duration timeout) = 0;
+  // Blocks until all nodes (or the ones specified in `nodes`) are at the
+  // barrier or the barrier times out. `barrier_id` should be unique across
+  // barriers.
+  virtual absl::Status WaitAtBarrier(
+      std::string barrier_id, absl::Duration timeout,
+      std::optional<absl::Span<const int32_t>> nodes) = 0;
 
   // Returns pointer to coordination service agent, or InternalError if the
   // client does not use coordination service.
-  virtual StatusOr<tsl::CoordinationServiceAgent*>
+  virtual absl::StatusOr<tsl::CoordinationServiceAgent*>
   GetCoordinationServiceAgent() = 0;
 };
 
@@ -153,6 +154,9 @@ class DistributedRuntimeClient {
 std::unique_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
     std::shared_ptr<::grpc::Channel> channel,
     const DistributedRuntimeClient::Options& options);
+
+std::shared_ptr<KeyValueStoreInterface> GetDistributedKeyValueStore(
+    std::shared_ptr<DistributedRuntimeClient> client, std::string key_prefix);
 
 }  // namespace xla
 

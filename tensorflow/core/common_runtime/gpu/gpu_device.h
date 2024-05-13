@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/pjrt_device_context.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "xla/pjrt/local_device_state.h"
-#include "xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #endif  // TF_GPU_USE_PJRT
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -181,6 +181,18 @@ class BaseGPUDevice : public LocalDevice {
   // for the GPU or vGPU.
   static std::optional<tsl::TfDeviceId> FindTfDeviceId(se::Stream* compute);
 
+  bool merge_host_to_device_stream() const override {
+    return stream_merge_options_.merge_host_to_device_stream();
+  }
+
+  bool merge_device_to_host_stream() const override {
+    return stream_merge_options_.merge_device_to_host_stream();
+  }
+
+  bool merge_device_to_device_stream() const override {
+    return stream_merge_options_.merge_device_to_device_stream();
+  }
+
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
@@ -207,6 +219,7 @@ class BaseGPUDevice : public LocalDevice {
   int32 pending_cap_ = 0;
   bool timestamped_allocator_ = false;
   NodeFileWriter* node_file_writer_ = nullptr;  // not owned
+  const GPUOptions::Experimental::StreamMergeOptions stream_merge_options_;
 
   // Initialize scratch buffers used by Eigen.
   Status InitScratchBuffers();

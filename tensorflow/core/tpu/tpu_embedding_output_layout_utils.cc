@@ -59,7 +59,7 @@ Status ComputeOutputTensorShapes(
       shapes->push_back(shape);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tpu

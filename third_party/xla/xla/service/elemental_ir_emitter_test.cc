@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/execution_options_util.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/status_macros.h"
+#include "xla/service/elemental_ir_emitter.h"
+
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/test.h"
-#include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -45,6 +62,18 @@ class ElementalIrEmitterExecutionTest : public HloTestBase {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo_text, config));
     EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
+  }
+};
+
+class ElementalIrEmitterExecutionTestWithoutFastMinMax
+    : public ElementalIrEmitterExecutionTest {
+ protected:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options =
+        ElementalIrEmitterExecutionTest::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_enable_fast_min_max(false);
+    debug_options.set_xla_gpu_enable_fast_min_max(false);
+    return debug_options;
   }
 };
 
@@ -667,6 +696,163 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest, IotaF8E5FNUZ) {
   )";
 
   RunTest(hlo_text, {});
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MinimumHandlesNaNsOnTheLeft) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  neg1 = f32[] constant(-1)
+  neg1s = f32[5,5] broadcast(neg1), dimensions={}
+  nans = f32[5,5] sqrt(neg1s)
+  ROOT min = f32[5,5] minimum(nans, neg1s)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+// TODO(b/324385428): Failing on GPU at head due to an LLVM integrate. Re-enable
+// once this has been fixed.
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           DISABLED_MinimumHandlesNaNsOnTheRight) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  neg1 = f32[] constant(-1)
+  neg1s = f32[5,5] broadcast(neg1), dimensions={}
+  nans = f32[5,5] sqrt(neg1s)
+  ROOT min = f32[5,5] minimum(neg1s, nans)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MaximumHandlesNaNsOnTheLeft) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  neg1 = f32[] constant(-1)
+  neg1s = f32[5,5] broadcast(neg1), dimensions={}
+  nans = f32[5,5] sqrt(neg1s)
+  ROOT max = f32[5,5] maximum(nans, neg1s)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MaximumHandlesNaNsOnTheRight) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  neg1 = f32[] constant(-1)
+  neg1s = f32[5,5] broadcast(neg1), dimensions={}
+  nans = f32[5,5] sqrt(neg1s)
+  ROOT max = f32[5,5] maximum(neg1s, nans)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MinimumReturnsLHS) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  zero = f32[] constant(0)
+  zeros = f32[5,5] broadcast(zero), dimensions={}
+  one = f32[] constant(1)
+  ones = f32[5,5] broadcast(one), dimensions={}
+  ROOT min = f32[5,5] minimum(zeros, ones)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
+                                                /*arel=*/1e-3}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MinimumReturnsRHS) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  zero = f32[] constant(0)
+  zeros = f32[5,5] broadcast(zero), dimensions={}
+  one = f32[] constant(1)
+  ones = f32[5,5] broadcast(one), dimensions={}
+  ROOT min = f32[5,5] minimum(ones, zeros)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
+                                                /*arel=*/1e-3}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MaximumReturnsLHS) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  zero = f32[] constant(0)
+  zeros = f32[5,5] broadcast(zero), dimensions={}
+  one = f32[] constant(1)
+  ones = f32[5,5] broadcast(one), dimensions={}
+  ROOT max = f32[5,5] maximum(ones, zeros)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
+                                                /*arel=*/1e-3}));
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+           MaximumReturnsRHS) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  zero = f32[] constant(0)
+  zeros = f32[5,5] broadcast(zero), dimensions={}
+  one = f32[] constant(1)
+  ones = f32[5,5] broadcast(one), dimensions={}
+  ROOT max = f32[5,5] maximum(zeros, ones)
+})";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
+                                                /*arel=*/1e-3}));
+}
+
+class ElementalIrEmitterInternalTest : public HloTestBase {};
+
+XLA_TEST_F(ElementalIrEmitterInternalTest, SparseDotIsUnsupported) {
+  constexpr absl::string_view kHloText = R"(
+HloModule test
+
+ENTRY main {
+  lhs = f16[5,16] parameter(0)
+  rhs = f16[32,10] parameter(1)
+  meta = u16[5,2] parameter(2)
+  ROOT dot = f32[5,10] dot(lhs, rhs, meta),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+
+  llvm::LLVMContext llvm_context;
+  llvm::Module llvm_module("", llvm_context);
+  llvm::IRBuilder<> builder(llvm_context);
+  ElementalIrEmitterForTests emitter(&llvm_module, &builder);
+
+  llvm_ir::IrArray::Index test_index{builder.getInt64Ty()};
+  auto result = emitter.TestElementalDot(root, test_index);
+  EXPECT_FALSE(result.ok());
 }
 
 }  // namespace

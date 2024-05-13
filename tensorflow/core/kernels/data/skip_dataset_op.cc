@@ -14,9 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/skip_dataset_op.h"
 
+#include <cstddef>
+#include <cstdint>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -40,6 +50,14 @@ class SkipDatasetOp::Dataset : public DatasetBase {
   Dataset(OpKernelContext* ctx, int64_t count, const DatasetBase* input)
       : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
     input_->Ref();
+    if (input_ != nullptr && count >= 0) {
+      random_indexing_compatible_ = input_->RandomIndexingCompatible();
+    } else {
+      random_indexing_compatible_ = absl::FailedPreconditionError(
+          absl::StrCat("Global shuffling does not support empty dataset or "
+                       "skipping the entire dataset. Got skip(",
+                       count, ")."));
+    }
   }
 
   ~Dataset() override { input_->Unref(); }
@@ -77,7 +95,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -90,6 +108,10 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     return input_->Get(ctx, index + count_, out_tensors);
   }
 
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -99,7 +121,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     Node* count = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
     TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node, count}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -114,7 +136,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       *end_of_sequence = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -126,12 +148,12 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      return OkStatus();
+      return absl::OkStatus();
     }
   };
 
@@ -149,11 +171,14 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
+      if (ctx->index_mapper() != nullptr) {
+        return Get(ctx, out_tensors, end_of_sequence);
+      }
 
+      mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
       if (!input_impl_) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       if (i_ < dataset()->count_) {
@@ -164,7 +189,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
         if (*end_of_sequence) {
           // We reached the end before the count was reached.
           input_impl_.reset();
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
 
@@ -174,7 +199,33 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       if (*end_of_sequence) {
         input_impl_.reset();
       }
-      return OkStatus();
+      return absl::OkStatus();
+    }
+
+    absl::Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                     bool* end_of_sequence) {
+      mutex_lock l(mu_);
+      if (!input_impl_) {
+        *end_of_sequence = true;
+        return absl::OkStatus();
+      }
+
+      IteratorContextWithIndexMapper ctx_with_index_mapper(ctx, this);
+      TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx_with_index_mapper.Get(),
+                                              out_tensors, end_of_sequence));
+      ctx_with_index_mapper.MergeCheckpoint();
+      return absl::OkStatus();
+    }
+
+    IndexMapperFn GetIndexMapper(
+        IndexMapperFn parent_index_mapper) const override {
+      int64_t skip_count = dataset()->count_;
+      return [parent_index_mapper,
+              skip_count](size_t element_position) -> absl::StatusOr<size_t> {
+        TF_ASSIGN_OR_RETURN(size_t shuffled_element_position,
+                            parent_index_mapper(element_position));
+        return shuffled_element_position + skip_count;
+      };
     }
 
    protected:
@@ -193,11 +244,16 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
+      if (ctx->restored_element_count().has_value()) {
+        mutex_lock l(mu_);
+        return RestoreInput(ctx, reader, input_impl_);
+      }
+
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &i_));
       int64_t input_empty;
@@ -208,7 +264,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       } else {
         input_impl_.reset();
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -219,6 +275,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
   const int64_t count_;
   const DatasetBase* const input_;
+  absl::Status random_indexing_compatible_;
 };
 
 SkipDatasetOp::SkipDatasetOp(OpKernelConstruction* ctx)

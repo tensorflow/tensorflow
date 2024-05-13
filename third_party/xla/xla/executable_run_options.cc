@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -122,6 +122,28 @@ ExecutableRunOptions& ExecutableRunOptions::set_gpu_executable_run_options(
 const gpu::GpuExecutableRunOptions*
 ExecutableRunOptions::gpu_executable_run_options() const {
   return gpu_executable_run_options_;
+}
+
+ExecutableRunOptions& ExecutableRunOptions::set_cpu_executable_run_options(
+    const cpu::CpuExecutableRunOptions* cpu_executable_run_options) {
+  cpu_executable_run_options_ = cpu_executable_run_options;
+  return *this;
+}
+
+const cpu::CpuExecutableRunOptions*
+ExecutableRunOptions::cpu_executable_run_options() const {
+  return cpu_executable_run_options_;
+}
+
+ExecutableRunOptions& ExecutableRunOptions::set_ffi_execution_context(
+    const ffi::ExecutionContext* ffi_execution_context) {
+  ffi_execution_context_ = ffi_execution_context;
+  return *this;
+}
+
+const ffi::ExecutionContext* ExecutableRunOptions::ffi_execution_context()
+    const {
+  return ffi_execution_context_;
 }
 
 ExecutableRunOptions& ExecutableRunOptions::set_rng_seed(int rng_seed) {

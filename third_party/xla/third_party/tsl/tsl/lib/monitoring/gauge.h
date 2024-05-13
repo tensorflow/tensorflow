@@ -65,8 +65,10 @@ class Gauge {
             std::is_same<ValueType, bool>::value ||
             std::is_same<ValueType, std::function<int64()> >::value ||
             std::is_same<ValueType, std::function<std::string()> >::value ||
-            std::is_same<ValueType, std::function<bool()> >::value,
-        "Gauge only allows bool, int64, and string types.");
+            std::is_same<ValueType, std::function<bool()> >::value ||
+            std::is_same<ValueType, std::function<double()> >::value ||
+            std::is_same<ValueType, double>::value,
+        "Gauge only allows bool, int64, double and string types.");
     return new Gauge();
   }
 
@@ -223,7 +225,7 @@ class Gauge {
   template <typename... Labels>
   GaugeCell<ValueType>* GetCell(const Labels&... labels) TF_LOCKS_EXCLUDED(mu_);
 
-  Status GetStatus() { return status_; }
+  absl::Status GetStatus() { return status_; }
 
  private:
   explicit Gauge(
@@ -239,16 +241,17 @@ class Gauge {
               }
             })) {
     if (registration_handle_) {
-      status_ = OkStatus();
+      status_ = absl::OkStatus();
     } else {
-      status_ = Status(absl::StatusCode::kAlreadyExists,
+      status_ =
+          absl::Status(absl::StatusCode::kAlreadyExists,
                        "Another metric with the same name already exists.");
     }
   }
 
   mutable mutex mu_;
 
-  Status status_;
+  absl::Status status_;
 
   using LabelArray = std::array<string, NumLabels>;
   std::map<LabelArray, GaugeCell<ValueType> > cells_ TF_GUARDED_BY(mu_);
@@ -296,8 +299,10 @@ Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
           std::is_same<ValueType, bool>::value ||
           std::is_same<ValueType, std::function<int64_t()> >::value ||
           std::is_same<ValueType, std::function<std::string()> >::value ||
-          std::is_same<ValueType, std::function<bool()> >::value,
-      "Gauge only allows bool, int64, and string types.");
+          std::is_same<ValueType, std::function<bool()> >::value ||
+          std::is_same<ValueType, std::function<double()> >::value ||
+          std::is_same<ValueType, double>::value,
+      "Gauge only allows bool, int64, double, and string types.");
   return new Gauge<ValueType, NumLabels>(
       MetricDef<MetricKind::kGauge, ValueType, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));

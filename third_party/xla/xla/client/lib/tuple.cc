@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<ShapeTree<XlaOp>> DisassembleTuple(XlaOp tuple) {
+absl::StatusOr<ShapeTree<XlaOp>> DisassembleTuple(XlaOp tuple) {
   TF_ASSIGN_OR_RETURN(Shape shape, tuple.builder()->GetShape(tuple));
   ShapeTree<XlaOp> result(shape);
   result.ForEachMutableElement([&](ShapeIndexView index, XlaOp* element) {

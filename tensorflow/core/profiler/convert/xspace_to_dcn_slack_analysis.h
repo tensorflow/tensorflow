@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/core/profiler/protobuf/dcn_collective_info.pb.h"
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
 #include "tensorflow/core/profiler/protobuf/topology.pb.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
@@ -53,6 +54,7 @@ struct DcnOpState {
   std::string transfer_type;
   uint64_t stall_duration_ns = 0;
   std::string send_op_name;
+  int replica_group_size = 0;
 
   OpInstance send;
   OpInstance send_done;
@@ -125,6 +127,7 @@ class DcnTracker {
   absl::flat_hash_map<int, int> global_chip_id_to_local_index_map_;
   absl::flat_hash_map<std::string, std::unique_ptr<xla::HloModule>>
       hlo_module_cache_;
+  absl::flat_hash_map<std::string, int> rendezvous_to_replica_group_size_map_;
   bool is_megacore_ = true;
 
   absl::StatusOr<InstrMetadata> GetInstrMetadataFromHloModule(
@@ -140,6 +143,14 @@ class DcnTracker {
 
   // GetLocalIndex when available, else return the global_device_id itself.
   int GetLocalIndex(int dcn_device_id);
+
+  // Get number of replica group
+  int GetReplicaGroupSize(const std::string& rendezvous_name,
+                          const tsl::profiler::XEventVisitor& visitor);
+
+  // Compute data transmitted size based on number of replica groups
+  uint64_t ComputeTransmittedDataSize(int64_t buffer_size, int group_size,
+                                      const std::string& transfer_type);
 };
 
 }  // namespace dcn_analysis_internal

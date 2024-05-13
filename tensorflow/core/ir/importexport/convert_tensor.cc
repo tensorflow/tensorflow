@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -81,8 +82,8 @@ static std::string MangleTensor(const Tensor& tensor) {
 
 // Converts a TensorFlow tensor into an MLIR elements attribute.
 template <typename T>
-tensorflow::StatusOr<ElementsAttr> ConvertFlatTensor(const Tensor& input_tensor,
-                                                     ShapedType type) {
+absl::StatusOr<ElementsAttr> ConvertFlatTensor(const Tensor& input_tensor,
+                                               ShapedType type) {
   auto arr = input_tensor.flat<T>();
   return ElementsAttr(
       DenseElementsAttr::get(type, llvm::ArrayRef(arr.data(), arr.size())));
@@ -101,8 +102,8 @@ ElementsAttr ConvertHalfTensor(const Tensor& tensor, RankedTensorType type) {
   return DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
-tensorflow::StatusOr<ElementsAttr> ConvertStringTensor(
-    const Tensor& input_tensor, ShapedType type) {
+absl::StatusOr<ElementsAttr> ConvertStringTensor(const Tensor& input_tensor,
+                                                 ShapedType type) {
   // Extract to a vector of StringRefs for converting.
   auto arr = input_tensor.flat<tstring>();
   std::vector<StringRef> string_refs;
@@ -115,8 +116,8 @@ tensorflow::StatusOr<ElementsAttr> ConvertStringTensor(
   return ElementsAttr(DenseStringElementsAttr::get(type, string_refs));
 }
 
-tensorflow::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
-                                                 Builder builder) {
+absl::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
+                                           Builder builder) {
   const auto& input_dtype = input_tensor.dtype();
   const auto& input_shape = input_tensor.shape();
   Type elt_type;
@@ -204,8 +205,8 @@ static int NumberOfMaterializedElements(const TensorProto& tensor) {
   }
 }
 
-tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
-    const TensorProto& input_tensor, Builder builder) {
+absl::StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
+                                                Builder builder) {
   // If there is only one actual element in the proto, but its shape would
   // indicate there are more values, then this is representing a splat tensor.
   // We can create an MLIR Attribute more efficiently in this case.
@@ -248,12 +249,12 @@ void ConvertToTensorShapeProto(ArrayRef<int64_t> shape,
 }
 
 PartialTensorShape ConvertTypeToTensorShape(const Type& type) {
-  if (type.isa<UnrankedTensorType>()) {
+  if (mlir::isa<UnrankedTensorType>(type)) {
     // An empty PartialTensorShape indicates an unranked tensor.
     return PartialTensorShape();
   }
 
-  if (auto tensor_type = type.dyn_cast<RankedTensorType>()) {
+  if (auto tensor_type = mlir::dyn_cast<RankedTensorType>(type)) {
     TensorShapeProto tensor_shape_proto;
     ConvertToTensorShapeProto(ConvertMlirShapeToTF(tensor_type.getShape()),
                               &tensor_shape_proto);
@@ -266,11 +267,11 @@ PartialTensorShape ConvertTypeToTensorShape(const Type& type) {
 }
 
 ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type) {
-  if (type.isa<UnrankedTensorType>()) {
+  if (mlir::isa<UnrankedTensorType>(type)) {
     return ShapeAttr::get(type.getContext(), std::nullopt);
   }
 
-  if (auto tensor_type = type.dyn_cast<RankedTensorType>()) {
+  if (auto tensor_type = mlir::dyn_cast<RankedTensorType>(type)) {
     return ShapeAttr::get(
         type.getContext(),
         llvm::ArrayRef(ConvertMlirShapeToTF(tensor_type.getShape())));
@@ -282,8 +283,8 @@ ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type) {
 }
 
 // Converts the tensor shape proto into an MLIR shape attribute.
-tensorflow::StatusOr<ShapeAttr> ConvertTensorShapeProto(
-    const TensorShapeProto& shape, MLIRContext* context) {
+absl::StatusOr<ShapeAttr> ConvertTensorShapeProto(const TensorShapeProto& shape,
+                                                  MLIRContext* context) {
   if (shape.unknown_rank()) return ShapeAttr::get(context, std::nullopt);
 
   SmallVector<int64_t, 4> dims;
@@ -439,10 +440,10 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
   output->set_dtype(output_dtype);
   ConvertToTensorShapeProto(shape, output->mutable_tensor_shape());
 
-  if (auto tensor_attr = attr.dyn_cast<mlir::tf_type::TensorProtoAttr>())
+  if (auto tensor_attr = mlir::dyn_cast<mlir::tf_type::TensorProtoAttr>(attr))
     return ConvertTensorProtoAttr(tensor_attr, output);
 
-  auto dense_attr = attr.dyn_cast<DenseElementsAttr>();
+  auto dense_attr = mlir::dyn_cast<DenseElementsAttr>(attr);
   if (!dense_attr) return InvalidArgument("Unsupported elements attr");
 
   switch (output_dtype) {
@@ -508,7 +509,7 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
                              output->mutable_tensor_content());
       break;
     case tensorflow::DT_STRING:
-      ConvertStringElementsAttr(dense_attr.cast<DenseStringElementsAttr>(),
+      ConvertStringElementsAttr(mlir::cast<DenseStringElementsAttr>(dense_attr),
                                 output->mutable_string_val());
       break;
     case tensorflow::DT_UINT8:
@@ -533,7 +534,7 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
       return Unimplemented(absl::StrCat("Unimplemented data type ",
                                         DataTypeString(output_dtype)));
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertToTensor(const ElementsAttr attr, Tensor* output_tensor) {
@@ -542,7 +543,7 @@ Status ConvertToTensor(const ElementsAttr attr, Tensor* output_tensor) {
   if (!output_tensor->FromProto(tensor_proto)) {
     return InvalidArgument("Couldn't convert tensor proto to tensor.");
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 llvm::SmallVector<int64_t> ConvertMlirShapeToTF(llvm::ArrayRef<int64_t> shape) {

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
@@ -78,7 +79,7 @@ struct Backend::IntraOpThreadPool {
   std::unique_ptr<Eigen::ThreadPoolDevice> device;
 };
 
-/* static */ StatusOr<std::unique_ptr<Backend>> Backend::CreateBackend(
+/* static */ absl::StatusOr<std::unique_ptr<Backend>> Backend::CreateBackend(
     const BackendOptions& options) {
   se::Platform* platform = options.platform();
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
@@ -95,7 +96,7 @@ struct Backend::IntraOpThreadPool {
   return std::move(backend);
 }
 
-/* static */ StatusOr<std::unique_ptr<Backend>>
+/* static */ absl::StatusOr<std::unique_ptr<Backend>>
 Backend::CreateDefaultBackend() {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetDefaultPlatform());
@@ -104,33 +105,32 @@ Backend::CreateDefaultBackend() {
   return CreateBackend(backend_options);
 }
 
-StatusOr<StreamPool::Ptr> Backend::BorrowStream(int device_ordinal,
-                                                se::StreamPriority priority) {
+absl::StatusOr<StreamPool::Ptr> Backend::BorrowStream(
+    int device_ordinal, se::StreamPriority priority) {
   TF_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
   return BorrowStream(executor, priority);
 }
 
-StatusOr<StreamPool::Ptr> Backend::BorrowStream(se::StreamExecutor* executor,
-                                                se::StreamPriority priority) {
+absl::StatusOr<StreamPool::Ptr> Backend::BorrowStream(
+    se::StreamExecutor* executor, se::StreamPriority priority) {
   absl::MutexLock l(&mu_);
   if (!stream_pools_.contains(executor)) {
-    stream_pools_.emplace(executor, std::make_unique<StreamPool>());
+    stream_pools_.emplace(executor, std::make_unique<StreamPool>(executor));
   }
-  return stream_pools_.at(executor)->BorrowStream(executor, priority);
+  return stream_pools_.at(executor)->BorrowStream(priority);
 }
 
-StatusOr<std::vector<StreamPool::Ptr>> Backend::BorrowStreams(
+absl::StatusOr<std::vector<StreamPool::Ptr>> Backend::BorrowStreams(
     int device_ordinal, int num_streams, se::StreamPriority priority) {
   absl::MutexLock l(&mu_);
   TF_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
   if (!stream_pools_.contains(executor)) {
-    stream_pools_.emplace(executor, std::make_unique<StreamPool>());
+    stream_pools_.emplace(executor, std::make_unique<StreamPool>(executor));
   }
 
   std::vector<StreamPool::Ptr> ptrs;
   for (int i = 0; i < num_streams; i++) {
-    StreamPool::Ptr ptr =
-        stream_pools_.at(executor)->BorrowStream(executor, priority);
+    StreamPool::Ptr ptr = stream_pools_.at(executor)->BorrowStream(priority);
     ptrs.push_back(std::move(ptr));
   }
   return ptrs;
@@ -148,7 +148,8 @@ Backend::Backend(se::Platform* platform, Compiler* compiler,
       stream_executors_(stream_executors.begin(), stream_executors.end()) {
   // Create a memory allocator for the valid stream executors.
   memory_allocator_ = std::make_shared<se::StreamExecutorMemoryAllocator>(
-      platform, stream_executors_);
+      platform, std::vector<se::StreamExecutorInterface*>{
+                    stream_executors_.begin(), stream_executors_.end()});
   CHECK(!stream_executors_.empty())
       << "Service found no devices for backend " << platform_->Name() << '.';
 
@@ -181,7 +182,7 @@ tsl::thread::ThreadPool* Backend::eigen_intra_op_thread_pool() const {
   return intra_op_thread_pool_->pool.get();
 }
 
-StatusOr<se::StreamExecutor*> Backend::stream_executor(
+absl::StatusOr<se::StreamExecutor*> Backend::stream_executor(
     int device_ordinal) const {
   if (device_ordinal < 0 ||
       device_ordinal > stream_executors_.back()->device_ordinal()) {
@@ -198,8 +199,8 @@ StatusOr<se::StreamExecutor*> Backend::stream_executor(
                          device_name(device_ordinal));
 }
 
-StatusOr<bool> Backend::devices_equivalent(int device_ordinal_a,
-                                           int device_ordinal_b) {
+absl::StatusOr<bool> Backend::devices_equivalent(int device_ordinal_a,
+                                                 int device_ordinal_b) {
   // Use the name from device description to determine equivalence. This is a
   // bit crude but works for GPUs which is the important case where we compile
   // an executable for one GPU and want to know if it will run (well) on

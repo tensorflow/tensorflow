@@ -20,24 +20,28 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 
 namespace mlir {
 namespace lite {
@@ -58,7 +62,8 @@ TfLiteStatus QuantizeModel(
     bool whole_model_verify, bool legacy_float_scale,
     const absl::flat_hash_set<std::string>& denylisted_ops,
     const absl::flat_hash_set<std::string>& denylisted_nodes,
-    const bool enable_variable_quantization) {
+    const bool enable_variable_quantization,
+    bool disable_per_channel_for_dense_layers) {
   // Translate TFLite names to mlir op names.
   absl::flat_hash_set<std::string> denylisted_mlir_op_names;
   for (const auto& entry : denylisted_ops) {
@@ -84,6 +89,8 @@ TfLiteStatus QuantizeModel(
   quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.post_training_quantization = true;
   quant_specs.disable_per_channel = disable_per_channel;
+  quant_specs.disable_per_channel_for_dense_layers =
+      disable_per_channel_for_dense_layers;
   quant_specs.verify_numeric = verify_numeric;
   quant_specs.whole_model_verify = whole_model_verify;
   quant_specs.legacy_float_scale = legacy_float_scale;

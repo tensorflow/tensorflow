@@ -15,9 +15,12 @@
 """Tests for the functional saver."""
 
 import os
+import time
 
+from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import functional_saver
+from tensorflow.python.checkpoint import graph_view
 from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
@@ -26,11 +29,12 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.module import module
+from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.saving import saveable_object_util
-
 
 LOCALHOST = "/job:localhost/replica:0/task:0/device:CPU:0"
 
@@ -48,6 +52,23 @@ class SaverTest(test.TestCase):
     ])
     self.local_options = checkpoint_options.CheckpointOptions(
         experimental_io_device=LOCALHOST)
+
+  def _get_tensors_by_task(self, root):
+    serialized_tensors, _, _, _ = (
+        checkpoint.TrackableSaver(graph_view.ObjectGraphView(root))
+        ._gather_serialized_tensors(None))
+
+    tensors_by_task = {}
+    for tensor_dict in serialized_tensors.values():
+      for checkpoint_key, maybe_tensor in tensor_dict.items():
+        if not isinstance(maybe_tensor, dict):
+          maybe_tensor = {"": maybe_tensor}
+        for slice_spec, tensor in maybe_tensor.items():
+          tensor_task = saveable_object_util.set_cpu0(tensor.device)
+          (tensors_by_task
+           .setdefault(tensor_task, {})
+           .setdefault(checkpoint_key, {})[slice_spec]) = tensor
+    return tensors_by_task
 
   @test_util.run_in_graph_and_eager_modes
   def test_resource_variable(self):
@@ -185,6 +206,50 @@ class SaverTest(test.TestCase):
       for op in ops.get_default_graph().get_operations():
         if op.type in ("SaveV2", "RestoreV2", "MergeV2Checkpoints"):
           self.assertEqual(LOCALHOST, op.device)
+
+  def test_single_task_save_singlehost_multidevice(self):
+    root = module.Module()
+    with ops.device("cpu:0"):
+      v0 = resource_variable_ops.ResourceVariable(0.)
+    with ops.device("cpu:1"):
+      v1 = resource_variable_ops.ResourceVariable(1.)
+    with ops.device("cpu:2"):
+      v2 = resource_variable_ops.ResourceVariable(2.)
+    root.v0 = v0
+    root.v1 = v1
+    root.v2 = v2
+
+    tensors_by_task = self._get_tensors_by_task(root)
+    var_names = [
+        "v0/.ATTRIBUTES/VARIABLE_VALUE",
+        "v1/.ATTRIBUTES/VARIABLE_VALUE",
+        "v2/.ATTRIBUTES/VARIABLE_VALUE"
+    ]
+    vars_numpy = [v0.numpy(), v1.numpy(), v2.numpy()]
+    tmp_dir = self.get_temp_dir()
+
+    for device in ["cpu:0", "cpu:1", "cpu:2"]:
+      for shard, (_, tensor_slice_dict) in enumerate(
+          sorted(tensors_by_task.items())[1:]):
+        with ops.device(device):
+          shard_prefix = gen_io_ops.sharded_filename(
+              os.path.join(tmp_dir, str(shard)), shard, 3)
+          functional_saver._single_task_save(
+              shard_prefix, tensor_slice_dict)
+
+        start_time = time.time()
+        max_save_time = start_time + 5  # seconds
+        while not (gfile.ListDirectory(tmp_dir) or time.time() > max_save_time):
+          pass  # eager execution is lovely
+        self.assertNotEmpty(gfile.ListDirectory(tmp_dir))
+
+        with ops.device(device):
+          restored_dict = functional_saver._single_task_restore(
+              shard_prefix, tensor_slice_dict)
+          self.evaluate(restored_dict)
+          self.assertEqual(
+              restored_dict[var_names[shard]][""].numpy(),
+              vars_numpy[shard])
 
 
 if __name__ == "__main__":

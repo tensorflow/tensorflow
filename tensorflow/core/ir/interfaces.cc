@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/types/dialect.h"
 
@@ -30,7 +31,7 @@ LogicalResult ControlArgumentInterface::verifyRegion(Operation *op,
                                                      Region &region) {
   unsigned num_ctl = 0, num_data = 0;
   for (BlockArgument arg : region.getArguments()) {
-    bool is_ctl = arg.getType().isa<tf_type::ControlType>();
+    bool is_ctl = mlir::isa<tf_type::ControlType>(arg.getType());
     num_ctl += is_ctl;
     num_data += !is_ctl;
   }

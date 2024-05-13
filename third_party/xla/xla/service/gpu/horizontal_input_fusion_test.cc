@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,21 @@ limitations under the License.
 
 #include "xla/service/gpu/horizontal_input_fusion.h"
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/test.h"
 
 namespace xla {
@@ -30,8 +40,9 @@ namespace m = ::xla::match;
 
 class HorizontalInputFusionTest : public GpuCodegenTest {
  public:
-  GpuHorizontalInputFusion horizontal_input_fusion_{
+  se::DeviceDescription device_description_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo()};
+  GpuHorizontalInputFusion horizontal_input_fusion_{device_description_};
 };
 
 TEST_F(HorizontalInputFusionTest, BasicTest) {

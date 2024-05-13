@@ -29,7 +29,6 @@ class GlobalIterId : public OpKernel {
     ctx->set_output(0, Tensor(ctx->frame_iter().iter_id));
   }
 };
-REGISTER_OP("GlobalIterId").Output("iter_id: int64").SetIsStateful();
 REGISTER_KERNEL_BUILDER(Name("GlobalIterId").Device(DEVICE_CPU), GlobalIterId);
 
 }  // anonymous namespace

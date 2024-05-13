@@ -33,7 +33,7 @@ uint64 ComputeHash(const GraphDef& graph_def) {
   return tensorflow::Fingerprint64(graph_def_string);
 }
 
-StatusOr<int64_t> GetSuffixUID(absl::string_view function_name) {
+absl::StatusOr<int64_t> GetSuffixUID(absl::string_view function_name) {
   std::vector<absl::string_view> v = absl::StrSplit(function_name, '_');
 
   int64_t uid;

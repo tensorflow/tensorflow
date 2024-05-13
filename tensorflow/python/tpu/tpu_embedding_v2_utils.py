@@ -17,7 +17,7 @@
 import abc
 import math
 import typing
-from typing import Any, Dict, Callable, Iterable, List, Optional, Text, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Text, Tuple, TypeVar, Union
 
 from absl import logging
 
@@ -27,9 +27,12 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.framework import device_spec
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.tensor_shape import TensorShape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.types import core
@@ -237,7 +240,7 @@ class SGD(_Optimizer):
       clip_weight_min: Optional[float] = None,
       clip_weight_max: Optional[float] = None,
       weight_decay_factor: Optional[float] = None,
-      multiply_weight_decay_factor_by_learning_rate: bool = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
       clipvalue: Optional[ClipValueType] = None,
       low_dimensional_packing_status: bool = False,
   ):
@@ -354,7 +357,7 @@ class Adagrad(_Optimizer):
       clip_weight_min: Optional[float] = None,
       clip_weight_max: Optional[float] = None,
       weight_decay_factor: Optional[float] = None,
-      multiply_weight_decay_factor_by_learning_rate: bool = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
       slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None,
       clipvalue: Optional[ClipValueType] = None,
       low_dimensional_packing_status: bool = False,
@@ -487,7 +490,7 @@ class AdagradMomentum(_Optimizer):
       clip_weight_min: Optional[float] = None,
       clip_weight_max: Optional[float] = None,
       weight_decay_factor: Optional[float] = None,
-      multiply_weight_decay_factor_by_learning_rate: bool = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
       slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None,
       clipvalue: Optional[ClipValueType] = None,
       low_dimensional_packing_status: bool = False,
@@ -637,7 +640,7 @@ class FTRL(_Optimizer):
       clip_weight_min: Optional[float] = None,
       clip_weight_max: Optional[float] = None,
       weight_decay_factor: Optional[float] = None,
-      multiply_weight_decay_factor_by_learning_rate: bool = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
       slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None,
       clipvalue: Optional[ClipValueType] = None,
       multiply_linear_by_learning_rate: bool = False,
@@ -812,7 +815,7 @@ class Adam(_Optimizer):
       clip_weight_min: Optional[float] = None,
       clip_weight_max: Optional[float] = None,
       weight_decay_factor: Optional[float] = None,
-      multiply_weight_decay_factor_by_learning_rate: bool = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
       slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None,
       clipvalue: Optional[ClipValueType] = None,
       low_dimensional_packing_status: bool = False,
@@ -1018,14 +1021,19 @@ class TableConfig:
 
   """
 
-  def __init__(self,
-               vocabulary_size: int,
-               dim: int,
-               initializer: Optional[Callable[[Any], None]] = None,
-               optimizer: Optional[_Optimizer] = None,
-               combiner: Text = "mean",
-               name: Optional[Text] = None,
-               quantization_config: QuantizationConfig = None):
+  def __init__(
+      self,
+      vocabulary_size: int,
+      dim: int,
+      initializer: Optional[Callable[[Any], None]] = None,
+      optimizer: Optional[_Optimizer] = None,
+      combiner: Text = "mean",
+      name: Optional[Text] = None,
+      quantization_config: QuantizationConfig = None,
+      # TODO(b/295372790): Change the type to SparseCoreTableLayout after it is
+      # open sourced.
+      layout: Optional[Any] = None,
+  ):
     """Embedding table configuration.
 
     Args:
@@ -1051,6 +1059,9 @@ class TableConfig:
       quantization_config: The simulated quantization config. An instance of
         `tf.tpu.experimental.embedding.QuantizationConfig`. See the class for
         more documentation.
+      layout: If the table already has its layout computed, you can pass it in
+        here. Otherwise, we will compute it for you. Most users should leave
+        this as None.
 
     Returns:
       `TableConfig`.
@@ -1097,6 +1108,7 @@ class TableConfig:
     self.combiner = combiner
     self.name = name
     self.quantization_config = quantization_config
+    self.layout = layout
 
   def __repr__(self):
     # If using the default initializer, just print "None" for clarity.
@@ -1156,6 +1168,21 @@ class TableConfig:
 
     if self.quantization_config:
       self.quantization_config._set_optimization_parameters(parameters)  # pylint: disable=protected-access
+
+
+@tf_export("tpu.experimental.embedding.RowIdInitializer")
+class RowIdInitializer:
+  """An initializer that initializes the table with vocabulary ids."""
+
+  def __init__(self, offset: int = 0):
+    self.offset = offset
+
+  def __call__(
+      self, shape: Union[Sequence[int], TensorShape], dtype: dtypes.DType
+  ) -> core.Tensor:
+    return math_ops.range(
+        start=self.offset, limit=self.offset + shape[0], delta=1, dtype=dtype
+    )[:, None] * array_ops.ones(shape, dtype=dtype)
 
 
 @tf_export("tpu.experimental.embedding.FeatureConfig")
@@ -1250,11 +1277,6 @@ class FeatureConfig:
       raise ValueError(
           f"Argument `max_sequence_length` must be an int and must be >= 0. "
           f"Received: {max_sequence_length}")
-    if name is None:
-      logging.warning(
-          "Name of the Feature config must be specified for running on"
-          " SparseCore. Different feature configs must have unique names."
-      )
 
     self.table = table
     self.max_sequence_length = max_sequence_length

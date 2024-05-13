@@ -58,7 +58,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace {
@@ -114,6 +114,9 @@ class Conv2DBackpropFilterOp : public OpKernel {
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    OP_REQUIRES(context, strides_.size() == 4,
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
     int stride_n = GetTensorDim(strides_, data_format_, 'N');
     int stride_c = GetTensorDim(strides_, data_format_, 'C');
     int stride_h = GetTensorDim(strides_, data_format_, 'H');
@@ -198,8 +201,8 @@ class Conv2DBackpropFilterOp : public OpKernel {
     const int dilation_rows = GetTensorDim(dilations_, data_format_, 'H');
     const int dilation_cols = GetTensorDim(dilations_, data_format_, 'W');
 
-    VLOG(2) << "Conv2DBackpropFilter:"
-            << " input: " << input.shape().DebugString()
+    VLOG(2) << "Conv2DBackpropFilter:" << " input: "
+            << input.shape().DebugString()
             << " filter:" << filter_shape.DebugString()
             << " out_backprop: " << out_backprop.shape().DebugString()
             << " strides: [" << stride_rows << ", " << stride_cols << "]"
@@ -484,7 +487,6 @@ extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, double>;
 
 // GPU definitions.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 
 REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
                             .Device(DEVICE_GPU)

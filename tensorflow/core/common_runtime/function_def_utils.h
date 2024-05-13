@@ -19,7 +19,9 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
 
@@ -27,10 +29,21 @@ class AttrSlice;
 struct FunctionBody;
 class FunctionDef;
 class FunctionLibraryDefinition;
+class FunctionRecord;
 class OpDef;
 
 // Instantiates FunctionDef into a graph. Set *fbody to point to the
 // FunctionBody that holds the instantiated FunctionDef.
+Status FunctionDefToBodyHelper(core::RefCountPtr<FunctionRecord>&& record,
+                               const AttrSlice& attrs,
+                               const FunctionLibraryDefinition* lib_def,
+                               std::unique_ptr<FunctionBody>* fbody);
+
+// Instantiates FunctionDef into a graph. Set *fbody to point to the
+// FunctionBody that holds the instantiated FunctionDef.
+//
+// NOTE(mrry): This implementation incurs a copy of `fdef`. If possible, use
+//   the overload that takes a `core::RefCountPtr<FunctionRecord>`.
 Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
                                const FunctionLibraryDefinition* lib_def,
                                std::unique_ptr<FunctionBody>* fbody);
@@ -39,7 +52,7 @@ Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
 // FunctionBody that holds the instantiated FunctionDef. Use custom function
 // signature lookup, in case instantiated function is not in the 'lib_def'.
 Status FunctionDefToBodyHelper(
-    const FunctionDef& fdef, const AttrSlice& attrs,
+    core::RefCountPtr<FunctionRecord>&& record, const AttrSlice& attrs,
     const FunctionLibraryDefinition* lib_def,
     const std::function<Status(const string&, const OpDef**)>& get_func_sig,
     std::unique_ptr<FunctionBody>* fbody);

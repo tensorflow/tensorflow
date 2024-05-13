@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/cost_measurement.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tsl/platform/criticality.h"
 
 namespace tensorflow {
 namespace serving {
@@ -37,6 +37,58 @@ namespace {
 
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
+
+TEST(BatchTaskCriticalityTest, CriticalityDefaultsToCritical) {
+  BatchResourceBase::BatchTask batch_task;
+  EXPECT_EQ(batch_task.criticality(), tsl::criticality::Criticality::kCritical);
+}
+
+#if defined(PLATFORM_GOOGLE)
+TEST(BatchTaskCriticalityTest, CriticalitySuccessfullyPropagated) {
+  std::vector<BatchResourceBase::BatchTask> batch_tasks;
+  // Tasks created with the scoped criticalities must have proper criticalities
+  // set.
+  {
+    tsl::criticality::ScopedCriticality scoped_criticality(
+        tsl::criticality::Criticality::kCriticalPlus);
+    ASSERT_EQ(tsl::criticality::GetCriticality(),
+              tsl::criticality::Criticality::kCriticalPlus);
+    batch_tasks.push_back(BatchResourceBase::BatchTask());
+  }
+  {
+    tsl::criticality::ScopedCriticality scoped_criticality(
+        tsl::criticality::Criticality::kCritical);
+    ASSERT_EQ(tsl::criticality::GetCriticality(),
+              tsl::criticality::Criticality::kCritical);
+    batch_tasks.push_back(BatchResourceBase::BatchTask());
+  }
+  {
+    tsl::criticality::ScopedCriticality scoped_criticality(
+        tsl::criticality::Criticality::kSheddablePlus);
+    ASSERT_EQ(tsl::criticality::GetCriticality(),
+              tsl::criticality::Criticality::kSheddablePlus);
+    batch_tasks.push_back(BatchResourceBase::BatchTask());
+  }
+  {
+    tsl::criticality::ScopedCriticality scoped_criticality(
+        tsl::criticality::Criticality::kSheddable);
+    ASSERT_EQ(tsl::criticality::GetCriticality(),
+              tsl::criticality::Criticality::kSheddable);
+    batch_tasks.push_back(BatchResourceBase::BatchTask());
+  }
+  batch_tasks.push_back(BatchResourceBase::BatchTask());
+  EXPECT_EQ(batch_tasks[0].criticality(),
+            tsl::criticality::Criticality::kCriticalPlus);
+  EXPECT_EQ(batch_tasks[1].criticality(),
+            tsl::criticality::Criticality::kCritical);
+  EXPECT_EQ(batch_tasks[2].criticality(),
+            tsl::criticality::Criticality::kSheddablePlus);
+  EXPECT_EQ(batch_tasks[3].criticality(),
+            tsl::criticality::Criticality::kSheddable);
+  EXPECT_EQ(batch_tasks[4].criticality(),
+            tsl::criticality::Criticality::kCritical);
+}
+#endif
 
 class TestTpuCostMeasurement : public CostMeasurement {
  public:
@@ -71,14 +123,13 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnNoCostMeasurement) {
   batch.Close();
 
   std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(batch_cost_measurements,
-                                                     /*processed_size=*/16,
-                                                     batch);
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      "model_name", batch_cost_measurements, /*processed_size=*/16, batch);
   EXPECT_TRUE(batch.task(0).request_cost->GetCosts().empty());
-  EXPECT_THAT(
-      batch.task(0).request_cost->GetBatchMetrics(),
-      ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/16, /*input_size=*/1, /*padding_size=*/15)));
+  EXPECT_THAT(batch.task(0).request_cost->GetBatchMetrics(),
+              ::testing::ElementsAre(::testing::FieldsAre(
+                  /*processed_size=*/16, /*input_size=*/1, /*padding_size=*/15,
+                  ::testing::IsEmpty())));
 }
 
 TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnZeroCost) {
@@ -91,14 +142,13 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnZeroCost) {
   std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
   batch_cost_measurements.push_back(
       CostMeasurementRegistry::CreateByNameOrNull("no_op", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(batch_cost_measurements,
-                                                     /*processed_size=*/16,
-                                                     batch);
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      "model_name", batch_cost_measurements, /*processed_size=*/16, batch);
   EXPECT_TRUE(batch.task(0).request_cost->GetCosts().empty());
-  EXPECT_THAT(
-      batch.task(0).request_cost->GetBatchMetrics(),
-      ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/16, /*input_size=*/1, /*padding_size=*/15)));
+  EXPECT_THAT(batch.task(0).request_cost->GetBatchMetrics(),
+              ::testing::ElementsAre(::testing::FieldsAre(
+                  /*processed_size=*/16, /*input_size=*/1, /*padding_size=*/15,
+                  ::testing::IsEmpty())));
 }
 
 TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnZeroBatchSize) {
@@ -109,9 +159,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnZeroBatchSize) {
   std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
   batch_cost_measurements.push_back(
       CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(batch_cost_measurements,
-                                                     /*processed_size=*/0,
-                                                     batch);
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      "model_name", batch_cost_measurements, /*processed_size=*/0, batch);
 }
 
 TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnNoRequestCost) {
@@ -124,9 +173,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SkipOnNoRequestCost) {
   std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
   batch_cost_measurements.push_back(
       CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(batch_cost_measurements,
-                                                     /*processed_size=*/16,
-                                                     batch);
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      "model_name", batch_cost_measurements, /*processed_size=*/16, batch);
 
   EXPECT_EQ(batch.task(0).request_cost, nullptr);
   EXPECT_EQ(batch.task(1).request_cost, nullptr);
@@ -143,9 +191,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitSingleCostType) {
   std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
   batch_cost_measurements.push_back(
       CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(batch_cost_measurements,
-                                                     /*processed_size=*/20,
-                                                     batch);
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      "model_name", batch_cost_measurements, /*processed_size=*/20, batch);
 
   EXPECT_THAT(
       batch.task(0).request_cost->GetCosts(),
@@ -154,7 +201,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitSingleCostType) {
   EXPECT_THAT(
       batch.task(0).request_cost->GetBatchMetrics(),
       ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10)));
+          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10,
+          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100))))));
   EXPECT_THAT(
       batch.task(1).request_cost->GetCosts(),
       UnorderedElementsAre(Pair("test_tpu_with_smear", absl::Milliseconds(90)),
@@ -162,7 +210,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitSingleCostType) {
   EXPECT_THAT(
       batch.task(1).request_cost->GetBatchMetrics(),
       ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10)));
+          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10,
+          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100))))));
 }
 
 TEST(SplitBatchCostsAndRecordMetricsTest, SplitMultiCostTypes) {
@@ -178,9 +227,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitMultiCostTypes) {
       CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
   batch_cost_measurements.push_back(
       CostMeasurementRegistry::CreateByNameOrNull("test_gcu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(batch_cost_measurements,
-                                                     /*processed_size=*/20,
-                                                     batch);
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      "model_name", batch_cost_measurements, /*processed_size=*/20, batch);
 
   EXPECT_THAT(
       batch.task(0).request_cost->GetCosts(),
@@ -191,7 +239,9 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitMultiCostTypes) {
   EXPECT_THAT(
       batch.task(0).request_cost->GetBatchMetrics(),
       ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10)));
+          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10,
+          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100)),
+                               Pair("test_gcu", absl::Milliseconds(200))))));
 
   EXPECT_THAT(
       batch.task(1).request_cost->GetCosts(),
@@ -202,7 +252,9 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitMultiCostTypes) {
   EXPECT_THAT(
       batch.task(1).request_cost->GetBatchMetrics(),
       ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10)));
+          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10,
+          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100)),
+                               Pair("test_gcu", absl::Milliseconds(200))))));
 }
 
 TEST(SplitBatchCostsAndRecordMetricsTest, SplitOnlyNonZeroCostTypes) {
@@ -218,9 +270,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitOnlyNonZeroCostTypes) {
       CostMeasurementRegistry::CreateByNameOrNull("no_op", context));
   batch_cost_measurements.push_back(
       CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
-  BatchResourceBase::SplitBatchCostsAndRecordMetrics(batch_cost_measurements,
-                                                     /*processed_size=*/20,
-                                                     batch);
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      "model_name", batch_cost_measurements, /*processed_size=*/20, batch);
 
   EXPECT_THAT(
       batch.task(0).request_cost->GetCosts(),
@@ -229,7 +280,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitOnlyNonZeroCostTypes) {
   EXPECT_THAT(
       batch.task(0).request_cost->GetBatchMetrics(),
       ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10)));
+          /*processed_size=*/20, /*input_size=*/1, /*padding_size=*/10,
+          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100))))));
 
   EXPECT_THAT(
       batch.task(1).request_cost->GetCosts(),
@@ -238,7 +290,8 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitOnlyNonZeroCostTypes) {
   EXPECT_THAT(
       batch.task(1).request_cost->GetBatchMetrics(),
       ::testing::ElementsAre(::testing::FieldsAre(
-          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10)));
+          /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10,
+          UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100))))));
 }
 
 }  // namespace

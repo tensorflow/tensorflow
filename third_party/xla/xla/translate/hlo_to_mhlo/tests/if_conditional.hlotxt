@@ -1,4 +1,5 @@
 // RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations -hlo-flatten-computation-args-result %s -o - | FileCheck %s -check-prefix=FLATTEN-CHECK
 
 // ----------------------
 // Test importing If op with tuple args; element-size of tuple == 1
@@ -21,6 +22,7 @@ HloModule tfcompile.0
 
 // CHECK-LABEL: func @main
 // CHECK-SAME: ([[A0:%.+]]: tensor<f32>)
+//FLATTEN-CHECK-LABEL: func @main
 ENTRY %tfcompile.0 {
   %arg0.1 = f32[] parameter(0), parameter_replication={false}, metadata={op_name="XLA_Args"}
 
@@ -39,11 +41,13 @@ ENTRY %tfcompile.0 {
   // CHECK:   [[R3:%.+]] = mhlo.exponential [[A0]]
   // CHECK:   mhlo.return [[R3]]
   // CHECK: })
+  // FLATTEN-CHECK: [[R2:%.+]] = "mhlo.if"
   %conditional.16 = (f32[]) conditional(%compare.4, %tuple.5, %tuple.5), true_computation=%then_branch0, false_computation=%else_branch0, metadata={op_type="If" op_name="cond/Merge_if"}
 
   %get-tuple-element.17 = f32[] get-tuple-element(%conditional.16), index=0, metadata={op_type="If" op_name="cond/Merge_if"}
   // CHECK: [[R4:%.+]] = mhlo.tuple [[R2]]
   // CHECK:   return [[R4]]
+  // FLATTEN-CHECK: return [[R2]]
   ROOT %tuple.19 = (f32[]) tuple(%get-tuple-element.17), metadata={op_name="XLA_Retvals"}
 }
 
@@ -95,6 +99,10 @@ ENTRY %tfcompile.0 {
 //CHECK-NEXT:    %[[R0:.*]] = mhlo.tuple %[[IF]]#0, %[[IF]]#1
 //CHECK-NEXT:    %[[R1:.*]] = mhlo.tuple %[[R0]], %[[IF]]#2
 //CHECK-NEXT:    return %[[R1]] : tuple<tuple<tensor<f32>, tensor<f32>>, tensor<f32>>
+
+//FLATTEN-CHECK-LABEL: func private @tfcompile.1
+//FLATTEN-CHECK: %[[IF:.*]]:3 = "mhlo.if"
+//FLATTEN-CHECK: return %[[IF]]#0, %[[IF]]#1, %[[IF]]#2
 
 %tfcompile.1 {
   %arg0 = f32[] parameter(0), parameter_replication={false}

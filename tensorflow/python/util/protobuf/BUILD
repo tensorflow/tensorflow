@@ -48,7 +48,6 @@ tf_py_strict_test(
         ":compare_test_proto_py",
         ":protobuf",
         "//tensorflow/python/platform:test",
-        "@six_archive//:six",
     ],
 )
 
@@ -88,7 +87,6 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         "@com_google_protobuf//:protobuf_python",
-        "@six_archive//:six",
         "//tensorflow/python/util:compat",
     ],
 )

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,11 +20,16 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+#include <tuple>
 #include <utility>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/btree_set.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 
@@ -70,13 +75,11 @@ class HloInputOutputAliasConfig {
   explicit HloInputOutputAliasConfig(Shape output_shape)
       : alias_(std::move(output_shape)) {}
 
-  virtual ~HloInputOutputAliasConfig() = default;
-
   // Sets up alias config from `output_index` to `param_index` at
   // `param_number`.
-  Status SetUpAlias(const ShapeIndex& output_index, int64_t param_number,
-                    const ShapeIndex& param_index,
-                    AliasKind must_alias = kMayAlias);
+  absl::Status SetUpAlias(const ShapeIndex& output_index, int64_t param_number,
+                          const ShapeIndex& param_index,
+                          AliasKind must_alias = kMayAlias);
 
   // Returns true if the given parameter is aliased with one of the output
   // buffers.
@@ -92,7 +95,7 @@ class HloInputOutputAliasConfig {
   // HloInputOutputAliasProto.
   HloInputOutputAliasProto ToProto() const;
 
-  static StatusOr<HloInputOutputAliasConfig> CreateFromProto(
+  static absl::StatusOr<HloInputOutputAliasConfig> CreateFromProto(
       Shape output_shape, const HloInputOutputAliasProto& proto);
 
   // Returns the output index that the given parameter and parameter index is
@@ -118,16 +121,16 @@ class HloInputOutputAliasConfig {
   // Iterates through each aliased output and input.
   void ForEachAlias(AliasFn fn) const;
 
-  using AliasFnWithStatus =
-      absl::FunctionRef<Status(const ShapeIndex& output_index, const Alias&)>;
+  using AliasFnWithStatus = absl::FunctionRef<absl::Status(
+      const ShapeIndex& output_index, const Alias&)>;
 
   // Verifies that the given config is valid for the given module.
-  // Specifically, the config's input and output should be in-bound and size of
+  // Specifically, the config's input and output should be in-bound and size ofF
   // the aliased buffers should match.
-  Status Verify(const HloModule& module,
-                absl::FunctionRef<int64_t(const Shape&)> size_func) const;
+  absl::Status Verify(const HloModule& module,
+                      absl::FunctionRef<int64_t(const Shape&)> size_func) const;
 
-  Status ForEachAliasWithStatus(AliasFnWithStatus fn) const;
+  absl::Status ForEachAliasWithStatus(AliasFnWithStatus fn) const;
 
   // Returns the shape of the output of the alias config.
   const Shape& shape() const;
@@ -168,6 +171,14 @@ class HloBufferDonorConfig {
              param_index == other.param_index;
     }
 
+    bool operator<(const BufferDonor& other) const {
+      return std::forward_as_tuple(param_number, param_index) <
+             std::forward_as_tuple(other.param_number, other.param_index);
+    }
+    bool operator>(const BufferDonor& other) const { return other < *this; }
+    bool operator<=(const BufferDonor& other) const { return !(*this > other); }
+    bool operator>=(const BufferDonor& other) const { return !(*this < other); }
+
     // A hash function borrowed from go/absl-hash.
     template <typename H>
     friend H AbslHashValue(H h, const BufferDonor& donor) {
@@ -176,12 +187,13 @@ class HloBufferDonorConfig {
   };
 
   HloBufferDonorConfig() = default;
-  virtual ~HloBufferDonorConfig() = default;
 
   // Register and unregister the parameter with `param_index` at `param_number`
   // as a buffer donor.
-  Status AddBufferDonor(int64_t param_number, const ShapeIndex& param_index);
-  Status RemoveBufferDonor(int64_t param_number, const ShapeIndex& param_index);
+  absl::Status AddBufferDonor(int64_t param_number,
+                              const ShapeIndex& param_index);
+  absl::Status RemoveBufferDonor(int64_t param_number,
+                                 const ShapeIndex& param_index);
 
   // Returns true if the given parameter is registered as a buffer donor.
   bool ParameterIsBufferDonor(int64_t param_number,
@@ -189,16 +201,16 @@ class HloBufferDonorConfig {
 
   // (De)Serializes an HloBufferDonorConfig to/from an HloBufferDonorProto.
   HloBufferDonorProto ToProto() const;
-  static StatusOr<HloBufferDonorConfig> CreateFromProto(
+  static absl::StatusOr<HloBufferDonorConfig> CreateFromProto(
       const HloBufferDonorProto& proto);
 
   // Verifies that the given config is valid for the given module.
   // The config's input should be in-bound and this config cannot overlap with
   // the given module's input_output_alias_config.
-  Status Verify(const HloModule& module) const;
+  absl::Status Verify(const HloModule& module) const;
 
   // Returns the registered buffer donors
-  const absl::flat_hash_set<BufferDonor>& buffer_donor() const {
+  const absl::btree_set<BufferDonor>& buffer_donor() const {
     return buffer_donor_;
   }
 
@@ -208,7 +220,7 @@ class HloBufferDonorConfig {
 
  private:
   // A set recording the registered buffer donors.
-  absl::flat_hash_set<BufferDonor> buffer_donor_;
+  absl::btree_set<BufferDonor> buffer_donor_;
 };
 
 std::ostream& operator<<(std::ostream& out,

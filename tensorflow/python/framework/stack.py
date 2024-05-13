@@ -14,39 +14,43 @@
 # ==============================================================================
 """Classes used to handle thread-local stacks."""
 
+from collections.abc import Iterator
 import threading
+from typing import Generic, Optional, TypeVar
 
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
+T = TypeVar("T")
 
-class DefaultStack(threading.local):
+
+class DefaultStack(threading.local, Generic[T]):
   """A thread-local stack of objects for providing implicit defaults."""
 
   def __init__(self):
     super().__init__()
     self._enforce_nesting = True
-    self.stack = []
+    self.stack: list[T] = []
 
-  def get_default(self):
+  def get_default(self) -> Optional[T]:
     return self.stack[-1] if self.stack else None
 
-  def reset(self):
+  def reset(self) -> None:
     self.stack = []
 
-  def is_cleared(self):
+  def is_cleared(self) -> bool:
     return not self.stack
 
   @property
-  def enforce_nesting(self):
+  def enforce_nesting(self) -> bool:
     return self._enforce_nesting
 
   @enforce_nesting.setter
-  def enforce_nesting(self, value):
+  def enforce_nesting(self, value: bool):
     self._enforce_nesting = value
 
   @tf_contextlib.contextmanager
-  def get_controller(self, default):
+  def get_controller(self, default: T) -> Iterator[T]:
     """A context manager for manipulating a default stack."""
     self.stack.append(default)
     try:

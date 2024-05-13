@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_GRAPH_FUNCTION_H_
 
 #include "tensorflow/c/eager/abstract_function.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/platform/refcount.h"
 namespace tensorflow {
 namespace tracing {
 namespace graph {
@@ -28,7 +30,13 @@ class GraphFunction : public AbstractFunction {
 
   // GraphFunction maybe stay alive for the duration of the returned
   // FunctionDef.
-  Status GetFunctionDef(FunctionDef** fdef) override;
+  Status GetFunctionDef(const FunctionDef** fdef) override;
+
+  // Returns a shared reference to the wrapped function.
+  absl::StatusOr<core::RefCountPtr<FunctionRecord>> GetFunctionRecord()
+      override {
+    return func_record_.GetNewRef();
+  }
 
   // For LLVM style RTTI.
   static bool classof(const AbstractFunction* ptr) {
@@ -36,7 +44,7 @@ class GraphFunction : public AbstractFunction {
   }
 
  private:
-  FunctionDef fdef_;
+  core::RefCountPtr<FunctionRecord> func_record_;
 };
 }  // namespace graph
 }  // namespace tracing

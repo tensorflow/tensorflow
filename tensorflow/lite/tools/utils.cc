@@ -19,6 +19,8 @@ limitations under the License.
 #include <complex>
 #include <random>
 
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/tools/logging.h"
 

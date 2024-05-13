@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -73,8 +73,10 @@ TEST(StableHloAxpyTest, LoadAndRunCpuExecutable) {
   // The PjRtStreamExecutorClient will allow us to compile and execute
   // computations on the device we just configured.
   auto pjrt_se_client = PjRtStreamExecutorClient(
-      "cpu", local_client, std::move(devices), /*process_index=*/0,
-      /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
+      "cpu", local_client, std::move(devices),
+      std::vector<std::unique_ptr<PjRtStreamExecutorMemorySpace>>(),
+      /*process_index=*/0, /*allocator=*/nullptr,
+      /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
       /*gpu_run_options=*/nullptr);
 

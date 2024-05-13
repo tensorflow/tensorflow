@@ -73,9 +73,7 @@ cc_library(
         "conv_autotune_maps.h",
         "conv_parameters.h",
     ],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 tf_cuda_library(
@@ -107,7 +105,10 @@ tf_proto_library(
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
         "@local_tsl//tsl/protobuf:dnn_proto",
     ],
-    visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
+    visibility = [
+        "//waymo/ml/deploy/benchmark:__subpackages__",
+        "//waymo/ml/deploy/system/autotuning:__subpackages__",
+    ],
 )
 
 # copybara:uncomment_begin(google-only)
@@ -143,6 +144,7 @@ tf_cuda_library(
         "@local_xla//xla:status_macros",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:lazy_op_runner",
+        "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
     ],
 )

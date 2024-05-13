@@ -74,7 +74,7 @@ class FakeAllocator : public Allocator {
 class FakeDevice : public Device {
  public:
   explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-  Status Sync() override { return OkStatus(); }
+  Status Sync() override { return absl::OkStatus(); }
   Allocator* GetAllocator(AllocatorAttributes) override {
     return allocator_.get();
   }
@@ -109,7 +109,7 @@ class FakeDeviceManager : public DeviceMgr {
   bool ContainsDevice(int64_t device_incarnation) const override {
     return false;
   }
-  void ClearContainers(gtl::ArraySlice<string> containers) const override {}
+  void ClearContainers(absl::Span<const string> containers) const override {}
   int NumDeviceType(const string& type) const override { return 0; }
   int NumDevices() const override { return 0; }
   Device* HostCPU() const override { return nullptr; }

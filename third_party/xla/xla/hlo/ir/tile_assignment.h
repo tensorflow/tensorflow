@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -103,6 +103,9 @@ class IotaTileAssignment {
   void Print(Printer* printer) const;
 
   std::string ToString() const;
+
+  // Materializes array representation of IotaTileAssignment.
+  Array<int64_t> ToArray() const;
 
  private:
   friend class TileAssignment;

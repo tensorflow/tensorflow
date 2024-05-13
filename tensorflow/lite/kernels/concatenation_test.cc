@@ -762,6 +762,22 @@ TYPED_TEST(ConcatenationOpPersistentModelTest, PersistentTest) {
   }
 }
 
+TYPED_TEST(ConcatenationOpPersistentModelTest, PersistentScalarTest) {
+  PersistentTestCase test_case{TestInputType::kPersistentRo,
+                               GetTensorType<TypeParam>(), false};
+  std::vector<std::vector<TypeParam>> input_data_lists = {{1}, {7}};
+  std::vector<TensorData> input_template = {{GetTensorType<TypeParam>(), {}},
+                                            {GetTensorType<TypeParam>(), {}}};
+  TensorData output_template = {GetTensorType<TypeParam>(), {2}};
+  PersistentConcatenationOpModel<TypeParam> m0(
+      input_template, /*axis=*/0, output_template, test_case, input_data_lists);
+  m0.PopulateInputTensors();
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
+  ASSERT_EQ(m0.IsPersistentOutput(),
+            test_case.test_type == TestInputType::kPersistentRo);
+  EXPECT_THAT(m0.GetOutput(), ElementsAreArray(ArrayFloatNear({1.0, 7.0})));
+}
+
 TYPED_TEST(ConcatenationOpPersistentModelTest, QuantizedPersistentTest) {
   const bool is_quantized = true;
   for (PersistentTestCase test_case :

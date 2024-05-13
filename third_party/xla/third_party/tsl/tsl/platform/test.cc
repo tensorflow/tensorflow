@@ -37,7 +37,19 @@ std::string GetEnvVarOrDie(const char* env_var) {
 
 }  // namespace
 
-std::string TmpDir() { return GetEnvVarOrDie("TEST_TMPDIR"); }
+std::string TmpDir() {
+  const char* tmp_dir = std::getenv("TEST_TMPDIR");
+  if (!tmp_dir) {
+    tmp_dir = std::getenv("TMPDIR");
+  }
+  if (tmp_dir) {
+    return tmp_dir;
+  }
+  LOG(FATAL)  // Crash OK
+      << "Failed to find environment variables: TEST_TMPDIR, TMPDIR";
+
+  return tmp_dir;
+}
 
 int PickUnusedPortOrDie() { return internal::PickUnusedPortOrDie(); }
 
@@ -62,11 +74,10 @@ std::string TensorFlowSrcRoot() {
 std::string XlaSrcRoot() {
   std::string workspace = GetEnvVarOrDie("TEST_WORKSPACE");
   std::string srcdir = GetEnvVarOrDie("TEST_SRCDIR");
-  const char* xla_path = "tensorflow/compiler/xla";
 
-  return kIsOpenSource
-             ? io::JoinPath(srcdir, workspace, xla_path)
-             : io::JoinPath(srcdir, workspace, "third_party", xla_path);
+  return kIsOpenSource ? io::JoinPath(srcdir, workspace, "xla")
+                       : io::JoinPath(srcdir, workspace,
+                                      "third_party/tensorflow/compiler/xla");
 }
 
 std::string TslSrcRoot() {

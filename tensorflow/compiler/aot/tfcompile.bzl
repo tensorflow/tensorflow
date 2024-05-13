@@ -319,8 +319,6 @@ def _tf_library(
         ] or []) + (include_standard_runtime_deps and [
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
-            "@local_xla//xla/service/cpu/runtime:convolution_ffi",
-            "@local_xla//xla/service/cpu/runtime:rng_ffi",
             "@local_xla//xla/service/cpu:runtime_conv2d",
             "@local_xla//xla/service/cpu:runtime_custom_call_status",
             "@local_xla//xla/service/cpu:runtime_key_value_sort",
@@ -329,16 +327,7 @@ def _tf_library(
             "@local_xla//xla/service/cpu:runtime_single_threaded_conv2d",
             "@local_xla//xla/service/cpu:runtime_single_threaded_matmul",
             "@eigen_archive//:eigen3",
-        ] or []) + (
-            mlir_components.count("HloLowering") > 0 and [
-                "@local_xla//xla/runtime:aot_ffi_c_symbols",
-                "@local_xla//xla/service/cpu:runtime_mlir_utils",
-            ] or []
-        ) + (
-            include_standard_runtime_deps and mlir_components == "HloLowering" and [
-                "@local_xla//xla/service/cpu/runtime:retain",
-            ] or []
-        ) + (deps or []),
+        ] or []) + (deps or []),
         tags = tags,
         copts = copts,
     )
@@ -559,31 +548,6 @@ def tf_library(
         copts,
         xla_flags,
     )
-    if mlir_components == "None":
-        _tf_library(
-            name + "_mlir",
-            graph,
-            config,
-            debug_info,
-            freeze_checkpoint,
-            freeze_saver,
-            cpp_class,
-            gen_test,
-            gen_benchmark,
-            gen_compiler_log,
-            visibility,
-            testonly,
-            tfcompile_flags,
-            tfcompile_tool,
-            include_standard_runtime_deps,
-            enable_xla_hlo_profiling,
-            enable_tracemes,
-            "HloLowering",
-            deps,
-            tags + ["notap", "local", "manual"],
-            copts,
-            xla_flags,
-        )
 
 def target_llvm_triple():
     """Returns the target LLVM triple to be used for compiling the target."""

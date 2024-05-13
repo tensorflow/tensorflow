@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [python3.9, python3.10, python3.11]
+        python-version: [python3.9, python3.10, python3.11, python3.12]
     steps:
       - name: Delete unnecessary tools folder
         run: rm -rf /opt/hostedtoolcache

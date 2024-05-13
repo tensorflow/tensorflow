@@ -15,7 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_TAKE_DATASET_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_TAKE_DATASET_OP_H_
 
+#include <cstdlib>
+#include <memory>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 namespace data {
@@ -47,6 +53,8 @@ class TakeDataset : public DatasetBase {
 
   Status CheckExternalState() const override;
 
+  absl::Status RandomIndexingCompatible() const override;
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -57,6 +65,7 @@ class TakeDataset : public DatasetBase {
   class FiniteIterator;
   const int64_t count_;
   const DatasetBase* const input_;
+  absl::Status random_indexing_compatible_;
 };
 
 class TakeDatasetOp : public UnaryDatasetOpKernel {

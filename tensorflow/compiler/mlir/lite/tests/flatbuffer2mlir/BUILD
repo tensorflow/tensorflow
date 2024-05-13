@@ -1,6 +1,6 @@
+load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
-load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -31,6 +31,7 @@ filegroup(
         "//tensorflow/compiler/mlir/lite:flatbuffer_to_string",
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate",
         "//tensorflow/compiler/mlir/lite:json_to_flatbuffer",
+        "//tensorflow/compiler/mlir/lite:tf_tfl_translate",
         "@llvm-project//llvm:FileCheck",
     ],
 )
@@ -55,8 +56,8 @@ tf_native_cc_binary(
         "importer_test_min_max.cc",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",

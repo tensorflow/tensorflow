@@ -34,7 +34,8 @@ py_strict_test(
     tags = ["no_pip"],
     deps = [
         ":extractor",
-        "//tensorflow/python/tools/api/generator2/shared:exported_api",
         "@absl_py//absl/testing:absltest",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
+        "//tensorflow/python/tools/api/generator2/shared:exported_api",
     ],
 )

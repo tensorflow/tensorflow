@@ -8,7 +8,7 @@ py_library(
         "//:ml_dtypes",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
-        "@org_tensorflow//third_party/py/numpy",
+        "@local_tsl//third_party/py/numpy",
     ],
 )
 
@@ -55,17 +55,17 @@ cc_test(
         "//:float8",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@org_tensorflow//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
 cc_test(
-    name = "int4_test_cc",
-    srcs = ["int4_test.cc"],
+    name = "intn_test_cc",
+    srcs = ["intn_test.cc"],
     linkstatic = 1,
     deps = [
-        "//:int4",
+        "//:intn",
         "@com_google_googletest//:gtest_main",
-        "@org_tensorflow//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )

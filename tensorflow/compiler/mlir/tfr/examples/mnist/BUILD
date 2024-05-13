@@ -48,7 +48,7 @@ tf_py_strict_test(
         ":mnist_ops_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/tfr:test_utils",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:load_library",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -62,7 +62,7 @@ py_strict_library(
         ":mnist_ops",
         ":mnist_ops_py",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:load_library",
         "@absl_py//absl/flags",
     ],
 )
@@ -81,6 +81,7 @@ distribute_py_strict_test(
         "notap",  # The test is too long to run as part of llvm presubmits (b/173661843).
         "notpu",  # Takes too long (b/192305423)
         "notsan",  # Not needed, and there were issues with timeouts.
+        "requires-net:external",
     ],
 
     # TODO(b/175056184): Re-enable xla_enable_strict_auto_jit once the issues

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ void GatherFusionInstructions(
 
 }  // namespace
 
-/* static */ StatusOr<std::unique_ptr<LogicalBufferAnalysis>>
+/* static */ absl::StatusOr<std::unique_ptr<LogicalBufferAnalysis>>
 LogicalBufferAnalysis::Run(const HloModule* module) {
   std::unique_ptr<LogicalBufferAnalysis> analysis(
       new LogicalBufferAnalysis(module));
@@ -78,7 +78,7 @@ Status LogicalBufferAnalysis::Analyze() {
 }
 
 LogicalBuffer& LogicalBufferAnalysis::GetBuffer(LogicalBuffer::Id id) const {
-  return *logical_buffers_.at(id);
+  return *logical_buffers_[id];
 }
 
 LogicalBuffer& LogicalBufferAnalysis::GetBuffer(HloInstruction* instruction,

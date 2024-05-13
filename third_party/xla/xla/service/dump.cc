@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,8 +20,10 @@ limitations under the License.
 #include <queue>
 #include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
@@ -31,6 +33,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/lib/io/zlib_compression_options.h"
 #include "tsl/lib/io/zlib_outputbuffer.h"
@@ -39,8 +43,24 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/platform/status.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
+
+std::string RenderGraph(absl::string_view label, const HloModule& module,
+                        RenderedGraphFormat format,
+                        bool show_fusion_subcomputations) {
+  HloRenderOptions hlo_render_options;
+  hlo_render_options.show_fusion_subcomputations = show_fusion_subcomputations;
+  absl::StatusOr<std::string> rendered_graph =
+      RenderGraph(*module.entry_computation(), label,
+                  module.config().debug_options(), format, hlo_render_options);
+  if (rendered_graph.ok()) {
+    return std::move(rendered_graph).value();
+  }
+  return absl::StrFormat("Error rendering graph: %s",
+                         rendered_graph.status().ToString());
+}
 
 namespace {
 
@@ -64,7 +84,8 @@ struct CanonicalDebugOptions {
         dump_compress_protos(opts.xla_dump_compress_protos()),
         dump_hlo_metadata(!opts.xla_dump_disable_metadata()),
         dump_as_long_text(opts.xla_dump_hlo_as_long_text()),
-        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()) {
+        dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()),
+        dump_large_constants(opts.xla_dump_large_constants()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -181,6 +202,7 @@ struct CanonicalDebugOptions {
   bool dump_hlo_metadata;
   bool dump_as_long_text;
   bool dump_mlir_pretty_form;
+  bool dump_large_constants;
 };
 
 // Helper class to hold a list of functions that produces data to be written to
@@ -387,6 +409,10 @@ static bool IsTrivial(const HloComputation& computation) {
 static std::vector<std::string> DumpHloModuleImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
     string_view prefix, string_view suffix, const CanonicalDebugOptions& opts) {
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaDumpHloModule:#module=%s,program_id=%d#",
+                           module.name(), module.unique_id());
+  });
   std::string filename = FilenameFor(module, prefix, suffix);
 
   std::vector<std::optional<std::string>> file_paths;
@@ -395,7 +421,7 @@ static std::vector<std::string> DumpHloModuleImpl(
     auto print_options = opts.dump_as_long_text
                              ? HloPrintOptions::Default()
                              : HloPrintOptions::ShortParsable();
-    print_options.set_print_large_constants(false);
+    print_options.set_print_large_constants(opts.dump_large_constants);
     print_options.set_print_control_dependencies(true);
     print_options.set_print_operand_index_annotation_interval(5);
     print_options.set_print_backend_config(true);
@@ -426,36 +452,21 @@ static std::vector<std::string> DumpHloModuleImpl(
         pb, opts, opts.dump_compress_protos));
   }
 
-  auto render_graph = [&](RenderedGraphFormat format,
-                          bool show_fusion_subcomputations = true) {
-    HloRenderOptions hlo_render_options;
-    hlo_render_options.show_fusion_subcomputations =
-        show_fusion_subcomputations;
-    StatusOr<std::string> rendered_graph =
-        RenderGraph(*module.entry_computation(),
-                    /*label=*/filename, module.config().debug_options(), format,
-                    hlo_render_options);
-    if (rendered_graph.ok()) {
-      return std::move(rendered_graph).value();
-    }
-    return StrFormat("Error rendering graph: %s",
-                     rendered_graph.status().ToString());
-  };
-
   if (opts.dump_as_dot) {
-    file_paths.push_back(
-        DumpToFileInDirImpl(StrFormat("%s.dot", filename),
-                            render_graph(RenderedGraphFormat::kDot), opts));
+    file_paths.push_back(DumpToFileInDirImpl(
+        StrFormat("%s.dot", filename),
+        RenderGraph(filename, module, RenderedGraphFormat::kDot), opts));
   }
 
   if (opts.dump_as_html) {
-    file_paths.push_back(
-        DumpToFileInDirImpl(StrFormat("%s.html", filename),
-                            render_graph(RenderedGraphFormat::kHtml), opts));
+    file_paths.push_back(DumpToFileInDirImpl(
+        StrFormat("%s.html", filename),
+        RenderGraph(filename, module, RenderedGraphFormat::kHtml), opts));
     if (absl::StrContains(filename, kAfterOptimizationsDumpName)) {
       file_paths.push_back(DumpToFileInDirImpl(
           StrFormat("%s.top_level.html", filename),
-          render_graph(RenderedGraphFormat::kHtml, false), opts));
+          RenderGraph(filename, module, RenderedGraphFormat::kHtml, false),
+          opts));
     }
   }
 
@@ -468,11 +479,12 @@ static std::vector<std::string> DumpHloModuleImpl(
         continue;
       }
 
-      StatusOr<std::string> rendered_graph = WrapFusionExplorer(*computation);
+      absl::StatusOr<std::string> rendered_graph =
+          WrapFusionExplorer(*computation);
       if (!rendered_graph.ok()) {
         VLOG(1) << "Skipping fusion visualization"
                 << " for computation " << computation->name()
-                << " due to: " << rendered_graph.status().ToString();
+                << " due to: " << rendered_graph.status();
         continue;
       }
       file_paths.push_back(DumpToFileInDirImpl(
@@ -484,7 +496,7 @@ static std::vector<std::string> DumpHloModuleImpl(
   // Special case for rendering graphs as URLs.  We'll dump them to a file
   // because why not, but we always log them to stdout as well.
   if (opts.dump_as_url) {
-    std::string url = render_graph(RenderedGraphFormat::kUrl);
+    std::string url = RenderGraph(filename, module, RenderedGraphFormat::kUrl);
     std::cout << filename << " --> " << url << std::endl;
     if (!opts.dumping_to_stdout()) {
       file_paths.push_back(
@@ -619,7 +631,7 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.dumping_to_stdout()) return op->dump();
 
-  mlir::OpPrintingFlags print_flags = mlir::OpPrintingFlags().useLocalScope();
+  mlir::OpPrintingFlags print_flags = mlir::OpPrintingFlags();
   // Enable debug info so that it is easier to see the corresponding HLO node.
   if (file_prefix == "lmhlo") {
     print_flags.enableDebugInfo(/*enable=*/true,
@@ -634,7 +646,10 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
 
 void DumpProtobufToFile(const tsl::protobuf::Message& proto,
                         const DebugOptions& debug_options,
-                        absl::string_view filename) {
+                        absl::string_view filename,
+                        absl::AnyInvocable<absl::StatusOr<std::string>(
+                            tsl::Env*, const tsl::protobuf::Message&)>
+                            text_formatter) {
   CanonicalDebugOptions opts(debug_options);
   tsl::Env* env = tsl::Env::Default();
   const std::string& dir = opts.dump_to;
@@ -642,31 +657,46 @@ void DumpProtobufToFile(const tsl::protobuf::Message& proto,
     auto status = env->RecursivelyCreateDir(dir);
     if (!status.ok()) {
       LOG(ERROR) << "Could not create directory " << dir
-                 << " for dumping XLA execution options: " << status;
+                 << " for dumping: " << status;
       return;
     }
   }
-  if (env->IsDirectory(dir).ok()) {
-    const std::string path = tsl::io::JoinPath(dir, filename);
-    Status status;
-    if (opts.dump_as_text) {
-      status = tsl::WriteTextProto(env, absl::StrCat(path, ".txt"), proto);
+  if (!env->IsDirectory(dir).ok()) {
+    return;
+  }
+  const std::string path = tsl::io::JoinPath(dir, filename);
+  Status status;
+  if (opts.dump_as_text) {
+    if (text_formatter) {
+      auto written_proto = text_formatter(env, proto);
+      if (!written_proto.status().ok()) {
+        LOG(ERROR) << "Failure with custom proto text formatting function. "
+                   << "Could not write XLA data to " << filename << ": "
+                   << written_proto.status();
+        return;
+      }
+      status = tsl::WriteStringToFile(env, absl::StrCat(path, ".txt"),
+                                      written_proto.value());
     } else {
-      status = tsl::WriteBinaryProto(env, absl::StrCat(path, ".pb"), proto);
+      status = tsl::WriteTextProto(env, absl::StrCat(path, ".txt"), proto);
     }
-    if (!status.ok()) {
-      LOG(ERROR) << "Could not write XLA debug data to " << filename << ": "
-                 << status;
-    }
+  } else {
+    status = tsl::WriteBinaryProto(env, absl::StrCat(path, ".pb"), proto);
+  }
+  if (!status.ok()) {
+    LOG(ERROR) << "Could not write XLA data to " << filename << ": " << status;
   }
 }
 
 void DumpPerModuleProtobufToFile(const HloModule& module,
                                  const tsl::protobuf::Message& proto,
                                  const DebugOptions& debug_options,
-                                 absl::string_view name) {
+                                 absl::string_view name,
+                                 absl::AnyInvocable<absl::StatusOr<std::string>(
+                                     tsl::Env*, const tsl::protobuf::Message&)>
+                                     text_formatter) {
   const std::string filename = FilenameFor(module, TimestampFor(module), name);
-  DumpProtobufToFile(proto, debug_options, filename);
+  DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
 }
 
 void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
@@ -689,6 +719,11 @@ void DumpHloModuleIfEnabled(const HloModule& module,
 bool DumpingEnabledForHloModule(string_view hlo_module_name,
                                 const DebugOptions& opts) {
   return CanonicalDebugOptions(opts).should_dump_module(hlo_module_name);
+}
+
+bool DumpingEnabledForHloPass(string_view hlo_pass_name,
+                              const DebugOptions& opts) {
+  return CanonicalDebugOptions(opts).should_dump_pass(hlo_pass_name);
 }
 
 bool DumpingToStdout(const DebugOptions& opts) {

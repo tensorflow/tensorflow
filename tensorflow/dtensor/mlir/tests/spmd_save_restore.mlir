@@ -5,9 +5,9 @@
 func.func @main(%arg0: tensor<i32>) {
   "tf_device.cluster"() ({
     // CHECK:      "tf.Case"
-    // CHECK-SAME: branches = [@tf.[[D0:.*]], @tf.[[D1:.*]]]
+    // CHECK-SAME: branches = [@tf.[[D0:.*]], @tf.[[D1:.*]]], is_stateless = false
     // CHECK:      func private @tf.[[D0]]
-    // CHECK:      %[[CST:.*]] = "tf.Const"() {value = dense<"_dev-0-of-2">
+    // CHECK:      %[[CST:.*]] = "tf.Const"() <{value = dense<"_dev-0-of-2">
     // CHECK:      "tf.Add"(%arg0, %[[CST]])
     // CHECK:      ""
     // CHECK:      func private @tf.[[D1]]
@@ -31,13 +31,13 @@ func.func @main(%arg0: tensor<i32>) {
 func.func @main(%arg0: tensor<i32>) {
   "tf_device.cluster"() ({
     // CHECK:      tf.Case
-    // CHECK-SAME: branches = [@tf.[[D0:.*]], @tf.[[D1:.*]]]
+    // CHECK-SAME: branches = [@tf.[[D0:.*]], @tf.[[D1:.*]]], is_stateless = false
     // CHECK:      func private @tf.[[D0]]
-    // CHECK:      %[[CST:.*]] = "tf.Const"() {value = dense<"_dev-0-of-2">
+    // CHECK:      %[[CST:.*]] = "tf.Const"() <{value = dense<"_dev-0-of-2">
     // CHECK:      "tf.Add"(%arg0, %[[CST]])
     // CHECK:      "2 0,1"
     // CHECK:      func private @tf.[[D1]]
-    // CHECK:      %[[CST:.*]] = "tf.Const"() {value = dense<"_dev-1-of-2">
+    // CHECK:      %[[CST:.*]] = "tf.Const"() <{value = dense<"_dev-1-of-2">
     // CHECK:      "tf.Add"(%arg0, %[[CST]])
     // CHECK:      "2 1,1"
     %0 = "tf.Const"() {value = dense<"/dev/null"> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
@@ -66,9 +66,9 @@ func.func @main(%arg0: tensor<i32>) {
     // CHECK:      func private @tf.[[THEN]]
     // CHECK:      tf.NoOp
     // CHECK:      func private @tf.[[ELSE]]
-    // CHECK:      "tf.Const"() {value = dense<"_dev-0-of-2">
+    // CHECK:      "tf.Const"() <{value = dense<"_dev-0-of-2">
     // CHECK:      "tf.Add"
-    // CHECK:      "tf.Const"() {value = dense<"_dev-1-of-2">
+    // CHECK:      "tf.Const"() <{value = dense<"_dev-1-of-2">
     // CHECK:      "tf.Add"
     // CHECK:      "tf.Concat"
     // CHECK:      "tf.MergeV2Checkpoints"
@@ -109,11 +109,11 @@ func.func @main(%arg0: tensor<i32> {tf._global_shape = #tf_type.shape<>},
       // CHECK:      "tf.Reshape"(%[[BRANCH_IDX]]
       // CHECK-SAME: (tensor<1x1xi32>, tensor<0xi32>) -> tensor<i32>
       // CHECK:      tf.Case
-      // CHECK-SAME: branches = [@tf.[[D0:.*]], @tf.[[D1:.*]]]
+      // CHECK-SAME: branches = [@tf.[[D0:.*]], @tf.[[D1:.*]]], is_stateless = false
       // CHECK:      func private @tf.[[D0]]
-      // CHECK:      "tf.Const"() {value = dense<["", "2 4 0,1:-"]>
+      // CHECK:      "tf.Const"() <{value = dense<["", "2 4 0,1:-"]>
       // CHECK:      func private @tf.[[D1]]
-      // CHECK:      "tf.Const"() {value = dense<["", "2 4 1,1:-"]>
+      // CHECK:      "tf.Const"() <{value = dense<["", "2 4 1,1:-"]>
       %1 = "tf.Const"() {_global_shape = [#tf_type.shape<2>], value = dense<""> : tensor<2x!tf_type.string>} : () -> tensor<2x!tf_type.string>
       %2 = "tf.Const"() {_global_shape = [#tf_type.shape<2>], value = dense<["model/r/.ATTRIBUTES/VARIABLE_VALUE", "model/s/.ATTRIBUTES/VARIABLE_VALUE"]> : tensor<2x!tf_type.string>} : () -> tensor<2x!tf_type.string>
       %3 = "tf.Const"() {_global_shape = [#tf_type.shape<>], value = dense<"/dev/null/ckpt-0"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -167,11 +167,11 @@ func.func @main(%arg0: tensor<i32> {tf._global_shape = #tf_type.shape<>},
       // CHECK:      "tf.Reshape"(%[[BRANCH_IDX]]
       // CHECK-SAME: (tensor<1x1xi32>, tensor<0xi32>) -> tensor<i32>
       // CHECK:      tf.Case
-      // CHECK-SAME: branches = [@tf.[[D0:.*]], @tf.[[D1:.*]]]
+      // CHECK-SAME: branches = [@tf.[[D0:.*]], @tf.[[D1:.*]]], is_stateless = false
       // CHECK:      func private @tf.[[D0]]
-      // CHECK:      "tf.Const"() {value = dense<["", "2 4 0,1:-"]>
+      // CHECK:      "tf.Const"() <{value = dense<["", "2 4 0,1:-"]>
       // CHECK:      func private @tf.[[D1]]
-      // CHECK:      "tf.Const"() {value = dense<["", "2 4 1,1:-"]>
+      // CHECK:      "tf.Const"() <{value = dense<["", "2 4 1,1:-"]>
       %1 = "tf.Const"() {_global_shape = [#tf_type.shape<2>], value = dense<""> : tensor<2x!tf_type.string>} : () -> tensor<2x!tf_type.string>
       %2 = "tf.Const"() {_global_shape = [#tf_type.shape<2>], value = dense<["model/r/.ATTRIBUTES/VARIABLE_VALUE", "model/s/.ATTRIBUTES/VARIABLE_VALUE"]> : tensor<2x!tf_type.string>} : () -> tensor<2x!tf_type.string>
       %3 = "tf.Const"() {_global_shape = [#tf_type.shape<>], value = dense<"/dev/null/ckpt-0"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>

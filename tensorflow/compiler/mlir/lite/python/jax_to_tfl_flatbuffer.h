@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 
@@ -28,7 +30,7 @@ namespace tensorflow {
 // status if it fails to convert the input.
 Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
                                     const toco::ModelFlags& model_flags,
-                                    const toco::TocoFlags& toco_flags,
+                                    toco::TocoFlags& toco_flags,
                                     string* result);
 
 }  // namespace tensorflow

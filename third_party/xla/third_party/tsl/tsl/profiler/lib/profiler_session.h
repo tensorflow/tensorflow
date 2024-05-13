@@ -60,10 +60,10 @@ class ProfilerSession {
   // Deletes an existing Profiler and enables starting a new one.
   ~ProfilerSession();
 
-  tsl::Status Status() TF_LOCKS_EXCLUDED(mutex_);
+  absl::Status Status() TF_LOCKS_EXCLUDED(mutex_);
 
   // Collects profile data into XSpace.
-  tsl::Status CollectData(tensorflow::profiler::XSpace* space)
+  absl::Status CollectData(tensorflow::profiler::XSpace* space)
       TF_LOCKS_EXCLUDED(mutex_);
 
  private:
@@ -76,16 +76,17 @@ class ProfilerSession {
 
 #if !defined(IS_MOBILE_PLATFORM)
   // Collects profile data into XSpace without post-processsing.
-  tsl::Status CollectDataInternal(tensorflow::profiler::XSpace* space);
+  absl::Status CollectDataInternal(tensorflow::profiler::XSpace* space);
 
   profiler::ProfilerLock profiler_lock_ TF_GUARDED_BY(mutex_);
 
   std::unique_ptr<profiler::ProfilerInterface> profilers_ TF_GUARDED_BY(mutex_);
 
   uint64 start_time_ns_;
+  uint64 stop_time_ns_;
   tensorflow::ProfileOptions options_;
 #endif
-  tsl::Status status_ TF_GUARDED_BY(mutex_);
+  absl::Status status_ TF_GUARDED_BY(mutex_);
   mutex mutex_;
 };
 

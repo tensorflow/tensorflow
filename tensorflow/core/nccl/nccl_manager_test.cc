@@ -154,8 +154,8 @@ class NcclManagerTest : public ::testing::Test {
 
         const Tensor& in_gpu = test_case->ins.back();
         auto in_gpu_mem = AsDeviceMemory(in_gpu.flat<Scalar>().data());
-        stream->ThenMemcpy(&in_gpu_mem, in_cpu.flat<Scalar>().data(),
-                           in_cpu.TotalBytes());
+        TF_CHECK_OK(stream->Memcpy(&in_gpu_mem, in_cpu.flat<Scalar>().data(),
+                                   in_cpu.TotalBytes()));
       }
     }
 
@@ -195,8 +195,8 @@ class NcclManagerTest : public ::testing::Test {
 
         const Tensor& in_gpu = test_case->ins.back();
         auto in_gpu_mem = AsDeviceMemory(in_gpu.flat<Scalar>().data());
-        stream->ThenMemcpy(&in_gpu_mem, in_cpu.flat<Scalar>().data(),
-                           in_cpu.TotalBytes());
+        TF_CHECK_OK(stream->Memcpy(&in_gpu_mem, in_cpu.flat<Scalar>().data(),
+                                   in_cpu.TotalBytes()));
       }
     }
 
@@ -232,8 +232,8 @@ class NcclManagerTest : public ::testing::Test {
           const Tensor& in_gpu = test_case->ins.back();
           auto in_gpu_mem = AsDeviceMemory(in_gpu.flat<Scalar>().data());
           auto* stream = device->tensorflow_accelerator_device_info()->stream;
-          stream->ThenMemcpy(&in_gpu_mem, in_cpu.flat<Scalar>().data(),
-                             in_cpu.TotalBytes());
+          TF_CHECK_OK(stream->Memcpy(&in_gpu_mem, in_cpu.flat<Scalar>().data(),
+                                     in_cpu.TotalBytes()));
         } else {
           test_case->ins.emplace_back(Tensor());
           test_case->outs.emplace_back(GpuAllocator(device), data_type_, shape);
@@ -267,8 +267,8 @@ class NcclManagerTest : public ::testing::Test {
         const Tensor& out_gpu = test_case->outs[global_rank];
         Tensor out_cpu(data_type_, out_gpu.shape());
         auto out_gpu_mem = AsDeviceMemory(out_gpu.flat<Scalar>().data());
-        stream->ThenMemcpy(out_cpu.flat<Scalar>().data(), out_gpu_mem,
-                           out_cpu.TotalBytes());
+        TF_CHECK_OK(stream->Memcpy(out_cpu.flat<Scalar>().data(), out_gpu_mem,
+                                   out_cpu.TotalBytes()));
         TF_ASSERT_OK(stream->BlockHostUntilDone());
         VLOG(1) << "Verifying rank " << global_rank << " expected shape "
                 << test_case->expected.shape() << " out shape "

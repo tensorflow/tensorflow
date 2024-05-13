@@ -1,12 +1,13 @@
-# Placeholder: load py_proto_library
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-)
+
+# Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+)
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
 )
 
 package(
@@ -73,7 +74,7 @@ py_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         ":toco_conversion_log_proto_py",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:resource_loader",
     ],
 )
@@ -94,8 +95,9 @@ py_strict_test(
     deps = [
         ":gen_html",
         ":toco_conversion_log_proto_py",
+        #internal proto upb dep
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
     ],

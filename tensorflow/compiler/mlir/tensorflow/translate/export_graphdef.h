@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 // Given an MLIR module, returns a GraphDef.
-tsl::StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
+absl::StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
     mlir::ModuleOp module, const GraphExportConfig& configs);
 
 // Converts an MLIR module to TensorFlow graph and FunctionLibraryDefinition.

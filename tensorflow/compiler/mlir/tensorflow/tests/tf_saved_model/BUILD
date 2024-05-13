@@ -14,7 +14,7 @@ py_strict_library(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:pywrap_mlir",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
         "@absl_py//absl/logging",

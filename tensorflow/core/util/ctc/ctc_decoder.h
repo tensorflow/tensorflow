@@ -110,7 +110,7 @@ class CTCGreedyDecoder : public CTCDecoder<T> {
         prev_class_ix = max_class_ix;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

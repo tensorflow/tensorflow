@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,10 +18,11 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/strings/str_cat.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
 namespace llvm_ir {
-static const HloInstruction& InstrForConstantBufferAllocation(
+const HloInstruction& InstrForConstantBufferAllocation(
     const BufferAllocation& allocation) {
   CHECK(allocation.is_constant());
   HloInstruction* const_instr = nullptr;

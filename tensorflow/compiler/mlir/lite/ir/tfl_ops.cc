@@ -27,6 +27,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/escaping.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/APFloat.h"
@@ -85,25 +86,13 @@ namespace {
 ParseResult parseOneResultSameOperandTypeOp(OpAsmParser& parser,
                                             OperationState& result) {
   SmallVector<OpAsmParser::UnresolvedOperand, 2> ops;
-  Type type;
   // If the operand list is in-between parentheses, then we have a generic form.
   // (see the fallback in `printOneResultOp`).
-  SMLoc loc = parser.getCurrentLocation();
   if (!parser.parseOptionalLParen()) {
-    if (parser.parseOperandList(ops) || parser.parseRParen() ||
-        parser.parseOptionalAttrDict(result.attributes) ||
-        parser.parseColon() || parser.parseType(type))
-      return failure();
-    auto fnType = type.dyn_cast<FunctionType>();
-    if (!fnType) {
-      parser.emitError(loc, "expected function type");
-      return failure();
-    }
-    if (parser.resolveOperands(ops, fnType.getInputs(), loc, result.operands))
-      return failure();
-    result.addTypes(fnType.getResults());
-    return success();
+    if (parser.parseOperandList(ops) || parser.parseRParen()) return failure();
+    return parser.parseGenericOperationAfterOpName(result, ops);
   }
+  Type type;
   return failure(parser.parseOperandList(ops) ||
                  parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
@@ -146,6 +135,74 @@ Operation* getDefiningBroadcastArgsOp(Value operand) {
   }
   return parent_of_defining_op;
 }
+
+// Returns shape of a ranked tensor.
+// Precondition: value_tensor's is ranked tensor.
+// Returns a Squeezed shape. Truncation here means eliminating the redundant
+// dimensions 1.
+DenseElementsAttr GetSqueezedShape(Value value_tensor) {
+  auto value_shape_type = value_tensor.getType().dyn_cast<ShapedType>();
+  assert(value_shape_type.hasRank() && "value_tensor should be ranked tensor");
+
+  auto value_shape = value_shape_type.getShape();
+  SmallVector<int32_t> return_squeeze_shape;
+  return_squeeze_shape.reserve(value_shape.size());
+
+  for (size_t dim_idx = 0; dim_idx < value_shape.size(); ++dim_idx) {
+    int64_t dim = value_shape[dim_idx];
+    if (dim == 1) {
+      continue;
+    }
+    return_squeeze_shape.push_back(
+        ShapedType::isDynamic(dim) ? -1 : static_cast<int32_t>(dim));
+  }
+
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(return_squeeze_shape.size())},
+          mlir::IntegerType::get(value_tensor.getContext(), 32)),
+      llvm::ArrayRef(return_squeeze_shape));
+}
+
+// This is a utility function to deduce the effective permutation to apply on
+// TFL_TransposeOp when the tensor has some dimensions with value==1
+// Example- "tfl.transpose"(tensor<56x8x56x1x1x1x7xf32>, [4, 5, 1, 2, 0, 6, 3])
+// Permutation before squeese is [4, 5, 1, 2, 0, 6, 3] becomes [1, 2, 0, 3]
+// after squeeze is perfomed to retain the relative ordering of the non-1 dims.
+DenseElementsAttr GetSqueezedPermutation(Value input_value,
+                                         Value input_permutation) {
+  auto input_shape = input_value.getType().dyn_cast<ShapedType>().getShape();
+  absl::flat_hash_map<int32_t, int32_t> permutation_map;
+
+  for (size_t before_dim_idx = 0, after_dim_idx = 0;
+       before_dim_idx < input_shape.size(); ++before_dim_idx) {
+    if (input_shape[before_dim_idx] == 1) {
+      continue;
+    }
+    permutation_map.insert({before_dim_idx, after_dim_idx++});
+  }
+
+  SmallVector<int32_t> squeezed_permutation;
+  DenseElementsAttr input_perm_const;
+  if (matchPattern(input_permutation, m_Constant(&input_perm_const))) {
+    for (int32_t idx = 0; idx < input_perm_const.getNumElements(); ++idx) {
+      size_t perm = input_perm_const.getValues<APInt>()[idx].getSExtValue();
+      if (input_shape[perm] == 1) {
+        continue;
+      }
+      squeezed_permutation.push_back(permutation_map[perm]);
+    }
+  }
+
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(squeezed_permutation.size())},
+          mlir::IntegerType::get(input_permutation.getContext(), 32)),
+      llvm::ArrayRef(squeezed_permutation));
+}
+
+#include "tensorflow/compiler/mlir/lite/ir/tfl_canonicalize.inc"
+
 }  // namespace
 
 // Returns true when the given type lists contain a single element of shaped
@@ -505,6 +562,14 @@ inline bool IsF32ShapedType(Type t) {
 inline bool IsBF16ShapedType(Type t) {
   if (auto shaped_type = t.dyn_cast_or_null<ShapedType>()) {
     return shaped_type.getElementType().isBF16();
+  }
+  return false;
+}
+
+// Returns true if it is a shaped type of FloatType elements.
+inline bool IsFloatShapedType(Type t) {
+  if (auto shaped_type = t.dyn_cast_or_null<ShapedType>()) {
+    return shaped_type.getElementType().isa<FloatType>();
   }
   return false;
 }
@@ -969,9 +1034,9 @@ mlir::LogicalResult CustomOp::verify() {
 
 LogicalResult CustomTfOp::inferReturnTypes(
     MLIRContext*, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties, RegionRange ranges,
+    DictionaryAttr attr, OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  CustomTfOpAdaptor op(operands, attr, {}, ranges);
+  CustomTfOpAdaptor op(operands, attr, properties, regions);
 
   if (op.getRegions().empty()) return success();
   auto* real_op = &op.getBody().front().front();
@@ -1314,9 +1379,9 @@ static LogicalResult ComputeConvWindowedOutputSize(
 
 LogicalResult Conv2DOp::inferReturnTypes(
     MLIRContext*, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties, RegionRange,
+    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  Conv2DOpAdaptor op(operands, attr);
+  Conv2DOpAdaptor op(operands, attr, properties);
 
   const Value input = op.getInput();
   const Value filter = op.getFilter();
@@ -1995,9 +2060,9 @@ mlir::LogicalResult ReshapeOp::verify() {
 
 LogicalResult ReshapeOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties, RegionRange,
+    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  ReshapeOpAdaptor op(operands, attr);
+  ReshapeOpAdaptor op(operands, attr, properties);
   const Value input = op.getInput();
   const Value shape = op.getShape();
 
@@ -2372,9 +2437,9 @@ void FakeQuantOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 LogicalResult UnpackOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> loc, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  UnpackOpAdaptor op(operands, attributes);
+  UnpackOpAdaptor op(operands, attributes, properties);
   // TODO(jpienaar): Refactor verify
   if (failed(op.verify(loc.has_value() ? *loc : UnknownLoc::get(context))))
     return failure();
@@ -2733,7 +2798,7 @@ mlir::LogicalResult UnidirectionalSequenceLSTMOp::verify() {
 
 LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
     MLIRContext*, std::optional<Location>, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties, RegionRange,
+    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   Value input = operands[0];
   auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
@@ -3001,6 +3066,50 @@ OpFoldResult SquareOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// MaximumOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult MaximumOp::fold(FoldAdaptor adaptor) {
+  auto lhs_type = getLhs().getType();
+  auto rhs_type = getRhs().getType();
+  // Only constant fold for float tensors of the same type is implemented.
+  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
+
+  auto lhs = adaptor.getLhs().dyn_cast_or_null<DenseElementsAttr>();
+  auto rhs = adaptor.getRhs().dyn_cast_or_null<DenseElementsAttr>();
+  if (lhs && lhs.isSplat()) {
+    APFloat lhs_value = lhs.getSplatValue<APFloat>();
+    lhs_value.changeSign();
+    if (lhs_value.isLargest()) return getRhs();
+  }
+  if (rhs && rhs.isSplat()) {
+    APFloat rhs_value = rhs.getSplatValue<APFloat>();
+    rhs_value.changeSign();
+    if (rhs_value.isLargest()) return getLhs();
+  }
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// MinimumOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult MinimumOp::fold(FoldAdaptor adaptor) {
+  auto lhs_type = getLhs().getType();
+  auto rhs_type = getRhs().getType();
+  // Only constant fold for float tensors of the same type is implemented.
+  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
+
+  auto lhs = adaptor.getLhs().dyn_cast_or_null<DenseElementsAttr>();
+  auto rhs = adaptor.getRhs().dyn_cast_or_null<DenseElementsAttr>();
+  if (lhs && lhs.isSplat() && lhs.getSplatValue<APFloat>().isLargest())
+    return getRhs();
+  if (rhs && rhs.isSplat() && rhs.getSplatValue<APFloat>().isLargest())
+    return getLhs();
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // RankOp
 //===----------------------------------------------------------------------===//
 
@@ -3085,7 +3194,7 @@ void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
 OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
   assert(operands.size() == 1);
-  if (getElementTypeOrSelf(getInput()) == getElementTypeOrSelf(getType())) {
+  if (getInput().getType() == getType()) {
     return getInput();
   }
 
@@ -3446,6 +3555,11 @@ void ComputePermutation(ArrayRef<int64_t> perms, ArrayRef<int64_t> output_shape,
 }
 
 }  // namespace
+
+void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                              MLIRContext* context) {
+  results.add<ConvertTransposeToDecreaseRank>(context);
+}
 
 OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();

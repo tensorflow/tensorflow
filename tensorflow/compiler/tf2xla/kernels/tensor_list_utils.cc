@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/log/log.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "xla/client/xla_builder.h"
 #include "xla/literal_util.h"
@@ -117,7 +118,7 @@ bool IsTensorListInput(XlaOpKernelContext* ctx, int index) {
 Status IsTensorListInitialized(xla::XlaOp list, bool* is_initialized) {
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, list.builder()->GetShape(list));
   *is_initialized = list_shape.IsTuple();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IsNestedTensorList(xla::XlaOp list, bool* is_nested_list) {
@@ -128,14 +129,14 @@ Status IsNestedTensorList(xla::XlaOp list, bool* is_nested_list) {
   }
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, list.builder()->GetShape(list));
   *is_nested_list = (xla::ShapeUtil::TupleElementCount(list_shape) > 2);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status BuildNonNestedTensorList(xla::XlaOp buffer, xla::XlaOp push_index,
                                 xla::XlaOp* output_list) {
   TF_RET_CHECK(buffer.builder());
   *output_list = xla::Tuple(buffer.builder(), {buffer, push_index});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetTensorListBufferShape(xla::XlaOp list, xla::Shape* buffer_shape) {
@@ -146,7 +147,7 @@ Status GetTensorListBufferShape(xla::XlaOp list, xla::Shape* buffer_shape) {
   }
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, list.builder()->GetShape(list));
   *buffer_shape = xla::ShapeUtil::GetTupleElementShape(list_shape, 0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetTensorListBuffer(xla::XlaOp list, xla::XlaOp* buffer) {
@@ -156,7 +157,7 @@ Status GetTensorListBuffer(xla::XlaOp list, xla::XlaOp* buffer) {
     return errors::InvalidArgument("TensorList is not initialized");
   }
   *buffer = xla::GetTupleElement(list, 0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetTensorListPushIndex(xla::XlaOp list, xla::XlaOp* push_index) {
@@ -168,7 +169,7 @@ Status GetTensorListPushIndex(xla::XlaOp list, xla::XlaOp* push_index) {
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, list.builder()->GetShape(list));
   int tuple_size = xla::ShapeUtil::TupleElementCount(list_shape);
   *push_index = xla::GetTupleElement(list, tuple_size - 1);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SetTensorListPushIndex(xla::XlaOp list, xla::XlaOp push_index,
@@ -187,7 +188,7 @@ Status SetTensorListPushIndex(xla::XlaOp list, xla::XlaOp push_index,
   }
   result_parts.push_back(push_index);
   *result = xla::Tuple(list.builder(), result_parts);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 xla::XlaOp BuildUninitializedTensorList(xla::XlaBuilder* b,
@@ -222,7 +223,7 @@ Status GetLeadingDimForTensorList(xla::XlaOp list, int64_t* leading_dim,
     *leading_dim = list_shape.dimensions(0);
     *leading_dim_dynamic_size = xla::GetDimensionSize(list, 0);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetTensorListShapeFromElementTensorListShape(
@@ -244,7 +245,7 @@ Status GetTensorListShapeFromElementTensorListShape(
   shapes.push_back(xla::ShapeUtil::MakeShape(xla::PrimitiveType::S32,
                                              std::vector<int64_t>{}));
   *tensor_list_shape = xla::ShapeUtil::MakeTupleShape(shapes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetTensorListShapeFromElementShape(const xla::Shape& element_shape,
@@ -267,7 +268,7 @@ Status GetTensorListShapeFromElementShape(const xla::Shape& element_shape,
   shapes.push_back(xla::ShapeUtil::MakeShape(xla::PrimitiveType::S32,
                                              std::vector<int64_t>{}));
   *tensor_list_shape = xla::ShapeUtil::MakeTupleShape(shapes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CreateZerosTensorListWithShape(
@@ -296,7 +297,7 @@ Status CreateZerosTensorListWithShape(
                    .element_type() == xla::S32);
   elements.push_back(xla::ConstantLiteral(b, xla::LiteralUtil::Zero(xla::S32)));
   *list = xla::Tuple(b, elements);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetInitializedTensorListForElement(xla::XlaOp list, xla::XlaOp element,
@@ -330,7 +331,7 @@ Status GetInitializedTensorListForElement(xla::XlaOp list, xla::XlaOp element,
           ", expected: ", list_shape.DebugString());
     }
     *initialized_list = list;
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     // Prepare dynamic dimension dimensions for zero tensor list. The dynamic
     // sizes are created by reading the dynamic dimension size of sub-elements.
@@ -414,7 +415,7 @@ Status ExecuteTensorListPushBack(xla::XlaOp list, xla::XlaOp element,
   result_parts.push_back(updated_push_index);
 
   *result = xla::Tuple(b, result_parts);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExecuteTensorListPopBack(xla::XlaOp list, xla::XlaOp* list_result,
@@ -463,7 +464,7 @@ Status ExecuteTensorListPopBack(xla::XlaOp list, xla::XlaOp* list_result,
     *element_result = element_result_parts[0];
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExecuteTensorListSetItem(xla::XlaOp list, xla::XlaOp index,
@@ -492,6 +493,27 @@ Status ExecuteTensorListSetItem(xla::XlaOp list, xla::XlaOp index,
   start_indices[0] = index;
 
   xla::XlaOp list_part = xla::GetTupleElement(list, 0);
+  {
+    TF_ASSIGN_OR_RETURN(const xla::Shape* list_part_shape,
+                        b->GetShapePtr(list_part));
+    TF_ASSIGN_OR_RETURN(const xla::Shape* update_shape, b->GetShapePtr(update));
+    for (int i = 0; i < list_part_shape->dimensions_size(); ++i) {
+      auto list_part_dim_size = list_part_shape->dimensions(i);
+      auto update_dim_size = update_shape->dimensions(i);
+      // If the update is larger than the list part, the DynamicUpdateSlice will
+      // fail so just ignore this operation and return list as is.
+      if (update_dim_size > list_part_dim_size) {
+        LOG_FIRST_N(WARNING, 1)
+            << "Warning: TensorListSetItem: ignoring set item because the "
+               "update dim ["
+            << update_dim_size << "] is larger than the list dim ["
+            << list_part_dim_size << "] at dimension " << i << ".";
+
+        *result = list;
+        return absl::OkStatus();
+      }
+    }
+  }
   xla::XlaOp updated_list_part =
       xla::DynamicUpdateSlice(list_part, update, start_indices);
 
@@ -499,7 +521,7 @@ Status ExecuteTensorListSetItem(xla::XlaOp list, xla::XlaOp index,
   result_parts.push_back(updated_list_part);
   result_parts.push_back(xla::GetTupleElement(list, 1));
   *result = xla::Tuple(b, result_parts);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExecuteTensorListGetItem(xla::XlaOp list, xla::XlaOp index,
@@ -541,7 +563,7 @@ Status ExecuteTensorListGetItem(xla::XlaOp list, xla::XlaOp index,
   }
   slice_shape.erase(slice_shape.begin());
   *result = xla::Reshape(read, slice_shape);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExecuteTensorListFromTensor(int push_index, xla::XlaOp tensor,
@@ -558,7 +580,7 @@ Status ExecuteTensorListFromTensor(int push_index, xla::XlaOp tensor,
   std::vector<xla::XlaOp> result_parts{tensor,
                                        xla::ConstantR0<int32>(b, push_index)};
   *result = xla::Tuple(b, result_parts);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

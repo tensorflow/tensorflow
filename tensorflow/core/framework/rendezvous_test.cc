@@ -511,6 +511,7 @@ void BM_PingPong(::testing::benchmark::State& state) {
       TF_CHECK_OK(rendez->Recv(KeyBar(), args, &bar, &is_dead));
     }
     CHECK_EQ("bar", V(bar));
+    rendez->Unref();
   }
   state.SetItemsProcessed(messages_count * state.iterations());
   delete pool;

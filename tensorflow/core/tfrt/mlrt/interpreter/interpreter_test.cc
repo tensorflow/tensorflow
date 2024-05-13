@@ -22,17 +22,26 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/async_handle.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/builtin_kernels.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/execute.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/interpreter_testutil.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/register_span.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
+#include "tsl/platform/test_benchmark.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace mlrt {

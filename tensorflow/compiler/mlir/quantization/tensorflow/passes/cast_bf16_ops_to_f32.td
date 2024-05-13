@@ -17,8 +17,8 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
+include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 
 //===----------------------------------------------------------------------===//
 // Pattern rules for converting bfloat16 operations to fp32 conversions.

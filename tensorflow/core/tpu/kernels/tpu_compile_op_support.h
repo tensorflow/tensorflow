@@ -62,7 +62,7 @@ using GuaranteedConsts = std::variant<absl::Span<const TensorProto* const>,
 // List of parameters for lowering function library definition to HLO IR.
 struct FunctionToHloArgs {
   const NameAttrList* const function;
-  const FunctionLibraryDefinition* const flib_def;
+  const FunctionLibraryDefinition* flib_def;
   int graph_def_version;
   GuaranteedConsts guaranteed_constants;
 };

@@ -117,6 +117,10 @@ tf_module {
     argspec: "args=[\'tensors\', \'graph\', \'sources\', \'disallowed_placeholders\', \'add_sources\', \'handle_captures\', \'base_graph\', \'op_map\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'None\', \'None\'], "
   }
   member_method {
+    name: "load_context"
+    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
+  }
+  member_method {
     name: "record_gradient"
     argspec: "args=[\'op_name\', \'inputs\', \'attrs\', \'outputs\'], varargs=None, keywords=None, defaults=None"
   }
@@ -130,10 +134,6 @@ tf_module {
   }
   member_method {
     name: "register_get_session_function"
-    argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "register_load_context_function"
     argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

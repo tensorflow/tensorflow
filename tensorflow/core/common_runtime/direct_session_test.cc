@@ -24,11 +24,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -53,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/protobuf.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -1162,7 +1166,8 @@ class SessionMetadataReaderOp : public OpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output("y", TensorShape({}), &out_tensor));
     if (ctx->session_metadata() != nullptr) {
-      out_tensor->scalar<tstring>()() = ctx->session_metadata()->DebugString();
+      out_tensor->scalar<tstring>()() =
+          tsl::LegacyUnredactedDebugString(*ctx->session_metadata());
     } else {
       out_tensor->scalar<tstring>()() = "";
     }
@@ -2320,6 +2325,69 @@ TEST(DirectSessionTest, LocalDeviceManager) {
   EXPECT_GT(mgr->ListDevices().size(), 0);
 }
 
+// A fake device representing some novel Device type.
+class FakeDevice : public Device {
+ public:
+  explicit FakeDevice(const DeviceAttributes& device_attributes)
+      : Device(nullptr, device_attributes) {}
+
+  Status Sync() override {
+    return absl::UnimplementedError("FakeDevice::Sync()");
+  }
+};
+
+// A device factory that creates devices named <FirstLetter>PU
+template <char FirstLetter>
+class FakeFactory : public DeviceFactory {
+ public:
+  Status ListPhysicalDevices(std::vector<string>* devices) override {
+    return absl::OkStatus();
+  }
+  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
+                       std::vector<std::unique_ptr<Device>>* devices) override {
+    std::string name = absl::StrFormat("%cPU", FirstLetter);
+    DeviceAttributes attr;
+    attr.set_name(
+        absl::StrFormat("/job:localhost/replica:0/task:0/device:%s:0", name));
+    attr.set_device_type(DeviceType(name).type());
+    devices->emplace_back(std::make_unique<FakeDevice>(attr));
+    return absl::OkStatus();
+  }
+};
+
+REGISTER_LOCAL_DEVICE_FACTORY("APU", FakeFactory<'A'>);
+REGISTER_LOCAL_DEVICE_FACTORY("ZPU", FakeFactory<'Z'>);
+
+TEST(DirectSessionTest, FeedsAndFetchesGoToCpu) {
+  auto session = CreateSession();
+
+  const DeviceMgr* mgr = nullptr;
+  TF_ASSERT_OK(session->LocalDeviceManager(&mgr));
+  ASSERT_TRUE(mgr != nullptr);
+  EXPECT_GT(mgr->ListDevices().size(), 2);
+
+  GraphDef def;
+  Graph graph(OpRegistry::Global());
+
+  // Don't assign any devices to the tensors. This means that the "client
+  // device" is picked for feeds and fetches.
+  Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
+  a_tensor.flat<float>().setRandom();
+  Node* a = test::graph::Constant(&graph, a_tensor);
+  Tensor x_tensor(DT_FLOAT, TensorShape({2, 1}));
+  x_tensor.flat<float>().setRandom();
+  Node* x = test::graph::Constant(&graph, x_tensor);
+  Node* y = test::graph::Matmul(&graph, a, x, false, false);
+
+  graph.ToGraphDef(&def);
+  TF_ASSERT_OK(session->Create(def));
+  std::vector<Tensor> outputs;
+
+  // APU and ZPU aren't fully implemented, so this call will fail if feeds or
+  // fetches are assigned to them rather than CPU.
+  TF_ASSERT_OK(session->Run({}, {y->name() + ":0"}, {}, &outputs));
+}
+
 // y = tf.square(x)
 GraphDef CreateGraphForYEqualsXSquared() {
   GraphDef graph_def;
@@ -2757,7 +2825,7 @@ class DirectSessionCollectiveTest : public ::testing::Test {
       mutex_lock l(direct_session->collective_graph_key_lock_);
       *collective_graph_key = direct_session->collective_graph_key_;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

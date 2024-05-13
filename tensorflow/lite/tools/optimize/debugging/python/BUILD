@@ -29,6 +29,9 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":debugger",
+        "@absl_py//absl/testing:parameterized",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:convert",
         "//tensorflow/lite/python:lite",
@@ -36,7 +39,5 @@ py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/trackable:autotrackable",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

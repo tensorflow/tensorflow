@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
+#include <cstring>
 #include <limits>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -134,7 +137,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteType input_type = t0->type;
   if (axis < 0) axis += t0->dims->size;
   TF_LITE_ENSURE(context, axis >= 0);
-  TF_LITE_ENSURE(context, axis < t0->dims->size);
+  TF_LITE_ENSURE(context,
+                 axis < t0->dims->size || (t0->dims->size == 0 && axis == 0));
 
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
   TF_LITE_ENSURE(context,
@@ -143,23 +147,60 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                      input_type == kTfLiteInt32 || input_type == kTfLiteInt64 ||
                      input_type == kTfLiteBool || input_type == kTfLiteUInt32);
 
-  // Output dimensions will match input dimensions, except 'axis', which
-  // will be the sum of inputs
-  int sum_axis = t0->dims->data[axis];
-  for (int i = 1; i < num_inputs; ++i) {
+  // Check to see if we can calculate the output now.
+  bool all_inputs_at_prepare = true;
+  for (int i = 0; i < num_inputs; ++i) {
     const TfLiteTensor* t;
     TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i, &t));
-    TF_LITE_ENSURE_EQ(context, t->dims->size, t0->dims->size);
-    TF_LITE_ENSURE_EQ(context, t->type, input_type);
-    for (int d = 0; d < t0->dims->size; ++d) {
-      if (d == axis) {
-        // Avoid integer overflow in sum_axis below
-        TF_LITE_ENSURE(context, t->dims->data[axis] >= 0);
-        TF_LITE_ENSURE(context, t->dims->data[axis] <=
-                                    std::numeric_limits<int>::max() - sum_axis);
-        sum_axis += t->dims->data[axis];
-      } else {
-        TF_LITE_ENSURE_EQ(context, t->dims->data[d], t0->dims->data[d]);
+    if (!IsConstantOrPersistentTensor(t)) {
+      all_inputs_at_prepare = false;
+      break;
+    }
+  }
+  // Output dimensions will match input dimensions, except 'axis', which
+  // will be the sum of inputs
+  int sum_axis = t0->dims->size > 0 ? t0->dims->data[axis] : 1;
+  // Check if we are concatenating constant scalars.
+  if (all_inputs_at_prepare && t0->dims->size == 0 && axis == 0) {
+    for (int i = 1; i < num_inputs; ++i) {
+      const TfLiteTensor* t;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i, &t));
+      TF_LITE_ENSURE_EQ(context, t->dims->size, t0->dims->size);
+    }
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+    TfLiteIntArray* output_size = TfLiteIntArrayCreate(1);
+    output_size->data[0] = num_inputs;
+    SetTensorToPersistentRo(output);
+    context->ResizeTensor(context, output, output_size);
+    size_t input_type_size;
+    TF_LITE_ENSURE_STATUS(GetSizeOfType(context, t0->type, &input_type_size));
+    void* o_data = output->data.data;
+    for (int i = 0; i < num_inputs; ++i) {
+      const TfLiteTensor* t;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i, &t));
+      const void* i_data = t->data.data;
+      memcpy(o_data, i_data, input_type_size);
+      o_data = (void*)((uintptr_t)o_data + input_type_size);
+    }
+    return kTfLiteOk;
+  } else {
+    for (int i = 1; i < num_inputs; ++i) {
+      const TfLiteTensor* t;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i, &t));
+      TF_LITE_ENSURE_EQ(context, t->dims->size, t0->dims->size);
+      TF_LITE_ENSURE_EQ(context, t->type, input_type);
+      for (int d = 0; d < t0->dims->size; ++d) {
+        if (d == axis) {
+          // Avoid integer overflow in sum_axis below
+          TF_LITE_ENSURE(context, t->dims->data[axis] >= 0);
+          TF_LITE_ENSURE(context,
+                         t->dims->data[axis] <=
+                             std::numeric_limits<int>::max() - sum_axis);
+          sum_axis += t->dims->data[axis];
+        } else {
+          TF_LITE_ENSURE_EQ(context, t->dims->data[d], t0->dims->data[d]);
+        }
       }
     }
   }
@@ -195,16 +236,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
   }
 
-  // Check to see if we can calculate the output now.
-  bool all_inputs_at_prepare = true;
-  for (int i = 0; i < num_inputs; ++i) {
-    const TfLiteTensor* t;
-    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i, &t));
-    if (!IsConstantOrPersistentTensor(t)) {
-      all_inputs_at_prepare = false;
-      break;
-    }
-  }
   if (all_inputs_at_prepare) {
     SetTensorToPersistentRo(output);
     context->ResizeTensor(context, output, output_size);

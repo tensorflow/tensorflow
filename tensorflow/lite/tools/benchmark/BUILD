@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -98,12 +98,16 @@ cc_test(
     args = [
         "--fp32_graph=$(location //tensorflow/lite:testdata/multi_add.bin)",
         "--int8_graph=$(location //tensorflow/lite:testdata/add_quantized_int8.bin)",
-        "--string_graph=$(location //tensorflow/lite:testdata/string_input_model.bin)",
+        "--string_graph_with_signature=$(location //tensorflow/lite:testdata/string_input_model_with_signature.bin)",
+        "--string_graph_without_signature=$(location //tensorflow/lite:testdata/string_input_model.bin)",
+        "--multi_signature_graph=$(location //tensorflow/lite:testdata/multi_signatures.bin)",
     ],
     data = [
         "//tensorflow/lite:testdata/add_quantized_int8.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
+        "//tensorflow/lite:testdata/multi_signatures.bin",
         "//tensorflow/lite:testdata/string_input_model.bin",
+        "//tensorflow/lite:testdata/string_input_model_with_signature.bin",
     ],
     tags = [
         "tflite_not_portable_android",
@@ -123,6 +127,7 @@ cc_test(
         "@com_google_absl//absl/algorithm",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -158,6 +163,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:simple_memory_arena_debug_dump",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -186,6 +192,7 @@ cc_test(
         ":benchmark_model_lib",
         ":benchmark_params",
         ":benchmark_tflite_model_lib",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/tools:tool_params",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",

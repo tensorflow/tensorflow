@@ -15,21 +15,27 @@ limitations under the License.
 
 #include "tsl/platform/human_readable_json.h"
 
+#include <string>
+#include <utility>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 
-Status ProtoToHumanReadableJson(const protobuf::Message& proto, string* result,
-                                bool ignore_accuracy_loss) {
-  result->clear();
+absl::StatusOr<std::string> ProtoToHumanReadableJson(
+    const protobuf::Message& proto, bool ignore_accuracy_loss) {
+  std::string result;
 
   protobuf::util::JsonPrintOptions json_options;
   json_options.preserve_proto_field_names = true;
   json_options.always_print_primitive_fields = true;
   auto status =
-      protobuf::util::MessageToJsonString(proto, result, json_options);
+      protobuf::util::MessageToJsonString(proto, &result, json_options);
   if (!status.ok()) {
     // Convert error_msg google::protobuf::StringPiece to
     // tsl::StringPiece.
@@ -38,16 +44,16 @@ Status ProtoToHumanReadableJson(const protobuf::Message& proto, string* result,
         strings::StrCat("Could not convert proto to JSON string: ",
                         StringPiece(error_msg.data(), error_msg.length())));
   }
-  return OkStatus();
+  return std::move(result);
 }
 
-Status ProtoToHumanReadableJson(const protobuf::MessageLite& proto,
-                                string* result, bool ignore_accuracy_loss) {
-  *result = "[human readable output not available for lite protos]";
-  return OkStatus();
+absl::StatusOr<std::string> ProtoToHumanReadableJson(
+    const protobuf::MessageLite& proto, bool ignore_accuracy_loss) {
+  return std::string("[human readable output not available for lite protos]");
 }
 
-Status HumanReadableJsonToProto(const string& str, protobuf::Message* proto) {
+absl::Status HumanReadableJsonToProto(const string& str,
+                                      protobuf::Message* proto) {
   proto->Clear();
   auto status = protobuf::util::JsonStringToMessage(str, proto);
   if (!status.ok()) {
@@ -58,11 +64,11 @@ Status HumanReadableJsonToProto(const string& str, protobuf::Message* proto) {
         strings::StrCat("Could not convert JSON string to proto: ",
                         StringPiece(error_msg.data(), error_msg.length())));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HumanReadableJsonToProto(const string& str,
-                                protobuf::MessageLite* proto) {
+absl::Status HumanReadableJsonToProto(const string& str,
+                                      protobuf::MessageLite* proto) {
   return errors::Internal("Cannot parse JSON protos on Android");
 }
 

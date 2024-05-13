@@ -56,6 +56,10 @@ tf_class {
     argspec: "args=[\'cls\', \'layout_str\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "global_shape_from_local_shape"
+    argspec: "args=[\'self\', \'local_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "inner_sharded"
     argspec: "args=[\'cls\', \'mesh\', \'inner_dim\', \'rank\'], varargs=None, keywords=None, defaults=None"
   }
@@ -70,6 +74,10 @@ tf_class {
   member_method {
     name: "is_single_device"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "local_shape_from_global_shape"
+    argspec: "args=[\'self\', \'global_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "num_shards"

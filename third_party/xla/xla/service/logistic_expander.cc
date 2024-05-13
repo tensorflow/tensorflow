@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ bool LogisticExpander::InstructionMatchesPattern(HloInstruction* instruction) {
   return instruction->opcode() == HloOpcode::kLogistic;
 }
 
-StatusOr<HloInstruction*> LogisticExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> LogisticExpander::ExpandInstruction(
     HloInstruction* instruction) {
   HloInstruction* operand = instruction->mutable_operand(0);
   const Shape operand_shape = operand->shape();

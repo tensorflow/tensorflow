@@ -21,11 +21,57 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 
 namespace {
+using ::tensorflow::metrics::IncrementPhase2XlaCompilerCounter;
+using ::tensorflow::metrics::Phase2XlaCompilerMetric;
 using ::tensorflow::monitoring::testing::CellReader;
 
 constexpr char kPhase2CompilationStatusStreamzName[] =
     "/tensorflow/core/tf2xla/api/v2/phase2_compilation_status";
 constexpr char kMlirWithFallbackModeSuccess[] = "kMlirWithFallbackModeSuccess";
+constexpr char kPhase2XlaCompilerStreamzName[] =
+    "/tensorflow/compiler/tf2xla/xla_compiler/compilation_status";
+constexpr char kCompileSingleOpXlaBuilderSuccess[] =
+    "kCompileSingleOpMlirSuccess";
+constexpr char kCompileSingleOpXlaBuilderFailure[] =
+    "kCompileSingleOpXlaBuilderFailure";
+constexpr char kCompileSingleOpMlirSuccess[] = "kCompileSingleOpMlirSuccess";
+constexpr char kCompileSingleOpMlirFailure[] = "kCompileSingleOpMlirFailure";
+constexpr char kCompileFunctionXlaBuilderSuccess[] =
+    "kCompileFunctionMlirSuccess";
+constexpr char kCompileFunctionXlaBuilderFailure[] =
+    "kCompileFunctionXlaBuilderFailure";
+constexpr char kCompileFunctionMlirSuccess[] = "kCompileFunctionMlirSuccess";
+constexpr char kCompileFunctionMlirFailure[] = "kCompileFunctionMlirFailure";
+
+TEST(Metrics, Phase2XlaCompilerMetric) {
+  CellReader<int64_t> counter(kPhase2XlaCompilerStreamzName);
+
+  IncrementPhase2XlaCompilerCounter(
+      Phase2XlaCompilerMetric::kCompileSingleOpXlaBuilderSuccess);
+  IncrementPhase2XlaCompilerCounter(
+      Phase2XlaCompilerMetric::kCompileSingleOpXlaBuilderFailure);
+  IncrementPhase2XlaCompilerCounter(
+      Phase2XlaCompilerMetric::kCompileSingleOpMlirSuccess);
+  IncrementPhase2XlaCompilerCounter(
+      Phase2XlaCompilerMetric::kCompileSingleOpMlirFailure);
+  IncrementPhase2XlaCompilerCounter(
+      Phase2XlaCompilerMetric::kCompileFunctionXlaBuilderSuccess);
+  IncrementPhase2XlaCompilerCounter(
+      Phase2XlaCompilerMetric::kCompileFunctionXlaBuilderFailure);
+  IncrementPhase2XlaCompilerCounter(
+      Phase2XlaCompilerMetric::kCompileFunctionMlirSuccess);
+  IncrementPhase2XlaCompilerCounter(
+      Phase2XlaCompilerMetric::kCompileFunctionMlirFailure);
+
+  ASSERT_EQ(counter.Read(kCompileSingleOpXlaBuilderSuccess), 1);
+  ASSERT_EQ(counter.Read(kCompileSingleOpXlaBuilderFailure), 1);
+  ASSERT_EQ(counter.Read(kCompileSingleOpMlirSuccess), 1);
+  ASSERT_EQ(counter.Read(kCompileSingleOpMlirFailure), 1);
+  ASSERT_EQ(counter.Read(kCompileFunctionXlaBuilderSuccess), 1);
+  ASSERT_EQ(counter.Read(kCompileFunctionXlaBuilderFailure), 1);
+  ASSERT_EQ(counter.Read(kCompileFunctionMlirSuccess), 1);
+  ASSERT_EQ(counter.Read(kCompileFunctionMlirFailure), 1);
+}
 
 TEST(Metrics, Phase2ComilationStatusCounterIncremented) {
   CellReader<int64_t> counter(kPhase2CompilationStatusStreamzName);

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,17 +15,30 @@ limitations under the License.
 
 #include "xla/service/gpu/scatter_slice_simplifier.h"
 
+#include <cstdint>
 #include <iterator>
 #include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -160,14 +173,14 @@ HloInstruction* CreateScatterFrom(HloScatterInstruction* scatter,
 
 class ScatterSliceSimplifierVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleScatter(HloInstruction* instruction) override {
+  absl::Status HandleScatter(HloInstruction* instruction) override {
     auto* scatter = Cast<HloScatterInstruction>(instruction);
 
     // Infer scatter shape from the slice users.
     std::optional<Shape> result_shape =
         ScatterSliceMatcher(scatter).InferShape();
     if (!result_shape.has_value()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     VLOG(2) << "Matched scatter " << scatter->name() << " with shape "
             << scatter->shape().ToString() << ", inferred result shape "
@@ -181,8 +194,8 @@ class ScatterSliceSimplifierVisitor : public DfsHloRewriteVisitor {
  private:
   // Create a replacement for every user. If the user is a slice operation,
   // replace it in the computation graph, the old branch will be removed.
-  Status ReplaceAllUsersRecursive(HloInstruction* old_instruction,
-                                  HloInstruction* new_instruction) {
+  absl::Status ReplaceAllUsersRecursive(HloInstruction* old_instruction,
+                                        HloInstruction* new_instruction) {
     // Maintain the replacement map, needed for non-unary elementwise users.
     replacements_[old_instruction] = new_instruction;
 
@@ -196,13 +209,14 @@ class ScatterSliceSimplifierVisitor : public DfsHloRewriteVisitor {
       }
       TF_RETURN_IF_ERROR(ReplaceUserRecursive(user, new_instruction));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Replace the slice user with a new scatter (or a new chain of operations
   // starting with a scatter). For elementwise operations, create a new user
   // with updated operands (build the chain).
-  Status ReplaceUserRecursive(HloInstruction* user, HloInstruction* operand) {
+  absl::Status ReplaceUserRecursive(HloInstruction* user,
+                                    HloInstruction* operand) {
     VLOG(3) << "Replacing scatter user " << user->name();
     if (user->opcode() == HloOpcode::kSlice) {
       return ReplaceInstruction(user, operand);
@@ -241,7 +255,7 @@ class ScatterSliceSimplifierVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-StatusOr<bool> ScatterSliceSimplifier::Run(
+absl::StatusOr<bool> ScatterSliceSimplifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return ScatterSliceSimplifierVisitor{}.RunOnModule(module, execution_threads);

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -55,9 +55,6 @@ class ServiceInterface {
 
   virtual Status ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
                                       ExecuteParallelResponse* result) = 0;
-
-  virtual Status WaitForExecution(const WaitForExecutionRequest* arg,
-                                  WaitForExecutionResponse* result) = 0;
 
   virtual Status DeconstructTuple(const DeconstructTupleRequest* arg,
                                   DeconstructTupleResponse* result) = 0;

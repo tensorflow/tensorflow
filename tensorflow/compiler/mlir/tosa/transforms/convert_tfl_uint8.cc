@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -90,7 +91,7 @@ struct ConvertUint8QConstOp : public RewritePattern {
     }
 
     mlir::DenseElementsAttr src_dense_attr =
-        tfl_qconst_op.getValue().cast<DenseElementsAttr>();
+        mlir::cast<DenseElementsAttr>(tfl_qconst_op.getValue());
 
     double type_range_min =
         static_cast<double>(output_element_type.getStorageTypeMin() -
@@ -196,7 +197,7 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
           builder.getI32IntegerAttr(uint8_zp),
           builder.getI32IntegerAttr(int8_zp),
           builder.getDenseI32ArrayAttr({1 << 30}),
-          builder.getDenseI32ArrayAttr({30}), builder.getBoolAttr(true),
+          builder.getDenseI8ArrayAttr({30}), builder.getBoolAttr(true),
           builder.getBoolAttr(false), builder.getBoolAttr(false));
 
       Operation *op_rescale_op = static_cast<Operation *>(rescale_op);
@@ -313,7 +314,7 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
           builder.getI32IntegerAttr(int8_zp),
           builder.getI32IntegerAttr(uint8_zp),
           builder.getDenseI32ArrayAttr({1 << 30}),
-          builder.getDenseI32ArrayAttr({30}), builder.getBoolAttr(true),
+          builder.getDenseI8ArrayAttr({30}), builder.getBoolAttr(true),
           builder.getBoolAttr(false), builder.getBoolAttr(false));
 
       Operation *op_rescale_op = static_cast<Operation *>(rescale_op);

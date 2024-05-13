@@ -15,9 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_SAVED_MODEL_TO_TFL_FLATBUFFER_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_SAVED_MODEL_TO_TFL_FLATBUFFER_H_
 
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 
@@ -27,8 +30,9 @@ namespace tensorflow {
 // string according to the given model flags, toco flags and tags. Returns error
 // status if it fails to convert the input.
 Status ConvertSavedModelToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
-    string* result);
+    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    string* result,
+    const quantization::PyFunctionLibrary* quantization_py_function_lib);
 
 }  // namespace tensorflow
 

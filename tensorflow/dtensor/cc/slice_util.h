@@ -191,7 +191,7 @@ class ForwardLayoutInference : public TokenProcessor {
     TF_ASSIGN_OR_RETURN(
         expander_value_layout_,
         Layout::GetLayout(expander_value_sharding_, input_layout_.mesh()));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -291,7 +291,7 @@ class BackwardLayoutInference : public TokenProcessor {
     TF_ASSIGN_OR_RETURN(
         expander_value_layout_,
         Layout::GetLayout(expander_value_sharding_, value_layout_.mesh()));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

@@ -31,7 +31,7 @@ class RandomAccessInputStream : public InputStreamInterface {
   // must outlive *this.
   RandomAccessInputStream(RandomAccessFile* file, bool owns_file = false);
 
-  ~RandomAccessInputStream();
+  ~RandomAccessInputStream() override;
 
   Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
 

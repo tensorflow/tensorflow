@@ -87,7 +87,7 @@ Status ValidateTransposeInputs(const ConstCSRComponent<T>& input,
         "Input nnz should equal the output values size. Got ", nnz, " vs. ",
         output.values.size());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -205,7 +205,7 @@ Status CSRSparseMatrixTranspose<Device, T>::operator()(
     maybe_conj_inplace<Device, T>::run(d, &output_values_t);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // CPU kernel for transposing a single component of a CSR SparseMatrix.
@@ -246,7 +246,7 @@ struct CSRSparseMatrixTransposeComponent<CPUDevice, T> {
         current_col_count[col_idx] += 1;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

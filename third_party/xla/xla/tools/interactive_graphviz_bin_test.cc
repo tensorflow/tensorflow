@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,8 +57,12 @@ TEST(InteractiveGraphviz, CPU) {
   std::string out, err;
 
   int status = proc.Communicate(&in, &out, &err);
+#if defined(_WIN32) || defined(_WIN64)
+  EXPECT_EQ(0, status);
+#else
   EXPECT_TRUE(WIFEXITED(status));
   EXPECT_EQ(0, WEXITSTATUS(status));
+#endif  // defined(_WIN32) || defined(_WIN64)
   ASSERT_THAT(err, testing::HasSubstr("Compiling module for Host"));
 }
 

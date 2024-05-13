@@ -59,7 +59,7 @@ Status UpdateTPUEmbeddingEnqueueOrdinalPass::Run(
   options.device_set->FindMatchingDevices(tpu_device_spec, &tpu_devices);
   if (tpu_devices.empty()) {
     // If there are no TPUs don't run this pass.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TF_RET_CHECK(options.graph != nullptr);
@@ -74,7 +74,7 @@ Status UpdateTPUEmbeddingEnqueueOrdinalPass::Run(
 
   // Only run if there are embedding nodes.
   if (embedding_nodes.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DeviceNameUtils::ParsedName single_tpu_device_spec =
@@ -105,7 +105,7 @@ Status UpdateTPUEmbeddingEnqueueOrdinalPass::Run(
   }
 
   VLOG(1) << "UpdateTPUEmbeddingEnqueueOrdinalPass::Run() finished";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename A, typename N>
@@ -142,7 +142,7 @@ Status UpdateMapsForModeOverride(
       (*enqueue_op)[layer_call_index] = node_identifier;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename M, typename N>
@@ -166,7 +166,7 @@ Status ComputeEnqueueTrainingStatus(
     // for this
     (*enqueue)[node.second] = send_exists;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Get the enqueue ops and their status (training or eval) from a graph.
@@ -211,7 +211,7 @@ Status UpdateTPUEmbeddingModePass::UpdateGraphEnqueueOp(bool training,
     graph->RemoveEdge(select_edge);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Get the enqueue ops and their status (training or eval) from a function def.
@@ -273,7 +273,7 @@ Status UpdateTPUEmbeddingModePass::UpdateFunctionDefEnqueueOp(
     *updated = true;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status UpdateTPUEmbeddingModePass::Run(
@@ -323,7 +323,7 @@ Status UpdateTPUEmbeddingModePass::Run(
   }
 
   VLOG(1) << "UpdateTPUEmbeddingModePass::Run() finished";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

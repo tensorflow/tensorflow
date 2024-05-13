@@ -1932,7 +1932,7 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
 
 
 # pylint: disable=line-too-long
-def _get_diff_for_monotonic_comparison(x):
+def _get_results_for_monotonic_comparison(x, compare_op):
   """Gets the difference x[1:] - x[:-1]."""
   x = array_ops.reshape(x, [-1])
   if not is_numeric_tensor(x):
@@ -1940,11 +1940,14 @@ def _get_diff_for_monotonic_comparison(x):
 
   # If x has less than 2 elements, there is nothing to compare.  So return [].
   is_shorter_than_two = math_ops.less(array_ops.size(x), 2)
-  short_result = lambda: ops.convert_to_tensor([], dtype=x.dtype)
+  short_result = lambda: ops.convert_to_tensor([], dtype=bool)
 
   # With 2 or more elements, return x[1:] - x[:-1]
   s_len = array_ops.shape(x) - 1
-  diff = lambda: array_ops.strided_slice(x, [1], [1] + s_len)- array_ops.strided_slice(x, [0], s_len)
+  diff = lambda: compare_op(
+      array_ops.strided_slice(x, [1], [1] + s_len),
+      array_ops.strided_slice(x, [0], s_len),
+  )
   return cond.cond(is_shorter_than_two, short_result, diff)
 
 
@@ -2019,10 +2022,9 @@ def is_non_decreasing(x, name=None):
     TypeError: if `x` is not a numeric tensor.
   """
   with ops.name_scope(name, 'is_non_decreasing', [x]):
-    diff = _get_diff_for_monotonic_comparison(x)
+    diff = _get_results_for_monotonic_comparison(x, math_ops.greater_equal)
     # When len(x) = 1, diff = [], less_equal = [], and reduce_all([]) = True.
-    zero = ops.convert_to_tensor(0, dtype=diff.dtype)
-    return math_ops.reduce_all(math_ops.less_equal(zero, diff))
+    return math_ops.reduce_all(diff)
 
 
 @tf_export(
@@ -2062,10 +2064,9 @@ def is_strictly_increasing(x, name=None):
     TypeError: if `x` is not a numeric tensor.
   """
   with ops.name_scope(name, 'is_strictly_increasing', [x]):
-    diff = _get_diff_for_monotonic_comparison(x)
+    diff = _get_results_for_monotonic_comparison(x, math_ops.greater)
     # When len(x) = 1, diff = [], less = [], and reduce_all([]) = True.
-    zero = ops.convert_to_tensor(0, dtype=diff.dtype)
-    return math_ops.reduce_all(math_ops.less(zero, diff))
+    return math_ops.reduce_all(diff)
 
 
 def _assert_same_base_type(items, expected_type=None):

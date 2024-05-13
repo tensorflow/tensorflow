@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,11 +16,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_FUSIBLE_H_
 #define XLA_SERVICE_GPU_GPU_FUSIBLE_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/reduction_utils.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -59,20 +65,37 @@ struct FusionInfoCache {
   absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions;
 };
 
+// Returns the computations within `module` whose instructions can still be
+// fused: computations that are not fusion computations, and not called
+// computations that are inlined (reducers, scatter combiners, etc.).
+std::vector<HloComputation*> GetFusibleComputations(
+    const HloModule& module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads);
+
 // Returns projected shared memory usage of a given instruction in bytes.
 int64_t SharedMemoryUsage(const HloInstruction& instr,
                           FusionInfoCache* cache = nullptr);
 
-// Returns projected shared memory usage of a reduction fusion.
-int64_t ReductionProjectedShmemUsageBytes(
-    const ReductionDimensions& reduction_dimensions,
-    const std::vector<std::vector<const HloInstruction*>>& instr_index_groups);
+inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 96; }
 
-inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
-
-// Whether the op tranposes the physical data layout. Fusing such ops may lead
+// Whether the op transposes the physical data layout. Fusing such ops may lead
 // to uncoalesced data access and may thus not be beneficial.
 bool IsPhysicallyTransposing(const HloInstruction& instr);
+
+// Whether the op transposes the minor-most dimension. In the case of fusions,
+// whether the fusion contains some op that does this.
+// If the minor-most dimension is transposed, this results in uncoalesced memory
+// accesses in untiled code generators. If some other dimension is transposed,
+// this just results in additional index computations.
+// Note that this function makes several simplifying assumptions:
+// - For non-fusion instructions, we assume the output is materialized as is.
+//   For internal instructions, this may not be the case.
+// - For fusions, it simply checks the output of this function for each
+//   instruction in the fusion's computation.
+// - There's no way to tell which parameters of the fusion are transposed.
+// TODO(jreiffers): Take into account the size of the transposed dimension as
+// well.
+bool TransposesMinorDimension(const HloInstruction* instr);
 
 // Note that reduction ops are lowered in different ways. Reduce input fusions
 // are lowered by IrEmitterUnnested::EmitReductionToVector and must be rooted at
@@ -133,6 +156,11 @@ FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
 FusionDecision ShapesCompatibleForMultiOutputFusion(
     const HloInstruction& instr1, const HloInstruction& instr2);
 
+// Whether fusing producer into consumer creates a scatter fusion that cannot be
+// handled by the scatter emitter.
+FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
+                                        const HloInstruction& consumer);
+
 // Whether the instructions are compatible for producer-consumer fusion
 // i.e. whether the producer and consumer are loop/input fusible and
 // they are not library calls.
@@ -148,7 +176,7 @@ FusionDecision IsProducerMultiOutputFusible(const HloInstruction& producer);
 // a producer-consumer multi-output fusion.
 bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
 
-// Determines the fusion kind to be used when fusing `producer` and `consumer`.
+// Determines the fusion kind to be used when fusing into `consumer`.
 HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
                                             const HloInstruction& consumer);
 
@@ -168,28 +196,31 @@ absl::InlinedVector<const HloInstruction*, 2> GetOutputsOfFusible(
 size_t GetOutputSizeOfFusible(const HloInstruction& instr);
 
 // Returns instructions which are roots of the fusion, following the operands of
-// GTE instructions in the root tuple. Groups multiple subsequent instructions
-// with the same root. CHECKs that the fusion never outputs the same instruction
-// twice, as well as that there are no explicitly created tuples or nested gtes
-// in fusion output.
+// GTE instructions in the root tuple that extract from a tuple.
 //
-// For input: (tuple (gte R1) (gte R1) O2)
-// Expected output: [R1, O2]
+// For input: (tuple (gte tuple(R1)) (gte tuple(R1)) O2)
+// Expected output: [R1, R1, O2]
 //
 // For input: (tuple R1 R2 O2)
 // Expected output: [R1, R2, O2]
 //
-// For input: (tuple (gte R1) (gte R1) R2 O3)
-// Expected output: [R1, R2, O3]
+// For input: (tuple (gte tuple(R1)) R2 (gte tuple(R1)) O3)
+// Expected output: [R1, R2, R1, O3]
+//
+// For input: (tuple (gte R1) R2 (gte R1) O3)
+// Expected output: [R1, R2, R1, O3]
 //
 // For input: R1
 // Expected output: [R1]
 std::vector<const HloInstruction*> GetFusionRoots(
     const HloComputation& computation);
 
-// Whether the instruction is a reduction hero for the given root.
-bool IsRealReductionHero(const HloInstruction& root,
-                         const HloInstruction& hero);
+// Whether the instruction is a Triton Softmax fusion.
+bool IsTritonSoftmaxFusion(const HloInstruction& instr);
+
+// Whether the fusion will likely behave poorly with vectorization due to the
+// instructions it contains.
+bool MayPreventVectorization(const HloFusionAdaptor& fusion);
 
 }  // namespace gpu
 }  // namespace xla

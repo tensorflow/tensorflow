@@ -173,6 +173,24 @@ auto* checkpoint_size = monitoring::Counter<2>::New(
 
 }  // namespace
 
+// Counter that records how long it took to execute the checkpoint sharding
+// callback in microseconds.
+auto* sharding_callback_duration = monitoring::Counter<0>::New(
+    "/tensorflow/core/checkpoint/sharding/callback_duration",
+    "Sharding callback execution duration in microseconds.");
+
+// Counter that records how many checkpoint shard files were written during
+// saving.
+auto* num_checkpoint_shards_written = monitoring::Counter<0>::New(
+    "/tensorflow/core/checkpoint/sharding/num_checkpoint_shards_written",
+    "Number of checkpoint shard files written during saving.");
+
+// String gauge which describes the callback used to shard the checkpoint during
+// saving.
+auto* sharding_callback_description = monitoring::Gauge<std::string, 0>::New(
+    "/tensorflow/core/checkpoint/sharding/callback_description",
+    "Describes the callback used to shard the checkpoint during saving.");
+
 monitoring::CounterCell& SavedModelWriteCount(absl::string_view write_version) {
   return *saved_model_write_counter->GetCell(std::string(write_version));
 }
@@ -288,6 +306,18 @@ monitoring::CounterCell& CheckpointSize(absl::string_view api_label,
                                         int64_t filesize) {
   return *checkpoint_size->GetCell(std::string(api_label),
                                    std::to_string(filesize));
+}
+
+monitoring::CounterCell& ShardingCallbackDuration() {
+  return *sharding_callback_duration->GetCell();
+}
+
+monitoring::CounterCell& NumCheckpointShardsWritten() {
+  return *num_checkpoint_shards_written->GetCell();
+}
+
+monitoring::GaugeCell<std::string>& ShardingCallbackDescription() {
+  return *sharding_callback_description->GetCell();
 }
 
 }  // namespace metrics

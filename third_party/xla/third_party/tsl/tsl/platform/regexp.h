@@ -18,12 +18,10 @@ limitations under the License.
 
 #include "tsl/platform/platform.h"
 
-
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_PORTABLE_GOOGLE)
-#include "third_party/re2/re2.h"
+#if TSL_IS_IN_OSS
+#include "re2/re2.h"  // IWYU pragma: export
 #else
-#include "re2/re2.h"
-#endif
+#include "third_party/re2/re2.h"  // IWYU pragma: export
+#endif                            // TSL_IS_IN_OSS
 
 #endif  // TENSORFLOW_TSL_PLATFORM_REGEXP_H_

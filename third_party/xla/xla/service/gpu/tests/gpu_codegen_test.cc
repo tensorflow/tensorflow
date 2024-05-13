@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,16 @@ limitations under the License.
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 
 #include <memory>
+#include <string>
+#include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/verified_hlo_module.h"
@@ -52,7 +58,7 @@ void GpuCodegenTest::CompileAndOptionallyVerifyPtx(
   // executable, and hence the "ptx_str" will be empty. So disabling the
   // pattern check on the ROCm platform
   if (!is_built_with_rocm_) {
-    StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
+    absl::StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
     ASSERT_TRUE(filecheck_result.ok());
     EXPECT_TRUE(filecheck_result.value());
   }

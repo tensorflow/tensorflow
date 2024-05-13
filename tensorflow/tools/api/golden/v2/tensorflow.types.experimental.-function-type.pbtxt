@@ -27,16 +27,8 @@ tf_class {
     argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
-    name: "from_builtin"
-    argspec: "args=[\'cls\', \'func\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "from_callable"
     argspec: "args=[\'cls\', \'obj\', \'follow_wrapped\'], varargs=None, keywords=None, defaults=[\'True\'], "
-  }
-  member_method {
-    name: "from_function"
-    argspec: "args=[\'cls\', \'func\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "replace"

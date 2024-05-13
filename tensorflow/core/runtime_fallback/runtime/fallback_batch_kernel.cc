@@ -99,6 +99,8 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
                                &low_priority_allowed_batch_sizes_));
   OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_enqueued_batches",
                                &low_priority_max_enqueued_batches_));
+  OP_REQUIRES_OK(c,
+                 c->GetAttr("mixed_priority_policy", &mixed_priority_policy_));
 
   if (shared_name_.empty()) {
     // If shared_name is not supplied, use name instead (prevent collisions by
@@ -148,7 +150,7 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
 
 Status BatchFunctionFallbackKernelBase::ValidateAllowedBatchSizes() const {
   if (allowed_batch_sizes_.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   int32_t last_size = 0;
   for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
@@ -167,7 +169,7 @@ Status BatchFunctionFallbackKernelBase::ValidateAllowedBatchSizes() const {
 
     last_size = size;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void BatchFunctionFallbackKernelBase::SetAdaptiveBatchSchedulerOptions(

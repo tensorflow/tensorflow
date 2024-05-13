@@ -1,11 +1,11 @@
 load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "mkl_deps",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test_mkl",
     "tf_mkl_kernel_library",
-)
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "mkl_deps",
 )
 
 package(
@@ -99,6 +99,34 @@ tf_mkl_kernel_library(
     deps = [
         "//tensorflow/core:graph",
     ] + MKL_DEPS,
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_sparse_matrix_matmul_op",
+    srcs = [
+        "mkl_sparse_matrix_matmul_op.cc",
+    ],
+    hdrs = [
+        "mkl_kernel_util.h",
+        "mkl_matmul_ops_common.h",
+    ],
+    deps = [
+        "//tensorflow/core:graph",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dense_update_functor",
+        "//tensorflow/core/kernels/sparse:kernels",
+        "//tensorflow/core/kernels/sparse:sparse_matrix",
+    ] + MKL_DEPS,
+)
+
+tf_cc_test_mkl(
+    name = "mkl_sparse_matrix_matmul_op_benchmark",
+    size = "small",
+    srcs = ["mkl_sparse_matrix_matmul_op_benchmark.cc"],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/core/kernels/mkl:mkl_sparse_matrix_matmul_op",
+    ] + MKL_TEST_DEPS,
 )
 
 tf_cc_test_mkl(
@@ -323,6 +351,7 @@ tf_cc_test_mkl(
     linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_dequantize_op",
+        ":mkl_kernel_util",
         ":mkl_tfconv_op",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",
@@ -367,18 +396,9 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
-    name = "mkl_tmp_bf16_ops",
-    prefix = "mkl_tmp_bf16_ops",
+    name = "mkl_tmp_ops",
+    prefix = "mkl_tmp_ops",
     deps = MKL_DEPS,
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_deprecated_ops",
-    prefix = "mkl_deprecated_ops",
-    deps = [
-        "//tensorflow/core/graph:mkl_graph_util",
-        "//tensorflow/core/kernels:cwise_op",
-    ] + MKL_DEPS,
 )
 
 tf_mkl_kernel_library(

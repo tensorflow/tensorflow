@@ -31,10 +31,11 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/stream_executor/host/host_platform_id.h"
-#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace mlir {
 using tsl::Status;
@@ -136,7 +137,7 @@ static LogicalResult MlirToGraphTranslateFunction(ModuleOp module,
   }
 
   // Use Host platform, which should always exist, to make sure graphs compile.
-  auto platform = stream_executor::MultiPlatformManager::PlatformWithId(
+  auto platform = stream_executor::PlatformManager::PlatformWithId(
       stream_executor::host::kHostPlatformId);
   auto client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform.value());
@@ -152,7 +153,7 @@ static LogicalResult MlirToGraphTranslateFunction(ModuleOp module,
   // Print the graph to the output after going through GraphDef conversion.
   // The DumpGraphToFile would do this anyway so just skip straight to it.
   graph->ToGraphDef(graphdef.get());
-  output << graphdef->DebugString();
+  output << tsl::LegacyUnredactedDebugString(*graphdef);
 
   return success();
 }
@@ -167,19 +168,18 @@ static LogicalResult MlirToGraphdefTranslateFunction(
     ModuleOp module, llvm::raw_ostream& output) {
   if (!module) return failure();
 
-  // TODO(fengliuai): Add exporter flags.
   tensorflow::GraphExportConfig confs;
   confs.export_entry_func_to_flib = export_entry_func_to_flib;
   confs.export_original_tf_func_name = export_original_tf_func_name;
 
-  StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
+  absl::StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
       tensorflow::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {
     LOG(ERROR) << "Graph export failed: " << graphdef_or.status();
     return mlir::failure();
   }
 
-  output << graphdef_or.value()->DebugString();
+  output << tsl::LegacyUnredactedDebugString(*graphdef_or.value());
   return success();
 }
 

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +17,12 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "xla/test.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -33,7 +34,9 @@ TEST(ShapedBufferTest, ScopedShapeBufferAsShapedBufferB71629047) {
                           xla::PlatformUtil::GetDefaultPlatform());
   TF_ASSERT_OK_AND_ASSIGN(auto executors,
                           xla::PlatformUtil::GetStreamExecutors(platform));
-  xla::se::StreamExecutorMemoryAllocator allocator(platform, executors);
+  xla::se::StreamExecutorMemoryAllocator allocator(
+      platform, std::vector<se::StreamExecutorInterface*>{executors.begin(),
+                                                          executors.end()});
   const xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {});
   const int kDeviceOrdinal = 0;
   auto scoped_buffer = std::make_unique<xla::ScopedShapedBuffer>(
@@ -56,9 +59,9 @@ class TestAllocator : public se::DeviceMemoryAllocator {
   // Pull in two-arg overload of Allocate.
   using se::DeviceMemoryAllocator::Allocate;
 
-  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
-                                            bool /*retry_on_failure*/,
-                                            int64_t /*memory_space*/) override {
+  absl::StatusOr<se::OwningDeviceMemory> Allocate(
+      int device_ordinal, uint64_t size, bool /*retry_on_failure*/,
+      int64_t /*memory_space*/) override {
     // By contract, we must return null if size == 0.
     if (size == 0) {
       return se::OwningDeviceMemory();
@@ -86,7 +89,7 @@ class TestAllocator : public se::DeviceMemoryAllocator {
 
   bool AllowsAsynchronousDeallocation() const override { return false; }
 
-  StatusOr<se::Stream*> GetStream(int device_ordinal) override {
+  absl::StatusOr<se::Stream*> GetStream(int device_ordinal) override {
     LOG(FATAL) << "Not implemented";
   }
 

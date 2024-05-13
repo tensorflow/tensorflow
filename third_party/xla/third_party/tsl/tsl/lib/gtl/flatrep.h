@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "tsl/platform/prefetch.h"
+#include "absl/base/prefetch.h"
 #include "tsl/platform/types.h"
 
 namespace tsl {
@@ -214,8 +214,8 @@ class FlatRep {
     size_t index = (h >> 8) & mask_;  // Holds bucket num and index-in-bucket
     uint32 bi = index & (kWidth - 1);
     Bucket* b = &array_[index >> kBase];
-    port::prefetch<port::PREFETCH_HINT_T0>(&b->marker[bi]);
-    port::prefetch<port::PREFETCH_HINT_T0>(&b->storage.key[bi]);
+    absl::PrefetchToLocalCache(&b->marker[bi]);
+    absl::PrefetchToLocalCache(&b->storage.key[bi]);
   }
 
   inline void MaybeResize() {

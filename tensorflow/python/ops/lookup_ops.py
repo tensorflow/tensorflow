@@ -30,6 +30,8 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_lookup_ops
+# Ensure lookup gradients are registered
+from tensorflow.python.ops import lookup_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 # go/tf-wildcard-import
@@ -2458,23 +2460,3 @@ class DenseHashTable(LookupInterface):
           return gen_lookup_ops.lookup_table_import_v2(self.op.resource_handle,
                                                        restored_tensors[0],
                                                        restored_tensors[1])
-
-
-ops.NotDifferentiable("LookupTableFind")
-ops.NotDifferentiable("LookupTableFindV2")
-ops.NotDifferentiable("LookupTableInsert")
-ops.NotDifferentiable("LookupTableInsertV2")
-ops.NotDifferentiable("LookupTableSize")
-ops.NotDifferentiable("LookupTableSizeV2")
-ops.NotDifferentiable("HashTable")
-ops.NotDifferentiable("HashTableV2")
-ops.NotDifferentiable("InitializeTable")
-ops.NotDifferentiable("InitializeTableV2")
-ops.NotDifferentiable("InitializeTableFromTextFile")
-ops.NotDifferentiable("InitializeTableFromTextFileV2")
-ops.NotDifferentiable("MutableDenseHashTable")
-ops.NotDifferentiable("MutableDenseHashTableV2")
-ops.NotDifferentiable("MutableHashTable")
-ops.NotDifferentiable("MutableHashTableV2")
-ops.NotDifferentiable("MutableHashTableOfTensors")
-ops.NotDifferentiable("MutableHashTableOfTensorsV2")

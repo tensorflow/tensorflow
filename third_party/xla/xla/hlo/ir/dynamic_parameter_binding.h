@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_DYNAMIC_PARAMETER_BINDING_H_
 #define XLA_HLO_IR_DYNAMIC_PARAMETER_BINDING_H_
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <ostream>
@@ -23,9 +24,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "xla/service/hlo.pb.h"
-#include "xla/shape_tree.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 
 namespace xla {
 
@@ -41,10 +42,10 @@ class HloModule;
 // ready.
 class DynamicParameterBinding {
  public:
-  // DynamicParameter represents a special parameter that is used to represent
-  // the runtime size of a dimension of another parameter. A dynamic parameter
-  // has to be a scalar value.
-  struct DynamicParameter {
+  // DynamicSizeParameter represents a special parameter that is used to
+  // represent the runtime size of a dimension of another parameter. A dynamic
+  // size parameter has to be a scalar value.
+  struct DynamicSizeParameter {
     // The parameter number of dynamic parameter.
     int64_t parameter_num;
     // The index of the parameter.
@@ -52,8 +53,8 @@ class DynamicParameterBinding {
   };
 
   // DynamicDimension represents a dimension whose size is determined at
-  // runtime. A DynamicDimension's runtime size is determined by the binded
-  // DynamicParameter using `DynamicParameterBinding::Bind` method.
+  // runtime. A DynamicDimension's runtime size is determined by the bound
+  // DynamicSizeParameter using `DynamicParameterBinding::Bind` method.
   struct DynamicDimension {
     // The parameter number of dynamic dimension.
     int64_t parameter_num;
@@ -77,25 +78,21 @@ class DynamicParameterBinding {
     }
   };
 
-  DynamicParameterBinding() = default;
-
-  virtual ~DynamicParameterBinding() = default;
-
   // Adds binding which indicates that the dimension indicated by
   // `dynamic_dimension` is dynamic, and its runtime size is represented by
   // `dynamic_parameter`.
-  Status Bind(const DynamicParameter& dynamic_parameter,
+  Status Bind(const DynamicSizeParameter& dynamic_parameter,
               const DynamicDimension& dynamic_dimension);
 
   // Returns the parameter and the index representing the runtime size of
   // dimension `dim_num` of parameter `param_num` at `param_index`.
   //
   // Returns nullopt if the binding is not set.
-  std::optional<DynamicParameter> GetBinding(
+  std::optional<DynamicSizeParameter> GetBinding(
       const DynamicDimension& dynamic_dimension) const;
 
   using BindingFn =
-      std::function<Status(const DynamicParameter& dynamic_parameter,
+      std::function<Status(const DynamicSizeParameter& dynamic_parameter,
                            const DynamicDimension& dynamic_dimension)>;
 
   // Iterate through each binding.
@@ -103,16 +100,19 @@ class DynamicParameterBinding {
 
   std::string ToString() const;
 
-  // Verifies that the given binding is valid for the given module.
+  // Verifies that the given binding is valid for the given computation.
   // Specifically, the binding's parameter and parameter size should be valid.
-  Status Verify(const HloModule& module) const;
+  Status Verify(const HloComputation& computation) const;
+
+  // Returns true iff there are no bindings.
+  bool empty() const { return bindings_.empty(); }
 
  private:
   // Keeps track of mappings from DynamicDimension to DynamicParameter. The
   // direction of is chosen so that we can easily query if a dimension is
   // dynamic and which dynamic parameter represents the real size of that
   // dimension.
-  absl::flat_hash_map<DynamicDimension, DynamicParameter> bindings_;
+  absl::flat_hash_map<DynamicDimension, DynamicSizeParameter> bindings_;
 };
 
 std::ostream& operator<<(std::ostream& out,

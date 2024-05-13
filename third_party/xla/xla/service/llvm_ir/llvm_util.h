@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,13 +60,11 @@ std::string DumpToString(const llvm::Module* module);
 std::string DumpToString(const llvm::Type* type);
 std::string DumpToString(const llvm::Value* value);
 
-// This also works for mlir::Op<...> descendants, such as mlir::ModuleOp and
-// mlir::lmhlo::FusionOp.
+// This also works for mlir::Op<...> descendants, such as mlir::ModuleOp.
 //
 // For findability:
 //   std::string DumpToString(mlir::Op<...>& op);
 //   std::string DumpToString(mlir::ModuleOp& module_op);
-//   std::string DumpToString(mlir::lmhlo::FusionOp& fusion_op);
 //
 // The `operation` parameter is not const, because the used print() method is
 // not const.
@@ -143,9 +141,8 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module);
 
 // Returns a value that represents a pointer to a global string constant that
 // encodes the shape as a serialized protobuf.
-StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
-                                                         int32_t* shape_size,
-                                                         llvm::IRBuilder<>* b);
+absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
+    const Shape& shape, int32_t* shape_size, llvm::IRBuilder<>* b);
 
 // Converts a given literal to an IR Constant. Literals have known constant
 // values at IR emission time.
@@ -156,6 +153,33 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
 llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
                                                llvm::Type* tile_type,
                                                absl::string_view name);
+
+// Utility class for working with shared memory.
+class SharedMemoryTile {
+ public:
+  SharedMemoryTile() = default;
+  explicit SharedMemoryTile(llvm::GlobalVariable* base_ptr,
+                            llvm::Type* element_type)
+      : base_ptr_(base_ptr), element_type_(element_type) {}
+
+  llvm::Value* Address(absl::Span<llvm::Value* const> index,
+                       llvm::IRBuilder<>* b) const;
+  llvm::Value* Load(absl::Span<llvm::Value* const> index,
+                    llvm::IRBuilder<>* b) const;
+  llvm::StoreInst* Store(llvm::Value* value,
+                         absl::Span<llvm::Value* const> index,
+                         llvm::IRBuilder<>* b) const;
+  llvm::Type* GetElementType() const { return element_type_; }
+
+ private:
+  llvm::GlobalVariable* base_ptr_;
+  llvm::Type* element_type_;
+};
+
+SharedMemoryTile AllocateSharedMemoryTile(
+    llvm::Module* module, llvm::Type* element_type,
+    absl::Span<int64_t const> dimensions_major_to_minor,
+    absl::string_view buffer_name);
 
 // Inserts an allocate of the requested type at the entry point of the
 // function that the builder is currently building. The insert point
@@ -246,7 +270,8 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
 
 // Tells LLVM `inst >= lower && inst < upper`. Returns `inst` for convenience.
 llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
-                                    llvm::Instruction* inst);
+                                    llvm::Instruction* inst,
+                                    llvm::Module* module);
 
 void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);
 

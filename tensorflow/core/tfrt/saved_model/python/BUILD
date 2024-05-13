@@ -34,25 +34,6 @@ package_group(
 # )
 # copybara:uncomment_end
 
-tf_python_pybind_extension(
-    name = "_pywrap_saved_model_aot_compile",
-    srcs = ["saved_model_aot_compile_wrapper.cc"],
-    enable_stub_generation = True,
-    module_name = "_pywrap_saved_model_aot_compile",
-    pytype_srcs = [
-        "_pywrap_saved_model_aot_compile.pyi",
-    ],
-    deps = [
-        "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
-        "//tensorflow/core/tfrt/runtime",
-        "//tensorflow/core/tfrt/saved_model:saved_model_aot_compile",
-        "//tensorflow/python/lib/core:pybind11_lib",
-        "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
-        "@pybind11_abseil//pybind11_abseil:status_casters",
-    ],
-)
-
 cc_library(
     name = "saved_model_load_and_run",
     srcs = ["saved_model_load_and_run.cc"],

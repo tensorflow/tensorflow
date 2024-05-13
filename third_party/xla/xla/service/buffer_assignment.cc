@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -39,7 +40,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
 #include "xla/service/buffer_value_containers.h"
-#include "xla/service/heap_simulator.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
@@ -73,7 +74,7 @@ absl::flat_hash_map<int64_t, const HloInstruction*> BuildIdToHloInstructionMap(
   return id_to_hlo_instruction;
 }
 
-StatusOr<absl::flat_hash_map<int64_t, const HloValue*>>
+absl::StatusOr<absl::flat_hash_map<int64_t, const HloValue*>>
 BuildIdToLogicalBufferMap(
     const BufferAssignmentProto& proto,
     const absl::flat_hash_map<int64_t, const HloInstruction*>&
@@ -204,7 +205,7 @@ Status GatherComputationsByAllocationType(
                                               true));  // Thread local.
             break;
           default:
-            return InternalError("Unexpected calling opcode: %s",
+            return Internal("Unexpected calling opcode: %s",
                                  HloOpcodeString(instruction->opcode()));
         }
       }
@@ -469,7 +470,7 @@ bool BufferAssignment::HasTopLevelAllocation(
   return HasAllocationAt(instruction, /*index=*/{});
 }
 
-StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
+absl::StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
     const HloInstruction* instruction, const ShapeIndex& index) const {
   VLOG(3) << "Trying to find unique slice for " << instruction->name() << " ["
           << index << "]";
@@ -501,7 +502,8 @@ StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
   return result;
 }
 
-StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueTopLevelSlice(
+absl::StatusOr<BufferAllocation::Slice>
+BufferAssignment::GetUniqueTopLevelSlice(
     const HloInstruction* instruction) const {
   return GetUniqueSlice(instruction, /*index=*/{});
 }
@@ -522,7 +524,8 @@ bool BufferAssignment::HaveDisjointSlices(const HloInstruction* hlo_a,
     SliceSet slices;
     Status status = ShapeUtil::ForEachSubshapeWithStatus(
         instr->shape(),
-        [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+        [&](const Shape& /*subshape*/,
+            const ShapeIndex& index) -> absl::Status {
           auto shape_slices = GetAllSlices(instr, index);
           if (shape_slices.empty()) {
             return InvalidArgument("No slices assigned to part of instr.");
@@ -547,7 +550,7 @@ bool BufferAssignment::HaveDisjointSlices(const HloInstruction* hlo_a,
          });
 }
 
-StatusOr<BufferAllocation::Slice>
+absl::StatusOr<BufferAllocation::Slice>
 BufferAssignment::GetUniqueTopLevelOutputSlice() const {
   return GetUniqueTopLevelSlice(
       module_->entry_computation()->root_instruction());
@@ -707,8 +710,14 @@ void BufferAssignment::CombineTempAllocations(
   for (size_t index = 0; index < allocations_.size(); ++index) {
     BufferAllocation* allocation = &allocations_[index];
     allocation->set_index(index);
+    std::vector<const HloValue*> sorted_values;
+    sorted_values.reserve(allocation->assigned_buffers_.size());
     for (const auto& buffer_offset_size : allocation->assigned_buffers_) {
       const HloValue* value = buffer_offset_size.first;
+      sorted_values.emplace(sorted_values.end(), value);
+    }
+    absl::c_sort(sorted_values, &CompareHloValuesById);
+    for (const HloValue* value : sorted_values) {
       allocation_index_for_value_[value] = index;
     }
   }
@@ -988,7 +997,7 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
 }
 
 /* static */
-StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
+absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     const BufferAssignmentProto& proto, const HloModule* module,
     BufferValue::SizeFunction buffer_size,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer) {
@@ -1015,11 +1024,21 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
   // Process each buffer allocation entry in the proto to create a new
   // allocation.
   for (const auto& alloc_proto : proto.buffer_allocations()) {
-    auto* allocation = buffer_assignment->NewEmptyAllocation(
+    BufferAllocation* allocation = buffer_assignment->NewEmptyAllocation(
         alloc_proto.size(), alloc_proto.color());
+
+    // We don't copy allocation index as it gets automatically assigned.
     CHECK(allocation->index() == alloc_proto.index())
         << "Expected allocations in BufferAssignment proto to be sorted by "
            "index.";
+
+    // Set allocation properties for a newly constructed BufferAllocation.
+    allocation->set_is_thread_local(alloc_proto.is_thread_local());
+    allocation->set_is_tuple(alloc_proto.is_tuple());
+    allocation->set_constant(alloc_proto.is_constant());
+
+    // If allocation corresponds to an entry computation parameter, copy
+    // parameter properties to a BufferAllocation.
     if (alloc_proto.is_entry_computation_parameter()) {
       std::vector<int64_t> shape_idx_vals;
       absl::c_copy(alloc_proto.parameter_shape_index(),
@@ -1037,6 +1056,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
       buffer_assignment->AddAssignment(allocation, *buffer_val,
                                        assignee.offset(), assignee.size());
     }
+
+    // We don't set `maybe_live_out` as it is inferred automatically by
+    // buffer assignment when we call `AddAssignment` above.
     CHECK_EQ(allocation->maybe_live_out(), alloc_proto.maybe_live_out())
         << "Dataflow analysis differs from proto.";
   }
@@ -1052,7 +1074,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
 }
 
 /* static */
-StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
+absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
@@ -1189,7 +1211,7 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
       for (const auto& buffer_offset_size : allocation->assigned_buffers()) {
         const HloValue* value = buffer_offset_size.first;
         if ((*must_not_live_out_)(value->instruction(), value->index())) {
-          VLOG(4) << "Can't assign: " << buffer_offset_size.first->instruction()
+          VLOG(4) << "Can't assign: " << value->instruction()
                   << " cannot live out of the module";
           return false;
         }
@@ -1650,8 +1672,14 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
                                    buffers_to_assign.end());
     }
     auto color_map = SplitBuffersByColor(all_buffers_to_assign);
+    std::vector<LogicalBuffer::Color> sorted_colors;
+    sorted_colors.reserve(color_map.size());
     for (auto& single_colored_set : color_map) {
       auto color = single_colored_set.first;
+      sorted_colors.emplace(sorted_colors.end(), color);
+    }
+    absl::c_sort(sorted_colors);
+    for (auto color : sorted_colors) {
       VLOG(2) << "Simulating heap for color " << color;
       int64_t alignment = assignment->color_alignment_(color);
       HeapSimulator::Options options;
@@ -1666,7 +1694,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         // whole-module heap simulation. Performing heap simulation from the
         // private stack computation allows better temporal reuse of buffers.
         auto computation_map = SplitBuffersByPrivateStackComputation(
-            single_colored_set.second, private_stacks_it->second,
+            color_map[color], private_stacks_it->second,
             assignment->alias_analysis().dataflow_analysis().call_graph());
         for (const HloComputation* private_stack_computation :
              private_stacks_it->second) {
@@ -1684,19 +1712,19 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
                   get_heap_algorithm(alignment), *private_stack_computation,
                   *instruction_sequence, assignment->alias_analysis(),
                   assignment->buffer_size_, &schedule, options));
-          AssignBuffersFromHeapSimulator(
-              result, assignment, single_colored_set.first, isolation_options);
+          AssignBuffersFromHeapSimulator(result, assignment, color,
+                                         isolation_options);
         }
       } else {
-        options.buffers_to_assign = &single_colored_set.second;
+        options.buffers_to_assign = &color_map[color];
         TF_ASSIGN_OR_RETURN(
             HeapSimulator::Result<HloValue> result,
             HeapSimulator::Run(get_heap_algorithm(alignment),
                                assignment->module(), schedule,
                                assignment->alias_analysis(),
                                assignment->buffer_size_, options));
-        AssignBuffersFromHeapSimulator(
-            result, assignment, single_colored_set.first, isolation_options);
+        AssignBuffersFromHeapSimulator(result, assignment, color,
+                                       isolation_options);
       }
     }
   } else {
@@ -1711,20 +1739,26 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
           hlo_ordering.SequentialOrder(*computation);
       CHECK(instruction_sequence != nullptr) << computation->name();
       auto color_map = SplitBuffersByColor(buffers_to_assign);
+      std::vector<LogicalBuffer::Color> sorted_colors;
+      sorted_colors.reserve(color_map.size());
       for (auto& single_colored_set : color_map) {
         auto color = single_colored_set.first;
+        sorted_colors.emplace(sorted_colors.end(), color);
+      }
+      absl::c_sort(sorted_colors);
+      for (auto color : sorted_colors) {
         VLOG(2) << "Simulating heap for color " << color;
         int64_t alignment = assignment->color_alignment_(color);
         HeapSimulator::Options options;
-        options.buffers_to_assign = &single_colored_set.second;
+        options.buffers_to_assign = &color_map[color];
         TF_ASSIGN_OR_RETURN(
             HeapSimulator::Result<HloValue> result,
             HeapSimulator::Run(get_heap_algorithm(alignment), *computation,
                                *instruction_sequence,
                                assignment->alias_analysis(),
                                assignment->buffer_size_, options));
-        AssignBuffersFromHeapSimulator(
-            result, assignment, single_colored_set.first, isolation_options);
+        AssignBuffersFromHeapSimulator(result, assignment, color,
+                                       isolation_options);
       }
     }
   }
@@ -1951,7 +1985,8 @@ void BufferAssigner::AssignBuffersFromHeapSimulator(
   }
 }
 
-StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
+absl::StatusOr<std::unique_ptr<BufferAssignment>>
+BufferAssigner::CreateAssignment(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,

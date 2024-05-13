@@ -43,10 +43,12 @@ func.func @no_devices() {
   func.return
 }
 
-// CHECK: "tf.opA"
+// CHECK: "tf_device.launch"
 // CHECK: device = "CORE_0"
 // CHECK: "tf.opA"
+// CHECK: "tf_device.launch"
 // CHECK: device = "CORE_0"
+// CHECK: "tf.opA"
 
 
 // Tests devices are not remapped if device is not in replicate devices.
@@ -68,10 +70,12 @@ func.func @no_override_device() {
   func.return
 }
 
-// CHECK: "tf.opA"
+// CHECK: "tf_device.launch"
 // CHECK: device = "/TPU:2"
 // CHECK: "tf.opA"
+// CHECK: "tf_device.launch"
 // CHECK: device = "/TPU:2"
+// CHECK: "tf.opA"
 
 
 // Tests devices are remapped if device is in replicate devices.
@@ -93,10 +97,12 @@ func.func @remap_device() {
   func.return
 }
 
-// CHECK: "tf.opA"
+// CHECK: "tf_device.launch"
 // CHECK: device = "/CPU:0"
 // CHECK: "tf.opA"
+// CHECK: "tf_device.launch"
 // CHECK: device = "/GPU:1"
+// CHECK: "tf.opA"
 
 
 // Tests replicate with control dependency output has each expanded replica

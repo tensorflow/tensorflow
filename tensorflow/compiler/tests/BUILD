@@ -1,12 +1,12 @@
-load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites", "tf_xla_py_strict_test")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites", "tf_xla_py_strict_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 
 package(
@@ -259,6 +259,7 @@ tf_xla_py_strict_test(
         "cpu",
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     python_version = "PY3",
     shard_count = 2,
@@ -681,6 +682,7 @@ tf_xla_py_strict_test(
         "cpu",
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     python_version = "PY3",
     tags = [
@@ -860,7 +862,7 @@ tf_xla_py_strict_test(
     srcs = ["ftrl_test.py"],
     enable_mlir_bridge = False,
     python_version = "PY3",
-    shard_count = 16,
+    shard_count = 8,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -891,8 +893,8 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:training_ops_gen",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/training:training_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -927,6 +929,7 @@ tf_xla_py_strict_test(
         "cpu",
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     python_version = "PY3",
     shard_count = 10,
@@ -1017,6 +1020,7 @@ tf_xla_py_strict_test(
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
+        "no_aarch64",  # TODO(b/315533266)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
@@ -1239,7 +1243,7 @@ tf_xla_py_strict_test(
     ],
     enable_mlir_bridge = True,
     python_version = "PY3",
-    shard_count = 5,
+    shard_count = 1,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
@@ -1438,7 +1442,7 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
@@ -1518,19 +1522,19 @@ tf_xla_py_strict_test(
     disabled_backends = [
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 10,
     tags = [
-        "no_oss",  # b/170479349
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "notap",  # b/170479349
         "optonly",
     ],
     deps = [
         ":xla_test",
         "//tensorflow/python/client",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:dtypes",
@@ -1556,6 +1560,7 @@ tf_xla_py_strict_test(
     disabled_backends = [
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     enable_mlir_bridge = True,
     python_version = "PY3",
@@ -1566,7 +1571,7 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:dtypes",
@@ -1593,6 +1598,7 @@ tf_xla_py_strict_test(
     disabled_backends = [
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     # TODO(b/232442915): Enable MLIR.
     enable_mlir_bridge = False,
@@ -1690,7 +1696,7 @@ tf_xla_py_strict_test(
     srcs = ["ternary_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
-    shard_count = 16,
+    shard_count = 8,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -1714,7 +1720,7 @@ tf_xla_py_strict_test(
     srcs = ["unary_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
-    shard_count = 50,
+    shard_count = 20,
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1763,6 +1769,7 @@ tf_xla_py_strict_test(
 tf_xla_py_strict_test(
     name = "variable_ops_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["variable_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
@@ -2056,7 +2063,7 @@ cuda_py_strict_test(
     name = "async_comp_test",
     size = "medium",
     srcs = ["async_comp_test.py"],
-    shard_count = 5,
+    shard_count = 1,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -2161,9 +2168,9 @@ tf_cuda_cc_test(
     shard_count = 20,
     tags = [
         "config-cuda-only",
-        "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",  # ROCmSoftwarePlatform #958
+        "noasan",  # TODO(b/201651800)
         "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
@@ -2182,9 +2189,9 @@ tf_cuda_cc_test(
     shard_count = 20,
     tags = [
         "config-cuda-only",
-        "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",  # ROCmSoftwarePlatform #958
+        "noasan",  # TODO(b/201651800)
         "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
@@ -2345,6 +2352,7 @@ tf_xla_py_strict_test(
     disabled_backends = [
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     enable_mlir_bridge = True,
     python_version = "PY3",
@@ -2379,6 +2387,7 @@ tf_xla_py_strict_test(
     disabled_backends = [
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     enable_mlir_bridge = False,
     python_version = "PY3",
@@ -2532,7 +2541,7 @@ tf_xla_py_strict_test(
     size = "medium",
     srcs = ["repeat_op_test.py"],
     enable_mlir_bridge = True,
-    shard_count = 5,
+    shard_count = 1,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
@@ -2555,7 +2564,7 @@ tf_xla_py_strict_test(
         "cpu_ondemand",
     ],
     enable_mlir_bridge = False,
-    shard_count = 5,
+    shard_count = 1,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
@@ -2606,6 +2615,7 @@ tf_xla_py_strict_test(
         "cpu",
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     tags = [
         "no_pip",
@@ -2634,6 +2644,7 @@ tf_xla_py_strict_test(
         "cpu_ondemand",
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     enable_mlir_bridge = False,
     main = "where_op_test.py",
@@ -2720,6 +2731,7 @@ tf_xla_py_strict_test(
         "cpu_ondemand",
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     enable_mlir_bridge = False,
     python_version = "PY3",
@@ -2788,6 +2800,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -2820,6 +2833,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -2851,6 +2865,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -2860,7 +2875,7 @@ tf_xla_py_strict_test(
     srcs = ["bincount_op_test.py"],
     enable_mlir_bridge = False,
     python_version = "PY3",
-    shard_count = 10,
+    shard_count = 1,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -2881,6 +2896,7 @@ tf_xla_py_strict_test(
         "cpu",
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     python_version = "PY3",
     tags = [
@@ -2916,3 +2932,42 @@ tpu_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
     ],
 )
+
+tf_xla_py_strict_test(
+    name = "xla_dump_to_test",
+    size = "medium",
+    srcs = ["xla_dump_to_test.py"],
+    enable_mlir_bridge = True,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+    ],
+)
+
+# copybara:uncomment_begin(google-only)
+# tf_xla_py_strict_test(
+#     name = "xla_dump_to_sponge_test",
+#     size = "medium",
+#     srcs = ["xla_dump_to_sponge_test.py"],
+#     enable_mlir_bridge = True,
+#     python_version = "PY3",
+#     tags = [
+#         "optonly",
+#     ],
+#     deps = [
+#         ":xla_test",
+#         "//third_party/py/numpy",
+#         "//tensorflow/python/ops:array_ops",
+#         "//tensorflow/python/ops:math_ops",
+#         "//tensorflow/python/platform:test",
+#     ],
+# )
+# copybara:uncomment_end

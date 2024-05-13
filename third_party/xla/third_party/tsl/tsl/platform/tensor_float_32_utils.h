@@ -18,6 +18,8 @@ limitations under the License.
 
 namespace tsl {
 
+// NOTE: The usage of this function is only supported through the Tensorflow
+// framework.
 void enable_tensor_float_32_execution(bool enabled);
 
 bool tensor_float_32_execution_enabled();

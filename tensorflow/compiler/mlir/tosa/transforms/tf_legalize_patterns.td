@@ -32,6 +32,7 @@ def : Pat<(TF_AbsOp $arg), (Tosa_AbsOp $arg)>;
 def : Pat<(TF_CeilOp $arg), (Tosa_CeilOp $arg)>;
 def : Pat<(TF_FloorOp $arg), (Tosa_FloorOp $arg)>;
 def : Pat<(TF_ExpOp $arg), (Tosa_ExpOp $arg)>;
+def : Pat<(TF_ErfOp $arg), (Tosa_ErfOp $arg)>;
 def : Pat<(TF_LogOp $arg), (Tosa_LogOp $arg)>;
 def : Pat<(TF_ReciprocalOp $arg), (Tosa_ReciprocalOp $arg)>;
 def : Pat<(TF_RsqrtOp $arg), (Tosa_RsqrtOp $arg)>;

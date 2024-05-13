@@ -1,5 +1,5 @@
 diff --git a/dgif_lib.c b/dgif_lib.c
-index 82fc097..c6700a9 100644
+index 82fc097..214a0e7 100644
 --- a/dgif_lib.c
 +++ b/dgif_lib.c
 @@ -810,7 +810,8 @@ DGifSetupDecompress(GifFileType *GifFile)
@@ -12,7 +12,7 @@ index 82fc097..c6700a9 100644
      }
      BitsPerPixel = CodeSize;
  
-@@ -1118,6 +1119,28 @@ DGifBufferedInput(GifFileType *GifFile, GifByteType *Buf, GifByteType *NextByte)
+@@ -1118,6 +1119,31 @@ DGifBufferedInput(GifFileType *GifFile, GifByteType *Buf, GifByteType *NextByte)
      return GIF_OK;
  }
  
@@ -29,6 +29,9 @@ index 82fc097..c6700a9 100644
 +    if (GifFile->SavedImages[GifFile->ImageCount].RasterBits != NULL) {
 +        free(GifFile->SavedImages[GifFile->ImageCount].RasterBits);
 +    }
++    if (GifFile->SavedImages[GifFile->ImageCount].ImageDesc.ColorMap != NULL) {
++        GifFreeMapObject(GifFile->SavedImages[GifFile->ImageCount].ImageDesc.ColorMap);
++    }
 +    
 +    // Realloc array according to the new image counter.
 +    SavedImage *correct_saved_images = (SavedImage *)reallocarray(
@@ -41,7 +44,7 @@ index 82fc097..c6700a9 100644
  /******************************************************************************
   This routine reads an entire GIF into core, hanging all its state info off
   the GifFileType pointer.  Call DGifOpenFileName() or DGifOpenFileHandle()
-@@ -1148,17 +1171,20 @@ DGifSlurp(GifFileType *GifFile)
+@@ -1148,17 +1174,20 @@ DGifSlurp(GifFileType *GifFile)
                /* Allocate memory for the image */
                if (sp->ImageDesc.Width <= 0 || sp->ImageDesc.Height <= 0 ||
                        sp->ImageDesc.Width > (INT_MAX / sp->ImageDesc.Height)) {
@@ -62,7 +65,7 @@ index 82fc097..c6700a9 100644
                    return GIF_ERROR;
                }
  
-@@ -1177,13 +1203,17 @@ DGifSlurp(GifFileType *GifFile)
+@@ -1177,13 +1206,17 @@ DGifSlurp(GifFileType *GifFile)
  			   j += InterlacedJumps[i]) {
  			  if (DGifGetLine(GifFile, 
  					  sp->RasterBits+j*sp->ImageDesc.Width, 

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_UTILS_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_UTILS_H_
 
-#include "xla/service/heap_simulator.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -27,11 +27,12 @@ class MemorySpaceAssignmentUtils {
   // Returns true if this buffer is allowed to be placed in the alternate
   // memory.
   static bool IsIntervalAllowedInAlternateMemory(
-      const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval&
-          interval);
+      const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
+      int64_t alternate_memory_space);
 
   // Returns true if the HloValue is allowed to be placed in alternate memory.
-  static bool IsValueAllowedInAlternateMemory(const HloValue* value);
+  static bool IsValueAllowedInAlternateMemory(const HloValue* value,
+                                              int64_t alternate_memory_space);
 };
 
 }  // namespace memory_space_assignment

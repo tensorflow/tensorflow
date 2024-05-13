@@ -22,12 +22,12 @@ func.func @lower_all_reduce_gpu_mesh(%arg0: tensor<i32>,
   // CHECK:      "tf_device.cluster"
   // CHECK:       %[[DEVICE_ID_RESHAPE:.*]] = "tf.Reshape"(%arg0
   // CHECK:       %[[RELATIVE_DEVICE_ID:.*]] = "tf.Sub"(%[[DEVICE_ID_RESHAPE]]
-  // CHECK-DAG:   %[[CONST_1:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>}
-  // CHECK-DAG:   %[[DEVICE_ID_TO_GROUP_KEY:.*]] = "tf.Const"() {value = dense<[[[GROUP_KEYS:.*]]]> : tensor<8xi32>}
+  // CHECK-DAG:   %[[CONST_1:.*]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}>
+  // CHECK-DAG:   %[[DEVICE_ID_TO_GROUP_KEY:.*]] = "tf.Const"() <{value = dense<[[[GROUP_KEYS:.*]]]> : tensor<8xi32>}>
   // CHECK:       %[[GROUP_KEY_SLICE:.*]] = "tf.Slice"(%[[DEVICE_ID_TO_GROUP_KEY]], %[[RELATIVE_DEVICE_ID]], %[[CONST_1]]
   // CHECK:       %[[GROUP_KEY_RESHAPE:.*]] = "tf.Reshape"(%[[GROUP_KEY_SLICE]]
-  // CHECK-DAG:   %[[INSTANCE_KEY:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} 
-  // CHECK-DAG:   %[[GROUP_SIZE:.*]] = "tf.Const"() {value = dense<2> : tensor<i32>}
+  // CHECK-DAG:   %[[INSTANCE_KEY:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG:   %[[GROUP_SIZE:.*]] = "tf.Const"() <{value = dense<2> : tensor<i32>}>
   // CHECK:       %[[REDUCE_OUT:.*]] = "tf.CollectiveReduceV2"(%arg1, %[[GROUP_SIZE]], %[[GROUP_KEY_RESHAPE]], %[[INSTANCE_KEY]])
   // CHECK-SAME:  final_op = "Id"
   // CHECK-SAME:  merge_op = "Add"

@@ -1,7 +1,7 @@
 # DTensor Python API and libraries.
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 default_visibility = [
@@ -97,6 +97,25 @@ pytype_strict_library(
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
+    ],
+)
+
+pytype_strict_library(
+    name = "d_random",
+    srcs = ["d_random.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":api",
+        ":layout",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:math_ops_gen",
+        "//tensorflow/python/ops:shape_util",
+        "//tensorflow/python/ops:stateless_random_ops_gen",
     ],
 )
 

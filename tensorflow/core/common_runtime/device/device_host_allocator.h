@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_HOST_ALLOCATOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_HOST_ALLOCATOR_H_
 
-#include "xla/stream_executor/device_host_allocator.h"
+#include "xla/stream_executor/integrations/device_host_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor.h"

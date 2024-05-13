@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   b.set_shared_memory_per_core(64 * 1024);
   b.set_threads_per_core_limit(2048);
   b.set_core_count(104);
-  b.set_fpus_per_core(0);
+  b.set_fpus_per_core(128);
   b.set_block_dim_limit_x(2'147'483'647);
   b.set_block_dim_limit_y(2'147'483'647);
   b.set_block_dim_limit_z(2'147'483'647);

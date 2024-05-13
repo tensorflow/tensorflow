@@ -1,17 +1,17 @@
 """Build rules for XLA testing."""
 
+load(
+    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 load("//xla:xla.bzl", "xla_cc_test")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
 load("//xla/tests:plugin.bzl", "plugins")
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
-)
 
-all_backends = ["cpu", "gpu"] + plugins.keys()
+all_backends = ["cpu", "gpu"] + list(plugins.keys())
 
 def xla_test(
         name,
@@ -144,7 +144,16 @@ def xla_test(
 
         test_names.append(test_name)
 
-    native.test_suite(name = name, tags = tags, tests = test_names)
+    # Notably, a test_suite with `tests = []` is not empty:
+    # https://bazel.build/reference/be/general#test_suite_args and the default
+    # `tests = []` behavior doesn't respect `--build_tag_filters` due to
+    # b/317293391. For this reason, if we would create an empty `test_suite`,
+    # instead create a `cc_test` with no srcs that links against `main` to have
+    # more predictable behavior that avoids bugs.
+    if test_names:
+        native.test_suite(name = name, tags = tags, tests = test_names)
+    else:
+        native.cc_test(name = name, deps = ["@local_tsl//tsl/platform:test_main"])
 
 def xla_test_library(
         name,

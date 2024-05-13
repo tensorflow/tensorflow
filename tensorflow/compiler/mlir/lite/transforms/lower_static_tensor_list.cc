@@ -1057,8 +1057,8 @@ struct ConvertReturn : public OpConversionPattern<func::ReturnOp> {
   LogicalResult matchAndRewrite(
       func::ReturnOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    rewriter.updateRootInPlace(op,
-                               [&] { op->setOperands(adaptor.getOperands()); });
+    rewriter.modifyOpInPlace(op,
+                             [&] { op->setOperands(adaptor.getOperands()); });
     return success();
   }
 };
@@ -1069,8 +1069,8 @@ struct ConvertYield : public OpConversionPattern<TF::YieldOp> {
   LogicalResult matchAndRewrite(
       TF::YieldOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    rewriter.updateRootInPlace(op,
-                               [&] { op->setOperands(adaptor.getOperands()); });
+    rewriter.modifyOpInPlace(op,
+                             [&] { op->setOperands(adaptor.getOperands()); });
     return success();
   }
 };
@@ -1212,7 +1212,7 @@ void UpdateFunctionAndRegionType(ConversionPatternRewriter &rewriter,
   // Change `func`'s argument type to `unranked_argument_types`. If its
   // return types contain a `DT_VARIANT`, change it to the unranked type
   // derived from the corresponding argument.
-  rewriter.updateRootInPlace(func, [&] {
+  rewriter.modifyOpInPlace(func, [&] {
     func.setType(FunctionType::get(func.getContext(), updated_argument_types,
                                    updated_result_types));
   });

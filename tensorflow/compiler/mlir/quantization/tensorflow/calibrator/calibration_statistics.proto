@@ -37,10 +37,15 @@ message CalibrationStatistics {
     // hist_freq[i] saves frequency of range [bins[i], bins[i + 1]).
     // bins[i]     = lower_bound + bin_width * i
     // bins[i + 1] = lower_bound + bin_width * (i + 1)
-    repeated int64 hist_freq = 3;
+    repeated float hist_freq = 3;
   }
 
   MinMaxStatistics min_max_statistics = 1;
   AverageMinMaxStatistics average_min_max_statistics = 2;
   HistogramStatistics histogram_statistics = 3;
+}
+
+message CalibrationStatisticsMap {
+  // A map from the id of CustomAggregator op to its collected statistics.
+  map<string, CalibrationStatistics> statistics = 1;
 }

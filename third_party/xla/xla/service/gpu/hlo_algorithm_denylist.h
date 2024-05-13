@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,15 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_HLO_ALGORITHM_DENYLIST_H_
 #define XLA_SERVICE_GPU_HLO_ALGORITHM_DENYLIST_H_
 
+#include <string>
 #include <vector>
 
 #include "xla/autotuning.pb.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
 
-absl::Span<const stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
+std::vector<stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
     ComputeCapability cc, CudnnVersion cudnn_version,
     const std::string& blas_version, const std::string& hlo);
 

@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_C_TF_STATUS_H_
 
 #include "tensorflow/c/c_api_macros.h"
-#include "tsl/c/tsl_status.h"
+#include "xla/tsl/c/tsl_status.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,6 +29,7 @@ typedef struct TSL_Status TF_Status;
 // TF_Code holds an error code.  The enum values here are identical to
 // corresponding values in error_codes.proto.
 typedef TSL_Code TF_Code;
+// LINT.IfChange
 #define TF_OK TSL_OK
 #define TF_CANCELLED TSL_CANCELLED
 #define TF_UNKNOWN TSL_UNKNOWN
@@ -46,6 +47,7 @@ typedef TSL_Code TF_Code;
 #define TF_INTERNAL TSL_INTERNAL
 #define TF_UNAVAILABLE TSL_UNAVAILABLE
 #define TF_DATA_LOSS TSL_DATA_LOSS
+// LINT.ThenChange(//tensorflow/python/py_exception_registry_wrapper.cc)
 
 // --------------------------------------------------------------------------
 

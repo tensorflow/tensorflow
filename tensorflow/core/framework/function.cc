@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -1245,7 +1246,7 @@ void FunctionRecord::finalize() {
   }
 }
 
-StatusOr<FunctionDef*> FunctionRecord::mutable_fdef() {
+absl::StatusOr<FunctionDef*> FunctionRecord::mutable_fdef() {
   if (finalized_) {
     return Status(absl::StatusCode::kPermissionDenied,
                   "Can not mutate FunctionDef after finalization.");
@@ -1276,26 +1277,25 @@ FunctionLibraryDefinition::FunctionLibraryDefinition(
     key_value_pair.second->Ref();
   }
   func_grad_ = other.func_grad_;
-  optimized_function_graph_map_ = other.optimized_function_graph_map_;
+  optimized_function_graph_creator_map_ =
+      other.optimized_function_graph_creator_map_;
 }
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const OpRegistryInterface* default_registry,
-    const FunctionDefLibrary& def_lib)
-    : default_registry_(default_registry), records_(def_lib.function_size()) {
-  for (const auto& fdef : def_lib.function()) {
-    // The latter function definition wins.
-    auto iter = records_.find(fdef.signature().name());
-    if (iter != records_.end()) {
-      iter->second->Unref();
-      records_.erase(iter);
-    }
-    records_.insert(
-        {fdef.signature().name(), new FunctionRecord(fdef, {}, true)});
-  }
-  for (const auto& grad : def_lib.gradient()) {
-    func_grad_[grad.function_name()] = grad.gradient_func();
-  }
+    const FunctionDefLibrary& lib_def,
+    const FunctionDefLibraryStackTraces& library_traces)
+    : default_registry_(default_registry), records_(lib_def.function_size()) {
+  Initialize(lib_def, library_traces);
+}
+
+FunctionLibraryDefinition::FunctionLibraryDefinition(
+    const OpRegistryInterface* default_registry, const GraphDef& graph_def)
+    : default_registry_(default_registry) {
+  const FunctionDefLibrary& library = graph_def.library();
+  FunctionDefLibraryStackTraces library_traces =
+      CreateStackTracesForFunctionDefLibrary(library, graph_def.debug_info());
+  Initialize(library, library_traces);
 }
 
 FunctionLibraryDefinition::~FunctionLibraryDefinition() {
@@ -1313,9 +1313,54 @@ FunctionLibraryDefinition& FunctionLibraryDefinition::operator=(
   default_registry_ = std::move(other.default_registry_);
   records_ = std::move(other.records_);
   func_grad_ = std::move(other.func_grad_);
-  optimized_function_graph_map_ =
-      std::move(other.optimized_function_graph_map_);
+  optimized_function_graph_creator_map_ =
+      std::move(other.optimized_function_graph_creator_map_);
   return *this;
+}
+
+FunctionDefLibraryStackTraces
+FunctionLibraryDefinition::CreateStackTracesForFunctionDefLibrary(
+    const FunctionDefLibrary& library, const GraphDebugInfo& debug_info) {
+  FunctionDefLibraryStackTraces library_traces;
+  StackTracesMap all_traces = LoadTracesFromDebugInfo(debug_info);
+  for (const FunctionDef& fdef : library.function()) {
+    const std::string& function_name = fdef.signature().name();
+    StackTracesMap stack_traces;
+    std::string key_suffix = absl::StrCat("@", function_name);
+    for (const auto& [traces_key, stack_trace] : all_traces) {
+      if (!absl::EndsWith(traces_key, key_suffix)) continue;
+      std::string node_key =
+          std::string(absl::StripSuffix(traces_key, key_suffix));
+      stack_traces[node_key] = stack_trace;
+    }
+    if (!stack_traces.empty()) {
+      library_traces[function_name] = std::move(stack_traces);
+    }
+  }
+  return library_traces;
+}
+
+void FunctionLibraryDefinition::Initialize(
+    const FunctionDefLibrary& library,
+    const FunctionDefLibraryStackTraces& library_traces) {
+  tf_shared_lock lock(mu_);
+  for (const auto& fdef : library.function()) {
+    // The latter function definition wins.
+    auto iter = records_.find(fdef.signature().name());
+    if (iter != records_.end()) {
+      iter->second->Unref();
+      records_.erase(iter);
+    }
+    const auto& it = library_traces.find(fdef.signature().name());
+    records_.insert(
+        {fdef.signature().name(),
+         new FunctionRecord(
+             fdef, it != library_traces.end() ? it->second : StackTracesMap(),
+             true)});
+  }
+  for (const auto& grad : library.gradient()) {
+    func_grad_[grad.function_name()] = grad.gradient_func();
+  }
 }
 
 bool FunctionLibraryDefinition::Contains(const string& func) const {
@@ -1362,6 +1407,17 @@ Status FunctionLibraryDefinition::AddFunctionDef(
   return status;
 }
 
+Status FunctionLibraryDefinition::AddFunctionDef(
+    FunctionDef&& fdef, StackTracesMap&& stack_traces) {
+  mutex_lock l(mu_);
+  bool added;
+  FunctionRecord* record =
+      new FunctionRecord(std::move(fdef), std::move(stack_traces), true);
+  core::ScopedUnref scoped_unref(record);
+  Status status = AddHelper(record, &added);
+  return status;
+}
+
 Status FunctionLibraryDefinition::AddFunctionDefHelper(
     FunctionDef&& fdef, StackTracesMap&& stack_traces, bool* added) {
   FunctionRecord* record =
@@ -1369,6 +1425,13 @@ Status FunctionLibraryDefinition::AddFunctionDefHelper(
   core::ScopedUnref scoped_unref(record);
   Status status = AddHelper(record, added);
   return status;
+}
+
+Status FunctionLibraryDefinition::AddFunctionRecord(
+    core::RefCountPtr<FunctionRecord> record) TF_LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
+  bool added;
+  return AddHelper(record.get(), &added);
 }
 
 Status FunctionLibraryDefinition::AddHelper(FunctionRecord* registration,
@@ -1421,12 +1484,16 @@ Status FunctionLibraryDefinition::CopyFunctionDefFrom(
           "Cannot copy function '", name,
           "' because a different function with the same name already "
           "exists.");
+    } else {
+      return OkStatus();
     }
+  } else if (other_record->finalized()) {
+    bool added;
+    mutex_lock l(mu_);
+    return AddHelper(other_record.get(), &added);
   } else {
-    TF_RETURN_IF_ERROR(
-        AddFunctionDef(other_record->fdef(), other_record->stack_traces()));
+    return AddFunctionDef(other_record->fdef(), other_record->stack_traces());
   }
-  return OkStatus();
 }
 
 Status FunctionLibraryDefinition::AddGradientDef(const GradientDef& grad) {
@@ -1753,9 +1820,12 @@ namespace {
 
 constexpr char kApiImplements[] = "api_implements";
 
-std::set<string> ReachableFunctions(
-    const FunctionLibraryDefinition& flib,
-    const protobuf::RepeatedPtrField<NodeDef>& nodes) {
+template <typename NodeType, typename NodeIter, typename OpTypeGetter,
+          typename AttrGetter>
+std::set<string> ReachableFunctions(const FunctionLibraryDefinition& flib,
+                                    NodeIter begin, NodeIter end,
+                                    OpTypeGetter op_type_getter,
+                                    AttrGetter attr_getter) {
   // Functions that are reachable from the graph.
   std::set<string> reachable_funcs;
 
@@ -1793,31 +1863,33 @@ std::set<string> ReachableFunctions(
     }
   };
 
-  // Add all the functions that are reachable from the given node to the queue.
-  const auto process_node = [&](const NodeDef& node) {
-    // Node itself can be a call to the function.
-    add_to_func_queue(node.op());
+  const auto process_attr_value = [&](const AttrValue& attr_value) {
+    // 1. AttrValue.func
+    if (attr_value.has_func()) {
+      add_to_func_queue(attr_value.func().name());
+    }
 
-    // Or node can have an attribute referencing a function.
-    for (const auto& attr : node.attr()) {
-      const auto& attr_value = attr.second;
-
-      // 1. AttrValue.func
-      if (attr_value.has_func()) {
-        add_to_func_queue(attr_value.func().name());
-      }
-
-      // 2. AttrValue.ListValue.func
-      if (attr_value.has_list()) {
-        for (const auto& func : attr_value.list().func()) {
-          add_to_func_queue(func.name());
-        }
+    // 2. AttrValue.ListValue.func
+    if (attr_value.has_list()) {
+      for (const auto& func : attr_value.list().func()) {
+        add_to_func_queue(func.name());
       }
     }
   };
 
+  // Add all the functions that are reachable from the given node to the queue.
+  const auto process_node = [&](NodeType node) {
+    // Node itself can be a call to the function.
+    add_to_func_queue(op_type_getter(node));
+
+    // Or node can have an attribute referencing a function.
+    for (const auto& attr : attr_getter(node)) {
+      process_attr_value(attr.second);
+    }
+  };
+
   // Add all functions that are directly called from the optimized graph.
-  std::for_each(nodes.begin(), nodes.end(), process_node);
+  std::for_each(begin, end, process_node);
 
   // Process all reachable functions.
   while (!func_queue.empty()) {
@@ -1834,7 +1906,18 @@ std::set<string> ReachableFunctions(
 
     // Find all the functions called from the function body.
     const auto& func_body = func->fdef().node_def();
-    std::for_each(func_body.begin(), func_body.end(), process_node);
+
+    const auto process_node_def = [&](const NodeDef node) {
+      // Node itself can be a call to the function.
+      add_to_func_queue(node.op());
+
+      // Or node can have an attribute referencing a function.
+      for (const auto& attr : node.attr()) {
+        process_attr_value(attr.second);
+      }
+    };
+
+    std::for_each(func_body.begin(), func_body.end(), process_node_def);
 
     // Check if the function has a registered gradient.
     const string grad_func_name = flib.FindGradient(func_name);
@@ -1844,10 +1927,13 @@ std::set<string> ReachableFunctions(
   return reachable_funcs;
 }
 
+template <typename NodeType, typename NodeIter, typename OpTypeGetter,
+          typename AttrGetter>
 FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
-    const FunctionLibraryDefinition& flib,
-    const protobuf::RepeatedPtrField<NodeDef>& nodes) {
-  std::set<string> reachable_funcs = ReachableFunctions(flib, nodes);
+    const FunctionLibraryDefinition& flib, NodeIter begin, NodeIter end,
+    OpTypeGetter op_type_getter, AttrGetter attr_getter) {
+  std::set<string> reachable_funcs = ReachableFunctions<NodeType>(
+      flib, begin, end, op_type_getter, attr_getter);
 
   FunctionLibraryDefinition reachable_flib(flib.default_registry(),
                                            FunctionDefLibrary());
@@ -1894,12 +1980,43 @@ const char* IsSet(void* ptr) { return ptr == nullptr ? "unset" : "set"; }
 
 FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
     const GraphDef& graph) const {
-  return ReachableFunctionLibraryDefinition(*this, graph.node());
+  return ReachableFunctionLibraryDefinition<const NodeDef&>(
+      *this, graph.node().begin(), graph.node().end(),
+      [](const NodeDef& ndef) { return ndef.op(); },
+      [](const NodeDef& ndef) { return ndef.attr(); });
 }
 
 FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
     const FunctionDef& func) const {
-  return ReachableFunctionLibraryDefinition(*this, func.node_def());
+  return ReachableFunctionLibraryDefinition<const NodeDef&>(
+      *this, func.node_def().begin(), func.node_def().end(),
+      [](const NodeDef& ndef) { return ndef.op(); },
+      [](const NodeDef& ndef) { return ndef.attr(); });
+}
+
+FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
+    const Graph& graph) const {
+  return ReachableFunctionLibraryDefinition<const Node*>(
+      *this, graph.nodes().begin(), graph.nodes().end(),
+      [](const Node* node) { return node->type_string(); },
+      [](const Node* node) { return node->attrs(); });
+}
+
+absl::StatusOr<FunctionLibraryDefinition>
+FunctionLibraryDefinition::ReachableDefinitions(
+    const std::string& function_name) const {
+  auto* func = Find(function_name);
+  if (func) {
+    FunctionLibraryDefinition ret =
+        ReachableFunctionLibraryDefinition<const NodeDef&>(
+            *this, func->node_def().begin(), func->node_def().end(),
+            [](const NodeDef& ndef) { return ndef.op(); },
+            [](const NodeDef& ndef) { return ndef.attr(); });
+    TF_RETURN_IF_ERROR(ret.CopyFunctionDefFrom(function_name, *this));
+    return ret;
+  } else {
+    return absl::NotFoundError(function_name);
+  }
 }
 
 string FunctionLibraryRuntime::Options::DebugString() const {

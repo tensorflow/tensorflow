@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -872,12 +872,29 @@ XLA_TEST_F(FusionClientLibraryTest, ManyLayoutTransformations) {
   ComputeAndCompare(&b, {});
 }
 
+XLA_TEST_F(CpuGpuFusionTest, TransposeDiamondWithNonTrivialBranch) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f64[16,16]{1,0} parameter(0)
+  trans = f64[16,16]{1,0} transpose(p), dimensions={1,0}
+  rev = f64[16,16]{1,0} reverse(trans), dimensions={0,1}
+  sub = f64[16,16]{1,0} subtract(trans, trans)
+  ROOT add = f64[16,16]{1,0} add(rev, sub)
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-5, 1e-5}));
+}
+
 void BM_ParallelFusion(::testing::benchmark::State& state) {
   // Simple element-wise computation to benchmark parallel task partitioning.
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
   auto executors = PlatformUtil::GetStreamExecutors(platform).value();
-  se::StreamExecutorMemoryAllocator allocator(platform, executors);
+  se::StreamExecutorMemoryAllocator allocator(
+      platform, std::vector<se::StreamExecutorInterface*>(executors.begin(),
+                                                          executors.end()));
 
   const int64_t intra_op_parallelism_threads = 24;
   xla::LocalClientOptions client_options;
@@ -934,9 +951,7 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
           .value();
   auto executable = std::move(executables[0]);
 
-  se::Stream stream(executors[device_ordinal]);
-  stream.Init();
-
+  auto stream = executors[device_ordinal]->CreateStream().value();
   // Initialize thread pool.
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "XLAEigen",
                                intra_op_parallelism_threads);
@@ -944,7 +959,7 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
 
   // Initialize ExecutableRunOptions.
   ExecutableRunOptions options;
-  options.set_allocator(&allocator).set_stream(&stream);
+  options.set_allocator(&allocator).set_stream(stream.get());
   options.set_intra_op_thread_pool(&device);
 
   // Run some warm-up executions.

@@ -21,6 +21,9 @@ namespace tflite {
 // command line, so flags are not initialized.
 void InitTensorFlow();
 
+// Initializes tensorflow's libraries with the given command line arguments.
+void InitTensorFlow(int argc, char** argv);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_TESTING_INIT_TENSORFLOW_H_

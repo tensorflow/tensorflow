@@ -63,13 +63,13 @@ class SimpleRendezvous : public RendezvousInterface {
       return errors::Internal("Send of an already sent tensor");
     }
     table_[edge_name] = val;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void RecvAsync(const ParsedKey& parsed, const Args& recv_args,
                  DoneCallback done) override {
     Tensor tensor;
-    Status status = OkStatus();
+    Status status = absl::OkStatus();
     {
       string key(parsed.edge_name);
       mutex_lock l(mu_);
@@ -184,6 +184,9 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
 
   CancellationManager cancellation_manager;
   args.cancellation_manager = &cancellation_manager;
+  if (function_library != nullptr) {
+    args.session_config = function_library->config_proto();
+  }
 
   // Run the graph.
   TF_RETURN_IF_ERROR(executor->Run(args));
@@ -205,7 +208,7 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
     (*outputs)[i] = tensor::DeepCopy(output_tensor);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

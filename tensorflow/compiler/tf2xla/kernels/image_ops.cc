@@ -347,8 +347,8 @@ struct WhileCondFn {
   explicit WhileCondFn(int64_t num_boxes, int64_t output_size)
       : num_boxes(num_boxes), output_size(output_size) {}
 
-  StatusOr<xla::XlaOp> operator()(absl::Span<const xla::XlaOp> values,
-                                  xla::XlaBuilder* cond_builder) const {
+  absl::StatusOr<xla::XlaOp> operator()(absl::Span<const xla::XlaOp> values,
+                                        xla::XlaBuilder* cond_builder) const {
     xla::XlaOp row_idx = values[0];
     xla::XlaOp row_in_bounds =
         xla::Lt(row_idx, xla::ConstantR0<int32>(cond_builder, num_boxes));
@@ -368,7 +368,7 @@ struct SuppressBodyFn {
 
   explicit SuppressBodyFn(int64_t num_boxes) : num_boxes(num_boxes) {}
 
-  StatusOr<std::vector<xla::XlaOp>> operator()(
+  absl::StatusOr<std::vector<xla::XlaOp>> operator()(
       absl::Span<const xla::XlaOp> values, xla::XlaBuilder* builder) const {
     auto row_idx = values[0];
     auto num_outputs_so_far = values[1];
@@ -619,8 +619,9 @@ class NonMaxSuppressionOp : public XlaOpKernel {
                   /*dtype=*/gather_type, DT_INT32, builder, &selected_indices));
 
     if (!pad_to_max_output_size) {
-      StatusOr<xla::XlaOp> rebounded_result = xla::SetDimensionSizeWithRebound(
-          &context->value_inference(), selected_indices, num_valid, 0);
+      absl::StatusOr<xla::XlaOp> rebounded_result =
+          xla::SetDimensionSizeWithRebound(&context->value_inference(),
+                                           selected_indices, num_valid, 0);
       if (rebounded_result.ok()) {
         selected_indices = *rebounded_result;
       } else {

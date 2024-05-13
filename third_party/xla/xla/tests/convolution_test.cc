@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1605,7 +1605,8 @@ XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
 class ConvolutionHloTest : public HloTestBase {};
 
 // double datatype is not yet supported in ROCm
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU_ROCM(ConvolveF64Forward)) {
+XLA_TEST_F(ConvolutionHloTest,
+           DISABLED_ON_TPU(DISABLED_ON_GPU_ROCM(ConvolveF64Forward))) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1644,7 +1645,7 @@ ENTRY Test {
 
 // double datatype is not yet supported in ROCm
 XLA_TEST_F(ConvolutionHloTest,
-           DISABLED_ON_GPU_ROCM(ConvolveF64BackwardFilter)) {
+           DISABLED_ON_TPU(DISABLED_ON_GPU_ROCM(ConvolveF64BackwardFilter))) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1657,7 +1658,8 @@ ENTRY Test {
 }
 
 // double datatype is not yet supported in ROCm
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU_ROCM(ConvolveF64BackwardInput)) {
+XLA_TEST_F(ConvolutionHloTest,
+           DISABLED_ON_TPU(DISABLED_ON_GPU_ROCM(ConvolveF64BackwardInput))) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 

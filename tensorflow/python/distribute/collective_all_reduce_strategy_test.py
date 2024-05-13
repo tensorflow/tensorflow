@@ -755,7 +755,6 @@ class ExperimentalCompatibilityTest(test.TestCase):
                           _CollectiveAllReduceStrategyExperimental)
 
   def testName(self):
-    # Estimator checks the __name__ to special case MultiWorkerMirroredStrategy.
     self.assertEqual(CollectiveAllReduceStrategy.__name__,
                      'CollectiveAllReduceStrategy')
     self.assertEqual(_CollectiveAllReduceStrategyExperimental.__name__,

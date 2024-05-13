@@ -26,7 +26,7 @@ namespace profiler {
 
 // Gets the names of the available tools given a session snapshot.
 // Returns a comma separated list of tool names.
-StatusOr<std::string> GetAvailableToolNames(
+absl::StatusOr<std::string> GetAvailableToolNames(
     const SessionSnapshot& session_snapshot);
 
 }  // namespace profiler

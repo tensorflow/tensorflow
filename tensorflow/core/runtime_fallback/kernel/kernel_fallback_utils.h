@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <functional>
 
-#include "llvm/ADT/ArrayRef.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
@@ -25,6 +24,7 @@ limitations under the License.
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/sync_kernel_utils.h"  // from @tf_runtime
 #include "tfrt/host_context/value.h"  // from @tf_runtime
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 #include "tfrt/support/variant.h"  // from @tf_runtime
 
 namespace tensorflow {

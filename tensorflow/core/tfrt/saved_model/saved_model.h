@@ -107,6 +107,9 @@ class SavedModel {
     // TODO(b/216379787): Remove this option once b/279197040 is unblocked.
     bool lazy_loading_use_graph_executor = false;
 
+    // True if and only if SavedModel is being loaded to generate AOT results.
+    bool aot_generation = false;
+
     GraphExecutionOptions graph_execution_options;
   };
 
@@ -181,6 +184,11 @@ class SavedModel {
       std::vector<tensorflow::Tensor>* outputs) = 0;
 
  protected:
+  const FallbackState& fallback_state() const {
+    return graph_executor_->fallback_state();
+  }
+  FallbackState& fallback_state() { return graph_executor_->fallback_state(); }
+
   const Options options_;
   std::unique_ptr<GraphExecutor> graph_executor_;
 };
@@ -199,14 +207,14 @@ class SavedModelImpl final : public SavedModel {
   //
   // If `options.maybe_load_from_mla` is true, tries opening `saved_model_dir`
   // as an MLA. If it's not an MLA, uses it as a normal SavedModel directory.
-  static tensorflow::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
+  static absl::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
       Options options, absl::string_view saved_model_dir,
       const std::unordered_set<std::string>& tags);
 
   // Loads all SignatureDefs in `meta_graph_def`. Refer to
   // http://g3doc/learning/serving/g3doc/saved_model/overview.md
   // for explanations on SavedModel.
-  static tensorflow::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
+  static absl::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
       Options options, tensorflow::MetaGraphDef meta_graph_def,
       absl::string_view saved_model_dir);
 
@@ -216,7 +224,6 @@ class SavedModelImpl final : public SavedModel {
       tfrt::RCReference<tfrt::BEFFile> bef_file, mlrt::bc::Buffer bytecode,
       std::optional<mlrt::LoadedExecutable> loaded_executable,
       absl::flat_hash_map<std::string, internal::Signature> signatures,
-      std::unique_ptr<FallbackState> fallback_state,
       std::unique_ptr<OpKernelRunnerTable> runner_table,
       std::unique_ptr<tfd::FallbackResourceArray> resource_array,
       std::unique_ptr<GraphExecutor> graph_executor);
@@ -276,21 +283,19 @@ class SavedModelImpl final : public SavedModel {
 
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
   // `output_nodes`.
-  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSubgraph(
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSubgraph(
       mlir::MLIRContext* context, absl::string_view name,
       const tensorflow::GraphImportConfig::InputArrays& input_nodes,
       const std::vector<std::string>& output_nodes,
       const std::vector<std::string>& target_nodes);
 
   // Given the joined signature, loads the subgraph and returns loading result.
-  tensorflow::StatusOr<
-      std::reference_wrapper<const SavedModelImpl::LoadingResult>>
+  absl::StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
   LoadJoinedSignature(const JoinedSignature& joined_signature)
       TF_EXCLUSIVE_LOCKS_REQUIRED(loading_result_cache_mu_);
 
   // Returns the loading result given the signature names.
-  tensorflow::StatusOr<
-      std::reference_wrapper<const SavedModelImpl::LoadingResult>>
+  absl::StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
   GetOrCreateLoadingResult(const RunOptions& run_options,
                            absl::Span<const std::string> names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
@@ -311,7 +316,6 @@ class SavedModelImpl final : public SavedModel {
 
   tfrt::RequestDeadlineTracker req_deadline_tracker_;
   absl::flat_hash_map<std::string, internal::Signature> signatures_;
-  std::unique_ptr<FallbackState> fallback_state_;
   std::unique_ptr<OpKernelRunnerTable> runner_table_;
   std::unique_ptr<tfd::FallbackResourceArray> resource_array_;
   tensorflow::mutex loading_result_cache_mu_;

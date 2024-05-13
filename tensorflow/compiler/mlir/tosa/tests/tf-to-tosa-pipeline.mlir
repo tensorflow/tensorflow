@@ -100,7 +100,7 @@ func.func @test_mul(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x1x3xf32>) -> te
 // -----
 
 // CHECK-LABEL: test_real_div
-// CHECK: %[[VAR0:.*]] = tosa.div %arg0, %arg1
+// CHECK: %[[VAR0:.*]] = tosa.int_div %arg0, %arg1
 func.func @test_real_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<13x1x3xi32>) -> tensor<13x21x3xi32> {
   %2 = "tf.RealDiv"(%arg0, %arg1)   : (tensor<13x21x3xi32>, tensor<13x1x3xi32>) -> tensor<13x21x3xi32>
   func.return %2 : tensor<13x21x3xi32>
@@ -109,7 +109,7 @@ func.func @test_real_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<13x1x3xi32>) 
 // -----
 
 // CHECK-LABEL: test_floor_div
-// CHECK: %[[VAR0:.*]] = tosa.div %arg0, %arg1
+// CHECK: %[[VAR0:.*]] = tosa.int_div %arg0, %arg1
 func.func @test_floor_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<13x1x3xi32>) -> tensor<13x21x3xi32> {
   %2 = "tf.FloorDiv"(%arg0, %arg1)   : (tensor<13x21x3xi32>, tensor<13x1x3xi32>) -> tensor<13x21x3xi32>
   func.return %2 : tensor<13x21x3xi32>
@@ -1136,4 +1136,13 @@ func.func @test_broadcast_to_smaller_rank(%arg0: tensor<2x3x13x1xi32>) -> (tenso
   %s =  "tf.Const"() {value = dense<[13, 7]> : tensor<2xi32>}  : () -> tensor<2xi32>
   %1 = "tf.BroadcastTo"(%arg0, %s) : (tensor<2x3x13x1xi32>, tensor<2xi32>) -> tensor<13x7xi32>
   return %1 : tensor<13x7xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_erf
+// CHECK: %[[VAR0:.*]] = tosa.erf %arg0 :
+func.func @test_erf(%arg0: tensor<4x4xf32>) -> tensor<4x4xf32> {
+  %0 = "tf.Erf"(%arg0) : (tensor<4x4xf32>) -> tensor<4x4xf32>
+  func.return %0 : tensor<4x4xf32>
 }

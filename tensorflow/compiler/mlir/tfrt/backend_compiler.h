@@ -16,14 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BACKEND_COMPILER_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_BACKEND_COMPILER_H_
 
+#include "absl/status/status.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 
 namespace tensorflow {
 
 class BackendCompiler {
  public:
-  virtual ~BackendCompiler() = default;
+  virtual ~BackendCompiler();
+
+  virtual void GetDependentDialects(mlir::DialectRegistry& registry) const {}
 
   // Compile the `module` in TF dialect. The result module should be also in TF
   // dialect.

@@ -34,7 +34,9 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/manipulate_model_attr.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -55,7 +57,6 @@ using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
 using ::mlir::tf_saved_model::SessionInitializerOp;
-using ::tensorflow::kImportModelDefaultGraphFuncName;
 
 // Array of initializer functions' types. The corresponding initializer
 // functions should be merged in this order. This is because:
@@ -107,20 +108,6 @@ class MergeInitializerFunctionOpsToMainPass
   }
 };
 
-// Gets the "main" function from the module. Returns an empty op iff it doesn't
-// exist.
-func::FuncOp GetMainFunction(ModuleOp module_op) {
-  const auto main_func_id =
-      StringAttr::get(module_op.getContext(), kImportModelDefaultGraphFuncName);
-  auto func_ops = module_op.getOps<func::FuncOp>();
-  auto main_func_itr = absl::c_find_if(func_ops, [&main_func_id](auto func_op) {
-    return func_op.getName() == main_func_id;
-  });
-
-  if (main_func_itr == func_ops.end()) return {};
-  return *main_func_itr;
-}
-
 // Returns true iff func_op has either no Region or the body has no Blocks.
 bool IsFuncOpEmpty(func::FuncOp func_op) {
   return func_op->getNumRegions() == 0 || func_op.getBody().empty();
@@ -166,7 +153,7 @@ LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
 
   FetchOp fetch_op = graph_op.GetFetch();
   for (const Value fetch : fetch_op.getFetches()) {
-    if (!fetch.getType().isa<tf_executor::ControlType>()) {
+    if (!mlir::isa<tf_executor::ControlType>(fetch.getType())) {
       fetch_op.emitError(absl::StrFormat(
           "Validation failed for the initializer function: %s. "
           "All initializer function's fetches should be "
@@ -336,7 +323,7 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
   ModuleOp module_op = getOperation();
   MLIRContext* ctx = module_op.getContext();
 
-  func::FuncOp main_func_op = GetMainFunction(module_op);
+  func::FuncOp main_func_op = FindMainFuncOp(module_op);
   if (!main_func_op) {
     module_op.emitError("Main function op not found.");
     return signalPassFailure();
