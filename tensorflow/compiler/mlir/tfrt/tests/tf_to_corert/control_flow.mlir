@@ -56,10 +56,8 @@ func.func @while_body_add2(%arg0: tensor<i32>) -> tensor<i32> {
 // CHECK-LABEL: func @while_test
 // CHECK-SAME: ([[ARG0:%.+]]: !tfrt.chain) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
 func.func @while_test() -> (tensor<i32>) {
-  // CHECK: [[CONST_TH:%.*]] = corert.const_dense_tensor dense<0> : tensor<i32>
+  // CHECK: [[CONST:%.*]] = tfrt_fallback_async.const_dense_tensor dense<0> : tensor<i32>
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  // CHECK: [[CONST:%.*]] = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[CONST_TH]]
-  // CHECK: (!corert.tensorhandle) -> (!tfrt_fallback.tf_tensor)
   // CHECK: [[pred_res:%.*]]:2 = tfrt.call @"while_cond_lt9/tfrt_predicate"([[ARG0]], [[CONST]]) : (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, i1)
   // CHECK: [[while_res:%.]]:2 = tfrt.while [[pred_res]]#1 @"while_body_add2/tfrt_body_1"([[pred_res]]#0, [[CONST]])
   // CHECK-SAME: (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
