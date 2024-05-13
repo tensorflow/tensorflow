@@ -1066,36 +1066,27 @@ absl::Status RunPostFusionPasses(
     HloModule* hlo_module,
     std::function<absl::Status(HloPassPipeline*, const DebugOptions&)>
         add_custom_kernel_replacement_passes) {
+  const DebugOptions& opts = hlo_module->config().debug_options();
+
   HloPassPipeline pipeline("post-fusion optimization");
   pipeline.AddPass<RenameFusions>();
   pipeline.AddPass<AllGatherCombiner>(
-      hlo_module->config()
-          .debug_options()
-          .xla_gpu_all_gather_combine_threshold_bytes(),
+      opts.xla_gpu_all_gather_combine_threshold_bytes(),
       /*combine_threshold_count=*/256,
-      hlo_module->config()
-          .debug_options()
-          .xla_gpu_enable_all_gather_combine_by_dim());
+      opts.xla_gpu_enable_all_gather_combine_by_dim());
   pipeline.AddPass<AllReduceCombiner>(
-      hlo_module->config()
-          .debug_options()
-          .xla_gpu_all_reduce_combine_threshold_bytes(),
+      opts.xla_gpu_all_reduce_combine_threshold_bytes(),
       /*combine_threshold_count=*/256);
   pipeline.AddPass<ReduceScatterCombiner>(
-      hlo_module->config()
-          .debug_options()
-          .xla_gpu_reduce_scatter_combine_threshold_bytes(),
+      opts.xla_gpu_reduce_scatter_combine_threshold_bytes(),
       /*combine_threshold_count=*/256,
-      hlo_module->config()
-          .debug_options()
-          .xla_gpu_enable_reduce_scatter_combine_by_dim());
+      opts.xla_gpu_enable_reduce_scatter_combine_by_dim());
 
-  if (hlo_module->config().debug_options().xla_gpu_all_reduce_contiguous()) {
+  if (opts.xla_gpu_all_reduce_contiguous()) {
     pipeline.AddPass<AllReduceContiguous>();
   }
 
-  TF_RETURN_IF_ERROR(add_custom_kernel_replacement_passes(
-      &pipeline, hlo_module->config().debug_options()));
+  TF_RETURN_IF_ERROR(add_custom_kernel_replacement_passes(&pipeline, opts));
 
   int32_t blueconnect_num_devices_per_host =
       hlo_module->config()
@@ -1105,10 +1096,28 @@ absl::Status RunPostFusionPasses(
     pipeline.AddPass<AllReduceBlueConnect>(blueconnect_num_devices_per_host);
   }
 
-  if (hlo_module->config()
-          .debug_options()
-          .xla_gpu_enable_while_loop_double_buffering()) {
-    pipeline.AddPass<LoopDoubleBufferTransformer>();
+  std::optional<LoopDoubleBufferTransformer::UnrollStrategy> unroll_strategy =
+      std::nullopt;
+  // Support old flag.
+  if (opts.xla_gpu_enable_while_loop_double_buffering()) {
+    unroll_strategy =
+        LoopDoubleBufferTransformer::UnrollStrategy::kDoubleBuffer;
+  }
+  // Support new flag setting style, override the old one.
+  if (opts.xla_gpu_enable_while_loop_unrolling() ==
+      DebugOptions::WHILE_LOOP_UNROLLING_DOUBLE_BUFFER) {
+    unroll_strategy =
+        LoopDoubleBufferTransformer::UnrollStrategy::kDoubleBuffer;
+  }
+  if (opts.xla_gpu_enable_while_loop_unrolling() ==
+      DebugOptions::WHILE_LOOP_UNROLLING_FULL_UNROLL) {
+    LOG_IF(WARNING, unroll_strategy != std::nullopt)
+        << "Overriding double buffering set via "
+           "`xla_gpu_enable_while_loop_double_buffering` flag.";
+    unroll_strategy = LoopDoubleBufferTransformer::UnrollStrategy::kFullUnroll;
+  }
+  if (unroll_strategy != std::nullopt) {
+    pipeline.AddPass<LoopDoubleBufferTransformer>(*unroll_strategy);
     pipeline.AddPass<TupleSimplifier>();
     pipeline.AddPass<HloDCE>();
   }

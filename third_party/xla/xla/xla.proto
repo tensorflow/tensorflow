@@ -668,6 +668,18 @@ message DebugOptions {
   // Enable double buffering for loops.
   bool xla_gpu_enable_while_loop_double_buffering = 248;
 
+  enum WhileLoopUnrolling {
+    WHILE_LOOP_UNROLLING_NO_UNROLL = 0;
+    // Has the same effect as setting
+    // `xla_gpu_enable_while_loop_double_buffering`.
+    WHILE_LOOP_UNROLLING_DOUBLE_BUFFER = 1;
+    // Enables full loop unrolling using the same strategy as `DOUBLE_BUFFER`.
+    WHILE_LOOP_UNROLLING_FULL_UNROLL = 2;
+  }
+
+  // Determine the while loop unrolling scheme.
+  WhileLoopUnrolling xla_gpu_enable_while_loop_unrolling = 294;
+
   // Change the layout of the second triton dot operand to be column major.
   // Only works for (bf16 x bf16) -> bf16.
   bool xla_gpu_ensure_minor_dot_contraction_dims = 249;
@@ -767,7 +779,7 @@ message DebugOptions {
   // Base length to rewrite the reduce window to, no rewrite if set to 0.
   int64 xla_reduce_window_rewrite_base_length = 293;
 
-  // Next id: 294
+  // Next id: 295
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
