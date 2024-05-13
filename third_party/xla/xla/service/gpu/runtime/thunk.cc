@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/executable_run_options.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -185,6 +186,7 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                        run_options.run_options().host_to_device_stream(),
                        run_options.run_options().send_device_memory_function(),
                        run_options.run_options().recv_device_memory_function(),
+                       run_options.run_options().ffi_execution_context(),
                        additional_compute_streams);
 }
 
@@ -196,7 +198,7 @@ Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
       params.collective_params, params.collective_cliques,
       params.device_to_host_stream, params.host_to_device_stream,
       params.send_device_memory_function, params.recv_device_memory_function,
-      params.additional_compute_streams);
+      params.ffi_execution_context, params.additional_compute_streams);
 }
 
 Thunk::ExecuteParams::ExecuteParams(
@@ -207,6 +209,7 @@ Thunk::ExecuteParams::ExecuteParams(
     se::Stream* host_to_device_stream,
     SendDeviceMemoryFunction* send_device_memory_function,
     RecvDeviceMemoryFunction* recv_device_memory_function,
+    const ffi::ExecutionContext* ffi_execution_context,
     ExecutionStreamIdMap additional_compute_streams)
     : buffer_allocations(buffer_allocations),
       stream(stream),
@@ -217,6 +220,7 @@ Thunk::ExecuteParams::ExecuteParams(
       host_to_device_stream(host_to_device_stream),
       send_device_memory_function(send_device_memory_function),
       recv_device_memory_function(recv_device_memory_function),
+      ffi_execution_context(ffi_execution_context),
       additional_compute_streams(additional_compute_streams) {}
 
 //===----------------------------------------------------------------------===//

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/pjrt/compile_options.pb.h"
@@ -152,6 +153,15 @@ struct LoadOptions {
 class ExecuteContext {
  public:
   virtual ~ExecuteContext() = default;
+
+  ffi::ExecutionContext& ffi_context() { return ffi_context_; }
+  const ffi::ExecutionContext& ffi_context() const { return ffi_context_; }
+
+ private:
+  // XLA FFI execution context is a mechanism to attach arbitrary user data to
+  // a particular call of PjRtLoadedExecutable::Execute and forward it to custom
+  // calls implemented as XLA FFI handlers.
+  ffi::ExecutionContext ffi_context_;
 };
 
 struct PjRtTransferMetadata {
@@ -213,7 +223,9 @@ struct ExecuteOptions {
   // the launch IDs may be used by the runtime to detect the mismatch.
   int32_t launch_id = 0;
   // If non-null, an opaque context passed to an execution that may be used to
-  // supply additional arguments to a derived class of PjRtExecutable.
+  // supply additional arguments to a derived class of PjRtExecutable. It is
+  // a caller responsibility to ensure that the context is valid for the
+  // duration of the execution.
   const ExecuteContext* context = nullptr;
   // If true, check that the PjRtBuffer argument shapes match the compiled
   // shapes. Otherwise, any shape with the right size on device may be passed.

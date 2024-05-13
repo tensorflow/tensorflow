@@ -471,9 +471,14 @@ absl::Status ExecuteThunks(
 
   {  // Initialize thunks using prepared resources before execution.
     Thunk::InitializeParams initialize_params{
-        executor,           executable_source,           &buffer_allocations,
-        main_stream,        command_buffer_trace_stream, &collective_params,
-        &collective_cliques};
+        executor,
+        executable_source,
+        &buffer_allocations,
+        main_stream,
+        command_buffer_trace_stream,
+        &collective_params,
+        &collective_cliques,
+        run_options->run_options().ffi_execution_context()};
 
     tsl::profiler::TraceMe trace([&] { return "Thunks::Initialize"; });
     for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {

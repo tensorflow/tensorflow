@@ -153,7 +153,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
       params.collective_cliques, /*device_to_host_stream=*/nullptr,
       /*host_to_device_stream=*/nullptr,
       /*send_device_memory_function=*/nullptr,
-      /*recv_device_memory_function=*/nullptr);
+      /*recv_device_memory_function=*/nullptr, params.ffi_execution_context);
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers

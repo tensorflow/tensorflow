@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -34,6 +35,8 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/client/xla_computation.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
@@ -43,12 +46,15 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -255,6 +261,62 @@ TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
   EXPECT_TRUE(absl::StrContains(result.status().message(),
                                 "Adding chunk of size 40 would overflow buffer "
                                 "of size 8 (0 already transferred)"));
+}
+
+// User-defined data type to be passed to FFI handler via the execute context
+// side channel.
+struct MemsetValue {
+  explicit MemsetValue(float value) : value(value) {}
+  float value;
+};
+
+static absl::Status MemsetFromValue(
+    se::Stream* stream, ffi::Result<ffi::BufferR1<PrimitiveType::F32>> result,
+    MemsetValue* memset_value) {
+  uint32_t pattern;
+  std::memcpy(&pattern, &memset_value->value, sizeof(pattern));
+
+  se::DeviceMemoryBase base = result->data;
+  return stream->Memset32(&base, pattern, result->data.size());
+}
+
+XLA_FFI_DEFINE_HANDLER(kMemsetFromValue, MemsetFromValue,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Ret<ffi::BufferR1<PrimitiveType::F32>>()
+                           .Ctx<ffi::UserData<MemsetValue>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "MemsetFromValue",
+                         PlatformUtil::CanonicalPlatformName("GPU").value(),
+                         kMemsetFromValue);
+
+TEST(StreamExecutorGpuClientTest, ForwardUserDataToFfiHandler) {
+  static constexpr char const* kProgram = R"(
+    HloModule ffi_handler
+    ENTRY main {
+      ROOT %custom-call = f32[4] custom-call(),
+                          custom_call_target="MemsetFromValue",
+                          api_version=API_VERSION_TYPED_FFI
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kProgram, *client));
+
+  ExecuteContext context;
+  TF_ASSERT_OK(context.ffi_context().Emplace<MemsetValue>(42.0f));
+
+  ExecuteOptions opts;
+  opts.context = &context;
+
+  auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                          ExtractSingleResult(result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f, 42.0f}),
+      *result_literal));
 }
 
 TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {

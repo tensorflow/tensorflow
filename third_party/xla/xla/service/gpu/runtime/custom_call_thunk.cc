@@ -150,12 +150,13 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
   builder.AddAttributes(attrs.Build());
   CallFrame call_frame = builder.Build();
 
-  // TODO(ezhulenev): Remove `ServiceExecutableRunOptions` from FFI handler
+  // TODO(b/340104720): Remove `ServiceExecutableRunOptions` from FFI handler
   // execution context, as apparently it's not easily accessible from Thunk.
   ExecutableRunOptions run_options;
   run_options.set_stream(params.stream);
   run_options.set_allocator(params.buffer_allocations->memory_allocator());
   run_options.set_device_ordinal(params.buffer_allocations->device_ordinal());
+  run_options.set_ffi_execution_context(params.ffi_execution_context);
   ServiceExecutableRunOptions service_run_options(run_options);
 
   CallOptions options = {&service_run_options, called_computation_};

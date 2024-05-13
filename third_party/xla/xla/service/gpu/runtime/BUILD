@@ -1093,6 +1093,7 @@ cc_library(
         ":nccl_clique",
         ":nccl_clique_key",
         "//xla:executable_run_options",
+        "//xla/ffi:execution_context",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",

@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/executable_run_options.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/global_device_id.h"
@@ -327,6 +328,9 @@ class Thunk {
 
     // Collective cliques acquired based on resource requests.
     CollectiveCliques* collective_cliques = nullptr;
+
+    // XLA FFI execution context.
+    const ffi::ExecutionContext* ffi_execution_context = nullptr;
   };
 
   //===--------------------------------------------------------------------===//
@@ -376,6 +380,9 @@ class Thunk {
     SendDeviceMemoryFunction* send_device_memory_function;
     RecvDeviceMemoryFunction* recv_device_memory_function;
 
+    // XLA FFI execution context.
+    const ffi::ExecutionContext* ffi_execution_context;
+
     // Additional compute streams on which thunks launch operations.
     ExecutionStreamIdMap additional_compute_streams;
 
@@ -390,6 +397,7 @@ class Thunk {
                   se::Stream* host_to_device_stream,
                   SendDeviceMemoryFunction* send_device_memory_function,
                   RecvDeviceMemoryFunction* recv_device_memory_function,
+                  const ffi::ExecutionContext* ffi_execution_context,
                   ExecutionStreamIdMap additional_compute_streams = {});
   };
 

@@ -252,6 +252,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/client:executable_build_options",
+        "//xla/ffi:execution_context",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
         "//xla/service:computation_layout",
