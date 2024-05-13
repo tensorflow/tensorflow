@@ -35,7 +35,7 @@ fi
 if [ ! -f "/${CUSTOM_INSTALL}" ]; then
 RPM_ROCM_REPO=http://repo.radeon.com/rocm/yum/${ROCM_VERSION_REPO}/main
 echo -e "[ROCm]\nname=ROCm\nbaseurl=$RPM_ROCM_REPO\nenabled=1\ngpgcheck=0" >>/etc/yum.repos.d/rocm.repo
-echo -e "[amdgpu]\nname=amdgpu\nbaseurl=https://repo.radeon.com/amdgpu/latest/rhel/7.9/main/x86_64/\nenabled=1\ngpgcheck=0" >>/etc/yum.repos.d/amdgpu.repo
+echo -e "[amdgpu]\nname=amdgpu\nbaseurl=https://repo.radeon.com/amdgpu/latest/rhel/7/main/x86_64/\nenabled=1\ngpgcheck=0" >>/etc/yum.repos.d/amdgpu.repo
 else
     bash "/${CUSTOM_INSTALL}"
 fi
