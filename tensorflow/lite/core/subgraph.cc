@@ -1856,7 +1856,8 @@ TfLiteStatus Subgraph::GetNodeAndRegistration(
 TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     int tensor_index, TfLiteType type, const char* name, const size_t ndims,
     const int* dims, TfLiteQuantization quantization, const char* buffer,
-    size_t bytes, const Allocation* allocation, TfLiteSparsity* sparsity) {
+    size_t bytes, const Allocation* allocation, TfLiteSparsity* sparsity,
+    const size_t buffer_identifier) {
   // Ensure quantization cleanup on failure.
   ScopedTfLiteQuantization scoped_quantization(&quantization);
   ScopedTfLiteSparsity scoped_sparsity(sparsity);
@@ -1903,6 +1904,9 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
                       allocation, false, &tensor);
     tensor.quantization = *scoped_quantization.release();
     tensor.sparsity = scoped_sparsity.release();
+  }
+  if (buffer_identifier != kTfLiteNoBufferIdentifier) {
+    tensor_buffer_identifiers_[tensor_index] = buffer_identifier;
   }
   return kTfLiteOk;
 }
