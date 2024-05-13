@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
@@ -36,9 +37,10 @@ struct ClampWithBroadcastConvert : public OpRewritePattern<ClampOp> {
 
   LogicalResult matchAndRewrite(ClampOp op,
                                 PatternRewriter &rewriter) const override {
-    auto operandType = op.getOperand().getType().dyn_cast<RankedTensorType>();
-    auto maxType = op.getMax().getType().dyn_cast<RankedTensorType>();
-    auto minType = op.getMin().getType().dyn_cast<RankedTensorType>();
+    auto operandType =
+        mlir::dyn_cast<RankedTensorType>(op.getOperand().getType());
+    auto maxType = mlir::dyn_cast<RankedTensorType>(op.getMax().getType());
+    auto minType = mlir::dyn_cast<RankedTensorType>(op.getMin().getType());
     // Unrancked types are not supported.
     if (!operandType || !maxType || !minType) return failure();
     // Does not support operand with dynamic dimensions for now.

@@ -701,10 +701,10 @@ struct ShardedInputInfo {
 
 // Adds pad node after split node to graph for uneven sharding tiled inputs.
 // |graph| owns the returned Node* instance.
-StatusOr<Node*> CreatePadNode(const int padding, const int num_dims,
-                              const int split_dim, DataType dtype,
-                              Node* control_predecessor, Node* split_node,
-                              const int split_index, Graph* graph) {
+absl::StatusOr<Node*> CreatePadNode(const int padding, const int num_dims,
+                                    const int split_dim, DataType dtype,
+                                    Node* control_predecessor, Node* split_node,
+                                    const int split_index, Graph* graph) {
   // Add paddings node.
   Status s;
   NodeDef paddings_def;
@@ -749,12 +749,12 @@ StatusOr<Node*> CreatePadNode(const int padding, const int num_dims,
 
 // Adds split node and split dimension node to graph for sharding tiled inputs.
 // |graph| owns the returned Node* instance.
-StatusOr<Node*> CreateSplitNode(const int num_splits, const int dim,
-                                const int num_dims, const int64_t padding,
-                                const int orig_src_output, DataType dtype,
-                                absl::string_view name_prefix,
-                                Node* control_predecessor, Node* orig_src,
-                                Graph* graph) {
+absl::StatusOr<Node*> CreateSplitNode(const int num_splits, const int dim,
+                                      const int num_dims, const int64_t padding,
+                                      const int orig_src_output, DataType dtype,
+                                      absl::string_view name_prefix,
+                                      Node* control_predecessor, Node* orig_src,
+                                      Graph* graph) {
   const std::string input_assigned_device = orig_src->assigned_device_name();
   Node* to_split_node = orig_src;
   int to_split_index = orig_src_output;
@@ -825,7 +825,7 @@ int64_t GetPadding(const int split_dim, const int num_splits,
 }
 
 // Creates a set of splits nodes that shards tiled input node in graph.
-StatusOr<ShardedInputInfo> CreateOrGetSplitNodesForInputSharding(
+absl::StatusOr<ShardedInputInfo> CreateOrGetSplitNodesForInputSharding(
     const xla::OpSharding& sharding, int orig_arg_num, DataType dtype,
     const PartialTensorShape& partial_tensor_shape, int replica_id,
     int orig_src_output, Node* orig_src, Node* control_predecessor,
@@ -940,14 +940,12 @@ StatusOr<ShardedInputInfo> CreateOrGetSplitNodesForInputSharding(
 
 // Creates a xla split node to shard an input, and adds that new node to a
 // Graph.
-StatusOr<Node*> CreateXlaSplitOp(absl::string_view node_name,
-                                 const bool is_resource, const NodeOut& input,
-                                 const PartialTensorShape& partial_tensor_shape,
-                                 const std::vector<Node*>& control_inputs,
-                                 const std::vector<Node*>& control_outputs,
-                                 const DataType dtype, const int num_shards,
-                                 const xla::OpSharding& sharding,
-                                 Graph* graph) {
+absl::StatusOr<Node*> CreateXlaSplitOp(
+    absl::string_view node_name, const bool is_resource, const NodeOut& input,
+    const PartialTensorShape& partial_tensor_shape,
+    const std::vector<Node*>& control_inputs,
+    const std::vector<Node*>& control_outputs, const DataType dtype,
+    const int num_shards, const xla::OpSharding& sharding, Graph* graph) {
   const std::string& input_assigned_device = input.node->assigned_device_name();
   NodeDef xla_split_def;
   xla_split_def.set_name(graph->NewName(node_name));
@@ -996,7 +994,7 @@ StatusOr<Node*> CreateXlaSplitOp(absl::string_view node_name,
 }
 
 // Creates a sharded tensor list for all input shards of an input with sharding.
-StatusOr<std::vector<NodeOut>> ShardInputWithXlaSplitOp(
+absl::StatusOr<std::vector<NodeOut>> ShardInputWithXlaSplitOp(
     absl::string_view node_name, const bool is_resource, const NodeOut& input,
     const PartialTensorShape& partial_tensor_shape,
     const std::vector<Node*>& control_inputs,
@@ -1028,7 +1026,7 @@ StatusOr<std::vector<NodeOut>> ShardInputWithXlaSplitOp(
 }
 
 // Creates an XlaSplitND op to shard a per-replica arg.
-StatusOr<ShardedInputInfo> CreateOrGetXlaSplitNodeForShardedPerReplicaArg(
+absl::StatusOr<ShardedInputInfo> CreateOrGetXlaSplitNodeForShardedPerReplicaArg(
     const xla::OpSharding& sharding, const int replica_id,
     const int orig_arg_num, DataType dtype,
     const PartialTensorShape& partial_tensor_shape, Node* orig_src,
@@ -1055,7 +1053,7 @@ StatusOr<ShardedInputInfo> CreateOrGetXlaSplitNodeForShardedPerReplicaArg(
 }
 
 // Creates an XlaSplitND op to shard a distributed arg.
-StatusOr<ShardedInputInfo> CreateOrGetXlaSplitNodeForDistributedArg(
+absl::StatusOr<ShardedInputInfo> CreateOrGetXlaSplitNodeForDistributedArg(
     const xla::OpSharding& sharding, const int num_replicas,
     const int replica_id, const int orig_arg_num, DataType dtype,
     const PartialTensorShape& partial_tensor_shape, Node* orig_src,
@@ -1085,7 +1083,7 @@ StatusOr<ShardedInputInfo> CreateOrGetXlaSplitNodeForDistributedArg(
 }
 
 // Creates an ReadVariableXlaSplitND op to shard a variable arg.
-StatusOr<ShardedInputInfo> CreateOrGetXlaSplitNodeForVariableArg(
+absl::StatusOr<ShardedInputInfo> CreateOrGetXlaSplitNodeForVariableArg(
     const xla::OpSharding& sharding, const int num_replicas,
     const int replica_id, const int orig_arg_num, DataType dtype,
     const PartialTensorShape& partial_tensor_shape, Node* orig_src,
@@ -1147,10 +1145,10 @@ StatusOr<ShardedInputInfo> CreateOrGetXlaSplitNodeForVariableArg(
 
 // Creates a concat node to be used for aggregating sharded retvals across
 // logical cores.
-StatusOr<Node*> CreateConcatNode(int dim, int num_splits, DataType dtype,
-                                 absl::string_view name_prefix,
-                                 const std::vector<NodeOut>& inputs,
-                                 Graph* graph, absl::string_view device) {
+absl::StatusOr<Node*> CreateConcatNode(int dim, int num_splits, DataType dtype,
+                                       absl::string_view name_prefix,
+                                       const std::vector<NodeOut>& inputs,
+                                       Graph* graph, absl::string_view device) {
   // Add a Concat dim node.
   NodeDef concat_dim_def;
   concat_dim_def.set_name(
@@ -1192,9 +1190,11 @@ StatusOr<Node*> CreateConcatNode(int dim, int num_splits, DataType dtype,
 }
 
 // Adds slice node after concat node to graph for uneven sharding tiled inputs.
-StatusOr<Node*> CreateSliceNode(DataType dtype, const PartialTensorShape& shape,
-                                Node* concat_node, const int concat_out_index,
-                                Graph* graph, absl::string_view device) {
+absl::StatusOr<Node*> CreateSliceNode(DataType dtype,
+                                      const PartialTensorShape& shape,
+                                      Node* concat_node,
+                                      const int concat_out_index, Graph* graph,
+                                      absl::string_view device) {
   Status s;
   // Add begin node for concat.
   NodeDef begin_def;
@@ -1252,7 +1252,7 @@ StatusOr<Node*> CreateSliceNode(DataType dtype, const PartialTensorShape& shape,
 // Creates a set of Concat nodes that aggregates sharded outputs from TPUExecute
 // nodes into a single output. Sharded outputs are concatenated along row major
 // order. That is, tiled output along 0th dimension will be concatenated last.
-StatusOr<Node*> CreateConcatNodesForRetval(
+absl::StatusOr<Node*> CreateConcatNodesForRetval(
     const xla::OpSharding& sharding, DataType dtype,
     const PartialTensorShape& inferred_shape, int replica_id,
     const std::vector<NodeOut>& orig_inputs, Graph* graph,
@@ -1302,7 +1302,7 @@ StatusOr<Node*> CreateConcatNodesForRetval(
   return inputs_to_sharded_retval.at(0).node;
 }
 
-StatusOr<Node*> CreateXlaConcatNode(
+absl::StatusOr<Node*> CreateXlaConcatNode(
     const xla::OpSharding& sharding, const int replica_id, DataType dtype,
     const PartialTensorShape& partial_tensor_shape,
     const std::vector<NodeOut>& orig_inputs, absl::string_view device,
@@ -1482,8 +1482,9 @@ void FindNodesMaybeContainingShardingInfo(const Node& input_node,
 // XlaSharding configuration may be derived from
 //   a) Connected Identity op node.
 //   b) Connected Cast op node.
-StatusOr<std::optional<NodeAndSharding>> ParseInputShardingFromAdjacentNode(
-    const int num_cores_per_replica, const Node& node) {
+absl::StatusOr<std::optional<NodeAndSharding>>
+ParseInputShardingFromAdjacentNode(const int num_cores_per_replica,
+                                   const Node& node) {
   // If |node| has `device` attribute or is a XlaSharding op,
   // return the parsed OpSharding.
   TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
@@ -1947,7 +1948,7 @@ Status DistributedTPURewritePass::GetArgAndRetvalShapes(
          !info->handle_shape.IsFullyDefined())) {
       any_replica_shape_unknown[input_index] = true;
     }
-    StatusOr<InferredShape> status =
+    absl::StatusOr<InferredShape> status =
         MergeInferredShapes((*arg_shapes)[input_index], *info);
     if (!status.ok()) {
       return absl::InvalidArgumentError(
@@ -3028,11 +3029,10 @@ Status ComputeShardedArgShapes(TensorShape* shape,
 }
 
 // Creates nodes for zero-initialized dummy arguments for TPUExecute nodes.
-StatusOr<Node*> CreateTpuExecuteDummyArg(const TensorShape& var_shape,
-                                         const DataType& dtype,
-                                         const std::string& host_cpu_device,
-                                         Node* var_read, int replica_id,
-                                         Graph* graph) {
+absl::StatusOr<Node*> CreateTpuExecuteDummyArg(
+    const TensorShape& var_shape, const DataType& dtype,
+    const std::string& host_cpu_device, Node* var_read, int replica_id,
+    Graph* graph) {
   Status status;
 
   // Const - shape_as_tensor
@@ -3179,7 +3179,7 @@ Status CreatePartitionedDummyVarArgs(
 //
 // Returns the node and its output index to be consumed by TPUExecute for the
 // requested variable index.
-StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
+absl::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
     const std::string& host_cpu_device, int64_t var_index,
     const std::vector<Node*>& variable_reads,
     const DistributedTPURewritePass::ParameterInfo& params_info,

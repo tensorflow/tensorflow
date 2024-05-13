@@ -104,10 +104,12 @@ cc_library(
         "//tensorflow/dtensor/cc:dstatus",
         "//tensorflow/dtensor/cc:dtensor_utils",
         "//tensorflow/dtensor/cc:tensor_layout",
+        "//tensorflow/dtensor/mlir/dtensor_dialect:ir/dtensor_attributes",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -116,8 +118,11 @@ cc_library(
     srcs = ["collectives_common.cc"],
     hdrs = ["collectives_common.h"],
     deps = [
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/dtensor/cc:dstatus",
         "//tensorflow/dtensor/cc:tensor_layout",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -129,8 +134,10 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/dtensor/cc:dstatus",
         "//tensorflow/dtensor/cc:tensor_layout",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
     alwayslink = True,
 )
@@ -249,6 +256,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:constants",
+        "//tensorflow/dtensor/cc:dstatus",
         "//tensorflow/dtensor/cc:dtensor_utils",
         "//tensorflow/dtensor/cc:layout_to_xla_sharding",
         "//tensorflow/dtensor/cc:tensor_layout",
@@ -257,9 +265,12 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -326,6 +337,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
     alwayslink = 1,
 )

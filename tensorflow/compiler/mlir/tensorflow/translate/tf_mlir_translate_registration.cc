@@ -172,7 +172,7 @@ static LogicalResult MlirToGraphdefTranslateFunction(
   confs.export_entry_func_to_flib = export_entry_func_to_flib;
   confs.export_original_tf_func_name = export_original_tf_func_name;
 
-  StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
+  absl::StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
       tensorflow::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {
     LOG(ERROR) << "Graph export failed: " << graphdef_or.status();

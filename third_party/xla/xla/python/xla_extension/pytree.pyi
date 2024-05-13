@@ -37,6 +37,12 @@ class PyTreeRegistry:
       __type: Type[_T],
       to_iterable: Callable[[_T], Tuple[_Children, _AuxData]],
       from_iterable: Callable[[_AuxData, _Children], _T]) -> Any: ...
+  def register_dataclass_node(
+      self,
+      __type: Type[_T],
+      meta_fields: List[str],
+      data_fields: List[str]) -> Any: ...
+
 
 def default_registry() -> PyTreeRegistry: ...
 

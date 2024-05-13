@@ -285,7 +285,8 @@ Status HloControlFlowFlattening::RemoveInfeed(
   return OkStatus();
 }
 
-Status HloControlFlowFlattening::RemoveRecvDone(
+absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
+HloControlFlowFlattening::RemoveRecvAndRecvDone(
     HloInstruction* recv_done,
     absl::flat_hash_set<HloInstruction*>* additional_removed) const {
   CHECK_EQ(recv_done->opcode(), HloOpcode::kRecvDone);
@@ -322,7 +323,7 @@ Status HloControlFlowFlattening::RemoveRecvDone(
       computation->ReplaceInstruction(recv_done, custom_call_recv_done));
   custom_call_recv_done->SetAndSanitizeName(original_recv_done_name);
 
-  return OkStatus();
+  return std::make_pair(custom_call_recv, custom_call_recv_done);
 }
 
 Status HloControlFlowFlattening::RemoveOutfeed(
@@ -346,7 +347,8 @@ Status HloControlFlowFlattening::RemoveOutfeed(
   return OkStatus();
 }
 
-Status HloControlFlowFlattening::RemoveSendDone(
+absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
+HloControlFlowFlattening::RemoveSendAndSendDone(
     HloInstruction* send_done,
     absl::flat_hash_set<HloInstruction*>* additional_removed) const {
   CHECK_EQ(send_done->opcode(), HloOpcode::kSendDone);
@@ -384,7 +386,7 @@ Status HloControlFlowFlattening::RemoveSendDone(
       computation->ReplaceInstruction(send_done, custom_call_send_done));
   custom_call_send_done->SetAndSanitizeName(original_send_done_name);
 
-  return OkStatus();
+  return std::make_pair(custom_call_send, custom_call_send_done);
 }
 
 absl::StatusOr<HloInstruction*> HloControlFlowFlattening::RemoveCollective(
@@ -455,7 +457,8 @@ absl::StatusOr<bool> HloControlFlowFlattening::Run(
         if (remove_comm_ || (remove_host_transfer_ &&
                              send_done_instruction->is_host_transfer())) {
           VLOG(1) << "Remove " << instruction->name();
-          TF_RETURN_IF_ERROR(RemoveSendDone(instruction, &removed));
+          TF_RETURN_IF_ERROR(
+              RemoveSendAndSendDone(instruction, &removed).status());
           changed = true;
         }
       } else if (instruction->opcode() == HloOpcode::kRecvDone) {
@@ -465,7 +468,8 @@ absl::StatusOr<bool> HloControlFlowFlattening::Run(
         if (remove_comm_ || (remove_host_transfer_ &&
                              recv_done_instruction->is_host_transfer())) {
           VLOG(1) << "Remove " << instruction->name();
-          TF_RETURN_IF_ERROR(RemoveRecvDone(instruction, &removed));
+          TF_RETURN_IF_ERROR(
+              RemoveRecvAndRecvDone(instruction, &removed).status());
           changed = true;
         }
       } else if (remove_comm_ && IsCollective(instruction) &&

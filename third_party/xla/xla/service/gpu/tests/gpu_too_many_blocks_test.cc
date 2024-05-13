@@ -51,10 +51,12 @@ ENTRY primitive_computation_mul.8 {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(hlo_text));
 
+  se::StreamExecutorMemoryAllocator allocator(
+      backend().default_stream_executor());
   absl::StatusOr<std::unique_ptr<Executable>> failed_executable =
-      backend().compiler()->RunBackend(
-          std::move(optimized_module), backend().default_stream_executor(),
-          backend().default_stream_executor()->GetAllocator());
+      backend().compiler()->RunBackend(std::move(optimized_module),
+                                       backend().default_stream_executor(),
+                                       &allocator);
 
   EXPECT_FALSE(failed_executable.ok());
   EXPECT_THAT(

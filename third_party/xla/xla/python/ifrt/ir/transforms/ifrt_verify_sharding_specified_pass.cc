@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 
@@ -40,7 +41,7 @@ bool IsArrayWithUnspecifiedSharding(mlir::Type type) {
   if (array_type == nullptr) {
     return false;
   }
-  return array_type.getShardingAttr().isa<IfrtUnspecifiedShardingAttr>();
+  return mlir::isa<IfrtUnspecifiedShardingAttr>(array_type.getShardingAttr());
 }
 
 class IfrtVerifyShardingSpecifiedPass

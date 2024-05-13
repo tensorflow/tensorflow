@@ -98,12 +98,16 @@ cc_test(
     args = [
         "--fp32_graph=$(location //tensorflow/lite:testdata/multi_add.bin)",
         "--int8_graph=$(location //tensorflow/lite:testdata/add_quantized_int8.bin)",
-        "--string_graph=$(location //tensorflow/lite:testdata/string_input_model.bin)",
+        "--string_graph_with_signature=$(location //tensorflow/lite:testdata/string_input_model_with_signature.bin)",
+        "--string_graph_without_signature=$(location //tensorflow/lite:testdata/string_input_model.bin)",
+        "--multi_signature_graph=$(location //tensorflow/lite:testdata/multi_signatures.bin)",
     ],
     data = [
         "//tensorflow/lite:testdata/add_quantized_int8.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
+        "//tensorflow/lite:testdata/multi_signatures.bin",
         "//tensorflow/lite:testdata/string_input_model.bin",
+        "//tensorflow/lite:testdata/string_input_model_with_signature.bin",
     ],
     tags = [
         "tflite_not_portable_android",
@@ -123,6 +127,7 @@ cc_test(
         "@com_google_absl//absl/algorithm",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -158,6 +163,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:simple_memory_arena_debug_dump",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",

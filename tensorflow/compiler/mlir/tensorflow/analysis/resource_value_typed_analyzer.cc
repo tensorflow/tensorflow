@@ -29,8 +29,8 @@ namespace TF {
 namespace {
 
 bool IsResourceType(Type type) {
-  if (auto tensor_type = type.dyn_cast<TensorType>()) {
-    return tensor_type.getElementType().isa<TF::ResourceType>();
+  if (auto tensor_type = mlir::dyn_cast<TensorType>(type)) {
+    return mlir::isa<TF::ResourceType>(tensor_type.getElementType());
   }
   return false;
 }
@@ -44,10 +44,9 @@ func::FuncOp GetSessionInitializerFunc(ModuleOp module) {
   auto session_init_op = tf_saved_model::GetSessionInitializerOp(module);
   if (session_init_op && !session_init_op.getInitializers().empty()) {
     SymbolTable symbol_table(module);
-    func::FuncOp init_func_op =
-        symbol_table.lookup<func::FuncOp>(session_init_op.getInitializers()[0]
-                                              .cast<FlatSymbolRefAttr>()
-                                              .getValue());
+    func::FuncOp init_func_op = symbol_table.lookup<func::FuncOp>(
+        mlir::cast<FlatSymbolRefAttr>(session_init_op.getInitializers()[0])
+            .getValue());
     return init_func_op;
   }
   return nullptr;

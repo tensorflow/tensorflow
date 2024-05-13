@@ -72,7 +72,7 @@ class GpuCommandBuffer;
 
 // CUDA-platform implementation of the platform-agnostic
 // StreamExecutorInterface.
-class GpuExecutor : public StreamExecutorInterface {
+class GpuExecutor : public StreamExecutor {
   // Helper classes to attach a type erased state to the GpuExecutor. Currently,
   // we just need to support some XLA specific state.
   class Object {
@@ -103,8 +103,9 @@ class GpuExecutor : public StreamExecutorInterface {
  public:
   // sub_platform indicates the subplatform used in this executor; it must
   // be a CUDA type.
-  explicit GpuExecutor(int device_ordinal)
-      : device_(0),
+  GpuExecutor(Platform* platform, int device_ordinal)
+      : StreamExecutor(platform),
+        device_(0),
         context_(nullptr),
         device_ordinal_(device_ordinal),
         cc_major_(0),
@@ -255,11 +256,8 @@ class GpuExecutor : public StreamExecutorInterface {
 
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
-  // Search for the symbol in the given module and returns a device pointer and
-  // size. Returns false if symbol does not exist. 'module_handle' must not
-  // be null.
-  bool GetSymbol(const std::string& symbol_name, ModuleHandle module_handle,
-                 void** mem, size_t* bytes) override;
+  absl::StatusOr<DeviceMemoryBase> GetSymbol(
+      const std::string& symbol_name, ModuleHandle module_handle) override;
 
   absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
@@ -277,7 +275,9 @@ class GpuExecutor : public StreamExecutorInterface {
 
   std::unique_ptr<EventInterface> CreateEventImplementation() override;
 
-  std::unique_ptr<StreamInterface> GetStreamImplementation() override;
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority =
+          std::nullopt) override;
 
   absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() override;
 
@@ -444,7 +444,7 @@ class GpuExecutor : public StreamExecutorInterface {
 };
 
 inline GpuExecutor* ExtractGpuExecutor(StreamExecutor* stream_exec) {
-  return static_cast<GpuExecutor*>(stream_exec->implementation());
+  return static_cast<GpuExecutor*>(stream_exec);
 }
 
 }  // namespace gpu

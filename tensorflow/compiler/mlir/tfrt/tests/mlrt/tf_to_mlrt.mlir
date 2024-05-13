@@ -470,7 +470,8 @@ func.func @ifrt_load_variable_test() -> () {
   // CHECK-NEXT: "tf_mlrt.ifrt_load_variable"([[HANDLE]])
   // CHECK-SAME: device_sharding_config_proto_text
   // CHECK-SAME: name = "__variable"
-  %1, %2 = "tf_mlrt.tf_ifrt_load_variable"(%0) {device_sharding_config_proto_text = "sharding { } device_ids: 0 device_ids: 1 ", name = "__variable", __op_key = 2: i32, device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> (tensor<!tf_type.string>, !mlrt.future)
+  // CHECK-SAME: used_by_host = true
+  %1, %2 = "tf_mlrt.tf_ifrt_load_variable"(%0) {used_by_host = true, device_sharding_config_proto_text = "sharding { } device_ids: 0 device_ids: 1 ", name = "__variable", __op_key = 2: i32, device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> (tensor<!tf_type.string>, !mlrt.future)
   // CHECK-NEXT: mlrt.await_all_control
   // CHECK-NEXT: return
   func.return
@@ -490,7 +491,7 @@ func.func @ifrt_restore_variable_test() -> () {
   %cst_1 = "tf.Const"()  {__op_key = 2: i32, value = dense<["y"]> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
   // CHECK-NEXT: [[HANDLE:%.*]] = tf_mlrt.executeop
   %handle = "tf.VarHandleOp"() {__op_key = 3: i32, container = "x", shared_name = "y"} : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
-  // CHECK-NEXT: "tf_mlrt.ifrt_restore_variable"([[PREFIX]], [[NAME]], [[SLICE]], [[HANDLE]]) {restored_dtypes = [f32]}
+  // CHECK-NEXT: "tf_mlrt.ifrt_restore_variable"([[PREFIX]], [[NAME]], [[SLICE]], [[HANDLE]]) <{restored_dtypes = [f32]}>
   "tf.IfrtRestoreVariableOp"(%cst, %cst_1, %cst_0, %handle) {restored_dtypes = [f32]} : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>, tensor<!tf_type.resource<tensor<3x1xf32>>>) -> ()
   // CHECK-NEXT: return
   func.return

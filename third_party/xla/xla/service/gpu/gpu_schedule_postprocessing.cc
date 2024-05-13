@@ -66,7 +66,7 @@ absl::StatusOr<bool> IsRelevantAsynchronousStart(const HloInstruction* hlo) {
   }
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       hlo->backend_config<GpuBackendConfig>());
-  CollectiveBackendConfig collective_backend_config =
+  const CollectiveBackendConfig& collective_backend_config =
       gpu_config.collective_backend_config();
   return !collective_backend_config.is_sync();
 }
@@ -96,7 +96,8 @@ absl::StatusOr<bool> ProcessComputation(
   // attribute no_parallel_custom_call to true. When we see a custom-call, clear
   // the start ops from the collection and keep their attribute
   // no_parallel_custom_call as false.
-  const std::vector<HloInstruction*> all_instructions = sequence.instructions();
+  const std::vector<HloInstruction*>& all_instructions =
+      sequence.instructions();
   for (HloInstruction* hlo : all_instructions) {
     if (MayInvokeCustomCall(hlo, custom_call_in_computation)) {
       async_starts.clear();

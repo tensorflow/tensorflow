@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -40,6 +41,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -714,6 +716,50 @@ TEST_F(CustomCallTest, WithCalledComputation) {
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
+}
+
+//===----------------------------------------------------------------------===//
+// XLA:FFI handler with execution context
+//===----------------------------------------------------------------------===//
+
+// Arbitrary user-defined context passed via the execution context side channel
+// to a custom call handlers.
+struct SomeExtraContext : public ffi::ExecutionContext::UserData {
+  explicit SomeExtraContext(int32_t value) : value(value) {}
+  int32_t value;
+};
+
+static absl::Status ExecutionContext(ffi::Result<ffi::BufferBase>,
+                                     std::shared_ptr<SomeExtraContext> ctx) {
+  if (ctx->value != 42) return absl::InternalError("Unexpected value");
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kExecutionContext, ExecutionContext,
+                       ffi::Ffi::Bind()
+                           .Ret<ffi::BufferBase>()
+                           .Ctx<ffi::UserData<SomeExtraContext>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_execution_context",
+                         PLATFORM, kExecutionContext);
+
+TEST_F(CustomCallTest, FfiExecutionContext) {
+  XlaBuilder b(TestName());
+  CustomCall(&b, "xla.gpu.ffi_execution_context", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}),
+             /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+
+  ffi::ExecutionContext execution_context;
+  TF_ASSERT_OK(execution_context.Emplace<SomeExtraContext>(42));
+
+  ffi::internal::ScopedExecutionContext scoped_execution_context(
+      &execution_context);
+
+  TF_ASSERT_OK(Execute(&b, {}).status());
 }
 
 }  // anonymous namespace

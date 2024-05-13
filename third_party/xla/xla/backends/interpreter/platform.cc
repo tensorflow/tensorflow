@@ -61,8 +61,8 @@ absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 XlaInterpreterPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {
-  auto executor = std::make_unique<StreamExecutor>(
-      this, std::make_unique<XlaInterpreterExecutor>(config.ordinal));
+  auto executor =
+      std::make_unique<XlaInterpreterExecutor>(config.ordinal, this);
   auto init_status = executor->Init();
   if (!init_status.ok()) {
     return absl::Status{

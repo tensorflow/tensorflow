@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -70,6 +71,8 @@ inline std::optional<fe::PointwiseMode_t> GetElementwiseMode(
       return m::ABS;
     case HloOpcode::kAdd:
       return m::ADD;
+    case HloOpcode::kCeil:
+      return m::CEIL;
     case HloOpcode::kCompare:
       switch (instruction.comparison_direction()) {
         case Comparison::Direction::kEq:
@@ -94,6 +97,8 @@ inline std::optional<fe::PointwiseMode_t> GetElementwiseMode(
       return m::DIV;
     case HloOpcode::kExp:
       return m::EXP;
+    case HloOpcode::kFloor:
+      return m::FLOOR;
     case HloOpcode::kLog:
       return m::LOG;
     case HloOpcode::kMaximum:
@@ -142,6 +147,10 @@ inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
       return t::INT8;
     case PrimitiveType::PRED:
       return t::INT8;
+    case PrimitiveType::F8E5M2:
+      return t::FP8_E5M2;
+    case PrimitiveType::F8E4M3FN:
+      return t::FP8_E4M3;
     default:
       return std::nullopt;
   }
@@ -311,6 +320,35 @@ class GemmDimensionAdapter {
   const HloDotInstruction& dot_;
 };
 
+template <PrimitiveType XlaT, typename T>
+std::shared_ptr<graph::Tensor_attributes> LiteralToCudnnTensor(
+    const HloInstruction& hlo, graph::Graph& graph) {
+  using NativeT = typename primitive_util::PrimitiveTypeToNative<XlaT>::type;
+  return graph.tensor(T(hlo.literal().GetFirstElement<NativeT>()));
+}
+
+std::optional<std::shared_ptr<graph::Tensor_attributes>>
+HandleConstantHloToCudnnGraph(const HloInstruction& hlo, graph::Graph& graph) {
+  CHECK(hlo.IsConstant()) << "HLO is not a constant: " << hlo.ToShortString();
+  if (!ShapeUtil::IsScalar(hlo.shape())) {
+    VLOG(3) << "Currently only support fusing scalar in the graph";
+    return std::nullopt;
+  }
+  PrimitiveType constant_type = hlo.shape().element_type();
+  switch (constant_type) {
+    case BF16:
+      return LiteralToCudnnTensor<BF16, __nv_bfloat16>(hlo, graph);
+    case F32:
+      return LiteralToCudnnTensor<F32, float>(hlo, graph);
+    case S32:
+      return LiteralToCudnnTensor<S32, int>(hlo, graph);
+    default:
+      VLOG(3) << "Unsupported constant type: "
+              << PrimitiveType_Name(constant_type);
+      return std::nullopt;
+  }
+}
+
 // Traverses fusion computations and creates cuDNN graphs out of them.
 absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
     const HloFusionInstruction& fusion) {
@@ -342,6 +380,7 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
             .set_dim(dimensions)
             .set_stride(strides)
             .set_data_type(*data_type)
+            .set_name(std::string(parameter.name()))
             .set_uid(se::gpu::CuDnnTensorUID(parameter.parameter_number())));
     return true;
   };
@@ -371,6 +410,29 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
     if (hlo->opcode() == HloOpcode::kParameter) {
       CHECK(hlo_to_cudnn.contains(hlo));
       continue;
+    } else if (hlo->opcode() == HloOpcode::kCustomCall) {
+      if (hlo->user_count() != 1 ||
+          !IsWorkspaceAllocationRoot(*hlo->users()[0])) {
+        VLOG(3) << "Custom calls are only expected to be used for workspace "
+                   "allocation.";
+        return std::nullopt;
+      }
+      continue;
+    } else if (hlo->opcode() == HloOpcode::kTuple) {
+      if (!IsWorkspaceAllocationRoot(*hlo)) {
+        VLOG(3) << "Tuples are only expected at outputs for workspace "
+                   "allocation.";
+        return std::nullopt;
+      }
+      continue;
+    } else if (FusionLevel(fusion) >= 2 &&
+               hlo->opcode() == HloOpcode::kConstant) {
+      if (const auto const_tensor = HandleConstantHloToCudnnGraph(*hlo, graph);
+          const_tensor.has_value()) {
+        hlo_to_cudnn[hlo] = const_tensor.value();
+      } else {
+        return std::nullopt;
+      }
     } else if (hlo->opcode() == HloOpcode::kReshape ||
                hlo->opcode() == HloOpcode::kBitcast ||
                hlo->opcode() == HloOpcode::kTranspose ||
@@ -395,6 +457,25 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
                              .set_compute_data_type(compute_dtype.value());
       if (hlo->operand_count() == 1) {
         hlo_to_cudnn[hlo] = graph.pointwise(operand(0), attrs);
+        // Sets the dimensions for unary ops whose operands are broadcast for
+        // cuDNN to infer its inputs' shapes. constant has dimension [1] while
+        // cuDNN requires constant to have dimension [1,1,1]. Not setting output
+        // of the unary shapes results in the rejection of the cuDNN graph.
+        if (hlo->operand(0)->opcode() == HloOpcode::kBroadcast) {
+          const auto scope = adapter->analysis_.QueryInstructionScope(*hlo);
+          std::vector<int64_t> dimensions;
+          std::vector<int64_t> strides;
+          if (!scope.has_value()) {
+            LOG(FATAL) << "No scope for instruction: " << hlo->ToShortString();
+          }
+          if (!adapter->DimensionsAndStrides(*hlo, scope.value(), dimensions,
+                                             strides)) {
+            VLOG(3) << "Unsupported hlo for querying dimensions: "
+                    << hlo->ToShortString();
+          } else {
+            hlo_to_cudnn[hlo]->set_dim(dimensions);
+          }
+        }
       } else if (hlo->operand_count() == 2) {
         hlo_to_cudnn[hlo] = graph.pointwise(operand(0), operand(1), attrs);
       } else if (hlo->operand_count() == 3) {
@@ -432,7 +513,9 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       VLOG(3) << "Unimplemented data type: " << hlo->shape().element_type();
       return std::nullopt;
     }
-    hlo_to_cudnn[hlo]->set_data_type(data_type.value());
+    hlo_to_cudnn[hlo]
+        ->set_data_type(data_type.value())
+        .set_name(std::string(hlo->name()));
   }
   const HloInstruction* output = instructions.back();
   if (instructions.back()->shape().IsTuple()) {
@@ -466,11 +549,34 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
   if (!graph.has_value()) {
     return absl::InternalError("Construction of cuDNN graph failed.");
   }
+  VLOG(6) << graph->Graph().print();
   TF_ASSIGN_OR_RETURN(bool supported, graph->Prepare(dnn_support));
   if (!supported) {
     return absl::InternalError("cuDNN graph is not supported.");
   }
   return *graph;
+}
+
+absl::StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
+                                             const int64_t workspace_size) {
+  if (workspace_size == 0 || fusion.shape().IsTuple()) {
+    return &fusion;
+  }
+  HloComputation* computation = fusion.fused_instructions_computation();
+  HloInstruction* custom_call =
+      computation->AddInstruction(HloInstruction::CreateCustomCall(
+          ShapeUtil::MakeShape(S8, {workspace_size}), {},
+          kWorkspaceAllocationCustomCallTarget));
+  HloInstruction* output_tuple =
+      computation->AddInstruction(HloInstruction::CreateTuple(
+          {computation->root_instruction(), custom_call}));
+  computation->set_root_instruction(output_tuple, true);
+  HloInstruction* new_fusion = fusion.parent()->AddInstruction(
+      fusion.CloneWithNewShape(output_tuple->shape()));
+  TF_RETURN_IF_ERROR(fusion.ReplaceAllUsesWith(fusion.parent()->AddInstruction(
+      HloInstruction::CreateGetTupleElement(new_fusion, 0))));
+  TF_RETURN_IF_ERROR(fusion.parent()->RemoveInstruction(&fusion));
+  return new_fusion;
 }
 
 class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
@@ -495,10 +601,11 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
     VLOG(4) << "Processing " << hlo->ToString();
     VLOG(4) << "Plan ID: " << plan_id;
 
-    const std::string cache_key =
+    const std::string fingerprint_without_workspace =
         GetComputationFingerprint(hlo->fused_instructions_computation(), {});
-    std::string& cache_entry = compilation_results_[cache_key];
-    if (cache_entry.empty()) {
+    auto workspace_size_it =
+        workspace_sizes_.find(fingerprint_without_workspace);
+    if (workspace_size_it == workspace_sizes_.cend()) {
       TF_ASSIGN_OR_RETURN(
           se::gpu::CudnnGraph graph,
           PrepareGraph(dnn_support_, *DynCast<HloFusionInstruction>(hlo)));
@@ -524,19 +631,22 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
           return absl::InternalError("No cuDNN plans can be built.");
         }
       }
-
-      if (graph.Graph().get_workspace_size() != 0) {
-        return absl::UnimplementedError(
-            "Support of workspace allocation is not added yet.");
-      }
+      const int64_t workspace_size = graph.Graph().get_workspace_size();
+      workspace_sizes_.insert(workspace_size_it,
+                              {fingerprint_without_workspace, workspace_size});
+      TF_ASSIGN_OR_RETURN(hlo, AddWorkspace(*hlo, workspace_size));
 
       std::vector<uint8_t> serialized_graph;
       RETURN_IF_CUDNN_FRONTEND_ERROR(graph.Graph().serialize(serialized_graph));
-      cache_entry =
+      // Compute a new fingerprint with a potential workspace for the
+      // compilation results to match a fingerprint computed by the emitter.
+      compilation_results_[GetComputationFingerprint(
+          hlo->fused_instructions_computation(), {})] =
           std::string(reinterpret_cast<char*>(serialized_graph.data()),
                       serialized_graph.size());
     } else {
       VLOG(4) << "Cache hit.";
+      TF_ASSIGN_OR_RETURN(hlo, AddWorkspace(*hlo, workspace_size_it->second));
     }
     auto cudnn_config = gpu_config.mutable_fusion_backend_config()
                             ->mutable_cudnn_fusion_config();
@@ -551,6 +661,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
   se::dnn::DnnSupport& dnn_support_;
   // <HLO computation fingerprint, serialized compiled cuDNN graph>.
   CuDnnFusionCompiler::BinaryMap& compilation_results_;
+  absl::flat_hash_map<std::string, int64_t> workspace_sizes_;
 };
 
 }  // namespace

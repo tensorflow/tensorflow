@@ -49,6 +49,9 @@ CreateComposeUniformQuantizedTypePass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateUniformQuantizedStableHloToTflPass();
 
+// Create a pass that commute transposes through specific ops
+std::unique_ptr<OperationPass<ModuleOp>> CreateTransposeCommuteOpsPass();
+
 // Create a pass that legalizes MHLO to TF dialect.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass();
 

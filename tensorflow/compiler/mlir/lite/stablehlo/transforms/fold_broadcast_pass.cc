@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
@@ -117,7 +118,7 @@ static Attribute BinaryFolder(Op *op) {
   auto rhs = dyn_cast_or_null<DenseElementsAttr>(rhs_op.getValue());
   if (!lhs || !rhs) return {};
 
-  ShapedType type = op->getType().template cast<ShapedType>();
+  ShapedType type = mlir::cast<ShapedType>(op->getType());
   if (!type.hasStaticShape()) {
     return {};
   }
@@ -125,15 +126,15 @@ static Attribute BinaryFolder(Op *op) {
   Type etype = type.getElementType();
 
   // Evaluate for element types.
-  if (!etype.isa<ElementType>()) {
+  if (!mlir::isa<ElementType>(etype)) {
     return {};
   }
 
   // Special case for folding splats no matter how large.
   // Only covers the case of both attrs being splats; operation-specific cases
   // like adding a zero or multiplying by one are handled elsewhere.
-  SplatElementsAttr splatLhs = lhs.template dyn_cast<SplatElementsAttr>();
-  SplatElementsAttr splatRhs = rhs.template dyn_cast<SplatElementsAttr>();
+  SplatElementsAttr splatLhs = mlir::dyn_cast<SplatElementsAttr>(lhs);
+  SplatElementsAttr splatRhs = mlir::dyn_cast<SplatElementsAttr>(rhs);
   if (splatLhs && splatRhs) {
     auto signedLhs = addSign(splatLhs.getSplatValue<ValType>(), etype);
     auto signedRhs = addSign(splatRhs.getSplatValue<ValType>(), etype);
@@ -195,10 +196,10 @@ class FoldBroadcastInDimBeforeBinaryElementwiseOp
     auto bcast_dims = bcast_op.getBroadcastDimensions();
     auto elem_type = const_val.getElementType();
     Attribute result;
-    if (elem_type.template isa<FloatType>()) {
+    if (mlir::isa<FloatType>(elem_type)) {
       result = ConstFoldBroadcastInDim<FloatAttr>(result_type, const_val,
                                                   bcast_dims);
-    } else if (elem_type.template isa<IntegerType>()) {
+    } else if (mlir::isa<IntegerType>(elem_type)) {
       result = ConstFoldBroadcastInDim<IntegerAttr>(result_type, const_val,
                                                     bcast_dims);
     } else {
@@ -217,14 +218,14 @@ using FoldBroadcastInDimBeforeMulOp =
 // Constant folds mhlo.mul, this folder doesn't have an upper limit on how many
 // elements can be folded.
 LogicalResult ConstantFoldMul(mhlo::MulOp op, PatternRewriter &rewriter) {
-  ShapedType type = op.getType().dyn_cast<ShapedType>();
+  ShapedType type = mlir::dyn_cast<ShapedType>(op.getType());
   Type etype = type.getElementType();
   Attribute result = {};
-  if (etype.isa<FloatType>()) {
+  if (mlir::isa<FloatType>(etype)) {
     result =
         BinaryFolder<mhlo::MulOp, FloatType, APFloat, std::multiplies<APFloat>>(
             &op);
-  } else if (etype.isa<IntegerType>()) {
+  } else if (mlir::isa<IntegerType>(etype)) {
     result =
         BinaryFolder<mhlo::MulOp, IntegerType, APInt, std::multiplies<APSInt>>(
             &op);

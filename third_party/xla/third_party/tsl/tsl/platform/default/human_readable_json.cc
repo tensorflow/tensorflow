@@ -15,22 +15,27 @@ limitations under the License.
 
 #include "tsl/platform/human_readable_json.h"
 
+#include <string>
+#include <utility>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 
-absl::Status ProtoToHumanReadableJson(const protobuf::Message& proto,
-                                      string* result,
-                                      bool ignore_accuracy_loss) {
-  result->clear();
+absl::StatusOr<std::string> ProtoToHumanReadableJson(
+    const protobuf::Message& proto, bool ignore_accuracy_loss) {
+  std::string result;
 
   protobuf::util::JsonPrintOptions json_options;
   json_options.preserve_proto_field_names = true;
   json_options.always_print_primitive_fields = true;
   auto status =
-      protobuf::util::MessageToJsonString(proto, result, json_options);
+      protobuf::util::MessageToJsonString(proto, &result, json_options);
   if (!status.ok()) {
     // Convert error_msg google::protobuf::StringPiece to
     // tsl::StringPiece.
@@ -39,14 +44,12 @@ absl::Status ProtoToHumanReadableJson(const protobuf::Message& proto,
         strings::StrCat("Could not convert proto to JSON string: ",
                         StringPiece(error_msg.data(), error_msg.length())));
   }
-  return absl::OkStatus();
+  return std::move(result);
 }
 
-absl::Status ProtoToHumanReadableJson(const protobuf::MessageLite& proto,
-                                      string* result,
-                                      bool ignore_accuracy_loss) {
-  *result = "[human readable output not available for lite protos]";
-  return absl::OkStatus();
+absl::StatusOr<std::string> ProtoToHumanReadableJson(
+    const protobuf::MessageLite& proto, bool ignore_accuracy_loss) {
+  return std::string("[human readable output not available for lite protos]");
 }
 
 absl::Status HumanReadableJsonToProto(const string& str,

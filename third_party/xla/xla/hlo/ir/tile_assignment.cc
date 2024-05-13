@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "xla/hlo/ir/tile_assignment.h"
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
-#include <new>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -151,6 +153,14 @@ TransposeKind GetTransposeKind(absl::Span<const int64_t> dims,
     perm_span = absl::MakeSpan(canonicalized_perm.data(), 1);
   }
   return IotaTileAssignment(dims, dims_span, perm_span);
+}
+
+Array<int64_t> IotaTileAssignment::ToArray() const {
+  Array<int64_t> array(reshape_dims());
+  array.FillIota(0);
+  array.TransposeDimensions(transpose_perm());
+  array.Reshape(dims());
+  return array;
 }
 
 IotaTileAssignment::IotaTileAssignment(const IotaTileAssignment& other)
@@ -395,10 +405,7 @@ void TileAssignment::MaybeMaterializeFullArray() const {
   if (array_ == nullptr) {
     DCHECK(shared_array_ == nullptr);
     DCHECK(iota_.has_value());
-    auto full = std::make_shared<Array<int64_t>>(iota_->reshape_dims());
-    full->FillIota(0);
-    full->TransposeDimensions(iota_->transpose_perm());
-    full->Reshape(iota_->dims());
+    auto full = std::make_shared<Array<int64_t>>(iota_->ToArray());
     shared_array_ = std::move(full);
     array_ = shared_array_.get();
   }

@@ -138,14 +138,6 @@ class ShardingPropagation : public HloModulePass {
       int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph,
       const CustomCallShardingHelper* sharding_helper);
 
-  // Canonicalizes entry_computation_layouts by calling
-  // module.layout_canonicalization_callback(), which gives canolicalized
-  // argument and result layouts based on current module. Currently used by
-  // PJRT which assigns layouts based on runtime shapes: see
-  // DetermineArgumentLayoutsFromCompileOptions() in
-  //     tensorflow/compiler/xla/pjrt/utils.cc
-  Status CanonicalizeLayouts(HloModule* module);
-
  private:
   bool InferShardingFromShardGroup(
       HloInstruction* instruction, const ComputationMap& computation_map,

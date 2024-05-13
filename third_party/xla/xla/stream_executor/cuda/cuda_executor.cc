@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -910,27 +911,34 @@ bool GpuExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   return GpuDriver::GetDeviceMemoryInfo(context_, free, total);
 }
 
-bool GpuExecutor::GetSymbol(const std::string& symbol_name,
-                            ModuleHandle module_handle, void** mem,
-                            size_t* bytes) {
+absl::StatusOr<DeviceMemoryBase> GpuExecutor::GetSymbol(
+    const std::string& symbol_name, ModuleHandle module_handle) {
+  void* mem = nullptr;
+  size_t bytes = 0;
+
   CHECK(static_cast<bool>(module_handle));
 
   auto lookup_in_module = [&](CUmodule module) {
     CHECK(module != nullptr);
     return GpuDriver::GetModuleSymbol(context_, module, symbol_name.c_str(),
-                                      reinterpret_cast<CUdeviceptr*>(mem),
-                                      bytes);
+                                      reinterpret_cast<CUdeviceptr*>(&mem),
+                                      &bytes);
   };
 
   {  // give limited scope to mutex_lock
     absl::MutexLock lock{&in_memory_modules_mu_};
     auto it = gpu_binary_to_module_.find(module_handle.id());
     CHECK(it != gpu_binary_to_module_.end());
-    return lookup_in_module(it->second.first);
+    if (lookup_in_module(it->second.first)) {
+      return DeviceMemoryBase(mem, bytes);
+    }
   }
 
   LOG(INFO) << "Failed to find symbol: " << symbol_name;
-  return false;
+  return absl::NotFoundError(
+      absl::StrCat("Check if module containing symbol ", symbol_name,
+                   " is loaded (module_handle = ",
+                   reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
 }
 
 absl::Status FillBlockDimLimit(GpuDeviceHandle device,
@@ -951,8 +959,19 @@ std::unique_ptr<EventInterface> GpuExecutor::CreateEventImplementation() {
   return std::unique_ptr<EventInterface>(new GpuEvent(this));
 }
 
-std::unique_ptr<StreamInterface> GpuExecutor::GetStreamImplementation() {
-  return std::unique_ptr<StreamInterface>(new GpuStream(this));
+absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(
+    std::optional<std::variant<StreamPriority, int>> priority) {
+  auto gpu_stream = std::make_unique<GpuStream>(this);
+  if (priority.has_value()) {
+    if (std::holds_alternative<StreamPriority>(*priority)) {
+      gpu_stream->SetPriority(std::get<StreamPriority>(*priority));
+    } else {
+      gpu_stream->SetPriority(std::get<int>(*priority));
+    }
+  }
+  auto stream = std::make_unique<Stream>(this, std::move(gpu_stream));
+  TF_RETURN_IF_ERROR(stream->Initialize(priority));
+  return std::move(stream);
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> GpuExecutor::CreateKernel() {

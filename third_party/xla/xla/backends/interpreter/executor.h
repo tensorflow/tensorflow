@@ -46,10 +46,10 @@ limitations under the License.
 namespace stream_executor {
 namespace interpreter {
 
-class XlaInterpreterExecutor : public StreamExecutorInterface {
+class XlaInterpreterExecutor : public StreamExecutor {
  public:
-  explicit XlaInterpreterExecutor(int device_ordinal)
-      : device_ordinal_(device_ordinal) {}
+  XlaInterpreterExecutor(int device_ordinal, Platform *platform)
+      : StreamExecutor(platform), device_ordinal_(device_ordinal) {}
 
   absl::Status Init() override { return absl::OkStatus(); }
 
@@ -162,8 +162,13 @@ class XlaInterpreterExecutor : public StreamExecutorInterface {
     return nullptr;
   }
 
-  std::unique_ptr<StreamInterface> GetStreamImplementation() override {
-    return std::make_unique<host::HostStream>();
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority =
+          std::nullopt) override {
+    auto stream =
+        std::make_unique<Stream>(this, std::make_unique<host::HostStream>());
+    TF_RETURN_IF_ERROR(stream->Initialize(priority));
+    return std::move(stream);
   }
 
  private:

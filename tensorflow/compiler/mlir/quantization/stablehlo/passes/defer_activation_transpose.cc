@@ -155,7 +155,7 @@ class DeferActivationTransposeForMaxPoolReduceWindowOp
                PatternRewriter& rewriter) const override {
     auto transpose_op = cast<TransposeOp>(op.getOperand(0).getDefiningOp());
 
-    const auto result_type = op.getResult(0).getType().cast<TensorType>();
+    const auto result_type = mlir::cast<TensorType>(op.getResult(0).getType());
     const SmallVector<int64_t> new_result_shape =
         Permute<int64_t>(result_type.getShape(), kNchwToNhwcPermutation);
 
@@ -169,16 +169,16 @@ class DeferActivationTransposeForMaxPoolReduceWindowOp
             op.getLoc(), new_result_type, transpose_op.getOperand(),
             /*init_value=*/op.getOperand(1),
             /*window_dimensions=*/
-            PermuteI64ArrayAttr(rewriter, op.getWindowDimensionsAttr(),
+            PermuteI64ArrayAttr(rewriter, op.getWindowDimensions(),
                                 kNchwToNhwcPermutation),
             /*window_strides=*/
-            PermuteI64ArrayAttr(rewriter, op.getWindowStridesAttr(),
+            PermuteI64ArrayAttr(rewriter, op.getWindowStrides(),
                                 kNchwToNhwcPermutation),
             /*base_dilations=*/
-            PermuteI64ArrayAttr(rewriter, op.getBaseDilationsAttr(),
+            PermuteI64ArrayAttr(rewriter, op.getBaseDilations(),
                                 kNchwToNhwcPermutation),
             /*window_dilations=*/
-            PermuteI64ArrayAttr(rewriter, op.getWindowDilationsAttr(),
+            PermuteI64ArrayAttr(rewriter, op.getWindowDilations(),
                                 kNchwToNhwcPermutation),
             /*padding=*/DenseIntElementsAttr(nullptr));
 
@@ -199,12 +199,13 @@ class DeferActivationTransposeForMaxPoolReduceWindowOp
   // `array_attr` and `permutation` must be equal. Returns a null attribute
   // if `array_attr` is null.
   DenseI64ArrayAttr PermuteI64ArrayAttr(
-      PatternRewriter& rewriter, const DenseI64ArrayAttr array_attr,
+      PatternRewriter& rewriter,
+      const std::optional<ArrayRef<int64_t>> array_attr,
       const ArrayRef<int64_t> permutation) const {
-    if (array_attr == nullptr) return DenseI64ArrayAttr(nullptr);
+    if (!array_attr.has_value()) return DenseI64ArrayAttr(nullptr);
 
     return rewriter.getDenseI64ArrayAttr(
-        Permute<int64_t>(array_attr, permutation));
+        Permute<int64_t>(array_attr.value(), permutation));
   }
 
   LogicalResult MatchMaxPoolReduceWindowOp(

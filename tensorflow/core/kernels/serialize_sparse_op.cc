@@ -107,7 +107,7 @@ bool SerializeSparseOp<Variant>::IsExpensive() {
 template <>
 Status SerializeSparseOp<tstring>::Initialize(Tensor* result) {
   *result = Tensor(DT_STRING, TensorShape({3}));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
@@ -116,7 +116,7 @@ Status SerializeSparseOp<tstring>::Serialize(const Tensor& input,
   TensorProto proto;
   input.AsProtoTensorContent(&proto);
   *result = proto.SerializeAsString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_KERNEL_BUILDER(Name("SerializeSparse")
@@ -127,14 +127,14 @@ REGISTER_KERNEL_BUILDER(Name("SerializeSparse")
 template <>
 Status SerializeSparseOp<Variant>::Initialize(Tensor* result) {
   *result = Tensor(DT_VARIANT, TensorShape({3}));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
 Status SerializeSparseOp<Variant>::Serialize(const Tensor& input,
                                              Variant* result) {
   *result = input;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_KERNEL_BUILDER(Name("SerializeSparse")
@@ -213,7 +213,7 @@ struct SerializeGroups<T, tstring> {
       serialize_empty_element(empty_b);
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -328,7 +328,7 @@ struct SerializeGroups<T, Variant> {
       serialize_empty_element(empty_b);
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -371,7 +371,7 @@ class SerializeManySparseOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    TensorShape::BuildTensorShape(input_shape->vec<int64_t>(),
                                                  &tensor_input_shape));
-    gtl::InlinedVector<int64_t, 8> std_order(rank);
+    absl::InlinedVector<int64_t, 8> std_order(rank);
     std::iota(std_order.begin(), std_order.end(), 0);
     SparseTensor input_st;
     OP_REQUIRES_OK(context, SparseTensor::Create(*input_indices, *input_values,
@@ -408,7 +408,6 @@ class SerializeManySparseOp : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
-
 
 #define REGISTER_KERNELS(type)                                      \
   REGISTER_KERNEL_BUILDER(Name("SerializeManySparse")               \

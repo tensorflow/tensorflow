@@ -63,13 +63,13 @@ LogicalResult BuildOption(flexbuffers::Builder* fbb, Operation* op,
   const char* key = pair.getName().data();
   const auto attr = pair.getValue();
 
-  if (attr.isa<::mlir::IntegerAttr>()) {
-    fbb->Int(key, attr.dyn_cast<mlir::IntegerAttr>().getInt());
+  if (mlir::isa<::mlir::IntegerAttr>(attr)) {
+    fbb->Int(key, mlir::dyn_cast<mlir::IntegerAttr>(attr).getInt());
     return success();
   }
 
-  if (attr.isa<::mlir::FloatAttr>()) {
-    fbb->Double(key, attr.dyn_cast<mlir::FloatAttr>().getValueAsDouble());
+  if (mlir::isa<::mlir::FloatAttr>(attr)) {
+    fbb->Double(key, mlir::dyn_cast<mlir::FloatAttr>(attr).getValueAsDouble());
     return success();
   }
 

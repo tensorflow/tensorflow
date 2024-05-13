@@ -95,6 +95,13 @@
       it's finished. The default is `False` for backward compatibility. Users of
       `distributed_save` are recommended to set it to `True`.
 
+* `tf.tpu.experimental.embedding.TPUEmbeddingV2`
+    * Add `compute_sparse_core_stats` for sparse core users to profile the 
+      data with this API to get the `max_ids` and `max_unique_ids`. These
+      numbers will be needed to configure the sparse core embedding mid level 
+      api.
+    * Remove the `preprocess_features` method since that's no longer needed.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:

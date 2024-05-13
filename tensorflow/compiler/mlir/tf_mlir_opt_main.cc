@@ -38,9 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 #include "xla/mlir/framework/transforms/passes.h"
-#include "xla/mlir_hlo/lhlo/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "xla/service/cpu/hlo_xla_runtime_pipeline.h"
 
 int main(int argc, char **argv) {
   tensorflow::InitMlir y(&argc, &argv);
@@ -52,7 +50,6 @@ int main(int argc, char **argv) {
   mlir::tf_saved_model::registerTensorFlowSavedModelPasses();
   mlir::TFL::registerTensorFlowLitePasses();
   mlir::mhlo::registerAllMhloPasses();
-  mlir::lmhlo::registerAllLmhloPasses();
 
   // These are in compiler/mlir/tf2xla and not part of the above MHLO passes.
   mlir::mhlo::registerLegalizeTfPasses();

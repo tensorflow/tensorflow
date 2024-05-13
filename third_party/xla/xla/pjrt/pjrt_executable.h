@@ -307,7 +307,7 @@ struct CompiledMemoryStats {
     CompiledMemoryStats stats;
     stats.generated_code_size_in_bytes = proto.generated_code_size_in_bytes();
     stats.argument_size_in_bytes = proto.argument_size_in_bytes();
-    stats.output_size_in_bytes = proto.alias_size_in_bytes();
+    stats.output_size_in_bytes = proto.output_size_in_bytes();
     stats.alias_size_in_bytes = proto.alias_size_in_bytes();
     stats.temp_size_in_bytes = proto.temp_size_in_bytes();
     stats.serialized_hlo_proto = proto.hlo_proto().SerializeAsString();

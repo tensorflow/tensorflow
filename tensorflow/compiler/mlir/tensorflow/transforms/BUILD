@@ -147,6 +147,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/core:framework",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -298,6 +299,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -531,7 +533,6 @@ cc_library(
         "tpu_reorder_replicate_and_partitioned_inputs.cc",
         "tpu_resource_partitioning.cc",
         "tpu_resource_read_for_write.cc",
-        "tpu_sharding_identification_pass.cc",
         "tpu_space_to_depth_pass.cc",
         "tpu_update_embedding_enqueue_op_inputs.cc",
         "tpu_validate_inputs.cc",
@@ -777,6 +778,7 @@ cc_library(
         ":tf_pass_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tensorflow:shape_inference_utils",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
@@ -786,6 +788,9 @@ cc_library(
         "//tensorflow/core/ir/types:Dialect",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
@@ -796,6 +801,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
+        "@local_tsl//tsl/platform:errors",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:window_util",
         "@local_xla//xla:xla_data_proto_cc",
@@ -1029,6 +1035,7 @@ cc_library(
         "//tensorflow/core:framework",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -1040,6 +1047,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/stream_executor/tpu:c_api_conversions",
@@ -1062,6 +1070,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:path",
     ],
 )

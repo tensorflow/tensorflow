@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
@@ -140,13 +141,14 @@ class TfrtSession : public tensorflow::Session {
   explicit TfrtSession(const SessionOptions& options,
                        tensorflow::tfrt_stub::Runtime* runtime,
                        TfrtDeviceInfraTarget device_target,
-                       bool tpu_use_tpu_runner,
+                       bool tpu_use_tpu_runner, bool use_gpu,
                        TfrtSessionInterOpThreadPools inter_op_thread_pools,
                        bool enable_mlrt,
                        tensorflow::BackendCompiler* backend_compiler)
       : runtime_{runtime},
         device_target_{device_target},
         tpu_use_tpu_runner_{tpu_use_tpu_runner},
+        use_gpu_{use_gpu},
         inter_op_thread_pools_{std::move(inter_op_thread_pools)},
         enable_mlrt_(enable_mlrt),
         options_{options},
@@ -214,35 +216,12 @@ class TfrtSession : public tensorflow::Session {
     auto resource_context = std::make_unique<tfrt::ResourceContext>();
     tfrt_stub::ModelRuntimeContext model_context(
         &options, /*export_dir=*/"unknown_export_dir", resource_context.get());
-    MetaGraphDef meta_graph_def;
-    *meta_graph_def.mutable_graph_def() = graph;
-    model_context.set_meta_graph_def(&meta_graph_def);
+    // TODO(b/334641254): Offer a Session option that prunes the graph_def.
+    model_context.set_graph_def(&graph);
     // In the multi-host case, this prevents local Sessions from running
     // global resource creation functions.
     model_context.set_is_local_session(
         !options_.config.experimental().enable_multi_host());
-    // Create mock signature def with all inputs and outputs. This
-    // prevents graph pruning.
-    if (options_.config.experimental().enable_multi_host()) {
-      // Fake a SignatureDef with all inputs and outputs.
-      // TODO(b/303480573): Cleanup ServingContext to not use
-      // MetaGraphDef.
-      SignatureDef& signature_def =
-          (*meta_graph_def.mutable_signature_def())["dummy_signature"];
-      for (const auto& node : graph.node()) {
-        if (node.op() == "Placeholder" || node.op() == "Const") {
-          TensorInfo& tensor_info =
-              (*signature_def.mutable_inputs())[node.name()];
-          tensor_info.set_name(node.name());
-        }
-        if (node.attr().contains("Tout")) {
-          TensorInfo& tensor_info =
-              (*signature_def.mutable_outputs())[node.name()];
-          tensor_info.set_name(node.name());
-        }
-      }
-    }
-
     TF_RETURN_IF_ERROR(options.runtime->CreateRuntimeResources(model_context));
 
     // `GraphExecutor::Create()` will preprocess the graph (e.g., apply
@@ -489,6 +468,11 @@ class TfrtSession : public tensorflow::Session {
     compile_options.sink_in_invariant_ops = false;
     compile_options.cost_threshold = 1024;
 
+    if (use_gpu_) {
+      options.enable_tfrt_gpu = true;
+      options.enable_grappler_function_optimizer = true;
+    }
+
     // Enable TpuHostAllocator only for TpuRunner as it is the only
     // implementation that supports the premapped memory optimization.
     compile_options.use_tpu_host_allocator_for_inputs = tpu_use_tpu_runner_;
@@ -527,6 +511,7 @@ class TfrtSession : public tensorflow::Session {
   tensorflow::tfrt_stub::Runtime* runtime_ = nullptr;
   const TfrtDeviceInfraTarget device_target_;
   const bool tpu_use_tpu_runner_;
+  const bool use_gpu_;
   TfrtSessionInterOpThreadPools inter_op_thread_pools_;
 
   mutable absl::Mutex callables_lock_;
@@ -756,8 +741,13 @@ Status TfrtSessionFactory::InitializeLocked(const TfrtSessionOptions& options) {
   mutex_.AssertHeld();
   if (options.use_tpu) {
     DCHECK(!options.backend_compiler);
+    DCHECK(!options.use_gpu);
     device_target_ = TfrtDeviceInfraTarget::kTpurt;
     tpu_use_tpu_runner_ = true;
+  } else if (options.use_gpu) {
+    DCHECK(!options.backend_compiler);
+    device_target_ = TfrtDeviceInfraTarget::kGpu;
+    use_gpu_ = true;
   } else if (options.backend_compiler) {
     backend_compiler_ = options.backend_compiler;
   }
@@ -809,7 +799,7 @@ Status TfrtSessionFactory::NewSession(const SessionOptions& options,
                                ? backend_compiler_
                                : nullptr;
   *out_session = new TfrtSession(
-      options, runtime_, device_target_, tpu_use_tpu_runner_,
+      options, runtime_, device_target_, tpu_use_tpu_runner_, use_gpu_,
       std::move(inter_op_thread_pools), enable_mlrt_, backend_compiler);
   return absl::OkStatus();
 }

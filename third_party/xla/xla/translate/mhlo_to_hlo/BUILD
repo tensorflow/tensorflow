@@ -29,6 +29,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor:dnn",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 

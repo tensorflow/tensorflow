@@ -35,8 +35,6 @@ namespace internal {
 using mlir::OpPassManager;
 using mlir::func::FuncOp;
 
-// LINT.IfChange(replicated_bridge_passes)
-
 // Adds replicated Bridge clustering pipeline passes to the given pass_manager.
 // Does not run them.
 void AddReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm,
@@ -151,7 +149,8 @@ void AddReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm,
   pm.addPass(mlir::TFDevice::CreateClusterOutliningPass());
   pm.addPass(mlir::TFTPU::CreateTPUResourceReadForWritePass());
   pm.addPass(mlir::TFDevice::CreateMarkInputOutputAliasesPass());
-  pm.addPass(mlir::TFTPU::CreateTPUShardingIdentificationPass());
+  pm.addPass(
+      tensorflow::tf2xla::internal::CreateTPUShardingIdentificationPass());
   pm.addNestedPass<FuncOp>(
       mlir::TFTPU::CreateTPUResourceReadsWritesPartitioningPass());
   pm.addPass(mlir::TFDevice::CreateAnnotateParameterReplicationPass());
@@ -163,11 +162,8 @@ void AddReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(
       tensorflow::tf2xla::internal::CreateVerifyClusteringPass());
 }
-// LINT.ThenChange(:non_replicated_bridge_passes)
 
 void NoCanonicalization(OpPassManager& pm) {}
-
-// LINT.IfChange(non_replicated_bridge_passes)
 
 // Same as above but for non-replicated Bridge.
 void AddNonReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm) {
@@ -218,7 +214,6 @@ void AddNonReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm) {
   pm.addNestedPass<FuncOp>(
       tensorflow::tf2xla::internal::CreateVerifyClusteringPass());
 }
-// LINT.ThenChange(:replicated_bridge_passes)
 
 };  // namespace internal
 };  // namespace tf2xla

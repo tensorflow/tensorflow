@@ -164,6 +164,9 @@ typedef enum {
   XLA_FFI_DataType_F32 = 11,
   XLA_FFI_DataType_F64 = 12,
   XLA_FFI_DataType_BF16 = 16,
+  XLA_FFI_DataType_C64 = 15,
+  XLA_FFI_DataType_C128 = 18,
+  XLA_FFI_DataType_TOKEN = 17,
 } XLA_FFI_DataType;
 // LINT.ThenChange(ffi_test.cc)
 
@@ -322,8 +325,8 @@ struct XLA_FFI_Handler_Register_Args {
   size_t struct_size;
   void* priv;
 
-  const char* name;      // null terminated
-  const char* platform;  // null terminated
+  XLA_FFI_ByteSpan name;
+  XLA_FFI_ByteSpan platform;
   XLA_FFI_Handler* handler;
   XLA_FFI_Handler_Traits traits;
 };
@@ -332,6 +335,25 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Handler_Register_Args, traits);
 
 typedef XLA_FFI_Error* XLA_FFI_Handler_Register(
     XLA_FFI_Handler_Register_Args* args);
+
+//===----------------------------------------------------------------------===//
+// ExecutionContext
+//===----------------------------------------------------------------------===//
+
+struct XLA_FFI_ExecutionContext_Get_Args {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_ByteSpan id;
+  void* data;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_ExecutionContext_Get_Args, data);
+
+// Returns an opaque data from the execution context for a given name.
+typedef XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
+    XLA_FFI_ExecutionContext_Get_Args* args);
 
 //===----------------------------------------------------------------------===//
 // Stream
@@ -368,6 +390,7 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Destroy);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Handler_Register);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Stream_Get);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ExecutionContext_Get);
 };
 
 #undef _XLA_FFI_API_STRUCT_FIELD

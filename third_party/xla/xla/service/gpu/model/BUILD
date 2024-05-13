@@ -1,6 +1,5 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
-load("@local_tsl//tsl/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//xla:xla.bzl", "xla_cc_test", "xla_nvml_deps")
 
@@ -211,6 +210,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
     ],
@@ -441,9 +441,6 @@ xla_cc_test(
         ":indexing_analysis",
         ":indexing_map",
         ":indexing_test_utils",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
@@ -473,6 +470,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -509,7 +507,6 @@ xla_cc_test(
     srcs = ["indexing_analysis_test.cc"],
     deps = [
         ":indexing_analysis",
-        ":indexing_map",
         ":indexing_test_utils",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_traversal",
@@ -530,9 +527,9 @@ cc_library(
     deps = [
         ":affine_map_printer",
         ":indexing_map",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -845,7 +842,7 @@ xla_cc_test(
     name = "hlo_op_profiler_test",
     srcs = ["hlo_op_profiler_test.cc"],
     local_defines = if_cuda(["GOOGLE_CUDA"]),
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":hlo_op_profiler_lib",
         "//xla/hlo/ir:hlo",

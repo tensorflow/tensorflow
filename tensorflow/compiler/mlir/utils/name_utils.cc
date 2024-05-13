@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 
@@ -63,7 +64,7 @@ std::string GetNameFromLoc(Location loc) {
   while (!locs.empty()) {
     Location curr_loc = locs.pop_back_val();
 
-    if (auto name_loc = curr_loc.dyn_cast<NameLoc>()) {
+    if (auto name_loc = mlir::dyn_cast<NameLoc>(curr_loc)) {
       // Add name in NameLoc. For NameLoc we also account for names due to ops
       // in functions where the op's name is first.
       auto name = name_loc.getName().strref().split('@').first;
@@ -73,11 +74,11 @@ std::string GetNameFromLoc(Location loc) {
         if (!name.empty()) names_is_nonempty = true;
       }
       continue;
-    } else if (auto call_loc = curr_loc.dyn_cast<CallSiteLoc>()) {
+    } else if (auto call_loc = mlir::dyn_cast<CallSiteLoc>(curr_loc)) {
       // Use location of the Callee to generate the name.
       locs.push_back(call_loc.getCallee());
       continue;
-    } else if (auto fused_loc = curr_loc.dyn_cast<FusedLoc>()) {
+    } else if (auto fused_loc = mlir::dyn_cast<FusedLoc>(curr_loc)) {
       // Push all locations in FusedLoc in reverse order, so locations are
       // visited based on order in FusedLoc.
       auto reversed_fused_locs = llvm::reverse(fused_loc.getLocations());

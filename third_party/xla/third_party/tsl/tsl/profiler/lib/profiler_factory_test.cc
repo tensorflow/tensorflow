@@ -31,10 +31,10 @@ namespace {
 
 class TestProfiler : public ProfilerInterface {
  public:
-  Status Start() override { return OkStatus(); }
-  Status Stop() override { return OkStatus(); }
-  Status CollectData(tensorflow::profiler::XSpace*) override {
-    return OkStatus();
+  absl::Status Start() override { return absl::OkStatus(); }
+  absl::Status Stop() override { return absl::OkStatus(); }
+  absl::Status CollectData(tensorflow::profiler::XSpace*) override {
+    return absl::OkStatus();
   }
 };
 

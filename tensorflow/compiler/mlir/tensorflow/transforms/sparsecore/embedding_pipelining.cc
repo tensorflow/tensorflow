@@ -174,8 +174,8 @@ namespace TFDevice {
 namespace {
 
 bool IsResourceType(Type val_type) {
-  if (auto tensor_type = val_type.dyn_cast<mlir::TensorType>()) {
-    if (tensor_type.getElementType().isa<TF::ResourceType>()) {
+  if (auto tensor_type = mlir::dyn_cast<mlir::TensorType>(val_type)) {
+    if (mlir::isa<TF::ResourceType>(tensor_type.getElementType())) {
       return true;
     }
   }
@@ -588,7 +588,7 @@ void GatherOpsForExtraction(mlir::SetVector<Operation*>* operations,
       if (predecessors) {
         for (Value operand : op->getOperands()) {
           // Stop at the block boundary.
-          if (operand.isa<BlockArgument>()) continue;
+          if (mlir::isa<BlockArgument>(operand)) continue;
 
           Operation* predecessor = operand.getDefiningOp();
           if (!operations->contains(predecessor) &&
@@ -1867,7 +1867,7 @@ void EmbeddingPipeliningPass::runOnOperation() {
   for (int ret_pos = 0; ret_pos < orig_return_op->getNumOperands(); ++ret_pos) {
     auto operand = orig_return_op->getOperand(ret_pos);
     auto def_op = operand.getDefiningOp();
-    auto result = operand.dyn_cast<OpResult>();
+    auto result = mlir::dyn_cast<OpResult>(operand);
     if (def_op == non_tpu_caller) {
       loop_arg_update_map_non_tpu[result.getResultNumber()] = ret_pos;
     } else if (def_op == core_tpu_caller) {

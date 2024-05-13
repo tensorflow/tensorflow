@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -48,6 +47,12 @@ absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type);
 absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype);
 
 absl::StatusOr<ifrt::DType> DtypeToIfRtDType(nb_dtype dtype);
+
+// Converts an IFRT dtype to a NumPy dtype. It specially converts `kToken` into
+// bool to avoid exposing the token type to the JAX dtype system, expecting JAX
+// internals to use a bool array to express a token input/output.
+absl::StatusOr<nb_dtype> IfrtDtypeToDtypeWithTokenCanonicalization(
+    ifrt::DType dtype);
 
 // Returns a Python buffer protocol (PEP 3118) format descriptor string for
 // `type`. Return nullptr if there is no suitable choice of format string.

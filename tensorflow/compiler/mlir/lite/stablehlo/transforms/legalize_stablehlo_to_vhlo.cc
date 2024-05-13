@@ -41,6 +41,7 @@ limitations under the License.
 #include "stablehlo/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/lite/core/macros.h"
 
 #define DEBUG_TYPE "compat-passes"
 
@@ -92,7 +93,7 @@ class StablehloToOdmlTypeConverter : public vhlo::VhloTypeConverter {
       return attr;
 
     if (auto stablehlo_attr =
-            attr.dyn_cast_or_null<stablehlo::TypeExtensionsAttr>()) {
+            mlir::dyn_cast_or_null<stablehlo::TypeExtensionsAttr>(attr)) {
       return vhlo::TypeExtensionsV1Attr::get(stablehlo_attr.getContext(),
                                              stablehlo_attr.getBounds());
     }
@@ -118,7 +119,8 @@ class VhloToStablehloTypeConverter : public vhlo::VhloTypeConverter {
   }
 
   Attribute convertEncoding(Attribute attr) const final {
-    if (auto vhlo_attr = attr.dyn_cast_or_null<vhlo::TypeExtensionsV1Attr>()) {
+    if (auto vhlo_attr =
+            mlir::dyn_cast_or_null<vhlo::TypeExtensionsV1Attr>(attr)) {
       return stablehlo::TypeExtensionsAttr::get(vhlo_attr.getContext(),
                                                 vhlo_attr.getBounds());
     }
@@ -230,7 +232,7 @@ LogicalResult ApplyVhloToVersionPatterns(ModuleOp module,
   PassManager pm(module.getContext());
   pm.addPass(stablehlo::createVhloToVersionPass({version}));
   if (failed(pm.run(module))) {
-    return module->emitError("Failed VHLO to version") << version;
+    return module->emitError("Failed VHLO to version ") << version;
   }
   return success();
 }
@@ -274,11 +276,11 @@ struct LegalizeStablehloToVhloPass
           LegalizeStablehloToVhloPass> {
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    std::string target_version = "0.14.0";
+    std::string target_version = tflite_supported_stablehlo_version;
     VhloToStablehloTypeConverter to_builtin_converter;
 
     // StableHLO --> VHLO (allow funcs)
-    //   VHLO -> Downgrade to 0.14.0
+    //   VHLO -> Downgrade to 0.19.0 / tflite_supported_stablehlo_version
     //     VHLO Tensor --> Builtin Tensor
     //       Remove cast(tensor->vhlo) -> cast(vhlo->tensor) pattern
     if (failed(ApplyStablehloToVhloPatterns(module,

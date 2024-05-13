@@ -77,7 +77,7 @@ absl::StatusOr<ImportedMlirModuleOp> SavedModelToMlirModuleOp(
                                             module_op.status().ToString()));
   }
 
-  return std::make_pair(module_op->release(), std::move(bundle));
+  return std::make_pair(std::move(*module_op), std::move(bundle));
 }
 
 absl::StatusOr<absl::flat_hash_map<FunctionName, FunctionAlias>>
@@ -119,7 +119,7 @@ void UpdateFunctionAliases(
   });
 }
 
-absl::StatusOr<ModuleOp> ImportSavedModel(
+absl::StatusOr<OwningOpRef<ModuleOp>> ImportSavedModel(
     const absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
@@ -132,7 +132,7 @@ absl::StatusOr<ModuleOp> ImportSavedModel(
       SavedModelToMlirModuleOp(saved_model_path, tags, signature_keys, ctx));
   auto [module_op, saved_model_bundle] = std::move(imported_module);
 
-  UpdateFunctionAliases(function_aliases, module_op);
+  UpdateFunctionAliases(function_aliases, *module_op);
 
   // Collect the names of the functions that have aliases so that they may not
   // be inlined.
@@ -143,11 +143,11 @@ absl::StatusOr<ModuleOp> ImportSavedModel(
 
   TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       mlir_dump_file_prefix, /*is_inliner_run=*/true,
-      /*noinline_functions=*/aliased_function_names, module_op, &ctx,
+      /*noinline_functions=*/aliased_function_names, *module_op, &ctx,
       saved_model_bundle == nullptr ? nullptr
                                     : saved_model_bundle->GetSession(),
       /*run_tf_to_stablehlo=*/true, /*deserialize_xla_call_module=*/false));
-  return module_op;
+  return std::move(module_op);
 }
 
 }  // namespace mlir::quant::stablehlo

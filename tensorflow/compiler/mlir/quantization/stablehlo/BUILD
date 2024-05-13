@@ -51,6 +51,7 @@ cc_library(
         "passes/convert_xla_call_module_op_to_bfloat16.cc",
         "passes/defer_activation_transpose.cc",
         "passes/fold_constant_transpose.cc",
+        "passes/insert_calibration_statistics_saver.cc",
         "passes/insert_weight_param.cc",
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions_fusion.inc",
@@ -99,6 +100,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:permutation",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:report",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/instrumentations:save_report",
         "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -138,6 +140,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:regexp",
         "@local_tsl//tsl/platform:str_util",
@@ -572,6 +575,7 @@ tf_cc_test(
     deps = [
         ":math_utils",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:Support",
     ],
 )
 

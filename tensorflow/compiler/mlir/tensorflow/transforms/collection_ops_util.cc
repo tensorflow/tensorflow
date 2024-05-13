@@ -62,7 +62,7 @@ Value GetR1Const(ArrayRef<int64_t> r1, OpBuilder builder, Location loc,
 
 Value GetIndicesForElement(Value index, Value buffer, OpBuilder builder,
                            Location loc) {
-  auto buffer_type = buffer.getType().cast<RankedTensorType>();
+  auto buffer_type = mlir::cast<RankedTensorType>(buffer.getType());
   if (buffer_type.getShape().size() == 1) return index;
   // Create a concat of index and trailing zeros.
   llvm::SmallVector<int64_t, 8> zeros(buffer_type.getShape().size() - 1, 0);
@@ -77,7 +77,7 @@ Value GetIndicesForElement(Value index, Value buffer, OpBuilder builder,
 
 Value GetElement(Value index, Value buffer, OpBuilder builder, Location loc,
                  bool keep_slice_shape) {
-  auto buffer_type = buffer.getType().cast<RankedTensorType>();
+  auto buffer_type = mlir::cast<RankedTensorType>(buffer.getType());
   // Create a slice then reshape to remove the leading trivial dimension of
   // size 1.
   llvm::SmallVector<int64_t, 8> slice_size =
@@ -102,7 +102,7 @@ Value GetElement(Value index, Value buffer, OpBuilder builder, Location loc,
 
 Value SetElement(Value index, Value buffer, Value element, OpBuilder builder,
                  Location loc) {
-  auto buffer_type = buffer.getType().cast<RankedTensorType>();
+  auto buffer_type = mlir::cast<RankedTensorType>(buffer.getType());
   // Reshape the element to add a leading dimension of size 1 if th element does
   // not have that dimension, then perform a dynamic update slice.
   auto slice_shape = llvm::to_vector<8>(buffer_type.getShape());
@@ -208,7 +208,7 @@ std::optional<RankedTensorType> GetElementTypeFromAccess(
       if (type_from_alias.has_value()) return type_from_alias;
     } else if (auto type = infer_from_op(use.getOwner())) {
       if (!type) continue;
-      auto elem_type = type->dyn_cast<RankedTensorType>();
+      auto elem_type = mlir::dyn_cast<RankedTensorType>(*type);
       if (elem_type && elem_type.hasStaticShape()) return elem_type;
     }
   }
@@ -220,8 +220,8 @@ Value ReadLocalVariable(Value local_var, OpBuilder builder, Location loc) {
   return builder
       .create<TF::ReadVariableOp>(
           loc,
-          ArrayRef<Type>{getElementTypeOrSelf(local_var.getType())
-                             .cast<TF::ResourceType>()
+          ArrayRef<Type>{mlir::cast<TF::ResourceType>(
+                             getElementTypeOrSelf(local_var.getType()))
                              .getSubtypes()[0]},
           ArrayRef<Value>{local_var})
       .getValue();
@@ -246,7 +246,7 @@ Value AccumulateBuffers(Value a, Value b, OpBuilder builder, Location loc) {
 namespace {
 
 int64_t GetFirstIfIndicesAreContiguous(Value indices) {
-  auto type = indices.getType().dyn_cast<RankedTensorType>();
+  auto type = mlir::dyn_cast<RankedTensorType>(indices.getType());
   if (!type) return -1;
   auto indices_op = indices.getDefiningOp();
   if (!indices_op) return -1;
@@ -270,9 +270,10 @@ int64_t GetFirstIfIndicesAreContiguous(Value indices) {
 
 Value GatherElements(Value indices, Value buffer, OpBuilder builder,
                      Location loc) {
-  auto buffer_type = buffer.getType().cast<RankedTensorType>();
+  auto buffer_type = mlir::cast<RankedTensorType>(buffer.getType());
   auto result_shape = llvm::to_vector<8>(buffer_type.getShape());
-  result_shape[0] = indices.getType().cast<RankedTensorType>().getDimSize(0);
+  result_shape[0] =
+      mlir::cast<RankedTensorType>(indices.getType()).getDimSize(0);
   int64_t maybe_contiguous_start = GetFirstIfIndicesAreContiguous(indices);
   if (maybe_contiguous_start >= 0) {
     llvm::SmallVector<int64_t, 8> slice_starts(result_shape.size(), 0);
@@ -293,8 +294,8 @@ Value GatherElements(Value indices, Value buffer, OpBuilder builder,
 
 Value ScatterAccumulateElements(Value indices, Value updates, Value buffer,
                                 OpBuilder builder, Location loc) {
-  auto buffer_type = buffer.getType().cast<RankedTensorType>();
-  auto updates_type = updates.getType().cast<RankedTensorType>();
+  auto buffer_type = mlir::cast<RankedTensorType>(buffer.getType());
+  auto updates_type = mlir::cast<RankedTensorType>(updates.getType());
   int64_t maybe_contiguous_start = GetFirstIfIndicesAreContiguous(indices);
   if (maybe_contiguous_start == 0 && buffer_type == updates_type) {
     return AccumulateBuffers(buffer, updates, builder, loc);

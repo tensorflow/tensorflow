@@ -407,9 +407,9 @@ func.func @uniform_quantized_clip_by_value(%input: tensor<3x2xf32>) -> tensor<3x
   %zps = "tf.Const"() { value = dense<4> : tensor<2xi32> } : () -> tensor<2xi32>
 
   // tensor_proto that points to dense<127> of type !tf_type.qint32.
-  // CHECK-DAG: %[[MIN_MAX:.*]] = mhlo.constant() <{value = dense<127> : tensor<2xi32>}> : () -> tensor<2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
-  %min = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E5433322074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20225C3137375C3030305C3030305C30303022"> : tensor<2x!tf_type.qint32> } : () -> tensor<2x!tf_type.qint32>
-  %max = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E5433322074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20225C3137375C3030305C3030305C30303022"> : tensor<2x!tf_type.qint32> } : () -> tensor<2x!tf_type.qint32>
+  // CHECK-DAG: %[[MIN_MAX:.*]] = mhlo.constant() <{value = dense<127> : tensor<3x2xi32>}> : () -> tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
+  %min = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E5433322074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20225C3137375C3030305C3030305C30303022"> : tensor<3x2x!tf_type.qint32> } : () -> tensor<3x2x!tf_type.qint32>
+  %max = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E5433322074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20225C3137375C3030305C3030305C30303022"> : tensor<3x2x!tf_type.qint32> } : () -> tensor<3x2x!tf_type.qint32>
 
   // CHECK-DAG: %[[OPERAND:.*]] = mhlo.uniform_quantize %arg0 : (tensor<3x2xf32>) -> tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
   %0 = "tf.UniformQuantize"(%input, %scales, %zps) {
@@ -419,10 +419,10 @@ func.func @uniform_quantized_clip_by_value(%input: tensor<3x2xf32>) -> tensor<3x
   // CHECK-DAG: %[[CONVERT_1:.*]] = mhlo.bitcast_convert %[[OPERAND]] : (tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>) -> tensor<3x2xi32>
   // CHECK-DAG: %[[CONVERT_2:.*]] = mhlo.bitcast_convert %[[CONVERT_1]] : (tensor<3x2xi32>) -> tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
   // CHECK: %[[MIN_CLIPPED:.*]] = chlo.broadcast_maximum %[[CONVERT_2]], %[[MIN_MAX]] {broadcast_dimensions = array<i64: 1>} :
-  // CHECK-SAME: (tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>, tensor<2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>)
+  // CHECK-SAME: (tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>, tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>)
   // CHECK-SAME: -> tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
   // CHECK: %[[MAX_CLIPPED:.*]] = chlo.broadcast_minimum %[[MIN_CLIPPED]], %[[MIN_MAX]] {broadcast_dimensions = array<i64: 1>} :
-  // CHECK-SAME: (tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>, tensor<2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>)
+  // CHECK-SAME: (tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>, tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>)
   // CHECK-SAME: -> tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
   // CHECK: %[[RESULT:.*]] = mhlo.bitcast_convert %[[MAX_CLIPPED]] : (tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>) -> tensor<3x2xi32>
   // CHECK: return %[[RESULT]] : tensor<3x2xi32>
@@ -430,48 +430,48 @@ func.func @uniform_quantized_clip_by_value(%input: tensor<3x2xf32>) -> tensor<3x
       quantization_axis = 1 : i64,
       quantization_min_val = -2147483648 : i64,
       quantization_max_val = 2147483647 : i64
-  } : (tensor<3x2x!tf_type.qint32>, tensor<2x!tf_type.qint32>, tensor<2x!tf_type.qint32>, tensor<2xf32>, tensor<2xi32>) -> tensor<3x2x!tf_type.qint32>
+  } : (tensor<3x2x!tf_type.qint32>, tensor<3x2x!tf_type.qint32>, tensor<3x2x!tf_type.qint32>, tensor<2xf32>, tensor<2xi32>) -> tensor<3x2x!tf_type.qint32>
   func.return %1 : tensor<3x2x!tf_type.qint32>
 }
 
 // -----
 
 // CHECK-LABEL: func @uniform_quantized_clip_by_value_min_not_const
-func.func @uniform_quantized_clip_by_value_min_not_const(%input: tensor<3x2x!tf_type.qint32>, %min: tensor<2x!tf_type.qint32>) -> tensor<3x2x!tf_type.qint32> {
+func.func @uniform_quantized_clip_by_value_min_not_const(%input: tensor<3x2x!tf_type.qint32>, %min: tensor<3x2x!tf_type.qint32>) -> tensor<3x2x!tf_type.qint32> {
   %scales = "tf.Const"() { value = dense<2.0> : tensor<2xf32> } : () -> tensor<2xf32>
   %zps = "tf.Const"() { value = dense<4> : tensor<2xi32> } : () -> tensor<2xi32>
   // tensor_proto that points to dense<127> of type !tf_type.qint32.
-  %max = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E5433322074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20225C3137375C3030305C3030305C30303022"> : tensor<2x!tf_type.qint32> } : () -> tensor<2x!tf_type.qint32>
+  %max = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E5433322074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20225C3137375C3030305C3030305C30303022"> : tensor<3x2x!tf_type.qint32> } : () -> tensor<3x2x!tf_type.qint32>
 
   // CHECK-DAG: %[[INPUT:.*]] = mhlo.bitcast_convert %arg0 : (tensor<3x2xi32>) -> tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
-  // CHECK-DAG: %[[MIN:.*]] = mhlo.bitcast_convert %arg1 : (tensor<2xi32>) -> tensor<2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
+  // CHECK-DAG: %[[MIN:.*]] = mhlo.bitcast_convert %arg1 : (tensor<3x2xi32>) -> tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
   // CHECK: chlo.broadcast_maximum %[[INPUT]], %[[MIN]]
   %res = "tf.UniformQuantizedClipByValue"(%input, %min, %max, %scales, %zps) {
       quantization_axis = 1 : i64,
       quantization_min_val = -2147483648 : i64,
       quantization_max_val = 2147483647 : i64
-  } : (tensor<3x2x!tf_type.qint32>, tensor<2x!tf_type.qint32>, tensor<2x!tf_type.qint32>, tensor<2xf32>, tensor<2xi32>) -> tensor<3x2x!tf_type.qint32>
+  } : (tensor<3x2x!tf_type.qint32>, tensor<3x2x!tf_type.qint32>, tensor<3x2x!tf_type.qint32>, tensor<2xf32>, tensor<2xi32>) -> tensor<3x2x!tf_type.qint32>
   func.return %res : tensor<3x2x!tf_type.qint32>
 }
 
 // -----
 
 // CHECK-LABEL: func @uniform_quantized_clip_by_value_max_not_const
-func.func @uniform_quantized_clip_by_value_max_not_const(%input: tensor<3x2x!tf_type.qint32>, %max: tensor<2x!tf_type.qint32>) -> tensor<3x2x!tf_type.qint32> {
+func.func @uniform_quantized_clip_by_value_max_not_const(%input: tensor<3x2x!tf_type.qint32>, %max: tensor<3x2x!tf_type.qint32>) -> tensor<3x2x!tf_type.qint32> {
   %scales = "tf.Const"() { value = dense<2.0> : tensor<2xf32> } : () -> tensor<2xf32>
   %zps = "tf.Const"() { value = dense<4> : tensor<2xi32> } : () -> tensor<2xi32>
   // tensor_proto that points to dense<127> of type !tf_type.qint32.
-  %min = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E5433322074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20225C3137375C3030305C3030305C30303022"> : tensor<2x!tf_type.qint32> } : () -> tensor<2x!tf_type.qint32>
+  %min = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E5433322074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20225C3137375C3030305C3030305C30303022"> : tensor<3x2x!tf_type.qint32> } : () -> tensor<3x2x!tf_type.qint32>
 
   // CHECK-DAG: %[[INPUT:.*]] = mhlo.bitcast_convert %arg0 : (tensor<3x2xi32>) -> tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
-  // CHECK-DAG: %[[MAX:.*]] = mhlo.bitcast_convert %arg1 : (tensor<2xi32>) -> tensor<2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
+  // CHECK-DAG: %[[MAX:.*]] = mhlo.bitcast_convert %arg1 : (tensor<3x2xi32>) -> tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
   // CHECK-DAG: %[[INPUT_1:.*]] = chlo.broadcast_maximum
   // CHECK: chlo.broadcast_minimum %[[INPUT_1]], %[[MAX]]
   %res = "tf.UniformQuantizedClipByValue"(%input, %min, %max, %scales, %zps) {
       quantization_axis = 1 : i64,
       quantization_min_val = -2147483648 : i64,
       quantization_max_val = 2147483647 : i64
-  } : (tensor<3x2x!tf_type.qint32>, tensor<2x!tf_type.qint32>, tensor<2x!tf_type.qint32>, tensor<2xf32>, tensor<2xi32>) -> tensor<3x2x!tf_type.qint32>
+  } : (tensor<3x2x!tf_type.qint32>, tensor<3x2x!tf_type.qint32>, tensor<3x2x!tf_type.qint32>, tensor<2xf32>, tensor<2xi32>) -> tensor<3x2x!tf_type.qint32>
   func.return %res : tensor<3x2x!tf_type.qint32>
 }
 

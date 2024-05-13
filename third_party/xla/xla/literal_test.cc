@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/hash/hash.h"
 #include "absl/random/random.h"
 #include "absl/strings/match.h"
 #include "absl/types/span.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/test.h"
@@ -174,8 +176,8 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
       LiteralUtil::CreateR0<tsl::float8_e4m3fn>(tsl::float8_e4m3fn(0.5));
   EXPECT_EQ("f8e4m3fn[] 0.5", f8e4m3_lit.ToString());
 
-  auto f8e4m3b11fnuz_lit =
-      LiteralUtil::CreateR0<tsl::float8_e4m3b11>(tsl::float8_e4m3b11(0.5));
+  auto f8e4m3b11fnuz_lit = LiteralUtil::CreateR0<tsl::float8_e4m3b11fnuz>(
+      tsl::float8_e4m3b11fnuz(0.5));
   EXPECT_EQ("f8e4m3b11fnuz[] 0.5", f8e4m3b11fnuz_lit.ToString());
 
   auto f8e4m3fnuz_lit =
@@ -627,9 +629,9 @@ TEST_F(LiteralUtilTest, IsAll) {
   EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e4m3fn>({r16}).IsAll(8));
   EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e4m3fn>({r16}).IsAll(9));
 
-  tsl::float8_e4m3b11 s16(9);  // Exactly representable in e4m3
-  EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e4m3b11>({s16}).IsAll(8));
-  EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e4m3b11>({s16}).IsAll(9));
+  tsl::float8_e4m3b11fnuz s16(9);  // Exactly representable in e4m3
+  EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e4m3b11fnuz>({s16}).IsAll(8));
+  EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e4m3b11fnuz>({s16}).IsAll(9));
 
   tsl::float8_e4m3fnuz t16(9);  // Exactly representable in e4m3
   EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e4m3fnuz>({t16}).IsAll(8));
@@ -930,6 +932,16 @@ TEST_F(LiteralUtilTest, TestR4RelayoutEquivalence) {
   EXPECT_EQ(literal_r4_2x2x3x3_dim0minor_, dim0major_relaid_to_dim0minor);
 }
 
+template <bool kIsLayoutSensitive>
+struct HashTester {
+  template <typename H>
+  friend H AbslHashValue(H h, const HashTester& key) {
+    return Literal::Hash<H, kIsLayoutSensitive, /*kByteLimit=*/64>(
+        std::move(h), *key.literal);
+  }
+  const Literal* literal;
+};
+
 TEST_F(LiteralUtilTest, TestR2LinearLayout) {
   // Test expected memory layout of R2 dim0-minor (column-major) literal.
   auto mat_dim0minor = LiteralUtil::CreateR2WithLayout<int32_t>(
@@ -941,6 +953,8 @@ TEST_F(LiteralUtilTest, TestR2LinearLayout) {
   auto relaid_mat_to_dim0major = mat_dim0minor.Relayout(layout_r2_dim0major_);
   EXPECT_THAT(relaid_mat_to_dim0major.data<int32_t>(),
               ElementsAre(1, 2, 3, 4, 5, 6));
+  EXPECT_EQ(absl::HashOf(HashTester<false>{&mat_dim0minor}),
+            absl::HashOf(HashTester<false>{&relaid_mat_to_dim0major}));
 
   // Test expected memory layout of R2 created with dim0-major (row-major).
   auto mat_dim0major = LiteralUtil::CreateR2WithLayout<int32_t>(
@@ -952,6 +966,14 @@ TEST_F(LiteralUtilTest, TestR2LinearLayout) {
   auto relaid_mat_to_dim0minor = mat_dim0major.Relayout(layout_r2_dim0minor_);
   EXPECT_THAT(relaid_mat_to_dim0minor.data<int32_t>(),
               ElementsAre(1, 4, 2, 5, 3, 6));
+  EXPECT_EQ(absl::HashOf(HashTester<false>{&mat_dim0major}),
+            absl::HashOf(HashTester<false>{&relaid_mat_to_dim0minor}));
+
+  // Test that layout sensitive hashes are equal.
+  EXPECT_EQ(absl::HashOf(HashTester<true>{&mat_dim0minor}),
+            absl::HashOf(HashTester<true>{&relaid_mat_to_dim0minor}));
+  EXPECT_EQ(absl::HashOf(HashTester<true>{&mat_dim0major}),
+            absl::HashOf(HashTester<true>{&relaid_mat_to_dim0major}));
 }
 
 TEST_F(LiteralUtilTest, TestR3LinearLayout) {
@@ -1194,9 +1216,9 @@ TEST_F(LiteralUtilTest, PopulateWithValueR1F8e4m3) {
 
 TEST_F(LiteralUtilTest, PopulateWithValueR1F8e4m3b11) {
   Literal output(ShapeUtil::MakeShape(F8E4M3B11FNUZ, {3}));
-  tsl::float8_e4m3b11 x(0.5f);
-  output.PopulateWithValue<tsl::float8_e4m3b11>(x);
-  auto expected = LiteralUtil::CreateR1<tsl::float8_e4m3b11>({x, x, x});
+  tsl::float8_e4m3b11fnuz x(0.5f);
+  output.PopulateWithValue<tsl::float8_e4m3b11fnuz>(x);
+  auto expected = LiteralUtil::CreateR1<tsl::float8_e4m3b11fnuz>({x, x, x});
   EXPECT_EQ(output, expected);
 }
 
@@ -1709,7 +1731,7 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatchF8) {
   using e4 = tsl::float8_e4m3fn;
   auto f8e4m3 = LiteralUtil::CreateR2WithLayout<e4>(
       {{e4{0.}, e4{1.}}, {e4{2.}, e4{3.}}}, layout_r2_dim0major_);
-  using b11 = tsl::float8_e4m3b11;
+  using b11 = tsl::float8_e4m3b11fnuz;
   auto f8e4m3b11 = LiteralUtil::CreateR2WithLayout<b11>(
       {{b11{0.}, b11{1.}}, {b11{2.}, b11{3.}}}, layout_r2_dim0major_);
   using e5f = tsl::float8_e5m2fnuz;
@@ -2002,6 +2024,44 @@ TEST_F(LiteralUtilTest, BorrowingLiteralFromMultipleBufferPtrs) {
       literal_tuple.Get<int64_t>(/*multi_index=*/{2}, /*shape_index=*/{0}), 3);
 }
 
+TEST_F(LiteralUtilTest, BorrowingLiteralFromShapeTree) {
+  std::vector<float> data = {1.0, 2.0, 3.0};
+
+  Shape shape = ShapeUtil::MakeShape(PrimitiveType::F32, {3});
+  Shape tuple = ShapeUtil::MakeTupleShape({shape, shape});
+  Shape nested_tuple = ShapeUtil::MakeTupleShape({tuple, shape});
+
+  ShapeTree<const char*> ptr_tree(nested_tuple);
+  *ptr_tree.mutable_element({0, 0}) = reinterpret_cast<char*>(data.data());
+  *ptr_tree.mutable_element({0, 1}) = reinterpret_cast<char*>(data.data());
+  *ptr_tree.mutable_element({1}) = reinterpret_cast<char*>(data.data());
+
+  BorrowingLiteral literal(ptr_tree);
+
+  EXPECT_THAT(literal.data<float>({0, 0}), ElementsAre(1.0, 2.0, 3.0));
+  EXPECT_THAT(literal.data<float>({0, 1}), ElementsAre(1.0, 2.0, 3.0));
+  EXPECT_THAT(literal.data<float>({1}), ElementsAre(1.0, 2.0, 3.0));
+}
+
+TEST_F(LiteralUtilTest, MutableBorrowingLiteralFromShapeTree) {
+  std::vector<float> data = {1.0, 2.0, 3.0};
+
+  Shape shape = ShapeUtil::MakeShape(PrimitiveType::F32, {3});
+  Shape tuple = ShapeUtil::MakeTupleShape({shape, shape});
+  Shape nested_tuple = ShapeUtil::MakeTupleShape({tuple, shape});
+
+  ShapeTree<char*> ptr_tree(nested_tuple);
+  *ptr_tree.mutable_element({0, 0}) = reinterpret_cast<char*>(data.data());
+  *ptr_tree.mutable_element({0, 1}) = reinterpret_cast<char*>(data.data());
+  *ptr_tree.mutable_element({1}) = reinterpret_cast<char*>(data.data());
+
+  MutableBorrowingLiteral literal(ptr_tree);
+
+  EXPECT_THAT(literal.data<float>({0, 0}), ElementsAre(1.0, 2.0, 3.0));
+  EXPECT_THAT(literal.data<float>({0, 1}), ElementsAre(1.0, 2.0, 3.0));
+  EXPECT_THAT(literal.data<float>({1}), ElementsAre(1.0, 2.0, 3.0));
+}
+
 TEST_F(LiteralUtilTest, LiteralMove) {
   Literal matrix = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   Literal literal(std::move(matrix));
@@ -2178,7 +2238,7 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
   using e4 = tsl::float8_e4m3fn;
   auto vector_f8e4m3 =
       LiteralUtil::CreateR1<e4>({e4{10.0}, e4{20.0}, e4{-32.0}});
-  using b11 = tsl::float8_e4m3b11;
+  using b11 = tsl::float8_e4m3b11fnuz;
   auto vector_f8e4m3b11 =
       LiteralUtil::CreateR1<b11>({b11{10.0}, b11{20.0}, b11{-30.0}});
   using e5f = tsl::float8_e5m2fnuz;

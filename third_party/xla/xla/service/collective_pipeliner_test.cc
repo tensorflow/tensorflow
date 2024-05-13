@@ -81,7 +81,8 @@ absl::StatusOr<bool> RunOptimizer(
       /*should_process=*/should_process,
       /*acceptable_formatting=*/acceptable_formatting,
       /*reuse_pipelined_op_buffer=*/reuse_pipelined_op_buffer,
-      should_allow_loop_variant_parameter_in_chain, postprocess_backward_peeled,
+      should_allow_loop_variant_parameter_in_chain,
+      /*should_allow_control_dependencies=*/false, postprocess_backward_peeled,
       postprocess_backward_rotated};
   HloPassPipeline pass("optimizer");
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,

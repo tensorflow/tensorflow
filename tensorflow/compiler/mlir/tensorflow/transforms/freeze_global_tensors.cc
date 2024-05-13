@@ -86,7 +86,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
   DenseMap<BlockArgument, bool> freezeable;
   for (auto func : module.getOps<func::FuncOp>()) {
     for (BlockArgument val : func.getArguments()) {
-      if (!getElementTypeOrSelf(val.getType()).isa<TF::ResourceType>())
+      if (!mlir::isa<TF::ResourceType>(getElementTypeOrSelf(val.getType())))
         continue;
 
       // Check that there is only a single global tensor associated with arg.

@@ -146,8 +146,8 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
   Shape original_device_shape = *device_shape;
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
-  TF_ASSIGN_OR_RETURN(auto compiler,
-                      Compiler::GetForPlatform(stream->parent()->platform()));
+  TF_ASSIGN_OR_RETURN(
+      auto compiler, Compiler::GetForPlatform(stream->parent()->GetPlatform()));
   TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
       [&](const ShapeIndex& index,
           const se::DeviceMemoryBase& buffer) -> absl::Status {

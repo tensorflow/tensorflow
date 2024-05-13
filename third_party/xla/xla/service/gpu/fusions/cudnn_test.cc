@@ -26,8 +26,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/cudnn_fusion_compiler.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/tests/filecheck.h"
@@ -74,6 +78,44 @@ class CuDnnFusionTest : public GpuCodegenTest {
 };
 
 using CuDnnFusionExecutionTest = CuDnnFusionTest;
+
+namespace m = ::xla::match;
+
+TEST_F(CuDnnFusionExecutionTest, WorkspaceAllocationWorks) {
+  if (!IsAtLeastCuDnn91()) {
+    GTEST_SKIP() << "This test case requests a workspace only with cuDNN 9.1+.";
+  }
+  const std::string kHloText = R"(
+fusion1 {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT r = f32[32,64] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT _ = f32[32,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  Thunk::BinaryMap dnn_compiled_graphs;
+  CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
+                                     dnn_compiled_graphs);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::GetTupleElement(m::Fusion())));
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->operand(0)
+                  ->fused_instructions_computation()
+                  ->root_instruction(),
+              GmockMatch(m::Tuple(m::Dot(), m::CustomCall())));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
 
 TEST_F(CuDnnFusionExecutionTest,
        NoTritonConfigIsAssignedAtZeroAutotuningLevel) {
@@ -335,20 +377,20 @@ ENTRY e {
     backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
 })";
 
+  se::StreamExecutorMemoryAllocator allocator(
+      backend().default_stream_executor());
   // Verify that a command buffer is applied.
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> executable,
-      backend().compiler()->RunBackend(
-          GetOptimizedModule(kHloText).value(),
-          backend().default_stream_executor(),
-          backend().default_stream_executor()->GetAllocator()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                          backend().compiler()->RunBackend(
+                              GetOptimizedModule(kHloText).value(),
+                              backend().default_stream_executor(), &allocator));
   absl::StatusOr<bool> filecheck_result =
       RunFileCheck(executable->module().ToString(), R"(
 ; CHECK: ENTRY
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
-; CHECK-NEXT: ROOT
-; CHECK-SAME: command_buffer
+; CHECK: command_buffer
+; CHECK-NOT: fusion
 )");
   TF_ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.value());
@@ -479,6 +521,57 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(CuDnnFusionLevel2Test, ConstantExecutesCorrectly) {
+  EXPECT_TRUE(RunAndCompare(R"(
+fusion1 {
+  x = bf16[16,32] parameter(0)
+  y = bf16[32,16] parameter(1)
+  x_const = bf16[] constant(-1)
+  y_const = s32[] constant(-2)
+  x_const_bcast = bf16[16,32] broadcast(x_const), dimensions={}
+  y_const_bcast = s32[32,16] broadcast(y_const), dimensions={}
+  y_const_convert = bf16[32,16] convert(y_const_bcast)
+  x_add = bf16[16,32] minimum(x, x_const_bcast)
+  y_add = bf16[32,16] minimum(y, y_const_convert)
+  dot_a = f32[16,16] dot(x_add, y_add), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c = f32[] constant(0)
+  c_bcast = f32[16,16] broadcast(c), dimensions={}
+  ROOT out = f32[16,16] maximum(dot_a, c_bcast)
+  }
+ENTRY e {
+  p0 = bf16[16,32] parameter(0)
+  p1 = bf16[32,16] parameter(1)
+  ROOT _ = f32[16,16] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(CuDnnFusionLevel2Test, DotF8ExecutesCorrectly) {
+  EXPECT_TRUE(RunAndCompare(R"(
+
+fusion1 {
+  x = f8e4m3fn[16,32] parameter(0)
+  y = f8e4m3fn[32,16] parameter(1)
+  dot = f32[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  x_scale = f32[] parameter(2)
+  y_scale = f32[] parameter(3)
+  combined_scale = f32[] multiply(x_scale, y_scale)
+  scale_bcast = f32[16,16] broadcast(combined_scale), dimensions={}
+  ROOT out =  f32[16,16] multiply(dot, scale_bcast)
+}
+
+ENTRY e {
+  p0 = f8e4m3fn[16,32] parameter(0)
+  p1 = f8e4m3fn[32,16] parameter(1)
+  x_scale = f32[] parameter(2)
+  y_scale = f32[] parameter(3)
+  ROOT _ = f32[16,16] fusion(p0, p1, x_scale, y_scale), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 class CuDnnFusionLevel3Test : public CuDnnFusionExecutionTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
@@ -588,12 +681,12 @@ ENTRY e {
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteF32, UnaryElementwiseTest,
     ::testing::Combine(::testing::Values(F32),
-                       ::testing::ValuesIn({HloOpcode::kAbs, HloOpcode::kCos,
-                                            HloOpcode::kExp, HloOpcode::kLog,
-                                            HloOpcode::kNegate,
-                                            HloOpcode::kRsqrt, HloOpcode::kSin,
-                                            HloOpcode::kSqrt, HloOpcode::kTan,
-                                            HloOpcode::kTanh}),
+                       ::testing::ValuesIn(
+                           {HloOpcode::kAbs, HloOpcode::kCeil, HloOpcode::kCos,
+                            HloOpcode::kExp, HloOpcode::kFloor, HloOpcode::kLog,
+                            HloOpcode::kNegate, HloOpcode::kRsqrt,
+                            HloOpcode::kSin, HloOpcode::kSqrt, HloOpcode::kTan,
+                            HloOpcode::kTanh}),
                        ::testing::Values(5e-4)),
     ElementwiseTestParamsToString);
 

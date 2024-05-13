@@ -601,7 +601,9 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
       num_segments = 8327099846119777499
       unsorted = math_ops.unsorted_segment_sum(
           np.ones((3)), segment_ids=898042203, num_segments=num_segments)
-      with self.assertRaisesOpError("Encountered overflow when multiplying"):
+      with self.assertRaisesOpError(
+          "Encountered overflow when multiplying | must not be negative"
+      ):
         self.evaluate(unsorted)
 
 

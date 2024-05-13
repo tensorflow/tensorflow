@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/odml_converter/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
@@ -150,12 +151,14 @@ void AddPreQuantizationStableHloToTfPasses(
   // to be consistent with other entrypoints.
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::odml::CreateOutlineCompositesPass());
   // Decompose CHLO into StableHLO ops
   // TODO(b/331843141): There are some CHLO's like TopK which we could instead
   // lower to TFL ops.
   mlir::stablehlo::experimental::createChloLegalizeToStablehloPipeline(
       pass_manager);
-
+  pass_manager.addPass(mlir::odml::CreateTransposeCommuteOpsPass());
   // The following two passes find specific uniform quantization patterns in
   // StableHLO and converts them to TFLite ops that accept or produce uniform
   // quantized types. They only target a specific set of models that contain

@@ -63,10 +63,6 @@ CreateLiftQuantizableSpotsAsFunctionsDRQPass(
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateConvertCustomAggregationOpToQuantStatsPass();
 
-// Issues IDs of custom aggregation ops for preparing the calibration procedure.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateIssueIDsOfCustomAggregationOpsPass();
-
 // Inserts quantized function library.
 std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass(
     tensorflow::quantization::QuantizationMethod::PresetMethod

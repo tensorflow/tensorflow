@@ -892,7 +892,9 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
   auto executors = PlatformUtil::GetStreamExecutors(platform).value();
-  se::StreamExecutorMemoryAllocator allocator(platform, executors);
+  se::StreamExecutorMemoryAllocator allocator(
+      platform, std::vector<se::StreamExecutorInterface*>(executors.begin(),
+                                                          executors.end()));
 
   const int64_t intra_op_parallelism_threads = 24;
   xla::LocalClientOptions client_options;

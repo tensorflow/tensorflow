@@ -34,24 +34,22 @@ def PropagateSliceIndicesPass :
   let constructor = "CreatePropagateSliceIndicesPass()";
 }
 
-def LowerFuncPass : Pass<"xla-gpu-lower-func", "mlir::ModuleOp"> {
-  let summary = "Lowers function calls to func.calls.";
-
+def ConvertPureCallOpsPass
+    : Pass<"xla-gpu-convert-pure-call-ops", "mlir::func::FuncOp"> {
+  let summary = "Converts xla_gpu.pure_call to func.call";
   let description = [{
       We use xla_gpu.pure_call ops for calls to enable CSE and other
       transformations (e.g. LICM). This pass rewrites our custom ops to standard
       ops.
   }];
-
   let dependentDialects = [
-    "mlir::func::FuncDialect", "xla::gpu::XlaGpuDialect"
+    "mlir::func::FuncDialect",
+    "xla::gpu::XlaGpuDialect"
   ];
-
-  let constructor = "CreateLowerFuncPass()";
+  let constructor = "CreateConvertPureCallOpsPass()";
 }
 
-def LowerTensorsPass :
-   Pass<"xla-gpu-lower-tensors", "mlir::ModuleOp"> {
+def LowerTensorsPass : Pass<"xla-gpu-lower-tensors", "mlir::ModuleOp"> {
   let summary = "Lowers tensors to llvm pointers and loads/stores.";
 
   let description = [{
@@ -60,10 +58,18 @@ def LowerTensorsPass :
   }];
 
   let dependentDialects = [
-    "mlir::func::FuncDialect", "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect",
-    "mlir::tensor::TensorDialect", "mlir::scf::SCFDialect",
+    "mlir::LLVM::LLVMDialect",
+    "mlir::func::FuncDialect",
+    "mlir::gpu::GPUDialect",
+    "mlir::scf::SCFDialect",
+    "mlir::tensor::TensorDialect",
   ];
-
+  let options = [
+    Option<"is_amd_gpu_", "is_amd_gpu", "bool", /*default=*/"false",
+           "True if AMD GPU.">,
+    Option<"gpu_arch_", "gpu_arch", "std::string", /*default=*/"",
+           "CUDA or ROCm compute capability.">,
+  ];
   let constructor = "CreateLowerTensorsPass()";
 }
 

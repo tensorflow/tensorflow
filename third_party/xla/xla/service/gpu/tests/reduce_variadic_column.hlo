@@ -106,7 +106,6 @@ ENTRY main {
 // CHECK:       loop0.loop_body:                                  ; preds = %[[VAL_56]]
 // CHECK:         %[[VAL_62:.*]] = add nuw nsw i32 %[[VAL_58]], 1
 // CHECK:         store i32 %[[VAL_62]], ptr{{.*}}%[[VAL_36]], align 4
-// CHECK:         %[[VAL_63:.*]] = icmp eq i32 %[[VAL_58]], 0
 // CHECK:         store i32 %thread.id.1, ptr{{.*}}%[[VAL_35]], align 4
 // CHECK:         br label %[[VAL_64:.*]]
 // CHECK:       loop1.loop_header:                                ; preds = %[[VAL_65:.*]], %[[VAL_61]]
@@ -116,7 +115,6 @@ ENTRY main {
 // CHECK:       loop1.loop_body:                                  ; preds = %[[VAL_64]]
 // CHECK:         %[[VAL_69:.*]] = add nuw nsw i32 %[[VAL_66]], 8
 // CHECK:         store i32 %[[VAL_69]], ptr{{.*}}%[[VAL_35]], align 4
-// CHECK:         %[[VAL_70:.*]] = icmp eq i32 %[[VAL_66]], %thread.id.1
 // CHECK:         %[[VAL_71:.*]] = icmp eq i32 512, %tile_bound.2
 // CHECK:         br i1 %[[VAL_71]], label %[[VAL_72:.*]], label %[[VAL_73:.*]]
 // CHECK:       is_full_tile-after:                               ; preds = %[[VAL_74:.*]], %[[VAL_75:.*]]
@@ -294,7 +292,6 @@ ENTRY main {
 // CHECK:       loop2.loop_body:                                  ; preds = %[[VAL_119]]
 // CHECK:         %[[VAL_123:.*]] = add nuw nsw i32 %[[VAL_121]], 32
 // CHECK:         store i32 %[[VAL_123]], ptr{{.*}}%[[VAL_34]], align 4
-// CHECK:         %[[VAL_124:.*]] = icmp eq i32 %[[VAL_121]], 0
 // CHECK:         %[[VAL_125:.*]] = add i32 %[[VAL_121]], %thread.id.2
 // CHECK:         %[[VAL_126:.*]] = add i32 %tile_origin.0, %[[VAL_58]]
 // CHECK:         %[[VAL_127:.*]] = add i32 %tile_origin.1, %[[VAL_66]]
@@ -337,7 +334,6 @@ ENTRY main {
 // CHECK:       loop2.loop_body10:                                ; preds = %[[VAL_139]]
 // CHECK:         %[[VAL_144:.*]] = add nuw nsw i32 %[[VAL_141]], 32
 // CHECK:         store i32 %[[VAL_144]], ptr{{.*}}%[[VAL_30]], align 4
-// CHECK:         %[[VAL_145:.*]] = icmp eq i32 %[[VAL_141]], 0
 // CHECK:         %[[VAL_146:.*]] = add i32 %[[VAL_141]], %thread.id.2
 // CHECK:         %[[VAL_147:.*]] = icmp ult i32 %[[VAL_146]], %tile_bound.2
 // CHECK:         br i1 %[[VAL_147]], label %[[VAL_148:.*]], label %[[VAL_140]]

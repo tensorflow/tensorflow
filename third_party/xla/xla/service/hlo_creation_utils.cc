@@ -328,8 +328,9 @@ HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type,
     return hlo;
   }
   Shape shape = ShapeUtil::ChangeElementType(hlo->shape(), type);
-  if (primitive_util::Is4BitType(shape.element_type())) {
-    shape.mutable_layout()->set_element_size_in_bits(4);
+  if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+    shape.mutable_layout()->set_element_size_in_bits(
+        primitive_util::BitWidth(shape.element_type()));
   } else {
     shape.mutable_layout()->set_element_size_in_bits(0);
   }

@@ -55,16 +55,18 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/nb_class_ptr.h"
+#include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/py_client.h"
 #include "xla/service/computation_placer.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/util.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -170,6 +172,13 @@ class CompileOnlyIfRtClient final
         "client.");
   }
 
+  absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>> RemapArrays(
+      const ifrt::RemapPlan& plan,
+      absl::Span<tsl::RCReference<ifrt::Array>> arrays,
+      ifrt::ArrayCopySemantics semantics) override {
+    return Unimplemented("RemapArrays not available with compile-only client.");
+  }
+
   absl::StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(
       absl::Span<tsl::RCReference<ifrt::Value>> values) override {
     return Unimplemented("MakeTuple not available with compile-only client.");
@@ -231,8 +240,10 @@ class CompileOnlyIfRtClient final
   absl::StatusOr<std::unique_ptr<PjRtLayout>> GetDefaultLayoutForDevice(
       ifrt::DType dtype, absl::Span<const int64_t> dims,
       ifrt::Device* device) const override {
-    return absl::UnimplementedError(
-        "GetDefaultLayout not supported for CompileOnlyIfRtClient.");
+    TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
+    TF_ASSIGN_OR_RETURN(xla::Layout layout,
+                        topology_->GetDefaultLayout(element_type, dims));
+    return std::make_unique<PjRtXlaLayout>(std::move(layout));
   }
 
  private:

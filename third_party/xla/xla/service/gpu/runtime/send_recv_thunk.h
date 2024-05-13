@@ -32,8 +32,8 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/async_value_ref.h"
 
 namespace xla::gpu {
 

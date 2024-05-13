@@ -259,7 +259,7 @@ class ReverseV2Op : public OpKernel {
       OP_REQUIRES(context, TensorShapeUtils::IsVector(sparse_dims_shape),
                   errors::InvalidArgument("'dims' must be 1-dimension, not ",
                                           sparse_dims.dims()));
-      gtl::InlinedVector<bool, 8> axes_dense(input_dims, false);
+      absl::InlinedVector<bool, 8> axes_dense(input_dims, false);
       for (int dummy = 0; dummy < axes_sparse_flat.size(); dummy++) {
         Tidx axis = internal::SubtleMustCopy<Tidx>(axes_sparse_flat(dummy));
         Tidx canonical_axis = axis < 0 ? input_dims + axis : axis;

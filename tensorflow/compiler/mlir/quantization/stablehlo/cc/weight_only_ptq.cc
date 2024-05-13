@@ -28,11 +28,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/instrumentations/save_report.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
@@ -42,6 +44,7 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
+using ::stablehlo::quantization::GetReportFilePath;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::SignatureDef;
 using ::tensorflow::quantization::ExportedModel;
@@ -56,6 +59,11 @@ absl::StatusOr<ModuleOp> WeightOnlyPtqComponent::Run(
   TF_RETURN_IF_ERROR(RunPasses(
       kName, /*add_passes_func=*/
       [&config](PassManager& pm) {
+        // Add instrumentation to save quantization report after quantization.
+        pm.addInstrumentation(
+            std::make_unique<SaveQuantizationReportInstrumentation>(
+                GetReportFilePath(config)));
+
         AddWeightOnlyQuantizationPasses(pm, config.specs(),
                                         config.pipeline_config(),
                                         config.debugger_config());
@@ -85,20 +93,20 @@ absl::Status QuantizeWeightOnlyPtq(
   }
 
   TF_ASSIGN_OR_RETURN(
-      ModuleOp module_op,
+      auto module,
       ImportSavedModel(src_saved_model_path, signature_keys, tags,
                        quantization_config, WeightOnlyPtqComponent::kName,
                        *function_aliases, *ctx));
 
   WeightOnlyPtqComponent weight_only_ptq_component(ctx.get());
   TF_ASSIGN_OR_RETURN(
-      module_op, weight_only_ptq_component.Run(module_op, quantization_config));
+      *module, weight_only_ptq_component.Run(*module, quantization_config));
 
   TF_ASSIGN_OR_RETURN(
       const ExportedModel post_calibrated_exported_model,
       CreateExportedModel(signature_keys, tags, quantization_config,
                           WeightOnlyPtqComponent::kName, *function_aliases,
-                          *ctx, module_op));
+                          *ctx, *module));
 
   // Remove the `tpu` tag for exporting because the output quantized model is
   // essentially a CPU model.

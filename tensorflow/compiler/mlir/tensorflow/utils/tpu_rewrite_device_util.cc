@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -92,7 +93,7 @@ absl::Status MismatchedTPUSystemAttributeErr(absl::string_view attribute, T a,
 // found, the first one lexicographically is returned. If no TPU_SYSTEM device
 // is found or if there are multiple TPU_SYSTEM devices with different jobs or
 // replicas, a failure will be returned.
-StatusOr<llvm::SmallVector<ParsedDevice, 8>> GetTPUSystemDevices(
+absl::StatusOr<llvm::SmallVector<ParsedDevice, 8>> GetTPUSystemDevices(
     ParsedDevices devices) {
   ParsedDevice spec;
   spec.type = kDeviceTPUSystem;
@@ -131,7 +132,7 @@ StatusOr<llvm::SmallVector<ParsedDevice, 8>> GetTPUSystemDevices(
 // Find TPU devices associated to system device based on spec (e.g. from
 // GetTPUSystemDevices). If the number of TPU devices per host do not match for
 // every host, a failure will be returned.
-StatusOr<llvm::SmallVector<llvm::SmallVector<ParsedDevice, 8>, 8>>
+absl::StatusOr<llvm::SmallVector<llvm::SmallVector<ParsedDevice, 8>, 8>>
 GetTPUDevices(ParsedDevices devices,
               llvm::ArrayRef<ParsedDevice> system_devices) {
   llvm::SmallVector<llvm::SmallVector<ParsedDevice, 8>, 8> tpu_devices;
@@ -192,8 +193,8 @@ std::string GetTPUCompilationDevice(ParsedDevice system_device) {
 // Find the host CPU device for a given TPU device with `DEVICE_CPU` as its
 // type. If multiple local cpu devices are disabled, always assign id 0. If
 // set, use the same id as the tpu device.
-StatusOr<std::string> GetCPUHostDeviceForTPUDevice(ParsedDevice tpu_device,
-                                                   ParsedDevices devices) {
+absl::StatusOr<std::string> GetCPUHostDeviceForTPUDevice(
+    ParsedDevice tpu_device, ParsedDevices devices) {
   tpu_device.type = DEVICE_CPU;
   bool enable_multiple_local_cpu_devices =
       tensorflow::GetMlirCommonFlags()
@@ -214,7 +215,7 @@ StatusOr<std::string> GetCPUHostDeviceForTPUDevice(ParsedDevice tpu_device,
 // to every core in the mesh. TPU devices are simply added to
 // `execution_devices` of one replica. `num_replicas` must be 1 or the total
 // number of TPU devices available, and `num_cores_per_replica` must be 1.
-StatusOr<TPUDevicesAndHosts> GetFullMeshTPUExecutionDeviceAssignment(
+absl::StatusOr<TPUDevicesAndHosts> GetFullMeshTPUExecutionDeviceAssignment(
     int num_replicas, int num_cores_per_replica,
     llvm::ArrayRef<llvm::SmallVector<ParsedDevice, 8>> tpu_devices,
     ParsedDevices devices) {
@@ -293,7 +294,7 @@ absl::Status DuplicateCoordinateErrorMsg(absl::string_view attribute, int x,
 //  - device coordinates within the mesh shape
 //  - no duplicate device coordinates
 //  - number of device coordinates (in tuple 3) match number of availabe TPUs
-StatusOr<xla::Array4D<TaskAndDevice>> ParseTopologyAttr(
+absl::StatusOr<xla::Array4D<TaskAndDevice>> ParseTopologyAttr(
     llvm::StringRef topology_attr, int num_tasks, int num_tpus_per_task) {
   tpu::TopologyProto topology_proto;
   if (!topology_proto.ParseFromString(topology_attr.str()))
@@ -375,7 +376,7 @@ StatusOr<xla::Array4D<TaskAndDevice>> ParseTopologyAttr(
 //  - number of device coordinates (in tuple 3) match number 'num_replicas' *
 //    'num_cores_per_replica'
 //  - a TPU device associated with each device coordinate
-StatusOr<std::pair<TPUDevicesAndHosts, xla::DeviceAssignmentProto>>
+absl::StatusOr<std::pair<TPUDevicesAndHosts, xla::DeviceAssignmentProto>>
 GetGeneralTPUExecutionDeviceAssignment(
     int num_replicas, int num_cores_per_replica,
     llvm::ArrayRef<llvm::SmallVector<ParsedDevice, 8>> tpu_devices,
@@ -480,7 +481,7 @@ mlir::LogicalResult GetDeviceAssignmentCoordinates(
     return cluster.emitOpError(llvm::formatv("requires attribute '{0}'",
                                              tensorflow::kDeviceAssignmentAttr)
                                    .str());
-  if (StatusOr<llvm::SmallVector<int64_t, 8>> fetched_device_coordinates =
+  if (absl::StatusOr<llvm::SmallVector<int64_t, 8>> fetched_device_coordinates =
           tensorflow::GetDeviceCoordinates(device_assignment_attr);
       fetched_device_coordinates.ok()) {
     device_coordinates = *fetched_device_coordinates;
@@ -516,7 +517,7 @@ mlir::LogicalResult GetTPUDevicesAndHostsNotReplicated(
   }
 
   // Determine compilation and execution devices.
-  if (StatusOr<TPUDeviceAssignment> tpu_device_assignment =
+  if (absl::StatusOr<TPUDeviceAssignment> tpu_device_assignment =
           tensorflow::GetTPUCompilationAndExecutionDevices(
               devices.device_names(), /*num_replicas=*/1,
               GetNumCoresPerReplica(cluster), topology, device_coordinates);
@@ -601,7 +602,7 @@ mlir::LogicalResult GetTPUToHostMap(
 
 }  // anonymous namespace
 
-StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
+absl::StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
     mlir::ArrayAttr device_assignment_attr) {
   llvm::SmallVector<int64_t, 8> device_coordinates;
   device_coordinates.reserve(device_assignment_attr.size());
@@ -609,7 +610,7 @@ StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
   for (auto device_coordinate_and_idx :
        llvm::enumerate(device_assignment_attr)) {
     auto device_coordinate =
-        device_coordinate_and_idx.value().dyn_cast<mlir::IntegerAttr>();
+        mlir::dyn_cast<mlir::IntegerAttr>(device_coordinate_and_idx.value());
     if (!device_coordinate)
       return absl::InvalidArgumentError(
           llvm::formatv(kBadIntArrayElementMsg, kDeviceAssignmentAttr,
@@ -622,7 +623,7 @@ StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
   return device_coordinates;
 }
 
-StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
+absl::StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
     ParsedDevices devices, int num_replicas, int num_cores_per_replica,
     llvm::StringRef topology_attr,
     llvm::ArrayRef<int64_t> device_assignment_attr) {
@@ -733,8 +734,8 @@ bool IsTPUReplicatedCore(llvm::StringRef device) {
 
 bool TypeValidForXLA(const mlir::Type& type) {
   const mlir::Type elem = getElementTypeOrSelf(type);
-  return !elem.isa<mlir::TF::ResourceType>() &&
-         !elem.isa<mlir::TF::StringType>();
+  return !mlir::isa<mlir::TF::ResourceType>(elem) &&
+         !mlir::isa<mlir::TF::StringType>(elem);
 }
 
 mlir::LogicalResult GetDeviceToHostMap(

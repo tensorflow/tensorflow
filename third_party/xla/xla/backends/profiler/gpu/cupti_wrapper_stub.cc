@@ -55,6 +55,10 @@ CUptiResult CuptiWrapperStub::ActivityRegisterCallbacks(
   return CUPTI_SUCCESS;
 }
 
+CUptiResult CuptiWrapperStub::ActivityUsePerThreadBuffer() {
+  return CUPTI_SUCCESS;
+}
+
 CUptiResult CuptiWrapperStub::GetDeviceId(CUcontext context,
                                           uint32_t* deviceId) {
   return cuptiGetDeviceId(context, deviceId);

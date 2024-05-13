@@ -1,6 +1,6 @@
 // RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb | FileCheck %s
 
-// CHECK: define void @fusion({{.*}}%[[ARG0:.*]], {{.*}}%[[ARG1:.*]],
+// CHECK: define{{( amdgpu_kernel)?}} void @fusion({{.*}}%[[ARG0:.*]], {{.*}}%[[ARG1:.*]],
 // CHECK:   %[[A:.*]] = load {{.*}} ptr %[[ARG0]]
 // CHECK:   %[[B:.*]] = load {{.*}} ptr %[[ARG1]]
 // CHECK:   or {{.*}} %[[A]], %[[B]]

@@ -16,15 +16,15 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_TIMER_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_TIMER_H_
 
-#include <memory>
 #include <optional>
 #include <utility>
 
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_timer_kernel.h"
+#include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla {
 namespace gpu {
@@ -46,21 +46,6 @@ class GpuStream;
 // to be measured more accurately.
 class GpuTimer {
  public:
-  class GpuSemaphore {
-   public:
-    GpuSemaphore() = default;
-    static absl::StatusOr<GpuSemaphore> Create(StreamExecutor* executor);
-    explicit operator bool() const { return bool{ptr_}; }
-    GpuSemaphoreState& operator*() {
-      return *static_cast<GpuSemaphoreState*>(ptr_->opaque());
-    }
-    DeviceMemory<GpuSemaphoreState> device();
-
-   private:
-    explicit GpuSemaphore(std::unique_ptr<MemoryAllocation> alloc)
-        : ptr_{std::move(alloc)} {}
-    std::unique_ptr<MemoryAllocation> ptr_;
-  };
   static absl::StatusOr<GpuTimer> Create(Stream* stream, bool use_delay_kernel);
   [[deprecated("Pass Stream* not GpuStream*")]] static absl::StatusOr<GpuTimer>
   Create(GpuStream* stream);

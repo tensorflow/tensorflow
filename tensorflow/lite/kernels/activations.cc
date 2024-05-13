@@ -1754,7 +1754,6 @@ TfLiteStatus GeluEval(TfLiteContext* context, TfLiteNode* node) {
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
-  return kTfLiteOk;
 }
 
 }  // namespace activations

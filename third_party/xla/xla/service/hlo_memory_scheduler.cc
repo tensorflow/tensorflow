@@ -38,6 +38,7 @@ limitations under the License.
 #include "tsl/lib/gtl/map_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace {
@@ -725,6 +726,10 @@ absl::StatusOr<HloSchedule> ScheduleModule(
     const ModuleSchedulerAlgorithm& algorithm,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     int64_t* peak_memory) {
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaMemoryScheduler:#module=%s,program_id=%d#",
+                           module->name(), module->unique_id());
+  });
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(module));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,

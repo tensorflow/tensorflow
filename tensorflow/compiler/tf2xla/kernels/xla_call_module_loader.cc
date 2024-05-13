@@ -116,8 +116,8 @@ constexpr llvm::StringRef kCustomCallShimTarget =
 }  // namespace
 
 bool IsTokenType(mlir::Type type) {
-  return type.isa<mlir::stablehlo::TokenType>() ||
-         type.isa<mlir::mhlo::TokenType>();
+  return mlir::isa<mlir::stablehlo::TokenType>(type) ||
+         mlir::isa<mlir::mhlo::TokenType>(type);
 }
 
 absl::StatusOr<std::unique_ptr<XlaCallModuleLoader>>
@@ -174,7 +174,7 @@ absl::Status XlaCallModuleLoader::SetPlatformIndex(
   op_builder.setInsertionPointToStart(&main_body);
   mlir::BlockArgument platform_index_arg = main_body.getArgument(0);
   mlir::RankedTensorType arg_ranked_type =
-      platform_index_arg.getType().dyn_cast<mlir::RankedTensorType>();
+      mlir::dyn_cast<mlir::RankedTensorType>(platform_index_arg.getType());
   if (!arg_ranked_type || arg_ranked_type.getRank() != 0 ||
       !(arg_ranked_type.getElementType().isSignlessInteger(32) ||
         arg_ranked_type.getElementType().isSignlessInteger(64))) {
@@ -301,7 +301,7 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
               << mlir::debugString(type) << " for argument type "
               << mlir::debugString(arg_type);
       mlir::TensorType arg_type =
-          main_body.getArgument(i).getType().dyn_cast<mlir::TensorType>();
+          mlir::dyn_cast<mlir::TensorType>(main_body.getArgument(i).getType());
       if (arg_type == nullptr) {
         return absl::InvalidArgumentError(absl::StrCat(
             "Argument ", i, " passed to XlaCallModule is not a tensor, ",
@@ -316,7 +316,8 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
             mlir::debugString(arg_type), ", got ", mlir::debugString(type)));
       }
 
-      if (auto ranked_arg_type = arg_type.dyn_cast<mlir::RankedTensorType>()) {
+      if (auto ranked_arg_type =
+              mlir::dyn_cast<mlir::RankedTensorType>(arg_type)) {
         if (mlir::failed(mlir::verifyCompatibleShape(ranked_arg_type.getShape(),
                                                      type.getShape()))) {
           return absl::InvalidArgumentError(absl::StrCat(
@@ -380,9 +381,10 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
     if (IsTokenType(arg_type) || is_input_refined) {
       continue;
     }
-    auto ranked_arg_type = arg_type.dyn_cast<mlir::RankedTensorType>();
+    auto ranked_arg_type = mlir::dyn_cast<mlir::RankedTensorType>(arg_type);
     if (!ranked_arg_type || !ranked_arg_type.hasStaticShape()) {
-      auto type = static_array_input_types[i].cast<mlir::RankedTensorType>();
+      auto type =
+          mlir::cast<mlir::RankedTensorType>(static_array_input_types[i]);
       auto custom_call =
           MakeShapeRefinementOperandWrapper(op_builder, arg, type.getShape());
       auto call_result = custom_call.getResult(0);
@@ -409,8 +411,8 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
   // Clean up custom_call shims.
   for (auto call : llvm::make_early_inc_range(
            main_body.getOps<mlir::stablehlo::CustomCallOp>())) {
-    if (call->getAttr("call_target_name").cast<mlir::StringAttr>().strref() ==
-        kCustomCallShimTarget) {
+    if (mlir::cast<mlir::StringAttr>(call->getAttr("call_target_name"))
+            .strref() == kCustomCallShimTarget) {
       auto operand = call->getOperand(0);
       auto result = call->getResult(0);
       if (operand.getType() != result.getType()) {

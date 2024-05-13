@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -78,7 +79,7 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
                                                  Value input_value,
                                                  ShapedType output_type,
                                                  llvm::ArrayRef<Value> dims) {
-  auto e_ty = input_value.getType().cast<ShapedType>().getElementType();
+  auto e_ty = mlir::cast<ShapedType>(input_value.getType()).getElementType();
   llvm::SmallVector<int64_t> static_dims;
 
   if (output_type.hasRank()) {
@@ -92,7 +93,7 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
     auto dim = dims[i];
     SplatElementsAttr dim_attr;
     if (matchPattern(dim, m_Constant(&dim_attr))) {
-      if (dim_attr.getType().cast<ShapedType>().getRank() != 0) {
+      if (mlir::cast<ShapedType>(dim_attr.getType()).getRank() != 0) {
         (void)rewriter.notifyMatchFailure(
             op, "dim for building tosa::ReshapeOp should be rank-0");
         return std::nullopt;
@@ -643,8 +644,8 @@ DenseI64ArrayAttr getPaddingValuesFromExplicitPadAttr(
   for (int i = 0; i < 2; i++) {  // Two spatial dimensions X&Y
     int64_t dim = GetTensorSpatialDimIndex(4, data_format_tf,
                                            i);  // 4D tensor, NHWC/NCHW format
-    pad_before = explicit_pad[dim * 2].template cast<IntegerAttr>().getInt();
-    pad_after = explicit_pad[dim * 2 + 1].template cast<IntegerAttr>().getInt();
+    pad_before = mlir::cast<IntegerAttr>(explicit_pad[dim * 2]).getInt();
+    pad_after = mlir::cast<IntegerAttr>(explicit_pad[dim * 2 + 1]).getInt();
     computed_paddings.push_back(pad_before);
     computed_paddings.push_back(pad_after);
   }
@@ -801,11 +802,11 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // This should be investigate for whether it is still necessary due to quant
   // type stripping changing.
   func.walk([&](tosa::ConstOp op) {
-    if (op.getType().getElementType().isa<QuantizedType>()) {
+    if (mlir::isa<QuantizedType>(op.getType().getElementType())) {
       return;
     }
     auto ety = op.getValue().getShapedType().getElementType();
-    auto new_ty = op.getType().cast<TensorType>().clone(ety);
+    auto new_ty = mlir::cast<TensorType>(op.getType()).clone(ety);
     op.getResult().setType(new_ty);
   });
 

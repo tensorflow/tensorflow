@@ -511,7 +511,7 @@ llvm::Value* EmitF8e4m3b11fnuzToF16(llvm::Value* f8_value,
 
   llvm::Value* max_like_sign = llvm::ConstantFP::get(
       f16_value->getType(),
-      static_cast<float>(std::numeric_limits<tsl::float8_e4m3b11>::max()));
+      static_cast<float>(std::numeric_limits<tsl::float8_e4m3b11fnuz>::max()));
   max_like_sign = b->CreateBitCast(max_like_sign, f16_sign_bit->getType());
   max_like_sign = b->CreateOr(max_like_sign, f16_sign_bit);
   max_like_sign = b->CreateBitCast(max_like_sign, f16_value->getType());

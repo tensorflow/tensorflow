@@ -109,7 +109,7 @@ Status CheckSupportedType(const Tensor& t) {
       return errors::Unimplemented(DataTypeString(t.dtype()),
                                    " tensors unsupported on platform");
   }
-  return OkStatus();
+  return absl::OkStatus();
 #undef CASE
 }
 
@@ -226,7 +226,7 @@ class GraphWriter {
     TF_RETURN_WITH_CONTEXT_IF_ERROR(saver.SaveNodeInputs(), "SaveNodeInputs");
     TF_RETURN_WITH_CONTEXT_IF_ERROR(saver.SaveNodes(), "SaveNodes");
     TF_RETURN_WITH_CONTEXT_IF_ERROR(saver.SaveGraph(run_id), "SaveGraph");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -295,7 +295,7 @@ class GraphWriter {
         TF_RETURN_IF_ERROR(MaybeFlush());
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status SaveNodes() {
@@ -330,7 +330,7 @@ class GraphWriter {
       TF_RETURN_WITH_CONTEXT_IF_ERROR(insert.StepAndReset(), node->name());
       TF_RETURN_IF_ERROR(MaybeFlush());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status SaveGraph(int64_t run_id) {
@@ -361,7 +361,7 @@ class GraphWriter {
                                       unflushed_bytes_, " bytes");
       unflushed_bytes_ = 0;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Sqlite* const db_;
@@ -428,7 +428,7 @@ class RunMetadata {
     auto e = tag_ids_.find(tag_name);
     if (e != tag_ids_.end()) {
       *tag_id = e->second;
-      return OkStatus();
+      return absl::OkStatus();
     }
     TF_RETURN_IF_ERROR(ids_->CreateNewId(tag_id));
     tag_ids_[tag_name] = *tag_id;
@@ -468,7 +468,7 @@ class RunMetadata {
  private:
   Status InitializeUser(Sqlite* db, uint64 now)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (user_id_ != kAbsent || user_name_.empty()) return OkStatus();
+    if (user_id_ != kAbsent || user_name_.empty()) return absl::OkStatus();
     const char* get_sql = R"sql(
       SELECT user_id FROM Users WHERE user_name = ?
     )sql";
@@ -479,7 +479,7 @@ class RunMetadata {
     TF_RETURN_IF_ERROR(get.Step(&is_done));
     if (!is_done) {
       user_id_ = get.ColumnInt(0);
-      return OkStatus();
+      return absl::OkStatus();
     }
     TF_RETURN_IF_ERROR(ids_->CreateNewId(&user_id_));
     const char* insert_sql = R"sql(
@@ -495,12 +495,12 @@ class RunMetadata {
     insert.BindText(2, user_name_);
     insert.BindDouble(3, DoubleTime(now));
     TF_RETURN_IF_ERROR(insert.StepAndReset());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status InitializeExperiment(Sqlite* db, uint64 now, double computed_time)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (experiment_name_.empty()) return OkStatus();
+    if (experiment_name_.empty()) return absl::OkStatus();
     if (experiment_id_ == kAbsent) {
       TF_RETURN_IF_ERROR(InitializeUser(db, now));
       const char* get_sql = R"sql(
@@ -562,12 +562,12 @@ class RunMetadata {
       update.BindInt(2, experiment_id_);
       TF_RETURN_IF_ERROR(update.StepAndReset());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status InitializeRun(Sqlite* db, uint64 now, double computed_time)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (run_name_.empty()) return OkStatus();
+    if (run_name_.empty()) return absl::OkStatus();
     TF_RETURN_IF_ERROR(InitializeExperiment(db, now, computed_time));
     if (run_id_ == kAbsent) {
       TF_RETURN_IF_ERROR(ids_->CreateNewId(&run_id_));
@@ -606,7 +606,7 @@ class RunMetadata {
       update.BindInt(2, run_id_);
       TF_RETURN_IF_ERROR(update.StepAndReset());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   mutex mu_;
@@ -674,7 +674,7 @@ class SeriesWriter {
       TF_RETURN_IF_ERROR(txn.Commit());
       rowids_.clear();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -718,7 +718,7 @@ class SeriesWriter {
     stmt.BindBlobUnsafe(5, data);
     stmt.BindInt(6, rowid);
     TF_RETURN_IF_ERROR(stmt.StepAndReset());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status UpdateNdString(Sqlite* db, const Tensor& t, int64_t tensor_rowid)
@@ -748,7 +748,7 @@ class SeriesWriter {
       inserter.BindBlobUnsafe(3, flat(i));
       TF_RETURN_WITH_CONTEXT_IF_ERROR(inserter.StepAndReset(), "i=", i);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Reserve(Sqlite* db, const Tensor& t) SQLITE_TRANSACTIONS_EXCLUDED(*db)
@@ -799,7 +799,7 @@ class SeriesWriter {
       unflushed_bytes_ += reserved_bytes;
       TF_RETURN_IF_ERROR(MaybeFlush(db, txn));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status MaybeFlush(Sqlite* db, SqliteTransaction* txn)
@@ -810,7 +810,7 @@ class SeriesWriter {
                                       unflushed_bytes_, " bytes");
       unflushed_bytes_ = 0;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   mutex mu_;
@@ -845,14 +845,14 @@ class RunWriter {
   Status Finish(Sqlite* db) SQLITE_TRANSACTIONS_EXCLUDED(*db)
       TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
-    if (series_writers_.empty()) return OkStatus();
+    if (series_writers_.empty()) return absl::OkStatus();
     for (auto i = series_writers_.begin(); i != series_writers_.end(); ++i) {
       if (!i->second) continue;
       TF_RETURN_WITH_CONTEXT_IF_ERROR(i->second->Finish(db),
                                       "finish tag_id=", i->first);
       i->second.reset();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -918,7 +918,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     }
   }
 
-  Status Flush() override { return OkStatus(); }
+  Status Flush() override { return absl::OkStatus(); }
 
   Status WriteTensor(int64_t global_step, Tensor t, const string& tag,
                      const string& serialized_metadata) override {
@@ -994,7 +994,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
         run_.Append(db_, tag_id, step, now, computed_time, t),
         meta_.user_name(), "/", meta_.experiment_name(), "/", meta_.run_name(),
         "/", tag, "@", step);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status MigrateEvent(std::unique_ptr<Event> e) {
@@ -1021,7 +1021,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
         // TODO(@jart): Handle other stuff.
         break;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status MigrateGraph(const Event* e, const string& graph_def) {
@@ -1053,7 +1053,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
       default:
         break;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status MigrateTensor(const Event* e, Summary::Value* s, uint64 now) {
@@ -1150,7 +1150,7 @@ Status CreateSummaryDbWriter(Sqlite* db, const string& experiment_name,
                              const string& run_name, const string& user_name,
                              Env* env, SummaryWriterInterface** result) {
   *result = new SummaryDbWriter(env, db, experiment_name, run_name, user_name);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

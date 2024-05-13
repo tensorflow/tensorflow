@@ -26,17 +26,17 @@ namespace xla {
 
 // A pass that can modify the sub-byte element_size_in_bits annotation on
 // layouts. Depending on the constructor argument, it either removes the
-// element_size_in_bits annotation for platforms that doesn't support
-// nibble-packed types, or it sets element_size_in_bits to 4 for 4-bit values.
+// element_size_in_bits annotation for platforms that don't support packed
+// types, or it sets element_size_in_bits to N for N-bit values.
 class SubByteNormalization : public HloModulePass {
  public:
   enum Mode {
     // Remove element_size_in_bits on all layouts. Useful for platforms which
-    // do not support nibble-packed types.
+    // do not support packed types.
     REMOVE_ELEMENT_SIZE,
-    // Set element_size_in_bits to 4 for layouts of int4 types (S4, U4), and to
-    // 0 for all other layouts. Useful for platforms which support nibble-packed
-    // types.
+    // Set element_size_in_bits to bitwidth(type) for layouts of types < 8 bits
+    // (S4, U4, etc.), and to 0 for all other layouts. Useful for platforms
+    // which support packed types.
     SET_ELEMENT_SIZE,
   };
 
@@ -47,9 +47,9 @@ class SubByteNormalization : public HloModulePass {
   absl::string_view name() const override {
     switch (mode_) {
       case REMOVE_ELEMENT_SIZE:
-        return "int4-size-removal";
+        return "sub-byte-size-removal";
       case SET_ELEMENT_SIZE:
-        return "int4-size-setter";
+        return "sub-byte-size-setter";
     }
   }
   using HloPassInterface::Run;

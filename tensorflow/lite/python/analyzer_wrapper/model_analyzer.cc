@@ -18,12 +18,13 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_join.h"
+#include "flatbuffers/vector.h"  // from @flatbuffers
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
-#include "tensorflow/lite/version.h"
 
 namespace tflite {
 

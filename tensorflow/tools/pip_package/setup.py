@@ -78,7 +78,7 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 23.5.26',
+    'flatbuffers >= 24.3.25',
     'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
     'google_pasta >= 0.1.1',
     'h5py >= 3.10.0',
@@ -312,7 +312,7 @@ if '_tpu' in project_name:
   # timing of these tests, the UTC date from eight hours ago is expected to be a
   # valid version.
   _libtpu_version = standard_or_nightly(
-      '2.16.0rc0',
+      _VERSION.replace('-', ''),
       '0.1.dev'
       + (
           datetime.datetime.now(tz=datetime.timezone.utc)

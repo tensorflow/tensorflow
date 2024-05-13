@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"

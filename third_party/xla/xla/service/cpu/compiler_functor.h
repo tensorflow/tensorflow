@@ -46,8 +46,7 @@ class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
       absl::AnyInvocable<void(const llvm::object::ObjectFile&)>
           post_codegen_hook = nullptr,
       bool dfsan_enabled = false,
-      const std::vector<std::string>& dfsan_abi_list_files = {},
-      const std::vector<std::string>& convert_to_xla_runtime_abi = {})
+      const std::vector<std::string>& dfsan_abi_list_files = {})
       : IRCompiler(llvm::orc::IRSymbolMapper::ManglingOptions()),
         target_machine_(target_machine),
         opt_level_(opt_level),
@@ -59,8 +58,7 @@ class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
         post_optimization_hook_(std::move(post_optimization_hook)),
         post_codegen_hook_(std::move(post_codegen_hook)),
         dfsan_enabled_(dfsan_enabled),
-        dfsan_abi_list_files_(dfsan_abi_list_files),
-        convert_to_xla_runtime_abi_(convert_to_xla_runtime_abi) {}
+        dfsan_abi_list_files_(dfsan_abi_list_files) {}
 
   // Compile a Module to an ObjectFile.
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> operator()(
@@ -78,7 +76,6 @@ class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
   absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook_;
   const bool dfsan_enabled_ = false;
   const std::vector<std::string> dfsan_abi_list_files_;
-  const std::vector<std::string> convert_to_xla_runtime_abi_;
 };
 
 }  // namespace cpu

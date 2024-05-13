@@ -202,7 +202,7 @@ class PreprocessConstantOp : public OpRewritePattern<TF::PartitionedCallOp> {
 
   LogicalResult matchAndRewrite(TF::PartitionedCallOp op,
                                 PatternRewriter& rewriter) const override {
-    const auto f_attr = op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
+    const auto f_attr = mlir::dyn_cast<FlatSymbolRefAttr>(op.getFAttr());
     // Non-quantizable op
     if (!op->hasAttr(kQuantTraitAttrName)) return failure();
     StringRef function_name = f_attr.getValue();

@@ -17,12 +17,17 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <algorithm>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
 
+#include "flatbuffers/base.h"  // from @flatbuffers
 #include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
+#include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/verifier.h"
@@ -276,23 +281,27 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromAllocation(
     return nullptr;
   }
 
-  // Only run validator on models less than 2GB
-  if (allocation->bytes() < flatbuffer_size_max) {
+  {
+    // Flatbuffers can only be smaller than 2GB. The file format appends some
+    // data after the actual flabuffer. We truncate the allocation size to 2GB
+    // so that the verifier doesn't early exit on us.
+    size_t allocation_size =
+        std::min(allocation->bytes(),
+                 static_cast<size_t>(FLATBUFFERS_MAX_BUFFER_SIZE - 1));
     flatbuffers::Verifier base_verifier(
-        reinterpret_cast<const uint8_t*>(allocation->base()),
-        allocation->bytes());
+        reinterpret_cast<const uint8_t*>(allocation->base()), allocation_size);
     if (!VerifyModelBuffer(base_verifier)) {
       TF_LITE_REPORT_ERROR(error_reporter,
                            "The model is not a valid Flatbuffer buffer");
       return nullptr;
     }
-  }
 
-  if (extra_verifier &&
-      !extra_verifier->Verify(static_cast<const char*>(allocation->base()),
-                              allocation->bytes(), error_reporter)) {
-    // The verifier will have already logged an appropriate error message.
-    return nullptr;
+    if (extra_verifier &&
+        !extra_verifier->Verify(static_cast<const char*>(allocation->base()),
+                                allocation_size, error_reporter)) {
+      // The verifier will have already logged an appropriate error message.
+      return nullptr;
+    }
   }
 
   return BuildFromAllocation(std::move(allocation), error_reporter);

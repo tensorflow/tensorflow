@@ -55,7 +55,7 @@ DenseIntElementsAttr GetPaddingArrayAttr(Builder& builder, Operation* old_op) {
 }
 
 ShapedType GetPaddedType(Operation* old_op) {
-  auto input_type = old_op->getOperand(0).getType().cast<ShapedType>();
+  auto input_type = mlir::cast<ShapedType>(old_op->getOperand(0).getType());
   auto input_shape = input_type.getShape();  // NCHW
   int64_t batch_size = input_shape[0];
   int64_t channel_size = input_shape[1];
@@ -124,7 +124,7 @@ StringAttr GetPaddingStringAttr(Builder& builder, Operation* old_op) {
   auto composite_attrs = composite_op.getCompositeAttributes();
 
   auto operand_shape =
-      composite_op.getOperand(0).getType().cast<ShapedType>().getShape();
+      mlir::cast<ShapedType>(composite_op.getOperand(0).getType()).getShape();
   // NC(H)(W)
   std::vector<int32_t> spatial_dim_sizes = {
       static_cast<int32_t>(operand_shape[2]),

@@ -314,7 +314,7 @@ void CreateReducedLaunchOp(OpBuilder* builder, Block* old_block,
   // Handle pass through block arguments.
   for (OpOperand& operand :
        original_launch_op.GetBody().getTerminator()->getOpOperands()) {
-    if (operand.get().isa<BlockArgument>()) {
+    if (mlir::isa<BlockArgument>(operand.get())) {
       original_launch_op.getResult(operand.getOperandNumber())
           .replaceAllUsesWith(operand.get());
     }

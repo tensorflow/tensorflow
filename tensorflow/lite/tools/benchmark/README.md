@@ -25,6 +25,13 @@ The binary takes the following required parameters:
 
 and the following optional parameters:
 
+*   `signature_to_run_for`: `string` (default="") \
+    If the model contains multiple signatures, use this flag to specify the
+    signature to benchmark.
+    - If multiple signatures are present and this flag is not specified, the
+    benchmark will throw an error.
+    - If only one signature is present and this flag is not specified, the
+    default signature will be used.
 *   `num_threads`: `int` (default=-1) \
     The number of threads to use for running TFLite interpreter. By default,
     this is set to the platform default value -1.

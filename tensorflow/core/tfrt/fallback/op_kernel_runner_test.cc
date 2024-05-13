@@ -146,11 +146,12 @@ TEST(OpKernelRunnerTest, OpKernelRunState) {
 
   Tensor a(DT_FLOAT, TensorShape({}));
   Tensor b(DT_INT32, TensorShape({}));
-  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b)};
+  absl::InlinedVector<TensorValue, 4UL> inputs{TensorValue(&a),
+                                               TensorValue(&b)};
   params.inputs = inputs;
 
   Tensor c(DT_UINT8, TensorShape({}));
-  gtl::InlinedVector<TensorValue, 4> new_inputs{TensorValue(&c)};
+  absl::InlinedVector<TensorValue, 4UL> new_inputs{TensorValue(&c)};
 
   OpKernelRunState run_state(new_inputs, params);
 

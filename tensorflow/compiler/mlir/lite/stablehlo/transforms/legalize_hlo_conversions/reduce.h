@@ -74,7 +74,7 @@ class ConvertReduceOpToArgMinMax : public OpConversionPattern<mhlo::ReduceOp> {
     if (!MatchIota(reduce_op.getDimensions(), iota)) return failure();
 
     // Match the reduction computation.
-    const bool is_float = operand_init.getElementType().isa<FloatType>();
+    const bool is_float = mlir::isa<FloatType>(operand_init.getElementType());
     if (failed(MatchReduceToArgMinMaxType1(reduce_op, is_float, is_argmax)) &&
         failed(MatchReduceToArgMinMaxType2(reduce_op, is_argmax)))
       return rewriter.notifyMatchFailure(
@@ -91,8 +91,8 @@ class ConvertReduceOpToArgMinMax : public OpConversionPattern<mhlo::ReduceOp> {
     // Generate a Max and an ArgMax of as the mhlo op returns both while in TF
     // we have separate ops for them. If only one of them is used then the other
     // one will be garbage collected later.
-    if (!operand.getType().isa<ShapedType>()) return failure();
-    auto operand_type = operand.getType().cast<ShapedType>();
+    if (!mlir::isa<ShapedType>(operand.getType())) return failure();
+    auto operand_type = mlir::cast<ShapedType>(operand.getType());
     if (operand_type.getElementType().isInteger(1)) {
       // TF does not support min or max on boolean (int1) arguments.
       // Use AnyOp for MaxOp and AllOp for MinOp.

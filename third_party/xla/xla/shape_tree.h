@@ -294,6 +294,22 @@ class ShapeTree {
     return result;
   }
 
+  template <typename U>
+  absl::StatusOr<ShapeTree<U>> MapWithStatus(
+      absl::FunctionRef<absl::StatusOr<U>(const T&)> func) {
+    typename ShapeTree<U>::Nodes result_nodes;
+    result_nodes.reserve(nodes_.size());
+    for (const Node& node : nodes_) {
+      TF_ASSIGN_OR_RETURN(U result, func(node.second));
+      result_nodes.push_back({node.first, std::move(result)});
+    }
+
+    ShapeTree<U> result(shape_, std::move(result_nodes));
+    result.index_table_ = index_table_;
+    result.shape_storage_ = shape_storage_;
+    return result;
+  }
+
   // Copy the subtree of values from 'other' rooted at ShapeIndex 'src_index'
   // into the subtree of value in this ShapeTree rooted at 'dst_index'.
   //

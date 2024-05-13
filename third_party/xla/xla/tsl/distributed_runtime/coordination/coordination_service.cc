@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -66,7 +67,7 @@ constexpr int kPendingTaskLogLimit = 20;
 constexpr int kPendingStragglerLogLimit = 3;
 
 std::string GetTaskName(absl::string_view job_name, int task_id) {
-  return strings::StrCat("/job:", job_name, "/replica:", 0, "/task:", task_id);
+  return absl::StrCat("/job:", job_name, "/replica:", 0, "/task:", task_id);
 }
 
 std::string GetTaskName(const CoordinatedTask& task) {
@@ -143,6 +144,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   uint64_t GetServiceIncarnation() override;
   void StartCheckStaleness();  // Checks both heartbeat and barrier timeouts.
   void Stop(bool shut_staleness_thread = true);
+  bool ServiceHasStopped() const TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Report service error to a specified task.
   void ReportServiceErrorToTaskAsync(const CoordinatedTask& destination_task,
                                      absl::Status error);
@@ -526,6 +528,10 @@ void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
   }
 }
 
+bool CoordinationServiceStandaloneImpl::ServiceHasStopped() const {
+  return cluster_state_.empty();
+}
+
 // Helper to log progress to having waited for all tasks.
 void CoordinationServiceStandaloneImpl::LogConnectStatusLocked() const {
   const int num_tasks = cluster_state_.size();
@@ -548,7 +554,7 @@ void CoordinationServiceStandaloneImpl::LogConnectStatusLocked() const {
 
 absl::Status CoordinationServiceStandaloneImpl::RegisterTask(
     const CoordinatedTask& task, uint64_t incarnation) {
-  const std::string& task_name = GetTaskName(task);
+  const std::string task_name = GetTaskName(task);
 
   absl::Status error;
   std::string error_message;
@@ -698,7 +704,7 @@ uint64_t CoordinationServiceStandaloneImpl::GetServiceIncarnation() {
 
 absl::Status CoordinationServiceStandaloneImpl::ReportTaskError(
     const CoordinatedTask& task, absl::Status error) {
-  const std::string& task_name = GetTaskName(task);
+  const std::string task_name = GetTaskName(task);
   {
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
@@ -742,7 +748,7 @@ CoordinationServiceStandaloneImpl::GetTaskState(
 
 absl::Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
     const CoordinatedTask& task, uint64_t incarnation) {
-  const std::string& task_name = GetTaskName(task);
+  const std::string task_name = GetTaskName(task);
   absl::Status s = absl::OkStatus();
   {
     mutex_lock l(state_mu_);
@@ -911,7 +917,7 @@ std::string NormalizeKey(const StringPiece orig_key) {
 absl::Status CoordinationServiceStandaloneImpl::InsertKeyValue(
     const std::string& key, const std::string& value) {
   VLOG(3) << "InsertKeyValue(): " << key << ": " << value;
-  const std::string& norm_key = NormalizeKey(key);
+  const std::string norm_key = NormalizeKey(key);
   mutex_lock l(kv_mu_);
   if (kv_store_.find(norm_key) != kv_store_.end()) {
     return MakeCoordinationError(
@@ -931,7 +937,7 @@ absl::Status CoordinationServiceStandaloneImpl::InsertKeyValue(
 void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
     const std::string& key, StatusOrValueCallback done) {
   VLOG(3) << "GetKeyValue(): " << key;
-  const std::string& norm_key = NormalizeKey(key);
+  const std::string norm_key = NormalizeKey(key);
   mutex_lock l(kv_mu_);
   const auto& iter = kv_store_.find(norm_key);
   if (iter != kv_store_.end()) {
@@ -949,7 +955,7 @@ void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
 absl::StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
     const std::string& key) {
   VLOG(3) << "TryGetKeyValue(): " << key;
-  const std::string& norm_key = NormalizeKey(key);
+  const std::string norm_key = NormalizeKey(key);
   mutex_lock l(kv_mu_);
   const auto& iter = kv_store_.find(norm_key);
   if (iter == kv_store_.end()) {
@@ -989,10 +995,10 @@ std::vector<KeyValueEntry> CoordinationServiceStandaloneImpl::GetKeyValueDir(
 absl::Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
     const std::string& key) {
   VLOG(3) << "DeleteKeyValue(): " << key;
-  const std::string& norm_key = NormalizeKey(key);
+  const std::string norm_key = NormalizeKey(key);
   mutex_lock l(kv_mu_);
   // Delete directory: find key range that match directory prefix
-  const std::string& dir = strings::StrCat(norm_key, "/");
+  const std::string dir = absl::StrCat(norm_key, "/");
   auto begin = kv_store_.lower_bound(dir);
   std::map<std::string, std::string>::iterator end;
   for (end = begin; end != kv_store_.end(); end++) {
@@ -1028,9 +1034,52 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
     const CoordinatedTask& task,
     const std::vector<CoordinatedTask>& participating_tasks,
     StatusCallback done) {
-  VLOG(3) << "Task " << GetTaskName(task) << "invoked BarrierAsync("
+  VLOG(3) << "Task " << GetTaskName(task) << " invoked BarrierAsync("
           << barrier_id << ").";
+
+  // Check if caller task is participating in the barrier. If not, update
+  // `barriers_` to cause subsequent calls from the same task and other tasks
+  // that have already called this instance of the barrier to fail.
+  const std::string source_task_name = GetTaskName(task);
+
+  bool among_participating_tasks =
+      std::find_if(participating_tasks.begin(), participating_tasks.end(),
+                   [&](const CoordinatedTask& task) {
+                     return GetTaskName(task) == source_task_name;
+                   }) != participating_tasks.end();
+
+  if (!participating_tasks.empty() && !among_participating_tasks) {
+    const std::string task_name = GetTaskName(task);
+    absl::Status error = MakeCoordinationError(errors::InvalidArgument(
+        absl::StrCat("A non-participating task (", GetTaskName(task),
+                     ") called the barrier: ", barrier_id)));
+    {
+      mutex_lock l(state_mu_);
+      // Check if coordination service has stopped. If so, return an error
+      // immediately.
+      if (ServiceHasStopped()) {
+        done(MakeCoordinationError(absl::InternalError(
+            "Barrier requested after coordination service has shut down.")));
+        return;
+      }
+      auto pair = barriers_.try_emplace(barrier_id);
+      auto it = pair.first;
+      auto* barrier = &it->second;
+      // Make sure subsequent calls fail and existing waiting tasks receive the
+      // error.
+      PassBarrier(barrier_id, error, barrier);
+    }
+    done(error);
+    return;
+  }
   mutex_lock l(state_mu_);
+  // Check if coordination service has stopped. If so, return an error
+  // immediately.
+  if (ServiceHasStopped()) {
+    done(MakeCoordinationError(absl::InternalError(
+        "Barrier requested after coordination service has shut down.")));
+    return;
+  }
   auto pair = barriers_.try_emplace(barrier_id);
   auto it = pair.first;
   bool inserted = pair.second;
@@ -1116,16 +1165,6 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
 
   // Add pending callbacks.
   barrier->done_callbacks.push_back(done);
-
-  // Check if caller task is participating in the barrier.
-  if (!barrier->tasks_at_barrier.contains(task)) {
-    // Unexpected barrier call from a task not participating in the barrier.
-    absl::Status error = MakeCoordinationError(errors::InvalidArgument(
-        absl::StrCat("A non-participating task (", GetTaskName(task),
-                     ") called the barrier: ", barrier_id)));
-    PassBarrier(barrier_id, error, barrier);
-    return;
-  }
 
   // Check if task args are specified consistently across barrier calls.
   if (!ValidateTaskArgs(participating_tasks, barrier->tasks_at_barrier,

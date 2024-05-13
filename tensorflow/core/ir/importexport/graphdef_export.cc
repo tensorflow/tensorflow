@@ -182,7 +182,7 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
     } else {
       TF_ASSIGN_OR_RETURN(gradient, ExportFunction(func, def));
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   };
 
   // TODO(jeffniu): Don't export functions in parallel if there are too few or
@@ -225,7 +225,7 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
     }
   }
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // The only dialect attributes allowed have the "tf." prefix. This is a slightly
@@ -243,7 +243,7 @@ static Status ConvertAttributes(
     StringRef name = attr.getName().strref().drop_front(/*strlen("tf.")=*/3);
     TF_ASSIGN_OR_RETURN((*map)[name.str()], ConvertAttribute(attr.getValue()));
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::optional<GradientDef>> GraphDefExporter::ExportFunction(
@@ -290,12 +290,12 @@ absl::StatusOr<std::optional<GradientDef>> GraphDefExporter::ExportFunction(
 
   // Convert the arguments.
   for (int i = 0, e = func.getNumArguments(); i < e; i += 2) {
-    auto attrs = func.getArgAttrs().value()[i].cast<DictionaryAttr>();
+    auto attrs = mlir::cast<DictionaryAttr>(func.getArgAttrs().value()[i]);
     TF_ASSIGN_OR_RETURN(OpDef::ArgDef &arg = *signature->add_input_arg(),
                         ConvertArgumentAttributes(attrs));
     DataType dtype;
     TF_RETURN_IF_ERROR(ConvertToDataType(
-        func.getArgument(i).getType().cast<TensorType>().getElementType(),
+        mlir::cast<TensorType>(func.getArgument(i).getType()).getElementType(),
         &dtype));
     arg.set_type(dtype);
     // Convert the attributes.
@@ -317,7 +317,7 @@ absl::StatusOr<std::optional<GradientDef>> GraphDefExporter::ExportFunction(
                         ConvertArgumentAttributes(std::get<1>(it)));
     DataType dtype;
     TF_RETURN_IF_ERROR(ConvertToDataType(
-        std::get<0>(it).cast<TensorType>().getElementType(), &dtype));
+        mlir::cast<TensorType>(std::get<0>(it)).getElementType(), &dtype));
     arg.set_type(dtype);
     // Map the result.
     TF_ASSIGN_OR_RETURN((*def->mutable_ret())[arg.name()],
@@ -333,7 +333,7 @@ absl::StatusOr<std::optional<GradientDef>> GraphDefExporter::ExportFunction(
     if (attrs.empty())
       return InvalidArgument("Control result is missing 'tfg.name'");
     assert(attrs.begin()->getName() == dialect_->getTfgNameAttrIdentifier());
-    std::string name = attrs.begin()->getValue().cast<StringAttr>().str();
+    std::string name = mlir::cast<StringAttr>(attrs.begin()->getValue()).str();
     signature->add_control_output(name);
     // Map the control result.
     TF_ASSIGN_OR_RETURN(std::string value_name,
@@ -383,12 +383,13 @@ static void ExtractExperimentalDebugInfoFromLocation(
     debug_info->add_original_node_names(node.str());
     if (!func.empty()) debug_info->add_original_func_names(func.str());
   };
-  if (auto fused = inst_loc.dyn_cast<mlir::FusedLoc>()) {
+  if (auto fused = mlir::dyn_cast<mlir::FusedLoc>(inst_loc)) {
     for (Location loc : fused.getLocations())
-      if (auto name_loc = loc.dyn_cast<mlir::NameLoc>()) add_name_loc(name_loc);
+      if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc))
+        add_name_loc(name_loc);
     return;
   }
-  if (auto name_loc = inst_loc.dyn_cast<mlir::NameLoc>())
+  if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(inst_loc))
     add_name_loc(name_loc);
 }
 
@@ -437,14 +438,14 @@ Status ConvertToNodeDef(
   }
 
   // Export the location as debug info.
-  if (!op->getLoc().isa<UnknownLoc>()) {
+  if (!mlir::isa<UnknownLoc>(op->getLoc())) {
     ExtractExperimentalDebugInfoFromLocation(
         op->getLoc(), node->mutable_experimental_debug_info());
     if (node->experimental_debug_info().original_node_names().empty())
       node->clear_experimental_debug_info();
   }
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphDefExporter::ConvertOperation(Operation *op, NodeDef *node,
@@ -464,15 +465,14 @@ static absl::StatusOr<std::string> GetValueName(
   std::string name;
   bool is_control = value.getType() == dialect->getControlType();
 
-  if (auto arg = value.dyn_cast<BlockArgument>()) {
+  if (auto arg = mlir::dyn_cast<BlockArgument>(value)) {
     auto func = dyn_cast<GraphFuncOp>(arg.getOwner()->getParentOp());
     if (!func)
       return InvalidArgument("Expected block argument owner to be tfg.func");
     // If the block argument is a control token, use the attributes of the
     // associated data argument (which preceeds it).
-    auto attrs = func.getArgAttrs()
-                     .value()[arg.getArgNumber() - is_control]
-                     .cast<DictionaryAttr>();
+    auto attrs = mlir::cast<DictionaryAttr>(
+        func.getArgAttrs().value()[arg.getArgNumber() - is_control]);
     auto name_attr =
         attrs.getAs<StringAttr>(dialect->getTfgNameAttrIdentifier());
     if (!name_attr) {
@@ -486,7 +486,7 @@ static absl::StatusOr<std::string> GetValueName(
     return name;
   }
 
-  auto result = value.cast<OpResult>();
+  auto result = mlir::cast<OpResult>(value);
   auto name_attr = result.getOwner()->getAttrOfType<StringAttr>(
       dialect->getNameAttrIdentifier());
   if (!name_attr)
@@ -535,12 +535,12 @@ absl::StatusOr<std::string> GraphDefExporter::GetEdgeName(Value value,
 static absl::StatusOr<unsigned int> GetOutputSegmentSize(
     Operation *op, const OpDef::ArgDef &arg) {
   if (!arg.type_list_attr().empty()) {
-    if (auto v = op->getAttr(arg.type_list_attr()).dyn_cast<ArrayAttr>())
+    if (auto v = mlir::dyn_cast<ArrayAttr>(op->getAttr(arg.type_list_attr())))
       return v.size();
     return InvalidArgument("Type attr not found: ", arg.type_list_attr());
   }
   if (arg.number_attr().empty()) return 1;
-  if (auto v = op->getAttr(arg.number_attr()).dyn_cast<IntegerAttr>())
+  if (auto v = mlir::dyn_cast<IntegerAttr>(op->getAttr(arg.number_attr())))
     return v.getValue().getZExtValue();
   return InvalidArgument("Type attr not found: ", arg.number_attr());
 }
@@ -644,7 +644,7 @@ Status ConvertToFunctionDef(GraphFuncOp func,
       TF_RETURN_IF_ERROR(library.ReplaceGradient(*gradient));
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tfg

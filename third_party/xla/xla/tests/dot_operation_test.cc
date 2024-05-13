@@ -643,7 +643,7 @@ TYPED_TEST_CASE(DotOperationTestForBatchMatMul, TypesF16F32F64);
 // Regression test for b/32055648. The root of the graph is a kFusion of 4
 // bitcasts. Although bitcasts don't map to thunks, the root should still be
 // sync-dependent on bitcasts' operands.
-XLA_TYPED_TEST(DotOperationTestForBatchMatMul, Types) {
+XLA_TYPED_TEST(DotOperationTestForBatchMatMul, DISABLED_ON_TPU(Types)) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({2, 2, 2, 2}),
@@ -2307,7 +2307,9 @@ ENTRY MatrixVectorComplex {
 void DOT_ReorderContracting(::testing::benchmark::State& state) {
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
   auto executors = PlatformUtil::GetStreamExecutors(platform).value();
-  se::StreamExecutorMemoryAllocator allocator(platform, executors);
+  se::StreamExecutorMemoryAllocator allocator(
+      platform, std::vector<se::StreamExecutorInterface*>(executors.begin(),
+                                                          executors.end()));
 
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform);

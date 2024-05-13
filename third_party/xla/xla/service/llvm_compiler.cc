@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/llvm_compiler.h"
 
 #include "tsl/platform/denormal.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 #ifdef __FAST_MATH__
 #error "Don't build XLA with -ffast-math"
@@ -42,6 +43,10 @@ absl::StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
   std::vector<std::unique_ptr<HloModule>> modules =
       module_group->ConsumeModules();
   for (size_t i = 0; i < modules.size(); i++) {
+    tsl::profiler::ScopedAnnotation annotation{[&] {
+      return absl::StrFormat("XlaCompile:#module=%s,program_id=%d#",
+                             modules[i]->name(), modules[i]->unique_id());
+    }};
     TF_ASSIGN_OR_RETURN(modules[i], RunHloPasses(std::move(modules[i]),
                                                  stream_execs[i][0], options));
     TF_ASSIGN_OR_RETURN(

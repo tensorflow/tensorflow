@@ -10,7 +10,7 @@ load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 # Placeholder: load py_proto_library
-load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
+load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pywrap_tensorflow_macro", "tf_external_workspace_visible", "tf_monitoring_python_deps", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -611,8 +611,8 @@ py_strict_library(
     name = "global_test_configuration",
     compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
-    deps = if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]) +
-           tf_enable_mlir_bridge(),
+    deps =
+        tf_enable_mlir_bridge(),
 )
 
 # `tree.compat` requires visibility exception to test against `nest_test`

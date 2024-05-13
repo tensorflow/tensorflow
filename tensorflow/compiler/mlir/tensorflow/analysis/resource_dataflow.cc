@@ -46,7 +46,7 @@ ResourceConstructingOps ResourceConstructingOps::EntryState(
   return ResourceConstructingOps();
 }
 ResourceConstructingOps ResourceConstructingOps::EntryState(Value value) {
-  if (auto barg = value.dyn_cast<BlockArgument>()) {
+  if (auto barg = mlir::dyn_cast<BlockArgument>(value)) {
     if (func::FuncOp func =
             dyn_cast<func::FuncOp>(barg.getOwner()->getParentOp())) {
       SymbolTable symbol_table(func->getParentOfType<ModuleOp>());
@@ -87,7 +87,7 @@ IsComposite IsComposite::EntryState(MLIRContext *context) {
 
 IsComposite IsComposite::EntryState(Value value) {
   IsComposite result;
-  if (auto barg = value.dyn_cast<BlockArgument>()) {
+  if (auto barg = mlir::dyn_cast<BlockArgument>(value)) {
     if (func::FuncOp func =
             dyn_cast<func::FuncOp>(barg.getOwner()->getParentOp())) {
       if (func.getArgAttr(barg.getArgNumber(), kCompositeDevice)) {

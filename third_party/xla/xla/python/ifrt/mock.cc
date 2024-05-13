@@ -24,19 +24,19 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/literal.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/value.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -123,6 +123,12 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                             ArrayCopySemantics semantics) {
         return delegated_->AssembleArrayFromSingleDeviceArrays(
             std::move(shape), std::move(sharding), arrays, semantics);
+      });
+  ON_CALL(*this, RemapArrays)
+      .WillByDefault([this](const RemapPlan& plan,
+                            absl::Span<tsl::RCReference<Array>> arrays,
+                            ArrayCopySemantics semantics) {
+        return delegated_->RemapArrays(plan, arrays, semantics);
       });
   ON_CALL(*this, MakeTuple)
       .WillByDefault([this](absl::Span<tsl::RCReference<Value>> values) {

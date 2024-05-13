@@ -239,7 +239,7 @@ TEST_F(BFloat16ConversionFoldingTest, FoldAllReduceTupleOutput) {
 
   HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
       ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), {convert_a, b}, sum,
-      /*replica_groups=*/{},
+      /*device_list=*/CollectiveDeviceList(),
       /*constrain_layout=*/false,
       /*channel_id=*/std::nullopt, /*use_global_device_ids=*/false));
   HloInstruction* gte_a = builder.AddInstruction(

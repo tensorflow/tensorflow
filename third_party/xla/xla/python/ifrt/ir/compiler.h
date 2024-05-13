@@ -22,12 +22,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/statusor.h"
+#include "xla/python/ifrt/program.h"
 
 namespace xla {
 namespace ifrt {
@@ -48,8 +49,8 @@ struct IfrtIRCompileOptions
   IfrtIRCompileOptions() = default;
   explicit IfrtIRCompileOptions(
       std::vector<DeviceId> device_assignments,
-      absl::flat_hash_map<std::string, LoadedExecutable*> loaded_exec_binding =
-          {},
+      absl::flat_hash_map<std::string, std::shared_ptr<LoadedExecutable>>
+          loaded_exec_binding = {},
       std::shared_ptr<absl::flat_hash_map<
           std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>
           compile_options_overrides = {})
@@ -64,7 +65,8 @@ struct IfrtIRCompileOptions
   // Map from `getSymName()` of declared LoadedExecutableOp in the `mlir_module`
   // to pre-compiled LoadedExecutable instance. The LoadedExecutables must
   // outlive the LoadedExecutable to be compiled.
-  absl::flat_hash_map<std::string, LoadedExecutable*> loaded_exec_binding;
+  absl::flat_hash_map<std::string, std::shared_ptr<LoadedExecutable>>
+      loaded_exec_binding;
 
   // Mapping from values of `ifrt.compile_option_key` attribute of a `CallOp` to
   // compile options. If a `CallOp` does not have have the attribute set or does

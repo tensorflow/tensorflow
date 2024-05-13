@@ -346,10 +346,10 @@ TEST_F(HloMatchersTest, ReplicaGroupsMatcher) {
   replica_groups[0].add_replica_ids(2);
   replica_groups[1].add_replica_ids(1);
   replica_groups[1].add_replica_ids(3);
-  std::unique_ptr<HloInstruction> all_to_all =
-      HloInstruction::CreateAllToAll(shape, {p0.get()}, replica_groups,
-                                     /*constrain_layout=*/false,
-                                     /*channel_id=*/std::nullopt);
+  std::unique_ptr<HloInstruction> all_to_all = HloInstruction::CreateAllToAll(
+      shape, {p0.get()}, CollectiveDeviceList(replica_groups),
+      /*constrain_layout=*/false,
+      /*channel_id=*/std::nullopt);
 
   EXPECT_THAT(Explain(p0.get(), op::ReplicaGroups({})),
               "%param = f32[5,7]{1,0} parameter(0) not a collective op");

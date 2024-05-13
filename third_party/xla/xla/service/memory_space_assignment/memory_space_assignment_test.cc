@@ -222,10 +222,11 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     if (cost_analysis_options_override) {
       cost_analysis_options = *cost_analysis_options_override;
     }
+    HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
 
-    auto cost_analysis =
-        CostAnalysis::Create(hlo_cost_analysis, cost_analysis_options, *module)
-            .value();
+    auto cost_analysis = CostAnalysis::Create(hlo_cost_analysis_costs,
+                                              cost_analysis_options, *module)
+                             .value();
     memory_space_options.cost_analysis = cost_analysis.get();
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(
@@ -7747,6 +7748,65 @@ ENTRY entry {
       /*hlo_cost_options_override=*/hlo_cost_options);
 }
 
+TEST_P(MemorySpaceAssignmentTest,
+       CalledComputationInefficientAllocationLiveLockBug) {
+  // Parameter 2 is passed into the conditional but it is not actually used. A
+  // bug in inefficient allocation pinned this buffer to the default memory at
+  // the use time, but we should really use the "corrected" use time which is
+  // the earliest-scheduled called computation parameter.
+  absl::string_view hlo_string = R"(
+  HloModule CondAllocation, is_scheduled=true
+
+  true_computation {
+    p0 = (f32[3], f32[3]) parameter(0)
+    gte = f32[3] get-tuple-element(p0), index=0
+    neg1 = f32[3] negate(gte)
+    ROOT tuple1 = (f32[3]) tuple(neg1)
+  }
+
+  false_computation {
+    p0 = (f32[3], f32[3]) parameter(0)
+    gte = f32[3] get-tuple-element(p0), index=0
+    neg2 = f32[3] negate(gte)
+    ROOT tuple2 = (f32[3]) tuple(neg2)
+  }
+
+  ENTRY entry {
+    p0 = f32[3] parameter(0)
+    p1 = pred[] parameter(1)
+    p2 = f32[3] parameter(2)
+    copy0 = f32[3] copy(p0)
+    negate0 = f32[3] negate(p0)
+    negate1 = f32[3] negate(negate0)
+    negate2 = f32[3] negate(negate1)
+    negate3 = f32[3] negate(negate2)
+    negate4 = f32[3] negate(negate3)
+    negate5 = f32[3] negate(negate4)
+    negate6 = f32[3] negate(negate5)
+    negate7 = f32[3] negate(negate6)
+    negate8 = f32[3] negate(negate7)
+    tuple = (f32[3], f32[3]) tuple(copy0, p2)
+    conditional = (f32[3]) conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
+    gte = f32[3] get-tuple-element(conditional), index=0
+    ROOT add = f32[3] add(gte, negate8)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.enable_cross_program_prefetch = false;
+  options.inefficient_use_to_copy_ratio = 0.5;
+  HloCostAnalysis::Options hlo_cost_options = DefaultHloCostAnalysisOptions();
+  hlo_cost_options.set_transcendentals_per_second(0.4);
+
+  AssignMemorySpaceUsingCostAnalysis(
+      module.get(), /*memory_space_options_override=*/options,
+      /*cost_analysis_options_override=*/std::nullopt,
+      /*hlo_cost_options_override=*/hlo_cost_options);
+}
+
 TEST_P(MemorySpaceAssignmentTest, AsyncOpElapsedTime) {
   // Test that async ops are treated to take no time. We assume async operations
   // are efficiently scheduled. So, in this example, collective-permute-start
@@ -9718,9 +9778,11 @@ ENTRY main {
   // Setup cost analysis so it takes 2 instructions to prefetch anything.
   HloCostAnalysis hlo_cost_analysis(ShapeSize);
   CostAnalysisOptions cost_analysis_options;
-  TF_ASSERT_OK_AND_ASSIGN(auto cost_analysis,
-                          FakeCostAnalysis::Create(hlo_cost_analysis, *module,
-                                                   cost_analysis_options));
+  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto cost_analysis,
+      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module,
+                               cost_analysis_options));
   cost_analysis->SetOverrideForGetInstructionElapsed(
       [](const HloInstruction& instruction) -> float { return 10.0; });
   cost_analysis->SetOverrideForGetAsyncCopyElapsed(

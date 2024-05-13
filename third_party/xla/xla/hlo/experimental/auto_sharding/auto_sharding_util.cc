@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "json/json.h"
 #include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -2028,6 +2029,7 @@ AdjustShardingWithPartialMeshShapePerElement(
 
 absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
+    const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
     const std::vector<int64_t>& mesh_shape, int64_t total_num_devices,
     bool crash_on_error) {
   bool changed = false;
@@ -2038,7 +2040,7 @@ absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     }
   }
   for (HloInstruction* inst : instructions) {
-    if (!inst->has_sharding()) {
+    if (!inst->has_sharding() || !instructions_to_shard.contains(inst)) {
       continue;
     }
     if (inst->shape().IsTuple()) {
@@ -2225,7 +2227,8 @@ std::vector<std::vector<int64_t>> InferMeshShapesToTry(
       for (const HloSharding& child : sharding.tuple_elements()) {
         process_sharding(child);
       }
-    } else if (!sharding.IsReplicated() && !sharding.IsTileMaximal()) {
+    } else if (!sharding.IsReplicated() && !sharding.IsTileMaximal() &&
+               !sharding.IsManual()) {
       absl::Span<const int64_t> dims = sharding.tile_assignment().dimensions();
       std::vector<int64_t> dims_greater_than_one;
       for (const int64_t dim : dims) {
@@ -2339,6 +2342,36 @@ HloSharding ReplaceGivenShardingsWithUnknownForTuple(
   }
 
   return HloSharding::Tuple(shape, new_tuple_shardings);
+}
+
+absl::StatusOr<int64_t> GetPartialReduceReductionDim(
+    const HloInstruction* ins) {
+  constexpr char kReductionDimKey[] = "reduction_dim";
+  if (ins->raw_backend_config_string().empty()) {
+    return absl::InternalError(
+        "No backend config for a PartialReduce custom call.");
+  }
+  Json::Value parsed_json;
+  Json::Reader json_reader;
+  json_reader.parse(ins->raw_backend_config_string(), parsed_json,
+                    /* collectComments */ false);
+  if (!parsed_json.isObject()) {
+    return absl::InternalError(
+        "Error when parsing json backend config for a PartialReduce custom "
+        "call.");
+  }
+  if (!parsed_json.isMember(kReductionDimKey)) {
+    return absl::InternalError(
+        "No backend config found for a PartialReduce custom call.");
+  }
+
+  if (!parsed_json[kReductionDimKey].isInt64()) {
+    return absl::InternalError(
+        "Error when extracting the reduction key from the json backend config "
+        "of a PartialReduce custom call.");
+  }
+
+  return parsed_json[kReductionDimKey].asInt64();
 }
 
 }  // namespace spmd

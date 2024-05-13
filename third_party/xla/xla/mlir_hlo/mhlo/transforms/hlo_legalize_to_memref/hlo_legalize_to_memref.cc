@@ -13,14 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements logic for lowering HLO dialect to LHLO dialect.
+// This file implements logic for bufferizing HLO dialect to memref dialect.
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
 
-#include "lhlo/IR/lhlo_ops.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/interfaces/bufferizable_op_interface_impl.h"
 #include "mhlo/transforms/passes.h"
@@ -33,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 
 namespace mlir {
 namespace mhlo {
@@ -48,120 +47,6 @@ using bufferization::BufferizableOpInterface;
 using bufferization::BufferizationOptions;
 using bufferization::BufferRelation;
 using bufferization::replaceOpWithNewBufferizedOp;
-
-struct CustomCallOpInterface
-    : public BufferizableOpInterface::ExternalModel<CustomCallOpInterface,
-                                                    mhlo::CustomCallOp> {
-  bool bufferizesToMemoryRead(Operation *, OpOperand &,
-                              const AnalysisState &) const {
-    return true;
-  }
-
-  bool bufferizesToMemoryWrite(Operation *, OpOperand &,
-                               const AnalysisState &) const {
-    return false;  // Arguments are read-only.
-  }
-
-  AliasingValueList getAliasingValues(Operation *, OpOperand &,
-                                      const AnalysisState &) const {
-    return {};
-  }
-
-  LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationOptions &options) const {
-    auto customCallOp = cast<mhlo::CustomCallOp>(op);
-    Value tokenArgument;
-
-    // Bufferize arguments.
-    SmallVector<Value> bufferArgs;
-    for (OpOperand &operand : customCallOp->getOpOperands()) {
-      auto &newBuffer = bufferArgs.emplace_back();
-      if (operand.get().getType().isa<mhlo::TokenType>()) {
-        // Remember the token for later. We need it for the return value but
-        // it's not getting passed to LMHLO.
-        if (tokenArgument) return failure();
-        tokenArgument = operand.get();
-        continue;
-      }
-      if (!operand.get().getType().isa<TensorType>()) return failure();
-      FailureOr<Value> operandBuffer =
-          getBuffer(rewriter, operand.get(), options);
-      if (failed(operandBuffer)) return failure();
-      newBuffer = *operandBuffer;
-    }
-
-    // Allocate outputs.
-    for (OpResult result : customCallOp->getOpResults()) {
-      auto &newBuffer = bufferArgs.emplace_back();
-      if (result.getType().isa<mhlo::TokenType>()) {
-        continue;
-      }
-      auto tensorType = result.getType().dyn_cast<RankedTensorType>();
-      if (!tensorType) return failure();
-      // TODO(springerm): Create alloc_tensor ops during TensorCopyInsertion.
-      AnalysisState analysisState(options);
-      FailureOr<Value> tensorAlloc =
-          bufferization::allocateTensorForShapedValue(rewriter, op->getLoc(),
-                                                      result, options);
-      if (failed(tensorAlloc)) return failure();
-      auto memrefType =
-          MemRefType::get(tensorType.getShape(), tensorType.getElementType());
-      newBuffer = rewriter.create<bufferization::ToMemrefOp>(
-          op->getLoc(), memrefType, *tensorAlloc);
-    }
-
-    lmhlo::CustomCallTargetArgMappingAttr targetMapping;
-    auto numArguments = static_cast<int32_t>(customCallOp->getNumOperands());
-    auto numResults = static_cast<int32_t>(customCallOp->getNumResults());
-
-    // Take the result buffers and fill in the token input in the gaps.
-    auto bufferResults = llvm::to_vector(llvm::map_range(
-        llvm::ArrayRef(bufferArgs).slice(numArguments),
-        [&](Value buffer) { return buffer ? buffer : tokenArgument; }));
-
-    if (tokenArgument) {
-      // If there was a token, squeeze all the non-token arguments and results
-      // (in-place) and remember the mapping.
-      int nextIndex = 0;
-      llvm::SmallVector<int64_t> argToTargetArgMapping;
-      for (int i = 0; i < numArguments; ++i) {
-        if (bufferArgs[i]) {
-          argToTargetArgMapping.push_back(i);
-          bufferArgs[nextIndex++] = bufferArgs[i];
-        }
-      }
-      llvm::SmallVector<int64_t> resultToTargetResultMapping;
-      for (int32_t i = numArguments;
-           i < static_cast<int64_t>(bufferArgs.size()); ++i) {
-        if (bufferArgs[i]) {
-          resultToTargetResultMapping.push_back(i - numArguments);
-          bufferArgs[nextIndex++] = bufferArgs[i];
-        }
-      }
-
-      // Build the mapping attribute.
-      targetMapping = lmhlo::CustomCallTargetArgMappingAttr::get(
-          rewriter.getContext(), numArguments, numResults,
-          argToTargetArgMapping, resultToTargetResultMapping);
-
-      // Drop the remaining operands and adjust num_arguments and num_results
-      // for LMHLO creation.
-      bufferArgs.resize(nextIndex);
-      numArguments = static_cast<int32_t>(argToTargetArgMapping.size());
-      numResults = static_cast<int32_t>(resultToTargetResultMapping.size());
-    }
-
-    auto lhloOp = rewriter.create<lmhlo::CustomCallOp>(
-        op->getLoc(), std::nullopt, bufferArgs, op->getAttrs());
-    if (targetMapping) lhloOp.setTargetArgMappingAttr(targetMapping);
-    // lmhlo.custom_call uses a segment_size attribute to tell input from output
-    // arguments.
-    lhloOp->setAttr(lhloOp.getOperandSegmentSizeAttr(),
-                    rewriter.getDenseI32ArrayAttr({numArguments, numResults}));
-    bufferization::replaceOpWithBufferizedValues(rewriter, op, bufferResults);
-    return success();
-  }
-};
 
 struct ReshapeOpInterface
     : public BufferizableOpInterface::ExternalModel<ReshapeOpInterface,
@@ -185,7 +70,7 @@ struct ReshapeOpInterface
                           const BufferizationOptions &options) const {
     auto reshapeOp = cast<mhlo::ReshapeOp>(op);
     auto unrankedOperandType =
-        reshapeOp.getOperand().getType().dyn_cast<UnrankedTensorType>();
+        mlir::dyn_cast<UnrankedTensorType>(reshapeOp.getOperand().getType());
     if (unrankedOperandType == nullptr) return success();
 
     // The buffer still has the old (pre-reshape) type.
@@ -193,7 +78,7 @@ struct ReshapeOpInterface
         getBuffer(rewriter, reshapeOp.getOperand(), options);
     if (failed(operandBuffer)) return failure();
 
-    auto resultType = reshapeOp.getType().cast<RankedTensorType>();
+    auto resultType = mlir::cast<RankedTensorType>(reshapeOp.getType());
     auto destType =
         MemRefType::get(resultType.getShape(), resultType.getElementType());
     replaceOpWithNewBufferizedOp<memref::CastOp>(rewriter, op, destType,
@@ -233,16 +118,16 @@ struct DynamicReshapeOpInterface
 
     ShapedType resultType;
     TensorType opResultType = reshapeOp.getType();
-    if (auto rankedType = opResultType.dyn_cast<RankedTensorType>()) {
+    if (auto rankedType = mlir::dyn_cast<RankedTensorType>(opResultType)) {
       resultType =
           MemRefType::get(rankedType.getShape(), rankedType.getElementType());
     } else if (auto unrankedType =
-                   opResultType.dyn_cast<UnrankedTensorType>()) {
+                   mlir::dyn_cast<UnrankedTensorType>(opResultType)) {
       resultType = UnrankedMemRefType::get(unrankedType.getElementType(), 0);
     }
     auto operand = *operandBuffer;
     // If the operand has a non-identity affine map, we will have to add a copy.
-    auto bufferType = operandBuffer->getType().dyn_cast<MemRefType>();
+    auto bufferType = mlir::dyn_cast<MemRefType>(operandBuffer->getType());
     if (bufferType && !bufferType.getLayout().isIdentity()) {
       // TODO(springerm): Create alloc_tensor ops during TensorCopyInsertion.
       AnalysisState analysisState(options);
@@ -268,11 +153,11 @@ FailureOr<Value> insertDynamicMemrefCastOp(
     mhlo::DynamicBroadcastInDimOp op, Value operand, RewriterBase &rewriter,
     const BufferizationOptions &options) {
   auto loc = op.getLoc();
-  auto operandType = operand.getType().cast<MemRefType>();
+  auto operandType = mlir::cast<MemRefType>(operand.getType());
   auto operandShape = operandType.getShape();
   auto operandRank = operandType.getRank();
 
-  auto resultType = op.getType().cast<RankedTensorType>();
+  auto resultType = mlir::cast<RankedTensorType>(op.getType());
   auto resultRank = resultType.getRank();
 
   Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
@@ -380,7 +265,8 @@ struct DynamicBroadcastInDimOpInterface
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           const BufferizationOptions &options) const {
     auto broadcastInDimOp = cast<mhlo::DynamicBroadcastInDimOp>(op);
-    auto resultType = broadcastInDimOp.getType().dyn_cast<RankedTensorType>();
+    auto resultType =
+        mlir::dyn_cast<RankedTensorType>(broadcastInDimOp.getType());
     if (!resultType) return success();
 
     // The buffer still has the old (pre-reshape) type.
@@ -419,7 +305,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass() {
 
 void registerBufferizableOpInterfaceExternalModels(DialectRegistry &registry) {
   registry.addExtension(+[](MLIRContext *ctx, MhloDialect * /*dialect*/) {
-    CustomCallOp::attachInterface<CustomCallOpInterface>(*ctx);
     ReshapeOp::attachInterface<ReshapeOpInterface>(*ctx);
     DynamicReshapeOp::attachInterface<DynamicReshapeOpInterface>(*ctx);
     DynamicBroadcastInDimOp::attachInterface<DynamicBroadcastInDimOpInterface>(
@@ -427,7 +312,7 @@ void registerBufferizableOpInterfaceExternalModels(DialectRegistry &registry) {
 
     // Load additional dialects of which ops may get created.
     ctx->loadDialect<arith::ArithDialect, bufferization::BufferizationDialect,
-                     lmhlo::LmhloDialect, memref::MemRefDialect>();
+                     memref::MemRefDialect>();
   });
 }
 

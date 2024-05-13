@@ -123,7 +123,7 @@ absl::StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(
     func_op->walk([&](mlir::Operation* op) {
       for (const mlir::NamedAttribute& attr : op->getAttrs()) {
         if (const auto sym =
-                attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
+                mlir::dyn_cast<mlir::FlatSymbolRefAttr>(attr.getValue())) {
           mlir::Operation* func =
               mlir::SymbolTable::lookupNearestSymbolFrom(op, sym);
           if (func) {
@@ -342,10 +342,11 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   pipeline_options->hoist_invariant_ops = options.hoist_invariant_ops;
   pipeline_options->fuse_get_resource_ops_in_hoisting =
       options.fuse_get_resource_ops_in_hoisting;
-  pipeline_options->func_use_fallback_tensor = true;
   pipeline_options->enable_while_parallel_iterations =
       options.enable_while_parallel_iterations;
   pipeline_options->cost_threshold = options.cost_threshold;
+  pipeline_options->min_num_batch_threads = options.min_num_batch_threads;
+
   pipeline_options->merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
 

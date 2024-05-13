@@ -85,6 +85,7 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",

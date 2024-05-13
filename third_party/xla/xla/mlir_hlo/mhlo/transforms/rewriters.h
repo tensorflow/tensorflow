@@ -92,12 +92,6 @@ void populateScalarHloToArithmeticConversionPatterns(
     RewritePatternSet *patterns,
     llvm::function_ref<bool(Operation *)> filterFn = nullptr);
 
-// Collection of rewrite patterns for lowering of shape operations from the HLO
-// dialect to the standard dialect.
-void populateHloShapeOpsToStandardConversionPattern(
-    MLIRContext *context, TypeConverter &typeConverter,
-    RewritePatternSet *patterns);
-
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHloToLinalgConversionPattern(MLIRContext *context,
                                           TypeConverter &typeConverter,

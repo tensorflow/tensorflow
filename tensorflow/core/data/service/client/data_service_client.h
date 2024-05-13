@@ -80,7 +80,9 @@ class DataServiceClient {
   DataServiceClient& operator=(const DataServiceClient&) = delete;
 
   // Initializes the client.
-  Status Initialize(Allocator* allocator);
+  Status Initialize(
+      const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
+      Allocator* allocator);
 
   // Reads the next element from tf.data workers. Blocks if the next element is
   // not ready.
@@ -246,6 +248,7 @@ class DataServiceClient {
   int64_t job_id_;
   int64_t iteration_client_id_;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
+  const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info_;
   Allocator* allocator_;
 
   int64_t get_next_index_ TF_GUARDED_BY(mu_) = 0;

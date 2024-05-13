@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/service_executable_run_options.h"

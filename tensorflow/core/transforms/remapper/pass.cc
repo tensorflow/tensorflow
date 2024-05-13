@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/ir/dialect.h"
@@ -55,8 +56,8 @@ class MatchMulSigmoid : public RewritePattern {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     TypeAttr dtype_attr = op->getAttrOfType<TypeAttr>("T");
-    if (!dtype_attr.getValue().isa<Float32Type>() &&
-        !dtype_attr.getValue().isa<BFloat16Type>()) {
+    if (!mlir::isa<Float32Type>(dtype_attr.getValue()) &&
+        !mlir::isa<BFloat16Type>(dtype_attr.getValue())) {
       return failure();
     }
 
@@ -217,7 +218,7 @@ class MatchStringToHashBucket : public RemapperPatternBase {
     TypeAttr dtype_attr = as_string_op->getAttrOfType<TypeAttr>("T");
     if (!dtype_attr) return failure();
     Type dtype = dtype_attr.getValue();
-    if (!dtype.isa<IntegerType>()) return failure();
+    if (!mlir::isa<IntegerType>(dtype)) return failure();
 
     // width/fill attributes must be default values
     auto width_attr = as_string_op->getAttrOfType<IntegerAttr>("width");
@@ -270,7 +271,7 @@ class MatchSoftplusTanhMul : public RemapperPatternBase {
     auto attr = op->getAttrOfType<TypeAttr>("T");
     if (!attr) return failure();
     Type dtype = attr.getValue();
-    if (!dtype.isa<Float32Type, BFloat16Type>()) return failure();
+    if (!mlir::isa<Float32Type, BFloat16Type>(dtype)) return failure();
 
     TFOp mul_wrapper(op);
 
@@ -511,12 +512,12 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
       // GPU supports float and half.
       // Put this condition before check `isOneDNNEnabled()` because this node
       // should be processed when it's on GPU and oneDNN CPU is enabled.
-      if (!dtype_T.isa<Float32Type, Float16Type>()) return false;
+      if (!mlir::isa<Float32Type, Float16Type>(dtype_T)) return false;
     } else {
       // Bfloat16 is available only with oneDNN.
       // Half is not available with oneDNN.
       if (this->helper_.isOneDNNEnabled() &&
-          !dtype_T.isa<Float32Type, BFloat16Type>()) {
+          !mlir::isa<Float32Type, BFloat16Type>(dtype_T)) {
         return false;
       }
     }
@@ -543,11 +544,11 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
       if (data_format != "NHWC") return false;
 
       // Data type must be Float16.
-      if (!dtype_T.isa<Float16Type>()) return false;
+      if (!mlir::isa<Float16Type>(dtype_T)) return false;
 
       // Channel dimension must be a multiple of 4.
       auto fbn_input0_shape =
-          fused_batch_norm_op->getOperand(0).getType().cast<ShapedType>();
+          mlir::cast<ShapedType>(fused_batch_norm_op->getOperand(0).getType());
       auto fbn_input0_shape_dims = fbn_input0_shape.getShape();
 
       const bool valid_channel_dim = (fbn_input0_shape.getRank() == 4) &&
@@ -562,7 +563,7 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
     // FusedBatchNormV2 and V3 have an extra type parameter.
     if (fused_batch_norm_op->getName().getStringRef() != "tfg.FusedBatchNorm") {
       auto attr = fused_batch_norm_op->getAttrOfType<TypeAttr>("U");
-      if (attr && !attr.getValue().isa<Float32Type>()) {
+      if (attr && !mlir::isa<Float32Type>(attr.getValue())) {
         return false;
       }
     }
@@ -618,9 +619,9 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
       auto add_input1_op = activation_input_op->getOperand(1).getDefiningOp();
       if (add_input0_op == nullptr || add_input1_op == nullptr) return false;
       auto add_input0_shape =
-          activation_input_op->getOperand(0).getType().cast<ShapedType>();
+          mlir::cast<ShapedType>(activation_input_op->getOperand(0).getType());
       auto add_input1_shape =
-          activation_input_op->getOperand(1).getType().cast<ShapedType>();
+          mlir::cast<ShapedType>(activation_input_op->getOperand(1).getType());
       if (add_input0_shape.getShape() != add_input1_shape.getShape()) {
         return false;
       }

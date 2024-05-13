@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
@@ -214,10 +214,10 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
                                             const Shape& rhs) {
   bool equal = true;
   ForEachSubshape(lhs, [&](const Shape& /*subshape*/, const ShapeIndex& index) {
-    equal &= IndexIsValid(rhs, index);
+    equal = equal && IndexIsValid(rhs, index);
   });
   ForEachSubshape(rhs, [&](const Shape& /*subshape*/, const ShapeIndex& index) {
-    equal &= IndexIsValid(lhs, index);
+    equal = equal && IndexIsValid(lhs, index);
   });
 
   return equal;
@@ -941,9 +941,12 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
         if (subshape.element_type() == PRED) {
           // PRED is packed 8 elements per byte.
           size += CeilOfRatio<int64_t>(ElementsIn(subshape), 8);
-        } else if (primitive_util::Is4BitType(subshape.element_type())) {
+        } else if (primitive_util::IsSubByteNonPredType(
+                       subshape.element_type())) {
           // 4-bit types are packed 2 elements per byte.
-          size += CeilOfRatio<int64_t>(ElementsIn(subshape), 2);
+          size += CeilOfRatio<int64_t>(
+              ElementsIn(subshape),
+              8 / primitive_util::BitWidth(subshape.element_type()));
         } else {
           size += ByteSizeOfElements(subshape);
         }

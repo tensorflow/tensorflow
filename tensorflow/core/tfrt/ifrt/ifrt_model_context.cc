@@ -21,7 +21,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/python/ifrt/array.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
@@ -29,6 +30,14 @@ namespace ifrt_serving {
 
 const tsl::thread::ThreadPool& IfrtModelContext::GetThreadPool() const {
   return thread_pool_;
+}
+
+absl::Status IfrtModelContext::Freeze() {
+  restore_tensor_registry_.Freeze();
+  for (auto& program_handle : handles_) {
+    TF_RETURN_IF_ERROR(program_handle.Freeze());
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace ifrt_serving

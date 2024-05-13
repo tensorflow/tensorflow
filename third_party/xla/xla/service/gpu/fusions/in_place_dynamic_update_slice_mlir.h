@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -47,10 +48,8 @@ class MlirInPlaceDynamicUpdateSliceFusion : public MlirFusionEmitterBase {
   explicit MlirInPlaceDynamicUpdateSliceFusion(
       const HloFusionAnalysis& analysis)
       : analysis_(analysis),
-        dus_ops_(
-            GetOutputDefiningDynamicUpdateSlices(analysis.fusion_roots())) {}
-
-  static bool IsSupported(const HloFusionAnalysis& analysis);
+        dus_ops_(GetOutputDefiningDynamicUpdateSlices(
+            analysis.fusion_root_adaptors())) {}
 
   LaunchDimensions launch_dimensions() const override;
 
@@ -72,7 +71,7 @@ class MlirInPlaceDynamicUpdateSliceFusion : public MlirFusionEmitterBase {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
 
-  std::optional<mlir_converter::EpilogueSpecification> GetEpilogue(
+  std::vector<mlir_converter::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
       mlir::MLIRContext* mlir_context) const override;
 

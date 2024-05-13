@@ -30,6 +30,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/context_util.h"
@@ -1168,7 +1169,13 @@ bool Subgraph::OpMightHaveSideEffect(
 }
 
 TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
-                                         const std::vector<int>& dims) {
+                                         const int* const dims_data,
+                                         const int rank) {
+  if (rank && !dims_data) {
+    ReportError("ResizeInputTensor was given a NULL shape.");
+    return kTfLiteError;
+  }
+
   const bool delegates_applied = !delegates_applied_.empty();
   const bool graph_is_immutable = state_ == kStateInvokableAndImmutable;
   if (graph_is_immutable && !delegates_applied) {
@@ -1187,7 +1194,7 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
   // the subgraph won't allocate memory for a dynamic tensor when its size
   // is equal to the original tensor size.
   if (tensor->data.raw != nullptr &&
-      EqualArrayAndTfLiteIntArray(tensor->dims, dims.size(), dims.data())) {
+      EqualArrayAndTfLiteIntArray(tensor->dims, rank, dims_data)) {
     return kTfLiteOk;
   }
 
@@ -1196,7 +1203,12 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
     TF_LITE_ENSURE_STATUS(UndoAllDelegates());
   }
   state_ = kStateUninvokable;
-  return ResizeTensorImpl(tensor, ConvertVectorToTfLiteIntArray(dims));
+  return ResizeTensorImpl(tensor, BuildTfLiteArray(rank, dims_data).release());
+}
+
+TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
+                                         const std::vector<int>& dims) {
+  return ResizeInputTensor(tensor_index, dims.data(), dims.size());
 }
 
 TfLiteStatus Subgraph::ResizeInputTensorStrict(int tensor_index,

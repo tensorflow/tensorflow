@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_handle.h"
@@ -55,7 +56,9 @@ constexpr const char kGlobalShuffleDataset[] = "GlobalShuffleDataset";
 constexpr const char kReshuffleEachIteration[] = "reshuffle_each_iteration";
 constexpr const char kSeed[] = "seed";
 constexpr const char kSeed2[] = "seed2";
+constexpr const char kSeed3[] = "seed3";
 constexpr const char kSeedGenerator[] = "SeedGenerator";
+constexpr const char kEpochNumRandomSamples[] = "epoch_num_random_samples";
 
 class GlobalShuffleDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -186,9 +189,19 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
   absl::Status Initialize(IteratorContext* ctx) override
       ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock l(&mu_);
+    if (ctx->cancellation_manager()->IsCancelled()) {
+      return absl::CancelledError(
+          "ctx->cancellation_manager()->IsCancelled() is true. Would not "
+          "execute `seed_generator_` to prevent incorrect results when "
+          "restoring.");
+    }
     int64_t seed4;
     seed_generator_->GenerateSeeds(&seed_, &seed2_);
     seed_generator_->GenerateSeeds(&seed3_, &seed4);
+
+    // Snapshots `num_random_samples()` so that
+    // we know how to recover the seed later.
+    num_random_samples_ = seed_generator_->num_random_samples();
     TF_RETURN_IF_ERROR(
         dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
     return absl::OkStatus();
@@ -246,6 +259,12 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     absl::MutexLock l(&mu_);
     TF_RETURN_IF_ERROR(
         writer->WriteScalar(prefix(), kElementCount, element_count_));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kEpochNumRandomSamples,
+                                           num_random_samples_));
+
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kSeed, seed_));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kSeed2, seed2_));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kSeed3, seed3_));
     return absl::OkStatus();
   }
 
@@ -258,6 +277,22 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kElementCount, &element_count_));
     }
+
+    // Restoring the seed_generator is necessary when
+    // combine this op with `.repeat()`.
+    // This is similar to how shuffle dataset recovers the seed generator -
+    // `tensorflow::data::ShuffleDatasetOpBase::ShuffleDatasetBase::Iterator::RestoreInternal`.
+    TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kEpochNumRandomSamples,
+                                          &num_random_samples_));
+    seed_generator_->set_num_random_samples(num_random_samples_);
+    seed_generator_->Reset();
+
+    // Required to recover seeds because `Initialize` is always called
+    // before `RestoreInternal.
+    TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kSeed, &seed_));
+    TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kSeed2, &seed2_));
+    TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kSeed3, &seed3_));
+
     IteratorContext::Params params(ctx);
     params.restored_element_count = element_count_;
     params.index_mapper = GetIndexMapper(ctx->index_mapper());
@@ -278,6 +313,7 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
 
   std::unique_ptr<IteratorBase> input_impl_ ABSL_GUARDED_BY(mu_);
   int64_t element_count_ ABSL_GUARDED_BY(mu_) = 0;
+  int64_t num_random_samples_ ABSL_GUARDED_BY(mu_) = 0;
 };
 
 GlobalShuffleDatasetOp::GlobalShuffleDatasetOp(OpKernelConstruction* ctx)
@@ -297,7 +333,9 @@ void GlobalShuffleDatasetOp::MakeDataset(OpKernelContext* ctx,
                   "compatible with random access. Got: ",
                   input->RandomIndexingCompatible().ToString())));
 
-  int64_t cardinality = input->Cardinality();
+  CardinalityOptions options;
+  options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_MODERATE);
+  int64_t cardinality = input->Cardinality(std::move(options));
   OP_REQUIRES(ctx, cardinality > 0,
               absl::InvalidArgumentError(absl::StrCat(
                   "`global_shuffle` requires the input dataset to have a "

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <variant>
@@ -108,6 +109,14 @@ class AutotuneConfig {
     return require_complete_aot_autotune_results_;
   }
 
+  AutotuneConfig(const AutotuneConfig& right)
+      : config_(right.config_),
+        autotune_level_(right.autotune_level_),
+        should_crash_on_check_failure_(right.should_crash_on_check_failure_),
+        exhaustive_tiling_search_(right.exhaustive_tiling_search_),
+        require_complete_aot_autotune_results_(
+            right.require_complete_aot_autotune_results_) {}
+
   AutotuneConfig(const std::variant<DeviceConfig, DevicelessConfig>& config,
                  const DebugOptions& debug_options)
       : config_(config),
@@ -136,7 +145,14 @@ class AutotuneConfig {
   se::DeviceMemoryAllocator* GetAllocator() const {
     CHECK(std::holds_alternative<DeviceConfig>(config_));
     auto& cf = std::get<DeviceConfig>(config_);
-    return cf.allocator ? cf.allocator : GetExecutor()->GetAllocator();
+    if (cf.allocator != nullptr) {
+      return cf.allocator;
+    }
+    if (allocator_ == nullptr) {
+      allocator_ =
+          std::make_unique<se::StreamExecutorMemoryAllocator>(GetExecutor());
+    }
+    return allocator_.get();
   }
 
   absl::StatusOr<se::Stream*> GetStream() const {
@@ -163,6 +179,7 @@ class AutotuneConfig {
   bool should_crash_on_check_failure_;
   bool exhaustive_tiling_search_;
   bool require_complete_aot_autotune_results_;
+  mutable std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 };
 
 using AutotuneNoCacheFn = std::function<absl::StatusOr<AutotuneResult>()>;
@@ -250,7 +267,9 @@ struct AutotunerUtil {
   // quadratic blow-up when serializing cache for a large number of modules.
   static absl::StatusOr<std::string> SerializeAutotuneResultsForModule(
       const HloModule& module, const AutotuneConfig& autotune_config,
-      bool as_textproto = false);
+      bool as_textproto);
+  static AutotuneResults SerializeAutotuneResultsForModule(
+      const HloModule& module, const AutotuneConfig& autotune_config);
 
   static absl::Status SerializeAutotuneResults(AutotuneResults* results);
   static absl::Status LoadAutotuneResults(absl::string_view data,
@@ -264,6 +283,11 @@ struct AutotunerUtil {
   // is used, otherwise the binary protobuf format.
   static absl::Status SerializeAutotuneResultsToFile(
       absl::string_view file_path);
+
+  // As above, but if you already called SerializeAutotuneResults to get a
+  // proto.
+  static absl::Status SerializeAutotuneResultsToFile(
+      const AutotuneResults& results, absl::string_view file_path);
 
   // Loads autotune results from a file.
   //

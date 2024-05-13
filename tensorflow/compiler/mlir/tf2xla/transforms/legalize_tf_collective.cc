@@ -113,9 +113,8 @@ LogicalResult ConvertReplicaGroups(OpBuilder& builder,
   if (!matchPattern(group_assignment_value, m_Constant(&group_assignment))) {
     return op->emitOpError() << "expects constant group_assignment";
   }
-  replica_groups =
-      hlo::convertElementsAttr(group_assignment, builder.getIntegerType(64))
-          .cast<DenseIntElementsAttr>();
+  replica_groups = mlir::cast<DenseIntElementsAttr>(
+      hlo::convertElementsAttr(group_assignment, builder.getIntegerType(64)));
   if (replica_groups.getType().getRank() != 2) {
     return op->emitOpError() << "group_assignment should have rank 2, got "
                              << replica_groups.getType().getRank();

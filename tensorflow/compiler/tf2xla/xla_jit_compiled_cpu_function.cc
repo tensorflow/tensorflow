@@ -92,15 +92,6 @@ void CollectNames(const T& entries, std::vector<string>* nonempty_names,
   name_ptrs->push_back(nullptr);  // array terminator
 }
 
-bool RunXlaRuntime(const xla::cpu::CpuExecutable* cpu_executable,
-                   const std::vector<xla::cpu::BufferDesc>& descriptor_table,
-                   const xla::ExecutableRunOptions* run_options) {
-  assert(cpu_executable->IsXlaRuntime());
-  Status status =
-      cpu_executable->ExecuteXlaRuntime(descriptor_table, run_options);
-  return status.ok();
-}
-
 }  // namespace
 
 /*static*/ absl::StatusOr<std::unique_ptr<XlaJitCompiledCpuFunction>>
@@ -171,12 +162,6 @@ XlaJitCompiledCpuFunction::Compile(
       std::make_unique<xla::ProgramShapeProto>(program_shape->ToProto());
   XlaCompiledCpuFunction::set_static_data_raw_function(&jit->static_data_,
                                                        raw_function);
-  if (cpu_executable->IsXlaRuntime()) {
-    XlaCompiledCpuFunction::set_static_data_external_run_function(
-        &jit->static_data_, RunXlaRuntime);
-    XlaCompiledCpuFunction::set_static_data_cpu_executable(&jit->static_data_,
-                                                           cpu_executable);
-  }
   XlaCompiledCpuFunction::set_static_data_buffer_infos(
       &jit->static_data_, jit->buffer_infos_.data());
   XlaCompiledCpuFunction::set_static_data_num_buffers(

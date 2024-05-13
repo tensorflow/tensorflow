@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "xla/service/computation_placer.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "xla/literal.h"
@@ -49,9 +49,8 @@ DeviceAssignment::LogicalIdForDevice(GlobalDeviceId device_id) const {
     for (int c = 0; c < computation_count(); ++c) {
       if ((*this)(r, c) == device_id.value()) {
         if (logical_id.has_value()) {
-          return Internal(
-              "Device %d appears twice in DeviceAssignment: %s",
-              device_id.value(), ToString());
+          return Internal("Device %d appears twice in DeviceAssignment: %s",
+                          device_id.value(), ToString());
         }
         logical_id.emplace(DeviceAssignment::LogicalID{r, c});
       }
@@ -61,7 +60,7 @@ DeviceAssignment::LogicalIdForDevice(GlobalDeviceId device_id) const {
     return *logical_id;
   } else {
     return Internal("Device %d doesn't appear in DeviceAssignment: %s",
-                         device_id.value(), ToString());
+                    device_id.value(), ToString());
   }
 }
 
@@ -112,8 +111,9 @@ DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
   for (int computation = 0; computation < proto.computation_count();
        ++computation) {
     const auto& computation_device = proto.computation_devices(computation);
-    TF_RET_CHECK(computation_device.replica_device_ids_size() ==
-                 proto.replica_count());
+    int64_t replica_count = proto.replica_count();
+    int64_t ids = computation_device.replica_device_ids_size();
+    TF_RET_CHECK(ids == replica_count);
     for (int replica = 0; replica < proto.replica_count(); ++replica) {
       (*assignment)(replica, computation) =
           computation_device.replica_device_ids(replica);

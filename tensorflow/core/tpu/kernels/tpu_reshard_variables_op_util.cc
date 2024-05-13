@@ -56,7 +56,7 @@ Status FlushProgramMemory(se::Platform* platform, int device_ordinal) {
                       tpu::TpuNodeContext::Create(device_ordinal));
 
   auto* executor = tensorflow::down_cast<tpu::TpuExecutorInterface*>(
-      node_interfaces->stream_executor()->implementation());
+      node_interfaces->stream_executor());
   return executor->UnloadAllPrograms();
 }
 
@@ -214,8 +214,7 @@ absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
 // Perform a compaction to reduce fragmentation.
 Status PerformCompaction(stream_executor::Stream* stream) {
   tsl::profiler::TraceMe trace_me("PerformCompaction", /*level=*/2);
-  auto* ds_executor =
-      down_cast<tpu::TpuExecutorInterface*>(stream->parent()->implementation());
+  auto* ds_executor = down_cast<tpu::TpuExecutorInterface*>(stream->parent());
   TF_RETURN_IF_ERROR(ds_executor->EnqueueCompactionOnStreamForHbm(stream));
   // LoadProgram and GetOrCreateConstantHandle are not managed by stream
   // dependencies but they write to shared memory, so we need to block here to

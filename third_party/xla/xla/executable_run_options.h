@@ -59,6 +59,10 @@ namespace gpu {
 class GpuExecutableRunOptions;
 }  // namespace gpu
 
+namespace ffi {
+class ExecutionContext;
+}  // namespace ffi
+
 // A unique identifier for a particular "logical execution" of an XLA model.
 //
 // A logical execution might encompass multiple executions of one or more
@@ -226,6 +230,13 @@ class ExecutableRunOptions {
       const gpu::GpuExecutableRunOptions* gpu_executable_run_options);
   const gpu::GpuExecutableRunOptions* gpu_executable_run_options() const;
 
+  // XLA FFI specific execution context that allows to pass auxiliary data to
+  // FFI handlers. It's a caller responsibility to ensure that the XLA FFI
+  // execution context stays alive while the executable is running.
+  ExecutableRunOptions& set_ffi_execution_context(
+      const ffi::ExecutionContext* ffi_execution_context);
+  const ffi::ExecutionContext* ffi_execution_context() const;
+
  private:
   stream_executor::DeviceMemoryAllocator* allocator_ = nullptr;
   int device_ordinal_ = -1;
@@ -243,6 +254,7 @@ class ExecutableRunOptions {
   RunId run_id_;
   const cpu::CpuExecutableRunOptions* cpu_executable_run_options_ = nullptr;
   const gpu::GpuExecutableRunOptions* gpu_executable_run_options_ = nullptr;
+  const ffi::ExecutionContext* ffi_execution_context_ = nullptr;
 };
 
 }  // namespace xla

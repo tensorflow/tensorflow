@@ -40,6 +40,9 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtDuplicatedCalleeEliminationPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtVerifyDonationPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtVerifyShardingSpecifiedPass();
 
 // Generated definitions. This should be placed after all Pass creations.

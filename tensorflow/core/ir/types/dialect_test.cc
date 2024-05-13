@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/platform/test.h"
 
 namespace mlir {
@@ -46,7 +47,7 @@ TEST(TFTypesDialect, TestFuncAttrSubElement) {
   ASSERT_TRUE(succeeded(SymbolTable::replaceAllSymbolUses(
       b.getStringAttr("foo"), baz, test_op.getParentRegion())));
 
-  auto func_attr = test_op.getAttr("func").dyn_cast<tf_type::FuncAttr>();
+  auto func_attr = mlir::dyn_cast<tf_type::FuncAttr>(test_op.getAttr("func"));
   ASSERT_TRUE(func_attr);
   auto sym_ref = FlatSymbolRefAttr::get(baz);
   EXPECT_TRUE(func_attr.getName() == sym_ref);

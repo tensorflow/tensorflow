@@ -19,6 +19,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -482,6 +483,32 @@ ENTRY main.183 {
     }
   }
   EXPECT_EQ(custom_calls_count, 4);
+}
+
+TEST_F(ConvertMemoryPlacementToInternalAnnotationsTest,
+       ConvertOutputPinnedHostTest) {
+  constexpr std::string_view hlo_string = R"(
+  HloModule m, entry_computation_layout={(f32[2,2]{1,0:T(2,128)},f32[2,2]{1,0:T(2,128)})->f32[2,2]{1,0:T(2,128)S(5)}}
+  ENTRY m {
+    x = f32[2,2] parameter(0)
+    y = f32[2,2] parameter(1)
+    crs = f32[2,2] add(x, y)
+    ROOT transfer = f32[2,2] custom-call(crs), custom_call_target="annotate_device_placement", frontend_attributes={_xla_buffer_placement="pinned_host"}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  bool changed =
+      ConvertMemoryPlacementToInternalAnnotations().Run(module.get()).value();
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+  int64_t move_to_host_count = 0;
+  for (auto* c : module->computations()) {
+    for (auto* instr : c->instructions()) {
+      move_to_host_count += instr->IsCustomCall(
+          host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+    }
+  }
+  EXPECT_EQ(move_to_host_count, 1);
 }
 
 }  // namespace

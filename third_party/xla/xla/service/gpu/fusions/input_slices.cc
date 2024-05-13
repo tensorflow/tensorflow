@@ -131,7 +131,7 @@ absl::Status EmitElementForInputFusibleSlices(
             src_multidim[dim],
             index.GetConstantWithIndexType(slice->slice_starts(dim)));
       }
-      llvm_ir::IrArray src_ir_array = outputs[i];
+      const llvm_ir::IrArray& src_ir_array = outputs[i];
       llvm_ir::IrArray::Index slice_dst_index(dst_multidim, slice->shape(),
                                               index.GetType());
       src_ir_array.EmitWriteArrayElement(slice_dst_index, input_ir_values[i],
@@ -178,8 +178,8 @@ absl::StatusOr<Shape> GetConsistentInputShapeForRootSlices(
 }  // namespace
 
 LaunchDimensions InputSlicesFusion::launch_dimensions() const {
-  auto* root = analysis_.fusion_roots().front();
-  const auto& shape = root->operands()[0]->shape();
+  const auto& root = analysis_.fusion_root(0).instruction();
+  const auto& shape = root.operand(0)->shape();
   return CalculateLaunchDimensions(shape, analysis_.device_info(),
                                    {unroll_factor_});
 }
@@ -191,7 +191,7 @@ std::optional<IndexingMap> InputSlicesFusion::ComputeThreadIdToOutputIndexing(
   auto launch_dims = launch_dimensions();
   // The implementation requires the shapes and layouts to be the same, but we
   // still use the requested output's shape for clarity.
-  const auto& shape = analysis_.fusion_roots()[output_id]->shape();
+  const auto& shape = analysis_.fusion_root(output_id).shape();
   return GetDefaultThreadIdIndexingMap(launch_dims, unroll_factor_, shape, ctx);
 }
 

@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/memset_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
+#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/replica_id_thunk.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
@@ -142,21 +143,28 @@ static absl::StatusOr<Command> Convert(
 
 static absl::StatusOr<Command> Convert(const NcclAllReduceStartThunk& thunk) {
   return std::make_unique<AllReduceCmd>(
-      thunk.execution_stream_id(), thunk.nccl_api(), thunk.config(),
-      thunk.reduction_kind(), thunk.buffers());
+      thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
+      thunk.nccl_api(), thunk.config(), thunk.reduction_kind(),
+      thunk.buffers());
 }
 
 static absl::StatusOr<Command> Convert(
     const NcclReduceScatterStartThunk& thunk) {
   return std::make_unique<ReduceScatterCmd>(
-      thunk.execution_stream_id(), thunk.nccl_api(), thunk.config(),
-      thunk.reduction_kind(), thunk.buffers());
+      thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
+      thunk.nccl_api(), thunk.config(), thunk.reduction_kind(),
+      thunk.buffers());
 }
 
 static absl::StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
-  return std::make_unique<AllGatherCmd>(thunk.execution_stream_id(),
-                                        thunk.nccl_api(), thunk.config(),
-                                        thunk.buffers());
+  return std::make_unique<AllGatherCmd>(
+      thunk.nccl_execution_stream_id(), thunk.execution_stream_id(),
+      thunk.nccl_api(), thunk.config(), thunk.buffers());
+}
+
+static absl::StatusOr<Command> Convert(const NcclCollectiveDoneThunk& thunk) {
+  return std::make_unique<BarrierCmd>(thunk.execution_stream_id(),
+                                      thunk.nccl_execution_stream_id());
 }
 
 static absl::StatusOr<Command> Convert(const PartitionIdThunk& thunk) {
@@ -254,11 +262,13 @@ static absl::Status AppendCommands(
                             static_cast<const SequentialThunk&>(thunk).thunks(),
                             synchronization_mode);
 
-    // Currently all collective operations recorded on the tracing stream and do
-    // not need to have a separate done command.
     case Thunk::Kind::kNcclAllGatherDone:
     case Thunk::Kind::kNcclAllReduceDone:
     case Thunk::Kind::kNcclReduceScatterDone:
+      return append(Convert<NcclCollectiveDoneThunk>(thunk));
+
+    // Currently all collective operations recorded on the tracing stream and do
+    // not need to have a separate done command.
     case Thunk::Kind::kWaitForStreams:
       return absl::OkStatus();
 

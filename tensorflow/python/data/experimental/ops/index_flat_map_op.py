@@ -14,7 +14,7 @@
 # ==============================================================================
 """Python API for `index_flat_map` dataset, which supports global shuffling."""
 
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Sequence, Union
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import structured_function
@@ -79,6 +79,10 @@ def index_flat_map(  # pylint: disable=unused-private-name
 
   Returns:
     A new `Dataset` with the transformation applied as described above.
+
+  Raises:
+    errors.InvalidArgumentError: If `index_map_func` does not return a tuple of
+      two integers, or the returned offset is out of range.
   """
   return _IndexFlatMapDataset(
       input_dataset, map_func, index_map_func, output_cardinality, name)
@@ -117,12 +121,21 @@ class _IndexFlatMapDataset(dataset_ops.UnaryDataset):
         **self._common_args)
     super().__init__(input_dataset, variant_tensor)
 
-  # TODO(b/325112575): Make sure this works if `map_func` returns lists.
   @property
   def element_spec(self) -> Any:
-    return tensor_spec.TensorSpec(
-        shape=[],
-        dtype=self._map_func.output_structure.dtype)
+    output_structure = self._map_func.output_structure
+    # If the `map_func` returns a Python list of lists, then `output_structure`
+    # contains s sequence of `TensorSpecs`, each representing the structure of
+    # the inner lists.
+    if isinstance(output_structure, Sequence):
+      return output_structure[0]
+    # If the `map_func` returns a Tensor of nested lists, then each mapped
+    # element is one stacked Tensor.
+    if output_structure.shape.rank > 1:
+      return tensor_spec.TensorSpec(
+          shape=output_structure.shape[1:], dtype=output_structure.dtype)
+    # `map_func` returns a list of scalars.
+    return tensor_spec.TensorSpec(shape=[], dtype=output_structure.dtype)
 
   def _functions(self) -> list[structured_function.StructuredFunctionWrapper]:
     return [self._map_func, self._index_map_func]

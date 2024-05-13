@@ -42,6 +42,10 @@ namespace mlir::quant {
 
 constexpr char kAttrMapAttribute[] = "attr_map";
 
+// Name of the string attribute attached to `XlaCallModuleOp`, which is the
+// textproto representation of `Method`.
+inline constexpr StringRef kQuantizationMethodAttr = "_quantization_method";
+
 // Permutation from the NHWC tensor format to NCHW. This is an inverse
 // permutation of `kNchwToNhwcPermutation`.
 inline constexpr std::array<int64_t, 4> kNhwcToNchwPermutation = {0, 3, 1, 2};
@@ -65,7 +69,7 @@ bool HasStaticShapeAtDims(Value value, ArrayRef<int> dims);
 // Whether `value` has known rank of `rank`. Returns false when it is not a
 // `ShapedType` or its rank is unknown.
 inline bool HasRankOf(Value value, const int64_t rank) {
-  auto shaped_type = value.getType().dyn_cast_or_null<ShapedType>();
+  auto shaped_type = mlir::dyn_cast_or_null<ShapedType>(value.getType());
   return shaped_type && shaped_type.hasRank() && shaped_type.getRank() == rank;
 }
 
@@ -215,7 +219,7 @@ Operation* FindOperandOfType(Operation* op) {
 // Returns the function attribute for the given call op which is lifted for
 // quantization.
 inline FlatSymbolRefAttr GetFuncAttr(TF::PartitionedCallOp call_op) {
-  return call_op.getFAttr().template dyn_cast<FlatSymbolRefAttr>();
+  return mlir::dyn_cast<FlatSymbolRefAttr>(call_op.getFAttr());
 }
 
 inline FlatSymbolRefAttr GetFuncAttr(TF::XlaCallModuleOp call_op) {
@@ -247,6 +251,9 @@ absl::StatusOr<bool> IsDotGeneralFullyConnected(
 // or `std::nullopt` if the given op is not per-channel quantizable.
 std::optional<int64_t> GetDotGeneralQuantizationDim(
     ::mlir::stablehlo::DotGeneralOp dot_general_op);
+
+// Checks if a `StringRef` contains 'conv' or 'dot_general'.
+bool ContainsConvOrDot(StringRef str);
 
 }  // namespace mlir::quant
 

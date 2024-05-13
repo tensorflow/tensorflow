@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -188,31 +189,31 @@ TEST(GetIntTypeFromTFQintTest, ChecksIntTypesFromTFQint) {
 
   auto type = GetIntTypeFromTFQint(TF::Qint8Type::get(context.get()));
   EXPECT_TRUE(llvm::isa<IntegerType>(type));
-  EXPECT_EQ(type.dyn_cast<IntegerType>().getWidth(), 8);
-  EXPECT_FALSE(type.dyn_cast<IntegerType>().isSigned());
-  EXPECT_FALSE(type.dyn_cast<IntegerType>().isUnsigned());
+  EXPECT_EQ(mlir::dyn_cast<IntegerType>(type).getWidth(), 8);
+  EXPECT_FALSE(mlir::dyn_cast<IntegerType>(type).isSigned());
+  EXPECT_FALSE(mlir::dyn_cast<IntegerType>(type).isUnsigned());
 
   type = GetIntTypeFromTFQint(TF::Qint16Type::get(context.get()));
   EXPECT_TRUE(llvm::isa<IntegerType>(type));
-  EXPECT_EQ(type.dyn_cast<IntegerType>().getWidth(), 16);
-  EXPECT_FALSE(type.dyn_cast<IntegerType>().isSigned());
-  EXPECT_FALSE(type.dyn_cast<IntegerType>().isUnsigned());
+  EXPECT_EQ(mlir::dyn_cast<IntegerType>(type).getWidth(), 16);
+  EXPECT_FALSE(mlir::dyn_cast<IntegerType>(type).isSigned());
+  EXPECT_FALSE(mlir::dyn_cast<IntegerType>(type).isUnsigned());
 
   type = GetIntTypeFromTFQint(TF::Qint32Type::get(context.get()));
   EXPECT_TRUE(llvm::isa<IntegerType>(type));
-  EXPECT_EQ(type.dyn_cast<IntegerType>().getWidth(), 32);
-  EXPECT_FALSE(type.dyn_cast<IntegerType>().isSigned());
-  EXPECT_FALSE(type.dyn_cast<IntegerType>().isUnsigned());
+  EXPECT_EQ(mlir::dyn_cast<IntegerType>(type).getWidth(), 32);
+  EXPECT_FALSE(mlir::dyn_cast<IntegerType>(type).isSigned());
+  EXPECT_FALSE(mlir::dyn_cast<IntegerType>(type).isUnsigned());
 
   type = GetIntTypeFromTFQint(TF::Quint8Type::get(context.get()));
   EXPECT_TRUE(llvm::isa<IntegerType>(type));
-  EXPECT_EQ(type.dyn_cast<IntegerType>().getWidth(), 8);
-  EXPECT_TRUE(type.dyn_cast<IntegerType>().isUnsigned());
+  EXPECT_EQ(mlir::dyn_cast<IntegerType>(type).getWidth(), 8);
+  EXPECT_TRUE(mlir::dyn_cast<IntegerType>(type).isUnsigned());
 
   type = GetIntTypeFromTFQint(TF::Quint16Type::get(context.get()));
   EXPECT_TRUE(llvm::isa<IntegerType>(type));
-  EXPECT_EQ(type.dyn_cast<IntegerType>().getWidth(), 16);
-  EXPECT_TRUE(type.dyn_cast<IntegerType>().isUnsigned());
+  EXPECT_EQ(mlir::dyn_cast<IntegerType>(type).getWidth(), 16);
+  EXPECT_TRUE(mlir::dyn_cast<IntegerType>(type).isUnsigned());
 
   // Non qint types are returned as is.
   EXPECT_EQ(GetIntTypeFromTFQint(IntegerType::get(type.getContext(), 32)),

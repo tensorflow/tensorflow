@@ -118,6 +118,8 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
       if (auto optional_dim = GetDotGeneralQuantizationDim(dot_general_op);
           optional_dim) {
         spec->coeff_op_quant_dim[1] = optional_dim.value();
+      } else {
+        spec->coeff_op_quant_dim[1] = -1;
       }
       if (function_name.contains("with_bias")) {
         spec->biases_params[2] = {{0, 1},

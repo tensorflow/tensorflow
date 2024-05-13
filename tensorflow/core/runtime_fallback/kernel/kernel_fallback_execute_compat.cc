@@ -101,9 +101,9 @@ void KernelFallbackEmitError(
 
 }  // namespace
 
-static llvm::Expected<gtl::InlinedVector<tensorflow::Tensor, 4>>
+static llvm::Expected<absl::InlinedVector<tensorflow::Tensor, 4UL>>
 ConvertInputTensors(llvm::ArrayRef<tfrt::Tensor*> arguments) {
-  gtl::InlinedVector<tensorflow::Tensor, 4> input_tf_tensors;
+  absl::InlinedVector<tensorflow::Tensor, 4UL> input_tf_tensors;
   input_tf_tensors.reserve(arguments.size());
   for (tfrt::Tensor* argument : arguments) {
     auto expected_tf_tensor = tfrt::TFRTTensorToTFTensor(*argument);
@@ -119,7 +119,7 @@ ConvertInputTensors(llvm::ArrayRef<tfrt::Tensor*> arguments) {
 
 static Status ValidateInputTypes(
     tfrt::string_view op_name,
-    const gtl::InlinedVector<tensorflow::Tensor, 4>& input_tf_tensors,
+    const absl::InlinedVector<tensorflow::Tensor, 4UL>& input_tf_tensors,
     const DataTypeVector& input_types) {
   const size_t n_inputs = input_tf_tensors.size();
 

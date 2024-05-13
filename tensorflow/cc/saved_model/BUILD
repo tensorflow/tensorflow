@@ -544,9 +544,7 @@ cc_library(
     name = "fingerprinting_utils",
     srcs = ["fingerprinting_utils.cc"],
     hdrs = ["fingerprinting_utils.h"],
-    visibility = [
-        "//tensorflow:__pkg__",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":constants",
         "//tensorflow/core:lib",

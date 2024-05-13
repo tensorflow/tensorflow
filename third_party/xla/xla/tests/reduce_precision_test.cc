@@ -483,7 +483,8 @@ XLA_TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionFloat) {
                         operation_index);
 }
 
-XLA_TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionDouble) {
+XLA_TEST_P(ReducedPrecisionAccuracyTest,
+           DISABLED_ON_TPU(ReducePrecisionDouble)) {
   int operation_index = GetParam();
   DoIt<double, uint64_t>(f64_exponent_sizes[operation_index],
                          f64_mantissa_sizes[operation_index], f64_test_values,

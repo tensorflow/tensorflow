@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -78,7 +79,8 @@ class CalibrationComponent : public Component {
   // calibration process can use it to load and run the graph with the
   // representative dataset.
   absl::StatusOr<tensorflow::quantization::ExportedModel> ExportToSavedModel(
-      ModuleOp module_op, absl::string_view dst_saved_model_path);
+      ModuleOp module_op, absl::string_view calibration_data_dir,
+      absl::string_view dst_saved_model_path);
 
   // Imports the SavedModel at `calibrated_saved_model_path` to `ModuleOp` after
   // running calibration.
@@ -108,6 +110,10 @@ class CalibrationComponent : public Component {
   // Signature keys to identify the functions to load & quantize.
   const std::vector<std::string> signature_keys_;
 };
+
+// Runs passes to prepare the calibration model.
+absl::Status RunCalibrationPasses(mlir::ModuleOp module_op, MLIRContext& ctx,
+                                  absl::string_view calibration_data_dir);
 
 }  // namespace mlir::quant::stablehlo
 

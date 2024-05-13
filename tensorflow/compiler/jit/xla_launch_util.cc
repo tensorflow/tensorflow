@@ -410,7 +410,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   if (output.on_host_shape().is_dynamic()) {
     const se::Platform* platform = nullptr;
     if (stream != nullptr) {
-      platform = stream->parent()->platform();
+      platform = stream->parent()->GetPlatform();
     } else {
       // Stream is not set for the host platform.
       TF_ASSIGN_OR_RETURN(platform,
@@ -670,7 +670,8 @@ Status PreparePjRtExecutableArguments(
         std::unique_ptr<xla::PjRtBuffer> pjrt_buffer =
             std::make_unique<xla::PjRtStreamExecutorBuffer>(
                 device_shape, std::move(device_buffer), pjrt_client,
-                pjrt_device);
+                pjrt_device,
+                pjrt_device->default_memory_space().value_or(nullptr));
         owned_args->push_back(std::move(pjrt_buffer));
         args->push_back(owned_args->back().get());
       }
@@ -866,7 +867,7 @@ Status RunPjRtExecutable(
                       pjrt_client->LookupAddressableDevice(pjrt_device_id));
 
   gpu::GpuServingDeviceSelectorResource* device_selector_resource = nullptr;
-  if (device_type == DEVICE_GPU) {
+  if (device_type == DEVICE_GPU && gpu::kUseGpuServingDeviceSelector) {
     auto rm = ctx->resource_manager();
     TF_RETURN_IF_ERROR(rm->LookupOrCreate<
                        gpu::GpuServingDeviceSelectorResource>(

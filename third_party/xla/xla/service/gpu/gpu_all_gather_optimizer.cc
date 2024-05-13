@@ -91,7 +91,7 @@ absl::StatusOr<bool> AllGatherOptimizer::Run(
 
       auto combined = HloInstruction::CreateAllGather(
           left_all_gather->shape(), {index_in_full_shape}, all_gather_dimension,
-          left_all_gather->replica_groups(),
+          left_all_gather->device_list(),
           /*constrain_layout=*/false, left_all_gather->channel_id(),
           Cast<HloAllGatherInstruction>(left_all_gather)
               ->use_global_device_ids());

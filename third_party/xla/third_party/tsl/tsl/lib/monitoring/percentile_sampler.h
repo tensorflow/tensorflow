@@ -177,7 +177,7 @@ class PercentileSampler {
   PercentileSamplerCell* GetCell(const Labels&... labels)
       TF_LOCKS_EXCLUDED(mu_);
 
-  Status GetStatus() { return status_; }
+  absl::Status GetStatus() { return status_; }
 
  private:
   friend class PercentileSamplerCell;
@@ -201,27 +201,29 @@ class PercentileSampler {
     if (registration_handle_) {
       for (size_t i = 0; i < percentiles_.size(); ++i) {
         if (percentiles_[i] < 0.0 || percentiles_[i] > 100.0) {
-          status_ = Status(absl::StatusCode::kInvalidArgument,
+          status_ =
+              absl::Status(absl::StatusCode::kInvalidArgument,
                            "Percentile values must be in [0, 100] range.");
           break;
         }
         if (i + 1 < percentiles_.size() &&
             percentiles_[i] >= percentiles_[i + 1]) {
-          status_ =
-              Status(absl::StatusCode::kInvalidArgument,
-                     "Percentile values must be in strictly ascending order.");
+          status_ = absl::Status(
+              absl::StatusCode::kInvalidArgument,
+              "Percentile values must be in strictly ascending order.");
           break;
         }
       }
     } else {
-      status_ = Status(absl::StatusCode::kAlreadyExists,
+      status_ =
+          absl::Status(absl::StatusCode::kAlreadyExists,
                        "Another metric with the same name already exists.");
     }
   }
 
   mutable mutex mu_;
 
-  Status status_;
+  absl::Status status_;
 
   using LabelArray = std::array<string, NumLabels>;
   // we need a container here that guarantees pointer stability of the value,

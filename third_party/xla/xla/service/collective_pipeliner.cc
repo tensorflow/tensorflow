@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/numeric/int128.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/map_util.h"
 #include "xla/primitive_util.h"
@@ -50,10 +53,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -526,8 +529,9 @@ std::optional<std::vector<HloInstruction*>> CollectChainsToPushBackwards(
     HloInstruction* instr, int64_t loop_iter, const HloComputation* while_body,
     int64_t level_to_operate_on,
     const absl::flat_hash_set<const HloInstruction*>& loop_invariant_params,
-    HloPredicate should_allow_loop_variant_parameter_in_chain) {
-  if (instr->HasControlDependencies()) {
+    HloPredicate should_allow_loop_variant_parameter_in_chain,
+    bool should_allow_control_dependencies) {
+  if (instr->HasControlDependencies() && !should_allow_control_dependencies) {
     return std::nullopt;
   }
   return CollectIndependentOperandChain(
@@ -689,7 +693,8 @@ class WhileLoopAnalysis {
       CollectivePipeliner::PipeliningDirection direction,
       HloPredicate should_process, HloPredicate acceptable_formatting,
       HloPredicate should_allow_loop_variant_parameter_in_chain =
-          HloPredicateFalse);
+          HloPredicateFalse,
+      bool should_allow_control_dependencies = false);
   HloInstruction* while_loop_instruction() const { return while_; }
 
  private:
@@ -798,7 +803,8 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
     int64_t level_to_operate_on,
     CollectivePipeliner::PipeliningDirection direction,
     HloPredicate should_process, HloPredicate acceptable_formatting,
-    HloPredicate should_allow_loop_variant_parameter_in_chain) {
+    HloPredicate should_allow_loop_variant_parameter_in_chain,
+    bool should_allow_control_dependencies) {
   move_infos_.clear();
   HloComputation* while_body = while_->while_body();
   const HloInstruction* loop_parameter =
@@ -1006,7 +1012,8 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
       auto chain_collected = CollectChainsToPushBackwards(
           instr, *loop_iteration_idx_, while_body, level_to_operate_on,
           invariant_loop_parameters_,
-          should_allow_loop_variant_parameter_in_chain);
+          should_allow_loop_variant_parameter_in_chain,
+          should_allow_control_dependencies);
       if (!chain_collected.has_value()) {
         VLOG(5) << "Skipping " << instr->name()
                 << " because didn't find compatible slice of parameter";
@@ -2414,7 +2421,8 @@ absl::StatusOr<bool> CollectivePipeliner::Run(
     loop_analysis.CollectCollectivesToMove(
         config_.level_to_operate_on, config_.pipelining_direction,
         config_.should_process, config_.acceptable_formatting,
-        config_.should_allow_loop_variant_parameter_in_chain);
+        config_.should_allow_loop_variant_parameter_in_chain,
+        config_.should_allow_control_dependencies);
     if (loop_analysis.GetMoveInfos().empty()) {
       continue;
     }
@@ -2448,7 +2456,7 @@ absl::StatusOr<bool> CollectivePipeliner::Run(
           loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.process_different_sized_ops, config_.should_process,
           config_.acceptable_formatting, config_.postprocess_backward_peeled_op,
-          config_.postprocess_backward_rorated_op, next_channel_id));
+          config_.postprocess_backward_rotated_op, next_channel_id));
     }
     ++transformed_loops;
     changed = true;

@@ -38,26 +38,19 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/MLProgram/IR/MLProgram.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "xla/client/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
-#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -327,10 +320,6 @@ StatusOr<DeviceAssignment> PjRtCApiClient::GetDefaultDeviceAssignment(
                               args.default_assignment_size};
   return CalculateDefaultAssignment(args.num_replicas, args.num_partitions,
                                     param);
-}
-
-StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
-  return LookupDevice(PjRtGlobalDeviceId(device_id));
 }
 
 StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(
@@ -650,6 +639,55 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::CreateViewOfDeviceBuffer(
       std::make_unique<PjRtCApiBuffer>(this, args.buffer));
 }
 
+absl::StatusOr<Layout> PjRtCApiClient::GetDefaultLayout(
+    PrimitiveType element_type, absl::Span<const int64_t> dims) {
+  const PJRT_Api* c_api = pjrt_c_api();
+  PJRT_Layouts_Extension* extension =
+      pjrt::FindExtension<PJRT_Layouts_Extension>(
+          c_api, PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
+  if (extension == nullptr) {
+    return absl::UnimplementedError(
+        "Layouts extension not implemented in this PJRT plugin.");
+  }
+  PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args args;
+  args.struct_size = PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.client = c_client_.get();
+  args.type = pjrt::ConvertToPjRtBufferType(element_type);
+  args.dims = dims.data();
+  args.num_dims = dims.size();
+  RETURN_STATUS_IF_PJRT_ERROR(
+      extension->PJRT_Layouts_PJRT_Client_GetDefaultLayout(&args), c_api);
+
+  // Clean up `PJRT_Layouts_MemoryLayout`.
+  std::unique_ptr<PJRT_Layouts_MemoryLayout,
+                  pjrt::PJRT_Layouts_MemoryLayoutDeleter>
+      layout_destroyer(args.layout, pjrt::MakeMemoryLayoutDeleter(c_api));
+
+  // TODO(yueshengys): once b/338478940 is fixed, we can get rid of the
+  // serialization here and wrap the `args.layout` into a subclass of
+  // `PjRtLayout`.
+  PJRT_Layouts_MemoryLayout_Serialize_Args serialize_args;
+  serialize_args.struct_size =
+      PJRT_Layouts_MemoryLayout_Serialize_Args_STRUCT_SIZE;
+  serialize_args.extension_start = nullptr;
+  serialize_args.layout = args.layout;
+  RETURN_STATUS_IF_PJRT_ERROR(
+      extension->PJRT_Layouts_MemoryLayout_Serialize(&serialize_args), c_api);
+
+  // Clean up `PJRT_Layouts_SerializedLayout`.
+  absl::Cleanup cleanup = [&serialize_args] {
+    serialize_args.serialized_layout_deleter(serialize_args.serialized_layout);
+  };
+
+  std::string serialized_layout(serialize_args.serialized_bytes,
+                                serialize_args.serialized_bytes_size);
+  TF_ASSIGN_OR_RETURN(PjRtXlaLayout pjrt_xla_layout,
+                      PjRtXlaLayout::Deserialize(serialized_layout));
+
+  return pjrt_xla_layout.xla_layout();
+}
+
 const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
 
 // --------------------------------- Devices -----------------------------------
@@ -865,6 +903,22 @@ StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
     result.peak_pool_bytes = args.peak_pool_bytes;
   }
   return result;
+}
+
+absl::StatusOr<std::intptr_t> PjRtCApiDevice::GetStreamForExternalReadyEvents()
+    const {
+  const PJRT_Api* c_api = client_->pjrt_c_api();
+  PJRT_Stream_Extension* extension = pjrt::FindExtension<PJRT_Stream_Extension>(
+      c_api, PJRT_Extension_Type::PJRT_Extension_Type_Stream);
+  if (extension == nullptr) {
+    return absl::UnimplementedError(
+        "Stream extension not implemented in this PJRT plugin.");
+  }
+  PJRT_Get_Stream_For_External_Ready_Events_Args args;
+  args.struct_size = PJRT_Get_Stream_For_External_Ready_Events_Args_STRUCT_SIZE;
+  args.device = device_;
+  RETURN_STATUS_IF_PJRT_ERROR(extension->get_stream(&args), c_api);
+  return args.stream;
 }
 
 // ------------------------------- Memory --------------------------------------
@@ -2092,6 +2146,23 @@ PjRtCApiExternalReference::~PjRtCApiExternalReference() {
   pjrt::LogFatalIfPjrtError(
       client_->pjrt_c_api()->PJRT_Buffer_DecreaseExternalReferenceCount(&args),
       client_->pjrt_c_api());
+}
+
+Status PjRtCApiExternalReference::WaitUntilBufferReadyOnStream(
+    std::intptr_t stream) {
+  const PJRT_Api* c_api = buffer_->pjrt_c_api();
+  PJRT_Stream_Extension* extension = pjrt::FindExtension<PJRT_Stream_Extension>(
+      c_api, PJRT_Extension_Type::PJRT_Extension_Type_Stream);
+  if (extension == nullptr) {
+    return absl::UnimplementedError(
+        "Stream extension not implemented in this PJRT plugin.");
+  }
+  PJRT_Wait_Until_Buffer_Ready_On_Stream_Args args;
+  args.struct_size = PJRT_Wait_Until_Buffer_Ready_On_Stream_Args_STRUCT_SIZE;
+  args.stream = stream;
+  args.buffer = buffer_->c_buffer();
+  RETURN_STATUS_IF_PJRT_ERROR(extension->wait_stream(&args), c_api);
+  return absl::OkStatus();
 }
 
 // ------------------------------ Device Topology ------------------------------

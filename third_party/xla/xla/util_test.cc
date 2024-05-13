@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "xla/util.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <list>
+#include <numeric>
 #include <set>
 #include <string>
 #include <string_view>
@@ -132,7 +135,7 @@ TEST(UtilTest, RoundTripFpToString) {
                 -std::numeric_limits<tsl::float8_e4m3fn>::quiet_NaN()),
             "-nan");
   EXPECT_EQ(RoundTripFpToString(
-                std::numeric_limits<tsl::float8_e4m3b11>::quiet_NaN()),
+                std::numeric_limits<tsl::float8_e4m3b11fnuz>::quiet_NaN()),
             "-nan");
   EXPECT_EQ(RoundTripFpToString(
                 std::numeric_limits<tsl::float8_e4m3fnuz>::quiet_NaN()),
@@ -246,11 +249,13 @@ TEST(UtilTest, TotalOrder_F8E4M3FN) {
 
 TEST(UtilTest, TotalOrder_F8E4M3B11) {
   for (int a = 0; a < 256; ++a) {
-    tsl::float8_e4m3b11 x =
-        Eigen::numext::bit_cast<tsl::float8_e4m3b11>(static_cast<uint8_t>(a));
+    tsl::float8_e4m3b11fnuz x =
+        Eigen::numext::bit_cast<tsl::float8_e4m3b11fnuz>(
+            static_cast<uint8_t>(a));
     for (int b = 0; b < 256; ++b) {
-      tsl::float8_e4m3b11 y =
-          Eigen::numext::bit_cast<tsl::float8_e4m3b11>(static_cast<uint8_t>(b));
+      tsl::float8_e4m3b11fnuz y =
+          Eigen::numext::bit_cast<tsl::float8_e4m3b11fnuz>(
+              static_cast<uint8_t>(b));
       TotalOrderHelper(x, y);
     }
   }
@@ -277,6 +282,39 @@ TEST(UtilTest, TotalOrder_F8E5M2FNUZ) {
           static_cast<uint8_t>(b));
       TotalOrderHelper(x, y);
     }
+  }
+}
+
+void PackInt4(absl::Span<const char> input, absl::Span<char> output) {
+  CHECK_EQ(output.size(), CeilOfRatio(input.size(), size_t{2}));
+  for (size_t i = 0; i < input.size(); ++i) {
+    // Mask out the high-order 4 bits in case they have extraneous data.
+    char val = input[i] & 0xf;
+    if (i % 2 == 0) {
+      output[i / 2] = val << 4;
+    } else {
+      output[i / 2] |= val;
+    }
+  }
+}
+
+TEST(UtilTest, PackInt4) {
+  std::vector<char> input(7);
+  std::iota(input.begin(), input.end(), 0);
+
+  std::vector<char> output_ref(CeilOfRatio<int64_t>(input.size(), 2));
+  PackInt4(input, absl::MakeSpan(output_ref));
+
+  std::vector<char> output_dut(CeilOfRatio<int64_t>(input.size(), 2));
+  PackIntN(4, input, absl::MakeSpan(output_dut));
+  for (size_t i = 0; i < output_dut.size(); ++i) {
+    EXPECT_EQ(output_ref[i], output_dut[i]) << i;
+  }
+
+  std::vector<char> unpacked(input.size());
+  UnpackIntN(4, output_ref, absl::MakeSpan(unpacked));
+  for (size_t i = 0; i < input.size(); ++i) {
+    EXPECT_EQ(unpacked[i], input[i]) << i;
   }
 }
 

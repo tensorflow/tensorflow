@@ -37,6 +37,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -51,7 +52,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tf_tfl_passes",  # buildcleaner:keep
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_test_passes",
@@ -75,7 +75,6 @@ cc_library(
         "@local_xla//xla/mlir/framework/ir:xla_framework",
         "@local_xla//xla/mlir/framework/transforms:passes",
         "@local_xla//xla/mlir_hlo:all_passes",
-        "@local_xla//xla/service/cpu:hlo_xla_runtime_pipeline",
     ],
 )
 
@@ -190,7 +189,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "@llvm-project//mlir:AllExtensions",
@@ -204,7 +202,6 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir/framework/ir:xla_framework",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
-        "@local_xla//xla/service/cpu:hlo_xla_runtime_pipeline",
         "@stablehlo//:register",
     ],
 )
