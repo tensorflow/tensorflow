@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_LOOP_DOUBLE_BUFFER_TRANSFORMER_H_
-#define XLA_SERVICE_GPU_LOOP_DOUBLE_BUFFER_TRANSFORMER_H_
+#ifndef XLA_SERVICE_GPU_DOUBLE_BUFFER_LOOP_UNROLLING_H_
+#define XLA_SERVICE_GPU_DOUBLE_BUFFER_LOOP_UNROLLING_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -47,14 +47,14 @@ namespace gpu {
 // unrolled.
 // TODO(olechwierowicz): Rename the loop unroller to something more generic like
 // 'DoubleBufferLoopUnrolling'.
-class LoopDoubleBufferTransformer : public HloModulePass {
+class DoubleBufferLoopUnrolling : public HloModulePass {
  public:
   enum class UnrollStrategy { kDoubleBuffer, kFullUnroll };
 
-  explicit LoopDoubleBufferTransformer(
+  explicit DoubleBufferLoopUnrolling(
       UnrollStrategy unroll_strategy = UnrollStrategy::kDoubleBuffer)
       : unroll_strategy_(unroll_strategy) {};
-  ~LoopDoubleBufferTransformer() override = default;
+  ~DoubleBufferLoopUnrolling() override = default;
 
   absl::string_view name() const override {
     return "loop-double-buffer-transformer";
@@ -72,4 +72,4 @@ class LoopDoubleBufferTransformer : public HloModulePass {
 }  // end namespace gpu
 }  // end namespace xla
 
-#endif  // XLA_SERVICE_GPU_LOOP_DOUBLE_BUFFER_TRANSFORMER_H_
+#endif  // XLA_SERVICE_GPU_DOUBLE_BUFFER_LOOP_UNROLLING_H_

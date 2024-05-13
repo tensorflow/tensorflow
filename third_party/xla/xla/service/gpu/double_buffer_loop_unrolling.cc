@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/loop_double_buffer_transformer.h"
+#include "xla/service/gpu/double_buffer_loop_unrolling.h"
 
 #include <cstdint>
 #include <iterator>
@@ -362,7 +362,7 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
 
 }  // namespace
 
-absl::StatusOr<bool> LoopDoubleBufferTransformer::Run(
+absl::StatusOr<bool> DoubleBufferLoopUnrolling::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/loop_double_buffer_transformer.h"
+#include "xla/service/gpu/double_buffer_loop_unrolling.h"
 
 #include <cstdint>
 #include <memory>
@@ -102,8 +102,8 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  LoopDoubleBufferTransformer double_buffer(
-      LoopDoubleBufferTransformer::UnrollStrategy::kFullUnroll);
+  DoubleBufferLoopUnrolling double_buffer(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
   TupleSimplifier tuple_simp;
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, double_buffer.Run(module.get()));
@@ -166,8 +166,8 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  LoopDoubleBufferTransformer double_buffer(
-      LoopDoubleBufferTransformer::UnrollStrategy::kFullUnroll);
+  DoubleBufferLoopUnrolling double_buffer(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
   TupleSimplifier tuple_simp;
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, double_buffer.Run(module.get()));
@@ -235,7 +235,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  LoopDoubleBufferTransformer double_buffer;
+  DoubleBufferLoopUnrolling double_buffer;
   TupleSimplifier tuple_simp;
   bool changed;
   TF_ASSERT_OK_AND_ASSIGN(changed, double_buffer.Run(module.get()));
@@ -307,7 +307,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  LoopDoubleBufferTransformer double_buffer;
+  DoubleBufferLoopUnrolling double_buffer;
   TupleSimplifier tuple_simp;
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(tuple_simp.Run(module.get()), IsOkAndHolds(true));
@@ -372,7 +372,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  LoopDoubleBufferTransformer double_buffer;
+  DoubleBufferLoopUnrolling double_buffer;
   TupleSimplifier tuple_simp;
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(tuple_simp.Run(module.get()), IsOkAndHolds(true));
@@ -444,7 +444,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  LoopDoubleBufferTransformer double_buffer;
+  DoubleBufferLoopUnrolling double_buffer;
   TupleSimplifier tuple_simp;
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(tuple_simp.Run(module.get()), IsOkAndHolds(true));
@@ -517,8 +517,8 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  LoopDoubleBufferTransformer double_buffer(
-      LoopDoubleBufferTransformer::UnrollStrategy::kFullUnroll);
+  DoubleBufferLoopUnrolling double_buffer(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
   TupleSimplifier tuple_simp;
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(tuple_simp.Run(module.get()), IsOkAndHolds(true));
@@ -592,7 +592,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  LoopDoubleBufferTransformer double_buffer;
+  DoubleBufferLoopUnrolling double_buffer;
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
 
   absl::flat_hash_set<const HloComputation*> while_loops_callees;
@@ -651,7 +651,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  LoopDoubleBufferTransformer double_buffer;
+  DoubleBufferLoopUnrolling double_buffer;
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
 
   absl::flat_hash_set<const HloComputation*> while_loops_callees;
@@ -710,8 +710,8 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  LoopDoubleBufferTransformer double_buffer(
-      LoopDoubleBufferTransformer::UnrollStrategy::kFullUnroll);
+  DoubleBufferLoopUnrolling double_buffer(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
 
   absl::flat_hash_set<const HloComputation*> while_loops_callees;
@@ -776,7 +776,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  LoopDoubleBufferTransformer double_buffer;
+  DoubleBufferLoopUnrolling double_buffer;
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
 
   int64_t num_whiles = 0;
@@ -830,8 +830,8 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  LoopDoubleBufferTransformer double_buffer(
-      LoopDoubleBufferTransformer::UnrollStrategy::kFullUnroll);
+  DoubleBufferLoopUnrolling double_buffer(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
 
   int64_t num_whiles = 0;

@@ -117,6 +117,7 @@ limitations under the License.
 #include "xla/service/gpu/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/dot_dimension_sorter.h"
 #include "xla/service/gpu/dot_operand_converter.h"
+#include "xla/service/gpu/double_buffer_loop_unrolling.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/fusion_wrapper.h"
 #include "xla/service/gpu/gemm_broadcast_folding_rewriter.h"
@@ -141,7 +142,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_unnested.h"
-#include "xla/service/gpu/loop_double_buffer_transformer.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
@@ -1096,28 +1096,26 @@ absl::Status RunPostFusionPasses(
     pipeline.AddPass<AllReduceBlueConnect>(blueconnect_num_devices_per_host);
   }
 
-  std::optional<LoopDoubleBufferTransformer::UnrollStrategy> unroll_strategy =
+  std::optional<DoubleBufferLoopUnrolling::UnrollStrategy> unroll_strategy =
       std::nullopt;
   // Support old flag.
   if (opts.xla_gpu_enable_while_loop_double_buffering()) {
-    unroll_strategy =
-        LoopDoubleBufferTransformer::UnrollStrategy::kDoubleBuffer;
+    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer;
   }
   // Support new flag setting style, override the old one.
   if (opts.xla_gpu_enable_while_loop_unrolling() ==
       DebugOptions::WHILE_LOOP_UNROLLING_DOUBLE_BUFFER) {
-    unroll_strategy =
-        LoopDoubleBufferTransformer::UnrollStrategy::kDoubleBuffer;
+    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer;
   }
   if (opts.xla_gpu_enable_while_loop_unrolling() ==
       DebugOptions::WHILE_LOOP_UNROLLING_FULL_UNROLL) {
     LOG_IF(WARNING, unroll_strategy != std::nullopt)
         << "Overriding double buffering set via "
            "`xla_gpu_enable_while_loop_double_buffering` flag.";
-    unroll_strategy = LoopDoubleBufferTransformer::UnrollStrategy::kFullUnroll;
+    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll;
   }
   if (unroll_strategy != std::nullopt) {
-    pipeline.AddPass<LoopDoubleBufferTransformer>(*unroll_strategy);
+    pipeline.AddPass<DoubleBufferLoopUnrolling>(*unroll_strategy);
     pipeline.AddPass<TupleSimplifier>();
     pipeline.AddPass<HloDCE>();
   }
