@@ -95,6 +95,7 @@ cc_library(
         "@local_xla//xla/pjrt:host_callback",
         "@local_xla//xla/pjrt:pjrt_executable",
         "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt/hlo:hlo_program",
         "@local_xla//xla/python/pjrt_ifrt",
         "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
         "@local_xla//xla/service:computation_placer_hdr",
@@ -295,6 +296,26 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:refcount",
         "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+tf_cc_test(
+    name = "ifrt_restore_tensor_registry_test",
+    srcs = ["ifrt_restore_tensor_registry_test.cc"],
+    tags = ["no_oss"],
+    deps = [
+        ":ifrt_restore_tensor_registry",
+        "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/python/ifrt",
     ],
 )
 

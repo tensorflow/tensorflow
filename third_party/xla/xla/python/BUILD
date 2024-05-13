@@ -389,6 +389,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:plugin_program",
         "//xla/python/ifrt:plugin_program_serdes",
+        "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/pjrt_ifrt",
         "//xla/python/pjrt_ifrt:xla_host_callback_proto_cc",
         "//xla/python/pjrt_ifrt:xla_ifrt",

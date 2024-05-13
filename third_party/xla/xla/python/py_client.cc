@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
@@ -437,7 +438,7 @@ PyClient::CompileIfrtProgram(
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseMlirModuleString(mlir_module, context));
   return CompileIfrtProgram(
-      client, std::make_unique<xla::ifrt::XlaProgram>(module.get()),
+      client, std::make_unique<xla::ifrt::HloProgram>(module.get()),
       MakeIfrtCompileOptions(std::move(options), std::move(host_callbacks)));
 }
 
