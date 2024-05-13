@@ -54,7 +54,7 @@ RBE_FLAGS=""
 TARGET_FILTERS="-@local_tsl//tsl/platform:subprocess_test -@local_tsl//tsl/platform/cloud:google_auth_provider_test -@local_tsl//tsl/platform/cloud:oauth_client_test"
 
 if is_linux_gpu_job ; then
-    TAGS_FILTER="$TAGS_FILTER,gpu,requires-gpu-nvidia,-no_gpu"
+    TAGS_FILTER="$TAGS_FILTER,gpu_any,requires-gpu-nvidia,-no_gpu"
 
     # We are currently running XLA presubmits on machines with NVIDIA T4 GPUs,
     # which have a compute compatibility of 7.5. Se we filter out all the tests

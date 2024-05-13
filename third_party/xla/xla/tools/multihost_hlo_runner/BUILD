@@ -16,7 +16,7 @@ build_test(
     name = "hlo_runner_main_build_test",
     tags = [
         "cpu",
-        "gpu",
+        "gpu_any",
     ],
     targets = [
         ":hlo_runner_main",
@@ -29,6 +29,7 @@ xla_cc_binary(
     srcs = ["hlo_runner_main.cc"],
     tags = [
         "gpu",
+        "gpu_any",
         "noasan",  # Exceeds linker limit.
         "nomac",
     ],
