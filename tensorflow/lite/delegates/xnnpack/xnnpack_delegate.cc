@@ -7846,7 +7846,6 @@ void TfLiteXNNPackDelegateWeightsCacheDelete(
   }
   auto weights_cache = reinterpret_cast<xnn_weights_cache_t>(cache);
   xnn_delete_weights_cache(weights_cache);
-  xnn_deinitialize();
 }
 
 TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
