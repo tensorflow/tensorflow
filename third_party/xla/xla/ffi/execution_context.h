@@ -16,109 +16,127 @@ limitations under the License.
 #ifndef XLA_FFI_EXECUTION_CONTEXT_H_
 #define XLA_FFI_EXECUTION_CONTEXT_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <string>
 #include <string_view>
-#include <type_traits>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "tsl/lib/gtl/int_type.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::ffi {
 
 // Execution context is a container for forwarding arbitrary user data to FFI
-// handlers in the scope of a single execution. Execution context allows to pass
-// arbitrary user data to FFI handlers via the side channel that does not
-// require modifying HLO modules. There are two kinds of user data that can be
-// passed to FFI handlers:
+// handlers in the scope of a single XLA execution. Execution context allows to
+// pass arbitrary user data to FFI handlers via the side channel that does not
+// require modifying HLO modules.
 //
-// 1. Opaque data. This is a wrapper for an opaque user data pointer that is
-//    useful when FFI handler is registered in the dynamically loaded library
-//    and we do not know the type of the data and can only work with the opaque
-//    pointer.
+// From XLA FFI perspective user data is an opaque pointer that can be
+// forwarded to the FFI handler. We rely on type id to guarantee that we forward
+// user data of correct type. There are kinds of type ids:
 //
-// 2. Typed data. This is useful when the FFI handler is registered in the same
-//    process and we can rely on global static variable to assign ids to types
-//    and we don't need to worry about breaking C++ ABI.
+// 1. External type id. When FFI handlers defined in a dynamically loaded
+//    library, they must register types used in the execution context ahead
+//    of time and explicitly get a unique type id for them.
 //
-// For internal FFI handlers we always use typed data, and use opaque data only
-// if FFI handler has to be defined in a separate dynamically loaded library.
+// 2. Internal type id. When FFI handler defined in the same binary we rely
+//    on a global static registry to automatically assing type ids.
 //
 // Examples: FFI handler can register a per-execution cache in the execution
 // context and get access to it in the FFI handler, with a guarantee that it is
 // unique between separate calls to XLA execute.
 class ExecutionContext {
  public:
-  // A base class for typed user data used for FFI handlers registered in the
-  // same process where we can safely pass around C++ objects.
+  template <typename T>
+  using Deleter = std::function<void(T*)>;
+
+  TSL_LIB_GTL_DEFINE_INT_TYPE(TypeId, int64_t);
+
+  // Registers external type with a given name in a static type registry.
+  static absl::StatusOr<TypeId> RegisterExternalTypeId(std::string_view name);
+
+  // Inserts opaque user data with a given type id and optional deleter.
+  absl::Status Insert(TypeId type_id, void* data,
+                      Deleter<void> deleter = nullptr);
+
+  // Inserts typed user data of type `T` and optional deleter.
+  template <typename T>
+  absl::Status Insert(T* data, Deleter<T> deleter = nullptr);
+
+  // Emplaces typed user data constructed from `args`. Execution context
+  // becomes the owner of the constructed object.
+  template <typename T, typename... Args>
+  absl::Status Emplace(Args&&... args);
+
+  // Looks up typed execution context data of type `T`.
+  template <typename T>
+  absl::StatusOr<T*> Lookup() const {
+    TF_ASSIGN_OR_RETURN(auto user_data, LookupUserData(GetTypeId<T>()));
+    return static_cast<T*>(user_data->data());
+  }
+
+  // Looks up opaque execution context data with given `type_id`.
+  absl::StatusOr<void*> Lookup(TypeId type_id) const {
+    TF_ASSIGN_OR_RETURN(auto user_data, LookupUserData(type_id));
+    return user_data->data();
+  }
+
+ private:
+  // An RAII wrapper for opaque user data. Optional deleter will be called when
+  // UserData is destroyed together with the execution context. If deleter is
+  // nullptr then the caller is responsible for making sure that the pointer
+  // stays valid during the XLA execution and correctly destroyed afterwards.
   class UserData {
    public:
-    virtual ~UserData() = default;
-  };
+    UserData(void* data, Deleter<void> deleter);
+    ~UserData();
 
-  template <typename T>
-  using IsUserData = std::enable_if_t<std::is_base_of_v<UserData, T>>;
-
-  // An RAII wrapper for opaque user data that is useful when FFI handler is
-  // registered in the dynamically loaded library and we do not know the type of
-  // the data and can only work with the opaque pointer.
-  class OpaqueUserData {
-   public:
-    using Deleter = std::function<void(void*)>;
-
-    OpaqueUserData(void* data, Deleter deleter);
-    ~OpaqueUserData();
-
-    OpaqueUserData(OpaqueUserData&) = delete;
-    OpaqueUserData& operator=(const OpaqueUserData&) = delete;
+    UserData(UserData&) = delete;
+    UserData& operator=(const UserData&) = delete;
 
     void* data() const { return data_; }
 
    private:
     void* data_;
-    Deleter deleter_;
+    Deleter<void> deleter_;
   };
 
-  // Emplaces opaque user data keyed by `id`.
-  absl::Status Emplace(std::string id, void* data,
-                       OpaqueUserData::Deleter deleter);
+  static TypeId GetNextTypeId();
 
-  // Looks up opaque user data keyed by `id`.
-  absl::StatusOr<std::shared_ptr<OpaqueUserData>> Lookup(
-      std::string_view id) const;
-
-  // Emplaces typed user data constructed from `args`.
-  template <typename T, typename... Args, IsUserData<T>* = nullptr>
-  absl::Status Emplace(Args&&... args) {
-    return Insert(GetTypeId<T>(),
-                  std::make_shared<T>(std::forward<Args>(args)...));
+  template <typename T>
+  static TypeId GetTypeId() {
+    static const TypeId id = GetNextTypeId();
+    return id;
   }
 
-  // Looks up typed execution context data of type `T`.
-  template <typename T, IsUserData<T>* = nullptr>
-  absl::StatusOr<std::shared_ptr<T>> Lookup() const {
-    auto user_data = Lookup(GetTypeId<T>());
-    if (!user_data.ok()) return user_data.status();
-    return std::static_pointer_cast<T>(*std::move(user_data));
-  }
+  absl::Status InsertUserData(TypeId type_id, std::unique_ptr<UserData> data);
+  absl::StatusOr<UserData*> LookupUserData(TypeId type_id) const;
 
- private:
-  template <typename T, IsUserData<T>* = nullptr>
-  static int64_t GetTypeId() {
-    static const char id = 0;
-    return reinterpret_cast<int64_t>(&id);
-  }
-
-  absl::Status Insert(int64_t type_id, std::shared_ptr<UserData> data);
-  absl::StatusOr<std::shared_ptr<UserData>> Lookup(int64_t type_id) const;
-
-  absl::flat_hash_map<int64_t, std::shared_ptr<UserData>> typed_;
-  absl::flat_hash_map<std::string, std::shared_ptr<OpaqueUserData>> opaque_;
+  absl::flat_hash_map<TypeId, std::unique_ptr<UserData>> user_data_;
 };
+
+template <typename T>
+absl::Status ExecutionContext::Insert(T* data, Deleter<T> deleter) {
+  return InsertUserData(GetTypeId<T>(),
+                        std::make_unique<UserData>(
+                            data, [deleter = std::move(deleter)](void* data) {
+                              if (deleter) deleter(static_cast<T*>(data));
+                            }));
+}
+
+template <typename T, typename... Args>
+absl::Status ExecutionContext::Emplace(Args&&... args) {
+  return InsertUserData(GetTypeId<T>(),
+                        std::make_unique<UserData>(
+                            new T(std::forward<Args>(args)...),
+                            [](void* data) { delete static_cast<T*>(data); }));
+}
 
 }  // namespace xla::ffi
 

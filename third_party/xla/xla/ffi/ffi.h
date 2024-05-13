@@ -331,7 +331,7 @@ struct UserData {};
 
 template <typename T>
 struct CtxDecoding<UserData<T>> {
-  using Type = std::shared_ptr<T>;
+  using Type = T*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,

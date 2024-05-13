@@ -150,10 +150,8 @@ XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
   XLA_FFI_Handler_Register_Args args;
   args.struct_size = XLA_FFI_Handler_Register_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.name = XLA_FFI_ByteSpan{XLA_FFI_ByteSpan_STRUCT_SIZE, nullptr,
-                               name.data(), name.size()};
-  args.platform = XLA_FFI_ByteSpan{XLA_FFI_ByteSpan_STRUCT_SIZE, nullptr,
-                                   platform.data(), platform.size()};
+  args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
+  args.platform = XLA_FFI_ByteSpan{platform.data(), platform.size()};
   args.handler = handler;
   args.traits = traits;
   return api->XLA_FFI_Handler_Register(&args);

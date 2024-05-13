@@ -135,19 +135,19 @@ struct CallFrame::Dictionary {
 struct CallFrame::Array {
   CallFrameBuilder::Array value;  // XLA_FFI_Array::data
 
-  XLA_FFI_Array array = {XLA_FFI_Array_STRUCT_SIZE, nullptr};
+  XLA_FFI_Array array = {};
 };
 
 struct CallFrame::Scalar {
   CallFrameBuilder::Scalar value;  // XLA_FFI_Scalar::value
 
-  XLA_FFI_Scalar scalar = {XLA_FFI_Scalar_STRUCT_SIZE, nullptr};
+  XLA_FFI_Scalar scalar = {};
 };
 
 struct CallFrame::String {
   std::string value;  // XLA_FFI_ByteSpan::ptr
 
-  XLA_FFI_ByteSpan span = {XLA_FFI_ByteSpan_STRUCT_SIZE, nullptr};
+  XLA_FFI_ByteSpan span = {};
 };
 
 struct CallFrame::NamedAttribute {
