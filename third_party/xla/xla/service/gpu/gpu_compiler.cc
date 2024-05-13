@@ -1533,7 +1533,20 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     return Compiler::TargetConfig{gpu_target_config_proto};
   }
   if (executor) {
-    return Compiler::TargetConfig{executor};
+    Compiler::TargetConfig target_config = Compiler::TargetConfig{executor};
+    int64_t device_memory_size =
+        target_config.device_description.device_memory_size();
+    // Checking for device_memory_size == -1 is how we detect that we are
+    // running on Nvidia's software simulator. When running on simulation,
+    // the config from StreamExecutor is inaccurate, so we must load the
+    // hard-coded config from a file.
+    if (device_memory_size == -1) {
+      return absl::FailedPreconditionError(
+          "When running on an NVIDIA simulation device, you must use "
+          "--xla_gpu_target_config_filename to pass in target information. "
+          "The target config from StreamExecutor is inaccurate.");
+    }
+    return target_config;
   }
   return absl::InternalError(
       "Either GPU has to be attached, or --xla_gpu_target_config_filename "
