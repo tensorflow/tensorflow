@@ -2210,7 +2210,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
 
   // After we have a scheduled module and all operations wrapped into fusions we
   // can decide how to wrap them into command buffers.
-  if (!IsXlaRuntimeExecutableEnabled(module->config())) {
+  {
     HloPassPipeline pipeline("command-buffer-scheduling");
     auto driver_version = se::gpu::GpuDriver::GetDriverVersion();
 #if GOOGLE_CUDA
