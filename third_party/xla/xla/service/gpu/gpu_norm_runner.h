@@ -118,6 +118,22 @@ struct GpuNormConfig {
     return config;
   }
 
+  absl::StatusOr<se::dnn::NormOp::Config> AsDnnNormOpConfig() const {
+    TF_ASSIGN_OR_RETURN(se::dnn::NormKind norm_kind,
+                        GetDNNNormKindFromCudnnNormKind(kind));
+    return se::dnn::NormOp::Config{norm_kind,
+                                   epsilon,
+                                   x_descriptor,
+                                   scale_descriptor,
+                                   y_or_dx_descriptor,
+                                   bias_descriptor,
+                                   dy_descriptor,
+                                   expectation_descriptor,
+                                   norm_factor_descriptor,
+                                   dscale_descriptor,
+                                   dbias_descriptor};
+  }
+
   double epsilon;
   CudnnNormKind kind;
   se::dnn::AlgorithmDesc algorithm;
