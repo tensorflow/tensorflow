@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/index_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/maybe_owning.h"
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
@@ -1302,96 +1303,10 @@ class MutableLiteralBase : public LiteralBase {
                                absl::Span<const int64_t> dest_base,
                                absl::Span<const int64_t> copy_size);
 
-  // A unique_ptr like class which may or may not have ownership of its pointer.
   // The literal may or may not own the storage of the shape. Creating/copying a
   // shape can incur significant overhead which in many case we'd like to avoid,
   // esp. for small literals.
-  class MaybeOwningShapePtr {
-   public:
-    MaybeOwningShapePtr() = default;
-    explicit MaybeOwningShapePtr(std::unique_ptr<Shape> unique)
-        : ptr_and_owning_bit_(TakeUnique(std::move(unique))) {}
-
-    explicit MaybeOwningShapePtr(const Shape* borrowed)
-        : ptr_and_owning_bit_(Borrow(borrowed)) {}
-
-    ~MaybeOwningShapePtr() { MaybeDeleteOwned(); }
-
-    const Shape* get() const {
-      return reinterpret_cast<const Shape*>(ptr_and_owning_bit_ & kPointerMask);
-    }
-    Shape* get_mutable(bool ensure_owned = false) {
-      const Shape* const_ptr = get();
-      // TODO(b/67651157): Remove this copy on write logic and combine get() and
-      // get_mutable() once we remove mutable_shape_do_not_use().
-      if (const_ptr && !OwnsPtr()) {
-        ptr_and_owning_bit_ = TakeUnique(std::make_unique<Shape>(*const_ptr));
-        const_ptr = get();
-      }
-      DCHECK(OwnsPtr());
-      return const_cast<Shape*>(const_ptr);
-    }
-    const Shape* operator->() const { return get(); }
-    const Shape& operator*() const { return *get(); }
-
-    MaybeOwningShapePtr& operator=(std::unique_ptr<Shape> unique) {
-      MaybeDeleteOwned();
-      ptr_and_owning_bit_ = TakeUnique(std::move(std::move(unique)));
-      return *this;
-    }
-
-    MaybeOwningShapePtr& operator=(const Shape* borrowed) {
-      MaybeDeleteOwned();
-      ptr_and_owning_bit_ = Borrow(borrowed);
-      return *this;
-    }
-
-    MaybeOwningShapePtr& operator=(MaybeOwningShapePtr&& other) {
-      using std::swap;
-      swap(ptr_and_owning_bit_, other.ptr_and_owning_bit_);
-      return *this;
-    }
-
-    MaybeOwningShapePtr(const MaybeOwningShapePtr&) = delete;
-    MaybeOwningShapePtr(MaybeOwningShapePtr&& other)
-        : ptr_and_owning_bit_(other.ptr_and_owning_bit_) {
-      other.ptr_and_owning_bit_ = 0;
-    }
-
-    MaybeOwningShapePtr Clone() const {
-      const Shape* ptr = get();
-      if (ptr && OwnsPtr()) {
-        return MaybeOwningShapePtr(std::make_unique<Shape>(*ptr));
-      }
-      return MaybeOwningShapePtr(ptr);
-    }
-
-   private:
-    enum : uint64_t {
-      kOwningBitMask = 1UL,
-      kPointerMask = ~kOwningBitMask,
-    };
-    static intptr_t TakeUnique(std::unique_ptr<Shape> unique) {
-      Shape* released = unique.release();
-      DCHECK_EQ(reinterpret_cast<intptr_t>(released) & kOwningBitMask, 0);
-      return reinterpret_cast<intptr_t>(released) | kOwningBitMask;
-    }
-
-    static intptr_t Borrow(const Shape* borrowed) {
-      DCHECK_EQ(reinterpret_cast<intptr_t>(borrowed) & kOwningBitMask, 0);
-      return reinterpret_cast<intptr_t>(borrowed);
-    }
-
-    bool OwnsPtr() const { return kOwningBitMask & ptr_and_owning_bit_; }
-
-    void MaybeDeleteOwned() {
-      if (OwnsPtr()) {
-        delete get();
-      }
-    }
-
-    intptr_t ptr_and_owning_bit_ = 0;
-  };
+  using MaybeOwningShapePtr = MaybeOwning<Shape>;
 
   // The parent class borrows this shape.
   MaybeOwningShapePtr shape_;

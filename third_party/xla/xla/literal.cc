@@ -223,7 +223,11 @@ std::ostream& operator<<(std::ostream& out, const Literal& literal) {
 
 Shape* MutableLiteralBase::mutable_shape_do_not_use() {
   const Shape* const_shape = shape_.get();
-  Shape* shape = shape_.get_mutable(/*ensure_owned=*/true);
+  if (!shape_.OwnsPtr()) {
+    shape_ = MaybeOwningShapePtr(std::make_unique<Shape>(*shape_));
+  }
+  Shape* shape = shape_.get_mutable();
+
   if (shape != const_shape) {
     std::function<void(const Shape&, Piece*)> set_piece_shapes =
         [&set_piece_shapes](const Shape& shape, Piece* piece) {

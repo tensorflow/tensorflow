@@ -341,6 +341,7 @@ cc_library(
     hdrs = [
         "iterator_util.h",
         "map_util.h",
+        "maybe_owning.h",
         "overflow_util.h",
         "util.h",
     ],

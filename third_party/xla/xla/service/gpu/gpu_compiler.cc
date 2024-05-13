@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/transforms/hlo_constant_splitter.h"
+#include "xla/maybe_owning.h"
 #include "xla/service/all_gather_broadcast_reorder.h"
 #include "xla/service/all_gather_combiner.h"
 #include "xla/service/all_reduce_combiner.h"
@@ -259,38 +260,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
-// A class for storing either an owned thread pool or a non-owning pointer to an
-// external thread pool.
-class MaybeOwningThreadPool {
- public:
-  // Gets or creates a thread pool.
-  //
-  // See the code for the logic.
-  static MaybeOwningThreadPool GetOrCreate(
-      int parallelism, tsl::thread::ThreadPool* default_thread_pool,
-      int default_parallelism);
 
-  // Not owning (nullptr).
-  MaybeOwningThreadPool();
-  // Not owning.
-  explicit MaybeOwningThreadPool(tsl::thread::ThreadPool* thread_pool);
-  // Owning.
-  explicit MaybeOwningThreadPool(
-      std::unique_ptr<tsl::thread::ThreadPool> thread_pool);
-  tsl::thread::ThreadPool* get();
-  const tsl::thread::ThreadPool* get() const;
-  tsl::thread::ThreadPool* operator->();
-  const tsl::thread::ThreadPool* operator->() const;
-  explicit operator bool() const;
-  bool operator!() const;
+using MaybeOwningThreadPool = MaybeOwning<tsl::thread::ThreadPool>;
 
- private:
-  std::variant<tsl::thread::ThreadPool*,
-               std::unique_ptr<tsl::thread::ThreadPool>>
-      thread_pool_;
-};
-
-/*static*/ MaybeOwningThreadPool MaybeOwningThreadPool::GetOrCreate(
+MaybeOwningThreadPool CreateMaybeOwningThreadPool(
     int parallelism, tsl::thread::ThreadPool* default_thread_pool,
     int default_parallelism) {
   CHECK_GE(parallelism, 0);
@@ -319,41 +292,6 @@ class MaybeOwningThreadPool {
       return MaybeOwningThreadPool(create_thread_pool(parallelism));
   }
 }
-
-MaybeOwningThreadPool::MaybeOwningThreadPool() : thread_pool_(nullptr) {}
-
-MaybeOwningThreadPool::MaybeOwningThreadPool(
-    tsl::thread::ThreadPool* thread_pool)
-    : thread_pool_(thread_pool) {}
-
-MaybeOwningThreadPool::MaybeOwningThreadPool(
-    std::unique_ptr<tsl::thread::ThreadPool> thread_pool)
-    : thread_pool_(std::move(thread_pool)) {}
-
-tsl::thread::ThreadPool* MaybeOwningThreadPool::get() {
-  if (std::holds_alternative<tsl::thread::ThreadPool*>(thread_pool_)) {
-    return std::get<tsl::thread::ThreadPool*>(thread_pool_);
-  }
-  return std::get<std::unique_ptr<tsl::thread::ThreadPool>>(thread_pool_).get();
-}
-
-const tsl::thread::ThreadPool* MaybeOwningThreadPool::get() const {
-  return const_cast<MaybeOwningThreadPool*>(this)->get();
-}
-
-tsl::thread::ThreadPool* MaybeOwningThreadPool::operator->() {
-  tsl::thread::ThreadPool* thread_pool = get();
-  CHECK_NE(thread_pool, nullptr);
-  return thread_pool;
-}
-
-const tsl::thread::ThreadPool* MaybeOwningThreadPool::operator->() const {
-  return const_cast<MaybeOwningThreadPool*>(this)->operator->();
-}
-
-MaybeOwningThreadPool::operator bool() const { return get() != nullptr; }
-
-bool MaybeOwningThreadPool::operator!() const { return get() == nullptr; }
 
 absl::StatusOr<AutotuneConfig> GetAutotuneConfig(
     se::StreamExecutor* stream_exec, const DebugOptions& debug_options,
@@ -1230,7 +1168,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   CheckNotScheduled(hlo_module);
   LogDebugOptions(hlo_module);
 
-  MaybeOwningThreadPool thread_pool = MaybeOwningThreadPool::GetOrCreate(
+  MaybeOwningThreadPool thread_pool = CreateMaybeOwningThreadPool(
       /*parallelism=*/hlo_module->config()
           .debug_options()
           .xla_gpu_force_compilation_parallelism(),
@@ -1300,7 +1238,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(layout_normalization_pipeline.Run(hlo_module).status());
   // Run target-specific HLO optimization passes after layout assignment.
   TF_RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_target_config, thread_pool.get()));
+      hlo_module, stream_exec, options, gpu_target_config,
+      thread_pool.get_mutable()));
 
   // This is a "low effort, high impact" fusion that should be run first.
   if (hlo_module->config()
@@ -1314,7 +1253,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   }
 
   TF_RETURN_IF_ERROR(RunFusionPasses(hlo_module, gpu_target_config,
-                                     thread_pool.get(),
+                                     thread_pool.get_mutable(),
                                      ShapeSizeBytesFunction()));
   TF_RETURN_IF_ERROR(RunPostFusionPasses(
       hlo_module,
@@ -1831,7 +1770,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   MaybeOwningThreadPool thread_pool =
       module_config.debug_options()
               .xla_gpu_enable_llvm_module_compilation_parallelism()
-          ? MaybeOwningThreadPool::GetOrCreate(
+          ? CreateMaybeOwningThreadPool(
                 /*parallelism=*/module_config.debug_options()
                     .xla_gpu_force_compilation_parallelism(),
                 /*default_thread_pool=*/options.thread_pool,
@@ -1845,7 +1784,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   // Disable multi-threading during deviceless AOT compilation.
   // TODO(anlunx): Enable multi-threading once deviceless AOT compilation is
   // enabled.
-  if (!can_use_link_modules || !thread_pool || !stream_exec) {
+  if (!can_use_link_modules || !thread_pool.get() || !stream_exec) {
     return CompileSingleModule(module_config, gpu_version, debug_module,
 
                                llvm_module, /*relocatable=*/false, options,
@@ -1904,19 +1843,19 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
       llvm_modules.size());
   tsl::BlockingCounter counter(llvm_modules.size());
   for (int i = 0; i < llvm_modules.size(); i++) {
-    thread_pool->Schedule([&compile_results, i, &llvm_modules, &counter, this,
-                           &module_config, &gpu_version, &debug_module,
-                           &options] {
-      // Each thread has its own context to avoid race conditions.
-      llvm::LLVMContext new_context;
-      std::unique_ptr<llvm::Module> new_module =
-          CopyToContext(*llvm_modules.at(i), new_context);
-      compile_results.at(i) = CompileSingleModule(
-          module_config, gpu_version, debug_module, new_module.get(),
-          /*relocatable=*/true, options,
-          /*shard_number=*/i);
-      counter.DecrementCount();
-    });
+    thread_pool.get_mutable()->Schedule(
+        [&compile_results, i, &llvm_modules, &counter, this, &module_config,
+         &gpu_version, &debug_module, &options] {
+          // Each thread has its own context to avoid race conditions.
+          llvm::LLVMContext new_context;
+          std::unique_ptr<llvm::Module> new_module =
+              CopyToContext(*llvm_modules.at(i), new_context);
+          compile_results.at(i) = CompileSingleModule(
+              module_config, gpu_version, debug_module, new_module.get(),
+              /*relocatable=*/true, options,
+              /*shard_number=*/i);
+          counter.DecrementCount();
+        });
   }
   counter.Wait();
 
