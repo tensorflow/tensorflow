@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -386,7 +387,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::ifrt::LoadedExecutable> ifrt_executable,
       ifrt_client_->GetDefaultCompiler()->Compile(
-          std::make_unique<xla::ifrt::XlaProgram>(
+          std::make_unique<xla::ifrt::HloProgram>(
               tf2hlo_result.mlir_hlo_module.get()),
           std::make_unique<xla::ifrt::XlaCompileOptions>(
               xla_compile_options, loaded_host_callbacks)));
