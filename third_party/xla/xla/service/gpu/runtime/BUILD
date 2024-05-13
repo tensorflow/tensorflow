@@ -527,7 +527,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
-    ],
+    ] + if_rocm_is_configured(["//xla/service/gpu:stream_executor_util"]),
 )
 
 cc_library(
