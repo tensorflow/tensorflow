@@ -300,6 +300,26 @@ cc_library(
 )
 
 tf_cc_test(
+    name = "ifrt_restore_tensor_registry_test",
+    srcs = ["ifrt_restore_tensor_registry_test.cc"],
+    tags = ["no_oss"],
+    deps = [
+        ":ifrt_restore_tensor_registry",
+        "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/python/ifrt",
+    ],
+)
+
+tf_cc_test(
     name = "ifrt_loaded_variable_utils_test",
     srcs = ["ifrt_loaded_variable_utils_test.cc"],
     tags = ["no_oss"],
