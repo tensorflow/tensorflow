@@ -789,6 +789,7 @@ lit_test_suite(
             "reduction_vectorization_sm_all.hlo",
             "rng_get_and_update_state.hlo",
             "scatter.hlo",
+            "scatter_bf16.hlo",
             "select_and_scatter.hlo",
             "single_instruction.hlo",
             "slice_to_dynamic.hlo",
@@ -821,10 +822,11 @@ lit_test_suite(
     ],
     default_tags = tf_cuda_tests_tags(),
     tags_override = {
-        "reduction_vectorization_sm_all.hlo": ["no_rocm"],
         "element_wise_row_vectorization.hlo": ["no_rocm"],
+        "scatter_bf16.hlo": ["no_rocm"],
         "single_instruction.hlo": ["no_rocm"],
         "reduce_unnested.hlo": ["no_rocm"],
+        "reduction_vectorization_sm_all.hlo": ["no_rocm"],
     },
     tools = [
         "//xla/tools:hlo-opt",
