@@ -334,6 +334,13 @@ mlir::LLVM::GlobalOp CreateGlobalOp(mlir::Attribute value,
                                     mlir::ModuleOp module, bool is_constant,
                                     int addr_space,
                                     mlir::ImplicitLocOpBuilder& b) {
+  if (auto elements = mlir::dyn_cast_or_null<mlir::DenseElementsAttr>(value)) {
+    // The lowering to LLVM only works for 1d tensors or those with trailing
+    // unit dimensions.
+    value = elements.reshape(mlir::RankedTensorType::get(
+        {elements.getNumElements()}, elements.getElementType()));
+  }
+
   Type element_type = shaped_ty.getElementType();
   // Needed to support complex element type.
   mlir::LLVMTypeConverter converter(b.getContext());
