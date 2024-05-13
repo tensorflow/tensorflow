@@ -243,7 +243,7 @@ inline absl::Status BuildAndCallFfi(
   BuildBuffers(result_types, result_dims, outputs, RetInserter(builder));
 
   ffi::CallFrame call_frame = builder.Build();
-  return ffi::Call(registration->handler, call_frame);  // Status
+  return ffi::Call(registration->handler, call_frame);  // returns Status
 }
 
 }  // namespace
