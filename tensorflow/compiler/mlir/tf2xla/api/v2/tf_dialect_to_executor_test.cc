@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
 
+#include <stdlib.h>
+
 #include <cstdint>
 #include <string>
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -30,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -51,6 +54,16 @@ using ::tensorflow::monitoring::testing::CellReader;
 std::string TestDataPath() {
   return tensorflow::GetDataDependencyFilepath(
       "tensorflow/compiler/mlir/tf2xla/api/v2/testdata/");
+}
+
+size_t CountSubstring(absl::string_view str, absl::string_view substr) {
+  size_t count = 0;
+  size_t idx = str.find(substr);
+  while (idx != std::string::npos) {
+    count++;
+    idx = str.find(substr, idx + 1);
+  }
+  return count;
 }
 
 class TensorflowDialectToExecutorTest : public ::testing::Test {
@@ -98,6 +111,23 @@ TEST_F(TensorflowDialectToExecutorTest, ErrorsWhenCannotConvert) {
 
   EXPECT_EQ(compilation_status.Delta(kExportSuccess), 0);
   EXPECT_EQ(compilation_status.Delta(kExportFailed), 1);
+}
+
+TEST_F(TensorflowDialectToExecutorTest, PrunesDeadOps) {
+  CellReader<int64_t> compilation_status(kExportStreamzName);
+
+  TF_ASSERT_OK(CreateMlirModule("func_with_dead_ops.mlir"));
+
+  TF_EXPECT_OK(ExportFromTensorflowDialectToExecutor(*mlir_module_));
+
+  std::string module_dump;
+  llvm::raw_string_ostream raw_stream(module_dump);
+  mlir_module_->print(raw_stream);
+
+  EXPECT_EQ(compilation_status.Delta(kExportSuccess), 1);
+  EXPECT_EQ(compilation_status.Delta(kExportFailed), 0);
+  EXPECT_EQ(
+      CountSubstring(module_dump, "tf_executor.island wraps \"tf.Concat\""), 2);
 }
 
 }  // namespace
