@@ -607,8 +607,8 @@ TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
     TfLiteTensor tensors[kBufferCount];
     std::unordered_map<size_t, size_t> tensor_buffer_identifiers;
     for (int i = 0; i < kBufferCount; ++i) {
-      tensors[0].data.data = (void*)(fake_buffer_pointer + i);
-      tensor_buffer_identifiers[i] = i + 1;
+      tensors[i].data.data = (void*)(fake_buffer_pointer + i);
+      tensor_buffer_identifiers[i] = i;
     }
 
     MMapWeightCacheProvider cache_provider;
@@ -680,8 +680,8 @@ TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
     TfLiteTensor tensors[kBufferCount];
     std::unordered_map<size_t, size_t> tensor_buffer_identifiers;
     for (int i = 0; i < kBufferCount; ++i) {
-      tensors[0].data.data = (void*)(fake_buffer_pointer + i);
-      tensor_buffer_identifiers[i] = i + 1;
+      tensors[i].data.data = (void*)(fake_buffer_pointer + i);
+      tensor_buffer_identifiers[i] = i;
     }
 
     MMapWeightCacheProvider cache_provider;
