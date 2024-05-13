@@ -101,10 +101,14 @@ struct GpufMHABackwardDescriptor {
   std::optional<Shape> d_bias_shape;
   std::optional<Shape> bias_shape;
 };
+
 // Structure to describe static properties of a GPU fused Multi-Headed
 // Attention.
 struct GpufMHAConfig {
   static absl::StatusOr<GpufMHAConfig> For(const GpufMHADescriptor& fmha_desc);
+
+  absl::StatusOr<se::dnn::FusedMHAOp::Config> AsDnnFusedMHAOpConfig() const;
+
   PrimitiveType
       input_type;  // Capture the primitive type of one of the inputs of BMM1
   PrimitiveType output_type;
@@ -133,6 +137,10 @@ struct GpufMHAConfig {
 struct GpufMHABackwardConfig {
   static absl::StatusOr<GpufMHABackwardConfig> For(
       const GpufMHABackwardDescriptor& fmha_desc);
+
+  absl::StatusOr<se::dnn::FusedMHABackwardOp::Config>
+  AsDnnFusedMHABackwardOpConfig() const;
+
   PrimitiveType
       input_type;  // Capture the primitive type of one of the inputs of BMM1
   PrimitiveType output_type;
