@@ -109,19 +109,6 @@ namespace gpu {
 
 using ::tsl::profiler::ScopedAnnotation;
 
-bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config) {
-  bool enabled = config.debug_options().xla_gpu_enable_xla_runtime_executable();
-  if (enabled) {
-    LOG(ERROR)
-        << "XLA:GPU tried to use deprecated xla runtime by setting "
-           "--xla_gpu_enable_xla_runtime_executable flag to `true` but the "
-           "flag value was ignored as XLA:GPU uses default runtime. This flag "
-           "together with the deprecated code will be removed soon. Please "
-           "report bugs to XLA team if this breaks your workloads.";
-  }
-  return false;
-}
-
 static bool NeedsAsyncCommsStream(Thunk& thunk) {
   switch (thunk.kind()) {
     case Thunk::Kind::kNcclAllReduceStart:

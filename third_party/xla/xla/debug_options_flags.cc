@@ -78,8 +78,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #ifdef XLA_CPU_USE_ACL
   opts.set_xla_cpu_use_acl(true);
 #endif
-  opts.set_xla_cpu_use_xla_runtime(false);
-  opts.set_xla_cpu_sparse_cuda_threads(0);
 
   opts.set_xla_cpu_enable_fast_math(false);
   // Disable forms of fast math that have caused users problems in the past.
@@ -111,10 +109,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
-  opts.set_xla_gpu_graph_num_runs_to_instantiate(-1);
   opts.set_xla_gpu_graph_min_graph_size(5);
   opts.set_xla_gpu_graph_enable_concurrent_region(false);
-  opts.set_xla_gpu_graph_eviction_timeout_seconds(60);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -138,7 +134,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_detailed_logging(true);
   opts.set_xla_enable_dumping(true);
 
-  opts.set_xla_gpu_enable_xla_runtime_executable(false);
   opts.set_xla_gpu_enable_custom_fusions(false);
   opts.set_xla_gpu_enable_address_computation_fusion(true);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
@@ -766,17 +761,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_cpu_use_acl", bool_setter_for(&DebugOptions::set_xla_cpu_use_acl),
       debug_options->xla_cpu_use_acl(),
       "Generate calls to ACL (Arm Compute Library) in the CPU backend."));
-  flag_list->push_back(
-      tsl::Flag("xla_cpu_use_xla_runtime",
-                bool_setter_for(&DebugOptions::set_xla_cpu_use_xla_runtime),
-                debug_options->xla_cpu_use_xla_runtime(),
-                "Enable XLA Runtime in the CPU backend."));
-  flag_list->push_back(tsl::Flag(
-      "xla_cpu_sparse_cuda_threads",
-      int32_setter_for(&DebugOptions::set_xla_cpu_sparse_cuda_threads),
-      debug_options->xla_cpu_sparse_cuda_threads(),
-      "Sets number fo CUDA threads for sparse GPU acceleration in the CPU "
-      "backend (0 = off)."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_crash_on_verification_failures",
       bool_setter_for(
@@ -1149,13 +1133,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       " + and - as prefix, which indicate adding or removing a command type"
       " to/from the default list."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_graph_num_runs_to_instantiate",
-      int32_setter_for(
-          &DebugOptions::set_xla_gpu_graph_num_runs_to_instantiate),
-      debug_options->xla_gpu_graph_num_runs_to_instantiate(),
-      "Instantiate a gpu graph after the time a captured function is executed "
-      "reaches the threshold."));
-  flag_list->push_back(tsl::Flag(
       "xla_gpu_graph_min_graph_size",
       int32_setter_for(&DebugOptions::set_xla_gpu_graph_min_graph_size),
       debug_options->xla_gpu_graph_min_graph_size(),
@@ -1168,14 +1145,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_graph_enable_concurrent_region(),
                 "Identify concurrent regions in gpu graphs and execute them "
                 "concurrently."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_graph_eviction_timeout_seconds",
-      int32_setter_for(
-          &DebugOptions::set_xla_gpu_graph_eviction_timeout_seconds),
-      debug_options->xla_gpu_graph_eviction_timeout_seconds(),
-      "Timeout in seconds to evict instantiated Gpu graphs from device. When "
-      "XLA instantiates new Gpu graphs, it evicts graphs that were not "
-      "recently executed to free space on device."));
 
   flag_list->push_back(
       tsl::Flag("xla_dump_disable_metadata",
@@ -1197,11 +1166,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "MLIR will be in the llvm-parsable format and can be processed by "
       "mlir-opt tools. "
       "Pretty print form is not legal MLIR."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_xla_runtime_executable",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
-      debug_options->xla_gpu_enable_xla_runtime_executable(),
-      "Whether to enable XLA runtime for XLA:GPU backend"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_custom_fusions",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_custom_fusions),
