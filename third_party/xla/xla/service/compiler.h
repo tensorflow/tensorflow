@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_COMPILER_H_
 #define XLA_SERVICE_COMPILER_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -133,6 +134,8 @@ class Compiler {
     se::DeviceDescription device_description;
     std::string platform_name;
     se::dnn::VersionInfo dnn_version_info;
+    // TODO(tjoerg): Consider using se::ToolVersion instead.
+    int32_t toolkit_version;
     std::string device_description_str;
   };
 

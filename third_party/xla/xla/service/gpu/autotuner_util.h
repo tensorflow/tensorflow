@@ -51,6 +51,9 @@ struct DeviceConfig {
   // memory while timing the various convolution algorithms.  If it's null,
   // we'll use the default allocator on the StreamExecutor.
   se::DeviceMemoryAllocator* allocator = nullptr;  // may be null
+
+  // CUDA or ROCm version.
+  const int32_t toolkit_version;
 };
 
 struct DevicelessConfig {
@@ -58,6 +61,9 @@ struct DevicelessConfig {
   // stream_exec->GetDeviceDescription().model_str() when the stream executor
   // is available.
   std::string model_str;
+
+  // CUDA or ROCm version.
+  const int32_t toolkit_version;
 
   // A field to determine the architecture of the device. We only pick an
   // algorithm for non-Ampere architectures.
@@ -172,6 +178,13 @@ class AutotuneConfig {
   }
 
   bool ExhaustiveTilingSearch() const { return exhaustive_tiling_search_; }
+
+  int32_t GetToolkitVersion() const {
+    if (auto c = std::get_if<DeviceConfig>(&config_)) {
+      return c->toolkit_version;
+    }
+    return std::get<DevicelessConfig>(config_).toolkit_version;
+  }
 
  private:
   std::variant<DeviceConfig, DevicelessConfig> config_;

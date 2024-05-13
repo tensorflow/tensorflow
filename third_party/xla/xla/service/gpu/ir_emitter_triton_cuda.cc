@@ -18,6 +18,7 @@ limitations under the License.
 #include "nvidia/include/NVGPUToLLVM/NVGPUToLLVMPass.h"
 #include "nvidia/include/TritonNVIDIAGPUToLLVM/Passes.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
@@ -60,7 +61,8 @@ absl::Status CreateTritonPipeline(
   // Based on make_ttgir() in
   // @triton//:third_party/nvidia/backend/compiler.py
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
-      config.num_warps, threadsPerWarp, config.num_ctas, ccAsInt));
+      absl::StrFormat("cuda:%u", ccAsInt), config.num_warps, threadsPerWarp,
+      config.num_ctas));
   pm.addPass(mt::gpu::createCoalescePass());
   if (ccCuda.IsAtLeastAmpere()) {
     pm.addPass(mt::gpu::createF32DotTCPass());
@@ -70,7 +72,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::gpu::createOptimizeThreadLocalityPass());
   pm.addPass(mt::gpu::createAccelerateMatmulPass(ccAsInt));
   pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
-  pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
+  pm.addPass(mt::gpu::createOptimizeDotOperandsPass(ccCuda.IsAtLeastAmpere()));
   pm.addPass(mlir::createCSEPass());
 
   pm.addPass(mt::gpu::createPipelinePass(config.num_stages, config.num_warps,
@@ -80,7 +82,7 @@ absl::Status CreateTritonPipeline(
     pm.addPass(mt::gpu::createPrefetchPass());
   }
 
-  pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
+  pm.addPass(mt::gpu::createOptimizeDotOperandsPass(ccCuda.IsAtLeastAmpere()));
   // We need to disable this pass because it undoes the hoisting of dot_operand
   // layout conversion done in
   // triton/lib/Dialect/TritonGPU/Transforms/OptimizeDotOperands.cpp in
@@ -93,6 +95,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mlir::createSymbolDCEPass());
   if (ccCuda.IsAtLeastHopper()) {
     pm.addPass(mlir::createTritonNvidiaGPUFenceInsertionPass(ccAsInt));
+    pm.addPass(mlir::createTritonNvidiaGPUTMALoweringPass());
   }
   pm.addPass(mlir::createCanonicalizerPass());
 

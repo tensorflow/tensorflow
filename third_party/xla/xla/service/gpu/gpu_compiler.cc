@@ -289,13 +289,16 @@ MaybeOwningThreadPool CreateMaybeOwningThreadPool(
 absl::StatusOr<AutotuneConfig> GetAutotuneConfig(
     se::StreamExecutor* stream_exec, const DebugOptions& debug_options,
     const GpuCompiler::CompileOptions& options,
-    const Compiler::TargetConfig& gpu_target_config) {
+    const Compiler::TargetConfig& gpu_target_config,
+    const int32_t toolkit_version) {
   if (stream_exec) {
-    return AutotuneConfig{DeviceConfig{stream_exec, options.device_allocator},
-                          debug_options};
+    return AutotuneConfig{
+        DeviceConfig{stream_exec, options.device_allocator, toolkit_version},
+        debug_options};
   }
   AutotuneConfig deviceless_config =
-      AutotuneConfig{DevicelessConfig{gpu_target_config.device_description_str},
+      AutotuneConfig{DevicelessConfig{gpu_target_config.device_description_str,
+                                      toolkit_version},
                      debug_options};
   return deviceless_config;
 }
@@ -1141,7 +1144,8 @@ absl::Status RunPostFusionSimplificationPasses(
 absl::Status RunPostFusionVerificationPasses(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const GpuCompiler::CompileOptions& options,
-    const Compiler::TargetConfig& gpu_target_config) {
+    const Compiler::TargetConfig& gpu_target_config,
+    const int32_t toolkit_version) {
   HloPassPipeline pipeline("post-fusion-verification-pipeline optimization");
 
   if (hlo_module->config()
@@ -1150,7 +1154,7 @@ absl::Status RunPostFusionVerificationPasses(
     TF_ASSIGN_OR_RETURN(
         AutotuneConfig autotune_config,
         GetAutotuneConfig(stream_exec, hlo_module->config().debug_options(),
-                          options, gpu_target_config));
+                          options, gpu_target_config, toolkit_version));
 
     pipeline.AddPass<TritonFusionNumericsVerifier>(autotune_config);
   }
@@ -1263,8 +1267,9 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunPostFusionSimplificationPasses(
       hlo_module, layout_insensitive_algsimp_opts, gpu_version));
 
-  TF_RETURN_IF_ERROR(RunPostFusionVerificationPasses(
-      hlo_module, stream_exec, options, gpu_target_config));
+  TF_RETURN_IF_ERROR(RunPostFusionVerificationPasses(hlo_module, stream_exec,
+                                                     options, gpu_target_config,
+                                                     GetToolkitVersion()));
 
   return absl::OkStatus();
 }  // NOLINT(readability/fn_size)
@@ -1304,9 +1309,10 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     opts.set_enable_unconditional_reduce_of_concat_replacement(false);
     return opts;
   }();
-  TF_ASSIGN_OR_RETURN(AutotuneConfig autotune_config,
-                      GetAutotuneConfig(stream_exec, debug_options, options,
-                                        gpu_target_config));
+  TF_ASSIGN_OR_RETURN(
+      AutotuneConfig autotune_config,
+      GetAutotuneConfig(stream_exec, debug_options, options, gpu_target_config,
+                        GetToolkitVersion()));
   // Lambdas and related constants:
   const GpuFloatSupport bf16_support(gpu_version, BF16);
   const GpuFloatSupport f8e5m2_support(gpu_version, F8E5M2, F16);
@@ -1369,14 +1375,16 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
     // Rewrite FP8 GEMMs ahead of Triton which currently lacks support for FP8
     // and may rewrite quantized FP8 GEMMs as higher-precision GEMMs.
-    pipeline.AddPass<GemmRewriter>(gpu_version, /*f8_rewrite=*/true);
+    pipeline.AddPass<GemmRewriter>(gpu_version, GetToolkitVersion(),
+                                   /*f8_rewrite=*/true);
     if (debug_options.xla_gpu_enable_triton_gemm() && cuda_cc != nullptr &&
         cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) {
       pipeline.AddPass<GemvRewriter>();
       pipeline.AddPass<GemmFusion>(gpu_version);
     }
     // Rewrite non-FP8 GEMMs.
-    pipeline.AddPass<GemmRewriter>(gpu_version, /*f8_rewrite=*/false);
+    pipeline.AddPass<GemmRewriter>(gpu_version, GetToolkitVersion(),
+                                   /*f8_rewrite=*/false);
 
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
@@ -1441,7 +1449,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<CallInliner>();
   // TODO(tdanyluk): Apply CublasPadForGemms to the cuBLAS GEMMs generated
   // here for possibly better cuBLAS performance.
-  pipeline.AddPass<GemmRewriter>(gpu_version);
+  pipeline.AddPass<GemmRewriter>(gpu_version, GetToolkitVersion());
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
@@ -1597,7 +1605,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   if (!is_deviceless) {
     TF_ASSIGN_OR_RETURN(
         AutotuneConfig autotune_config,
-        GetAutotuneConfig(stream_exec, debug_opts, options, gpu_target_config));
+        GetAutotuneConfig(stream_exec, debug_opts, options, gpu_target_config,
+                          GetToolkitVersion()));
     autotune_results = AutotunerUtil::SerializeAutotuneResultsForModule(
         *module, autotune_config);
     TF_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_opts));

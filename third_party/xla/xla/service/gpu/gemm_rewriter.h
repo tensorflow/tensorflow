@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GEMM_REWRITER_H_
 #define XLA_SERVICE_GPU_GEMM_REWRITER_H_
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -47,8 +49,8 @@ class GemmRewriter : public HloModulePass {
  public:
   // When f8_rewrite is true, only FP8 GEMMs are rewritten. Otherwise, non-FP8
   // GEMMs are rewritten.
-  explicit GemmRewriter(se::GpuComputeCapability gpu_version,
-                        bool f8_rewrite = false);
+  GemmRewriter(se::GpuComputeCapability gpu_version, int32_t toolkit_version,
+               bool f8_rewrite = false);
   absl::string_view name() const override { return "cublas-gemm-rewriter"; }
 
   using HloPassInterface::Run;
@@ -58,6 +60,7 @@ class GemmRewriter : public HloModulePass {
 
  private:
   se::GpuComputeCapability gpu_version_;
+  int32_t toolkit_version_;
   bool f8_rewrite_;
 };
 

@@ -62,6 +62,7 @@ message GpuTargetConfigProto {
   reserved "cuda_compute_capability", "rocm_compute_capability";
   string platform_name = 4;
   DnnVersionInfoProto dnn_version_info = 5;
+  // TODO(tjoerg): Add the toolkit version here.
 
   // TODO(b/248362914): Autotuning results should be separate from
   // GpuTargetConfig because autotuning can be updated regularly separate from

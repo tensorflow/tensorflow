@@ -1,7 +1,8 @@
-diff --git a/include/triton/Dialect/NVGPU/IR/NVGPUOps.td b/include/triton/Dialect/NVGPU/IR/NVGPUOps.td
---- a/include/triton/Dialect/NVGPU/IR/NVGPUOps.td
-+++ b/include/triton/Dialect/NVGPU/IR/NVGPUOps.td
-@@ -87,6 +87,15 @@ def NVGPU_WGMMAOp : NVGPU_Op<"wgmma", []
+diff --git a/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td b/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
+index ca9d18873..d39bc6ec4 100644
+--- a/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
++++ b/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
+@@ -87,6 +87,15 @@ def NVGPU_WGMMAOp : NVGPU_Op<"wgmma", []> {
    let assemblyFormat = "$opA `,` $opB (`,` $opC^)? attr-dict `:` functional-type(operands, $res)";
  }
  
@@ -18,9 +19,10 @@ diff --git a/include/triton/Dialect/NVGPU/IR/NVGPUOps.td b/include/triton/Dialec
    let arguments = (ins LLVM_AnyPointer:$addr, I32:$ctaId, I32Attr:$bitwidth, I32Attr:$vec);
    let builders = [
 diff --git a/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp b/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp
+index e19216520..aacbfb569 100644
 --- a/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp
 +++ b/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp
-@@ -688,6 +688,84 @@ public:
+@@ -668,6 +668,84 @@ public:
    }
  };
  
@@ -31,7 +33,7 @@ diff --git a/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp b/third_part
 +  using Base::Base;
 +
 +  std::vector<std::string> getOutputConstraints(ttn::SparseWGMMAOp op) const {
-+    auto outputStructType = op.getType().cast<LLVM::LLVMStructType>();
++    auto outputStructType = cast<LLVM::LLVMStructType>(op.getType());
 +    uint32_t numOutputRegs = outputStructType.getBody().size();
 +    std::string output =
 +        outputStructType.getBody().front().isF32() ? "=f" : "=r";
@@ -71,7 +73,7 @@ diff --git a/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp b/third_part
 +
 +    // Output and operand C
 +    uint32_t numCRegs =
-+        op.getType().cast<LLVM::LLVMStructType>().getBody().size();
++        cast<LLVM::LLVMStructType>(op.getType()).getBody().size();
 +    args += "{";
 +    for (uint32_t i = 0; i < numCRegs; ++i) {
 +      args += "$" + std::to_string(asmOpIdx++) + (i == numCRegs - 1 ? "" : ",");
@@ -105,13 +107,17 @@ diff --git a/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp b/third_part
  class ConvertNVGPUToLLVM : public ConvertNVGPUToLLVMBase<ConvertNVGPUToLLVM> {
  
  public:
-@@ -711,7 +789,8 @@ public:
+@@ -688,10 +766,9 @@ public:
+     patterns.add<NVGPUOpGenericPattern<ttn::ClusterCTAIdOp>>(
+         context, Cluster_Cta_Id_Op, Constraints({"=r"}), Constraints());
  
-     patterns.add<FenceAsyncSharedOpPattern, StoreMatrixOpPattern,
-                  ClusterArriveOpPattern, LoadDSmemOpPattern, WGMMAOpPattern,
--                 WGMMAWaitGroupOpPattern, StoreDSmemOpPattern>(context);
-+                 WGMMAWaitGroupOpPattern, StoreDSmemOpPattern,
-+                 SparseWGMMAOpPattern>(context);
+-    patterns
+-        .add<FenceAsyncSharedOpPattern, StoreMatrixOpPattern,
+-             ClusterArriveOpPattern, WGMMAOpPattern, WGMMAWaitGroupOpPattern>(
+-            context);
++    patterns.add<FenceAsyncSharedOpPattern, StoreMatrixOpPattern,
++                 ClusterArriveOpPattern, WGMMAOpPattern,
++                 WGMMAWaitGroupOpPattern, SparseWGMMAOpPattern>(context);
  
      if (applyPatternsAndFoldGreedily(mod, std::move(patterns)).failed())
        signalPassFailure();
