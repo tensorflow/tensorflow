@@ -160,7 +160,7 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
                 update_indices, {}, b);
           }
           results.push_back(
-              b.create<InsertOp>(updated_value, output, update_indices));
+              b.create<InsertOp>(updated_value[0], output, update_indices));
         }
         return results;
       });

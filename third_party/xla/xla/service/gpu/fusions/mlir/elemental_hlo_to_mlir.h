@@ -43,10 +43,10 @@ using OperandProvider =
 
 // Emits MLIR to produce the value of a parameter. The parameter must be located
 // outside the subgraph. By default, the caller subgraph will be determined by
-// searching in 'computation' for the subgraph that constains 'instr'. If
+// searching in 'computation' for the subgraph that contains 'instr'. If
 // 'instr' does not belong to 'computation', the caller subgraph can be passed
 // directly.
-mlir::Value ProvideParameter(
+llvm::SmallVector<mlir::Value> ProvideParameter(
     const PartitionedComputation& computation, const HloInstruction* instr,
     int operand_index, mlir::ValueRange indices,
     const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,

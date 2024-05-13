@@ -417,6 +417,40 @@ TEST_F(MlirLoopFusionTest, TupleBitcast) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirLoopFusionTest, NestedTuple) {
+  auto kHloString = R"(
+    add {
+      scalar_lhs.0 = f32[] parameter(0)
+      scalar_lhs.1 = f32[] parameter(1)
+      scalar_rhs.0 = f32[] parameter(2)
+      scalar_rhs.1 = f32[] parameter(3)
+      add = f32[] add(scalar_lhs.0, scalar_rhs.0)
+      mul = f32[] multiply(scalar_lhs.1, scalar_rhs.1)
+      ROOT t = (f32[], f32[]) tuple(add, mul)
+    }
+    fused_computation {
+      param_0 = f32[3,4,5]{2,1,0} parameter(0)
+      param_1 = f32[3,4,5]{2,1,0} parameter(1)
+      param_2 = f32[] parameter(2)
+      param_3 = f32[4] parameter(3)
+      reduce = (f32[4], f32[4]) reduce(f32[3,4,5]{2,1,0} param_0,
+          f32[3,4,5]{2,1,0} %param_1, f32[] param_2, f32[] param_2),
+          dimensions={0,2}, to_apply=add
+      log = f32[4] log(param_3)
+      ROOT tuple = ((f32[4], f32[4]), f32[4]) tuple(reduce, log)
+    }
+    ENTRY main {
+      a = f32[3,4,5]{2,1,0} parameter(0)
+      b = f32[3,4,5]{2,1,0} parameter(1)
+      c = f32[] constant(0)
+      d = f32[4] parameter(2)
+      ROOT fusion = ((f32[4], f32[4]), f32[4]) fusion(a, b, c, d),
+        kind=kLoop, calls=fused_computation
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 TEST_F(MlirLoopFusionTest, DynamicSliceWith64BitInput) {
   // Lowering this kernel with 32 bit indices causes an underflow of `c`,
   // resulting in slicing the last four elements instead of the first four.

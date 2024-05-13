@@ -392,7 +392,7 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
         auto* root_tuple = fusion.fused_expression_root();
         Value value = mlir_converter::ProvideParameter(
             computation, root_tuple, root_tuple->operand_index(hero),
-            input_indices, call_target, entry_function, builder);
+            input_indices, call_target, entry_function, builder)[0];
         // Tensor insertions turn into writes, so they have to happen in the
         // end. This could be considered a bug in the lowering, but since we
         // don't have bufferization, we need to handle it here.

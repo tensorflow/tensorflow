@@ -163,25 +163,6 @@ static auto& kUnsupportedOps =
                                         HloOpcode::kStochasticConvert,
                                         HloOpcode::kCall};
 
-bool IsUnsupportedTuple(const HloInstruction* instr) {
-  if (instr->opcode() != HloOpcode::kTuple) {
-    return false;
-  }
-
-  if (instr->user_count() > 0) {
-    // Internal tuples are unsupported.
-    return true;
-  }
-
-  // Nested tuples and tokens are unsupported.
-  if (absl::c_any_of(instr->operands(),
-                     [&](auto* op) { return !op->shape().IsArray(); })) {
-    return true;
-  }
-
-  return false;
-}
-
 bool IsUnsupportedGather(const HloInstruction* instr) {
   // We assume gather simplifier ran, so we don't need to support all gather
   // forms.
@@ -218,6 +199,7 @@ SmallVector<Value> ConvertToSignless(const SmallVector<Value>& values,
   SmallVector<Value> results;
   results.reserve(values.size());
   for (auto& value : values) {
+    CHECK(value != nullptr);
     auto signless_type = sign_converter.convertType(value.getType());
     results.push_back(
         b.create<mlir::UnrealizedConversionCastOp>(signless_type, value)
@@ -835,28 +817,35 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       return EmitReduceWindow(instr, result_element_type, indices,
                               operand_provider, call_target_provider, builder);
     case HloOpcode::kTuple: {
-      CHECK(!IsUnsupportedTuple(instr));
-      const auto& first_shape = instr->shape().tuple_shapes(0);
-      CHECK_EQ(first_shape.rank(), indices.size())
+      const auto* first_shape = &instr->shape().tuple_shapes(0);
+      while (first_shape->IsTuple()) {
+        first_shape = &first_shape->tuple_shapes(0);
+      }
+      CHECK_EQ(first_shape->rank(), indices.size())
           << "Indices for tuple must be for the first tuple element";
       SmallVector<Value> operands;
       for (int i = 0; i < instr->operand_count(); ++i) {
         llvm::SmallVector<Value> operand_indices;
         // The tuple shapes only need to be bitcast compatible, so insert
         // bitcasts where necessary.
+        const auto* operand = instr->operand(i);
+        const auto* operand_index_shape = &operand->shape();
+        while (operand_index_shape->IsTuple()) {
+          operand_index_shape = &operand_index_shape->tuple_shapes(0);
+        }
         if (i > 0 && !ShapeUtil::EqualIgnoringElementType(
-                         first_shape, instr->operand(i)->shape())) {
-          auto operand_map = GetBitcastMap(
-              first_shape, instr->operand(i)->shape(), mlir_context);
+                         *first_shape, *operand_index_shape)) {
+          auto operand_map =
+              GetBitcastMap(*first_shape, *operand_index_shape, mlir_context);
           operand_indices =
               builder.create<ApplyIndexingOp>(indices, operand_map)
                   .getResults();
         } else {
           operand_indices = indices;
         }
-        TF_ASSIGN_OR_RETURN(
-            operands.emplace_back(),
-            GetSingleOperandValue(operand_provider, instr, i, operand_indices));
+        TF_ASSIGN_OR_RETURN(auto values,
+                            operand_provider(instr, i, operand_indices));
+        operands.append(values);
       }
       return operands;
     }
@@ -1052,7 +1041,7 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
 bool IsHloOpSupported(const HloInstruction* instr,
                       se::CudaComputeCapability compute_capability) {
   return !(kUnsupportedOps.contains(instr->opcode()) ||
-           IsUnsupportedTuple(instr) || IsUnsupportedGather(instr));
+           IsUnsupportedGather(instr));
 }
 
 bool IsHloConversionSupported(const HloComputation* computation,
@@ -1101,13 +1090,12 @@ bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
       });
 }
 
-Value ProvideParameter(const PartitionedComputation& computation,
-                       const HloInstruction* instr, int operand_index,
-                       ValueRange indices,
-                       const CallTargetProvider& call_target_provider,
-                       mlir::func::FuncOp this_fn,
-                       ImplicitLocOpBuilder& builder,
-                       const PartitionedComputation::Subgraph* caller) {
+llvm::SmallVector<Value> ProvideParameter(
+    const PartitionedComputation& computation, const HloInstruction* instr,
+    int operand_index, ValueRange indices,
+    const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
+    ImplicitLocOpBuilder& builder,
+    const PartitionedComputation::Subgraph* caller) {
   auto* operand = instr->operand(operand_index);
 
   if (!caller) {
@@ -1116,8 +1104,8 @@ Value ProvideParameter(const PartitionedComputation& computation,
   const auto& injected_value_starts = caller->injected_value_starts;
   if (auto it = injected_value_starts.find(operand);
       it != injected_value_starts.end()) {
-    return this_fn.getArguments().take_back(
-        caller->num_injected_values)[it->second];
+    return {this_fn.getArguments().take_back(
+        caller->num_injected_values)[it->second]};
   }
 
   auto callee = call_target_provider(operand);
@@ -1125,13 +1113,23 @@ Value ProvideParameter(const PartitionedComputation& computation,
       this_fn.getArguments().take_front(instr->parent()->num_parameters()));
   absl::c_copy(indices, std::back_inserter(operands));
   auto results = builder.create<PureCallOp>(callee, operands).getResults();
-  if (results.size() == 1) {
-    return results[0];
-  }
   auto callee_subgraph = computation.FindSubgraph(operand);
-  auto it = absl::c_find(callee_subgraph.roots, operand);
-  CHECK(it != callee_subgraph.roots.end());
-  return results[std::distance(callee_subgraph.roots.begin(), it)];
+  if (callee_subgraph.roots.size() == 1) {
+    CHECK_EQ(callee_subgraph.roots.front(), operand);
+    return results;
+  }
+
+  int offset = 0;
+  for (auto root : callee_subgraph.roots) {
+    int root_arity =
+        root->shape().IsTuple() ? root->shape().tuple_shapes_size() : 1;
+    if (root == operand) {
+      return results.slice(offset, root_arity);
+    }
+    offset += root_arity;
+  }
+  LOG(FATAL) << "Did not find operand " << operand->name() << " in roots of "
+             << callee_subgraph.ToString();
 }
 
 SmallVector<Value> ProvideParameterRange(
@@ -1142,8 +1140,8 @@ SmallVector<Value> ProvideParameterRange(
   SmallVector<Value> scalars;
   scalars.reserve(num);
   for (int i = 0; i < num; ++i) {
-    scalars.push_back(ProvideParameter(computation, instr, i + start, indices,
-                                       call_target_provider, this_fn, builder));
+    scalars.append(ProvideParameter(computation, instr, i + start, indices,
+                                    call_target_provider, this_fn, builder));
   }
   return scalars;
 }
@@ -1172,8 +1170,8 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
       return emit_instr(operand, operand_indices);
     }
     return ConvertToSignless(
-        {ProvideParameter(computation, instr, index, operand_indices,
-                          call_target_provider, this_fn, builder, &subgraph)},
+        ProvideParameter(computation, instr, index, operand_indices,
+                         call_target_provider, this_fn, builder, &subgraph),
         builder);
   };
 
@@ -1207,6 +1205,8 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
     TF_ASSIGN_OR_RETURN(auto lowered_instr,
                         HloToMlir(instr, this_fn, indices, provide_operand,
                                   call_target_provider, builder));
+    CHECK(!absl::c_linear_search(lowered_instr, nullptr))
+        << "Failed to lower " << instr->name();
 
     entry = ConvertToSignless(lowered_instr, builder);
     TF_RET_CHECK(!absl::c_any_of(
@@ -1279,6 +1279,7 @@ absl::Status SubgraphToMlirFunction(
       SubgraphToMlir(computation, subgraph, func, call_target_provider,
                      parameters, indices, builder));
 
+  CHECK_EQ(results.size(), func.getResultTypes().size());
   // We have been converting signed types to signless types. To match the
   // function signature, we have to convert back to signed types.
   for (auto [index, function_result] : llvm::enumerate(func.getResultTypes())) {

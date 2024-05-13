@@ -126,7 +126,7 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
           root_computation, concat, operand_index, input_indices, call_targets,
           entry_function, builder);
       absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>
-          hero_value{{concat, {result_scalar}}};
+          hero_value{{concat, result_scalar}};
       auto output_indices =
           mlir_converter::ApplyAffineMap(thread_id_to_output_map.GetAffineMap(),
                                          dim_values, symbol_values, builder);

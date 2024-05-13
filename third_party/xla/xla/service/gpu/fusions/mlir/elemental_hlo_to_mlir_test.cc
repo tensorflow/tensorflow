@@ -1507,6 +1507,34 @@ TEST_F(ElementalHloToMlirTest, MixedIndexingTuple) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, NestedTuple) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      %p0 = f32[10,10] parameter(0)
+      %p1 = f32[100] parameter(1)
+      %t0 = (f32[10,10], f32[100]) tuple(%p0, %p1)
+      %t1 = (f32[100], f32[10,10]) tuple(%p1, %p0)
+      ROOT tuple = ((f32[10,10], f32[100]), f32[100], (f32[100], f32[10,10]))
+        tuple(%t0, %p1, %t1)
+    })",
+                   R"(
+    // CHECK:      @main_tuple(
+    // CHECK-SAME:     %[[P0:.*]]: tensor<10x10xf32>,
+    // CHECK-SAME:     %[[P1:.*]]: tensor<100xf32>,
+    // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}}
+    // CHECK:          %[[T0_0:.*]], %[[T0_1:.*]] = xla_gpu.pure_call @main_t0
+    // CHECK-SAME:       (%[[P0]], %[[P1]], %[[X]], %[[Y]])
+    // CHECK:          %[[IDX:.*]] =
+    // CHECK-SAME:       affine_map<(d0, d1) -> (d0 * 10 + d1)>
+    // CHECK-SAME:       (%[[X]] in [0, 9], %[[Y]] in [0, 9])
+    // CHECK:          %[[P:.*]] = xla_gpu.pure_call @main_p1
+    // CHECK-SAME:       (%[[P0]], %[[P1]], %[[IDX]])
+    // CHECK:          %[[T1_0:.*]], %[[T1_1:.*]] = xla_gpu.pure_call @main_t1
+    // CHECK-SAME:       (%[[P0]], %[[P1]], %[[IDX]])
+    // CHECK:          return %[[T0_0]], %[[T0_1]], %[[P]], %[[T1_0]], %[[T1_1]]
+  )"));
+}
+
 TEST_F(ElementalHloToMlirTest, ReducePrecision) {
   TF_EXPECT_OK(Run(R"(
                      ENTRY main {

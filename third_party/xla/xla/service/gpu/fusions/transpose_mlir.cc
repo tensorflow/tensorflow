@@ -55,13 +55,11 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using absl::StatusOr;
 using llvm::SmallVector;
 using mlir::AffineExpr;
 using mlir::AffineMap;
@@ -253,7 +251,7 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
       auto result_scalar = mlir_converter::ProvideParameter(
           root_computation, transpose,
           /*operand_index=*/0, input_indices(transpose->operand(0)),
-          call_target_provider, entry_function, builder);
+          call_target_provider, entry_function, builder)[0];
       result_tensors.push_back(
           builder.create<InsertOp>(result_scalar, output, shmem_indices));
     }
@@ -264,7 +262,7 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
     auto* root_tuple = fusion.fused_expression_root();
     for (auto root : side_output_roots_) {
       side_output_indices.push_back(input_indices(root));
-      side_outputs.push_back(mlir_converter::ProvideParameter(
+      side_outputs.append(mlir_converter::ProvideParameter(
           root_computation, root_tuple, root_tuple->operand_index(root),
           side_output_indices.back(), call_target_provider, entry_function,
           builder));

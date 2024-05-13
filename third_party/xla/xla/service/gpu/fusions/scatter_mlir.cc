@@ -160,7 +160,7 @@ mlir::Value EmitScatterComputation(
   if (scatter->unique_indices()) {
     auto operand_elem =
         ProvideParameter(root_computation, scatter, kScatterOperandIndex,
-                         indices, call_targets, entry_function, b);
+                         indices, call_targets, entry_function, b)[0];
     auto reduced_val = mlir_converter::InlineBlock(
         b, reducer.getBody().front(), {operand_elem, update_elem})[0];
 
@@ -216,7 +216,7 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
                            symbol_values, b);
         auto update_elem = ProvideParameter(
             root_computation, scatter, kScatterUpdateIndex,
-            update_tensor_indices, call_targets, entry_function, b);
+            update_tensor_indices, call_targets, entry_function, b)[0];
 
         // Extract slice offsets from scatter_indices operand, compute if the
         // whole slice of scatter_update operand will fit into the output.
@@ -228,7 +228,7 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
               update_tensor_indices.front(), b.create<ma::ConstantIndexOp>(i)};
           auto index = ProvideParameter(
               root_computation, scatter, kScatterIndicesIndex,
-              indices_tensor_indices, call_targets, entry_function, b);
+              indices_tensor_indices, call_targets, entry_function, b)[0];
           auto index_ty = mlir::cast<mlir::IntegerType>(index.getType());
           if (index_ty.isUnsigned()) {
             auto int_ty = b.getIntegerType(index_ty.getWidth());
