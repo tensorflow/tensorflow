@@ -84,7 +84,7 @@ AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
       allocator_(allocator),
       opts_(opts) {
   // Avoid dumping compilation steps.
-  opts_.set_xla_dump_to("");
+  opts_.set_xla_enable_dumping(false);
   opts_.set_xla_gpu_dump_autotune_results_to("");
   opts_.set_xla_gpu_load_autotune_results_from("");
   opts_.set_xla_gpu_dump_llvmir(false);
