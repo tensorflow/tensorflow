@@ -202,25 +202,20 @@ class CommandBuffer {
   // Adds an execution barrier to a given execution scope: all commands added
   // before a barrier in a the execution scope will complete before any of the
   // commands added after a barrier in the same execution scope.
-  virtual absl::Status Barrier(StreamExecutorInterface* executor,
-                               ExecutionScopeId execution_scope_id) = 0;
+  virtual absl::Status Barrier(ExecutionScopeId execution_scope_id) = 0;
 
   // Adds an execution barrier that synchronizes commands across multiple
   // execution scopes. See example #2 in execution scope id documentation.
   virtual absl::Status Barrier(
-      StreamExecutorInterface* executor,
       absl::Span<const ExecutionScopeId> execution_scope_ids) = 0;
 
   // Adds an execution barrier from execution scope `from_execution_scope_id` to
   // execution scope `to_execution_scope_id`. See example #3 for details.
-  virtual absl::Status Barrier(StreamExecutorInterface* executor,
-                               ExecutionScopeId from_execution_scope_id,
+  virtual absl::Status Barrier(ExecutionScopeId from_execution_scope_id,
                                ExecutionScopeId to_execution_scope_id) = 0;
 
   // Adds an execution barrier to the default execution scope.
-  absl::Status Barrier(StreamExecutorInterface* executor) {
-    return Barrier(executor, kDefaulExecutionScope);
-  }
+  absl::Status Barrier() { return Barrier(kDefaulExecutionScope); }
 
   // Adds a kernel launch command.
   virtual absl::Status Launch(ExecutionScopeId execution_scope_id,
@@ -292,29 +287,24 @@ class CommandBuffer {
   // Adds a conditional operation that will execute a command buffer constructed
   // by `then_builder` if `pred` value is `true`.
   virtual absl::Status If(ExecutionScopeId execution_scope_id,
-                          StreamExecutorInterface* executor,
                           DeviceMemory<bool> pred, Builder then_builder) = 0;
 
   // Adds a conditional If operation to default execution scope.
-  absl::Status If(StreamExecutorInterface* executor, DeviceMemory<bool> pred,
-                  Builder then_builder) {
-    return If(kDefaulExecutionScope, executor, pred, then_builder);
+  absl::Status If(DeviceMemory<bool> pred, Builder then_builder) {
+    return If(kDefaulExecutionScope, pred, then_builder);
   }
 
   // Adds a conditional operation that will execute a command buffer constructed
   // by `then_builder` if `pred` value is `true`, or a command buffer
   // constructed by `else_builder` if `pred` is `false`.
   virtual absl::Status IfElse(ExecutionScopeId execution_scope_id,
-                              StreamExecutorInterface* executor,
                               DeviceMemory<bool> pred, Builder then_builder,
                               Builder else_builder) = 0;
 
   // Adds a conditional IfElse operation to default execution scope.
-  absl::Status IfElse(StreamExecutorInterface* executor,
-                      DeviceMemory<bool> pred, Builder then_builder,
+  absl::Status IfElse(DeviceMemory<bool> pred, Builder then_builder,
                       Builder else_builder) {
-    return IfElse(kDefaulExecutionScope, executor, pred, then_builder,
-                  else_builder);
+    return IfElse(kDefaulExecutionScope, pred, then_builder, else_builder);
   }
 
   // Adds a conditional operation that will execute a command buffer constructed
@@ -323,15 +313,13 @@ class CommandBuffer {
   //
   // See: https://github.com/openxla/stablehlo/blob/main/docs/spec.md#case
   virtual absl::Status Case(ExecutionScopeId execution_scope_id,
-                            StreamExecutorInterface* executor,
                             DeviceMemory<int32_t> index,
                             std::vector<Builder> branches) = 0;
 
   // Adds a conditional Case operation to default execution scope.
-  absl::Status Case(StreamExecutorInterface* executor,
-                    DeviceMemory<int32_t> index,
+  absl::Status Case(DeviceMemory<int32_t> index,
                     std::vector<Builder> branches) {
-    return Case(kDefaulExecutionScope, executor, index, branches);
+    return Case(kDefaulExecutionScope, index, branches);
   }
 
   // Adds a conditional operation that will execute a command buffer constructed
@@ -339,15 +327,14 @@ class CommandBuffer {
   // condition is known at compile time (`num_iteration` < `loop_counter`), and
   // does not require a `cond_builder`.
   virtual absl::Status For(ExecutionScopeId execution_scope_id,
-                           StreamExecutorInterface* executor,
                            int32_t num_iteration,
                            DeviceMemory<int32_t> loop_counter,
                            Builder body_builder) = 0;
 
   // Adds a conditional For operation to default execution scope.
-  absl::Status For(StreamExecutorInterface* executor, int32_t num_iteration,
-                   DeviceMemory<int32_t> loop_counter, Builder body_builder) {
-    return For(kDefaulExecutionScope, executor, num_iteration, loop_counter,
+  absl::Status For(int32_t num_iteration, DeviceMemory<int32_t> loop_counter,
+                   Builder body_builder) {
+    return For(kDefaulExecutionScope, num_iteration, loop_counter,
                body_builder);
   }
 
@@ -368,16 +355,14 @@ class CommandBuffer {
   // condition twice: (1) before the conditional node in the scope defined by
   // `execution_scope_id` (2) inside the loop body with default execution scope.
   virtual absl::Status While(ExecutionScopeId execution_scope_id,
-                             StreamExecutorInterface* executor,
                              DeviceMemory<bool> pred,
                              ExecutionScopeBuilder cond_builder,
                              Builder body_builder) = 0;
 
   // Adds a conditional While operation to default execution scope.
-  absl::Status While(StreamExecutorInterface* executor, DeviceMemory<bool> pred,
+  absl::Status While(DeviceMemory<bool> pred,
                      ExecutionScopeBuilder cond_builder, Builder body_builder) {
-    return While(kDefaulExecutionScope, executor, pred, cond_builder,
-                 body_builder);
+    return While(kDefaulExecutionScope, pred, cond_builder, body_builder);
   }
 
   //--------------------------------------------------------------------------//

@@ -292,7 +292,6 @@ absl::Status CommandBufferCmdSequence::Record(
     }
   }
 
-  se::StreamExecutor* device = execute_params.stream->parent();
   const ModuleAnnotations* annotations = GetCurrentModuleAnnotations();
 
   // Track the number of commands recorded between barriers.
@@ -309,7 +308,7 @@ absl::Status CommandBufferCmdSequence::Record(
               << num_recorded_commands[execution_scope_id]
               << " recorded commands into the execution scope #"
               << execution_scope_id.value();
-      TF_RETURN_IF_ERROR(command_buffer->Barrier(device, execution_scope_id));
+      TF_RETURN_IF_ERROR(command_buffer->Barrier(execution_scope_id));
       num_recorded_commands.erase(execution_scope_id);
     }
     VLOG(5) << " Record command buffer with scope id "
@@ -849,8 +848,7 @@ absl::Status IfCmd::Record(const Thunk::ExecuteParams& execute_params,
   VLOG(5) << "  pred: " << pred_ << " (" << pred.opaque() << ")";
 
   return command_buffer->If(
-      execution_scope_id, execute_params.stream->parent(),
-      se::DeviceMemory<bool>(pred),
+      execution_scope_id, se::DeviceMemory<bool>(pred),
       CreateBuilder(&then_commands_, &execute_params, &record_params));
 }
 
@@ -893,8 +891,7 @@ absl::Status IfElseCmd::Record(const Thunk::ExecuteParams& execute_params,
   VLOG(5) << "  pred: " << pred_ << " (" << pred.opaque() << ")";
 
   return command_buffer->IfElse(
-      execution_scope_id, execute_params.stream->parent(),
-      se::DeviceMemory<bool>(pred),
+      execution_scope_id, se::DeviceMemory<bool>(pred),
       CreateBuilder(&then_commands_, &execute_params, &record_params),
       CreateBuilder(&else_commands_, &execute_params, &record_params));
 }
@@ -939,7 +936,6 @@ absl::Status CaseCmd::Record(const Thunk::ExecuteParams& execute_params,
   VLOG(5) << "  index: " << index_ << " (" << index.opaque() << ")";
 
   return command_buffer->Case(execution_scope_id,
-                              execute_params.stream->parent(),
                               se::DeviceMemory<int32_t>(index),
                               CreateBuilders(absl::MakeSpan(branches_commands_),
                                              &execute_params, &record_params));
@@ -985,7 +981,7 @@ absl::Status ForCmd::Record(const Thunk::ExecuteParams& execute_params,
           << loop_counter.opaque() << ")";
 
   return command_buffer->For(
-      execution_scope_id, execute_params.stream->parent(), num_iterations_,
+      execution_scope_id, num_iterations_,
       se::DeviceMemory<int32_t>(loop_counter),
       CreateBuilder(&body_commands_, &execute_params, &record_params));
 }
@@ -1030,8 +1026,7 @@ absl::Status WhileCmd::Record(const Thunk::ExecuteParams& execute_params,
   VLOG(5) << "  pred: " << pred_ << " (" << pred.opaque() << ")";
 
   return command_buffer->While(
-      execution_scope_id, execute_params.stream->parent(),
-      se::DeviceMemory<bool>(pred),
+      execution_scope_id, se::DeviceMemory<bool>(pred),
       CreateExecutionScopeBuilder(&cond_commands_, &execute_params,
                                   &record_params),
       CreateBuilder(&body_commands_, &execute_params, &record_params));
@@ -1340,7 +1335,6 @@ absl::Status BarrierCmd::Record(const Thunk::ExecuteParams& execute_params,
           << " to stream " << execution_stream_id().value();
   if (from_stream_id_ != execution_stream_id()) {
     TF_RETURN_IF_ERROR(command_buffer->Barrier(
-        execute_params.stream->parent(),
         CommandBufferCmd::GetExecutionScope(record_params, from_stream_id_),
         CommandBufferCmd::GetExecutionScope(record_params,
                                             execution_stream_id())));
@@ -1367,8 +1361,7 @@ absl::Status CollectiveCmd::BarrierIfAsync(
     const CommandBufferCmd::RecordParams& record_params) {
   if (IsAsync()) {
     TF_RETURN_IF_ERROR(
-        command_buffer->Barrier(executor,
-                                CommandBufferCmd::GetExecutionScope(
+        command_buffer->Barrier(CommandBufferCmd::GetExecutionScope(
                                     record_params, async_from_stream_id_),
                                 CommandBufferCmd::GetExecutionScope(
                                     record_params, execution_stream_id())));

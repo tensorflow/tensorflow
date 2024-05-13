@@ -382,22 +382,22 @@ TEST(GpuCommandBufferTest, Barriers) {
 
   auto record = [&](CommandBuffer* cmd_buffer, uint32_t bit_pattern) {
     // Check that root barrier ignored.
-    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(executor));
+    TF_RETURN_IF_ERROR(cmd_buffer->Barrier());
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(&buffers[0], bit_pattern + 0, 1));
     // Check barrier after a single command.
-    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(executor));
+    TF_RETURN_IF_ERROR(cmd_buffer->Barrier());
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(&buffers[1], bit_pattern + 1, 1));
     // Check that repeated barriers are no-op.
-    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(executor));
-    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(executor));
+    TF_RETURN_IF_ERROR(cmd_buffer->Barrier());
+    TF_RETURN_IF_ERROR(cmd_buffer->Barrier());
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(&buffers[2], bit_pattern + 2, 1));
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(&buffers[3], bit_pattern + 3, 1));
     // Check that barrier can have multiple dependencies.
-    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(executor));
+    TF_RETURN_IF_ERROR(cmd_buffer->Barrier());
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(&buffers[4], bit_pattern + 4, 1));
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(&buffers[5], bit_pattern + 5, 1));
     // Check that barrier can be that last command.
-    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(executor));
+    TF_RETURN_IF_ERROR(cmd_buffer->Barrier());
     return cmd_buffer->Finalize();
   };
 
@@ -476,8 +476,8 @@ TEST(GpuCommandBufferTest, IndependentExecutionScopes) {
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(s0, &buffers[1], bit_pattern + 1, 1));
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(s1, &buffers[2], bit_pattern + 2, 1));
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(s1, &buffers[3], bit_pattern + 3, 1));
-    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(executor, s0));
-    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(executor, s1));
+    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(s0));
+    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(s1));
     return cmd_buffer->Finalize();
   };
 
@@ -548,7 +548,7 @@ TEST(GpuCommandBufferTest, ExecutionScopeBarriers) {
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(s1, &buffers[2], bit_pattern + 2, 1));
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(s1, &buffers[3], bit_pattern + 3, 1));
     // This will synchronize scopes 0 and 1 and also create an empty scope 2.
-    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(executor, {s0, s1, s2}));
+    TF_RETURN_IF_ERROR(cmd_buffer->Barrier({s0, s1, s2}));
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(s0, &buffers[4], bit_pattern + 4, 1));
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(s1, &buffers[5], bit_pattern + 5, 1));
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(s2, &buffers[6], bit_pattern + 6, 1));
@@ -639,7 +639,7 @@ TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(s1, &buffers[2], bit_pattern + 2, 1));
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(s1, &buffers[3], bit_pattern + 3, 1));
     // This will synchronize scopes 0 and 1.
-    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(executor, s0, s1));
+    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(s0, s1));
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(s0, &buffers[4], bit_pattern + 4, 1));
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(s1, &buffers[5], bit_pattern + 5, 1));
     return cmd_buffer->Finalize();
@@ -721,7 +721,7 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
 
   // Create a command buffer with a single conditional operation.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(cmd_buffer->If(executor, pred, then_builder));
+  TF_ASSERT_OK(cmd_buffer->If(pred, then_builder));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(executor->Submit(stream.get(), *cmd_buffer));
@@ -760,7 +760,7 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
 
   // Update command buffer with a conditional to use new builder.
   TF_ASSERT_OK(cmd_buffer->Update());
-  TF_ASSERT_OK(cmd_buffer->If(executor, pred, then_builder));
+  TF_ASSERT_OK(cmd_buffer->If(pred, then_builder));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(executor->Submit(stream.get(), *cmd_buffer));
@@ -818,7 +818,7 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
 
   // Create a command buffer with a single conditional operation.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(cmd_buffer->IfElse(executor, pred, then_builder, else_builder));
+  TF_ASSERT_OK(cmd_buffer->IfElse(pred, then_builder, else_builder));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(executor->Submit(stream.get(), *cmd_buffer));
@@ -855,7 +855,7 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
 
   // Update command buffer with a conditional to use new `else` builder.
   TF_ASSERT_OK(cmd_buffer->Update());
-  TF_ASSERT_OK(cmd_buffer->IfElse(executor, pred, then_builder, else_builder));
+  TF_ASSERT_OK(cmd_buffer->IfElse(pred, then_builder, else_builder));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(executor->Submit(stream.get(), *cmd_buffer));
@@ -913,7 +913,7 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
 
   // Create a command buffer with a single conditional operation.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(cmd_buffer->Case(executor, index, {branch0, branch1}));
+  TF_ASSERT_OK(cmd_buffer->Case(index, {branch0, branch1}));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(executor->Submit(stream.get(), *cmd_buffer));
@@ -992,8 +992,7 @@ TEST(GpuCommandBufferTest, ConditionalFor) {
 
   // Create a command buffer with a single conditional operation.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(
-      cmd_buffer->For(executor, num_iters, loop_counter, body_builder));
+  TF_ASSERT_OK(cmd_buffer->For(num_iters, loop_counter, body_builder));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(executor->Submit(stream.get(), *cmd_buffer));
@@ -1060,7 +1059,7 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
 
   // Create a command buffer with a single conditional operation.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(cmd_buffer->While(executor, pred, cond_builder, body_builder));
+  TF_ASSERT_OK(cmd_buffer->While(pred, cond_builder, body_builder));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   TF_ASSERT_OK(executor->Submit(stream.get(), *cmd_buffer));
@@ -1112,16 +1111,15 @@ TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
     TF_RETURN_IF_ERROR(cmd_buffer->Memset(s0, &buffers[1], bit_pattern + 1, 1));
 
     // Record If in execution scope #1
-    TF_RETURN_IF_ERROR(
-        cmd_buffer->If(s1, executor, pred, [&](CommandBuffer* then_cmd) {
-          return then_cmd->Memset(&buffers[2], bit_pattern + 2, 1);
-        }));
+    TF_RETURN_IF_ERROR(cmd_buffer->If(s1, pred, [&](CommandBuffer* then_cmd) {
+      return then_cmd->Memset(&buffers[2], bit_pattern + 2, 1);
+    }));
 
     // Create a barrier in execution scope #0.
-    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(executor, s0));
+    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(s0));
 
     // Create a barrier between two execution scopes.
-    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(executor, {s0, s1}));
+    TF_RETURN_IF_ERROR(cmd_buffer->Barrier({s0, s1}));
 
     return cmd_buffer->Finalize();
   };
@@ -1210,7 +1208,7 @@ TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
 
     // Record While in execution scope #1
     TF_RETURN_IF_ERROR(cmd_buffer->While(
-        s1, executor, pred,
+        s1, pred,
         // Loop cond: loop_counter++ < num_iters;
         [&](ExecutionScopeId id, CommandBuffer* cond_cmd) {
           return cond_cmd->Launch(inc_and_cmp, id, ThreadDim(), BlockDim(),
@@ -1222,7 +1220,7 @@ TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
         }));
 
     // Create a barrier between two execution scopes.
-    TF_RETURN_IF_ERROR(cmd_buffer->Barrier(executor, {s0, s1}));
+    TF_RETURN_IF_ERROR(cmd_buffer->Barrier({s0, s1}));
 
     return cmd_buffer->Finalize();
   };
