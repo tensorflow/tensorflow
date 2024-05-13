@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"

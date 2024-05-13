@@ -34,8 +34,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::testing::HasSubstr;
-
 class TransposeTest : public HloTestBase {
  protected:
   stream_executor::DeviceDescription device_info_ =

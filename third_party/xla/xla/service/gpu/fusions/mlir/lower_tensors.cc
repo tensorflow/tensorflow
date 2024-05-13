@@ -78,7 +78,6 @@ using mlir::TypedValue;
 using mlir::TypeRange;
 using mlir::Value;
 using mlir::ValueRange;
-using mlir::arith::AtomicRMWKind;
 
 namespace arith = ::mlir::arith;
 namespace scf = ::mlir::scf;
