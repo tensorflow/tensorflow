@@ -77,45 +77,6 @@ tf_proto_library(
     protodeps = ["//xla/pjrt:compile_options_proto"],
 )
 
-cc_library(
-    name = "xla_program_serdes",
-    srcs = ["xla_program_serdes.cc"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":xla_ifrt",
-        "//xla/mlir_hlo:mhlo_passes",
-        "//xla/pjrt:mlir_to_hlo",
-        "//xla/python/ifrt:serdes",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:status",
-        "@stablehlo//:stablehlo_portable_api",
-        "@stablehlo//:stablehlo_serialization",
-    ],
-    alwayslink = True,
-)
-
-xla_cc_test(
-    name = "xla_program_serdes_test",
-    srcs = ["xla_program_serdes_test.cc"],
-    deps = [
-        ":xla_ifrt",
-        ":xla_program_serdes",
-        "//xla/mlir_hlo",
-        "//xla/pjrt:mlir_to_hlo",
-        "//xla/python/ifrt:serdes",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
 tf_proto_library(
     name = "xla_sharding_proto",
     srcs = ["xla_sharding.proto"],
@@ -174,6 +135,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
+        "//xla/python/ifrt/hlo:hlo_program",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -259,6 +221,7 @@ cc_library(
         "//xla/pjrt:pjrt_layout",
         "//xla/pjrt:utils",
         "//xla/python/ifrt",
+        "//xla/python/ifrt/hlo:hlo_program",
         "//xla/service:hlo_proto_cc",
         "//xla/translate/mhlo_to_hlo:type_to_shape",
         "//xla/tsl/concurrency:ref_count",

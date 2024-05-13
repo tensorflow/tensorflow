@@ -15,17 +15,26 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/convolution_thunk.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
-#include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/runtime/thunk.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {

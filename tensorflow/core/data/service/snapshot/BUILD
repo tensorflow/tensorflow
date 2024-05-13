@@ -462,7 +462,7 @@ cc_library(
 
 tf_cc_test(
     name = "snapshot_stream_writer_checkpoint_test",
-    size = "small",
+    size = "medium",
     srcs = ["snapshot_stream_writer_checkpoint_test.cc"],
     deps = [
         ":path_utils",

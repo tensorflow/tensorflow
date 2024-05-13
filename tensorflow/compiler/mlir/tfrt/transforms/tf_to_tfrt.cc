@@ -738,11 +738,11 @@ class FallbackBatchFunctionOpConversion
 
 // Lower a tf.Const op that creates a string tensor to a native
 // corert.create_string_tensor op.
-class CoreRTConstDenseTensorOpConversion
+class FallbackConstDenseTensorOpConversion
     : public mlir::OpConversionPattern<mlir::TF::ConstOp> {
  public:
-  CoreRTConstDenseTensorOpConversion(mlir::MLIRContext *context,
-                                     CoreRTConverter *corert_converter)
+  FallbackConstDenseTensorOpConversion(mlir::MLIRContext *context,
+                                       CoreRTConverter *corert_converter)
       : mlir::OpConversionPattern<mlir::TF::ConstOp>(context, kCoreRTBenefit),
         corert_converter_(*corert_converter) {}
 
@@ -756,8 +756,8 @@ class CoreRTConstDenseTensorOpConversion
     if (auto parsed_device_name = corert_converter_.ParseDeviceName(op))
       if (parsed_device_name->device_type != DEVICE_CPU) return failure();
 
-    auto new_op = rewriter.create<tfrt::corert::ConstDenseTensorOp>(
-        op.getLoc(), corert_converter_.tensor_handle_type(),
+    auto new_op = rewriter.create<tfrt::fallback_async::ConstDenseTensorOp>(
+        op.getLoc(), rewriter.getType<tfrt::fallback::TFTensorType>(),
         mlir::cast<DenseElementsAttr>(op.getValue()));
     rewriter.replaceOp(op, new_op->getResult(0));
     return success();
@@ -860,11 +860,11 @@ class TFRTFuncOpSignatureConversion
 
 // Lower a tf.Const op that creates a string tensor to a native
 // corert.create_string_tensor op.
-class CoreRTConstStringTensorOpConversion
+class FallbackConstStringTensorOpConversion
     : public mlir::OpConversionPattern<mlir::TF::ConstOp> {
  public:
-  CoreRTConstStringTensorOpConversion(mlir::MLIRContext *context,
-                                      CoreRTConverter *corert_converter)
+  FallbackConstStringTensorOpConversion(mlir::MLIRContext *context,
+                                        CoreRTConverter *corert_converter)
       : mlir::OpConversionPattern<mlir::TF::ConstOp>(context, kCoreRTBenefit),
         corert_converter_(*corert_converter) {}
 
@@ -890,8 +890,8 @@ class CoreRTConstStringTensorOpConversion
     for (auto dim : shape)
       dims.push_back(rewriter.getIntegerAttr(i64_type, dim));
 
-    auto new_op = rewriter.create<tfrt::corert::ConstStringTensorOp>(
-        op.getLoc(), corert_converter_.tensor_handle_type(),
+    auto new_op = rewriter.create<tfrt::fallback_async::ConstStringTensorOp>(
+        op.getLoc(), rewriter.getType<tfrt::fallback::TFTensorType>(),
         rewriter.getArrayAttr(dims), rewriter.getArrayAttr(values));
 
     rewriter.replaceOp(op, new_op.getResult());
@@ -1532,8 +1532,9 @@ void PopulateTFToTFRTConversionPatterns(
 
   // Here we use specialized patterns for tf.Const on CPU as it is incorrect to
   // use ExecuteOp pattern to convert string tensor attribute.
-  patterns->add<CoreRTConstStringTensorOpConversion,
-                CoreRTConstDenseTensorOpConversion>(context, corert_converter);
+  patterns->add<FallbackConstStringTensorOpConversion,
+                FallbackConstDenseTensorOpConversion>(context,
+                                                      corert_converter);
 }
 
 // Lower TF dialect MLIR to TFRT dialect.

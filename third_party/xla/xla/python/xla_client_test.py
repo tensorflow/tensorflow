@@ -3076,15 +3076,15 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       program = xla_client.ifrt_programs.make_plugin_program("foobar")
       options = xla_client.ifrt_programs.make_plugin_compile_options()
       with self.assertRaisesRegex(
-          xla_client.XlaRuntimeError, "PjRtCompiler requires an XlaProgram"
+          xla_client.XlaRuntimeError, "PjRtCompiler requires an HloProgram"
       ):
         self.backend.compile_ifrt_program(program, options)
 
     @unittest.skipIf(pathways, "does not work with non-ifrt legacy pathways")
-    def testXlaProgramViaIfrtProgram(self):
+    def testHloProgramViaIfrtProgram(self):
       c = self._NewComputation()
       ops.Iota(c, xla_client.PrimitiveType.F32, 10)
-      program = xla_client.ifrt_programs.make_xla_program(
+      program = xla_client.ifrt_programs.make_hlo_program(
           xla_computation_to_mlir_module(c.build())
       )
       options = xla_client.ifrt_programs.make_xla_compile_options(
