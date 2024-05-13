@@ -421,10 +421,6 @@ GpuThunkAotCompilationResult::LoadExecutable(
   TF_ASSIGN_OR_RETURN(auto output_info,
                       GetOutputInfo(*hlo_module, *buffer_assignment));
   const Shape& output_shape = hlo_module->result_shape();
-  std::function<std::string()> buffer_assignment_dumper = [] {
-    return std::string();
-  };
-
   int64_t debug_buffer_assignment_show_max =
       hlo_module->config()
           .debug_options()

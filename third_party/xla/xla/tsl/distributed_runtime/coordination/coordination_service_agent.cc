@@ -45,7 +45,6 @@ limitations under the License.
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/random.h"
 #include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 #include "tsl/protobuf/coordination_service.pb.h"
@@ -72,7 +71,9 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
  public:
   CoordinationServiceAgentImpl() = default;
   ~CoordinationServiceAgentImpl() override {
-    absl::Status s = Shutdown();
+    // TODO(b/339231167): Fix the lint.
+    absl::Status s =
+        Shutdown();  // NOLINT(clang-analyzer-optin.cplusplus.VirtualCall)
     VLOG(3) << "Coordination agent dtor failed with status: " << s;
   }
   absl::Status Initialize(Env* env, std::string_view job_name, int task_id,
@@ -230,7 +231,7 @@ void CoordinationServiceAgentImpl::StopHeartbeat() {
     shutting_down_ = true;
     heartbeat_thread_cv_.notify_all();
   }
-  heartbeat_thread_.reset();
+  heartbeat_thread_ = nullptr;
 }
 
 absl::Status CoordinationServiceAgentImpl::Connect() {
@@ -331,17 +332,21 @@ absl::Status CoordinationServiceAgentImpl::Connect() {
                                          });
           n.WaitForNotification();
           VLOG(10) << "HeartbeatResponse: " << status;
-          {
-            mutex_lock l(heartbeat_thread_shutdown_mu_);
-            // Ignore heartbeat errors and exit thread if shutting down. For
-            // example, the agent may send a heartbeat right after Shutdown(),
-            // but before StopHeartbeat(). This results in an unexpected
-            // heartbeat error.
-            if (shutting_down_) {
-              return;
-            }
-          }
           if (!status.ok()) {
+            // Ignore heartbeat errors and exit thread if shutting down. For
+            // example, the agent may send a heartbeat right after Shutdown()
+            // started, but before StopHeartbeat() and end of Shutdown(). This
+            // results in an unexpected heartbeat error.
+            // Waiting for a second allows us to identify if errors are due to
+            // inflight heartbeats sent during shutdown and can be ignored.
+            absl::SleepFor(absl::Seconds(1));
+            {
+              mutex_lock l(heartbeat_thread_shutdown_mu_);
+
+              if (shutting_down_) {
+                return;
+              }
+            }
             SetError(status);
           } else if (response.leader_incarnation() != leader_incarnation_) {
             SetError(MakeCoordinationError(
@@ -351,8 +356,10 @@ absl::Status CoordinationServiceAgentImpl::Connect() {
           // Send next heartbeat after an interval.
           {
             mutex_lock l(heartbeat_thread_shutdown_mu_);
+            // TODO(b/339231167): Fix the lint.
             heartbeat_thread_cv_.wait_for(
-                l, std::chrono::milliseconds(heartbeat_interval_ms));
+                l, std::chrono::milliseconds(  // NOLINT(misc-include-cleaner)
+                       heartbeat_interval_ms));
             if (shutting_down_) {
               return;
             }
@@ -583,7 +590,7 @@ absl::StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
 absl::StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
     std::string_view key, absl::Duration timeout) {
   auto n = std::make_shared<absl::Notification>();
-  auto result = std::make_shared<StatusOr<std::string>>();
+  auto result = std::make_shared<absl::StatusOr<std::string>>();
   GetKeyValueAsync(
       key, [n, result](const absl::StatusOr<std::string>& status_or_value) {
         *result = status_or_value;

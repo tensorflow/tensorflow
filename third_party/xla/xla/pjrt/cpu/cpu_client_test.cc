@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_client.h"
 
+#include "xla/pjrt/host_memory_spaces.h"
+
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -50,9 +52,11 @@ namespace xla {
 namespace {
 
 using ::testing::Each;
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::IsFalse;
+using ::tsl::testing::IsOkAndHolds;
 
 static absl::Status TestError(ffi::BufferBase, ffi::Result<ffi::BufferBase>,
                               ffi::Result<ffi::BufferBase>) {
@@ -68,6 +72,22 @@ XLA_FFI_DEFINE_HANDLER(kTestError, TestError,
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$TestError", "Host",
                          kTestError);
+
+TEST(TfrtCpuClientTest, MemorySpace) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
+  ASSERT_GE(client->devices().size(), 1);
+
+  ASSERT_EQ(client->memory_spaces().size(),
+            client->addressable_devices().size());
+  for (auto* device : client->devices()) {
+    TF_ASSERT_OK_AND_ASSIGN(auto* memory_space, device->default_memory_space());
+    EXPECT_THAT(device->memory_spaces(), ElementsAre(memory_space));
+    EXPECT_EQ(memory_space->kind(), UnpinnedHostMemorySpace::kKind);
+    EXPECT_EQ(memory_space->kind_id(), UnpinnedHostMemorySpace::kKindId);
+    EXPECT_THAT(device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind),
+                IsOkAndHolds(memory_space));
+  }
+}
 
 TEST(TfrtCpuClientTest, DonationWithExecutionError) {
   constexpr char kProgram[] =
