@@ -287,6 +287,9 @@ MlirFusionEmitterBase::CreateLLVMModule(
                                     buffer_assignment));
 
   mlir::PassManager pm(&mlir_context);
+  if (VLOG_IS_ON(5)) {
+    pm.enableIRPrinting();
+  }
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -430,6 +433,10 @@ MlirFusionEmitterBase::CreateMLIRModule(
 
   // Run a minimal simplification pipeline.
   mlir::PassManager pm(&context);
+  if (VLOG_IS_ON(5)) {
+    context.disableMultithreading();
+    pm.enableIRPrinting();
+  }
   pm.addPass(CreateSimplifyArithPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
