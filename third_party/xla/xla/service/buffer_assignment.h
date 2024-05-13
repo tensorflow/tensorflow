@@ -114,6 +114,10 @@ class BufferAllocation {
     return is_entry_computation_parameter_;
   }
 
+  bool is_parameter_aliased_with_output() const {
+    return is_parameter_aliased_with_output_;
+  }
+
   // Whether this allocation holds a constant.  On the CPU and GPU backends
   // constant allocations are not allocated dynamically, instead we resolve
   // references to these buffer allocations to a global in the readonly section

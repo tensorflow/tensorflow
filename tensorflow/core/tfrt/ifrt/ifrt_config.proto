@@ -10,3 +10,11 @@ message VariableDeviceShardingConfigProto {
   xla.OpSharding sharding = 1;
   repeated int32 device_ids = 2;
 }
+
+enum IfrtServingCoreSelectionPolicy {
+  // Default policy to select the soonest-to-finish core defined at
+  // http://shortn/_XQhI1ASAu0.
+  IFRT_SERVING_CORE_SELECTION_POLICY_DEFAULT = 0;
+  // Policy that round robin with local ordinal http://shortn/_7BtVe4dkp5.
+  IFRT_SERVING_CORE_SELECTION_POLICY_LOCAL_ROUND_ROBIN = 1;
+}

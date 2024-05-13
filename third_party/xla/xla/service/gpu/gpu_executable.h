@@ -159,7 +159,7 @@ class GpuExecutable : public Executable {
       const ServiceExecutableRunOptions* run_options,
       VariantArguments arguments);
 
-  absl::Span<const BufferAllocation> GetAllocations() const {
+  absl::Span<const BufferAllocation> GetAllocations() const override {
     // A GpuExecutable can get its allocations in three ways:
     // 1 - From a regular compilation that uses allocations from MLIR.
     // 2 - From a regular compilation that uses the original allocations from

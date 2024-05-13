@@ -1467,6 +1467,7 @@ cc_library(
         "service_executable_run_options.h",
     ],
     deps = [
+        ":buffer_assignment",
         ":computation_layout",
         ":dump",
         ":hlo_execution_profile",
