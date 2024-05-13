@@ -118,6 +118,7 @@ cc_library(
 cc_library(
     name = "gpu_constants",
     hdrs = ["gpu_constants.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -859,6 +860,7 @@ cc_library(
     name = "buffer_allocations",
     srcs = ["buffer_allocations.cc"],
     hdrs = ["buffer_allocations.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla:status",
         "//xla:statusor",
@@ -893,6 +895,7 @@ cc_library(
     hdrs = [
         "gpu_executable.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
@@ -4343,6 +4346,7 @@ xla_cc_test(
 cuda_library(
     name = "stream_executor_util_kernel",
     srcs = if_cuda_is_configured(["stream_executor_util_kernel.cu.cc"]),
+    compatible_with = get_compatible_with_portable(),
     deps = ["@local_config_cuda//cuda:cuda_headers"],
 )
 
@@ -4350,6 +4354,7 @@ cc_library(
     name = "stream_executor_util",
     srcs = ["stream_executor_util.cc"],
     hdrs = ["stream_executor_util.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tsl_copts(),
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [

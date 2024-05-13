@@ -298,39 +298,12 @@ struct CompiledMemoryStats {
   std::string serialized_hlo_proto = "";
   std::string DebugString() const;
 
-  CompiledMemoryStatsProto ToProto() {
-    CompiledMemoryStatsProto proto;
-    proto.set_generated_code_size_in_bytes(generated_code_size_in_bytes);
-    proto.set_argument_size_in_bytes(argument_size_in_bytes);
-    proto.set_output_size_in_bytes(output_size_in_bytes);
-    proto.set_alias_size_in_bytes(alias_size_in_bytes);
-    proto.set_temp_size_in_bytes(temp_size_in_bytes);
-    proto.mutable_hlo_proto()->ParseFromString(serialized_hlo_proto);
-    proto.set_host_generated_code_size_in_bytes(
-        host_generated_code_size_in_bytes);
-    proto.set_host_argument_size_in_bytes(host_argument_size_in_bytes);
-    proto.set_host_output_size_in_bytes(host_output_size_in_bytes);
-    proto.set_host_alias_size_in_bytes(host_alias_size_in_bytes);
-    proto.set_host_temp_size_in_bytes(host_temp_size_in_bytes);
-    return proto;
-  }
+  CompiledMemoryStatsProto ToProto();
 
-  static CompiledMemoryStats FromProto(const CompiledMemoryStatsProto& proto) {
-    CompiledMemoryStats stats;
-    stats.generated_code_size_in_bytes = proto.generated_code_size_in_bytes();
-    stats.argument_size_in_bytes = proto.argument_size_in_bytes();
-    stats.output_size_in_bytes = proto.output_size_in_bytes();
-    stats.alias_size_in_bytes = proto.alias_size_in_bytes();
-    stats.temp_size_in_bytes = proto.temp_size_in_bytes();
-    stats.serialized_hlo_proto = proto.hlo_proto().SerializeAsString();
-    stats.host_generated_code_size_in_bytes =
-        proto.host_generated_code_size_in_bytes();
-    stats.host_argument_size_in_bytes = proto.host_argument_size_in_bytes();
-    stats.host_output_size_in_bytes = proto.host_output_size_in_bytes();
-    stats.host_alias_size_in_bytes = proto.host_alias_size_in_bytes();
-    stats.host_temp_size_in_bytes = proto.host_temp_size_in_bytes();
-    return stats;
-  }
+  static CompiledMemoryStats FromProto(const CompiledMemoryStatsProto& proto);
+
+  void PopulateBufferStatsFromAllocations(
+      absl::Span<const BufferAllocation> allocs);
 };
 
 class PjRtExecutable {

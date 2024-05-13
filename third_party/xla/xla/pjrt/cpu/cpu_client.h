@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/cpu_event.h"
+#include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -603,6 +604,10 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
           "cpu_executable_ has no hlo_proto.");
     }
     memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+    auto exec =
+        tensorflow::down_cast<xla::cpu::CpuExecutable*>(cpu_executable_.get());
+    memory_stats.PopulateBufferStatsFromAllocations(
+        exec->buffer_assignment().Allocations());
     return memory_stats;
   }
 

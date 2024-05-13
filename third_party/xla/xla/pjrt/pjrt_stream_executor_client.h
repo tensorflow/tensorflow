@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/pjrt/transpose.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/maybe_owning_device_memory.h"
@@ -917,6 +918,14 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
     const HloProto* proto = executables_[0]->executable()->hlo_proto();
     if (proto != nullptr) {
       memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+    }
+    // TODO: Among in-tree backends this path is only used for GPU backends. Is
+    // anyone using this code for an out-of-tree backend? If not, we might want
+    // to specialize.
+    if (auto exec = dynamic_cast<xla::gpu::GpuExecutable*>(
+            executables_[0]->executable());
+        exec != nullptr) {
+      memory_stats.PopulateBufferStatsFromAllocations(exec->GetAllocations());
     }
     return memory_stats;
   }
