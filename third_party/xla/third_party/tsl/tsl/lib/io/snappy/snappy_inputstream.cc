@@ -17,9 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "absl/memory/memory.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "tsl/lib/io/inputstream_interface.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/snappy.h"
+#include "tsl/platform/tstring.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace io {

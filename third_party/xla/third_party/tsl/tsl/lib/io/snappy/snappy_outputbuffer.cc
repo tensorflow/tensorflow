@@ -17,6 +17,17 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/string_view.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/file_system.h"
+#include "tsl/platform/snappy.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
+
 namespace tsl {
 namespace io {
 
