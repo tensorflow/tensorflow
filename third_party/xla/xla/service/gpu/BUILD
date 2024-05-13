@@ -1800,11 +1800,7 @@ cc_library(
 xla_cc_test(
     name = "dot_dimension_sorter_test",
     srcs = ["dot_dimension_sorter_test.cc"],
-<<<<<<< HEAD
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
-=======
     use_gpu = True,
->>>>>>> upstream/master
     deps = [
         ":dot_dimension_sorter",
         "//xla:error_spec",
@@ -4876,11 +4872,7 @@ xla_test(
 xla_cc_test(
     name = "conv_layout_normalization_test",
     srcs = ["conv_layout_normalization_test.cc"],
-<<<<<<< HEAD
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
-=======
     use_gpu = True,
->>>>>>> upstream/master
     deps = [
         "//xla:error_spec",
         "//xla/hlo/ir:hlo",

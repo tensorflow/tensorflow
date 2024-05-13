@@ -822,28 +822,11 @@ lit_test_suite(
     ],
     default_tags = tf_cuda_tests_tags(),
     tags_override = {
-<<<<<<< HEAD
-        "add_preds.hlo": ["no_rocm"],
-        "fused_scatter.hlo": ["no_rocm"],
-        "launch_dimensions.hlo": ["no_rocm"],
-        "reduction_vectorization_sm_all.hlo": ["no_rocm"],
-=======
->>>>>>> upstream/master
         "element_wise_row_vectorization.hlo": ["no_rocm"],
         "scatter_bf16.hlo": ["no_rocm"],
         "single_instruction.hlo": ["no_rocm"],
         "reduce_unnested.hlo": ["no_rocm"],
-<<<<<<< HEAD
-        "reduce_atomic_min.hlo": ["no_rocm"],
-        "reduce_column_layout_change.hlo": ["no_rocm"],
-        "reduce_f64_column.hlo": ["no_rocm"],
-        "reduce_large_row_to_scalar.hlo": ["no_rocm"],
-        "reduce_row_vectorized.hlo": ["no_rocm"],
-        "kernel_reuse.hlo": ["no_rocm"],
-        "triton_naming.hlo": ["no_rocm"],
-=======
         "reduction_vectorization_sm_all.hlo": ["no_rocm"],
->>>>>>> upstream/master
     },
     tools = [
         "//xla/tools:hlo-opt",
@@ -1074,11 +1057,7 @@ xla_test(
 xla_cc_test(
     name = "gpu_int4_test",
     srcs = ["gpu_int4_test.cc"],
-<<<<<<< HEAD
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
-=======
     use_gpu = True,
->>>>>>> upstream/master
     deps = [
         ":gpu_codegen_test",
         "@local_tsl//tsl/platform:test",
