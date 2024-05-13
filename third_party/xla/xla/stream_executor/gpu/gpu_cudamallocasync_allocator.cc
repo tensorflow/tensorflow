@@ -51,58 +51,6 @@ static std::string GetCudaErrorMessage(CUresult result) {
 }
 #endif  // GOOGLE_CUDA
 
-void GpuCudaMallocAsyncAllocator::PrintAllocatorStatisticsNoLock() {
-  std::map<size_t, int> size_map_histogram;
-  std::vector<std::string> ptr_size_string;
-  for (auto p : size_map_) {
-    if (VLOG_IS_ON(8)) {
-      ptr_size_string.push_back(
-          absl::StrCat("(", absl::Hex(p.first), ",", p.second) + ")");
-    }
-    size_map_histogram[p.second]++;
-  }
-  LOG(ERROR) << "Histogram of current allocation: (allocation_size_in_bytes, "
-             << "nb_allocation_of_that_sizes), ...;";
-  for (auto p : size_map_histogram) {
-    LOG(ERROR) << p.first << ", " << p.second;
-  }
-
-  VLOG(8) << "\nThe sorted list of (ptr,size):";
-  VLOG(8) << absl::StrJoin(ptr_size_string, ",");
-
-#if CUDA_VERSION >= 11030
-  cuuint64_t mem_reserved_current;
-  if (auto result = cuMemPoolGetAttribute(
-          pool_, CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT, &mem_reserved_current)) {
-    LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
-               << GetCudaErrorMessage(result);
-  }
-  cuuint64_t mem_used_current;
-  if (auto result = cuMemPoolGetAttribute(
-          pool_, CU_MEMPOOL_ATTR_USED_MEM_CURRENT, &mem_used_current)) {
-    LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
-               << GetCudaErrorMessage(result);
-  }
-  cuuint64_t mem_reserved_high;
-  if (auto result = cuMemPoolGetAttribute(
-          pool_, CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH, &mem_reserved_high)) {
-    LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
-               << GetCudaErrorMessage(result);
-  }
-  cuuint64_t mem_used_high;
-  if (auto result = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_USED_MEM_HIGH,
-                                          &mem_used_high)) {
-    LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
-               << GetCudaErrorMessage(result);
-  }
-  LOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT: "
-             << mem_reserved_current;
-  LOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_CURRENT: " << mem_used_current;
-  LOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH: " << mem_reserved_high;
-  LOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_HIGH: " << mem_used_high;
-#endif
-}
-
 std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
 
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(

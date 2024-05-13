@@ -88,15 +88,11 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
 
   void SetStreamAndPreallocateMemory(void* stream) override;
 
-  static int GetInstantiatedCountTestOnly() { return number_instantiated_; }
-
   tsl::AllocatorMemoryType GetMemoryType() const override {
     return tsl::AllocatorMemoryType::kDevice;
   }
 
  private:
-  void PrintAllocatorStatisticsNoLock() ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_);
-
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   StreamExecutor* stream_exec_;  // Not owned.
 
