@@ -25,6 +25,12 @@ namespace ifrt {
 // apart from atom program FuncOps (callee of `ifrt.Call`).
 inline constexpr llvm::StringLiteral kIfrtFunctionAttrName = "ifrt.function";
 
+// Name of UnitAttr on FuncOp to indicate it's an IFRT IR function that
+// only reshards arrays. While functions with kIfrtFunctionAttrName attribute
+// cannot be `ifrt.Call`ed, kIfrtReshardFunctionAttrName can be called.
+inline constexpr llvm::StringLiteral kIfrtReshardFunctionAttrName =
+    "ifrt.reshard_function";
+
 // Name of UnitAttr on arguments of FuncOp to indicate a donated input.
 // Must be used in a FuncOp with `ifrt.function` attr.
 inline constexpr llvm::StringLiteral kIfrtDonatedArgAttrName = "ifrt.donated";

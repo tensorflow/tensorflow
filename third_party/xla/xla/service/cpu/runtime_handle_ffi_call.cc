@@ -22,8 +22,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
+#include "absl/base/dynamic_annotations.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
@@ -134,7 +136,12 @@ absl::StatusOr<AttributesMap> BuildAttributesMap(mlir::DictionaryAttr dict) {
 }
 
 absl::Span<const int64_t> DecodeDims(int64_t* encoded_dims_data) {
+  // Annotate memory coming from jit compiled function as initialized to
+  // suppress false positives from msan sanitizer.
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded_dims_data, sizeof(int64_t));
   auto dims_count = encoded_dims_data[0];
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded_dims_data,
+                                      dims_count * sizeof(int64_t));
   auto dims_begin = encoded_dims_data + 1;
   return absl::MakeSpan(dims_begin, dims_begin + dims_count);
 }
@@ -262,6 +269,13 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_HandleFfiCall(
   if (result_count > 1) {  // output is a tuple
     outputs = reinterpret_cast<void**>(output);
   }
+
+  // Annotate memory coming from jit compiled function as initialized to
+  // suppress false positives from msan sanitizer.
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(result_types,
+                                      result_count * sizeof(int32_t));
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(operand_types,
+                                      operand_count * sizeof(int32_t));
 
   absl::Status status = BuildAndCallFfi(
       target_name, backend_config, absl::MakeSpan(outputs, result_count),
