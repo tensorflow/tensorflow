@@ -182,12 +182,6 @@ char PjRtExecutable::ID = 0;
 char PjRtLoadedExecutable::ID = 0;
 
 absl::StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
-    std::unique_ptr<xla::PjRtExecutable> pjrt_executable) {
-  return std::unique_ptr<Executable>(new PjRtExecutable(
-      std::shared_ptr<xla::PjRtExecutable>(pjrt_executable.release())));
-}
-
-absl::StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
     std::shared_ptr<xla::PjRtExecutable> pjrt_executable) {
   return std::unique_ptr<Executable>(
       new PjRtExecutable(std::move(pjrt_executable)));
@@ -201,16 +195,6 @@ absl::StatusOr<std::optional<std::string>> PjRtExecutable::Fingerprint() const {
 absl::StatusOr<std::string> PjRtExecutable::Serialize() const {
   DCHECK(this);
   return pjrt_executable_->SerializeExecutable();
-}
-
-absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
-    PjRtCompatibleClient* client,
-    std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
-  return Create(client,
-                std::shared_ptr<xla::PjRtLoadedExecutable>(
-                    pjrt_loaded_executable.release()),
-                std::move(loaded_host_callbacks));
 }
 
 absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(

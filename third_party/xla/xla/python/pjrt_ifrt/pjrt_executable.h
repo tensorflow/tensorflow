@@ -82,8 +82,6 @@ class PjRtExecutable final
  public:
   // Creates PjRtExecutable from xla::PjRtExecutable.
   static absl::StatusOr<std::unique_ptr<Executable>> Create(
-      std::unique_ptr<xla::PjRtExecutable> pjrt_executable);
-  static absl::StatusOr<std::unique_ptr<Executable>> Create(
       std::shared_ptr<xla::PjRtExecutable> pjrt_executable);
 
   // PjRtCompatibleExecutable implementation.
@@ -175,10 +173,6 @@ class PjRtLoadedExecutable final
   // Creates PjRtExecutable from xla::PjRtLoadedExecutable. We expect that
   // xla::PjRtLoadedExecutable has fixed output dtypes/shapes/shardings.
   // PjRtLoadedExecutable::GetHloModules() must be implemented.
-  static absl::StatusOr<std::unique_ptr<LoadedExecutable>> Create(
-      PjRtCompatibleClient* client,
-      std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
   static absl::StatusOr<std::unique_ptr<LoadedExecutable>> Create(
       PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,

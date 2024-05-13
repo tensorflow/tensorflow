@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -199,7 +200,7 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   KernelArgsDeviceMemoryArray args({a, b, c}, 0);
 
   // Create a command buffer by tracing kernel launch operations.
-  auto cmd_buffer = CommandBuffer::Trace(
+  auto cmd_buffer = TraceCommandBufferFactory::Create(
       executor,
       [&](Stream* stream) {
         return executor->Launch(stream, ThreadDim(), BlockDim(4), *add, args);
@@ -1320,7 +1321,8 @@ static void BM_TraceCommandBuffer(benchmark::State& state) {
       return absl::OkStatus();
     };
 
-    CHECK_OK(CommandBuffer::Trace(executor, launch_kernels, nested));
+    CHECK_OK(
+        TraceCommandBufferFactory::Create(executor, launch_kernels, nested));
   }
 }
 

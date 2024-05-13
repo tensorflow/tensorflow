@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/trace_command_buffer_factory.h"
 
 #include <memory>
 #include <utility>
@@ -21,24 +21,28 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
-absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Trace(
+absl::StatusOr<std::unique_ptr<CommandBuffer>>
+TraceCommandBufferFactory::Create(
     StreamExecutorInterface* executor,
-    absl::AnyInvocable<absl::Status(Stream*)> function, Mode mode) {
+    absl::AnyInvocable<absl::Status(Stream*)> function,
+    CommandBuffer::Mode mode) {
   TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
-  return Trace(executor, stream.get(), std::move(function), mode);
+  return TraceCommandBufferFactory::Create(executor, stream.get(),
+                                           std::move(function), mode);
 }
 
-absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Trace(
+absl::StatusOr<std::unique_ptr<CommandBuffer>>
+TraceCommandBufferFactory::Create(
     StreamExecutorInterface* executor, Stream* stream,
-    absl::AnyInvocable<absl::Status(Stream*)> function, Mode mode) {
+    absl::AnyInvocable<absl::Status(Stream*)> function,
+    CommandBuffer::Mode mode) {
   if (stream == nullptr)
     return absl::InvalidArgumentError(
         "Can't trace command buffer on a null stream");
