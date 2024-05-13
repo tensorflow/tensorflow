@@ -25,13 +25,18 @@ std::unique_ptr<const GpuTopology> GpuTopology::FromProto(
   return std::make_unique<GpuTopology>(
       std::vector<int>{gpu_topology_proto.device_ids().begin(),
                        gpu_topology_proto.device_ids().end()},
-      gpu_topology_proto.platform_version());
+      gpu_topology_proto.platform_version(), gpu_topology_proto.num_slices(),
+      gpu_topology_proto.num_hosts_per_slice(),
+      gpu_topology_proto.num_devices_per_host());
 }
 
 GpuTopologyProto GpuTopology::ToProto() const {
   GpuTopologyProto proto;
   proto.mutable_device_ids()->Add(device_ids().begin(), device_ids().end());
   proto.set_platform_version(platform_version());
+  proto.set_num_slices(num_slices());
+  proto.set_num_hosts_per_slice(num_hosts_per_slice());
+  proto.set_num_devices_per_host(num_devices_per_host());
   return proto;
 }
 
