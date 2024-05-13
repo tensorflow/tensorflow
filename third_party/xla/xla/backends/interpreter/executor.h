@@ -175,11 +175,6 @@ class XlaInterpreterExecutor : public StreamExecutor {
   // The device ordinal value that this executor was initialized with; recorded
   // for use in getting device metadata. Immutable post-initialization.
   int device_ordinal_;
-
-  DeviceMemoryBase AllocateSingleOutput(const xla::Shape &shape);
-
-  absl::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(
-      const xla::Shape &shape);
 };
 
 }  // namespace interpreter
