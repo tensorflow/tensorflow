@@ -859,7 +859,6 @@ cc_library(
 xla_cc_test(
     name = "reduction_mlir_test",
     srcs = ["reduction_mlir_test.cc"],
-    shard_count = 11,
     use_gpu = True,
     deps = [
         ":mlir_emitter_test_base",
