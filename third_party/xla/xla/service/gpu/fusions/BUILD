@@ -826,9 +826,9 @@ cc_library(
     srcs = ["reduction_mlir.cc"],
     hdrs = ["reduction_mlir.h"],
     deps = [
+        ":fusion_emitter",
         ":reduction_base",
         "//xla:shape_util",
-        "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
@@ -842,6 +842,7 @@ cc_library(
         "//xla/service/gpu/model:indexing_map",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -865,11 +866,9 @@ xla_cc_test(
         ":reduction_mlir",
         "//xla:error_spec",
         "//xla/service:gpu_plugin",
-        "//xla/tests:filecheck",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

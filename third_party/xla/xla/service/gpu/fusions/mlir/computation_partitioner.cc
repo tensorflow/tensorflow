@@ -321,6 +321,7 @@ PartitionedComputation::PartitionedComputation(
 
 PartitionedComputation::Subgraph PartitionedComputation::Subgraph::ForEpilogue(
     const EpilogueSpecification& epilogue) {
+  if (epilogue.roots.empty()) return {};
   const auto* computation = epilogue.heroes.front()->parent();
   PartitionedComputation::Subgraph subgraph;
   subgraph.name = llvm_ir::SanitizeFunctionName(
@@ -407,6 +408,7 @@ PartitionedComputations::DeclareFunctions(mlir::ModuleOp module) const {
   auto create_funcs =
       [&](absl::Span<const PartitionedComputation::Subgraph> subgraphs) {
         for (const auto& subgraph : subgraphs) {
+          if (subgraph.roots.empty()) continue;
           auto func_op = CreateSubgraphMlirFunction(subgraph, builder);
           func_op->setAttr("llvm.linkage", mlir::LLVM::LinkageAttr::get(
                                                module->getContext(),

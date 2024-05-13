@@ -153,6 +153,37 @@ TEST_F(ReductionTest, RowReduceMOFEpilogue) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(ReductionTest, RowReduceMOFGroups) {
+  constexpr auto kHloString = R"(
+    %add_f32 {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add = f32[] add(%x, %y)
+    }
+
+    %fused_computation {
+      %param0 = f32[1024] parameter(0)
+      %param1 = f32[1024] parameter(1)
+      %constant0 = f32[] constant(0)
+      %reduce1 = f32[] reduce(%param0, %constant0), dimensions={0}, to_apply=%add_f32
+      %reduce2 = f32[] reduce(%param1, %constant0), dimensions={0}, to_apply=%add_f32
+      ROOT %tuple = (f32[], f32[]) tuple(%reduce1, %reduce2)
+    }
+
+    ENTRY %cluster {
+      %param0 = f32[1024] parameter(0)
+      %param1 = f32[1024] parameter(1)
+      ROOT %fusion = (f32[], f32[])
+          fusion(%param0, %param1), kind=kInput, calls=%fused_computation
+    })";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: scf.index_switch %block_id_y
+    // CHECK: case 1 {
+    // CHECK: default {
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 TEST_F(ReductionTest, ColumnReduction) {
   constexpr auto kHloString = R"(
     HloModule Test, is_scheduled=true

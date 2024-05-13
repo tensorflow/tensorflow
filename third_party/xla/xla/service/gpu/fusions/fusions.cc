@@ -141,24 +141,16 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
                          .GetModule()
                          ->config()
                          .debug_options();
-  auto check_mlir_emitters = [&](std::function<bool(const HloFusionAnalysis&)>
-                                     support_check) {
+  auto check_mlir_emitters = [&](bool check = true) {
     if (!opts.xla_gpu_enable_mlir_emitters()) {
       return false;
     }
-    if (!mlir_converter::IsHloConversionSupported(
-            analysis.fusion(),
-            fusion_info.analysis().device_info().gpu_compute_capability())) {
-      VLOG(5) << "Skipping MLIR emission because the fusion contains "
-                 "unsupported instructions.";
-      return false;
-    }
-    if (support_check && !support_check(analysis)) {
-      VLOG(5) << "Skipping MLIR emission because the fusion emitter does not "
-                 "support "
-                 "the fusion.";
-      return false;
-    }
+    CHECK(!check ||
+          mlir_converter::IsHloConversionSupported(
+              analysis.fusion(),
+              fusion_info.analysis().device_info().gpu_compute_capability()))
+        << "Unsupported fusion: "
+        << analysis.fusion_root(0).instruction().parent()->ToString();
 
     static int num_mlir_emitters = 0;
     if (is_emission_phase) {
@@ -191,14 +183,14 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       return std::make_unique<CustomFusion>();
     }
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-      if (check_mlir_emitters(nullptr)) {
+      if (check_mlir_emitters()) {
         return std::make_unique<MlirInputSlicesFusion>(analysis);
       }
       return std::make_unique<InputSlicesFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       if (IsDynamicUpdateSliceFusion(analysis) &&
           fusion_info.CanEmitDynamicUpdateSliceInPlace()) {
-        if (check_mlir_emitters(nullptr)) {
+        if (check_mlir_emitters()) {
           return std::make_unique<MlirInPlaceDynamicUpdateSliceFusion>(
               analysis);
         }
@@ -209,30 +201,30 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
         return *std::move(copy_fusion);
       }
 
-      if (check_mlir_emitters(nullptr)) {
+      if (check_mlir_emitters()) {
         return std::make_unique<MlirLoopFusion>(analysis);
       }
       return std::make_unique<LoopFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
-      if (check_mlir_emitters(MlirReductionFusion::IsSupported)) {
+      if (check_mlir_emitters()) {
         return std::make_unique<MlirReductionFusion>(analysis);
       }
       return std::make_unique<ReductionFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kScatter: {
-      if (check_mlir_emitters(MlirScatterFusion::IsSupported)) {
+      if (check_mlir_emitters(false)) {
         return std::make_unique<MlirScatterFusion>(analysis);
       }
       return std::make_unique<ScatterFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-      if (check_mlir_emitters(nullptr)) {
+      if (check_mlir_emitters()) {
         return std::make_unique<MlirTransposeFusion>(analysis);
       }
       return std::make_unique<TransposeFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate: {
-      if (check_mlir_emitters(nullptr)) {
+      if (check_mlir_emitters()) {
         return std::make_unique<MlirConcatenateFusion>(analysis);
       }
       return std::make_unique<ConcatenateFusion>(analysis);
