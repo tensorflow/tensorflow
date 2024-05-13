@@ -27,8 +27,8 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/serdes.h"
-#include "xla/python/pjrt_ifrt/xla_compiler.h"
 
 namespace xla {
 namespace ifrt {
@@ -37,7 +37,7 @@ namespace {
 using ::testing::IsNull;
 using ::testing::Not;
 
-TEST(XlaProgramSerDesTest, RoundTrip) {
+TEST(HloProgramSerDesTest, RoundTrip) {
   static constexpr absl::string_view kMlirModuleStr = R"(
 module {
   func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
@@ -56,13 +56,13 @@ module {
         mlir::OwningOpRef<mlir::ModuleOp> module,
         xla::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
-        std::make_unique<XlaProgram>(std::move(context), std::move(module));
+        std::make_unique<HloProgram>(std::move(context), std::move(module));
     TF_ASSERT_OK_AND_ASSIGN(serialized, Serialize(*program));
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<XlaProgram> xla_program,
-      Deserialize<XlaProgram>(serialized, /*options=*/nullptr));
+      std::unique_ptr<HloProgram> xla_program,
+      Deserialize<HloProgram>(serialized, /*options=*/nullptr));
 
   // Verify that the deserialized program has no StableHLO ops.
   bool has_unsupported_dialect = false;

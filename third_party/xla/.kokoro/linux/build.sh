@@ -62,7 +62,7 @@ if is_linux_gpu_job ; then
     UNSUPPORTED_GPU_TAGS="$(echo -requires-gpu-sm{80,86,89,90}{,-only})"
     TAGS_FILTER="${TAGS_FILTER},${UNSUPPORTED_GPU_TAGS// /,}"
 
-    ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --nobuild_tests_only --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute"
+    ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute"
     RBE_FLAGS="--config=rbe_linux_cuda_nvcc --jobs=150"
     echo "***NOTE: nvidia-smi lists the highest CUDA version the driver supports, which may be different than the version of CUDA actually used!!***"
     nvidia-smi
@@ -79,17 +79,17 @@ else
         RBE_FLAGS="--config=rbe_cross_compile_linux_arm64_xla --jobs=150"
     else
         RBE_FLAGS="--config=rbe_linux_cpu --jobs=150"
-        ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --nobuild_tests_only"
     fi
 fi
 
 # Build & test XLA
 docker exec xla bazel \
         test \
-        --build_tag_filters=$TAGS_FILTER  \
+        --build_tag_filters=$TAGS_FILTER \
         --test_tag_filters=$TAGS_FILTER \
         --test_output=errors \
         --keep_going \
+        --nobuild_tests_only \
         --features=layering_check \
         --profile=/tf/pkg/profile.json.gz \
         --flaky_test_attempts=3 \

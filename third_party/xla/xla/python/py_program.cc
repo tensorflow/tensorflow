@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/plugin_program.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -65,23 +66,23 @@ MakePluginCompileOptions() {
   return std::make_unique<ifrt::PluginCompileOptions>();
 }
 
-absl::StatusOr<std::unique_ptr<ifrt::Program>> MakeXlaProgram(
+absl::StatusOr<std::unique_ptr<ifrt::Program>> MakeHloProgram(
     absl::string_view mlir_module) {
   auto context = std::make_unique<mlir::MLIRContext>();
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseMlirModuleString(mlir_module, *context));
-  return std::make_unique<xla::ifrt::XlaProgram>(std::move(context),
+  return std::make_unique<xla::ifrt::HloProgram>(std::move(context),
                                                  std::move(module));
 }
 
-absl::StatusOr<std::unique_ptr<ifrt::Program>> MakeXlaProgramFromString(
+absl::StatusOr<std::unique_ptr<ifrt::Program>> MakeHloProgramFromString(
     std::string mlir_module) {
-  return MakeXlaProgram(mlir_module);
+  return MakeHloProgram(mlir_module);
 }
 
-absl::StatusOr<std::unique_ptr<ifrt::Program>> MakeXlaProgramFromBytes(
+absl::StatusOr<std::unique_ptr<ifrt::Program>> MakeHloProgramFromBytes(
     nb::bytes mlir_module) {
-  return MakeXlaProgram(
+  return MakeHloProgram(
       absl::string_view(mlir_module.c_str(), mlir_module.size()));
 }
 
@@ -109,10 +110,10 @@ void BuildIfrtProgramsSubmodule(nanobind::module_& m) {
   nb::class_<xla::ifrt::CompileOptions> ifrt_compile_options_base_class(
       sub_module, "CompileOptions");
   sub_module
-      .def("make_xla_program",
-           xla::ValueOrThrowWrapper(MakeXlaProgramFromString))
-      .def("make_xla_program",
-           xla::ValueOrThrowWrapper(MakeXlaProgramFromBytes))
+      .def("make_hlo_program",
+           xla::ValueOrThrowWrapper(MakeHloProgramFromString))
+      .def("make_hlo_program",
+           xla::ValueOrThrowWrapper(MakeHloProgramFromBytes))
       .def("make_plugin_program",
            xla::ValueOrThrowWrapper(MakePluginProgramFromString))
       .def("make_plugin_program",

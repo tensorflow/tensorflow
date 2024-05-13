@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/lite/emit_error_reporter.h"
+#include "xla/python/ifrt/hlo/hlo_program.h"
 
-#include <cstdio>
-#include <vector>
+namespace xla::ifrt {
 
-namespace tflite {
+char HloProgram::ID = 0;
 
-int EmitErrorReporter::Report(const char* format, va_list args) {
-  std::vector<char> buf(1 + snprintf(nullptr, 0, format, args));
-  std::vsnprintf(buf.data(), buf.size(), format, args);
-  module_.emitError() << std::string(buf.begin(), buf.end());
-  return 0;
-}
-
-}  // namespace tflite
+}  // namespace xla::ifrt

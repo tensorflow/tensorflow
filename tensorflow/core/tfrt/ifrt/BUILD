@@ -95,6 +95,7 @@ cc_library(
         "@local_xla//xla/pjrt:host_callback",
         "@local_xla//xla/pjrt:pjrt_executable",
         "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt/hlo:hlo_program",
         "@local_xla//xla/python/pjrt_ifrt",
         "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
         "@local_xla//xla/service:computation_placer_hdr",
