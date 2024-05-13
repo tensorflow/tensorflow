@@ -260,10 +260,8 @@ absl::Status CheckParameters(
             "stablehlo.dot_general: If lhs and rhs are per-tensor quantized "
             "than output should also be per-tensor quantized.");
       }
-      if ((lhs.quantized_per_tensor_element_type().ExpressedType() ==
-           rhs.quantized_per_tensor_element_type().ExpressedType()) &&
-          (lhs.quantized_per_tensor_element_type().ExpressedType() !=
-           output.quantized_per_tensor_element_type().ExpressedType())) {
+      if ((lhs.ExpressedType() == rhs.ExpressedType()) &&
+          (lhs.ExpressedType() != output.ExpressedType())) {
         return absl::FailedPreconditionError(
             "stablehlo.dot_general: The expressed_type of output tensor must "
             "be the same as the expressed_type of lhs and rhs tensors.");
@@ -275,24 +273,11 @@ absl::Status CheckParameters(
             "as 0.");
       }
     } else if (rhs.IsPerAxisQuantized()) {
-      if (output.IsPerTensorQuantized()) {
-        if ((lhs.quantized_per_tensor_element_type().ExpressedType() ==
-             rhs.quantized_per_axis_element_type().ExpressedType()) &&
-            (lhs.quantized_per_tensor_element_type().ExpressedType() !=
-             output.quantized_per_tensor_element_type().ExpressedType())) {
-          return absl::FailedPreconditionError(
-              "stablehlo.dot_general: The expressed_type of output must be the "
-              "same as the expressed_type of lhs and rhs.");
-        }
-      } else if (output.IsPerAxisQuantized()) {
-        if ((lhs.quantized_per_tensor_element_type().ExpressedType() ==
-             rhs.quantized_per_axis_element_type().ExpressedType()) &&
-            (lhs.quantized_per_tensor_element_type().ExpressedType() !=
-             output.quantized_per_axis_element_type().ExpressedType())) {
-          return absl::FailedPreconditionError(
-              "stablehlo.dot_general: The expressed_type of output must be the "
-              "same as the expressed_type of lhs and rhs.");
-        }
+      if ((lhs.ExpressedType() == rhs.ExpressedType()) &&
+          (lhs.ExpressedType() != output.ExpressedType())) {
+        return absl::FailedPreconditionError(
+            "stablehlo.dot_general: The expressed_type of output must be the "
+            "same as the expressed_type of lhs and rhs.");
       }
       if (!CheckZeroPoints(
               rhs.quantized_per_axis_element_type().ZeroPoints())) {

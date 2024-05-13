@@ -67,6 +67,7 @@ struct Tensor {
 
   size_t Rank() const;
   DataType StorageType() const;
+  DataType ExpressedType() const;
 
   DimensionSize NumElements() const;
   size_t SizeInBytes() const;
