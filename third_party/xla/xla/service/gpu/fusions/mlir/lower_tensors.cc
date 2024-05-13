@@ -425,6 +425,34 @@ struct RewriteSyncThreads : mlir::OpRewritePattern<SyncThreadsOp> {
   }
 };
 
+// TODO(jreiffers): Generalize this to support index switches with some used
+// results and upstream it as a canonicalization pattern.
+struct RemoveUnusedIndexSwitchResults
+    : mlir::OpRewritePattern<scf::IndexSwitchOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(
+      scf::IndexSwitchOp op, mlir::PatternRewriter& rewriter) const override {
+    if (op->getNumResults() == 0 || !op->use_empty()) {
+      return rewriter.notifyMatchFailure(op, "the op has users");
+    }
+
+    auto new_op = rewriter.create<scf::IndexSwitchOp>(
+        op.getLoc(), mlir::TypeRange{}, op.getArg(), op.getCases(),
+        op.getNumCases());
+    for (int i = 0; i < op->getNumRegions(); ++i) {
+      auto& old_region = op->getRegion(i);
+      auto& new_region = new_op->getRegion(i);
+      rewriter.mergeBlocks(&old_region.getBlocks().front(),
+                           &new_region.emplaceBlock());
+      auto yield_op = new_region.getBlocks().front().getTerminator();
+      rewriter.modifyOpInPlace(yield_op, [&]() { yield_op->setOperands({}); });
+    }
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 bool IsAtomicIntegral(Type element_type) {
   unsigned element_bitwidth = element_type.getIntOrFloatBitWidth();
   return element_type.isInteger() &&
@@ -868,7 +896,8 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
     }
 
     mlir::RewritePatternSet function_patterns(mlir_context);
-    function_patterns.add<RewriteFunctionSignatures, RewriteCall>(mlir_context);
+    function_patterns.add<RewriteFunctionSignatures, RewriteCall,
+                          RemoveUnusedIndexSwitchResults>(mlir_context);
     scf::ForOp::getCanonicalizationPatterns(function_patterns, mlir_context);
     scf::IfOp::getCanonicalizationPatterns(function_patterns, mlir_context);
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(

@@ -1,20 +1,20 @@
-// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="is_amd_gpu=false gpu_arch=6.0" \
 // RUN: | FileCheck %s
 
-// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="is_amd_gpu=false gpu_arch=7.0" \
 // RUN: | FileCheck %s --check-prefix=CHECK-VOLTA
 
-// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="is_amd_gpu=false gpu_arch=8.0" \
 // RUN: | FileCheck %s --check-prefix=CHECK-AMPERE
 
-// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="is_amd_gpu=true gpu_arch=gfx908:sramecc+:xnack" \
 // RUN: | FileCheck %s --check-prefix=CHECK-GFX908-MI100
 
-// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="is_amd_gpu=true gpu_arch=gfx90a:sramecc+:xnack" \
 // RUN: | FileCheck %s --check-prefix=CHECK-GFX90A-MI200
 
@@ -665,3 +665,32 @@ module {
 // CHECK: llvm.store %[[ITER_ARG]], %[[TMP]]
 // CHECK: %[[LD:.*]] = llvm.load %[[TMP]] : {{.*}} -> !llvm.struct<(f32, f32)>
 // CHECK: builtin.unrealized_conversion_cast %[[LD]] : {{.*}} to complex<f32>
+
+// -----
+
+module {
+  func.func @unused_index_switch_results(%i: index) -> index {
+    %ret, %ret2 = scf.index_switch %i -> tensor<2x4xi32>, tensor<3xf32>
+    case 0 {
+      %x, %y = "dummy.op1"() : () -> (tensor<2x4xi32>, tensor<3xf32>)
+      scf.yield %x, %y : tensor<2x4xi32>, tensor<3xf32>
+    }
+    default {
+      %x, %y = "dummy.op2"() : () -> (tensor<2x4xi32>, tensor<3xf32>)
+      scf.yield %x, %y : tensor<2x4xi32>, tensor<3xf32>
+    }
+    return %i : index
+  }
+}
+
+// CHECK-LABEL: func.func @unused_index_switch_results
+// CHECK-SAME:      (%[[I:.*]]: index)
+// CHECK-NEXT:    scf.index_switch %[[I]]
+// CHECK-NEXT:    case 0 {
+// CHECK-NEXT:      "dummy.op1"
+// CHECK-NEXT:      scf.yield
+// CHECK-NEXT:    }
+// CHECK-NEXT:    default {
+// CHECK-NEXT:      "dummy.op2"
+// CHECK-NEXT:    }
+// CHECK-NEXT:    return %[[I]] : index
