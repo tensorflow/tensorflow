@@ -1327,9 +1327,9 @@ void PjRtStreamExecutorDevice::AttachMemorySpace(
     PjRtMemorySpace* memory_space) {
   CHECK(memory_space != nullptr);
   CHECK(client_ == memory_space->client()) << absl::StrFormat(
-      "Could not attach a TfrtTpuDevice to a PjRtMemorySpace owned by a "
-      "different client, the device's client: %s, the memory space's client: "
-      "%s.",
+      "Could not attach a PjRtStreamExecutorDevice to a PjRtMemorySpace owned "
+      "by a different client, the device's client: %s, the memory space's "
+      "client: %s.",
       client_->platform_name(), memory_space->client()->platform_name());
 
   memory_spaces_.push_back(memory_space);
