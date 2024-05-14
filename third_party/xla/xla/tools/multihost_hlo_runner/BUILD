@@ -1,6 +1,7 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("@local_tsl//tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_binary")
 load("//xla/tests:build_defs.bzl", "xla_test")
@@ -16,7 +17,7 @@ build_test(
     name = "hlo_runner_main_build_test",
     tags = [
         "cpu",
-        "gpu_any",
+        "gpu",  # TODO(ddunleavy): this configuration of tags will only build on GPU in OSS.
     ],
     targets = [
         ":hlo_runner_main",
@@ -28,11 +29,9 @@ xla_cc_binary(
     testonly = True,
     srcs = ["hlo_runner_main.cc"],
     tags = [
-        "gpu",
-        "gpu_any",
         "noasan",  # Exceeds linker limit.
         "nomac",
-    ],
+    ] + tf_gpu_tests_tags(),
     deps = [
         ":functional_hlo_runner",
         ":hlo_runner_flags",

@@ -5648,6 +5648,7 @@ xla_test(
         "gpu_a100",
     ],
     tags = [
+        "no_oss",  # Needs fix for `ConvertGenerator`
         "nomac",
     ],
     deps = [
