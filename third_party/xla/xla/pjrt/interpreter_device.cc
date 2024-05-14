@@ -33,7 +33,7 @@ InterpreterDevice::InterpreterDevice(
     : PjRtStreamExecutorDevice(id, std::move(local_device_state),
                                /*device_kind=*/kInterpreterPlatformName) {}
 
-StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient() {
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient() {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("Interpreter"));
   if (platform->VisibleDeviceCount() != 1) {

@@ -59,7 +59,7 @@ struct LayoutMode {
   // the correct format for the "mhlo.layout_mode" attribute.
   std::string ToString() const;
   // Parses a string produced by LayoutMode::ToString() or Layout::ToString().
-  static StatusOr<LayoutMode> FromString(std::string s);
+  static absl::StatusOr<LayoutMode> FromString(std::string s);
 };
 
 }  // namespace xla

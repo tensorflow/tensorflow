@@ -29,7 +29,7 @@ class InterpreterDevice : public PjRtStreamExecutorDevice {
                     std::unique_ptr<LocalDeviceState> local_device_state);
 };
 
-StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient();
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient();
 
 }  // namespace xla
 

@@ -52,7 +52,11 @@ class OpCompatibilityLib {
 
   // Should match the contents of ops_file().  Run before calling
   // ValidateCompatible().
-  string OpsString() const { return op_list_.DebugString(); }
+  string OpsString() const {
+    string result;
+    google::protobuf::TextFormat::PrintToString(op_list_, &result);
+    return result;
+  }
 
   // Returns the number of ops in OpsString(), includes all ops, not
   // just stable ops.

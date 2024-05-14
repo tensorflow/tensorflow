@@ -146,7 +146,7 @@ class LocalDeviceState {
   // returned by GetExternalReadyEventStream.
   // TODO(skyewm): this function could map other raw streams if needed. It's
   // currently only used with external ready event streams.
-  StatusOr<se::Stream*> GetStreamFromExternalStream(std::intptr_t stream);
+  absl::StatusOr<se::Stream*> GetStreamFromExternalStream(std::intptr_t stream);
 
   // Returns a vector of device to device streams.
   std::vector<se::Stream*> GetDeviceToDeviceStreams();
@@ -159,10 +159,9 @@ class LocalDeviceState {
   void ReturnStreamToPool(std::unique_ptr<se::Stream> stream);
 
   // Enqueues a copy of `src_buffer` to `dst_buffer` onto `transfer_stream`.
-  virtual Status ThenMemcpyDeviceToDevice(se::Stream* transfer_stream,
-                                          se::Stream* dst_stream,
-                                          se::DeviceMemoryBase src_buffer,
-                                          se::DeviceMemoryBase dst_buffer);
+  virtual absl::Status ThenMemcpyDeviceToDevice(
+      se::Stream* transfer_stream, se::Stream* dst_stream,
+      se::DeviceMemoryBase src_buffer, se::DeviceMemoryBase dst_buffer);
 
   WorkerThread* execute_thread() const { return execute_thread_.get(); }
 
@@ -196,7 +195,7 @@ class LocalDeviceState {
   int GetNewPrngSeed();
 
  private:
-  Status SynchronizeAllActivity();
+  absl::Status SynchronizeAllActivity();
 
   AllocationModel allocation_model_;
 
