@@ -159,9 +159,10 @@ std::optional<bool> GetInstructionStaticValueAsBool(
 template <PrimitiveType kType>
 struct PopulateParallelImpl {
   using NativeT = NativeTypeOf<kType>;
-  static Status Run(Literal& literal,
-                    absl::FunctionRef<Literal(absl::Span<const int64_t>, int)>
-                        literal_generator) {
+  static absl::Status Run(
+      Literal& literal,
+      absl::FunctionRef<Literal(absl::Span<const int64_t>, int)>
+          literal_generator) {
     return literal.PopulateParallel<NativeT>(
         [&literal_generator](absl::Span<const int64_t> output_index,
                              int thread_id) {
@@ -174,7 +175,7 @@ struct PopulateParallelImpl {
 template <PrimitiveType kType>
 struct PopulateImpl {
   using NativeT = NativeTypeOf<kType>;
-  static Status Run(
+  static absl::Status Run(
       Literal& literal,
       absl::FunctionRef<Literal(absl::Span<const int64_t>)> literal_generator) {
     return literal.Populate<NativeT>(
@@ -192,10 +193,10 @@ struct PopulateImpl {
 // to small templated helpers just for the parts that require manipulating the
 // native types to avoid templating the whole implementations.
 template <template <PrimitiveType> typename Trait, typename F>
-Status Apply(Literal& literal, F&& literal_generator) {
+absl::Status Apply(Literal& literal, F&& literal_generator) {
   return primitive_util::PrimitiveTypeSwitch<Status>(
       [&, literal_generator = std::forward<F>(literal_generator)](
-          auto primitive_type_constant) -> Status {
+          auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           return Trait<primitive_type_constant>::Run(
               literal, std::move(literal_generator));
@@ -216,7 +217,7 @@ enum class EvalErrorDetail : uint32_t {
   kDynamicValueDependence = 0,
 };
 
-std::optional<EvalErrorDetail> ParseEvalErrorDetail(const Status& error) {
+std::optional<EvalErrorDetail> ParseEvalErrorDetail(const absl::Status& error) {
   auto error_detail = error.GetPayload(kEvalErrorDetailUrl);
   if (!error_detail.has_value() && error_detail->empty()) {
     return std::nullopt;
@@ -225,11 +226,12 @@ std::optional<EvalErrorDetail> ParseEvalErrorDetail(const Status& error) {
       absl::little_endian::Load32(error_detail->Flatten().data()));
 }
 
-Status MakeEvalErrorDueToParamOrInfeed(const HloInstruction& eval_instruction) {
-  Status error = tsl::errors::FailedPrecondition(
+absl::Status MakeEvalErrorDueToParamOrInfeed(
+    const HloInstruction& eval_instruction) {
+  absl::Status error = absl::FailedPreconditionError(absl::StrCat(
       "Failed to evaluate instruction (", eval_instruction.name(),
       ") since it depends on infeed or parameters to its parent computation (",
-      eval_instruction.parent()->name(), ").");
+      eval_instruction.parent()->name(), ")."));
   std::string error_payload;
   error_payload.resize(sizeof(EvalErrorDetail));
   absl::little_endian::Store32(
@@ -1067,7 +1069,7 @@ absl::StatusOr<Literal> HloEvaluator::EvaluateDotOp(
   return Evaluate(cloned_instruction.get());
 }
 
-Status HloEvaluator::EvaluateParameterFromCallerArgument(
+absl::Status HloEvaluator::EvaluateParameterFromCallerArgument(
     const HloInstruction* parameter, const ShapeIndex& shape_index) {
   CHECK(!evaluated_.contains(parameter));
   const HloComputation* parent_computation = parameter->parent();
@@ -1155,7 +1157,7 @@ DimensionVector HloEvaluator::MakeDimMultipliers(const Shape& shape) {
   return v;
 }
 
-Status HloEvaluator::EvaluateInternal(
+absl::Status HloEvaluator::EvaluateInternal(
     const HloInstruction* instruction, const ShapeIndex& shape_index,
     bool recursively_evaluate_nonconstant_operands) {
   // Don't need to evaluate this instruction again if it has already been
@@ -1198,7 +1200,7 @@ Status HloEvaluator::EvaluateInternal(
         }
       }
       if (call_graph_cache_ && tuple_points_to_analysis_cache_) {
-        Status argument_eval_status =
+        absl::Status argument_eval_status =
             EvaluateParameterFromCallerArgument(instruction, shape_index);
         if (!argument_eval_status.ok()) {
           VLOG(4) << "Failed to evaluate parameter " << instruction->name()
@@ -1238,7 +1240,7 @@ Status HloEvaluator::EvaluateInternal(
   return OkStatus();
 }
 
-Status HloEvaluator::HandleBitcast(const HloInstruction* bitcast) {
+absl::Status HloEvaluator::HandleBitcast(const HloInstruction* bitcast) {
   const Literal& operand_literal = GetEvaluatedLiteralFor(bitcast->operand(0));
   Literal result(bitcast->shape());
   // Bitcast output is allowed to be smaller than the input if the backend-
@@ -1252,7 +1254,7 @@ Status HloEvaluator::HandleBitcast(const HloInstruction* bitcast) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleBitcastConvert(const HloInstruction* convert) {
+absl::Status HloEvaluator::HandleBitcastConvert(const HloInstruction* convert) {
   const HloInstruction* operand = convert->operand(0);
   TF_ASSIGN_OR_RETURN(
       Literal result,
@@ -1262,7 +1264,7 @@ Status HloEvaluator::HandleBitcastConvert(const HloInstruction* convert) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleGetDimensionSize(
+absl::Status HloEvaluator::HandleGetDimensionSize(
     const HloInstruction* get_dimension_size) {
   const HloInstruction* operand = get_dimension_size->operand(0);
   int64_t dim = get_dimension_size->dimension();
@@ -1287,7 +1289,7 @@ Status HloEvaluator::HandleGetDimensionSize(
   return OkStatus();
 }
 
-Status HloEvaluator::HandleSetDimensionSize(
+absl::Status HloEvaluator::HandleSetDimensionSize(
     const HloInstruction* set_dimension_size) {
   const Literal& operand_literal =
       GetEvaluatedLiteralFor(set_dimension_size->operand(0));
@@ -1302,7 +1304,7 @@ Status HloEvaluator::HandleSetDimensionSize(
   return OkStatus();
 }
 
-Status HloEvaluator::HandleParameter(const HloInstruction* parameter) {
+absl::Status HloEvaluator::HandleParameter(const HloInstruction* parameter) {
   if (!IsAlreadyEvaluated(parameter, visitor_shape_index_)) {
     if (!enable_partial_evaluation_) {
       return tsl::errors::FailedPrecondition(
@@ -1333,7 +1335,7 @@ Status HloEvaluator::HandleParameter(const HloInstruction* parameter) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleInfeed(const HloInstruction* infeed) {
+absl::Status HloEvaluator::HandleInfeed(const HloInstruction* infeed) {
   if (!enable_partial_evaluation_) {
     return tsl::errors::FailedPrecondition(
         "Failed to evaluate instruction since its operands are unknown "
@@ -1344,24 +1346,25 @@ Status HloEvaluator::HandleInfeed(const HloInstruction* infeed) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleConstant(const HloInstruction*) {
+absl::Status HloEvaluator::HandleConstant(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleReshape(const HloInstruction* reshape) {
+absl::Status HloEvaluator::HandleReshape(const HloInstruction* reshape) {
   TF_ASSIGN_OR_RETURN(evaluated_[reshape],
                       GetEvaluatedLiteralFor(reshape->operand(0))
                           .Reshape(reshape->shape().dimensions()));
   return OkStatus();
 }
 
-Status HloEvaluator::HandleTranspose(const HloInstruction* transpose) {
+absl::Status HloEvaluator::HandleTranspose(const HloInstruction* transpose) {
   evaluated_[transpose] = GetEvaluatedLiteralFor(transpose->operand(0))
                               .Transpose(transpose->dimensions());
   return OkStatus();
 }
 
-Status HloEvaluator::HandleConcatenate(const HloInstruction* concatenate) {
+absl::Status HloEvaluator::HandleConcatenate(
+    const HloInstruction* concatenate) {
   absl::Span<HloInstruction* const> operands(concatenate->operands());
   // The result concatenate dimension is going to be the sum of all
   // concatenate dimensions of the operands taking part of the operation.
@@ -1402,11 +1405,11 @@ Status HloEvaluator::HandleConcatenate(const HloInstruction* concatenate) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleIsFinite(const HloInstruction* is_finite) {
+absl::Status HloEvaluator::HandleIsFinite(const HloInstruction* is_finite) {
   auto operand = is_finite->operand(0);
   auto elem_ty = operand->shape().element_type();
   return primitive_util::PrimitiveTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+      [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
@@ -1426,10 +1429,10 @@ Status HloEvaluator::HandleIsFinite(const HloInstruction* is_finite) {
       elem_ty);
 }
 
-Status HloEvaluator::HandleReal(const HloInstruction* real) {
+absl::Status HloEvaluator::HandleReal(const HloInstruction* real) {
   auto operand = real->operand(0);
   return primitive_util::PrimitiveTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+      [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
@@ -1455,10 +1458,10 @@ Status HloEvaluator::HandleReal(const HloInstruction* real) {
       operand->shape().element_type());
 }
 
-Status HloEvaluator::HandleImag(const HloInstruction* imag) {
+absl::Status HloEvaluator::HandleImag(const HloInstruction* imag) {
   auto operand = imag->operand(0);
   return primitive_util::PrimitiveTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+      [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
@@ -1484,14 +1487,14 @@ Status HloEvaluator::HandleImag(const HloInstruction* imag) {
       operand->shape().element_type());
 }
 
-Status HloEvaluator::HandleComplex(const HloInstruction* complex) {
+absl::Status HloEvaluator::HandleComplex(const HloInstruction* complex) {
   const Literal& real = GetEvaluatedLiteralFor(complex->operand(0));
   const Literal& imag = GetEvaluatedLiteralFor(complex->operand(1));
   TF_RET_CHECK(ShapeUtil::Compatible(real.shape(), imag.shape()));
 
   Literal result(complex->shape());
   return primitive_util::PrimitiveTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+      [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
           TF_RETURN_IF_ERROR(result.Populate<NativeT>(
@@ -1509,7 +1512,7 @@ Status HloEvaluator::HandleComplex(const HloInstruction* complex) {
       complex->shape().element_type());
 }
 
-Status HloEvaluator::HandleCompare(const HloInstruction* compare) {
+absl::Status HloEvaluator::HandleCompare(const HloInstruction* compare) {
   ComparisonDirection direction = compare->comparison_direction();
   ComparisonOrder order = compare->comparison_order();
   auto lhs = compare->operand(0);
@@ -1525,7 +1528,7 @@ Status HloEvaluator::HandleCompare(const HloInstruction* compare) {
   const Literal& rhs_literal = GetEvaluatedLiteralFor(rhs);
   // Note here we switch on the operand's type.
   return primitive_util::PrimitiveTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+      [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
           TF_ASSIGN_OR_RETURN(evaluated_[compare],
@@ -1539,7 +1542,7 @@ Status HloEvaluator::HandleCompare(const HloInstruction* compare) {
       element_type);
 }
 
-Status HloEvaluator::HandleTuple(const HloInstruction* tuple) {
+absl::Status HloEvaluator::HandleTuple(const HloInstruction* tuple) {
   std::vector<const Literal*> operand_literals;
   std::vector<Literal> operand_literal_values;
   if (!visitor_shape_index_.empty()) {
@@ -1671,8 +1674,9 @@ class FftTransform {
     absl::c_reverse(fft_lengths_);
   }
 
-  Status ComputeFft(const HloInstruction* fft, const Literal& input_literal,
-                    Literal* output_literal) {
+  absl::Status ComputeFft(const HloInstruction* fft,
+                          const Literal& input_literal,
+                          Literal* output_literal) {
     const Shape& input_shape = input_literal.shape();
     const Shape& output_shape = fft->shape();
 
@@ -2171,7 +2175,8 @@ class FftTransform {
     }
   }
 
-  Status CheckParameters(const Shape& input_shape, const Shape& output_shape) {
+  absl::Status CheckParameters(const Shape& input_shape,
+                               const Shape& output_shape) {
     // Check FFT parameters.
     if (fft_rank_ <= 0) {
       return InvalidArgument("Zero or negative FFT rank.");
@@ -2243,7 +2248,7 @@ class FftTransform {
 
 }  // namespace
 
-Status HloEvaluator::HandleFft(const HloInstruction* fft) {
+absl::Status HloEvaluator::HandleFft(const HloInstruction* fft) {
   const Literal& input_literal = GetEvaluatedLiteralFor(fft->operand(0));
   Literal output_literal = Literal::CreateFromShape(fft->shape());
 
@@ -2379,7 +2384,7 @@ class OutputBatchIndexToInputIndex {
 
   // Populates index_vector_ by iterating over start_indices_ according to
   // index_vector_index_.
-  Status FetchIndexVector() {
+  absl::Status FetchIndexVector() {
     int64_t index_vector_dim = dim_numbers_.index_vector_dim();
     for (int64_t i = 0, e = index_vector_.size(); i < e; i++) {
       index_vector_index_[index_vector_dim] = i;
@@ -2530,7 +2535,7 @@ ReshapedGatherIndices(int64_t index_vector_dim, const Literal& start_indices,
   return std::cref(*reshaped_start_indices);
 }
 
-Status HloEvaluator::HandleGather(const HloInstruction* gather) {
+absl::Status HloEvaluator::HandleGather(const HloInstruction* gather) {
   Literal result = Literal::CreateFromShape(gather->shape());
   const Shape& shape = gather->shape();
   const GatherDimensionNumbers& dim_numbers =
@@ -2784,7 +2789,7 @@ class UpdateScatterIndexToInputIndex {
 
   // Populates index_vector_ by iterating over scatter_indices_ according to
   // index_vector_index_.
-  Status FetchIndexVector() {
+  absl::Status FetchIndexVector() {
     int64_t index_vector_dim = dim_numbers_.index_vector_dim();
     for (int64_t i = 0, e = index_vector_.size(); i < e; i++) {
       index_vector_index_[index_vector_dim] = i;
@@ -2914,7 +2919,7 @@ class UpdateWindowIndexToInputIndex {
 };
 }  // namespace
 
-Status HloEvaluator::HandleScatter(const HloInstruction* hlo) {
+absl::Status HloEvaluator::HandleScatter(const HloInstruction* hlo) {
   auto* scatter = DynCast<HloScatterInstruction>(hlo);
   const ScatterDimensionNumbers& dim_numbers =
       scatter->scatter_dimension_numbers();
@@ -3043,7 +3048,7 @@ Status HloEvaluator::HandleScatter(const HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleBroadcast(const HloInstruction* broadcast) {
+absl::Status HloEvaluator::HandleBroadcast(const HloInstruction* broadcast) {
   const Literal& operand = GetEvaluatedLiteralFor(broadcast->operand(0));
   TF_RET_CHECK(broadcast->shape().element_type() ==
                operand.shape().element_type())
@@ -3071,19 +3076,20 @@ Status HloEvaluator::HandleBroadcast(const HloInstruction* broadcast) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleAfterAll(const HloInstruction* after_all) {
+absl::Status HloEvaluator::HandleAfterAll(const HloInstruction* after_all) {
   evaluated_[after_all] = LiteralUtil::CreateToken();
   return OkStatus();
 }
 
-Status HloEvaluator::HandleAddDependency(const HloInstruction* add_dependency) {
+absl::Status HloEvaluator::HandleAddDependency(
+    const HloInstruction* add_dependency) {
   // AddDedendency just forwards its zero-th operand.
   evaluated_[add_dependency] =
       GetEvaluatedLiteralFor(add_dependency->operand(0)).Clone();
   return OkStatus();
 }
 
-Status HloEvaluator::HandleGetTupleElement(
+absl::Status HloEvaluator::HandleGetTupleElement(
     const HloInstruction* get_tuple_element) {
   const auto result_shape = get_tuple_element->shape();
   const int64_t index = get_tuple_element->tuple_index();
@@ -3106,13 +3112,13 @@ Status HloEvaluator::HandleGetTupleElement(
                                                 /*src_shape_index=*/{index});
 }
 
-Status HloEvaluator::HandleCopy(const HloInstruction* copy) {
+absl::Status HloEvaluator::HandleCopy(const HloInstruction* copy) {
   TF_RET_CHECK(ShapeUtil::Compatible(copy->shape(), copy->operand(0)->shape()));
   evaluated_[copy] = GetEvaluatedLiteralFor(copy->operand(0)).Clone();
   return OkStatus();
 }
 
-Status HloEvaluator::HandleAsyncStart(const HloInstruction* async_start) {
+absl::Status HloEvaluator::HandleAsyncStart(const HloInstruction* async_start) {
   std::vector<const Literal*> arg_literals;
   arg_literals.reserve(async_start->operands().size());
   for (auto operand : async_start->operands()) {
@@ -3143,7 +3149,8 @@ Status HloEvaluator::HandleAsyncStart(const HloInstruction* async_start) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleAsyncUpdate(const HloInstruction* async_update) {
+absl::Status HloEvaluator::HandleAsyncUpdate(
+    const HloInstruction* async_update) {
   const Literal& operand_tuple_literal =
       GetEvaluatedLiteralFor(async_update->operand(0));
   evaluated_[async_update] = Literal(async_update->shape());
@@ -3153,7 +3160,7 @@ Status HloEvaluator::HandleAsyncUpdate(const HloInstruction* async_update) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleAsyncDone(const HloInstruction* async_done) {
+absl::Status HloEvaluator::HandleAsyncDone(const HloInstruction* async_done) {
   const Literal& operand_tuple_literal =
       GetEvaluatedLiteralFor(async_done->operand(0));
   evaluated_[async_done] = Literal(async_done->shape());
@@ -3163,7 +3170,7 @@ Status HloEvaluator::HandleAsyncDone(const HloInstruction* async_done) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleCopyStart(const HloInstruction* copy_start) {
+absl::Status HloEvaluator::HandleCopyStart(const HloInstruction* copy_start) {
   if (copy_start->user_count() != 1 ||
       copy_start->users().at(0)->opcode() != HloOpcode::kCopyDone) {
     return tsl::errors::FailedPrecondition(
@@ -3183,7 +3190,7 @@ Status HloEvaluator::HandleCopyStart(const HloInstruction* copy_start) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleCopyDone(const HloInstruction* copy_done) {
+absl::Status HloEvaluator::HandleCopyDone(const HloInstruction* copy_done) {
   const HloInstruction* operand = copy_done->operand(0);
   if (operand->opcode() != HloOpcode::kCopyStart) {
     return tsl::errors::FailedPrecondition(
@@ -3200,7 +3207,7 @@ Status HloEvaluator::HandleCopyDone(const HloInstruction* copy_done) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleCall(const HloInstruction* call) {
+absl::Status HloEvaluator::HandleCall(const HloInstruction* call) {
   auto* computation = call->to_apply();
   auto operands = call->operands();
 
@@ -3222,7 +3229,7 @@ Status HloEvaluator::HandleCall(const HloInstruction* call) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleFusion(const HloInstruction* fusion) {
+absl::Status HloEvaluator::HandleFusion(const HloInstruction* fusion) {
   HloModuleConfig config;
   // Attach cloned computation to an empty HLO module so the existing ones are
   // not modified.
@@ -3260,7 +3267,8 @@ Status HloEvaluator::HandleFusion(const HloInstruction* fusion) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleConditional(const HloInstruction* conditional) {
+absl::Status HloEvaluator::HandleConditional(
+    const HloInstruction* conditional) {
   const auto& branch_index_literal =
       GetEvaluatedLiteralFor(conditional->operand(0));
   int branch_index;
@@ -3288,7 +3296,7 @@ Status HloEvaluator::HandleConditional(const HloInstruction* conditional) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleConvert(const HloInstruction* convert) {
+absl::Status HloEvaluator::HandleConvert(const HloInstruction* convert) {
   const HloInstruction* operand = convert->operand(0);
   TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), convert->shape()));
   TF_ASSIGN_OR_RETURN(Literal result, GetEvaluatedLiteralFor(operand).Convert(
@@ -3297,7 +3305,8 @@ Status HloEvaluator::HandleConvert(const HloInstruction* convert) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleDynamicSlice(const HloInstruction* dynamic_slice) {
+absl::Status HloEvaluator::HandleDynamicSlice(
+    const HloInstruction* dynamic_slice) {
   auto operand = dynamic_slice->operand(0);
   auto start_indices = dynamic_slice->operand(1);
   auto result_shape = dynamic_slice->shape();
@@ -3349,7 +3358,7 @@ Status HloEvaluator::HandleDynamicSlice(const HloInstruction* dynamic_slice) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleDynamicUpdateSlice(const HloInstruction* dus) {
+absl::Status HloEvaluator::HandleDynamicUpdateSlice(const HloInstruction* dus) {
   auto operand = dus->operand(0);
   auto update = dus->operand(1);
   auto start_indices = dus->operand(2);
@@ -3401,7 +3410,7 @@ Status HloEvaluator::HandleDynamicUpdateSlice(const HloInstruction* dus) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleSelect(const HloInstruction* select) {
+absl::Status HloEvaluator::HandleSelect(const HloInstruction* select) {
   const auto& pred = GetEvaluatedLiteralFor(select->operand(0));
   const auto& on_true = GetEvaluatedLiteralFor(select->operand(1));
   const auto& on_false = GetEvaluatedLiteralFor(select->operand(2));
@@ -3474,7 +3483,7 @@ absl::StatusOr<Literal> TryParseAndEvaluateWhileInductionVar(
 
 }  // namespace
 
-Status HloEvaluator::HandleWhile(const HloInstruction* while_hlo) {
+absl::Status HloEvaluator::HandleWhile(const HloInstruction* while_hlo) {
   const HloComputation* cond_comp = while_hlo->while_condition();
   const HloComputation* body_comp = while_hlo->while_body();
   // Initialize the loop carried valued with the input to the While instruction.
@@ -3734,7 +3743,7 @@ absl::StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
 }
 }  // namespace
 
-Status HloEvaluator::HandleReverse(const HloInstruction* reverse) {
+absl::Status HloEvaluator::HandleReverse(const HloInstruction* reverse) {
   const Shape& result_shape = reverse->shape();
   const auto reverse_dimensions = reverse->dimensions();
 
@@ -3770,7 +3779,7 @@ Status HloEvaluator::HandleReverse(const HloInstruction* reverse) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleSelectAndScatter(
+absl::Status HloEvaluator::HandleSelectAndScatter(
     const HloInstruction* select_and_scatter) {
   auto operand = select_and_scatter->operand(0);
   auto source = select_and_scatter->operand(1);
@@ -3864,7 +3873,7 @@ Status HloEvaluator::HandleSelectAndScatter(
   return OkStatus();
 }
 
-Status HloEvaluator::HandleSlice(const HloInstruction* slice) {
+absl::Status HloEvaluator::HandleSlice(const HloInstruction* slice) {
   auto operand = slice->operand(0);
   const Shape& shape = slice->shape();
   TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
@@ -3899,7 +3908,7 @@ Status HloEvaluator::HandleSlice(const HloInstruction* slice) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleSort(const HloInstruction* sort) {
+absl::Status HloEvaluator::HandleSort(const HloInstruction* sort) {
   TF_RET_CHECK(sort->operand_count() >= 1)
       << "Expected at least 1 operand for sort";
   for (int64_t i = 1; i < sort->operand_count(); ++i) {
@@ -3974,13 +3983,13 @@ Status HloEvaluator::HandleSort(const HloInstruction* sort) {
 #endif
     return a_is_smaller;
   };
-  std::function<Status(absl::Span<const Literal>, absl::Span<int64_t>,
-                       absl::Span<int64_t>, absl::Span<int64_t>,
-                       std::vector<int64_t>&, HloEvaluator*)>
+  std::function<absl::Status(absl::Span<const Literal>, absl::Span<int64_t>,
+                             absl::Span<int64_t>, absl::Span<int64_t>,
+                             std::vector<int64_t>&, HloEvaluator*)>
       merge = [&](absl::Span<const Literal> literals_to_sort,
                   absl::Span<int64_t> lhs, absl::Span<int64_t> rhs,
                   absl::Span<int64_t> output, std::vector<int64_t>& tmp,
-                  HloEvaluator* embedded_evaluator) -> Status {
+                  HloEvaluator* embedded_evaluator) -> absl::Status {
     tmp.clear();
     tmp.reserve(output.size());
     // Keep picking between elements.
@@ -4013,13 +4022,13 @@ Status HloEvaluator::HandleSort(const HloInstruction* sort) {
   const size_t work_per_thread = useful_parallelism > 1
                                      ? sort_dim_elements / useful_parallelism
                                      : std::numeric_limits<size_t>::max();
-  std::function<Status(absl::Span<const Literal>, absl::Span<int64_t>,
-                       std::vector<int64_t>*, HloEvaluator*)>
+  std::function<absl::Status(absl::Span<const Literal>, absl::Span<int64_t>,
+                             std::vector<int64_t>*, HloEvaluator*)>
       mergesort = [&merge, &mergesort, &less_than, this, env, work_per_thread](
                       absl::Span<const Literal> literals_to_sort,
                       absl::Span<int64_t> to_sort,
                       std::vector<int64_t>* scratch,
-                      HloEvaluator* embedded_evaluator) -> Status {
+                      HloEvaluator* embedded_evaluator) -> absl::Status {
     // Base case: inputs with 0 or 1 elements are already sorted.
     if (to_sort.size() < 2) {
       return OkStatus();
@@ -4046,7 +4055,7 @@ Status HloEvaluator::HandleSort(const HloInstruction* sort) {
       // Overlap sorting the LHS with the RHS if we have enough work to
       // do. The recursive call for to `mergesort(rhs)` will potentially
       // create more threads.
-      Status lhs_status;
+      absl::Status lhs_status;
       if (to_sort.size() >= work_per_thread) {
         std::unique_ptr<tsl::Thread> thread = absl::WrapUnique(env->StartThread(
             tsl::ThreadOptions(), "XLA_mergesort",
@@ -4157,7 +4166,7 @@ Status HloEvaluator::HandleSort(const HloInstruction* sort) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleStochasticConvert(
+absl::Status HloEvaluator::HandleStochasticConvert(
     const HloInstruction* stochastic_convert) {
   const HloInstruction* operand = stochastic_convert->operand(0);
   const HloInstruction* random = stochastic_convert->operand(1);
@@ -4312,7 +4321,7 @@ static absl::StatusOr<bool> GenerateReduceOutputElement(
   return true;
 }
 
-Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
+absl::Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
   const HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
   int64_t num_args = reduce->inputs().size();
   absl::Span<const int64_t> dimensions_to_reduce(reduce->dimensions());
@@ -4413,7 +4422,7 @@ Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
+absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
   auto* reduce_window = Cast<HloReduceWindowInstruction>(hlo);
   const Window& window = reduce_window->window();
   HloComputation* function = reduce_window->to_apply();
@@ -4554,7 +4563,7 @@ Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleMap(const HloInstruction* map) {
+absl::Status HloEvaluator::HandleMap(const HloInstruction* map) {
   auto operands = map->operands();
   const HloComputation* computation = map->to_apply();
 
@@ -4586,7 +4595,7 @@ Status HloEvaluator::HandleMap(const HloInstruction* map) {
   return OkStatus();
 }
 
-Status HloEvaluator::HandleCustomCall(const HloInstruction* custom_call) {
+absl::Status HloEvaluator::HandleCustomCall(const HloInstruction* custom_call) {
   if (!custom_call_handler_) {
     // No handler is registered; this means custom-calls are not allowed.
     return DefaultAction(custom_call);
@@ -4607,7 +4616,7 @@ Status HloEvaluator::HandleCustomCall(const HloInstruction* custom_call) {
   return OkStatus();
 }
 
-Status HloEvaluator::Preprocess(const HloInstruction* hlo) {
+absl::Status HloEvaluator::Preprocess(const HloInstruction* hlo) {
   VLOG(3) << "About to visit HLO: " << hlo->ToString();
   if (!enable_partial_evaluation_) {
     for (const HloInstruction* operand : hlo->operands()) {
@@ -4622,7 +4631,7 @@ Status HloEvaluator::Preprocess(const HloInstruction* hlo) {
   return ShapeUtil::ValidateShape(hlo->shape());
 }
 
-Status HloEvaluator::Postprocess(const HloInstruction* hlo) {
+absl::Status HloEvaluator::Postprocess(const HloInstruction* hlo) {
   VLOG(3) << "Finished visiting " << hlo->ToString()
           << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
   // Out of convenience the literal may have been produced with a different

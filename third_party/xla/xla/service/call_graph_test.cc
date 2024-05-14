@@ -706,7 +706,7 @@ TEST_F(CallGraphTest, VisitWithError) {
   module->AddEntryComputation(MakeScalarComputation());
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
 
-  Status status = call_graph->VisitNodes(
+  absl::Status status = call_graph->VisitNodes(
       [](const CallGraphNode&) { return Internal("Visitation failed"); });
 
   ASSERT_FALSE(status.ok());

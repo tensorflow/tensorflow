@@ -51,7 +51,7 @@ docker run --name xla -w /tf/xla -itd --rm \
 TAGS_FILTER="-no_oss"
 ADDITIONAL_FLAGS=""
 RBE_FLAGS=""
-TARGET_FILTERS="-@local_tsl//tsl/platform:subprocess_test -@local_tsl//tsl/platform/cloud:google_auth_provider_test -@local_tsl//tsl/platform/cloud:oauth_client_test"
+TARGET_FILTERS=""
 
 if is_linux_gpu_job ; then
     TAGS_FILTER="$TAGS_FILTER,requires-gpu-nvidia"

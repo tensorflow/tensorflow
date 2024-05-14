@@ -32,7 +32,7 @@ namespace cpu {
 // `emitter` and create a call, passing it the buffers defined by
 // resultShape/resultPtr and operandShapes/operandPtrs. The function is added to
 // the LLVM module at `b`s insertion point.
-Status EmitMlirFuncAndCall(
+absl::Status EmitMlirFuncAndCall(
     mlir::MLIRContext *context, llvm::IRBuilder<> *b, const Shape &result_shape,
     llvm::ArrayRef<Shape> operand_shapes, llvm::Value *result_ptr,
     llvm::ArrayRef<llvm::Value *> operand_ptrs, llvm::StringRef func_name,

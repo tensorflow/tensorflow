@@ -226,7 +226,7 @@ class HloDataflowAnalysis {
   GetInPlaceInputOutputPairs(const HloInstruction* instruction);
 
   // Verifies various invariants of the dataflow analysis.
-  Status Verify() const;
+  absl::Status Verify() const;
 
  private:
   static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
@@ -264,7 +264,7 @@ class HloDataflowAnalysis {
   // Constructs and initializes the InstructionValueSets of all instructions to
   // contain exactly the HloValues defined by each instruction. These values can
   // then propagated throughout the HLO graph by calling Propagate.
-  Status InitializeInstructionValueSets();
+  absl::Status InitializeInstructionValueSets();
 
   // Updates the value set of the given instruction based on the values flowing
   // into the instruction (operands and cross-computation dataflow).

@@ -46,7 +46,8 @@ template <typename K>
 absl::StatusOr<bool> CombineInstructionsByKey(
     HloComputation* computation,
     absl::FunctionRef<std::optional<K>(const HloInstruction*)> key_fn,
-    absl::FunctionRef<Status(absl::Span<HloInstruction* const>)> combine_fn,
+    absl::FunctionRef<absl::Status(absl::Span<HloInstruction* const>)>
+        combine_fn,
     int64_t combine_threshold_bytes, int64_t combine_threshold_count) {
   // Cache keys for each instruction and build sets of instructions with the
   // same key that might be combined together.

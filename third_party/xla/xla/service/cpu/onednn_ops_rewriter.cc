@@ -385,7 +385,7 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
 
 class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleAdd(HloInstruction* instr) override {
+  absl::Status HandleAdd(HloInstruction* instr) override {
     HloInstruction *src, *scale, *bias;
     float eps;
     bool is_bf16orfp16_convert = false;
@@ -445,7 +445,7 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  Status HandleConvert(HloInstruction* instr) override {
+  absl::Status HandleConvert(HloInstruction* instr) override {
     HloInstruction* custom_call;
     HloInstruction* convert_instr;
     auto pattern =
@@ -478,7 +478,7 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  Status HandleDivide(HloInstruction* divide_instr) override {
+  absl::Status HandleDivide(HloInstruction* divide_instr) override {
     if (divide_instr->HasControlDependencies()) return OkStatus();
     if (!IsSupportedType(divide_instr->shape().element_type()))
       return OkStatus();
@@ -495,7 +495,7 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-StatusOr<bool> OneDnnOpsRewriter::Run(
+absl::StatusOr<bool> OneDnnOpsRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   OneDnnOpsRewriterVisitor visitor;

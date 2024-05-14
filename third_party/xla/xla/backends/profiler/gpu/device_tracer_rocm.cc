@@ -75,13 +75,13 @@ class GpuTracer : public profiler::ProfilerInterface {
   ~GpuTracer() override {}
 
   // GpuTracer interface:
-  Status Start() override;
-  Status Stop() override;
-  Status CollectData(XSpace* space) override;
+  absl::Status Start() override;
+  absl::Status Stop() override;
+  absl::Status CollectData(XSpace* space) override;
 
  private:
-  Status DoStart();
-  Status DoStop();
+  absl::Status DoStart();
+  absl::Status DoStop();
 
   RocmTracerOptions GetRocmTracerOptions();
 
@@ -184,7 +184,7 @@ RocmTraceCollectorOptions GpuTracer::GetRocmTraceCollectorOptions(
   return options;
 }
 
-Status GpuTracer::DoStart() {
+absl::Status GpuTracer::DoStart() {
   if (!rocm_tracer_->IsAvailable()) {
     return tsl::errors::Unavailable("Another profile session running.");
   }
@@ -208,8 +208,8 @@ Status GpuTracer::DoStart() {
   return OkStatus();
 }
 
-Status GpuTracer::Start() {
-  Status status = DoStart();
+absl::Status GpuTracer::Start() {
+  absl::Status status = DoStart();
   if (status.ok()) {
     profiling_state_ = State::kStartedOk;
     return OkStatus();
@@ -219,21 +219,21 @@ Status GpuTracer::Start() {
   }
 }
 
-Status GpuTracer::DoStop() {
+absl::Status GpuTracer::DoStop() {
   rocm_tracer_->Disable();
   AnnotationStack::Enable(false);
   return OkStatus();
 }
 
-Status GpuTracer::Stop() {
+absl::Status GpuTracer::Stop() {
   if (profiling_state_ == State::kStartedOk) {
-    Status status = DoStop();
+    absl::Status status = DoStop();
     profiling_state_ = status.ok() ? State::kStoppedOk : State::kStoppedError;
   }
   return OkStatus();
 }
 
-Status GpuTracer::CollectData(XSpace* space) {
+absl::Status GpuTracer::CollectData(XSpace* space) {
   switch (profiling_state_) {
     case State::kNotStarted:
       VLOG(3) << "No trace data collected, session wasn't started";

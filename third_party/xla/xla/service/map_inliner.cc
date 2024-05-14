@@ -39,11 +39,11 @@ class MapInlinerVisitor : public DfsHloVisitorWithDefault {
       : computation_(computation) {}
 
   // Default visitor action is to do nothing and return OK.
-  Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
+  absl::Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
     return OkStatus();
   }
 
-  Status HandleMap(HloInstruction* map) override;
+  absl::Status HandleMap(HloInstruction* map) override;
 
   // Runs the visitor on a computation.
   absl::StatusOr<bool> Run(HloComputation* computation);
@@ -63,7 +63,7 @@ absl::StatusOr<bool> MapInlinerVisitor::Run(HloComputation* computation) {
   return changed_;
 }
 
-Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
+absl::Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
   HloComputation* function = map->to_apply();
   HloInstruction& root = *function->root_instruction();
   // Only inlining functions that are simply a single operation until a better

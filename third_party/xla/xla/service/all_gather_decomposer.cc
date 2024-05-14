@@ -84,8 +84,8 @@ HloInstruction* AllGatherDecomposer::TranslateAllGatherToAllReducePerOperand(
   return ar;
 }
 
-Status AllGatherDecomposer::DecomposeAllGather(HloAllGatherInstruction* ag,
-                                               HloComputation* comp) {
+absl::Status AllGatherDecomposer::DecomposeAllGather(
+    HloAllGatherInstruction* ag, HloComputation* comp) {
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                       GetCollectiveOpGroupMode(ag->channel_id().has_value(),
                                                ag->use_global_device_ids()));

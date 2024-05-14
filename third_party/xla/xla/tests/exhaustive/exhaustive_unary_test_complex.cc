@@ -13,9 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <tuple>
+
+#include "absl/types/span.h"
+#include "xla/client/xla_builder.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
-#include "xla/util.h"
+#include "xla/tests/test_macros.h"
+#include "xla/types.h"
 
 #ifdef __FAST_MATH__
 #error "Can't be compiled with fast math on"
@@ -95,41 +104,68 @@ using ExhaustiveC128UnaryTest = ExhaustiveComplexUnaryTestBase<C128>;
   XLA_TEST_P(ExhaustiveC64UnaryTest, test_name) \
   __VA_ARGS__
 
-// TODO(b/138578594): Enable the test for the CPU backend after fixing the bug.
-UNARY_TEST_COMPLEX_64(DISABLED_ON_CPU(Log), {
-  // TODO(timshen): see b/162664705.
+UNARY_TEST_COMPLEX_64(Log, {
+  // TODO(rmlarsen): see b/162664705 and b/138578594
   known_incorrect_fn_ = [this](int64_t val) {
-    return std::isnan(this->ConvertValue(val));
+    complex64 x = this->ConvertValue(val);
+    return std::isnan(x.real()) || std::isnan(x.imag()) ||
+           (platform_ == "Host" &&
+            std::abs(x) < std::numeric_limits<float>::min());
   };
   ErrorSpecGen error_spec_gen = +[](complex64 x) {
-    // std::log uses std::abs, which uses hypotf. The latter upcasts its
-    // argument to double, so there are cases where there's excess precision, so
-    // abs returns numeric_limits<float>::max, but it's not possible to arrive
-    // at this number without using doubles internally.
-    // Obviously, the default relative error spec makes no sense for this case.
-    // `log(max) ~ 88.72`, which is very far from `inf`, but `max` is considered
-    // very close to `inf`.
-    if (std::abs(x) == std::numeric_limits<float>::max()) {
+    // The reference implementation overflows to infinity for arguments near
+    // FLT_MAX.
+    if (std::abs(x) >= std::numeric_limits<float>::max()) {
       float inf = std::numeric_limits<float>::infinity();
-      return ErrorSpec{inf, inf};
+      return ErrorSpec{.abs_err = inf, .rel_err = inf};
     }
-    return GetDefaultSpecGenerator()(x);
+    return ErrorSpec{.abs_err = std::numeric_limits<float>::epsilon(),
+                     .rel_err = 50 * std::numeric_limits<float>::epsilon()};
   };
-  Run(Log, [](complex64 x) { return std::log<float>(x); }, error_spec_gen);
+  Run(Log, [](complex64 x) { return std::log(x); }, error_spec_gen);
 })
 
 UNARY_TEST_COMPLEX_64(Sqrt, {
-  Run(Sqrt, [](complex64 x) {
-    return static_cast<complex64>(
-        std::sqrt<double>(static_cast<complex128>(x)));
-  });
+  // The reference implementation overflows to infinity for arguments near
+  // FLT_MAX.
+  ErrorSpecGen error_spec_gen = +[](complex64 x) {
+    if (std::abs(x) >= std::numeric_limits<float>::max()) {
+      float inf = std::numeric_limits<float>::infinity();
+      return ErrorSpec{.abs_err = inf, .rel_err = inf};
+    }
+    // The reference implementation appears to be very poor on inputs with
+    // subnormal entries. Allowing an absolute error of ~sqrt(FLT_DENORM_MIN)
+    // allows such cases to pass, effectively letting the relative error
+    // increase gradually until it reaches 100% at abs(x) == FLT_DENORM_MIN.
+    return ErrorSpec{
+        .abs_err = std::sqrt(std::numeric_limits<float>::denorm_min()),
+        .rel_err = 50 * std::numeric_limits<float>::epsilon()};
+  };
+  Run(Sqrt, [](complex64 x) { return std::sqrt(x); }, error_spec_gen);
 })
 
 UNARY_TEST_COMPLEX_64(Rsqrt, {
-  Run(Rsqrt, [](complex64 x) {
-    return static_cast<complex64>(
-        complex128(1, 0) / std::sqrt<double>(static_cast<complex128>(x)));
-  });
+  known_incorrect_fn_ = [this](int64_t val) {
+    complex64 x = this->ConvertValue(val);
+    return (platform_ == "Host" && (x.imag() == 0.0f || x.real() == 0.0f));
+  };
+  ErrorSpecGen error_spec_gen = +[](complex64 x) {
+    // As noted above for Sqrt, the accuracy of sqrt degrades severely for
+    // inputs with inputs with subnormals entries.
+    constexpr double norm_min = std::numeric_limits<float>::min();
+    constexpr double denorm_min = std::numeric_limits<float>::denorm_min();
+    if (std::abs(x) < norm_min) {
+      // Gradually loosen the relative tolerance as abs(x) becomes smaller
+      // than norm_min, letting it reach 100% when abs(x) = 10 * denorm_min.
+      return ErrorSpec{.abs_err = std::sqrt(std::numeric_limits<float>::min()),
+                       .rel_err = 10 * denorm_min / std::abs(x)};
+    }
+    return ErrorSpec{.abs_err = std::sqrt(std::numeric_limits<float>::min()),
+                     .rel_err = 50 * std::numeric_limits<float>::epsilon()};
+  };
+  Run(
+      Rsqrt, [](complex64 x) { return complex64(1, 0) / std::sqrt(x); },
+      error_spec_gen);
 })
 
 // The current libc++ implementation of the complex tanh function provides
@@ -142,7 +178,7 @@ UNARY_TEST_COMPLEX_64(Tanh, {
     // This implementation of Tanh becomes less accurate when the denominator
     // is small.
     if (std::cosh(2 * x.real()) + std::cos(2 * x.imag()) < 1e-4) {
-      return ErrorSpec{5e-2, 5e-2};
+      return ErrorSpec{.abs_err = 5e-2, .rel_err = 5e-2};
     }
 
     return GetDefaultSpecGenerator()(x);
@@ -193,47 +229,65 @@ INSTANTIATE_TEST_SUITE_P(
   __VA_ARGS__
 
 UNARY_TEST_COMPLEX_128(Log, {
-  // TODO(b/138578313): Enable the test for all values after fixing the bug.
+  // TODO(rmlarsen): see b/162664705 and b/138578594
   known_incorrect_fn_ = [&](int64_t v) {
     double f = this->ConvertValue(v);
     return std::fpclassify(f) == FP_NAN || std::abs(f) > 1.0e+300 ||
            std::abs(f) < 1.0e-300;
   };
-  Run(Log, [](complex128 x) { return std::log<double>(x); });
+  Run(Log, [](complex128 x) { return std::log(x); });
 })
 
 UNARY_TEST_COMPLEX_128(Sqrt, {
+  ErrorSpecGen error_spec_gen = +[](complex128 x) {
+    // TODO(rmlarsen): Investigate why we only get ~float accuracy here.
+
+    // The reference implementation appears to be very poor on inputs with
+    // subnormal entries. Allowing an absolute error of ~sqrt(DBL_DENORM_MIN)
+    // allows such cases to pass, effectively letting the relative error
+    // increase gradually until it reaches 100% at abs(x) == DBL_DENORM_MIN.
+    return ErrorSpec{
+        .abs_err = std::sqrt(std::numeric_limits<double>::denorm_min()),
+        .rel_err = 50 * std::numeric_limits<double>::epsilon()};
+  };
   // Similar to the Tanh bug.
   known_incorrect_fn_ = [&](int64_t v) {
     double f = this->ConvertValue(v);
     return std::abs(f) > std::numeric_limits<double>::max() / 2;
   };
-  Run(Sqrt, [](complex128 x) { return std::sqrt<double>(x); });
+  Run(Sqrt, [](complex128 x) { return std::sqrt(x); }, error_spec_gen);
 })
 
 UNARY_TEST_COMPLEX_128(Rsqrt, {
-  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
-  if (platform_ == "CUDA") {
-    // Edge case on CUDA backend where the Log of a complex number made up of
-    // the smallest denormals is more accurate than the interpreter backend.
-    error_spec_gen = [](complex128 x) {
-      constexpr double denorm_min = std::numeric_limits<double>::denorm_min();
-      if (std::abs(x.real()) == denorm_min &&
-          std::abs(x.imag()) == denorm_min) {
-        return ErrorSpec(0.5, 0.5);
-      }
-      return GetDefaultSpecGenerator()(x);
-    };
-  }
+  ErrorSpecGen error_spec_gen = +[](complex128 x) {
+    // As noted above for Sqrt, the accuracy of sqrt degrades severely for
+    // inputs with inputs with subnormals entries.
+    constexpr double norm_min = std::numeric_limits<double>::min();
+    constexpr double denorm_min = std::numeric_limits<double>::denorm_min();
+    if (std::abs(x) < norm_min) {
+      // Gradually loosen the relative tolerance as abs(x) becomes smaller
+      // than norm_min, letting it reach 100% when abs(x) = 10 * denorm_min.
+      return ErrorSpec{.abs_err = std::sqrt(std::numeric_limits<double>::min()),
+                       .rel_err = 10 * denorm_min / std::abs(x)};
+    }
+    return ErrorSpec{.abs_err = std::sqrt(std::numeric_limits<double>::min()),
+                     .rel_err = 50 * std::numeric_limits<double>::epsilon()};
+  };
   Run(
-      Rsqrt,
-      [](complex128 x) { return complex128(1, 0) / std::sqrt<double>(x); },
+      Rsqrt, [](complex128 x) { return complex128(1, 0) / std::sqrt(x); },
       error_spec_gen);
 })
 
 UNARY_TEST_COMPLEX_128(Tanh, {
+  ErrorSpecGen error_spec_gen = [](complex128 x) {
+    // TODO(rmlarsen): Investigate why we only get slightly better than
+    // float accuracy here.
+    return ErrorSpec{.abs_err = 2 * std::numeric_limits<double>::min(),
+                     .rel_err = 2e-8};
+  };
+
   SetParamsForTanh();
-  Run(Tanh, +[](complex128 x) { return std::tanh(x); });
+  Run(Tanh, +[](complex128 x) { return std::tanh(x); }, error_spec_gen);
 })
 
 INSTANTIATE_TEST_SUITE_P(

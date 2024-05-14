@@ -134,21 +134,21 @@ class DotOpEmitter {
                         const TargetMachineFeatures& target_machine_features);
 
   // Emits the IR to perform the dot operation.
-  Status Emit();
+  absl::Status Emit();
 
   // Emits the IR to perform the batch dot operation.
-  Status EmitBatch();
+  absl::Status EmitBatch();
 
  private:
   // Emits instructions to perform a scalar dot product (a multiply of the
   // LHS and RHS) and store the results in the target.
-  Status EmitScalarDot();
+  absl::Status EmitScalarDot();
 
   // Emits a call to the CPU runtime to perform the matrix multiply.
-  Status EmitCallToRuntime();
+  absl::Status EmitCallToRuntime();
 
   // Emits a call to the CPU runtime to perform the batch matrix multiply.
-  Status EmitCallToBatchRuntime();
+  absl::Status EmitCallToBatchRuntime();
 
   // Represents the dimensions of a matrix-matrix multiply operation.
   struct MatMultDims {
@@ -192,7 +192,7 @@ class DotOpEmitter {
   void EmitTiledLlvmIrGemm();
 
   // Lowers the dot operation through MLIR's linalg.matmul.
-  Status EmitLinalgMatmul();
+  absl::Status EmitLinalgMatmul();
 
   // Lowers the dot operation as a naive nested loop that computes the result
   // one element at a time.
@@ -264,7 +264,7 @@ DotOpEmitter::DotOpEmitter(
       hlo_module_config_(hlo_module_config),
       target_machine_features_(target_machine_features) {}
 
-Status DotOpEmitter::EmitLinalgMatmul() {
+absl::Status DotOpEmitter::EmitLinalgMatmul() {
   Shape operand_shapes[] = {dot_info_.lhs_shape, dot_info_.rhs_shape};
   llvm::Value* operand_ptrs[] = {lhs_array_.GetBasePointer(),
                                  rhs_array_.GetBasePointer()};
@@ -529,7 +529,7 @@ void DotOpEmitter::EmitTiledLlvmIrGemv() {
   }
 }
 
-Status DotOpEmitter::Emit() {
+absl::Status DotOpEmitter::Emit() {
   // The dot operation performs a sum of products over dimension 0 of the left
   // hand side operand and dimension 1 of the right hand side operand.
   //
@@ -584,7 +584,7 @@ Status DotOpEmitter::Emit() {
   }
 }
 
-Status DotOpEmitter::EmitBatch() {
+absl::Status DotOpEmitter::EmitBatch() {
   // The dot operation performs a sum of products over dimension 0 of the left
   // hand side operand and dimension 1 of the right hand side operand.
   //
@@ -756,7 +756,7 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   b_->SetInsertPoint(loop_nest.GetOuterLoopExitBasicBlock());
 }
 
-Status DotOpEmitter::EmitScalarDot() {
+absl::Status DotOpEmitter::EmitScalarDot() {
   // A scalar dot is just a scalar multiply.
   llvm::Value* result;
   // Use the same index_type for all tensor accesses in the same kernel.
@@ -791,7 +791,7 @@ Status DotOpEmitter::EmitScalarDot() {
   return OkStatus();
 }
 
-Status DotOpEmitter::EmitCallToRuntime() {
+absl::Status DotOpEmitter::EmitCallToRuntime() {
   // The signature of the Eigen runtime matmul function is:
   //
   //   (void)(void* run_options, float* out, float* lhs, float* rhs,
@@ -902,7 +902,7 @@ Status DotOpEmitter::EmitCallToRuntime() {
   return OkStatus();
 }
 
-Status DotOpEmitter::EmitCallToBatchRuntime() {
+absl::Status DotOpEmitter::EmitCallToBatchRuntime() {
   // The signature of the runtime batch matmul function is:
   //
   //   (void)(void* run_options, float* out, float* lhs, float* rhs,
@@ -1218,7 +1218,7 @@ DotImplementationStrategy GetDotImplementationStrategy(
   return DotImplementationStrategy::kNaiveLlvmIr;
 }
 
-Status EmitNonBatchDotOperation(
+absl::Status EmitNonBatchDotOperation(
     DotInfo dot_info, std::string hlo_name,
     const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
     const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
@@ -1270,7 +1270,8 @@ llvm_ir::IrArray CollapseFirstNDims(llvm::IRBuilder<>* b,
                           std::move(new_shape));
 }
 
-Status ValidateDotDimensionNumbers(const DotDimensionNumbers& dim_numbers) {
+absl::Status ValidateDotDimensionNumbers(
+    const DotDimensionNumbers& dim_numbers) {
   // Checks some invariants that do not hold in general, but DotDecomposer
   // should have established for us.  This is just a debugging aid.
   TF_RET_CHECK(dim_numbers.lhs_contracting_dimensions_size() == 1);
@@ -1357,7 +1358,7 @@ bool PotentiallyImplementedAsEigenMatmul(
   return impl_strategy == DotImplementationStrategy::kEigen;
 }
 
-Status EmitBatchDotOperation(
+absl::Status EmitBatchDotOperation(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
@@ -1481,15 +1482,13 @@ bool DotOperandsAndResultMustHaveRowMajorLayout(
          impl_strategy == DotImplementationStrategy::kEigen;
 }
 
-Status EmitDotOperation(const HloInstruction& dot,
-                        const llvm_ir::IrArray& target_array,
-                        const llvm_ir::IrArray& lhs_array,
-                        const llvm_ir::IrArray& rhs_array,
-                        const llvm_ir::IrArray* addend_array,
-                        llvm::Value* executable_run_options_value,
-                        llvm::IRBuilder<>* b, mlir::MLIRContext* mlir_context,
-                        const HloModuleConfig& hlo_module_config,
-                        const TargetMachineFeatures& target_machine_features) {
+absl::Status EmitDotOperation(
+    const HloInstruction& dot, const llvm_ir::IrArray& target_array,
+    const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
+    const llvm_ir::IrArray* addend_array,
+    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
+    mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
+    const TargetMachineFeatures& target_machine_features) {
   // This routine assumes that the dot operation is not in a parallelized
   // enclosing computation.
   CHECK(dot.parent()

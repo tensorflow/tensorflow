@@ -58,11 +58,11 @@ class LLVMCompiler : public Compiler {
   void RemovePostOptimizationHook() { user_post_optimization_hook_ = nullptr; }
 
   // Bring in
-  //   StatusOr<std::unique_ptr<Executable>> RunBackend(
+  //   absl::StatusOr<std::unique_ptr<Executable>> RunBackend(
   //       std::unique_ptr<HloModule> module,
   //       se::StreamExecutor* stream_exec,
   //       se::DeviceMemoryAllocator* device_allocator)
-  //   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+  //   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
   //       std::unique_ptr<HloModule> module,
   //       se::StreamExecutor* stream_exec,
   //       se::DeviceMemoryAllocator* device_allocator)

@@ -37,7 +37,7 @@ AsyncExecution::AsyncExecution(Backend* backend,
   }
 }
 
-Status AsyncExecution::BlockUntilDone() const {
+absl::Status AsyncExecution::BlockUntilDone() const {
   for (auto& stream : streams_) {
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
@@ -62,7 +62,7 @@ ExecutionHandle ExecutionTracker::Register(Backend* backend,
   return execution_handle;
 }
 
-Status ExecutionTracker::Unregister(const ExecutionHandle& handle) {
+absl::Status ExecutionTracker::Unregister(const ExecutionHandle& handle) {
   absl::MutexLock lock(&execution_mutex_);
   auto it = handle_to_execution_.find(handle.handle());
   if (it == handle_to_execution_.end()) {

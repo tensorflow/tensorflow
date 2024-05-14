@@ -58,7 +58,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
       : custom_call_transformer_(custom_call_transformer) {}
 
   // To handle a constant, just give the literal data a new layout.
-  Status HandleConstant(HloInstruction* hlo) override {
+  absl::Status HandleConstant(HloInstruction* hlo) override {
     Literal& literal = *Cast<HloConstantInstruction>(hlo)->mutable_literal();
     if (literal.shape().IsTuple()) {
       // TODO(cheshire): Tuple constants.
@@ -83,7 +83,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
   // Slice is layout-preserving, so handling is analoguous to elementwise unary,
   // and transposing the elements inside the metadata.
-  Status HandleSlice(HloInstruction* hlo) override {
+  absl::Status HandleSlice(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
     const Shape& s = hlo->shape();
     const Shape& operand_shape = operand->shape();
@@ -118,7 +118,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   //
   // Bitcast to descending layout and then bitcast back to make sure that shapes
   // match.
-  Status DefaultAction(HloInstruction* hlo) override {
+  absl::Status DefaultAction(HloInstruction* hlo) override {
     if (!hlo->user_count()) {
       // The local postcondition does not have to apply to the case when there
       // are no users.
@@ -144,7 +144,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   //
   // With respect to layouts, concatenations are simple, as they are
   // layout-preserving.
-  Status HandleConcatenate(HloInstruction* hlo) override {
+  absl::Status HandleConcatenate(HloInstruction* hlo) override {
     const Shape& s = hlo->shape();
     int64_t orig_concat_dim = hlo->dimensions(0);
 
@@ -166,7 +166,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  Status HandleReduceWindow(HloInstruction* hlo) override {
+  absl::Status HandleReduceWindow(HloInstruction* hlo) override {
     if (hlo->shape().IsTuple()) {
       // TODO(cheshire): Handle variadic reductions.
       return OkStatus();
@@ -212,7 +212,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   // Into:
   //
   //  A{I} -> broadcast[S']{I} -> bitcast[S]{L'}
-  Status HandleBroadcast(HloInstruction* hlo) override {
+  absl::Status HandleBroadcast(HloInstruction* hlo) override {
     VLOG(3) << "Input broadcast: " << hlo->ToString();
     auto s = hlo->shape();
     auto operand = hlo->mutable_operand(0);
@@ -240,7 +240,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  Status HandleIota(HloInstruction* hlo) override {
+  absl::Status HandleIota(HloInstruction* hlo) override {
     VLOG(3) << "Input iota: " << hlo->ToString();
     auto s = hlo->shape();
     auto normalized_shape = Normalize(s);
@@ -258,7 +258,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   }
 
   // BitcastConvert is only layout-preserving if it doesn't change the rank.
-  Status HandleBitcastConvert(HloInstruction* hlo) override {
+  absl::Status HandleBitcastConvert(HloInstruction* hlo) override {
     // If the rank isn't changing this is just an unary op.
     if (hlo->shape().rank() == hlo->operand(0)->shape().rank()) {
       return HandleElementwiseUnary(hlo);
@@ -277,7 +277,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   //    H_0{I} -> U{I} -> B{L}
   //
   // where {I} denotes default layout.
-  Status HandleElementwiseUnary(HloInstruction* hlo) override {
+  absl::Status HandleElementwiseUnary(HloInstruction* hlo) override {
     auto s = hlo->shape();
     auto operand = hlo->mutable_operand(0);
     auto operand_shape = operand->shape();
@@ -331,7 +331,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   //         B{I} - bitcast{L}
   //        /
   //  A2{I}
-  Status HandleElementwiseBinary(HloInstruction* hlo) override {
+  absl::Status HandleElementwiseBinary(HloInstruction* hlo) override {
     auto s = hlo->shape();
     auto a = hlo->mutable_operand(0);
     auto b = hlo->mutable_operand(1);
@@ -363,7 +363,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   //
   // A{I} -> R [S']{I} -> bitcast[S]{L2}
   //
-  Status HandleReshape(HloInstruction* hlo) override {
+  absl::Status HandleReshape(HloInstruction* hlo) override {
     auto s = hlo->shape();
     auto operand = hlo->mutable_operand(0);
     TF_RET_CHECK(ShapeUtil::ReshapeIsBitcast(s, operand->shape()));
@@ -401,7 +401,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   //
   // where dim_0 is dimensions of the original transposition, and `o` denotes
   // permutation composition.
-  Status HandleTranspose(HloInstruction* hlo) override {
+  absl::Status HandleTranspose(HloInstruction* hlo) override {
     auto s = hlo->shape();
     auto operand = hlo->mutable_operand(0);
     auto operand_s = operand->shape();
@@ -442,7 +442,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   //
   // Where S' is normalization of [S]{L'}, and transposition dimensions are
   // given by L'.
-  Status HandleCopy(HloInstruction* hlo) override {
+  absl::Status HandleCopy(HloInstruction* hlo) override {
     VLOG(3) << "Processing copy: " << hlo->ToString();
     auto s = hlo->shape();
     auto operand = hlo->mutable_operand(0);
@@ -461,7 +461,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   }
 
   // The reverse HLO has a list of dimensions it reverses.
-  Status HandleReverse(HloInstruction* hlo) override {
+  absl::Status HandleReverse(HloInstruction* hlo) override {
     auto s = hlo->shape();
     auto operand = hlo->mutable_operand(0);
     TF_ASSIGN_OR_RETURN(auto a0, GetNormalizedInput(operand));
@@ -484,7 +484,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
   // Padding is layout-preserving, so we only have to permute values inside the
   // padding config.
-  Status HandlePad(HloInstruction* hlo) override {
+  absl::Status HandlePad(HloInstruction* hlo) override {
     auto s = hlo->shape();
     auto operand = hlo->mutable_operand(0);
     auto padded_by = hlo->mutable_operand(1);
@@ -515,7 +515,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  Status HandleCustomCall(HloInstruction* hlo) override {
+  absl::Status HandleCustomCall(HloInstruction* hlo) override {
     if (custom_call_transformer_) {
       TF_ASSIGN_OR_RETURN(
           std::optional<HloInstruction*> transformed_custom_call,
@@ -531,14 +531,14 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
   // Pushes down bitcast across the ternary select operation: same logic as
   // HandleElementwiseBinary.
-  Status HandleSelect(HloInstruction* hlo) override {
+  absl::Status HandleSelect(HloInstruction* hlo) override {
     return HandleTernary(hlo);
   }
 
   // DyanmicSlice is layout-preserving, so handling is analoguous to elementwise
   // unary, and transposing the elements inside the metadata, as well as the
   // operands specifying dimension sizes.
-  Status HandleDynamicSlice(HloInstruction* hlo) override {
+  absl::Status HandleDynamicSlice(HloInstruction* hlo) override {
     const Shape& s = hlo->shape();
     HloInstruction* operand = hlo->mutable_operand(0);
     const Shape& operand_shape = operand->shape();
@@ -570,7 +570,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  Status HandleDynamicUpdateSlice(HloInstruction* hlo) override {
+  absl::Status HandleDynamicUpdateSlice(HloInstruction* hlo) override {
     const Shape& s = hlo->shape();
     HloInstruction* operand = hlo->mutable_operand(0);
     HloInstruction* update = hlo->mutable_operand(1);
@@ -599,13 +599,13 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  Status HandleClamp(HloInstruction* hlo) override {
+  absl::Status HandleClamp(HloInstruction* hlo) override {
     return HandleTernary(hlo);
   }
 
  private:
   // Replace clamp/select ternary operation with a normalized one.
-  Status HandleTernary(HloInstruction* hlo) {
+  absl::Status HandleTernary(HloInstruction* hlo) {
     Shape s = hlo->shape();
     HloOpcode opcode = hlo->opcode();
     TF_RET_CHECK(opcode == HloOpcode::kClamp || opcode == HloOpcode::kSelect);

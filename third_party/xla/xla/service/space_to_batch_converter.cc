@@ -65,7 +65,7 @@ namespace m = match;
 class ConvolutionVisitor {
  public:
   // Top-level function to begin space-to-batch conversion.
-  Status PerformSpaceToBatchOnConvolution(HloInstruction* convolution);
+  absl::Status PerformSpaceToBatchOnConvolution(HloInstruction* convolution);
 
   // Struct containing details about a convolution.
   struct ConvDetails {
@@ -164,23 +164,23 @@ class ConvolutionVisitor {
 
   // Perform space-to-batch propagation on the convolution. Assumes the
   // activations were already space-to-batched.
-  Status PropagateOnConv(HloInstruction* convolution);
+  absl::Status PropagateOnConv(HloInstruction* convolution);
 
   // Perform space-to-batch propagation on concatenate.
-  Status PropagateOnConcat(HloInstruction* concat);
+  absl::Status PropagateOnConcat(HloInstruction* concat);
 
   // Perform space-to-batch propagation on reverse.
-  Status PropagateOnReverse(HloInstruction* reverse);
+  absl::Status PropagateOnReverse(HloInstruction* reverse);
 
   // Perform space-to-batch propagation on pad.
-  Status PropagateOnPad(HloInstruction* pad);
+  absl::Status PropagateOnPad(HloInstruction* pad);
 
   // Perform space-to-batch propagation on slice.
-  Status PropagateOnSlice(HloInstruction* slice);
+  absl::Status PropagateOnSlice(HloInstruction* slice);
 
   // Perform space-to-batch propagation on the backprop filter convolution.
   // Assumes the activations and kernel were already space-to-batched.
-  Status PropagateOnBackpropFilterConv(HloInstruction* convolution);
+  absl::Status PropagateOnBackpropFilterConv(HloInstruction* convolution);
 
   // Method that checks validity of space-to-batch on a given convolution.
   bool IsConvSuitableForSpaceToBatch(HloInstruction* convolution);
@@ -190,7 +190,7 @@ class ConvolutionVisitor {
 
   // Once a convolution has been space-to-batch'ed, this function will
   // transitively propagate the space-to-batch-ness on rest of the graph.
-  Status PropagateOnUsers(HloInstruction* old_conv);
+  absl::Status PropagateOnUsers(HloInstruction* old_conv);
 
   // Generates masked output with valid data. This is useful when larger shapes
   // are generated due to space-to-batch.
@@ -2634,7 +2634,7 @@ absl::StatusOr<HloInstruction*> ConvolutionVisitor::BatchToSpace(
   return output_transpose;
 }
 
-Status ConvolutionVisitor::PropagateOnUsers(HloInstruction* old_conv) {
+absl::Status ConvolutionVisitor::PropagateOnUsers(HloInstruction* old_conv) {
   std::queue<std::pair<HloInstruction*, HloInstruction*>> propagation_worklist;
 
   if (old_conv->user_count() == 0) {
@@ -2727,7 +2727,7 @@ Status ConvolutionVisitor::PropagateOnUsers(HloInstruction* old_conv) {
   return OkStatus();
 }
 
-Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
+absl::Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   auto activations_old = convolution->mutable_operand(0);
 
   CHECK(old_to_new_instrs_.contains(activations_old));
@@ -2934,7 +2934,7 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   return OkStatus();
 }
 
-Status ConvolutionVisitor::PropagateOnConcat(HloInstruction* concat) {
+absl::Status ConvolutionVisitor::PropagateOnConcat(HloInstruction* concat) {
   auto first_operand = old_to_new_instrs_[concat->mutable_operand(0)];
   auto permute_dims = instr_to_dim_permute_map_[first_operand];
   const int64_t new_concat_dim =
@@ -2957,7 +2957,7 @@ Status ConvolutionVisitor::PropagateOnConcat(HloInstruction* concat) {
   return OkStatus();
 }
 
-Status ConvolutionVisitor::PropagateOnReverse(HloInstruction* reverse) {
+absl::Status ConvolutionVisitor::PropagateOnReverse(HloInstruction* reverse) {
   auto first_operand = old_to_new_instrs_[reverse->mutable_operand(0)];
   auto permute_dims = instr_to_dim_permute_map_[first_operand];
 
@@ -2978,7 +2978,7 @@ Status ConvolutionVisitor::PropagateOnReverse(HloInstruction* reverse) {
   return OkStatus();
 }
 
-Status ConvolutionVisitor::PropagateOnPad(HloInstruction* pad) {
+absl::Status ConvolutionVisitor::PropagateOnPad(HloInstruction* pad) {
   auto first_operand = old_to_new_instrs_[pad->mutable_operand(0)];
   auto permute_dims = instr_to_dim_permute_map_[first_operand];
 
@@ -3009,7 +3009,7 @@ Status ConvolutionVisitor::PropagateOnPad(HloInstruction* pad) {
   return OkStatus();
 }
 
-Status ConvolutionVisitor::PropagateOnSlice(HloInstruction* slice) {
+absl::Status ConvolutionVisitor::PropagateOnSlice(HloInstruction* slice) {
   auto operand = old_to_new_instrs_[slice->mutable_operand(0)];
   auto permute_dims = instr_to_dim_permute_map_[operand];
 
@@ -3230,7 +3230,7 @@ absl::StatusOr<HloInstruction*> ConvolutionVisitor::PropagateOnConstant(
   return new_consumer;
 }
 
-Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
+absl::Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
     HloInstruction* convolution) {
   auto activations_old = convolution->mutable_operand(0);
 
@@ -3865,7 +3865,7 @@ ConvolutionVisitor::ConvDetails ConvolutionVisitor::GetConvolutionDetails(
                      input_dim_size};
 }
 
-Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
+absl::Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
     HloInstruction* convolution) {
   if (!ConsumeFuel("space-to-batch-converter", [&] {
         return "Skipping space-to-batch propagation because fuel over\n";

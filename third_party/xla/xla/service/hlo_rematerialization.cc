@@ -521,7 +521,7 @@ class MemoryUsageTracker {
   // EndInstruction) to accurately model memory usage. At BeginInstruction the
   // memory for the output value(s) of the current instruction is allocated. At
   // EndInstruction memory for dead operand(s) is freed.
-  Status BeginInstruction(Item* item);
+  absl::Status BeginInstruction(Item* item);
 
   int64_t RematerializationCost(const std::vector<Item*>& items,
                                 int64_t memory_reduced,
@@ -551,7 +551,7 @@ class MemoryUsageTracker {
   // Finishes the placement of the current instruction. This frees any dead
   // operands or dead result of the instruction. This must be called after
   // each call to BeginInstruction.
-  Status EndInstruction();
+  absl::Status EndInstruction();
 
   // Returns the number of bytes that the current memory usage will be reduced
   // if the given instruction is compact.
@@ -563,16 +563,18 @@ class MemoryUsageTracker {
   int64_t MemoryReducedIfRematerialized(
       absl::Span<const Item* const> items) const;
 
-  Status AddCompressInstructions(Item* original_item, Item* compressed_item,
-                                 Item* uncompressed_item);
+  absl::Status AddCompressInstructions(Item* original_item,
+                                       Item* compressed_item,
+                                       Item* uncompressed_item);
 
   // Adjusts memory usage to account for the rematerialization of
   // original_item for all remaining unplaced uses. The rematerialization
   // is remat_item. This method should be called after the HLO graph has
   // been transformed (rematerialization instruction created and connected
   // to uses).
-  Status AddRematerializedInstruction(Item* original_item, Item* remat_item,
-                                      absl::Span<Item*> indirect_users);
+  absl::Status AddRematerializedInstruction(Item* original_item,
+                                            Item* remat_item,
+                                            absl::Span<Item*> indirect_users);
 
   // Given a list of uses return two lists where one is the ones which are
   // placed and the other is ones which are not yet placed.
@@ -583,11 +585,11 @@ class MemoryUsageTracker {
   // Given the newly created instructions for host memory offload, create new
   // buffers, link their uses to their users, and update the current memory
   // usage.
-  Status AddHostOffloadCopyInstructions(Item* original_item,
-                                        Item* copy_start_to_host_item,
-                                        Item* copy_done_to_host_item,
-                                        Item* copy_start_to_device_item,
-                                        Item* copy_done_to_device_item);
+  absl::Status AddHostOffloadCopyInstructions(Item* original_item,
+                                              Item* copy_start_to_host_item,
+                                              Item* copy_done_to_host_item,
+                                              Item* copy_start_to_device_item,
+                                              Item* copy_done_to_device_item);
 
   // Counts the bytes that this item occupies by summing up the buffers defined
   // by this item. If only_count_unplaced_users is true, only count users of
@@ -714,7 +716,7 @@ class MemoryUsageTracker {
 
   // Adjust our tracked memory usage as a result of this item going out of
   // scope.
-  Status CountFreedMemory(Item* item);
+  absl::Status CountFreedMemory(Item* item);
 
   // Buffers have users and users have buffers used, this function resolves
   // outstanding issues in that bidirectional dependency.
@@ -940,7 +942,7 @@ void MemoryUsageTracker::CountAllocatedMemory(Item* item) {
   }
 }
 
-Status MemoryUsageTracker::CountFreedMemory(Item* item) {
+absl::Status MemoryUsageTracker::CountFreedMemory(Item* item) {
   for (BufferId buffer_id : item->buffers_used) {
     Buffer& buffer = buffers_.at(buffer_id);
     buffer.unfinished_user_count--;
@@ -969,7 +971,7 @@ Status MemoryUsageTracker::CountFreedMemory(Item* item) {
   return OkStatus();
 }
 
-Status MemoryUsageTracker::BeginInstruction(Item* item) {
+absl::Status MemoryUsageTracker::BeginInstruction(Item* item) {
   const HloInstruction* instruction = item->instruction;
   VLOG(3) << "BeginInstruction " << instruction->name();
   TF_RET_CHECK(in_progress_item_ == nullptr);
@@ -991,7 +993,7 @@ Status MemoryUsageTracker::BeginInstruction(Item* item) {
   return OkStatus();
 }
 
-Status MemoryUsageTracker::EndInstruction() {
+absl::Status MemoryUsageTracker::EndInstruction() {
   TF_RET_CHECK(in_progress_item_ != nullptr);
   VLOG(3) << "EndInstruction " << in_progress_item_->instruction->name();
 
@@ -1116,9 +1118,8 @@ void MemoryUsageTracker::ReplaceUsesInUsersOfBuffer(Buffer& buffer,
   }
 }
 
-Status MemoryUsageTracker::AddCompressInstructions(Item* original_item,
-                                                   Item* compressed_item,
-                                                   Item* uncompressed_item) {
+absl::Status MemoryUsageTracker::AddCompressInstructions(
+    Item* original_item, Item* compressed_item, Item* uncompressed_item) {
   CHECK(original_item->placed)
       << "Compressing instruction, but the original is not yet placed.";
   CHECK_EQ(original_item->buffers_output.size(), 1)
@@ -1185,7 +1186,7 @@ Status MemoryUsageTracker::AddCompressInstructions(Item* original_item,
   return OkStatus();
 }
 
-Status MemoryUsageTracker::AddRematerializedInstruction(
+absl::Status MemoryUsageTracker::AddRematerializedInstruction(
     Item* original_item, Item* remat_item, absl::Span<Item*> indirect_users) {
   VLOG(3) << "AddRematerializedInstruction: original_instruction = "
           << original_item->instruction->name()
@@ -1330,7 +1331,7 @@ Status MemoryUsageTracker::AddRematerializedInstruction(
   return OkStatus();
 }
 
-Status MemoryUsageTracker::AddHostOffloadCopyInstructions(
+absl::Status MemoryUsageTracker::AddHostOffloadCopyInstructions(
     Item* original_item, Item* copy_start_to_host_item,
     Item* copy_done_to_host_item, Item* copy_start_to_device_item,
     Item* copy_done_to_device_item) {
@@ -2925,7 +2926,8 @@ absl::StatusOr<bool> HloRematerialization::Run(
   // Compute peak memory usage of all computations in the module called in a
   // sequential context.
   TF_RETURN_IF_ERROR(call_graph_->VisitNodes(
-      [this, module, &execution_threads](const CallGraphNode& node) -> Status {
+      [this, module,
+       &execution_threads](const CallGraphNode& node) -> absl::Status {
         if (node.context() == CallContext::kControlFlow &&
             HloInstruction::IsThreadIncluded(
                 node.computation()->execution_thread(), execution_threads)) {

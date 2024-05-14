@@ -43,19 +43,19 @@ CpuTransferManager::CpuTransferManager()
     : GenericTransferManager(se::host::kHostPlatformId,
                              /*pointer_size=*/sizeof(void*)) {}
 
-Status CpuTransferManager::TransferLiteralToInfeed(
+absl::Status CpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(executor->device_ordinal(), literal);
 }
 
-Status CpuTransferManager::TransferLiteralFromOutfeed(
+absl::Status CpuTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
   return TransferLiteralFromOutfeedOnCpu(executor->device_ordinal(), literal);
 }
 
-Status CpuTransferManager::ReadDynamicShapes(se::Stream* stream,
-                                             const ShapedBuffer* device_buffer,
-                                             Shape* device_shape) {
+absl::Status CpuTransferManager::ReadDynamicShapes(
+    se::Stream* stream, const ShapedBuffer* device_buffer,
+    Shape* device_shape) {
   if (stream != nullptr) {
     // When a stream is presented, respect the stream dependency.
     return TransferManager::ReadDynamicShapes(stream, device_buffer,

@@ -2105,7 +2105,7 @@ TEST_F(HloDataflowAnalysisTest, AllGatherStartAndDoneWithTuple) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
   const HloDataflowAnalysis& analysis = RunAnalysis(/*ssa_form=*/false);
-  Status status = analysis.Verify();
+  absl::Status status = analysis.Verify();
   EXPECT_TRUE(status.ok()) << status.ToString();
 
   HloInstruction* done = module_->entry_computation()->root_instruction();
