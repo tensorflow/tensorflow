@@ -16,19 +16,12 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
-#include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/demangle.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 

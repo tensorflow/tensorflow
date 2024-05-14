@@ -92,12 +92,10 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
 class Kernel;
-class StreamExecutorInterface;
 
 //===----------------------------------------------------------------------===//
 // Kernel cache config
