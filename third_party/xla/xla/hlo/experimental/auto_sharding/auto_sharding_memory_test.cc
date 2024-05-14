@@ -68,10 +68,13 @@ TEST(AutoShardingMemoryTest, WithoutOverlap) {
        {   1},
        {   1},
        {   1}};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{0, 2}, {3, 5}};
   const std::vector<absl::btree_set<int64_t>> expected_reduced_groups = {};
   const std::pair<int64_t, int64_t> expected_num_terms = {6, 6};
   EXPECT_EQ(num_terms, expected_num_terms);
   EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
@@ -100,11 +103,14 @@ TEST(AutoShardingMemoryTest, PartialOverlap) {
        {      2},
        {      2},
        {   1   }};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{0, 0}, {5, 5}, {1, 4}};
   const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
       {{0, 1}};
   const std::pair<int64_t, int64_t> expected_num_terms = {10, 8};
   EXPECT_EQ(num_terms, expected_num_terms);
   EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
@@ -133,11 +139,14 @@ TEST(AutoShardingMemoryTest, PartialOverlapReversed) {
        {      2},
        {      2},
        {0      }};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{5, 5}, {0, 0}, {1, 4}};
   const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
       {{0, 1}};
   const std::pair<int64_t, int64_t> expected_num_terms = {10, 8};
   EXPECT_EQ(num_terms, expected_num_terms);
   EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
@@ -165,10 +174,13 @@ TEST(AutoShardingMemoryTest, DoesNotSplitPrimitive) {
        {0, 1},
        {0, 1},
        {0   }};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{0, 5}, {1, 4}};
   const std::vector<absl::btree_set<int64_t>> expected_reduced_groups = {};
   const std::pair<int64_t, int64_t> expected_num_terms = {10, 10};
   EXPECT_EQ(num_terms, expected_num_terms);
   EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
@@ -197,11 +209,14 @@ TEST(AutoShardingMemoryTest, OnePrimitiveVanishes) {
        {   2},
        {   2},
        {   2}};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{0, 0}, {6, 0}, {1, 5}};
   const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
       {{0, 1}};
   const std::pair<int64_t, int64_t> expected_num_terms = {11, 8};
   EXPECT_EQ(num_terms, expected_num_terms);
   EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
@@ -230,11 +245,14 @@ TEST(AutoShardingMemoryTest, BothPrimitivesVanish) {
        {2},
        {2},
        {2}};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{6, -1}, {6, -1}, {0, 5}};
   const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
       {{0, 1}};
   const std::pair<int64_t, int64_t> expected_num_terms = {12, 8};
   EXPECT_EQ(num_terms, expected_num_terms);
   EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
@@ -270,11 +288,14 @@ TEST(AutoShardingMemoryTest, OneGroupingPreventsAnother) {
        {1, 2   },
        {1, 2   },
        {   2   }};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{5, -1}, {5, 7}, {4, 8}, {0, 4}};
   const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
       {{0, 1}};
   const std::pair<int64_t, int64_t> expected_num_terms = {18, 15};
   EXPECT_EQ(num_terms, expected_num_terms);
   EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
@@ -304,11 +325,14 @@ TEST(AutoShardingMemoryTest, TwoGroups) {
        {4},
        {4},
        {4}};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{6, 2}, {3, -1}, {6, 2}, {0, 2}, {3, 5}};
   const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
       {{0, 1}, {0, 2}};
   const std::pair<int64_t, int64_t> expected_num_terms = {12, 10};
   EXPECT_EQ(num_terms, expected_num_terms);
   EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
@@ -343,11 +367,14 @@ TEST(AutoShardingMemoryTest, TwoGroupsMutuallyExclusive) {
        {      5},
        {      5},
        {   3   }};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{0, 0}, {4, 0}, {7, 3}, {7, 7}, {1, 3}, {4, 6}};
   const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
       {{0, 1}, {2, 3}};
   const std::pair<int64_t, int64_t> expected_num_terms = {14, 12};
   EXPECT_EQ(num_terms, expected_num_terms);
   EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
@@ -367,10 +394,13 @@ TEST(AutoShardingMemoryTest, MergingPrimitivesWouldNotReduceTerms) {
   const std::vector<std::vector<int64_t>> expected_reduced_live =
       {{0, 1},
        {0, 1}};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{0, 1}, {0, 1}};
   const std::vector<absl::btree_set<int64_t>> expected_reduced_groups = {};
   const std::pair<int64_t, int64_t> expected_num_terms = {4, 4};
   EXPECT_EQ(num_terms, expected_num_terms);
   EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
@@ -400,11 +430,14 @@ TEST(AutoShardingMemoryTest, AllPrimitivesVanish) {
        {3},
        {3},
        {3}};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{6, -1}, {6, -1}, {6, -1}, {0, 5}};
   const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
       {{0, 1, 2}};
   const std::pair<int64_t, int64_t> expected_num_terms = {18, 9};
   EXPECT_EQ(num_terms, expected_num_terms);
   EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
@@ -442,11 +475,14 @@ TEST(AutoShardingMemoryTest, MergingGroupsWouldNotReduceTerms) {
        {4, 5},
        {   5},
        {   5}};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{7, -1}, {7, -1}, {9, 2}, {9, 2}, {0, 6}, {3, 8}};
   const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
       {{0, 1}, {2, 3}};
   const std::pair<int64_t, int64_t> expected_num_terms = {26, 17};
   EXPECT_EQ(num_terms, expected_num_terms);
   EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
@@ -493,11 +529,14 @@ TEST(AutoShardingMemoryTest, ExampleFromDocumentation) {
        {      5},
        {      5},
        {   3   }};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{0, 0}, {10, 0}, {13, 4}, {13, 13}, {1, 4}, {10, 12}, {5, 9}};
   const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
       {{0, 1}, {2, 3}, {0, 1, 2, 3}};
   const std::pair<int64_t, int64_t> expected_num_terms = {36, 22};
   EXPECT_EQ(num_terms, expected_num_terms);
   EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
@@ -523,11 +562,14 @@ TEST(AutoShardingMemoryTest, MergesWithRightmost) {
        {      3},
        {      3},
        {1, 2   }};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{3, -1}, {3, 3}, {3, 3}, {0, 2}};
   const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
       {{0, 2}};
   const std::pair<int64_t, int64_t> expected_num_terms = {8, 7};
   EXPECT_EQ(num_terms, expected_num_terms);
   EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
