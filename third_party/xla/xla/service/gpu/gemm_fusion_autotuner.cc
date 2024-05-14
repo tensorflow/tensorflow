@@ -541,7 +541,8 @@ absl::StatusOr<std::vector<Config>> GemmFusionAutotunerImpl::GenerateConfigs(
   std::vector<Config> configs;
   if (algorithm_util::IsSupportedByCublasOrCublasLt(
           dot->precision_config().algorithm()) &&
-      !dot->sparse_operands() && IsAutotuningEnabled()) {
+      !dot->sparse_operands() && IsAutotuningEnabled() &&
+      debug_options_.xla_gpu_cublas_fallback()) {
     configs.push_back(CuBlasConfig{});
   }
 
@@ -1045,13 +1046,6 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
     TF_ASSIGN_OR_RETURN(
         std::vector<AutotuneResult> results,
         Profile(compile_util, *fusion, /*candidates=*/key_value.second));
-
-    // The reference config (if it exists) will be the first in the results,
-    // due to how sorting the variants work.
-    if (!debug_options_.xla_gpu_cublas_fallback() &&
-        results.front().has_gemm()) {
-      results.erase(results.begin());
-    }
 
     const HloInstruction* root =
         fusion->called_computations().at(0)->root_instruction();
