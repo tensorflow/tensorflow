@@ -574,7 +574,6 @@ absl::Status RunSPMDPasses(
         gpu_target_config.device_description.gpu_compute_capability();
     spmd_simplify.AddPass<GpuAlgebraicSimplifier>(
         layout_insensitive_algsimp_opts, gpu_version);
-
     spmd_simplify.AddPass<SortSimplifier>();
     spmd_simplify.AddPass<TupleSimplifier>();
     spmd_simplify.AddPass<ScatterExpander>(
@@ -587,6 +586,15 @@ absl::Status RunSPMDPasses(
     ReshapeMoverOptions reshape_mover_options;
     reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
     spmd_simplify.AddPass<ReshapeMover>(reshape_mover_options);
+    // Run AlgebraicSimplifier directly before HloConstantFolding, because we
+    // need to simplify DynamicSlice(Broadcast) away. Constant folding of
+    // DynamicSlice can be quite costly, as the whole operand will be evaluated.
+    // We run AlgebraicSimplifier as HloPassFix to make sure all simplifications
+    // have been done before running HloConstantFolding. This is necessary
+    // because simplifications create new instructions which may not be visited
+    // in the same iteration of AlgebraicSimplifier.
+    spmd_simplify.AddPass<HloPassFix<AlgebraicSimplifier>>(
+        layout_insensitive_algsimp_opts);
     spmd_simplify.AddPass<HloConstantFolding>();
     spmd_simplify.AddPass<ConditionalSimplifier>();
 
