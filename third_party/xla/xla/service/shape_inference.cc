@@ -2492,6 +2492,8 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     const Shape& shape, int64_t split_dimension, int64_t concat_dimension,
     int64_t split_count) {
   TF_RET_CHECK(split_count > 0);
+  TF_RET_CHECK(!shape.is_bounded_dynamic())
+      << "AllToAll does not support bounded dynamic shapes";
   if (split_dimension >= shape.rank() || split_dimension < 0) {
     return InvalidArgument(
         "AllToAll split_dimension %d is out-of-bounds in shape %s.",
@@ -2502,25 +2504,41 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         "AllToAll concat_dimension %d is out-of-bounds in shape %s.",
         concat_dimension, ShapeUtil::HumanString(shape));
   }
-  if (shape.dimensions(split_dimension) % split_count != 0) {
+  int64_t split_dimension_size = shape.dimensions(split_dimension);
+  if (!IsUnboundedDynamicSize(split_dimension_size) &&
+      split_dimension_size % split_count != 0) {
     return InvalidArgument(
         "AllToAll split dimension size %d must be dividable by split_count "
         "%d.",
-        shape.dimensions(split_dimension), split_count);
+        split_dimension_size, split_count);
   }
   std::vector<int64_t> new_dimensions(shape.dimensions().begin(),
                                       shape.dimensions().end());
-  new_dimensions[split_dimension] /= split_count;
-  new_dimensions[concat_dimension] *= split_count;
-  return ShapeUtil::MakeShape(shape.element_type(), new_dimensions);
+  new_dimensions[split_dimension] =
+      IsUnboundedDynamicSize(new_dimensions[split_dimension])
+          ? Shape::kUnboundedSize
+          : new_dimensions[split_dimension] / split_count;
+  new_dimensions[concat_dimension] =
+      IsUnboundedDynamicSize(new_dimensions[concat_dimension])
+          ? Shape::kUnboundedSize
+          : new_dimensions[concat_dimension] * split_count;
+
+  const std::vector<bool> dynamic_dimensions(shape.dynamic_dimensions().begin(),
+                                             shape.dynamic_dimensions().end());
+  return ShapeUtil::MakeShape(shape.element_type(), new_dimensions,
+                              dynamic_dimensions);
 }
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferAllToAllTupleShape(
     absl::Span<const Shape* const> operand_shapes) {
-  // An Alltoall HLO instruction receives N operands (with the same shape) and
+  // An AllToAll HLO instruction receives N operands (with the same shape) and
   // returns a tuple that contains N array shapes.
   TF_RET_CHECK(!operand_shapes.empty());
   for (int i = 0; i < operand_shapes.size(); i++) {
+    if (operand_shapes[i]->is_unbounded_dynamic()) {
+      return InvalidArgument(
+          "AllToAllTuple does not support unbounded dynamic shapes");
+    }
     if (!Shape::Equal().IgnoreMemorySpaceInLayout()(*operand_shapes[0],
                                                     *operand_shapes[i])) {
       return InvalidArgument(
