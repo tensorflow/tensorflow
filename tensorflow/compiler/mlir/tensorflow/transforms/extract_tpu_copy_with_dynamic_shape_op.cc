@@ -61,6 +61,7 @@ LogicalResult CheckOpIsValid(Operation* op) {
   auto launch_op = llvm::dyn_cast<tf_device::LaunchOp>(op->getParentOp());
   if (!launch_op) {
     op->emitError() << "TPUCopyWithDynamicShapeOp is not in a launch";
+    return failure();
   }
   std::string device_str = launch_op.getDeviceAttr().getValue().str();
   std::string cpu0_device;
