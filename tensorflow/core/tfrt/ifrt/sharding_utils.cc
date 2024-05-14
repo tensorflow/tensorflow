@@ -174,8 +174,8 @@ SplitAndCreateArraysFromHostBuffer(
                   kImmutableUntilTransferCompletes,
               [tensor, slice_idx]() {
                 // Keep tensor alive
-                LOG(INFO) << "Done with host buffer for slice " << slice_idx
-                          << " at " << tensor.data();
+                VLOG(2) << "Done with host buffer for slice " << slice_idx
+                        << " at " << tensor.data();
               }));
       arrays.push_back(std::move(array));
       device_iter++;
