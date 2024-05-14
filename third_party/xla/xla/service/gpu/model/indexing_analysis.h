@@ -104,7 +104,7 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
 // fusion does not make much sense, but they are created sometimes.
 IndexingMap ComputeEpilogueInputToOutputIndexing(
     HloInstructionAdaptor epilogue_parent, HloInstructionAdaptor epilogue_root,
-    mlir::MLIRContext* ctx);
+    mlir::MLIRContext* mlir_context);
 
 using GroupedByOpIndexingMap =
     absl::flat_hash_map<const HloInstruction*, IndexingMapSet>;
@@ -132,32 +132,32 @@ bool FuseProducerConsumerOutputToInputIndexing(
 // Equivalent to linearizing the input_shape index and then delinearizing it
 // to output_shape.
 IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
-                          mlir::MLIRContext* ctx);
+                          mlir::MLIRContext* mlir_context);
 
 // Creates an indexing map from the physical layout of the tensor to its logical
 // layout.
-IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(const Shape& shape,
-                                                      mlir::MLIRContext* ctx);
+IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(
+    const Shape& shape, mlir::MLIRContext* mlir_context);
 
 // Creates an indexing map from the logical layout of the tensor to its physical
 // layout.
-IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(const Shape& shape,
-                                                      mlir::MLIRContext* ctx);
+IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(
+    const Shape& shape, mlir::MLIRContext* mlir_context);
 
 // Creates an indexing map from thread and block IDs to elements of the tiled
 // shape. Uses the same convention as KernelFusionInterface: dimensions 0 to 2
 // are thread indices (currently only 0 is used), dimensions 3 to 5 are block
 // indices (currently only 3 is used).
 mlir::AffineMap GetBlockOffsetsForTiling(const Tiling& tiling,
-                                         mlir::MLIRContext* ctx);
+                                         mlir::MLIRContext* mlir_context);
 mlir::AffineMap GetThreadOffsetsForTiling(const Tiling& tiling,
-                                          mlir::MLIRContext* ctx);
+                                          mlir::MLIRContext* mlir_context);
 
 // Convenience functions for the two functions above
 // (`GetBlockOffsestsForTiling` + `GetThreadOffsetsForTiling`). Also sets up
 // the ranges of dimensions and symbols.
 IndexingMap GetIndexingMapForTiling(const Tiling& tiling,
-                                    mlir::MLIRContext* ctx);
+                                    mlir::MLIRContext* mlir_context);
 IndexingMap GetIndexingMapForTiling(mlir::AffineMap block_offsets,
                                     mlir::AffineMap thread_offsets,
                                     int64_t threads_per_block,
