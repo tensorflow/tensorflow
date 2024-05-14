@@ -180,13 +180,20 @@ IndexingMap GetSharedMemoryWriteIndexingMap(
   AffineExpr th_x = mlir::getAffineDimExpr(0, mlir_context);
   SmallVector<AffineExpr, 3> tile_sizes(3);
   mlir::bindSymbolsList(mlir_context, llvm::MutableArrayRef(tile_sizes));
+  SmallVector<AffineExpr, 3> shared_memory_indices = {
+      th_x.floorDiv(32) + 4 * tile_sizes[loop_dim], th_x % 32};
+  for (auto [index, range_val] :
+       llvm::enumerate(thread_id_indexing.GetRangeVars())) {
+    if (range_val.range.NumElements() == 1) {
+      shared_memory_indices.insert(shared_memory_indices.begin() + index, c0);
+      break;
+    }
+  }
 
   IndexingMap shmem_write_indexing{
-      AffineMap::get(
-          thread_id_indexing.GetDimensionCount(),
-          thread_id_indexing.GetSymbolCount(),
-          {c0, th_x.floorDiv(32) + 4 * tile_sizes[loop_dim], th_x % 32},
-          mlir_context),
+      AffineMap::get(thread_id_indexing.GetDimensionCount(),
+                     thread_id_indexing.GetSymbolCount(), shared_memory_indices,
+                     mlir_context),
       thread_id_indexing.GetDimVars(), thread_id_indexing.GetRangeVars(),
       thread_id_indexing.GetRTVars(), thread_id_indexing.GetConstraints()};
   return shmem_write_indexing;
@@ -195,10 +202,12 @@ IndexingMap GetSharedMemoryWriteIndexingMap(
 // Returns an indexing map with block_x, block_y, block_z set to 0 and swapped
 // 2nd and 3rd results.
 IndexingMap GetSharedMemoryReadIndexingMap(
-    const IndexingMap& thread_id_indexing, int loop_dim) {
-  IndexingMap write_indexing =
-      GetSharedMemoryWriteIndexingMap(thread_id_indexing, loop_dim);
-  return IndexingMap{write_indexing.GetAffineMap().getSubMap({0, 2, 1}),
+    const IndexingMap& thread_id_indexing, Vector3 permutation) {
+  IndexingMap write_indexing = GetSharedMemoryWriteIndexingMap(
+      thread_id_indexing, /*loop_dim=*/permutation[2]);
+  llvm::SmallVector<unsigned, 3> positions;
+  absl::c_copy(permutation, std::back_inserter(positions));
+  return IndexingMap{write_indexing.GetAffineMap().getSubMap(positions),
                      write_indexing.GetDimVars(), write_indexing.GetRangeVars(),
                      write_indexing.GetRTVars(),
                      write_indexing.GetConstraints()};
@@ -212,6 +221,9 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
     ValueRange output_args) const {
   std::vector<int64_t> shmem_tensor_size(tiling_.GetBlockTileSize().begin(),
                                          tiling_.GetBlockTileSize().end());
+  // Avoid bank conflict.
+  ++shmem_tensor_size.back();
+
   MLIRContext* ctx = builder.getContext();
 
   WriteResult write_result;
@@ -305,7 +317,7 @@ void MlirTransposeFusion::EmitReadFromShMemMlir(
   auto* mlir_context = builder.getContext();
   auto output_indexing = *ComputeThreadIdToOutputIndexing(0, mlir_context);
   auto shmem_output_indexing =
-      GetSharedMemoryReadIndexingMap(output_indexing, permutation_[2]);
+      GetSharedMemoryReadIndexingMap(output_indexing, permutation_);
   auto result_tensors = EmitThreadLoopNest(
       builder, written.updated_outputs, output_indexing,
       [&](ValueRange output_tensors, ValueRange dim_values,

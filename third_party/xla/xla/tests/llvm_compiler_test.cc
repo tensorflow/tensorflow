@@ -21,12 +21,22 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/status/statusor.h"
+#include "llvm/IR/Module.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/literal_util.h"
 #include "xla/service/backend.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
+#include "xla/status.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/platform.h"
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #elif TENSORFLOW_USE_ROCM

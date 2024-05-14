@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/types.h"
