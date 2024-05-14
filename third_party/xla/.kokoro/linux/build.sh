@@ -48,13 +48,13 @@ docker run --name xla -w /tf/xla -itd --rm \
     "$DOCKER_IMAGE" \
     bash
 
-TAGS_FILTER="-no_oss,-oss_excluded,-oss_serial"
+TAGS_FILTER="-no_oss"
 ADDITIONAL_FLAGS=""
 RBE_FLAGS=""
 TARGET_FILTERS="-@local_tsl//tsl/platform:subprocess_test -@local_tsl//tsl/platform/cloud:google_auth_provider_test -@local_tsl//tsl/platform/cloud:oauth_client_test"
 
 if is_linux_gpu_job ; then
-    TAGS_FILTER="$TAGS_FILTER,requires-gpu-nvidia,-no_gpu"
+    TAGS_FILTER="$TAGS_FILTER,requires-gpu-nvidia"
 
     # We are currently running XLA presubmits on machines with NVIDIA T4 GPUs,
     # which have a compute compatibility of 7.5. Se we filter out all the tests
