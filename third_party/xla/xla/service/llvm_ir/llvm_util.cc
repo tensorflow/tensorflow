@@ -709,9 +709,9 @@ std::map<int, llvm::MDNode*> MergeMetadata(
   return result;
 }
 
-static Status CreateAndWriteStringToFile(const std::string& directory_name,
-                                         const std::string& file_name,
-                                         const std::string& text) {
+static absl::Status CreateAndWriteStringToFile(
+    const std::string& directory_name, const std::string& file_name,
+    const std::string& text) {
   std::unique_ptr<tsl::WritableFile> f;
   TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(directory_name));
   TF_RETURN_IF_ERROR(tsl::Env::Default()->NewWritableFile(file_name, &f));

@@ -43,8 +43,8 @@ mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
 
 // Converts the given XLA shape for tensors to the template MLIR type.
 template <typename TypeT>
-static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
-                                                mlir::Builder builder) {
+static absl::StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
+                                                      mlir::Builder builder) {
   auto element_type_or =
       ConvertPrimitiveTypeToMlirType(xla_ty.element_type(), builder);
   if (!element_type_or.ok()) return element_type_or.status();

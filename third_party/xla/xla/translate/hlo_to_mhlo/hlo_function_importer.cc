@@ -182,7 +182,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
     const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
     mlir::Type result_type, mlir::OpBuilder* func_builder,
-    std::string func_name, std::function<Status(sync_op)> mutate_op) {
+    std::string func_name, std::function<absl::Status(sync_op)> mutate_op) {
   auto result_types = result_type.cast<mlir::TupleType>().getTypes();
   if (result_types.size() < 2) {
     return tsl::errors::InvalidArgument(
@@ -442,7 +442,7 @@ absl::StatusOr<mlir::func::FuncOp> HloFunctionImporter::ImportAsFunc(
   return importer.ImportAsFunc(computation, is_main);
 }
 
-Status HloFunctionImporter::ImportAsRegion(
+absl::Status HloFunctionImporter::ImportAsRegion(
     const HloComputation& computation, mlir::SymbolTable& symbol_table,
     mlir::Region* region, mlir::Builder* builder,
     bool flatten_computation_args_result) {
@@ -623,8 +623,8 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   return function;
 }
 
-Status HloFunctionImporter::ImportAsRegion(const HloComputation& computation,
-                                           mlir::Region* region) {
+absl::Status HloFunctionImporter::ImportAsRegion(
+    const HloComputation& computation, mlir::Region* region) {
   auto loc = region->getLoc();
   // TODO(hinsu): Store computation name as an attribute for round-trip.
   auto* block = new mlir::Block;
@@ -681,7 +681,7 @@ absl::StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
   return GetMlirValue(computation.root_instruction());
 }
 
-Status HloFunctionImporter::ImportInstructions(
+absl::Status HloFunctionImporter::ImportInstructions(
     const HloComputation& computation, mlir::Block* block) {
   llvm::SmallVector<Value, 4> arguments(block->args_begin(), block->args_end());
   mlir::OpBuilder builder = mlir::OpBuilder::atBlockEnd(block);
@@ -2271,7 +2271,7 @@ HloFunctionImporter::GetOperands(const HloInstruction* instruction) {
   return operands;
 }
 
-Status HloFunctionImporter::GetMlirTypes(
+absl::Status HloFunctionImporter::GetMlirTypes(
     absl::Span<const HloInstruction* const> instructions,
     llvm::SmallVectorImpl<mlir::Type>* types) {
   for (auto instruction : instructions) {
@@ -2430,7 +2430,7 @@ void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,
   op->setAttr(attr_name, GetLayoutAttribute(b, shape));
 }
 
-Status HloFunctionImporter::ConvertShapeToMlirLayout(
+absl::Status HloFunctionImporter::ConvertShapeToMlirLayout(
     const Shape& shape,
     llvm::SmallVectorImpl<mlir::Attribute>& flattened_attr) {
   if (shape.IsToken()) {
