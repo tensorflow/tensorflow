@@ -113,22 +113,6 @@ cc_library(
 )
 
 cc_library(
-    name = "translate_tf_dialect_op",
-    srcs = ["translate_tf_dialect_op.cc"],
-    deps = [
-        ":export_tf_dialect_op",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TranslateLib",
-        "@local_tsl//tsl/platform:protobuf",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "mlir_roundtrip_flags",
     srcs = ["mlir_roundtrip_flags.cc"],
     hdrs = ["mlir_roundtrip_flags.h"],

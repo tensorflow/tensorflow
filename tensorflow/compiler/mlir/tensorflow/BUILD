@@ -1664,7 +1664,6 @@ aliased_targets = [
     "export_graphdef",
     "import_model",
     "export_tf_dialect_op",
-    "translate_tf_dialect_op",
     "mlir_roundtrip_flags",
     "mlir_import_options",
     "translate_lib",
