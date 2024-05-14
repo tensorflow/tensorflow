@@ -174,7 +174,7 @@ LogicalResult MatchInverseScalesOperand(Value inverse_scales) {
   if (!inverse_scale_constant_op) {
     llvm::dbgs()
         << "Inverse scales should be a constant. Instead, it was defined by: "
-        << inverse_scale_constant_op << ".\n";
+        << inverse_scales.getDefiningOp() << ".\n";
     return failure();
   }
 
