@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
@@ -174,6 +175,8 @@ class MatmulBfloat16Support : public FloatSupport {
 };
 
 }  // namespace
+
+int32_t NVPTXCompiler::GetToolkitVersion() const { return CUDA_VERSION; }
 
 absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::GpuComputeCapability gpu_version,

@@ -246,13 +246,6 @@ limitations under the License.
 #include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
 
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
-#elif TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/rocm/rocm_platform_id.h"
-#endif
-
 #ifdef PLATFORM_GOOGLE
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
 #endif  // PLATFORM_GOOGLE
@@ -2084,11 +2077,9 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& options) {
-#if GOOGLE_CUDA
-  CHECK(options.PlatformId() == se::cuda::kCudaPlatformId);
-#elif TENSORFLOW_USE_ROCM
-  CHECK(options.PlatformId() == se::rocm::kROCmPlatformId);
-#endif
+  // Check that we are on the platform (CUDA or ROCm) that was chosen for AOT
+  // compilation.
+  CHECK_EQ(options.PlatformId(), PlatformId());
 
   std::vector<std::unique_ptr<HloModule>> modules =
       module_group->ConsumeModules();
@@ -2223,11 +2214,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
   {
     HloPassPipeline pipeline("command-buffer-scheduling");
     auto driver_version = se::gpu::GpuDriver::GetDriverVersion();
-#if GOOGLE_CUDA
-    constexpr int toolkit_version = CUDA_VERSION;
-#else
-    constexpr int toolkit_version = TF_ROCM_VERSION;
-#endif
+    const int32_t toolkit_version = GetToolkitVersion();
     pipeline.AddPass<CommandBufferScheduling>(
         gpu_device_info, toolkit_version,
         driver_version.value_or(toolkit_version));

@@ -3387,9 +3387,6 @@ cc_library(
     hdrs = if_gpu_is_configured([
         "gpu_compiler.h",
     ]),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     deps = if_gpu_is_configured([
         ":gpu_p2p_pipeliner",
         ":pipelined_p2p_rewriter",
@@ -3460,7 +3457,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:variant",
-        "@local_config_cuda//cuda:cuda_headers",
         "@llvm-project//llvm:AsmParser",
         "@llvm-project//llvm:BitReader",
         "@llvm-project//llvm:BitWriter",
@@ -3579,7 +3575,6 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_driver_header",
-        "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/integrations:device_mem_allocator",
         "//xla/translate/hlo_to_mhlo:hlo_utils",
         "//xla/translate/mhlo_to_hlo:location_exporter",
@@ -3610,7 +3605,6 @@ cc_library(
         "//xla/service:hlo_ordering",
         "//xla/service:layout_assignment",
         "//xla/service:logical_buffer",
-        "//xla/stream_executor/rocm:rocm_platform_id",
         "@local_tsl//tsl/platform:numbers",
     ]) + xla_internal(["service:export_hlo"]) + [
         ":command_buffer_scheduling",
@@ -3787,6 +3781,7 @@ cc_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
+        "@local_config_cuda//cuda:cuda_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -3929,6 +3924,7 @@ cc_library(
     srcs = [
         "amdgpu_compiler_registration.cc",
     ],
+    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     tags = ["manual"],
     deps = [
         ":amdgpu_compiler_impl",
@@ -4017,6 +4013,8 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/rocm:rocm_platform_id",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:ir_headers",

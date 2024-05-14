@@ -116,6 +116,8 @@ class GpuCompiler : public LLVMCompiler {
     return &FusionCanShareBufferHint;
   }
 
+  virtual int32_t GetToolkitVersion() const = 0;
+
  protected:
   struct BackendCompileResult {
     std::string asm_text;
