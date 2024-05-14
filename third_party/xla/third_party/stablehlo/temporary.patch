@@ -361,6 +361,28 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir b/stablehlo/
    // CHECK: stablehlo.divide
    %0 = "stablehlo.divide"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
    return %0 : tensor<10xf32>
+@@ -123,7 +123,7 @@
+ 
+ // CHECK-LABEL: @maximum_f64
+ func.func @maximum_f64(%arg0 : tensor<10xf64>, %arg1 : tensor<10xf64>) -> tensor<10xf64> {
+-  // CHECK: stablehlo.maximum
++  // CHECK: tosa.maximum
+   %0 = "stablehlo.maximum"(%arg0, %arg1) : (tensor<10xf64>, tensor<10xf64>) -> tensor<10xf64>
+   return %0 : tensor<10xf64>
+ }
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
+--- stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
++++ stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
+@@ -9,8 +9,7 @@
+ 
+ // CHECK-LABEL: @constant_f64
+ func.func @constant_f64() -> tensor<10xf64> {
+-  // TOSA does not support 64-bit types, so this should not legalize.
+-  // CHECK: stablehlo.constant
++  // CHECK: tosa.const
+   %0 = stablehlo.constant dense<0.000000e+00> : tensor<10xf64>
+   return %0 : tensor<10xf64>
+ }
 diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
 --- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
 +++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
