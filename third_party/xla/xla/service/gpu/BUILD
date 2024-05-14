@@ -4364,6 +4364,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
         "//xla/stream_executor",
+        "//xla/stream_executor:kernel_factory",
         "//xla/stream_executor:launch_dim",
         "//xla/tsl/util:env_var",
         "//xla/tsl/util/proto:proto_utils",
