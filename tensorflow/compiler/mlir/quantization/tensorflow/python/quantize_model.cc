@@ -84,6 +84,7 @@ using ::stablehlo::quantization::AddCalibrationStatistics;
 using ::stablehlo::quantization::ChangeToQuantizedFilename;
 using ::stablehlo::quantization::DebuggerConfig;
 using ::stablehlo::quantization::ExpandPresets;
+using ::stablehlo::quantization::IsCalibrationRequired;
 using ::stablehlo::quantization::PopulateDefaults;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::CreateTmpDir;
@@ -163,7 +164,10 @@ absl::StatusOr<ExportedModel> ExportCalibrationModel(
   mlir::OwningOpRef<mlir::ModuleOp> cloned_module_ref(module_op.clone());
 
   TF_RETURN_IF_ERROR(
-      RunCalibrationPasses(*cloned_module_ref, *context, calibration_data_dir));
+      RunCalibrationPasses(*cloned_module_ref, *context, calibration_data_dir,
+                           quantization_options.calibration_options()
+                               .force_regenerate_calibration_data()));
+  if (!IsCalibrationRequired(*cloned_module_ref)) return ExportedModel();
 
   absl::StatusOr<ExportedModel> exported_model = ModuleOpToExportedModel(
       *cloned_module_ref, context, kTfQuantPtqPreCalibrationStepName,
@@ -457,16 +461,18 @@ absl::StatusOr<ExportedModel> QuantizeStaticRangePtq(
                           *function_aliases, calibration_data_dir));
 
   // Save and run the calibration model.
-  TF_ASSIGN_OR_RETURN(std::string precalibrated_saved_model_dir,
-                      CreateTmpDir());
-  py_function_library.SaveExportedModel(
-      precalibrated_saved_model_dir, calibration_exported_model,
-      saved_model_path, tags, signature_def_map);
+  if (calibration_exported_model.has_graph_def()) {
+    TF_ASSIGN_OR_RETURN(std::string calibration_saved_model_dir,
+                        CreateTmpDir());
+    py_function_library.SaveExportedModel(
+        calibration_saved_model_dir, calibration_exported_model,
+        saved_model_path, tags, signature_def_map);
 
-  py_function_library.RunCalibration(
-      precalibrated_saved_model_dir, signature_keys, tags,
-      quantization_options.force_graph_mode_calibration(),
-      representative_dataset_file_map_serialized);
+    py_function_library.RunCalibration(
+        calibration_saved_model_dir, signature_keys, tags,
+        quantization_options.force_graph_mode_calibration(),
+        representative_dataset_file_map_serialized);
+  }
 
   if (absl::Status status = AddCalibrationStatistics(
           *module_ref, calibration_data_dir,

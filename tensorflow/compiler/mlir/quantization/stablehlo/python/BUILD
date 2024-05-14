@@ -62,6 +62,7 @@ pytype_strict_library(
 #         "//tensorflow/python/ops:nn_ops",
 #         "//tensorflow/python/ops:variables",
 #         "//tensorflow/python/platform:client_testlib",
+#         "//tensorflow/python/platform:tf_logging",
 #         "//tensorflow/python/saved_model:load",
 #         "//tensorflow/python/saved_model:loader",
 #         "//tensorflow/python/saved_model:save",
