@@ -16,12 +16,14 @@ limitations under the License.
 #include "tsl/profiler/utils/preprocess_xplane.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
 #include "tsl/platform/test.h"
 #include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tsl/profiler/utils/xplane_builder.h"
 #include "tsl/profiler/utils/xplane_schema.h"
@@ -288,6 +290,19 @@ TEST(PreprocessXPlane, ThreadPoolPreprocessorTest) {
     });
   });
   EXPECT_TRUE(new_event_added);
+}
+
+TEST(PreprocessXPlane, XContextStatsAccessorNPETest) {
+  auto xplane = std::make_unique<XPlane>();
+  XPlaneBuilder xplane_builder(xplane.get());
+  XLine xline;
+  XLineBuilder xline_builder(&xline, &xplane_builder);
+  XEvent xevent;
+  XEventBuilder xevent_builder(&xline, &xplane_builder, &xevent);
+  XContextStatsAccessor<int64_t, StatType::kRunId> run_id_accessor;
+
+  ASSERT_FALSE(run_id_accessor.Initialize(xplane_builder));
+  EXPECT_EQ(run_id_accessor.GetStat(xevent_builder), std::nullopt);
 }
 
 }  // namespace
