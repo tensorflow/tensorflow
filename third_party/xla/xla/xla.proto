@@ -519,7 +519,7 @@ message DebugOptions {
   // scratch), so this can be multiplied by quite a lot.
   int64 xla_gpu_redzone_padding_bytes = 228;
 
-  reserved 168;  // Was xla_allow_excess_precision.
+  reserved 168;  // Was xla_gpu_simplify_all_fp_conversions.
 
   // An experimental option to force all layouts present in the
   // after-optimizations HLO to be descending, e.g.
