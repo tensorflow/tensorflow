@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
+#include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -116,7 +117,7 @@ TEST(HostKernelTest, LlvmAddition) {
   auto executor = NewStreamExecutor();
   auto eg = executor.get();
   EXPECT_NE(eg, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(auto add, HostKernel::Create(eg, spec));
+  TF_ASSERT_OK_AND_ASSIGN(auto add, KernelFactory::Create(eg, spec));
 
   // TODO(tsilytskyi): implement Launch part
   // TF_ASSERT_OK(executor->Launch(ThreadDim(4), args));

@@ -752,6 +752,7 @@ xla_cc_test(
     deps = [
         ":device_memory",
         ":stream_executor",
+        ":typed_kernel_factory",
         "//xla/stream_executor/host:host_platform",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",

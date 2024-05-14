@@ -152,6 +152,7 @@ gpu_only_cc_library(
         ":gpu_types_header",
         "//xla/stream_executor",
         "//xla/stream_executor:stream_executor_interface",
+        "//xla/stream_executor:typed_kernel_factory",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
@@ -343,6 +344,7 @@ gpu_kernel_library(
         ":gpu_semaphore",
         ":gpu_stream",
         "//xla/stream_executor",
+        "//xla/stream_executor:typed_kernel_factory",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -484,6 +486,7 @@ gpu_kernel_library(
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/cuda:cuda_asm_compiler",
         "//xla/stream_executor/cuda:cuda_driver",
         "@com_google_absl//absl/base",

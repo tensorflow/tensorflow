@@ -61,7 +61,7 @@ class TypedKernelFactory {
       loader_spec.AddCudaCubinInMemory(cubin_data, kernel_name);
     }
 
-    return TypedKernel<Params...>::Create(executor, loader_spec);
+    return Create(executor, loader_spec);
   }
 
   // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
@@ -73,7 +73,7 @@ class TypedKernelFactory {
         TypedKernel<Params...>::kNumberOfParameters);
     loader_spec.AddInProcessSymbol(symbol, kernel_name);
 
-    return TypedKernel<Params...>::Create(executor, loader_spec);
+    return Create(executor, loader_spec);
   }
 
   // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
@@ -86,7 +86,7 @@ class TypedKernelFactory {
         TypedKernel<Params...>::kNumberOfParameters);
     loader_spec.AddLlvmHostKernel(ir, entrypoint, kernel_name, options);
 
-    return TypedKernel<Params...>::Create(executor, loader_spec);
+    return Create(executor, loader_spec);
   }
 };
 

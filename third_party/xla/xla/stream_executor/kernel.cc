@@ -52,13 +52,6 @@ void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
 // Kernel
 //===----------------------------------------------------------------------===//
 
-absl::StatusOr<std::unique_ptr<Kernel>> Kernel::Create(
-    StreamExecutorInterface *executor, const MultiKernelLoaderSpec &spec) {
-  TF_ASSIGN_OR_RETURN(auto kernel, executor->CreateKernel());
-  TF_RETURN_IF_ERROR(executor->GetKernel(spec, kernel.get()));
-  return kernel;
-}
-
 void Kernel::set_name(absl::string_view name) {
   name_ = std::string(name);
 

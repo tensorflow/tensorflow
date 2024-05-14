@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -60,7 +61,7 @@ absl::Status MakeBatchPointers(se::Stream* stream,
 
   TF_ASSIGN_OR_RETURN(
       auto kernel,
-      (se::TypedKernel<
+      (se::TypedKernelFactory<
           se::DeviceMemoryBase, size_t, size_t,
           se::DeviceMemoryBase>::Create(executor, "make_batch_pointers",
                                         make_batch_pointers::kernel())));

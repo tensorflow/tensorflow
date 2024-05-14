@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
@@ -489,8 +490,9 @@ static void InitializeTypedBuffer(se::Stream* stream,
   // Repeat the host_buffer_size elements at the start of `buf` to the end
   CHECK_EQ(elements_to_fill, buffer.size() / sizeof(T) - host_buffer_size);
   se::StreamExecutor* executor = stream->parent();
-  auto kernel = se::TypedKernel<se::DeviceMemoryBase, int64_t, int64_t>::Create(
-      executor, "RepeatBufferKernel", repeat_buffer_kernel::kernel());
+  auto kernel =
+      se::TypedKernelFactory<se::DeviceMemoryBase, int64_t, int64_t>::Create(
+          executor, "RepeatBufferKernel", repeat_buffer_kernel::kernel());
   if (!kernel.ok()) {
     LOG(FATAL) << "Could not create RepeatBufferKernel: " << kernel.status();
   }

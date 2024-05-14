@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -217,8 +218,9 @@ GpuCommandBuffer::GetSetIfConditionKernel() {
   if (!set_if_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/2);
     spec.AddCudaPtxInMemory(gpu::GetSetIfConditionKernel(), "set_if_condition");
-    TF_ASSIGN_OR_RETURN(set_if_condition_kernel_,
-                        SetIfConditionKernel::Create(parent_, spec));
+    TF_ASSIGN_OR_RETURN(
+        set_if_condition_kernel_,
+        SetIfConditionKernel::FactoryType::Create(parent_, spec));
   }
   return &set_if_condition_kernel_;
 }
@@ -229,8 +231,9 @@ GpuCommandBuffer::GetSetIfElseConditionKernel() {
     MultiKernelLoaderSpec spec(/*arity=*/3);
     spec.AddCudaPtxInMemory(gpu::GetSetIfElseConditionKernel(),
                             "set_if_else_condition");
-    TF_ASSIGN_OR_RETURN(set_if_else_condition_kernel_,
-                        SetIfElseConditionKernel::Create(parent_, spec));
+    TF_ASSIGN_OR_RETURN(
+        set_if_else_condition_kernel_,
+        SetIfElseConditionKernel::FactoryType::Create(parent_, spec));
   }
   return &set_if_else_condition_kernel_;
 }
@@ -241,8 +244,9 @@ GpuCommandBuffer::GetSetCaseConditionKernel() {
     MultiKernelLoaderSpec spec(/*arity=*/10);
     spec.AddCudaPtxInMemory(gpu::GetSetCaseConditionKernel(),
                             "set_case_condition");
-    TF_ASSIGN_OR_RETURN(set_case_condition_kernel_,
-                        SetCaseConditionKernel::Create(parent_, spec));
+    TF_ASSIGN_OR_RETURN(
+        set_case_condition_kernel_,
+        SetCaseConditionKernel::FactoryType::Create(parent_, spec));
   }
   return &set_case_condition_kernel_;
 }
@@ -253,8 +257,9 @@ GpuCommandBuffer::GetSetForConditionKernel() {
     MultiKernelLoaderSpec spec(/*arity=*/3);
     spec.AddCudaPtxInMemory(gpu::GetSetForConditionKernel(),
                             "set_for_condition");
-    TF_ASSIGN_OR_RETURN(set_for_condition_kernel_,
-                        SetForConditionKernel::Create(parent_, spec));
+    TF_ASSIGN_OR_RETURN(
+        set_for_condition_kernel_,
+        SetForConditionKernel::FactoryType::Create(parent_, spec));
   }
   return &set_for_condition_kernel_;
 }
@@ -265,8 +270,9 @@ GpuCommandBuffer::GetSetWhileConditionKernel() {
     MultiKernelLoaderSpec spec(/*arity=*/2);
     spec.AddCudaPtxInMemory(gpu::GetSetWhileConditionKernel(),
                             "set_while_condition");
-    TF_ASSIGN_OR_RETURN(set_while_condition_kernel_,
-                        SetWhileConditionKernel::Create(parent_, spec));
+    TF_ASSIGN_OR_RETURN(
+        set_while_condition_kernel_,
+        SetWhileConditionKernel::FactoryType::Create(parent_, spec));
   }
   return &set_while_condition_kernel_;
 }
@@ -277,7 +283,8 @@ GpuCommandBuffer::GetNoOpKernel() {
   if (!noop_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/0);
     spec.AddCudaPtxInMemory(gpu::kNoOpKernel, "noop");
-    TF_ASSIGN_OR_RETURN(noop_kernel_, NoOpKernel::Create(parent_, spec));
+    TF_ASSIGN_OR_RETURN(noop_kernel_,
+                        NoOpKernel::FactoryType::Create(parent_, spec));
   }
   return &noop_kernel_;
 #else

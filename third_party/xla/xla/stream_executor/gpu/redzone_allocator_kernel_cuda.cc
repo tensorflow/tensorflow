@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -54,9 +55,9 @@ static absl::StatusOr<TypedKernel<Args...>*> LoadKernelOrGetPtr(
 
   auto it = kernel_ptr_cache.find(kernel_ptr_cache_key);
   if (it == kernel_ptr_cache.end()) {
-    TF_ASSIGN_OR_RETURN(
-        TypedKernel<Args...> loaded,
-        (TypedKernel<Args...>::Create(executor, kernel_name, ptx, cubin_data)));
+    TF_ASSIGN_OR_RETURN(TypedKernel<Args...> loaded,
+                        (TypedKernelFactory<Args...>::Create(
+                            executor, kernel_name, ptx, cubin_data)));
     it =
         kernel_ptr_cache.emplace(kernel_ptr_cache_key, std::move(loaded)).first;
   }

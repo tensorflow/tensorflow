@@ -143,6 +143,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",  # build_cleaner: keep
         "//xla/stream_executor:platform",
+        "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_types_header",
         "@com_google_absl//absl/numeric:bits",
