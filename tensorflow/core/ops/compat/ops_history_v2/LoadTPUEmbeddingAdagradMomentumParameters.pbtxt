@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "LoadTPUEmbeddingAdagradMomentumParameters"
   input_arg {
     name: "parameters"

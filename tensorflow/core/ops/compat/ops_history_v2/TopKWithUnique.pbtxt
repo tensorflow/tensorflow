@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TopKWithUnique"
   input_arg {
     name: "input"

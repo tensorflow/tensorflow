@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SdcaFprint"
   input_arg {
     name: "input"

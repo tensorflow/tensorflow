@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "DenseToSparseBatchDataset"
   input_arg {
     name: "input_dataset"

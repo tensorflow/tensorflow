@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseDenseCwiseAdd"
   input_arg {
     name: "sp_indices"

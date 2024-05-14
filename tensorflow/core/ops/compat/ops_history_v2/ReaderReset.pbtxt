@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ReaderReset"
   input_arg {
     name: "reader_handle"

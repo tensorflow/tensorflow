@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "BoostedTreesQuantileStreamResourceHandleOp"
   output_arg {
     name: "resource"

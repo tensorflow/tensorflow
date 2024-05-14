@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Sum"
   input_arg {
     name: "input"

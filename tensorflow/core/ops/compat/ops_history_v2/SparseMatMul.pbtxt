@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseMatMul"
   input_arg {
     name: "a"

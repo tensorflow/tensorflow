@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TensorArrayRead"
   input_arg {
     name: "handle"

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "BatchSvd"
   input_arg {
     name: "input"

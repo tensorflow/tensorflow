@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TPUAnnotateTensorsWithDynamicShape"
   input_arg {
     name: "tensors"

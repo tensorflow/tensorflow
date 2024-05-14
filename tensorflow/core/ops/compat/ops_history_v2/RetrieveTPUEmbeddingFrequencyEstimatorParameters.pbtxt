@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RetrieveTPUEmbeddingFrequencyEstimatorParameters"
   output_arg {
     name: "parameters"

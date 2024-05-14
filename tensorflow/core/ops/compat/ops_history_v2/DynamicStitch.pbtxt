@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "DynamicStitch"
   input_arg {
     name: "indices"

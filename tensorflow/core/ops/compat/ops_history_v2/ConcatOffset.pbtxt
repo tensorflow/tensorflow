@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ConcatOffset"
   input_arg {
     name: "concat_dim"

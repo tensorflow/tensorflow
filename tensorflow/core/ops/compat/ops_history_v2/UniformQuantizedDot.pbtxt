@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "UniformQuantizedDot"
   input_arg {
     name: "lhs"

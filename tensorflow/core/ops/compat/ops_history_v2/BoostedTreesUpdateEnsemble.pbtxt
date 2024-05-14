@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "BoostedTreesUpdateEnsemble"
   input_arg {
     name: "tree_ensemble_handle"

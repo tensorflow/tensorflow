@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RiscReshape"
   input_arg {
     name: "tensor"

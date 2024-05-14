@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "LeftShift"
   input_arg {
     name: "x"

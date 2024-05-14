@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "AccumulatorApplyGradient"
   input_arg {
     name: "handle"

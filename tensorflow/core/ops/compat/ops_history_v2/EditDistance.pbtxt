@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "EditDistance"
   input_arg {
     name: "hypothesis_indices"

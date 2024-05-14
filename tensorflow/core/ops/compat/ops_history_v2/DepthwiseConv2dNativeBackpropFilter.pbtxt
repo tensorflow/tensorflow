@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "DepthwiseConv2dNativeBackpropFilter"
   input_arg {
     name: "input"

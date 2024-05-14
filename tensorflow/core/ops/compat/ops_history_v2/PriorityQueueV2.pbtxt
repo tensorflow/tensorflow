@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "PriorityQueueV2"
   output_arg {
     name: "handle"

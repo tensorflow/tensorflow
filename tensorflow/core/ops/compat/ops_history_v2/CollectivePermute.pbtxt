@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "CollectivePermute"
   input_arg {
     name: "input"
