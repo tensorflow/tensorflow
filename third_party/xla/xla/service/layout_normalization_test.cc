@@ -235,6 +235,24 @@ ENTRY main {
 )");
 }
 
+TEST_F(LayoutNormalizationTest, BroadcastOperandLayoutNotInverseOfItself) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[4,3,5]{0,2,1} parameter(0)
+  b = f32[4,3,2,5]{0,1,2,3} broadcast(a), dimensions={0,1,3}
+  ROOT out = abs(b)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[3,5,4]{2,1,0} bitcast
+// CHECK: [[broadcast_0:%[^ ]+]] = f32[5,2,3,4]{3,2,1,0} broadcast([[bitcast_1]]), dimensions={2,0,3}
+// CHECK: [[abs_2:%[^ ]+]] = f32[5,2,3,4]{3,2,1,0} abs([[broadcast_0]])
+)");
+}
+
 TEST_F(LayoutNormalizationTest, BroadcastCustomOutputLayout) {
   const char* hlo = R"(
 HloModule module

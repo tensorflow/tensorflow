@@ -156,7 +156,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto normalized_shape = Normalize(s);
     auto layout_as_permutation = ToTransposeDimensions(s.layout());
     int64_t normalized_concat_dim =
-        FindIndex(layout_as_permutation, orig_concat_dim);
+        InversePermutation(layout_as_permutation)[orig_concat_dim];
     auto normalized_concat =
         hlo->AddInstruction(HloInstruction::CreateConcatenate(
             normalized_shape, normalized_inputs, normalized_concat_dim));
@@ -224,10 +224,12 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
         ToTransposeDimensions(s.layout());
     std::vector<int64_t> br_dimensions;
     if (!hlo->dimensions().empty()) {
-      br_dimensions = Permute(hlo->dimensions(), layout_as_permutation);
-    }
-    for (int64_t& d : br_dimensions) {
-      d = FindIndex(orig_output_layout_as_permutation, d);
+      br_dimensions.reserve(hlo->dimensions().size());
+      auto inverse_perm = InversePermutation(orig_output_layout_as_permutation);
+      for (int64_t dim :
+           ComposePermutations(hlo->dimensions(), layout_as_permutation)) {
+        br_dimensions.push_back(inverse_perm[dim]);
+      }
     }
     auto normalized_broadcast = MakeBroadcastHlo(
         normalized_input, br_dimensions, normalized_shape, &hlo->metadata());
@@ -244,9 +246,8 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto normalized_shape = Normalize(s);
     std::vector<int64_t> orig_output_layout_as_permutation =
         ToTransposeDimensions(s.layout());
-    int64_t iota_dimension = hlo->dimensions()[0];
-    int64_t new_iota_dimension =
-        FindIndex(orig_output_layout_as_permutation, iota_dimension);
+    int64_t new_iota_dimension = InversePermutation(
+        orig_output_layout_as_permutation)[hlo->dimensions()[0]];
     auto normalized_iota = hlo->AddInstruction(
         HloInstruction::CreateIota(normalized_shape, new_iota_dimension));
     SetVisited(*normalized_iota);
@@ -468,8 +469,9 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
         ToTransposeDimensions(hlo->shape().layout());
     std::vector<int64_t> new_dimensions;
     new_dimensions.reserve(hlo->dimensions().size());
+    auto inverse_perm = InversePermutation(layout_as_permutation);
     for (int64_t dim : hlo->dimensions()) {
-      new_dimensions.push_back(FindIndex(layout_as_permutation, dim));
+      new_dimensions.push_back(inverse_perm[dim]);
     }
     absl::c_sort(new_dimensions);
     auto normalized_reverse = hlo->AddInstruction(
@@ -499,8 +501,9 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
       new_padding.add_dimensions();
     }
 
+    auto inverse_perm = InversePermutation(layout_as_permutation);
     for (int dim = 0; dim < s.dimensions_size(); dim++) {
-      int tr_dim = static_cast<int>(FindIndex(layout_as_permutation, dim));
+      int tr_dim = static_cast<int>(inverse_perm[dim]);
       *new_padding.mutable_dimensions(tr_dim) = padded_config.dimensions(dim);
     }
 
