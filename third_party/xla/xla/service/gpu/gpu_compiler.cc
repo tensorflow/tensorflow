@@ -640,7 +640,9 @@ absl::Status RunSPMDPasses(
             .xla_gpu_threshold_for_windowed_einsum_mib(),
         hlo_module->config()
             .debug_options()
-            .xla_gpu_multi_streamed_windowed_einsum());
+            .xla_gpu_multi_streamed_windowed_einsum(),
+        /*skip_checking_windowed_einsum_users=*/true,
+        /*disable_ag_rewrite_for_multiple_consumers=*/true);
     spmd_pipeline.AddPass<CollectivePermuteMotion>();
     return spmd_pipeline.Run(hlo_module).status();
   } else {

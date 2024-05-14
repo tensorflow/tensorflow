@@ -1909,22 +1909,57 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
     }
   }
 
+  // If we see a dot that shares the same operand with a windowed einsum ag loop
+  // and disable_ag_rewrite_for_multiple_consumers is true. We skip rewriting
+  // the current dot. We also skip any reshape operand as long as it only has
+  // the lhs or rhs of the dot as the only user since reshape ops won't change
+  // the functional meaning of the pattern.
+  auto has_reshape_operand = [](PartitionedHlo& hlo) -> bool {
+    return hlo.hlo()->opcode() == HloOpcode::kReshape ||
+           hlo.hlo()->opcode() == HloOpcode::kBitcast ||
+           hlo.hlo()->opcode() == HloOpcode::kTranspose;
+  };
+  bool should_skip_windowed_einsum = false;
+  if (options.disable_ag_rewrite_for_multiple_consumers) {
+    auto lhs_operand =
+        has_reshape_operand(lhs) ? lhs.hlo()->operand(0) : lhs.hlo();
+    auto rhs_operand =
+        has_reshape_operand(rhs) ? rhs.hlo()->operand(0) : rhs.hlo();
+    for (auto loop : *windowed_dot_general_loops) {
+      if (loop.while_loop->while_body()->name().find(
+              "windowed_dot_general_body_ag") == 0) {
+        auto cm_lhs = loop.while_loop->operand(0)->operand(0);
+        if (cm_lhs == lhs_operand || cm_lhs == rhs_operand) {
+          VLOG(2) << "Skip processing: " << original_hlo->ToString();
+          VLOG(2) << "It shares the same operand with "
+                  << loop.while_loop->ToString()
+                  << " and disable_ag_rewrite_for_multiple_consumers is set to "
+                     "true.";
+          should_skip_windowed_einsum = true;
+        }
+      }
+    }
+  }
+
   // Hard limit on iteration count based on empirical data (above this amount
   // there's pretty significant overhead).
   constexpr int64_t kMaxIterations = 32;
-  std::optional<WindowedEinsumConfig> e_config = GetWindowedEinsumConfiguration(
-      num_partitions, output_lhs_non_contracting_partitions,
-      output_rhs_non_contracting_partitions, rhs_contracting_partitions,
-      rhs_non_contracting_partitions, rhs_batch_partitions,
-      lhs_contracting_partitions, lhs_non_contracting_partitions,
-      lhs_batch_partitions, ShapeSizeInBytes(rhs.base_shape()),
-      ShapeSizeInBytes(lhs.base_shape()), ShapeSizeInBytes(output_base_shape),
-      options, output_sharding_transposed_to_match_lhs,
-      output_sharding_transposed_to_match_rhs,
-      lhs_sharding_transposed_to_match_rhs,
-      rhs_sharding_transposed_to_match_lhs, lhs_sharding, rhs_sharding,
-      conv_window, dims_mapping, visitor->call_graph(), kMaxIterations,
-      original_hlo, &lhs, &rhs, create_sharded_dot, b, module, visitor);
+  std::optional<WindowedEinsumConfig> e_config = std::nullopt;
+  if (!should_skip_windowed_einsum) {
+    e_config = GetWindowedEinsumConfiguration(
+        num_partitions, output_lhs_non_contracting_partitions,
+        output_rhs_non_contracting_partitions, rhs_contracting_partitions,
+        rhs_non_contracting_partitions, rhs_batch_partitions,
+        lhs_contracting_partitions, lhs_non_contracting_partitions,
+        lhs_batch_partitions, ShapeSizeInBytes(rhs.base_shape()),
+        ShapeSizeInBytes(lhs.base_shape()), ShapeSizeInBytes(output_base_shape),
+        options, output_sharding_transposed_to_match_lhs,
+        output_sharding_transposed_to_match_rhs,
+        lhs_sharding_transposed_to_match_rhs,
+        rhs_sharding_transposed_to_match_lhs, lhs_sharding, rhs_sharding,
+        conv_window, dims_mapping, visitor->call_graph(), kMaxIterations,
+        original_hlo, &lhs, &rhs, create_sharded_dot, b, module, visitor);
+  }
   if (e_config) {
     VLOG(2) << "Emit windowed dot.";
     return EmitWindowedDotGeneral(

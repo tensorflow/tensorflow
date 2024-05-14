@@ -89,6 +89,10 @@ struct SpmdPartitionerOptions {
   bool enable_windowed_einsum_for_all_gather = true;
   // Enables windowed einsum for result reduce-scatter.
   bool enable_windowed_einsum_for_reduce_scatter = true;
+
+  // Whether disable rewrite for dots that share the same
+  // operand as an already rewritten windowed einsum loop.
+  bool disable_ag_rewrite_for_multiple_consumers = false;
 };
 
 // Class to wrap the computation builder to capture information during SPMD

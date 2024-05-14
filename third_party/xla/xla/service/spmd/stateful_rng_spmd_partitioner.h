@@ -45,13 +45,18 @@ class StatefulRngSpmdPartitioningVisitor
 
 class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
  public:
-  StatefulRngSpmdPartitioner(int64_t num_partitions, int64_t num_replicas,
-                             int64_t threshold_for_windowed_einsum_mib = 100000,
-                             bool windowed_einsum_use_multiple_streams = false)
-      : spmd::SpmdPartitioner(
-            num_partitions, num_replicas,
-            GetSpmdPartitionerOptions(threshold_for_windowed_einsum_mib,
-                                      windowed_einsum_use_multiple_streams)) {}
+  StatefulRngSpmdPartitioner(
+      int64_t num_partitions, int64_t num_replicas,
+      int64_t threshold_for_windowed_einsum_mib = 100000,
+      bool windowed_einsum_use_multiple_streams = false,
+      bool skip_checking_windowed_einsum_users = false,
+      bool disable_ag_rewrite_for_multiple_consumers = false)
+      : spmd::SpmdPartitioner(num_partitions, num_replicas,
+                              GetSpmdPartitionerOptions(
+                                  threshold_for_windowed_einsum_mib,
+                                  windowed_einsum_use_multiple_streams,
+                                  skip_checking_windowed_einsum_users,
+                                  disable_ag_rewrite_for_multiple_consumers)) {}
 
  protected:
   std::unique_ptr<spmd::SpmdPartitioningVisitor> CreateVisitor(
@@ -70,12 +75,18 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
  private:
   static spmd::SpmdPartitionerOptions GetSpmdPartitionerOptions(
       int64_t threshold_for_windowed_einsum_mib,
-      bool windowed_einsum_use_multiple_streams = false) {
+      bool windowed_einsum_use_multiple_streams = false,
+      bool skip_checking_windowed_einsum_users = false,
+      bool disable_ag_rewrite_for_multiple_consumers = false) {
     spmd::SpmdPartitionerOptions options;
     options.allow_module_signature_change = true;
     options.threshold_for_windowed_einsum_mib =
         threshold_for_windowed_einsum_mib;
     options.unroll_windowed_einsum = windowed_einsum_use_multiple_streams;
+    options.skip_checking_windowed_einsum_users =
+        skip_checking_windowed_einsum_users;
+    options.disable_ag_rewrite_for_multiple_consumers =
+        disable_ag_rewrite_for_multiple_consumers;
     return options;
   }
 };
