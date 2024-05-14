@@ -70,7 +70,7 @@ class IfrtServingExecutable {
       IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
       const IfrtRestoreTensorRegistry* ifrt_restore,
       tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
-      tensorflow::StaticDeviceMgr* device_mgr,
+      tensorflow::DeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       IfrtServingCoreSelector* ifrt_serving_core_selector);
 
@@ -140,7 +140,7 @@ class IfrtServingExecutable {
       IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
       const IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
       tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
-      tensorflow::StaticDeviceMgr* device_mgr,
+      tensorflow::DeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata)
@@ -176,7 +176,7 @@ class IfrtServingExecutable {
   IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry_;
   const IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry_;
   tfrt::ConcurrentWorkQueue* checkpoint_loader_queue_;
-  tensorflow::StaticDeviceMgr* device_mgr_;  // Not owned. For host callback.
+  tensorflow::DeviceMgr* device_mgr_;  // Not owned. For host callback.
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
   IfrtServingCoreSelector* ifrt_serving_core_selector_;
 
