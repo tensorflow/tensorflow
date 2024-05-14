@@ -102,6 +102,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/tfrt/common:pjrt_util",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/framework:serving_device_selector_policies",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",
     ],
