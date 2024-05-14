@@ -490,6 +490,7 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
