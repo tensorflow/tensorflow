@@ -133,7 +133,7 @@ namespace {
 // We need this check because PadForGemm works in the assumption that
 // the dot instruction is canonicalized.
 bool CheckCanonical(HloDotInstruction* dot) {
-  auto dimension_numbers = dot->dot_dimension_numbers();
+  const auto& dimension_numbers = dot->dot_dimension_numbers();
 
   if (dimension_numbers.lhs_batch_dimensions_size() + 2 !=
           dot->operand(0)->shape().rank() ||

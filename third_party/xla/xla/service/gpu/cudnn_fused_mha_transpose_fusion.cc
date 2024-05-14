@@ -463,8 +463,6 @@ absl::StatusOr<bool> FusePrologueTransposeWithcuDNNFMHA(HloComputation* comp) {
       // should have the same layout of O
       TF_ASSIGN_OR_RETURN(auto gpu_config,
                           fmha->backend_config<GpuBackendConfig>());
-      const CudnnfMHABackendConfig config =
-          gpu_config.cudnn_fmha_backend_config();
       if (changed && VLOG_IS_ON(2)) {
         VLOG(2) << "After CudnnFusedMHATransposeFusion Arg 4: \n"
                 << comp->parent()->ToString();

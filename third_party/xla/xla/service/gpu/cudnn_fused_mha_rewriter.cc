@@ -1344,7 +1344,7 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
         bcast_dimensions.push_back(dim - starting_index);
       }
 
-      Shape bcast_shape = bmm_1->shape();
+      const Shape& bcast_shape = bmm_1->shape();
       bias = comp->AddInstruction(HloInstruction::CreateBroadcast(
           bcast_shape, original_bias, bcast_dimensions));
     }
@@ -1402,7 +1402,8 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
 
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       fwd_fmha_call->backend_config<GpuBackendConfig>());
-  CudnnfMHABackendConfig fwd_config = gpu_config.cudnn_fmha_backend_config();
+  const CudnnfMHABackendConfig& fwd_config =
+      gpu_config.cudnn_fmha_backend_config();
   bool is_causal_mask =
       fwd_config.mask_type() == CudnnfMHABackendConfig::CAUSAL;
   CudnnfMHABackendConfig bwd_fmha_config;
