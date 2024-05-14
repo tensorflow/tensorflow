@@ -111,7 +111,6 @@ class HostExecutor : public StreamExecutor {
   absl::Status WaitForEvent(Stream* stream, Event* event) override;
   Event::Status PollForEventStatus(Event* event) override;
 
-  bool AllocateStream(Stream* stream) override;
   void DeallocateStream(Stream* stream) override;
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;
 

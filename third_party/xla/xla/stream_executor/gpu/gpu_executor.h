@@ -229,8 +229,6 @@ class GpuExecutor : public StreamExecutor {
   bool HostCallback(Stream* stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
-  bool AllocateStream(Stream* stream) override;
-
   void DeallocateStream(Stream* stream) override;
 
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;

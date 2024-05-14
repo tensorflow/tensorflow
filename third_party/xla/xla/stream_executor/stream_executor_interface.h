@@ -282,10 +282,6 @@ class StreamExecutorInterface {
   // Requests the current status of the event from the underlying platform.
   virtual Event::Status PollForEventStatus(Event* event) = 0;
 
-  // Allocates stream resources on the underlying platform and initializes its
-  // internals.
-  virtual bool AllocateStream(Stream* stream) = 0;
-
   // Deallocates stream resources on the underlying platform.
   virtual void DeallocateStream(Stream* stream) = 0;
 

@@ -132,7 +132,6 @@ class XlaInterpreterExecutor : public StreamExecutor {
     return Event::Status::kError;
   }
 
-  bool AllocateStream(Stream *stream) override { return true; }
   void DeallocateStream(Stream *stream) override {}
   bool CreateStreamDependency(Stream *dependent, Stream *other) override;
 
@@ -167,7 +166,6 @@ class XlaInterpreterExecutor : public StreamExecutor {
           std::nullopt) override {
     auto stream =
         std::make_unique<Stream>(this, std::make_unique<host::HostStream>());
-    TF_RETURN_IF_ERROR(stream->Initialize(priority));
     return std::move(stream);
   }
 

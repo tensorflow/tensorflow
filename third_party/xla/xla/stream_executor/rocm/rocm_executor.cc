@@ -698,13 +698,6 @@ Event::Status GpuExecutor::PollForEventStatus(Event* event) {
   return AsGpuEvent(event)->PollForStatus();
 }
 
-bool GpuExecutor::AllocateStream(Stream* stream) {
-  absl::MutexLock l(&alive_gpu_streams_mu_);
-  bool out = AsGpuStream(stream)->Init();
-  alive_gpu_streams_[stream->platform_specific_handle().stream] = stream;
-  return out;
-}
-
 void GpuExecutor::DeallocateStream(Stream* stream) {
   {
     absl::MutexLock lock(&mu_);
@@ -875,9 +868,16 @@ absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(
       gpu_stream->SetPriority(std::get<int>(*priority));
     }
   }
-  auto stream = std::make_unique<Stream>(this, std::move(gpu_stream));
-  TF_RETURN_IF_ERROR(stream->Initialize(priority));
-  return std::move(stream);
+  absl::MutexLock l(&alive_gpu_streams_mu_);
+  bool init_worked = gpu_stream->Init();
+  if (init_worked) {
+    auto platform_specific_stream = gpu_stream->platform_specific_stream();
+    auto stream = std::make_unique<Stream>(this, std::move(gpu_stream));
+    alive_gpu_streams_[platform_specific_stream] = stream.get();
+    return std::move(stream);
+  } else {
+    return absl::InvalidArgumentError("Failed to initialize GPU stream");
+  }
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> GpuExecutor::CreateKernel() {

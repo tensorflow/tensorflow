@@ -47,17 +47,6 @@ Stream::Stream(StreamExecutor *parent,
       implementation_(std::move(implementation)),
       status_(absl::OkStatus()) {}
 
-absl::Status Stream::Initialize(
-    std::optional<std::variant<StreamPriority, int>> priority) {
-  absl::MutexLock lock(&mu_);
-  if (parent_->AllocateStream(this)) {
-    // Successful initialization!
-    return absl::OkStatus();
-  }
-
-  return absl::InternalError("failed to allocate stream during initialization");
-}
-
 Stream::~Stream() {
   // Ensure the stream is completed.
   auto status = BlockHostUntilDone();

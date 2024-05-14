@@ -70,8 +70,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   absl::Status AllocateEvent(Event* event) override;
 
-  bool AllocateStream(Stream* stream) override;
-
   absl::Status BlockHostUntilDone(Stream* stream) override;
 
   StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()

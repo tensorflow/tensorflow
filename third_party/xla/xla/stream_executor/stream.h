@@ -110,11 +110,6 @@ class Stream {
   // execution status.
   absl::Status RefreshStatus() TF_LOCKS_EXCLUDED(mu_);
 
-  // Initialize the stream. This must be performed before entraining any other
-  // operations.
-  absl::Status Initialize(
-      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
-
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise
   // create a new sub-stream.
