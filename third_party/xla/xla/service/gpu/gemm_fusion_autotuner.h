@@ -123,8 +123,7 @@ class GemmFusionAutotunerImpl {
   }
 
   std::vector<TritonGemmConfig> GetDefaultTritonConfigs() const;
-  std::vector<TritonGemmConfig> GetExhaustiveTritonConfigs(
-      bool has_8_bit_operand) const;
+  std::vector<TritonGemmConfig> GetExhaustiveTritonConfigs() const;
 
   const AutotuneConfig config_;
   const DebugOptions debug_options_;
