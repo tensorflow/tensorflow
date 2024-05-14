@@ -85,6 +85,7 @@ cc_library(
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",
+        "//xla/stream_executor:trace_command_buffer_factory",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tsl/concurrency:ref_count",

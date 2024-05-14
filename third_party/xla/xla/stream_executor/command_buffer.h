@@ -19,25 +19,21 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <memory>
 #include <variant>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/platform.h"
 #include "tsl/lib/gtl/int_type.h"
 #include "tsl/platform/errors.h"
 
 namespace stream_executor {
 
 class Stream;
-class StreamExecutorInterface;
 
 //===----------------------------------------------------------------------===//
 // CommandBuffer
@@ -160,32 +156,6 @@ class CommandBuffer {
   //                 command buffer
   //
   enum class Mode { kPrimary, kNested };
-
-  //===--------------------------------------------------------------------===//
-  // Command buffer constructors
-  //===--------------------------------------------------------------------===//
-
-  // Creates a new command buffer on the given executor by tracing `function`
-  // invocation. All StreamExecutor operations on a Stream argument will be
-  // recorded into the command buffer. Returned command buffer is finalized, and
-  // can't be updated.
-  //
-  // Command buffer tracing should be used only when it is impossible to use
-  // explicit construction APIs, e.g. when calling external libraries. By
-  // default we construct traced command buffers in nested mode because the
-  // primary use case for traced command buffers is to be inserted into primary
-  // command buffers constructed with explicit APIs.
-  static absl::StatusOr<std::unique_ptr<CommandBuffer>> Trace(
-      StreamExecutorInterface* executor,
-      absl::AnyInvocable<absl::Status(Stream*)> function,
-      Mode mode = Mode::kNested);
-
-  // Creates a new command buffer on the given executor by tracing `function`
-  // invocation using a user provided stream that will be passed to `function`.
-  static absl::StatusOr<std::unique_ptr<CommandBuffer>> Trace(
-      StreamExecutorInterface* executor, Stream* stream,
-      absl::AnyInvocable<absl::Status(Stream*)> function,
-      Mode mode = Mode::kNested);
 
   //===--------------------------------------------------------------------===//
   // Command buffer API
@@ -379,6 +349,7 @@ class CommandBuffer {
   // Command buffer tracing API
   //--------------------------------------------------------------------------//
  private:
+  friend class TraceCommandBufferFactory;
   // Tracing APIs are private because they do not compose with command buffer
   // updates. Instead of tracing directly into the command buffer users should
   // create traced command buffers using factory methods and add them to primary
