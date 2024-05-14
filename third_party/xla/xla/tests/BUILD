@@ -994,6 +994,7 @@ xla_test(
 xla_test(
     name = "gather_operation_test",
     srcs = ["gather_operation_test.cc"],
+    shard_count = 20,
     tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":client_library_test_base",
@@ -1012,7 +1013,7 @@ xla_test(
 xla_test(
     name = "scatter_test",
     srcs = ["scatter_test.cc"],
-    tags = ["test_hlo_pjrt_runner"],
+    # TODO(b/245550554): enable Pjrt runner for scatter test once it's fixed.
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",

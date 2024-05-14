@@ -231,7 +231,8 @@ std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
     std::string_view prim_type,
     std::vector<std::vector<MPVariable*>>& prim_vars,
     std::vector<std::pair<int64_t, int64_t>>& reduced_intervals,
-    std::vector<MPVariable*>& group_vars) {
+    std::vector<MPVariable*>& group_vars,
+    absl::flat_hash_set<int64_t>& reduced_times) {
   std::optional<std::pair<int64_t, int64_t>> num_terms = std::nullopt;
   std::vector<absl::btree_set<int64_t>> reduced_groups;
   if (groups.empty()) {
@@ -278,6 +279,9 @@ std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
       }
     }
   }
+  const absl::flat_hash_set<int64_t> times = MemoryTermReducer::GetReducedTimes(
+      num_primitives, reduced_intervals, reduced_groups);
+  reduced_times.insert(times.begin(), times.end());
   return num_terms;
 }
 
@@ -289,12 +293,14 @@ void AddMemoryTerms(
     const tsl::protobuf::RepeatedPtrField<  // NOLINT
         AutoShardingSolverRequest_Costs>& memory_costs,
     const MPVariable* overbudget_var,
+    const absl::flat_hash_set<int64_t>& reduced_times,
     std::vector<std::vector<MPVariable*>>& prim_vars,
     std::vector<MPVariable*>& group_vars,
     absl::flat_hash_map<LivenessIdx, MPConstraint*>& constraints) {
   for (int64_t prim_idx = 0; prim_idx < intervals.size(); ++prim_idx) {
     for (int64_t time_idx = intervals[prim_idx].first;
          time_idx <= intervals[prim_idx].second; ++time_idx) {
+      if (!reduced_times.contains(time_idx)) continue;
       if (!constraints.contains(time_idx)) {
         MPConstraint* constraint = solver.MakeRowConstraint(
             -MPSolver::infinity(), 100.0, absl::StrCat("mem[", time_idx, "]"));
@@ -581,18 +587,19 @@ AutoShardingSolverResult CallORToolsSolver(
     };
     std::vector<std::pair<int64_t, int64_t>> reduced_intervals_nodes,
         reduced_intervals_edges;
+    absl::flat_hash_set<int64_t> reduced_times;
     std::vector<MPVariable*> group_node_vars, group_edge_vars;
     const absl::Time term_reduction_start_time = absl::Now();
     auto num_node_terms = ReduceMemoryTerms(
         request, *solver, request.live_size(), request.num_nodes(),
         std::move(LiveNodes), request.node_intervals(), request.node_groups(),
         request.memory_costs(), "node", s, reduced_intervals_nodes,
-        group_node_vars);
+        group_node_vars, reduced_times);
     auto num_edge_terms = ReduceMemoryTerms(
         request, *solver, request.live_edges_size(), request.edges_size(),
         std::move(LiveEdges), request.edge_intervals(), request.edge_groups(),
         request.memory_edge_costs(), "edge", e, reduced_intervals_edges,
-        group_edge_vars);
+        group_edge_vars, reduced_times);
     const absl::Time term_reduction_end_time = absl::Now();
     if (num_node_terms && num_edge_terms) {
       const auto term_reduction_duration =
@@ -606,11 +613,13 @@ AutoShardingSolverResult CallORToolsSolver(
     absl::flat_hash_map<LivenessIdx, MPConstraint*> constraints;
     AddMemoryTerms(request, *solver, request.num_nodes(),
                    reduced_intervals_nodes, request.memory_costs(),
-                   overbudget_var, s, group_node_vars, constraints);
+                   overbudget_var, reduced_times, s, group_node_vars,
+                   constraints);
     if (request.enable_memory_edge_costs()) {
       AddMemoryTerms(request, *solver, request.edges_size(),
                      reduced_intervals_edges, request.memory_edge_costs(),
-                     overbudget_var, e, group_edge_vars, constraints);
+                     overbudget_var, reduced_times, e, group_edge_vars,
+                     constraints);
     }
     if (overbudget_var) {
       solver->MutableObjective()->SetCoefficient(

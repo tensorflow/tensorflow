@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/btree_set.h"
+#include "absl/container/flat_hash_set.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -63,6 +64,17 @@ class MemoryTermReducer {
   const std::vector<std::vector<int64_t>>& GetReducedLive() const;
   const std::vector<std::pair<int64_t, int64_t>>& GetReducedIntervals() const;
   const std::vector<absl::btree_set<int64_t>>& GetReducedGroups() const;
+
+  // Retrieves a reduced subset of time points along the liveness profile that
+  // are sufficient to establish memory constraints.
+  absl::flat_hash_set<int64_t> GetReducedTimes(int64_t num_primitives);
+
+  // A static version of the above method (in case we're using a precomputed
+  // memory term reduction).
+  static absl::flat_hash_set<int64_t> GetReducedTimes(
+      int64_t num_primitives,
+      const std::vector<std::pair<int64_t, int64_t>>& reduced_intervals,
+      const std::vector<absl::btree_set<int64_t>>& reduced_groups);
 
  private:
   // The internal implementation, agnostic to whether the client uses a liveness
