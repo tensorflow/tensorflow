@@ -1,7 +1,7 @@
-// RUN: triton-opt %s -split-input-file -convert-triton-to-tritongpu | FileCheck %s
+// RUN: triton-opt %s -split-input-file -convert-triton-to-tritongpu='target=cuda:80 num-warps=4' | FileCheck %s
 
 // CHECK-COUNT-4: #triton_gpu.blocked
-module attributes {"triton_gpu.num-warps" = 4 : i32} {
+module {
   tt.func @sparse_dot() {
     %A = arith.constant dense<1.00e+00> : tensor<64x32xf16>
     %meta = arith.constant dense<0x3333> : tensor<64x4xi16>
