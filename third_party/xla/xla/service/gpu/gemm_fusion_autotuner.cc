@@ -90,6 +90,7 @@ limitations under the License.
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -501,6 +502,17 @@ absl::Status DumpAutotunedFusion(const AutotuneConfig& autotune_config,
   return absl::OkStatus();
 }
 
+std::string Serialize(const Config& config) {
+  if (auto triton_config = std::get_if<TritonGemmConfig>(&config)) {
+    tsl::protobuf::TextFormat::Printer printer;
+    printer.SetSingleLineMode(true);
+    std::string result;
+    printer.PrintToString(triton_config->ToProto(), &result);
+    return result;
+  }
+  return GemmFusionAutotunerImpl::ToString(config);
+}
+
 }  // anonymous namespace
 
 // Methods required for sorting the configs.
@@ -757,12 +769,18 @@ GemmFusionAutotunerImpl::CompileAll(
       const HloFusionInstruction* fusion = key_value.first;
       const std::vector<Config>& gemm_config_set = key_value.second;
 
-      VLOG(10) << "Compiling the fusion: " << fusion->name();
+      VLOG(10) << "Compiling fusion: " << fusion->name();
       VLOG(10) << "Dumping fusion computation: "
                << fusion->called_computation()->ToString();
       for (const Config& config : gemm_config_set) {
         thread_pool_->Schedule([&, fusion] {
-          VLOG(10) << "Trying configuration: " << ToString(config);
+          VLOG(10) << "Trying configuration forceable through: "
+                      "--xla_gpu_override_gemm_autotuner='"
+                   << Serialize(config) << "'";
+          VLOG(10) << "WARNING: you are running in multithreaded-mode, the "
+                      "last configuration printed out might not be the one "
+                      "causing issues! Use "
+                      "--xla_gpu_force_compilation_parallelism=1 to fix.";
           absl::StatusOr<bool> has_executable =
               compile(fusion, config, gemm_config_set.size() > 1);
           TF_CHECK_OK(has_executable.status())
@@ -790,11 +808,13 @@ GemmFusionAutotunerImpl::CompileAll(
       const HloFusionInstruction* fusion = key_value.first;
       const auto& gemm_config_set = key_value.second;
 
-      VLOG(10) << "Compiling the fusion: " << fusion->name();
+      VLOG(10) << "Compiling fusion: " << fusion->name();
       VLOG(10) << "Dumping fusion computation: "
                << fusion->called_computation()->ToString();
       for (const Config& config : gemm_config_set) {
-        VLOG(10) << "Trying configuration: " << ToString(config);
+        VLOG(10) << "Trying configuration forceable through: "
+                    "--xla_gpu_override_gemm_autotuner='"
+                 << Serialize(config) << "'";
         TF_ASSIGN_OR_RETURN(
             bool has_executable,
             compile(fusion, config, gemm_config_set.size() > 1));
@@ -1119,6 +1139,21 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
     for (const auto& [fusion, tilings] : gemm_config_sets) {
       const AutotuneCacheKey key = AutotunerUtil::GetKey(fusion, config_);
       AutotuneResult res = FromConfig(tilings[0]);
+      *res.mutable_run_time() =
+          tsl::proto_utils::ToDurationProto(absl::ZeroDuration());
+      AutotunerUtil::AddResult(key, res);
+    }
+  } else if (!debug_options.xla_gpu_override_gemm_autotuner().empty()) {
+    // TODO(gflegar): support overriding with non-Triton configs (cuBLAS, cuDNN)
+    AutotuneResult::TritonGemmKey gemm_key;
+    CHECK(tsl::protobuf::TextFormat::ParseFromString(
+        debug_options.xla_gpu_override_gemm_autotuner(), &gemm_key));
+    VLOG(1) << "Overriding GEMM autotuner with the following config: "
+            << gemm_key.DebugString();
+    for (const auto& [fusion, unused] : gemm_config_sets) {
+      const AutotuneCacheKey key = AutotunerUtil::GetKey(fusion, config_);
+      AutotuneResult res;
+      *res.mutable_triton() = gemm_key;
       *res.mutable_run_time() =
           tsl::proto_utils::ToDurationProto(absl::ZeroDuration());
       AutotunerUtil::AddResult(key, res);

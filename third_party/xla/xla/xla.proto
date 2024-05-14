@@ -633,6 +633,8 @@ message DebugOptions {
 
   bool xla_gpu_dump_autotuned_gemm_fusions = 232;
 
+  string xla_gpu_override_gemm_autotuner = 295;
+
   bool xla_gpu_copy_insertion_use_region_analysis = 236;
 
   // If true, each fusion instruction will have a cost model runtime estimate in
@@ -767,7 +769,7 @@ message DebugOptions {
   // Base length to rewrite the reduce window to, no rewrite if set to 0.
   int64 xla_reduce_window_rewrite_base_length = 293;
 
-  // Next id: 295
+  // Next id: 296
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
