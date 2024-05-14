@@ -102,6 +102,23 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "attribute_map",
+    srcs = ["attribute_map.cc"],
+    hdrs = ["attribute_map.h"],
+    deps = [
+        ":call_frame",
+        "//xla:xla_data_proto_cc_impl",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
 xla_cc_test(
     name = "ffi_test",
     srcs = ["ffi_test.cc"],
