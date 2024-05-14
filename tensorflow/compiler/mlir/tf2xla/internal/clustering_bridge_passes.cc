@@ -89,7 +89,7 @@ void AddReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm,
   // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
   // because DecomposeResourceOpsPass uses pattern rewriter which hoists
   // changed constants out of tf_device.Launch.
-  pm.addPass(mlir::TFDevice::CreateDecomposeResourceOpsInClusterPass());
+  pm.addPass(mlir::TFDevice::CreateDecomposeResourceOpsBridgeInClusterPass());
   // Encode this in its own scope so that func_pm is not mistakenly used
   // later on.
   {
@@ -193,7 +193,7 @@ void AddNonReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // away dead ops.
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
   // Decompose resource ops.
-  pm.addPass(mlir::TFDevice::CreateDecomposeResourceOpsInClusterPass());
+  pm.addPass(mlir::TFDevice::CreateDecomposeResourceOpsBridgeInClusterPass());
   // Run another shape inference pass because resource decomposition might have
   // created new partial types. Also, after dropping `shape_invariant` attribute
   // from While/WhileRegion ops within cluster would lead to more precise

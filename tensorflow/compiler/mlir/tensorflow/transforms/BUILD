@@ -61,7 +61,6 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -116,6 +115,42 @@ cc_library(
     ],
     deps = [
         ":decompose_resource_ops_inc_gen",
+        ":rewrite_util",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/core:framework",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+gentbl_cc_library(
+    name = "decompose_resource_ops_bridge_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "generated_decompose_resource_ops_bridge.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "decompose_resource_ops_bridge.td",
+    deps = [
+        ":rewrite_util_td_files",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "@llvm-project//mlir:FuncTdFiles",
+    ],
+)
+
+cc_library(
+    name = "decompose_resource_ops_bridge",
+    srcs = [
+        "decompose_resource_ops_bridge.cc",
+    ],
+    hdrs = [
+        "decompose_resource_ops_bridge.h",
+    ],
+    deps = [
+        ":decompose_resource_ops_bridge_inc_gen",
         ":rewrite_util",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -457,6 +492,7 @@ cc_library(
         "convert_tf_control_flow_to_scf.cc",
         "convert_to_legacy_compile_and_replicate_attributes.cc",
         "decompose_reduce_dataset.cc",
+        "decompose_resource_ops_bridge_pass.cc",
         "decompose_resource_ops_pass.cc",
         "device_attribute_to_launch.cc",
         "device_index_selector.cc",
@@ -560,7 +596,8 @@ cc_library(
     deps = [
         ":cluster_formation",
         ":decompose_resource_ops",
-        ":decompose_resource_ops_inc_gen",
+        ":decompose_resource_ops_bridge",
+        ":decompose_resource_ops_bridge_inc_gen",
         ":lower_tf_lib",
         ":shape_inference_pass",
         ":tensorflow_optimize_inc_gen",
@@ -734,6 +771,7 @@ cc_library(
     ],
     deps = [
         ":tf_device_pass_inc_gen",
+        ":tf_pass_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
@@ -1072,5 +1110,21 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:path",
+    ],
+)
+
+cc_library(
+    name = "decompose_resource_ops_bridge_pass",
+    srcs = ["decompose_resource_ops_bridge_pass.cc"],
+    deps = [
+        ":decompose_resource_ops_bridge",
+        ":tf_device_pass_inc_gen",
+        ":verify_no_outside_compilation_markers_pass",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )

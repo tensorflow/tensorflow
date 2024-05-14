@@ -413,6 +413,19 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateDecomposeResourceOpsPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateDecomposeResourceOpsInClusterPass();
 
+// A pass that decomposes composite resource operations into primitive ones like
+// ReadVariableOp, AssignVariableOp and other computations to facilitate
+// transformations like resource op lifting.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateDecomposeResourceOpsBridgePass();
+
+// A pass that decomposes composite resource operations in device cluster
+// (tf_device.cluster op) into primitive ones like ReadVariableOp,
+// AssignVariableOp and other computations to facilitate transformations like
+// resource op lifting.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateDecomposeResourceOpsBridgeInClusterPass();
+
 // Creates a pass that marks TPU cluster input-output pairs reading and writing
 // to same resource variable as aliases.
 std::unique_ptr<OperationPass<ModuleOp>> CreateMarkInputOutputAliasesPass();
@@ -694,6 +707,8 @@ namespace TFDevice {
 #define GEN_PASS_DECL_ANNOTATEPARAMETERREPLICATIONPASS
 #define GEN_PASS_DECL_DECOMPOSERESOURCEOPSINCLUSTERPASS
 #define GEN_PASS_DECL_DECOMPOSERESOURCEOPSPASS
+#define GEN_PASS_DECL_DECOMPOSERESOURCEOPSBRIDGEINCLUSTERPASS
+#define GEN_PASS_DECL_DECOMPOSERESOURCEOPSBRIDGEPASS
 #define GEN_PASS_DECL_DEVICEATTRIBUTETOLAUNCHPASS
 #define GEN_PASS_DECL_HOSTLAUNCHTOOUTSIDECOMPILEDPASS
 #define GEN_PASS_DECL_LAUNCHTODEVICEATTRIBUTEPASS
