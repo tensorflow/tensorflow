@@ -249,6 +249,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_reduce_window_rewrite_base_length(32);
 
+  opts.set_xla_gpu_require_complete_aot_autotune_results(false);
+
   return opts;
 }
 
@@ -1427,7 +1429,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_require_complete_aot_autotune_results",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_require_complete_aot_autotune_results),
-      debug_options->xla_gpu_multi_streamed_windowed_einsum(),
+      debug_options->xla_gpu_require_complete_aot_autotune_results(),
       "Whether to require complete AOT autotuning results."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_auto_spmd_partitioning_memory_budget_gb",
