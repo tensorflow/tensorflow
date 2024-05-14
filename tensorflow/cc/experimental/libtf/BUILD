@@ -31,6 +31,7 @@ cc_library(
         "value_iostream.h",
     ],
     deps = [
+        "//tensorflow/c:tensor_interface",
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/cc/experimental/libtf/impl:iostream",
@@ -45,6 +46,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -53,11 +55,14 @@ cc_library(
     srcs = ["module.cc"],
     hdrs = ["module.h"],
     deps = [
+        ":libtf",
         "//tensorflow/cc/experimental/libexport:load",
         "//tensorflow/cc/experimental/libtf/runtime",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 

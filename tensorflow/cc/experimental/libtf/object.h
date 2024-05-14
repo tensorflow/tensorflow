@@ -31,7 +31,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/cc/experimental/libtf/value.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
