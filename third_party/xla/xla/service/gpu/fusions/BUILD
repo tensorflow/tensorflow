@@ -665,7 +665,7 @@ xla_test(
     name = "cudnn_test",
     srcs = if_cuda_is_configured(["cudnn_test.cc"]),
     backend_tags = {"gpu": [
-        "requires-gpu-sm80",
+        "requires-gpu-sm90",
     ]},
     backends = [
         "gpu",
