@@ -57,7 +57,7 @@ TEST_F(MlirConcatenateFusionTest, ThreadIdIndexing) {
 
   constexpr auto kIndexing = R"(
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-    (th_x + bl_x * 128) mod 400)
+    (bl_x * 128 + th_x) mod 400)
     domain:
     th_x in [0, 127]
     th_y in [0, 0]

@@ -330,7 +330,7 @@ TEST_F(ReductionTest, ThreadIndexingSideOutput) {
   constexpr char kExpectedIndexing[] = R"(
       (d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> (
         d3 floordiv 8,
-        d0 floordiv 32 + (d3 mod 8) * 8,
+        (d3 mod 8) * 8 + d0 floordiv 32,
         (d0 mod 32) * 2 + s2 * 64 + s3
       )
       domain:

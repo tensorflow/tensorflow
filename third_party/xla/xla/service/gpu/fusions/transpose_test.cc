@@ -97,7 +97,7 @@ TEST_F(TransposeTest, ThreadIndexing021) {
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 floordiv 2,
-          d0 floordiv 32 + (d3 mod 2) * 32 + s1 * 4,
+          (d3 mod 2) * 32 + s1 * 4 + d0 floordiv 32,
           d0 mod 32
         )
         domain:
@@ -139,7 +139,7 @@ TEST_F(TransposeTest, ThreadIndexing201) {
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 floordiv 2,
-          d0 floordiv 32 + (d3 * 32 + s1 * 4) mod 64,
+          (d3 * 32 + s1 * 4) mod 64 + d0 floordiv 32,
           d0 mod 32
         )
         domain:

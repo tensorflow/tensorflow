@@ -140,78 +140,25 @@ AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
       .getResult(0);
 }
 
-inline std::vector<std::string> split_string(std::string s,
-                                             std::string pattern) {
-  std::vector<std::string> result;
-  size_t pos = 0;
-  while ((pos = s.find(pattern)) != std::string::npos) {
-    result.push_back(s.substr(0, pos));
-    s.erase(0, pos + pattern.length());
-  }
-  if (!s.empty()) result.push_back(s);
-  return result;
-}
-
-inline bool startswith(const std::string& s, const std::string& pattern) {
-  return s.substr(0, pattern.size()) == pattern;
-}
-
 bool ApproximateMatch(std::string_view lhs, std::string_view rhs) {
-  std::string lhs_unspaced, rhs_unspaced;
-  for (auto c : lhs) {
-    if (!std::isspace(c)) {
-      lhs_unspaced += c;
+  size_t lhs_length = lhs.size();
+  size_t rhs_length = rhs.size();
+  size_t l = 0, r = 0;
+  while (l < lhs_length && r < rhs_length) {
+    while (l < lhs_length && std::isspace(lhs[l])) {
+      ++l;
     }
-  }
-  for (auto c : rhs) {
-    if (!std::isspace(c)) {
-      rhs_unspaced += c;
+    while (r < rhs_length && std::isspace(rhs[r])) {
+      ++r;
     }
-  }
-
-  if (lhs_unspaced.find("###") == std::string::npos)
-    return lhs_unspaced == rhs_unspaced;
-
-  std::vector<std::string> frags = split_string(lhs_unspaced, "###");
-
-  while (frags.size() >= 2) {
-    if (!startswith(rhs_unspaced, frags[0])) {
+    if (l == lhs_length || r == rhs_length) {
+      continue;
+    }
+    if (lhs[l++] != rhs[r++]) {
       return false;
     }
-
-    rhs_unspaced = rhs_unspaced.substr(frags[0].size());
-
-    auto terms = split_string(frags[1], "+");
-    // iterate through permutations of terms
-    std::vector<int> indexes(terms.size());
-    for (auto i = 0; i < terms.size(); i++) {
-      indexes[i] = i;
-    }
-    bool match = false;
-    do {
-      std::string permuted = "";
-      for (auto i : indexes) {
-        permuted += terms[i] + "+";
-      }
-      permuted.pop_back();
-      if (startswith(rhs_unspaced, permuted)) {
-        match = true;
-        break;
-      }
-    } while (std::next_permutation(indexes.begin(), indexes.end()));
-
-    if (!match) {
-      return false;
-    }
-
-    rhs_unspaced = rhs_unspaced.substr(frags[1].size());
-    frags.erase(frags.begin());
-    frags.erase(frags.begin());
   }
-  if (frags.empty())
-    return rhs_unspaced.empty();
-  else
-    return rhs_unspaced == frags[0];
+  return l == lhs_length && r == rhs_length;
 }
 
 }  // namespace gpu
