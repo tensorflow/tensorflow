@@ -338,7 +338,6 @@ xla_cc_test(
         "//xla/service:compiler",
         "//xla/service:gpu_plugin",
         "//xla/service:hlo_parser",
-        "//xla/service/gpu:amdgpu_compiler_impl",
         "//xla/tests:literal_test_util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
