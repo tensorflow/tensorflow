@@ -39,6 +39,7 @@ xla_cc_binary(
         "//xla:status",
         "//xla:statusor",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt/distributed",
         "//xla/service:cpu_plugin",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log:check",
