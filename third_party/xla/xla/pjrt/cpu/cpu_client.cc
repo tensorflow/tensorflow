@@ -1531,6 +1531,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
       input_deps.push_back(std::move(last_enqueue_event));
     }
   }
+  if (options.context != nullptr) {
+    run_options.set_ffi_execution_context(&options.context->ffi_context());
+  }
 
   bool execute_inline = cheap_computation_ || !client_->asynchronous_;
 
