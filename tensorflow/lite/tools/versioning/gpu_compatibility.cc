@@ -449,9 +449,14 @@ absl::Status CheckAddMulBroadcastCompatibility(
     }
     bool is_broadcastable = false;
 
-    // Broadcasting 3D to 4D with batch 1 works.
     if (longer_dims->size() == 4 && shorter_dims->size() == 3 &&
         longer_dims->at(0) == 1) {
+      // Broadcasting 3D to 4D with batch 1 works.
+      is_broadcastable = true;
+    } else if (longer_dims->size() == 4 && shorter_dims->size() == 2 &&
+               longer_dims->at(0) == 1 && shorter_dims->at(0) == 1 &&
+               shorter_dims->at(1) == 1) {
+      // Broadcasting 2D [1, 1] to 4D [1, x, y, z] works.
       is_broadcastable = true;
     }
 
