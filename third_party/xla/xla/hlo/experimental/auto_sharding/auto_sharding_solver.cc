@@ -865,7 +865,7 @@ AutoShardingSolverResult SolveAndExtractSolution(
     const MPVariable* overbudget_var, const MPVariable* makespan_var,
     MPSolver& solver) {
   auto status = solver.Solve();
-  LOG(INFO) << "Solver Status: " << status;
+  LOG(INFO) << "Solver absl::Status: " << status;
 
   if (status == operations_research::MPSolver::INFEASIBLE) {
     LOG(ERROR) << "MPSolver could not find any feasible solution.";
@@ -1231,7 +1231,7 @@ std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
   return rationales;
 }
 
-Status ValidateRequest(const AutoShardingSolverRequest& request) {
+absl::Status ValidateRequest(const AutoShardingSolverRequest& request) {
   const int num_nodes = request.num_nodes();
   const int num_edges = request.edges_size();
   TF_RET_CHECK(num_nodes == request.computation_costs_size());

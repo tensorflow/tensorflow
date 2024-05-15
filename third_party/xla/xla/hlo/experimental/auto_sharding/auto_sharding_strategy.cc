@@ -897,9 +897,10 @@ BuildStrategyAndCost(
           << ins->ToString() << " does not have any valid strategies.";
     } else if (!(strategy_group->is_tuple ||
                  !strategy_group->strategies.empty())) {
-      return Status(absl::StatusCode::kFailedPrecondition,
-                    "Could not generate any shardings for an instruction due "
-                    "to mismatched mesh shapes.");
+      return absl::Status(
+          absl::StatusCode::kFailedPrecondition,
+          "Could not generate any shardings for an instruction due "
+          "to mismatched mesh shapes.");
     }
     // Checks the shape of resharding_costs is valid. It will check fail if the
     // shape is not as expected.

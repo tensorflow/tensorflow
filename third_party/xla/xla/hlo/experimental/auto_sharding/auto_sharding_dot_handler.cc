@@ -250,7 +250,7 @@ class DotHandler : public HandlerBase {
       const DimMap& rhs_dim_map, const DimMap& output_dim_map,
       const Array<int64_t>& device_mesh, double compute_cost) override;
 
-  Status RegisterStrategies();
+  absl::Status RegisterStrategies();
 
   // Dimension information
   bool is_dot_;
@@ -285,7 +285,7 @@ class ConvHandler : public HandlerBase {
 
   void SplitDepthwise(bool forward);
 
-  Status RegisterStrategies();
+  absl::Status RegisterStrategies();
 
   // Dimension information
   const ConvolutionDimensionNumbers& conv_dnums_;
@@ -949,7 +949,7 @@ void DotHandler::AppendReduceScatterWindowedEinsumStrategy(
   }
 }
 
-Status DotHandler::RegisterStrategies() {
+absl::Status DotHandler::RegisterStrategies() {
   // SS = SR x RS
   // Split lhs space dim and rhs space dim.
   SplitLhsSpaceRhsSpace();
@@ -1061,7 +1061,7 @@ ConvHandler::ConvHandler(std::unique_ptr<StrategyGroup>& strategy_group,
   out_out_channel_dim_ = conv_dnums_.output_feature_dimension();
 }
 
-Status ConvHandler::RegisterStrategies() {
+absl::Status ConvHandler::RegisterStrategies() {
   // For 1D sharding
   if ((ins_->feature_group_count() ==
            lhs_->shape().dimensions(lhs_in_channel_dim_) &&
@@ -1216,15 +1216,16 @@ void ConvHandler::SplitDepthwise(bool forward) {
 }  // namespace
 
 // Register strategies for dot instructions.
-Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
-                 StrategyGroups& strategy_groups, StrategyMap& strategy_map,
-                 const HloInstruction* ins, size_t instruction_id,
-                 const HloInstructionSequence& instruction_sequence,
-                 const HloCostAnalysis& hlo_cost_analysis,
-                 const ClusterEnvironment& cluster_env,
-                 const InstructionBatchDimMap& batch_map,
-                 const AutoShardingOption& option,
-                 const CallGraph& call_graph) {
+absl::Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
+                       StrategyGroups& strategy_groups,
+                       StrategyMap& strategy_map, const HloInstruction* ins,
+                       size_t instruction_id,
+                       const HloInstructionSequence& instruction_sequence,
+                       const HloCostAnalysis& hlo_cost_analysis,
+                       const ClusterEnvironment& cluster_env,
+                       const InstructionBatchDimMap& batch_map,
+                       const AutoShardingOption& option,
+                       const CallGraph& call_graph) {
   strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
                                            strategy_groups);
 
@@ -1236,15 +1237,16 @@ Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
 }
 
 // Register strategies for convolution instructions.
-Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
-                  StrategyGroups& strategy_groups, StrategyMap& strategy_map,
-                  const HloInstruction* ins, size_t instruction_id,
-                  const HloInstructionSequence& instruction_sequence,
-                  const HloCostAnalysis& hlo_cost_analysis,
-                  const ClusterEnvironment& cluster_env,
-                  const InstructionBatchDimMap& batch_map,
-                  const AutoShardingOption& option,
-                  const CallGraph& call_graph) {
+absl::Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
+                        StrategyGroups& strategy_groups,
+                        StrategyMap& strategy_map, const HloInstruction* ins,
+                        size_t instruction_id,
+                        const HloInstructionSequence& instruction_sequence,
+                        const HloCostAnalysis& hlo_cost_analysis,
+                        const ClusterEnvironment& cluster_env,
+                        const InstructionBatchDimMap& batch_map,
+                        const AutoShardingOption& option,
+                        const CallGraph& call_graph) {
   strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
                                            strategy_groups);
 
