@@ -70,6 +70,19 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "async_value_tensor_test",
+    srcs = ["async_value_tensor_test.cc"],
+    deps = [
+        ":async_value_tensor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/tsl/concurrency:async_value",
+    ],
+)
+
 cc_library(
     name = "pjrt_state",
     srcs = [
