@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/tuple_simplifier.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
@@ -110,12 +111,8 @@ ENTRY main {
   EXPECT_TRUE(changed);
   TF_ASSERT_OK_AND_ASSIGN(changed, tuple_simp.Run(module.get()));
   EXPECT_TRUE(changed);
-  HloInstruction* while_instruction;
-  for (auto instr : module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
-      while_instruction = instr;
-    }
-  }
+  HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
+      *module->entry_computation(), HloOpcode::kWhile);
   TF_ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
@@ -243,12 +240,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(changed, tuple_simp.Run(module.get()));
   EXPECT_TRUE(changed);
 
-  HloInstruction* while_instruction;
-  for (auto instr : module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
-      while_instruction = instr;
-    }
-  }
+  HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
+      *module->entry_computation(), HloOpcode::kWhile);
   TF_ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
@@ -314,12 +307,8 @@ ENTRY main {
 
   // We expect that for the while loop, no further copy needs to be added to the
   // module.
-  HloInstruction* while_instruction;
-  for (auto instr : module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
-      while_instruction = instr;
-    }
-  }
+  HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
+      *module->entry_computation(), HloOpcode::kWhile);
   TF_ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
@@ -377,12 +366,8 @@ ENTRY main {
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(tuple_simp.Run(module.get()), IsOkAndHolds(true));
 
-  HloInstruction* while_instruction;
-  for (auto instr : module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
-      while_instruction = instr;
-    }
-  }
+  HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
+      *module->entry_computation(), HloOpcode::kWhile);
   TF_ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
@@ -449,12 +434,8 @@ ENTRY main {
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(tuple_simp.Run(module.get()), IsOkAndHolds(true));
 
-  HloInstruction* while_instruction;
-  for (auto instr : module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
-      while_instruction = instr;
-    }
-  }
+  HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
+      *module->entry_computation(), HloOpcode::kWhile);
   TF_ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
@@ -468,14 +449,14 @@ ENTRY main {
                               HloOpcode::kAllReduceStart),
             2);
   absl::flat_hash_set<int64_t> channel_ids;
-  for (HloInstruction* ar : while_instruction->while_body()->instructions()) {
-    if (ar->opcode() == HloOpcode::kAllReduceStart) {
-      // We expect that after unrolling, all-reduces should not have any control
-      // deps.
-      EXPECT_EQ(ar->control_predecessors().size(), 0);
-      channel_ids.insert(*(ar->channel_id()));
-    }
-  }
+  hlo_query::ForEachInstructionWithOpcode(
+      *while_instruction->while_body(), HloOpcode::kAllReduceStart,
+      [&channel_ids](HloInstruction* ar) {
+        // We expect that after unrolling, all-reduces should not have any
+        // control deps.
+        EXPECT_EQ(ar->control_predecessors().size(), 0);
+        channel_ids.insert(*(ar->channel_id()));
+      });
   // we expect that all 2 all-reduces will have different channel ids.
   EXPECT_EQ(channel_ids.size(), 2);
 }
@@ -523,12 +504,8 @@ ENTRY main {
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(tuple_simp.Run(module.get()), IsOkAndHolds(true));
 
-  HloInstruction* while_instruction;
-  for (auto instr : module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
-      while_instruction = instr;
-    }
-  }
+  HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
+      *module->entry_computation(), HloOpcode::kWhile);
   TF_ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
@@ -540,14 +517,14 @@ ENTRY main {
                               HloOpcode::kAllReduceStart),
             10);
   absl::flat_hash_set<int64_t> channel_ids;
-  for (HloInstruction* ar : while_instruction->while_body()->instructions()) {
-    if (ar->opcode() == HloOpcode::kAllReduceStart) {
-      // We expect that after unrolling, all-reduces should not have any control
-      // deps.
-      EXPECT_EQ(ar->control_predecessors().size(), 0);
-      channel_ids.insert(*(ar->channel_id()));
-    }
-  }
+  hlo_query::ForEachInstructionWithOpcode(
+      *while_instruction->while_body(), HloOpcode::kAllReduceStart,
+      [&channel_ids](HloInstruction* ar) {
+        // We expect that after unrolling, all-reduces should not have any
+        // control deps.
+        EXPECT_EQ(ar->control_predecessors().size(), 0);
+        channel_ids.insert(*(ar->channel_id()));
+      });
   // we expect that all 10 all-reduces will have different channel ids.
   EXPECT_EQ(channel_ids.size(), 10);
 }
@@ -597,15 +574,13 @@ ENTRY main {
 
   absl::flat_hash_set<const HloComputation*> while_loops_callees;
 
-  for (const HloComputation* computation : module->computations()) {
-    for (const HloInstruction* instr : computation->instructions()) {
-      if (instr->opcode() == HloOpcode::kWhile) {
+  hlo_query::ForEachInstructionWithOpcode(
+      *module, HloOpcode::kWhile,
+      [&while_loops_callees](HloInstruction* instr) {
         EXPECT_TRUE(
             while_loops_callees.insert(instr->while_condition()).second);
         EXPECT_TRUE(while_loops_callees.insert(instr->while_body()).second);
-      }
-    }
-  }
+      });
 
   // We expect that the nested while loop has been duplicated, along with its
   // associated computations.
@@ -656,15 +631,13 @@ ENTRY main {
 
   absl::flat_hash_set<const HloComputation*> while_loops_callees;
 
-  for (const HloComputation* computation : module->computations()) {
-    for (const HloInstruction* instr : computation->instructions()) {
-      if (instr->opcode() == HloOpcode::kWhile) {
+  hlo_query::ForEachInstructionWithOpcode(
+      *module, HloOpcode::kWhile,
+      [&while_loops_callees](HloInstruction* instr) {
         EXPECT_TRUE(
             while_loops_callees.insert(instr->while_condition()).second);
         EXPECT_TRUE(while_loops_callees.insert(instr->while_body()).second);
-      }
-    }
-  }
+      });
 
   // We expect that the nested while loop has been duplicated, along with its
   // associated computations.
@@ -716,25 +689,23 @@ ENTRY main {
 
   absl::flat_hash_set<const HloComputation*> while_loops_callees;
 
-  for (const HloComputation* computation : module->computations()) {
-    for (const HloInstruction* instr : computation->instructions()) {
-      if (instr->opcode() == HloOpcode::kWhile) {
+  hlo_query::ForEachInstructionWithOpcode(
+      *module, HloOpcode::kWhile,
+      [&while_loops_callees](HloInstruction* instr) {
         EXPECT_TRUE(
             while_loops_callees.insert(instr->while_condition()).second);
         EXPECT_TRUE(while_loops_callees.insert(instr->while_body()).second);
-      }
-    }
-  }
+      });
 
-  for (const HloInstruction* instr :
-       module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kWhile) {
-      TF_ASSERT_OK_AND_ASSIGN(WhileLoopBackendConfig config,
-                              instr->backend_config<WhileLoopBackendConfig>());
-      int64_t exact_trip_count = config.known_trip_count().n();
-      EXPECT_EQ(exact_trip_count, 1);
-    }
-  }
+  hlo_query::ForEachInstructionWithOpcode(
+      *module->entry_computation(), HloOpcode::kWhile,
+      [](HloInstruction* instr) {
+        TF_ASSERT_OK_AND_ASSIGN(
+            WhileLoopBackendConfig config,
+            instr->backend_config<WhileLoopBackendConfig>());
+        int64_t exact_trip_count = config.known_trip_count().n();
+        EXPECT_EQ(exact_trip_count, 1);
+      });
 
   // We expect that the nested while loop has been fully duplicated 10
   // times. The one outer while loop still remains so that's 11 while
@@ -780,19 +751,14 @@ ENTRY main {
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
 
   int64_t num_whiles = 0;
-  for (const HloComputation* computation : module->computations()) {
-    for (const HloInstruction* instr : computation->instructions()) {
-      if (instr->opcode() == HloOpcode::kWhile) {
-        // All loops in the module should be unrolled now and have trip count
-        // of 5.
+  hlo_query::ForEachInstructionWithOpcode(
+      *module, HloOpcode::kWhile, [&num_whiles](HloInstruction* instr) {
         EXPECT_EQ(instr->backend_config<WhileLoopBackendConfig>()
                       ->known_trip_count()
                       .n(),
                   5);
         ++num_whiles;
-      }
-    }
-  }
+      });
   // We expect the number of while loops to be 4 in total after unrolling.
   EXPECT_EQ(num_whiles, 4);
 }
@@ -835,19 +801,14 @@ ENTRY main {
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
 
   int64_t num_whiles = 0;
-  // TODO(olechwierowicz): We should have an abstraction in HloModule which lets
-  // us to iterate over instrucitons of certain kind.
-  for (const HloComputation* computation : module->computations()) {
-    for (const HloInstruction* instr : computation->instructions()) {
-      if (instr->opcode() == HloOpcode::kWhile) {
+  hlo_query::ForEachInstructionWithOpcode(
+      *module, HloOpcode::kWhile, [&num_whiles](HloInstruction* instr) {
         EXPECT_EQ(instr->backend_config<WhileLoopBackendConfig>()
                       ->known_trip_count()
                       .n(),
                   1);
         ++num_whiles;
-      }
-    }
-  }
+      });
   EXPECT_EQ(num_whiles, 12);
 }
 
