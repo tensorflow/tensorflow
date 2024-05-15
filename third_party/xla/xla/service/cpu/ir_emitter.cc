@@ -3178,6 +3178,7 @@ llvm::Value* IrEmitter::EmitCallToFfi(HloCustomCallInstruction* custom_call,
   const auto opaque_ref = llvm_ir::AsStringRef(opaque);
 
   std::vector<llvm::Value*> arguments = {
+      GetExecutableRunOptionsArgument(),     // run_options_ptr
       b_.CreateGlobalStringPtr(target_ref),  // target_name_ptr
       b_.getInt64(target.size()),            // target_name_len
       output_address,                        // output
@@ -3193,10 +3194,10 @@ llvm::Value* IrEmitter::EmitCallToFfi(HloCustomCallInstruction* custom_call,
       result_shapes_alloca,                  // result_dims
   };
 
-  return EmitCallToFunc("__xla_cpu_runtime_HandleFfiCall", arguments,
+  return EmitCallToFunc(runtime::kHandleFfiCallSymbolName, arguments,
                         b_.getVoidTy(),
-                        /* does_not_throw = */ false,
-                        /* only_accesses_arg_memory = */ true);
+                        /*does_not_throw=*/false,
+                        /*only_accesses_arg_memory=*/true);
 }
 
 void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,

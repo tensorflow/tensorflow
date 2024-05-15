@@ -27,19 +27,18 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/executable_run_options.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/primitive_util.h"
 #include "xla/service/custom_call_status.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -108,11 +107,12 @@ void BuildBuffers(absl::Span<const int32_t> types, int64_t* encoded_dims,
   }
 }
 
-inline absl::Status BuildAndCallFfi(
-    std::string_view target_name, std::string_view backend_config,
-    absl::Span<void* const> outputs, absl::Span<void* const> inputs,
-    absl::Span<const int32_t> result_types, int64_t* result_dims,
-    absl::Span<const int32_t> operand_types, int64_t* operand_dims) {
+static absl::Status BuildAndCallFfi(
+    const xla::ExecutableRunOptions* run_options, std::string_view target_name,
+    std::string_view backend_config, absl::Span<void* const> outputs,
+    absl::Span<void* const> inputs, absl::Span<const int32_t> result_types,
+    int64_t* result_dims, absl::Span<const int32_t> operand_types,
+    int64_t* operand_dims) {
   CHECK_EQ(outputs.size(), result_types.size());
   CHECK_EQ(inputs.size(), operand_types.size());
 
@@ -161,18 +161,24 @@ inline absl::Status BuildAndCallFfi(
   BuildBuffers(operand_types, operand_dims, inputs, ArgInserter(builder));
   BuildBuffers(result_types, result_dims, outputs, RetInserter(builder));
 
+  // Forward executable run options to the FFI handlers via the call options.
+  xla::ServiceExecutableRunOptions service_run_options(*run_options);
+
+  ffi::CallOptions call_options;
+  call_options.run_options = &service_run_options;
+
   ffi::CallFrame call_frame = builder.Build();
-  return ffi::Call(registration->handler, call_frame);  // Status
+  return ffi::Call(registration->handler, call_frame, call_options);
 }
 
 }  // namespace
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_HandleFfiCall(
-    const char* target_name_ptr, int64_t target_name_len, void* output,
-    void** inputs, const char* opaque_str_ptr, int64_t opaque_str_len,
-    void* status_opaque, int32_t* operand_types, int64_t operand_count,
-    int64_t* operand_dims, int32_t* result_types, int64_t result_count,
-    int64_t* result_dims) {
+    const void* run_options_ptr, const char* target_name_ptr,
+    int64_t target_name_len, void* output, void** inputs,
+    const char* opaque_str_ptr, int64_t opaque_str_len, void* status_opaque,
+    int32_t* operand_types, int64_t operand_count, int64_t* operand_dims,
+    int32_t* result_types, int64_t result_count, int64_t* result_dims) {
   auto target_name = absl::string_view(target_name_ptr, target_name_len);
   auto backend_config = absl::string_view(opaque_str_ptr, opaque_str_len);
   auto xla_status = reinterpret_cast<XlaCustomCallStatus*>(status_opaque);
@@ -189,8 +195,12 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_HandleFfiCall(
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(operand_types,
                                       operand_count * sizeof(int32_t));
 
+  const xla::ExecutableRunOptions* run_options =
+      reinterpret_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
+
   absl::Status status = BuildAndCallFfi(
-      target_name, backend_config, absl::MakeSpan(outputs, result_count),
+      run_options, target_name, backend_config,
+      absl::MakeSpan(outputs, result_count),
       absl::MakeSpan(inputs, operand_count),
       absl::MakeSpan(result_types, result_count), result_dims,
       absl::MakeSpan(operand_types, operand_count), operand_dims);

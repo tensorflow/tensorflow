@@ -1,4 +1,4 @@
-go/debugstr  
+go/debugonly    
 op {
   name: "Abort"
   attr {
