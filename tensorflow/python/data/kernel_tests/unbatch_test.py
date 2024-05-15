@@ -16,6 +16,7 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -260,6 +261,35 @@ class UnbatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         self,
         lambda: self.build_dataset(15.0, tensor_slice_len, batch_size, options),
         num_outputs)
+
+
+class UnbatchRandomAccessTest(test_base.DatasetTestBase,
+                              parameterized.TestCase):
+  @combinations.generate(test_base.default_test_combinations())
+  def test(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.batch(4, drop_remainder=True)
+    dataset = dataset.unbatch()
+    for i in range(8):
+      self.assertEqual(self.evaluate(random_access.at(dataset, i)), i)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNotDropRemainder(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.batch(4, drop_remainder=False)
+    dataset = dataset.unbatch()
+    with self.assertRaises(errors.FailedPreconditionError):
+      self.evaluate(random_access.at(dataset, 0))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, 100])))
+  def testInvalidIndex(self, index):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.batch(4, drop_remainder=True)
+    dataset = dataset.unbatch()
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
 
 
 if __name__ == "__main__":
