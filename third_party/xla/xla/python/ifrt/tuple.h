@@ -22,10 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/value.h"
-#include "xla/status.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -53,7 +53,7 @@ class Tuple : public llvm::RTTIExtends<Tuple, Value> {
   virtual int Arity() = 0;
 
   // Unpacks the tuple into its constituent pieces.
-  virtual Status Unpack(absl::Span<tsl::RCReference<Value>> values) = 0;
+  virtual absl::Status Unpack(absl::Span<tsl::RCReference<Value>> values) = 0;
 
   static char ID;  // NOLINT
 };
