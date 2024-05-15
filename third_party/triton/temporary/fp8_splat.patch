@@ -1,0 +1,41 @@
+diff --git a/include/triton/Conversion/MLIRTypes.h b/include/triton/Conversion/MLIRTypes.h
+--- a/include/triton/Conversion/MLIRTypes.h
++++ b/include/triton/Conversion/MLIRTypes.h
+@@ -26,12 +26,6 @@ inline Type f32Ty(MLIRContext *ctx) { re
+ inline Type f64Ty(MLIRContext *ctx) { return FloatType::getF64(ctx); }
+ inline Type bf16Ty(MLIRContext *ctx) { return FloatType::getBF16(ctx); }
+ 
+-inline bool isFloat(Type type) {
+-  return type.isF32() || type.isF64() || type.isF16() || type.isF128();
+-}
+-
+-inline bool isInt(Type type) { return type.isIntOrFloat() && !isFloat(type); }
+-
+ } // namespace type
+ } // namespace triton
+ } // namespace mlir
+diff --git a/lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ViewOpToLLVM.cpp
+@@ -74,17 +74,18 @@ struct ArithConstantSplatOpConversion
+     auto values = mlir::dyn_cast<SplatElementsAttr>(op.getValue());
+     auto elemType = values.getElementType();
+     Attribute val;
+-    if (elemType.isBF16() || type::isFloat(elemType)) {
++    if (isa<FloatType>(elemType)) {
+       val = values.getValues<FloatAttr>()[0];
+-    } else if (type::isInt(elemType)) {
++    } else if (isa<IntegerType>(elemType)) {
+       val = values.getValues<IntegerAttr>()[0];
+     } else {
+       llvm::errs() << "ArithConstantSplatOpConversion get unsupported type: "
+                    << value.getType() << "\n";
+       return failure();
+     }
+-    auto constOp = rewriter.create<LLVM::ConstantOp>(loc, elemType, val);
+     auto typeConverter = getTypeConverter();
++    auto constOp = rewriter.create<LLVM::ConstantOp>(
++        loc, typeConverter->convertType(elemType), val);
+     auto llStruct = SplatOpConversion::convertSplatLikeOp(
+         elemType, op.getType(), constOp, typeConverter, rewriter, loc);
+     rewriter.replaceOp(op, llStruct);
