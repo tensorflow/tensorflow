@@ -238,7 +238,7 @@ static ConditionalThunkConfig GetConditionalThunkConfig(
   return config;
 }
 
-Status IrEmitterUnnested::EmitConditional(const HloInstruction* instr) {
+absl::Status IrEmitterUnnested::EmitConditional(const HloInstruction* instr) {
   std::vector<ThunkSequence> branch_thunks;
   branch_thunks.reserve(instr->branch_count());
 
@@ -2144,7 +2144,7 @@ absl::Status IrEmitterUnnested::EmitReplicaOrPartitionId(
   return absl::OkStatus();
 }
 
-Status IrEmitterUnnested::EmitCollectivePermute(
+absl::Status IrEmitterUnnested::EmitCollectivePermute(
     const HloCollectivePermuteInstruction* instr) {
   TF_RET_CHECK(instr->operand_count() == 1);
   auto* operand = instr->operand(0);

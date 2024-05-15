@@ -466,11 +466,12 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
   return runtime_arguments;
 }
 
-// There are three tiers of errors possible here: returning a failed StatusOr
-// means autotuning fails immediately; returning an AutotuneResult with a
-// failure code other than DISQUALIFIED means autotuning fails if
-// crash_on_checking_failure is set; and returning a DISQUALIFIED AutotuneResult
-// simply skips the engine/algorithm while recording a reason for skipping it.
+// There are three tiers of errors possible here: returning a failed
+// absl::StatusOr means autotuning fails immediately; returning an
+// AutotuneResult with a failure code other than DISQUALIFIED means autotuning
+// fails if crash_on_checking_failure is set; and returning a DISQUALIFIED
+// AutotuneResult simply skips the engine/algorithm while recording a reason for
+// skipping it.
 absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     GenericConvRunner* const runner,
     std::optional<ReferenceResult>* reference_result,

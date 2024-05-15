@@ -1574,7 +1574,7 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   return true;
 }
 
-Status RestoreFwdGraph(
+absl::Status RestoreFwdGraph(
     HloComputation* comp, HloInstruction* fwd_fmha_call, HloInstruction* bmm2,
     HloInstruction* activation, HloInstruction* original_bmm2_producer0,
     HloInstruction* original_bmm2_producer1,

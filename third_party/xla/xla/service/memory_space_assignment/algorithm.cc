@@ -942,8 +942,9 @@ void MsaAlgorithm::DumpDebugStringsIfEnabled() const {
   options_.dump_fn("scheduleinfo", instruction_schedule_str_);
 }
 
-Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
-                                             int loop_end_idx, int loop_size) {
+absl::Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
+                                                   int loop_end_idx,
+                                                   int loop_size) {
   // The MemoryBoundLoopOptimizer works with a minimum of three unrolled loop
   // iterations: previous, current, and next. So, we pick the second iteration
   // out of the loop as the current iteration.
@@ -1912,7 +1913,7 @@ absl::StatusOr<MsaAlgorithm::Result> MsaAlgorithm::AllocateAllocationValues(
         result_mark(AllocateSegment(request), result);
         if (request.require_no_copy_alternate_mem_allocation &&
             result != Result::kSuccess) {
-          Status failed_precondition = FailedPrecondition(
+          absl::Status failed_precondition = FailedPrecondition(
               "The value defined at %s requires allocation in the alternate "
               "memory, which could not be satisfied. This typically happens "
               "because more pinned buffers are live than the alternate memory "
@@ -3373,7 +3374,7 @@ void MsaAlgorithm::ImportRepackedSlicedAllocation(
           << "; Allocation: " << allocation->ToString();
 }
 
-Status MsaAlgorithm::AreRepackedSlicesValid(
+absl::Status MsaAlgorithm::AreRepackedSlicesValid(
     const RepackAllocationBlock& block) {
   if (!block.repacked_slice_data.has_value()) {
     return OkStatus();

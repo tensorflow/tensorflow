@@ -92,7 +92,7 @@ MemoryBoundLoopOptimizer::MemoryBoundLoopOptimizer(
       size_function_(size_function),
       reserved_scoped_memory_fn_(reserved_scoped_memory_fn) {}
 
-Status MemoryBoundLoopOptimizer::Initialize() {
+absl::Status MemoryBoundLoopOptimizer::Initialize() {
   const auto& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
   VLOG(3) << "MemoryBoundLoopOptimizer::Initialize, loop start: " << loop_start_

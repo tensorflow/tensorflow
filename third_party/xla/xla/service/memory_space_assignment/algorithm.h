@@ -684,8 +684,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // For the given loop with the start and end index and loop size, run the
   // MemoryBoundLoopOptimizer and record its outputs into
   // optimized_allocations_map_.
-  Status OptimizeMemoryBoundLoop(int loop_start_idx, int loop_end_idx,
-                                 int loop_size);
+  absl::Status OptimizeMemoryBoundLoop(int loop_start_idx, int loop_end_idx,
+                                       int loop_size);
 
   // Identify memory-bound loops in the graph and call OptimizeMemoryBoundLoop
   // for the found loops.
@@ -945,7 +945,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Helper functions to implement ImportRepackedAllocations.
   void ImportRepackedNonSlicedAllocation(RepackAllocationBlock& block);
   void ImportRepackedSlicedAllocation(RepackAllocationBlock& block);
-  Status AreRepackedSlicesValid(const RepackAllocationBlock& block);
+  absl::Status AreRepackedSlicesValid(const RepackAllocationBlock& block);
 
   // Adds an asynchronous copy to allocations.
   void AddAsyncCopy(

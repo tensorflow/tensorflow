@@ -45,8 +45,8 @@ int64_t ShapeSize(const Shape& shape) {
 
 class MemorySpaceAssignmentCostAnalysisTest : public HloTestBase {
  protected:
-  Status Initialize(const HloModule* module,
-                    float pipeline_overhead_window_size_mib = 0.0) {
+  absl::Status Initialize(const HloModule* module,
+                          float pipeline_overhead_window_size_mib = 0.0) {
     HloCostAnalysis::Options options;
     options_.alternate_mem_bandwidth_bytes_per_second = 128;
     options_.async_copy_bandwidth_bytes_per_second = 32;
