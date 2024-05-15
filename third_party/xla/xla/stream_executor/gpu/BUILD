@@ -515,6 +515,7 @@ gpu_kernel_library(
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor:typed_kernel_factory",
         "@com_google_absl//absl/status:statusor",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:statusor",
