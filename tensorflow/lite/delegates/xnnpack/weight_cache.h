@@ -179,14 +179,13 @@ class MMapWeightCacheProvider {
   // WARNING: Can only be called if the cache isn't finalized.
   void SetFilePath(const char* file_path);
 
-  // Loads a flatbuffer following the layout in weight_cache_schema.fbs and set
-  // the file path.
+  // Set the weight file path and loads it.
   [[nodiscard /*Loading a cache file may fail.*/]]
   bool Load(const std::string& path);
 
-  // Loads an MMap allocation following the layout in weight_cache_schema.fbs.
+  // Loads the weight cache previouslt set with `SetFilePath`.
   [[nodiscard /*Loading cache data may fail.*/]]
-  bool Load(MMapHandle&& mmap_handle);
+  bool Load();
 
   // Creates the tensor map.
   void MapTensorIdentifiers(
@@ -223,8 +222,8 @@ class MMapWeightCacheProvider {
   // WARNING: This does not check the validity of the passed offset.
   void* OffsetToAddr(size_t offset);
 
-  // Resets the weight cache provider as if it had been default constructed.
-  void Reset();
+  // Releases the weight cache's memory.
+  void Release();
 
   // Ensures that the cache is ready.
   //
