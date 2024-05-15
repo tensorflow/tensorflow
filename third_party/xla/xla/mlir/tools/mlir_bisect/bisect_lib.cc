@@ -76,8 +76,8 @@ CandidateVector GetCandidates(
     BisectState& state, ModuleOp op) {
   assert(strategy && "GetCandidates was passed a null strategy");
   CandidateVector result;
-  op.lookupSymbol("main")->walk([&](Operation* subOp) {
-    llvm::move(strategy(state, subOp), std::back_inserter(result));
+  op.lookupSymbol("main")->walk([&](Operation* sub_op) {
+    llvm::move(strategy(state, sub_op), std::back_inserter(result));
   });
   return result;
 }

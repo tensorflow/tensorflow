@@ -15,10 +15,8 @@ limitations under the License.
 
 #include "xla/mlir/tools/mlir_interpreter/framework/tensor_or_memref.h"
 
-#include <algorithm>
+#include <cstddef>
 #include <cstdint>
-#include <iostream>
-#include <numeric>
 #include <optional>
 #include <utility>
 
@@ -44,9 +42,13 @@ std::optional<int64_t> BufferView::GetPhysicalIndex(
 }
 
 bool BufferView::InBounds(llvm::ArrayRef<int64_t> view_indices) const {
-  if (view_indices.size() > sizes.size()) return false;
+  if (view_indices.size() > sizes.size()) {
+    return false;
+  }
   for (auto [index, size] : llvm::zip(view_indices, sizes)) {
-    if (index < 0 || index >= size) return false;
+    if (index < 0 || index >= size) {
+      return false;
+    }
   }
   return true;
 }
@@ -64,12 +66,12 @@ SmallVector<int64_t> BufferView::GetDefaultStrides(ArrayRef<int64_t> sizes) {
 SmallVector<int64_t> BufferView::GetStridesForLayout(ArrayRef<int64_t> sizes,
                                                      ArrayRef<int64_t> layout) {
   if (layout.empty()) return GetDefaultStrides(sizes);
-  auto inverseLayout = invertPermutationVector(layout);
+  auto inverse_layout = invertPermutationVector(layout);
   SmallVector<int64_t> result(sizes.size());
   int64_t stride = 1;
   for (int64_t i = 0; i < layout.size(); ++i) {
-    result[inverseLayout[i]] = stride;
-    stride *= sizes[inverseLayout[i]];
+    result[inverse_layout[i]] = stride;
+    stride *= sizes[inverse_layout[i]];
   }
   return result;
 }
@@ -77,8 +79,8 @@ SmallVector<int64_t> BufferView::GetStridesForLayout(ArrayRef<int64_t> sizes,
 LogicalResult BufferView::Slice(int64_t dim_index, int64_t dim_offset) {
   llvm::SmallVector<int64_t> offsets(Rank(), 0);
   offsets[dim_index] = dim_offset;
-  if (auto newOffset = GetPhysicalIndex(offsets)) {
-    offset = *newOffset;
+  if (auto new_offset = GetPhysicalIndex(offsets)) {
+    offset = *new_offset;
   } else {
     return failure();
   }
@@ -94,8 +96,8 @@ LogicalResult BufferView::Slice(int64_t dim_index, int64_t dim_offset,
   offsets[dim_index] = dim_offset;
   if (dim_size == 0) {
     offset = 0;
-  } else if (auto newOffset = GetPhysicalIndex(offsets)) {
-    offset = *newOffset;
+  } else if (auto new_offset = GetPhysicalIndex(offsets)) {
+    offset = *new_offset;
   } else {
     return failure();
   }
@@ -115,9 +117,9 @@ LogicalResult BufferView::Subview(ArrayRef<int64_t> subview_offsets,
 
   for (auto [in_size, subview_offset, subview_size, subview_stride] :
        llvm::zip(sizes, subview_offsets, subview_sizes, subview_strides)) {
-    int64_t limitIndex = subview_offset + (subview_size - 1) * subview_stride;
-    if (subview_offset < 0 || subview_offset >= in_size || limitIndex < 0 ||
-        limitIndex >= in_size) {
+    int64_t limit_index = subview_offset + (subview_size - 1) * subview_stride;
+    if (subview_offset < 0 || subview_offset >= in_size || limit_index < 0 ||
+        limit_index >= in_size) {
       return failure();
     }
   }
@@ -129,33 +131,38 @@ LogicalResult BufferView::Subview(ArrayRef<int64_t> subview_offsets,
   return success();
 }
 
-int64_t BufferView::GetNumElements(bool includeVectorDims) const {
+int64_t BufferView::GetNumElements(bool include_vector_dims) const {
   size_t n = 1;
   for (auto size : ArrayRef<int64_t>(sizes).drop_back(
-           includeVectorDims ? 0 : num_vector_dims.value_or(0)))
+           include_vector_dims ? 0 : num_vector_dims.value_or(0))) {
     n *= size;
+  }
   return n;
 }
 
 std::optional<int64_t> BufferView::GetCollapsedStride(
     llvm::ArrayRef<int64_t> dims) const {
   using StrideAndDim = std::pair<int64_t, int64_t>;
-  llvm::SmallVector<StrideAndDim> stridesAndDims;
+  llvm::SmallVector<StrideAndDim> strides_and_dims;
   for (auto dim : dims) {
     if (sizes[dim] != 1) {
-      stridesAndDims.emplace_back(strides[dim], dim);
+      strides_and_dims.emplace_back(strides[dim], dim);
     }
   }
 
-  if (stridesAndDims.empty()) return 0;
-
-  llvm::sort(stridesAndDims);
-  int64_t nextStride = stridesAndDims.front().first;
-  for (auto [stride, dim] : stridesAndDims) {
-    if (stride != nextStride) return std::nullopt;
-    nextStride *= sizes[dim];
+  if (strides_and_dims.empty()) {
+    return 0;
   }
-  return stridesAndDims.front().first;
+
+  llvm::sort(strides_and_dims);
+  int64_t next_stride = strides_and_dims.front().first;
+  for (auto [stride, dim] : strides_and_dims) {
+    if (stride != next_stride) {
+      return std::nullopt;
+    }
+    next_stride *= sizes[dim];
+  }
+  return strides_and_dims.front().first;
 }
 
 }  // namespace interpreter

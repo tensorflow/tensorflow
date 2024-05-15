@@ -15,8 +15,15 @@ limitations under the License.
 
 #include "xla/mlir/tools/mlir_bisect/test_passes.h"
 
+#include <utility>
+
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 
 namespace mlir {
 namespace bisect {

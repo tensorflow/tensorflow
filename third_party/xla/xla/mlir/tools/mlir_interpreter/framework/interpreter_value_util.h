@@ -82,13 +82,13 @@ struct InterpreterValueBiMapVisitor {
   const InterpreterValue& rhs;
 
   template <typename T>
-  InterpreterValue operator()(const TensorOrMemref<T>& lhsT) {
+  InterpreterValue operator()(const TensorOrMemref<T>& lhs_t) {
     if constexpr (Fn::template SupportedType<T>()) {
       using OutElemT = decltype(Fn::Apply(T(), T()));
-      auto out = TensorOrMemref<OutElemT>::EmptyLike(lhsT.view);
-      const auto& rhsT = std::get<TensorOrMemref<T>>(rhs.storage);
+      auto out = TensorOrMemref<OutElemT>::EmptyLike(lhs_t.view);
+      const auto& rhs_t = std::get<TensorOrMemref<T>>(rhs.storage);
       for (const auto& index : out.view.Indices(true)) {
-        out.at(index) = Fn::Apply(lhsT.at(index), rhsT.at(index));
+        out.at(index) = Fn::Apply(lhs_t.at(index), rhs_t.at(index));
       }
       return {out};
     } else {
@@ -98,10 +98,10 @@ struct InterpreterValueBiMapVisitor {
     }
   }
 
-  InterpreterValue operator()(const Tuple& lhsT) {
-    const auto& rhsT = std::get<Tuple>(rhs.storage);
+  InterpreterValue operator()(const Tuple& lhs_t) {
+    const auto& rhs_t = std::get<Tuple>(rhs.storage);
     Tuple out;
-    for (const auto& [lhs_v, rhs_v] : llvm::zip(lhsT.values, rhsT.values)) {
+    for (const auto& [lhs_v, rhs_v] : llvm::zip(lhs_t.values, rhs_t.values)) {
       out.values.push_back(std::make_unique<InterpreterValue>(std::move(
           std::visit(InterpreterValueBiMapVisitor{*rhs_v}, lhs_v->storage))));
     }
@@ -130,11 +130,11 @@ template <bool allow_bools, bool allow_ints, bool allow_floats,
 struct FilterMapTraits {
   template <typename T>
   static constexpr bool SupportedType() {
-    constexpr bool isBool = std::is_same_v<T, bool>;
-    constexpr bool isInt = std::is_integral_v<T> && !isBool;
-    constexpr bool isUnsigned = std::is_unsigned_v<T>;
-    return (allow_bools && isBool) ||
-           (allow_ints && isInt && (allow_unsigned || !isUnsigned)) ||
+    constexpr bool is_bool = std::is_same_v<T, bool>;
+    constexpr bool is_int = std::is_integral_v<T> && !is_bool;
+    constexpr bool is_unsigned = std::is_unsigned_v<T>;
+    return (allow_bools && is_bool) ||
+           (allow_ints && is_int && (allow_unsigned || !is_unsigned)) ||
            (allow_floats && std::is_floating_point_v<T>) ||
            (allow_complex && is_complex_v<T>);
   }

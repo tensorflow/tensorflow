@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
-#include <variant>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -85,9 +85,9 @@ InterpreterValue ReshapeTensor(const InterpreterValue& in,
                                ArrayRef<int64_t> shape) {
   // This doesn't need a copy in many cases, but it's easier that way.
   auto out = in.TypedAlike(shape);
-  for (const auto& [inIndex, outIndex] :
+  for (const auto& [in_index, out_index] :
        llvm::zip(in.View().Indices(), out.View().Indices())) {
-    out.InsertElement(outIndex, in.ExtractElement(inIndex));
+    out.InsertElement(out_index, in.ExtractElement(in_index));
   }
   return out;
 }

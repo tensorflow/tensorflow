@@ -30,6 +30,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"
@@ -78,13 +80,13 @@ SmallVector<InterpreterValue> Interpret(InterpreterState& state, Region& region,
     scope.Set(value, interpreter_value);
   }
 
-  std::optional<SmallVector<InterpreterValue>> blockResults;
+  std::optional<SmallVector<InterpreterValue>> block_results;
   for (mlir::Operation& op : block) {
     auto results = Interpret(state, op);
     if (state.HasFailure()) return {};
     if (op.hasTrait<OpTrait::IsTerminator>()) {
-      assert(!blockResults.has_value() && "Expected at most one terminator");
-      blockResults = results;
+      assert(!block_results.has_value() && "Expected at most one terminator");
+      block_results = results;
     } else {
       if (results.size() != op.getNumResults()) {
         llvm::errs() << "Unexpected number of results while interpreting "
@@ -96,19 +98,19 @@ SmallVector<InterpreterValue> Interpret(InterpreterState& state, Region& region,
       }
     }
   }
-  if (!blockResults) {
-    blockResults = SmallVector<InterpreterValue>{};
+  if (!block_results) {
+    block_results = SmallVector<InterpreterValue>{};
   }
-  state.GetOptions().listener->LeaveRegion(*blockResults);
-  return *std::move(blockResults);
+  state.GetOptions().listener->LeaveRegion(*block_results);
+  return *std::move(block_results);
 }
 
 InterpreterState::InterpreterState(const mlir::SymbolTable& symbols,
                                    InterpreterOptions options)
     : symbols_(symbols), options_(options) {
   if (!options_.listener) {
-    static auto& noOpListener = *new InterpreterListener();
-    this->options_.listener = &noOpListener;
+    static auto& no_op_listener = *new InterpreterListener();
+    this->options_.listener = &no_op_listener;
   }
   if (options_.max_steps) {
     remaining_steps_ = *options_.max_steps;

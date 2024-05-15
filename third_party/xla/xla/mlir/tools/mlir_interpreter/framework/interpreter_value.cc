@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"
 
+#include <cassert>
 #include <complex>
 #include <cstdint>
 #include <functional>
@@ -22,9 +23,15 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <variant>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/mlir/tools/mlir_interpreter/framework/tensor_or_memref.h"
 
@@ -257,16 +264,16 @@ InterpreterValue InterpreterValue::TypedAlike(
       storage);
 }
 
-InterpreterValue InterpreterValue::MakeTensor(mlir::Type elementType,
+InterpreterValue InterpreterValue::MakeTensor(mlir::Type element_type,
                                               SmallVector<int64_t> shape) {
-  auto vectorTy = llvm::dyn_cast<VectorType>(elementType);
-  if (vectorTy) {
-    llvm::copy(vectorTy.getShape(), std::back_inserter(shape));
+  auto vector_ty = llvm::dyn_cast<VectorType>(element_type);
+  if (vector_ty) {
+    llvm::copy(vector_ty.getShape(), std::back_inserter(shape));
   }
-  return DispatchScalarType(elementType, [&](auto dummy) -> InterpreterValue {
+  return DispatchScalarType(element_type, [&](auto dummy) -> InterpreterValue {
     auto tensor = TensorOrMemref<decltype(dummy)>::Empty(shape);
-    if (vectorTy) {
-      tensor.view.num_vector_dims = vectorTy.getRank();
+    if (vector_ty) {
+      tensor.view.num_vector_dims = vector_ty.getRank();
     }
     return {tensor};
   });

@@ -241,15 +241,15 @@ InterpreterValue Contract(InterpreterState&, vector::ContractionOp contraction,
   BufferView iter;
   contraction.getIterationBounds(iter.sizes);
   auto maps = contraction.getIndexingMapsArray();
-  auto resultTy = contraction->getResultTypes()[0];
-  auto shapedTy = resultTy.dyn_cast<ShapedType>();
+  auto result_ty = contraction->getResultTypes()[0];
+  auto shaped_ty = result_ty.dyn_cast<ShapedType>();
   auto result =
-      DispatchScalarType(resultTy, [&](auto dummy) -> InterpreterValue {
+      DispatchScalarType(result_ty, [&](auto dummy) -> InterpreterValue {
         using T = decltype(dummy);
         using TT = TensorOrMemref<T>;
         const auto& lhs_t = std::get<TT>(lhs.storage);
         const auto& rhs_t = std::get<TT>(rhs.storage);
-        auto result_value = shapedTy ? acc.Clone() : acc.AsUnitTensor();
+        auto result_value = shaped_ty ? acc.Clone() : acc.AsUnitTensor();
         auto& result = std::get<TT>(result_value.storage);
         auto combiner = *GetCombiner<T>(contraction.getKind());
         for (const auto& indices : iter.Indices()) {
@@ -257,14 +257,14 @@ InterpreterValue Contract(InterpreterState&, vector::ContractionOp contraction,
           auto rhs_indices = EvalAffineMap(maps[1], indices);
           auto result_indices = EvalAffineMap(maps[2], indices);
 
-          auto& resultItem = result.at(result_indices);
-          resultItem = combiner(resultItem,
-                                lhs_t.at(lhs_indices) * rhs_t.at(rhs_indices));
+          auto& result_item = result.at(result_indices);
+          result_item = combiner(result_item,
+                                 lhs_t.at(lhs_indices) * rhs_t.at(rhs_indices));
         }
         return result_value;
       });
 
-  return shapedTy ? result : result.ExtractElement({});
+  return shaped_ty ? result : result.ExtractElement({});
 }
 
 InterpreterValue CreateMask(InterpreterState&, vector::CreateMaskOp op,
@@ -276,13 +276,13 @@ InterpreterValue ExpandLoad(InterpreterState& state, vector::ExpandLoadOp,
                             InterpreterValue memref,
                             SmallVector<int64_t> offsets,
                             TensorOrMemref<bool> mask,
-                            const InterpreterValue& passThrough) {
+                            const InterpreterValue& passthrough) {
   if (memref.View().strides.back() != 1) {
     state.AddFailure("expected last dimension to be contiguous");
     return {};
   }
 
-  auto out = passThrough.Clone();
+  auto out = passthrough.Clone();
   for (int64_t i = 0, e = out.View().sizes[0]; i < e; ++i) {
     if (mask.at({i})) {
       out.InsertElement({i}, memref.ExtractElement(offsets));
@@ -336,8 +336,8 @@ InterpreterValue FlatTranspose(InterpreterState&,
   int64_t rows = transpose.getRows();
   int64_t cols = transpose.getColumns();
   for (int64_t i = 0; i < rows * cols; ++i) {
-    int64_t srcIndex = (i % cols) * rows + (i / cols);
-    out.InsertElement({i}, vector.ExtractElement({srcIndex}));
+    int64_t src_index = (i % cols) * rows + (i / cols);
+    out.InsertElement({i}, vector.ExtractElement({src_index}));
   }
   return out;
 }
@@ -364,20 +364,20 @@ InterpreterValue Gather(InterpreterState& state, vector::GatherOp op,
                         const InterpreterValue& src, ArrayRef<int64_t> offsets,
                         const InterpreterValue& indices,
                         const TensorOrMemref<bool>& mask,
-                        const InterpreterValue& passThrough) {
+                        const InterpreterValue& pass_through) {
   if (isa<MemRefType>(op->getOperandTypes()[0]) &&
       src.View().strides.back() != 1) {
     state.AddFailure("expected trailing dimension to be contiguous");
     return {};
   }
-  auto out = passThrough.Clone();
-  for (const auto& outIndex : out.View().Indices()) {
-    if (!mask.at(outIndex)) {
+  auto out = pass_through.Clone();
+  for (const auto& out_index : out.View().Indices()) {
+    if (!mask.at(out_index)) {
       continue;
     }
-    auto inIndex = llvm::to_vector(offsets);
-    inIndex[0] += indices.ExtractElement(outIndex).AsInt();
-    out.InsertElement(outIndex, src.ExtractElement(inIndex));
+    auto in_index = llvm::to_vector(offsets);
+    in_index[0] += indices.ExtractElement(out_index).AsInt();
+    out.InsertElement(out_index, src.ExtractElement(in_index));
   }
   return out;
 }
@@ -386,12 +386,13 @@ InterpreterValue Insert(InterpreterState& state, vector::InsertOp insert,
                         const InterpreterValue& src,
                         const InterpreterValue& dst) {
   auto result = dst.Clone();
-  auto resultSlice = result;
-  auto& resultSliceView = resultSlice.View();
+  auto result_slice = result;
+  auto& result_slice_view = result_slice.View();
   for (int64_t offset : insert.getStaticPosition()) {
-    state.CheckSuccess(resultSliceView.Slice(0, offset), "index out of bounds");
+    state.CheckSuccess(result_slice_view.Slice(0, offset),
+                       "index out of bounds");
   }
-  resultSlice.Fill([&](auto indices) { return src.ExtractElement(indices); });
+  result_slice.Fill([&](auto indices) { return src.ExtractElement(indices); });
   return result;
 }
 
@@ -463,13 +464,13 @@ InterpreterValue MaskedLoad(InterpreterState& state, vector::MaskedLoadOp,
                             const InterpreterValue& memref,
                             SmallVector<int64_t> offsets,
                             TensorOrMemref<bool> mask,
-                            const InterpreterValue& passThrough) {
+                            const InterpreterValue& passthrough) {
   if (memref.View().strides.back() != 1) {
     state.AddFailure("expected last dimension to be contiguous");
     return {};
   }
 
-  auto out = passThrough.Clone();
+  auto out = passthrough.Clone();
   for (int64_t i = 0, e = mask.view.sizes[0]; i < e; ++i) {
     if (mask.at(i)) {
       out.InsertElement(i, memref.ExtractElement(offsets));
@@ -499,47 +500,47 @@ InterpreterValue ReductionImpl(InterpreterState& state,
                                const InterpreterValue& v,
                                const InterpreterValue* acc,
                                vector::CombiningKind kind,
-                               SmallVector<int64_t> dims, Type elementType) {
+                               SmallVector<int64_t> dims, Type element_type) {
   llvm::sort(dims);
-  SmallVector<int64_t> keptDims;
-  SmallVector<int64_t> resultShape;
+  SmallVector<int64_t> kept_dims;
+  SmallVector<int64_t> result_shape;
   for (auto [dim, size] : llvm::enumerate(v.View().sizes)) {
     if (!llvm::is_contained(dims, dim)) {
-      keptDims.push_back(dim);
-      resultShape.push_back(size);
+      kept_dims.push_back(dim);
+      result_shape.push_back(size);
     }
   }
-  return DispatchScalarType(elementType, [&](auto dummy) -> InterpreterValue {
+  return DispatchScalarType(element_type, [&](auto dummy) -> InterpreterValue {
     using T = decltype(dummy);
     using TT = TensorOrMemref<T>;
 
     auto combiner = *GetCombiner<T>(kind);
 
-    TT result = acc ? std::get<TT>((keptDims.empty() ? acc->AsUnitTensor()
-                                                     : acc->Clone())
+    TT result = acc ? std::get<TT>((kept_dims.empty() ? acc->AsUnitTensor()
+                                                      : acc->Clone())
                                        .storage)
-                    : TensorOrMemref<T>::Empty(resultShape);
+                    : TensorOrMemref<T>::Empty(result_shape);
 
     for (const auto& result_index : result.view.Indices()) {
       auto src = std::get<TT>(v.storage);
       for (auto [dim, index] :
-           llvm::reverse(llvm::zip(keptDims, result_index))) {
+           llvm::reverse(llvm::zip(kept_dims, result_index))) {
         state.CheckSuccess(src.view.Slice(dim, index), "index out of bounds");
       }
 
       T& item = result.at(result_index);
       bool first = acc == nullptr;
-      for (const auto& srcIndex : src.view.Indices()) {
+      for (const auto& src_index : src.view.Indices()) {
         if (first) {
-          item = src.at(srcIndex);
+          item = src.at(src_index);
           first = false;
         } else {
-          item = combiner(item, src.at(srcIndex));
+          item = combiner(item, src.at(src_index));
         }
       }
     }
 
-    if (keptDims.empty()) {
+    if (kept_dims.empty()) {
       return {result.at({})};
     }
     return {result};
@@ -550,30 +551,30 @@ InterpreterValue MultiReduction(InterpreterState& state,
                                 vector::MultiDimReductionOp reduction,
                                 const InterpreterValue& source,
                                 const InterpreterValue& acc) {
-  auto elementTy = getElementTypeOrSelf(reduction->getResultTypes()[0]);
+  auto element_ty = getElementTypeOrSelf(reduction->getResultTypes()[0]);
   return {ReductionImpl(state, source, &acc, reduction.getKind(),
                         ExtractVector<int64_t>(reduction.getReductionDims()),
-                        elementTy)};
+                        element_ty)};
 }
 
 InterpreterValue OuterProduct(InterpreterState&,
-                              vector::OuterProductOp outerproduct,
+                              vector::OuterProductOp outer_product,
                               const InterpreterValue& lhs,
                               const InterpreterValue& rhs,
                               std::optional<InterpreterValue> acc) {
-  ShapedType ty = cast<ShapedType>(outerproduct->getResultTypes()[0]);
+  ShapedType ty = cast<ShapedType>(outer_product->getResultTypes()[0]);
   return DispatchScalarType(ty, [&](auto dummy) -> InterpreterValue {
     using T = decltype(dummy);
     using TT = TensorOrMemref<T>;
     const TT& lhs_t = std::get<TT>(lhs.storage);
 
-    auto combiner = GetCombiner<T>(outerproduct.getKind());
+    auto combiner = GetCombiner<T>(outer_product.getKind());
     auto result =
         acc ? std::get<TT>(acc->storage).Clone() : TT::Empty(ty.getShape());
     if (std::holds_alternative<T>(rhs.storage)) {
-      T rhsS = std::get<T>(rhs.storage);
+      T rhs_scalar = std::get<T>(rhs.storage);
       for (int64_t i : llvm::seq(int64_t{0}, lhs_t.view.sizes[0])) {
-        result.at(i) = combiner(result.at(i), lhs_t.at(i) * rhsS);
+        result.at(i) = combiner(result.at(i), lhs_t.at(i) * rhs_scalar);
       }
     } else {
       const TT& rhs_t = std::get<TT>(rhs.storage);
@@ -619,10 +620,10 @@ InterpreterValue Reduction(InterpreterState& state,
 InterpreterValue ShapeCast(InterpreterState&, vector::ShapeCastOp op,
                            const InterpreterValue& in) {
   auto out = in.CoerceLayout({});
-  auto& outView = out.View();
-  outView.sizes =
+  auto& out_view = out.View();
+  out_view.sizes =
       llvm::to_vector(op->getResultTypes()[0].cast<ShapedType>().getShape());
-  outView.strides = BufferView::GetDefaultStrides(outView.sizes);
+  out_view.strides = BufferView::GetDefaultStrides(out_view.sizes);
   return out;
 }
 
@@ -634,17 +635,18 @@ InterpreterValue Shuffle(InterpreterState& state, vector::ShuffleOp shuffle,
   result_view.is_vector = true;
 
   auto mask = ExtractVector<int64_t>(shuffle.getMask());
-  bool isZeroDim = v0.View().Rank() == 0;
-  int64_t size0 = isZeroDim ? 1 : v0.View().sizes[0];
-  for (auto [dstIndex, srcIndex] : llvm::enumerate(mask)) {
-    auto src = srcIndex < size0 ? v0 : v1;
-    if (!isZeroDim) {
+  bool is_zero_dim = v0.View().Rank() == 0;
+  int64_t size0 = is_zero_dim ? 1 : v0.View().sizes[0];
+  for (auto [dst_index, src_index] : llvm::enumerate(mask)) {
+    auto src = src_index < size0 ? v0 : v1;
+    if (!is_zero_dim) {
       state.CheckSuccess(
-          src.View().Slice(0, srcIndex < size0 ? srcIndex : srcIndex - size0),
+          src.View().Slice(0,
+                           src_index < size0 ? src_index : src_index - size0),
           "index out of bounds");
     }
     auto dst = result;
-    state.CheckSuccess(dst.View().Slice(0, dstIndex), "index out of bounds");
+    state.CheckSuccess(dst.View().Slice(0, dst_index), "index out of bounds");
     dst.Fill([&](auto indices) { return src.ExtractElement(indices); });
   }
   return result;
@@ -667,17 +669,17 @@ void Store(InterpreterState& state, vector::StoreOp,
     state.AddFailure("array index out of bounds");
     return;
   }
-  const auto& outView = dst.View();
-  if (outView.num_vector_dims > 0) {
+  const auto& out_view = dst.View();
+  if (out_view.num_vector_dims > 0) {
     dst.InsertElement(offsets, src);
   } else {
-    for (const auto& srcIndex : src.View().Indices()) {
-      auto dstIndex = srcIndex;
-      for (int64_t i = 0; i < dstIndex.size(); ++i) {
-        dstIndex[i] += offsets[i];
+    for (const auto& src_index : src.View().Indices()) {
+      auto dst_index = src_index;
+      for (int64_t i = 0; i < dst_index.size(); ++i) {
+        dst_index[i] += offsets[i];
       }
-      if (outView.InBounds(dstIndex)) {
-        dst.InsertElement(dstIndex, src.ExtractElement(srcIndex));
+      if (out_view.InBounds(dst_index)) {
+        dst.InsertElement(dst_index, src.ExtractElement(src_index));
       }
     }
   }
@@ -686,43 +688,43 @@ void Store(InterpreterState& state, vector::StoreOp,
 std::optional<InterpreterValue> ExtractMemorySlice(
     InterpreterState& state, const AffineMap& map,
     const InterpreterValue& memory, const InterpreterValue& vector,
-    ArrayRef<int64_t> offsets, std::optional<ArrayAttr> in_boundsAttr) {
+    ArrayRef<int64_t> offsets, std::optional<ArrayAttr> in_bounds_attr) {
   llvm::SmallVector<bool> in_bounds(offsets.size());
-  if (in_boundsAttr) {
-    llvm::copy(in_boundsAttr->getAsValueRange<BoolAttr>(),
-               in_bounds.end() - in_boundsAttr->size());
+  if (in_bounds_attr) {
+    llvm::copy(in_bounds_attr->getAsValueRange<BoolAttr>(),
+               in_bounds.end() - in_bounds_attr->size());
   }
 
-  auto memSlice = memory;
-  auto& memSliceView = memSlice.View();
-  auto& vectorView = vector.View();
-  for (int64_t i = 0; i < memSliceView.Rank(); ++i) {
+  auto mem_slice = memory;
+  auto& mem_slice_view = mem_slice.View();
+  auto& vector_view = vector.View();
+  for (int64_t i = 0; i < mem_slice_view.Rank(); ++i) {
     bool found = false;
-    for (int64_t j = 0; !found && j < vectorView.Rank(); ++j) {
+    for (int64_t j = 0; !found && j < vector_view.Rank(); ++j) {
       if (map.getResult(j).isFunctionOfDim(i)) {
-        int64_t size = memSliceView.sizes[i] - offsets[i];
-        bool isInBounds = size >= vectorView.sizes[j];
-        if (!isInBounds && in_bounds[i]) {
+        int64_t size = mem_slice_view.sizes[i] - offsets[i];
+        bool is_in_bounds = size >= vector_view.sizes[j];
+        if (!is_in_bounds && in_bounds[i]) {
           state.AddFailure("index out of bounds");
           return std::nullopt;
         }
-        (void)memSliceView.Slice(
+        (void)mem_slice_view.Slice(
             i, offsets[i],
-            std::max(int64_t{0}, std::min(vectorView.sizes[j], size)));
+            std::max(int64_t{0}, std::min(vector_view.sizes[j], size)));
         found = true;
       }
     }
     if (!found) {
-      bool isInBounds = memSliceView.sizes[i] > offsets[i];
-      if (!isInBounds) {
+      bool is_in_bounds = mem_slice_view.sizes[i] > offsets[i];
+      if (!is_in_bounds) {
         state.AddFailure("index out of bounds");
         return std::nullopt;
       }
 
-      (void)memSliceView.Slice(i, offsets[i], isInBounds ? 1 : 0);
+      (void)mem_slice_view.Slice(i, offsets[i], is_in_bounds ? 1 : 0);
     }
   }
-  return memSlice;
+  return mem_slice;
 }
 
 InterpreterValue TransferRead(InterpreterState& state,
@@ -731,46 +733,46 @@ InterpreterValue TransferRead(InterpreterState& state,
                               ArrayRef<int64_t> offsets,
                               const InterpreterValue& padding,
                               std::optional<TensorOrMemref<bool>> mask) {
-  auto* maskChannel = state.GetTopScope()->GetSideChannel<MaskSideChannel>(
+  auto* mask_channel = state.GetTopScope()->GetSideChannel<MaskSideChannel>(
       /*optional=*/true);
-  if (maskChannel) {
+  if (mask_channel) {
     if (mask) {
       state.AddFailure(
           "vector.mask and transfer_read with mask should not be used "
           "simultaneously");
       return {};
     }
-    mask = maskChannel->GetMask();
+    mask = mask_channel->GetMask();
   }
 
   InterpreterValue dst = src.TypedAlike(transfer.getVectorType().getShape());
-  if (maskChannel && maskChannel->GetPassthrough()) {
+  if (mask_channel && mask_channel->GetPassthrough()) {
     dst.Fill([&](auto indices) {
       if (mask->at(indices)) {
         return padding;
       }
-      return maskChannel->GetPassthrough()->ExtractElement(indices);
+      return mask_channel->GetPassthrough()->ExtractElement(indices);
     });
   } else {
     dst.Fill([&](auto) { return padding; });
   }
   dst.View().is_vector = true;
 
-  auto srcSlice = ExtractMemorySlice(state, transfer.getPermutationMap(), src,
-                                     dst, offsets, transfer.getInBounds());
+  auto src_slice = ExtractMemorySlice(state, transfer.getPermutationMap(), src,
+                                      dst, offsets, transfer.getInBounds());
 
-  if (!srcSlice) {
+  if (!src_slice) {
     return {};
   }
-  for (const auto& src_indices : srcSlice->View().Indices()) {
-    SmallVector<int64_t> dstIndices =
+  for (const auto& src_indices : src_slice->View().Indices()) {
+    SmallVector<int64_t> dst_indices =
         EvalAffineMap(transfer.getPermutationMap(), src_indices);
 
     // Note: the handling of padding and passthrough values is somewhat
     // arbitrary here. At the time of writing this, there seems to be little
     // evidence of actual usage of this feature.
-    if (!mask || mask->at(dstIndices)) {
-      dst.InsertElement(dstIndices, srcSlice->ExtractElement(src_indices));
+    if (!mask || mask->at(dst_indices)) {
+      dst.InsertElement(dst_indices, src_slice->ExtractElement(src_indices));
     }
   }
 
@@ -781,7 +783,7 @@ llvm::SmallVector<InterpreterValue> TransferWrite(
     InterpreterState& state, vector::TransferWriteOp transfer,
     InterpreterValue src, InterpreterValue dst, ArrayRef<int64_t> offsets,
     std::optional<TensorOrMemref<bool>> mask) {
-  if (auto* maskChannel = state.GetTopScope()->GetSideChannel<MaskSideChannel>(
+  if (auto* mask_channel = state.GetTopScope()->GetSideChannel<MaskSideChannel>(
           /*optional=*/true)) {
     if (mask) {
       state.AddFailure(
@@ -789,13 +791,13 @@ llvm::SmallVector<InterpreterValue> TransferWrite(
           "simultaneously");
       return {};
     }
-    if (maskChannel->GetPassthrough()) {
+    if (mask_channel->GetPassthrough()) {
       state.AddFailure(
           "vector.mask with passthrough should not be used with "
           "transfer_write");
       return {};
     }
-    mask = maskChannel->GetMask();
+    mask = mask_channel->GetMask();
   }
 
   const auto& src_view = src.View();
@@ -809,11 +811,11 @@ llvm::SmallVector<InterpreterValue> TransferWrite(
     return {};
   }
 
-  for (const auto& dstIndices : dst_slice->View().Indices()) {
+  for (const auto& dst_indices : dst_slice->View().Indices()) {
     SmallVector<int64_t> src_indices =
-        EvalAffineMap(transfer.getPermutationMap(), dstIndices);
+        EvalAffineMap(transfer.getPermutationMap(), dst_indices);
     if (src_view.InBounds(src_indices) && (!mask || mask->at(src_indices))) {
-      dst_slice->InsertElement(dstIndices, src.ExtractElement(src_indices));
+      dst_slice->InsertElement(dst_indices, src.ExtractElement(src_indices));
     }
   }
 

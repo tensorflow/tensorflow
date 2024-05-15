@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <complex>
 #include <cstdint>
+#include <optional>
 #include <variant>
 
 #include <gmock/gmock.h>
@@ -71,12 +72,12 @@ TEST(InterpreterValueTest, FillTensorOfVector) {
 TEST(InterpreterValueTest, FillZeroSizedTensor) {
   auto t = TensorOrMemref<int64_t>::Empty({0, 1});
   InterpreterValue v{t};
-  bool wasCalled = false;
+  bool was_called = false;
   v.Fill([&](llvm::ArrayRef<int64_t> indices) {
-    wasCalled = true;
+    was_called = true;
     return InterpreterValue{indices[0]};
   });
-  EXPECT_FALSE(wasCalled);
+  EXPECT_FALSE(was_called);
 }
 
 TEST(InterpreterValueTest, TypedAlike) {
@@ -216,8 +217,8 @@ TEST(CastTest, UnpackTensor) {
   ASSERT_EQ(InterpreterValueCast<float>(value), 1.0f);
   ASSERT_EQ(InterpreterValueCast<double>(value), 1.0);
 
-  InterpreterValue nonUnit{TensorOrMemref<int8_t>::Empty({2, 2})};
-  ASSERT_EQ(InterpreterValueDynCast<int64_t>(nonUnit), std::nullopt);
+  InterpreterValue non_unit{TensorOrMemref<int8_t>::Empty({2, 2})};
+  ASSERT_EQ(InterpreterValueDynCast<int64_t>(non_unit), std::nullopt);
 }
 
 TEST(CastTest, IdentityCast) {

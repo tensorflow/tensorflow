@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "xla/mlir/tools/mlir_interpreter/framework/registration.h"
 
+#include <cassert>
 #include <functional>
 #include <utility>
 
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "xla/mlir/tools/mlir_interpreter/framework/interpreter.h"
+#include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"
 
 namespace mlir {
 namespace interpreter {

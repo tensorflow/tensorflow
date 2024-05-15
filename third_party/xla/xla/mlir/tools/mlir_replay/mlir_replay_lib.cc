@@ -31,13 +31,22 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/ParseUtilities.h"  // from @llvm-project
@@ -123,7 +132,7 @@ mlir::FailureOr<mlir::interpreter::InterpreterValue> MakeRandomInput(
 // Extracts a mapping from function arguments to allocated buffers.
 // The buffer assignment is only relevant once the program is bufferized and
 // memref results were converted to arguments.
-std::vector<int64_t> extractXlaBufferAssignment(func::FuncOp main) {
+std::vector<int64_t> ExtractXlaBufferAssignment(func::FuncOp main) {
   std::vector<int64_t> buffer_assignment(main.getNumArguments());
   auto result_mapping =
       main->getAttrOfType<IntegerAttr>("xla_framework.result_mapping");
@@ -164,11 +173,11 @@ absl::StatusOr<SmallVector<InterpreterValue>> Run(
     MLIRContext& context, const std::string& mlir_ir,
     const xla::HloSnapshot& snapshot, ExecutionTrace* trace,
     const std::vector<std::string>& entry) {
-  auto sourceMgr = std::make_shared<llvm::SourceMgr>();
-  sourceMgr->AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(mlir_ir),
-                                mlir::SMLoc());
+  auto source_mgr = std::make_shared<llvm::SourceMgr>();
+  source_mgr->AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(mlir_ir),
+                                 mlir::SMLoc());
   mlir::OwningOpRef<mlir::Operation*> module =
-      mlir::parseSourceFileForTool(sourceMgr, &context, false);
+      mlir::parseSourceFileForTool(source_mgr, &context, false);
   if (!module) {
     return absl::InvalidArgumentError("failed to parse MLIR");
   }
@@ -199,7 +208,7 @@ absl::StatusOr<SmallVector<InterpreterValue>> Run(
         "expected all function arguments to be shaped types");
   }
 
-  auto args_to_buffers = extractXlaBufferAssignment(main);
+  auto args_to_buffers = ExtractXlaBufferAssignment(main);
   TF_ASSIGN_OR_RETURN(auto args,
                       LoadArgs(snapshot, main.getBody().getArgumentTypes()));
   auto out_args =

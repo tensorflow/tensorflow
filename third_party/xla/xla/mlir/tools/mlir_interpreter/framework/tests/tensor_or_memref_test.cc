@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_join.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -55,11 +56,11 @@ std::optional<int64_t> GetCollapsedStrideNaive(llvm::ArrayRef<int64_t> dims,
   // Find all physical indices for the dimensions.
   llvm::SmallBitVector v(view.GetNumElements());
   for (const auto& indices : f.Indices()) {
-    SmallVector<int64_t> viewIndices(view.Rank());
+    SmallVector<int64_t> view_indices(view.Rank());
     for (auto [dim, index] : llvm::zip(dims, indices)) {
-      viewIndices[dim] = index;
+      view_indices[dim] = index;
     }
-    v[*view.GetPhysicalIndex(viewIndices)] = true;
+    v[*view.GetPhysicalIndex(view_indices)] = true;
   }
 
   if (v.count() != f.GetNumElements()) return std::nullopt;
@@ -67,12 +68,14 @@ std::optional<int64_t> GetCollapsedStrideNaive(llvm::ArrayRef<int64_t> dims,
 
   // Check that they have a common stride.
   int64_t min = v.find_first();
-  int64_t expectedStride = (v.find_last() - min) / (f.GetNumElements() - 1);
+  int64_t expected_stride = (v.find_last() - min) / (f.GetNumElements() - 1);
   for (int64_t i = 0; i < f.GetNumElements(); ++i) {
-    if (!v[i * expectedStride + min]) return std::nullopt;
+    if (!v[i * expected_stride + min]) {
+      return std::nullopt;
+    }
   }
 
-  return expectedStride;
+  return expected_stride;
 }
 
 TEST(TensorOrMemrefTest, CollapsedStride) {

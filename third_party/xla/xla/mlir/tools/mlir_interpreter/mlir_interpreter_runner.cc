@@ -48,17 +48,17 @@ struct Options {
 };
 
 static mlir::OwningOpRef<mlir::Operation *> ParseMlirInput(
-    llvm::StringRef inputFilename, mlir::MLIRContext *context) {
-  std::string errorMessage;
-  auto file = mlir::openInputFile(inputFilename, &errorMessage);
+    llvm::StringRef input_filename, mlir::MLIRContext *context) {
+  std::string error_message;
+  auto file = mlir::openInputFile(input_filename, &error_message);
   if (!file) {
-    llvm::errs() << errorMessage << "\n";
+    llvm::errs() << error_message << "\n";
     return {};
   }
 
-  auto sourceMgr = std::make_shared<llvm::SourceMgr>();
-  sourceMgr->AddNewSourceBuffer(std::move(file), mlir::SMLoc());
-  return mlir::parseSourceFileForTool(sourceMgr, context,
+  auto source_mgr = std::make_shared<llvm::SourceMgr>();
+  source_mgr->AddNewSourceBuffer(std::move(file), mlir::SMLoc());
+  return mlir::parseSourceFileForTool(source_mgr, context,
                                       /*insertImplicitModule=*/true);
 }
 
@@ -70,9 +70,9 @@ static mlir::LogicalResult Run(mlir::ModuleOp module,
     return mlir::failure();
   }
 
-  mlir::SymbolTable symbolTable{module};
+  mlir::SymbolTable symbol_table{module};
   auto results =
-      mlir::interpreter::RunInterpreter(symbolTable, function, {}, {});
+      mlir::interpreter::RunInterpreter(symbol_table, function, {}, {});
   if (!results.ok()) {
     llvm::errs() << "Interpreter failed\n";
     return mlir::failure();
@@ -103,25 +103,25 @@ int main(int argc, char *argv[]) {
 
   mlir::MLIRContext context(registry);
   context.allowUnregisteredDialects();
-  auto parsedInput = ParseMlirInput(options.input_filename, &context);
-  if (!parsedInput) {
+  auto parsed_input = ParseMlirInput(options.input_filename, &context);
+  if (!parsed_input) {
     llvm::errs() << "Failed to parse module.\n";
     return 1;
   }
-  auto module = llvm::dyn_cast<mlir::ModuleOp>(**parsedInput);
+  auto module = llvm::dyn_cast<mlir::ModuleOp>(**parsed_input);
   if (!module) {
     llvm::errs() << "Parsing returned something that's not a module.\n";
     return 1;
   }
 
   if (options.run_all_functions) {
-    bool allSucceeded = true;
+    bool all_succeeded = true;
     module.walk([&](mlir::func::FuncOp function) {
       if (!function.isPrivate()) {
-        allSucceeded &= Run(module, function).succeeded();
+        all_succeeded &= Run(module, function).succeeded();
       }
     });
-    if (!allSucceeded) {
+    if (!all_succeeded) {
       return 1;
     }
   } else {

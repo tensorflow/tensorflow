@@ -100,16 +100,16 @@ llvm::SmallVector<InterpreterValue> Generic(
   auto output_maps =
       ArrayRef<AffineMap>(indexing_maps).drop_front(inputs.size());
   std::function<void(int64_t)> run;
-  run = [&](int64_t loopIndex) {
+  run = [&](int64_t loop_index) {
     // Abort recursion if we encountered some error previously.
     if (state.HasFailure()) {
       return;
     }
 
-    if (loopIndex < ranges.size()) {
-      for (int64_t index = 0; index < ranges[loopIndex]; ++index) {
-        ivs[loopIndex] = index;
-        run(loopIndex + 1);
+    if (loop_index < ranges.size()) {
+      for (int64_t index = 0; index < ranges[loop_index]; ++index) {
+        ivs[loop_index] = index;
+        run(loop_index + 1);
       }
     } else {
       llvm::SmallVector<InterpreterValue> bbargs;
@@ -118,9 +118,9 @@ llvm::SmallVector<InterpreterValue> Generic(
         auto indices = EvalAffineMap(map, ivs);
         bbargs.push_back(input.ExtractElement(indices));
       }
-      llvm::SmallVector<llvm::SmallVector<int64_t>> outputIndices;
+      llvm::SmallVector<llvm::SmallVector<int64_t>> output_indices;
       for (auto [output, map] : llvm::zip(outputs, output_maps)) {
-        auto& indices = outputIndices.emplace_back(EvalAffineMap(map, ivs));
+        auto& indices = output_indices.emplace_back(EvalAffineMap(map, ivs));
         bbargs.push_back(output.ExtractElement(indices));
       }
       // Evaluate region.
@@ -130,7 +130,7 @@ llvm::SmallVector<InterpreterValue> Generic(
       }
       // Insert yielded values in the outputs.
       for (auto [output, indices, yield] :
-           llvm::zip(outputs, outputIndices, yielded)) {
+           llvm::zip(outputs, output_indices, yielded)) {
         output.InsertElement(indices, yield);
       }
     }
@@ -192,12 +192,12 @@ llvm::SmallVector<InterpreterValue> Reduce(InterpreterState& state,
     for (auto& out : output) {
       args.push_back(out.ExtractElement(dst_index));
     }
-    auto newValues = Interpret(state, reduce.getRegion(), args);
+    auto new_values = Interpret(state, reduce.getRegion(), args);
     if (state.HasFailure()) {
       return {};
     }
 
-    for (auto [out, value] : llvm::zip(output, newValues)) {
+    for (auto [out, value] : llvm::zip(output, new_values)) {
       out.InsertElement(dst_index, value);
     }
   }

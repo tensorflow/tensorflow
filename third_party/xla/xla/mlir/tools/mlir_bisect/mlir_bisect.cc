@@ -47,7 +47,6 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Tools/ParseUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/literal.h"
 #include "xla/mlir/tools/mlir_bisect/bisect_lib.h"
@@ -96,10 +95,10 @@ namespace mlir {
 namespace bisect {
 namespace {
 
-OwningOpRef<ModuleOp> ParseMlirInput(llvm::StringRef inputFilename,
+OwningOpRef<ModuleOp> ParseMlirInput(llvm::StringRef input_filename,
                                      MLIRContext* context) {
   std::string error_message;
-  auto file = mlir::openInputFile(inputFilename, &error_message);
+  auto file = mlir::openInputFile(input_filename, &error_message);
   if (!file) {
     llvm::errs() << error_message << "\n";
     return {};

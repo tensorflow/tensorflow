@@ -92,7 +92,7 @@ struct InterpreterValue {
   // Creates a tensor with the given element type and shape. `element_type` may
   // be a vector type, in which case the shape only specifies the non-vector
   // dimensions.
-  static InterpreterValue MakeTensor(mlir::Type elementType,
+  static InterpreterValue MakeTensor(mlir::Type element_type,
                                      SmallVector<int64_t> shape);
 
   // Returns the underlying tensor's view. Must be a tensor.
@@ -135,7 +135,7 @@ constexpr static bool is_valid_interpreter_value_v =  // NOLINT
 // NOTE: When casting to an unsigned type, this behaves differently than
 // InterpreterValue::AsUint. That function preserves the content's bit width,
 // so InterpreterValueDynCast<uint64_t>({int8_t{-1}}) will return 2^64-1,
-// whereas asUInt will return 255.
+// whereas AsUInt will return 255.
 template <typename T>
 std::optional<T> InterpreterValueDynCast(InterpreterValue v) {
   if constexpr (std::is_same_v<T, InterpreterValue>) {

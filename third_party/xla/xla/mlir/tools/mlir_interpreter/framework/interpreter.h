@@ -40,7 +40,7 @@ class InterpreterListener {
   virtual void AfterOp(ArrayRef<InterpreterValue> results) {}
   virtual void EnterRegion(ArrayRef<InterpreterValue> args,
                            mlir::Region& region) {}
-  virtual void LeaveRegion(ArrayRef<InterpreterValue> terminatorArgs) {}
+  virtual void LeaveRegion(ArrayRef<InterpreterValue> terminator_args) {}
 };
 
 struct InterpreterStats {

@@ -32,6 +32,7 @@ xla_cc_test(
     srcs = ["execution_trace_utils_test.cc"],
     deps = [
         ":execution_trace_utils",
+        "//xla:literal",
         "//xla:literal_util",
         "//xla/mlir/tools/mlir_interpreter/framework",
         "@com_google_googletest//:gtest_main",

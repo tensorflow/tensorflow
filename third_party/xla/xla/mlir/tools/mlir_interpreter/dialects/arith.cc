@@ -53,9 +53,9 @@ InterpreterValue Bitcast(InterpreterState&, arith::BitcastOp op,
   if (!shaped_ty) {
     return result.ExtractElement({});
   }
-  auto& outView = result.View();
-  outView.strides = BufferView::GetDefaultStrides(shaped_ty.getShape());
-  outView.sizes = llvm::to_vector(shaped_ty.getShape());
+  auto& out_view = result.View();
+  out_view.strides = BufferView::GetDefaultStrides(shaped_ty.getShape());
+  out_view.sizes = llvm::to_vector(shaped_ty.getShape());
   return result;
 }
 
@@ -68,11 +68,11 @@ InterpreterValue Constant(InterpreterState&, arith::ConstantOp constant) {
     if (shaped_ty) {
       auto values = cast<DenseElementsAttr>(constant.getValue()).getValues<T>();
       auto result = TensorOrMemref<T>::Empty(shaped_ty.getShape());
-      auto valueIt = values.begin();
+      auto value_it = values.begin();
       result.view.is_vector = isa<VectorType>(shaped_ty);
       for (const auto& index : result.view.Indices(true)) {
-        result.at(index) = *valueIt;
-        ++valueIt;
+        result.at(index) = *value_it;
+        ++value_it;
       }
       return {result};
     }
@@ -81,8 +81,8 @@ InterpreterValue Constant(InterpreterState&, arith::ConstantOp constant) {
     if (auto integer = value.dyn_cast<IntegerAttr>()) {
       return {static_cast<T>(integer.getInt())};
     }
-    if (auto floatValue = value.dyn_cast<FloatAttr>()) {
-      return {static_cast<T>(floatValue.getValueAsDouble())};
+    if (auto float_value = value.dyn_cast<FloatAttr>()) {
+      return {static_cast<T>(float_value.getValueAsDouble())};
     }
 
     llvm_unreachable("unsupported constant type");
@@ -230,10 +230,10 @@ InterpreterValue CmpF(InterpreterState&, arith::CmpFOp compare,
 
 InterpreterValue Select(InterpreterState& state, arith::SelectOp,
                         const InterpreterValue& cond,
-                        const InterpreterValue& trueValue,
-                        const InterpreterValue& falseValue) {
+                        const InterpreterValue& true_value,
+                        const InterpreterValue& false_value) {
   if (std::holds_alternative<bool>(cond.storage)) {
-    return std::get<bool>(cond.storage) ? trueValue : falseValue;
+    return std::get<bool>(cond.storage) ? true_value : false_value;
   }
 
   if (!cond.IsTensor() && !cond.View().is_vector) {
@@ -241,10 +241,10 @@ InterpreterValue Select(InterpreterState& state, arith::SelectOp,
     return {};
   }
 
-  auto ret = trueValue.Clone();
+  auto ret = true_value.Clone();
   for (const auto& index : cond.View().Indices(/*include_vector_dims=*/true)) {
     if (cond.ExtractElement(index).AsInt() == 0) {
-      ret.InsertElement(index, falseValue.ExtractElement(index));
+      ret.InsertElement(index, false_value.ExtractElement(index));
     }
   }
   return ret;

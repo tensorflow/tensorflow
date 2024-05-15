@@ -76,14 +76,14 @@ struct BufferView {
   int64_t Rank() const { return sizes.size() - num_vector_dims.value_or(0); }
 
   // Removes the dimension from the view. If you need to keep it, use the
-  // overload below with dimSize = 1.
+  // overload below with dim_size = 1.
   LogicalResult Slice(int64_t dim_index, int64_t dim_offset);
   LogicalResult Slice(int64_t dim_index, int64_t dim_offset, int64_t dim_size,
                       int64_t dim_stride = 1);
   LogicalResult Subview(ArrayRef<int64_t> subview_offsets,
                         ArrayRef<int64_t> subview_sizes,
                         ArrayRef<int64_t> subview_strides);
-  int64_t GetNumElements(bool include_vector_dims = false) const;
+  int64_t GetNumElements(bool include_vector_dimsms = false) const;
 
   class LogicalIndexView {
    public:
@@ -103,18 +103,19 @@ struct BufferView {
       }
 
       Iterator& operator++() {
-        auto indexIt = view_indices_.rbegin();
-        auto sizeIt = view_->sizes.rbegin();
+        auto index_it = view_indices_.rbegin();
+        auto size_it = view_->sizes.rbegin();
         if (!include_vector_dims_) {
-          std::advance(sizeIt, view_->num_vector_dims.value_or(0));
+          std::advance(size_it, view_->num_vector_dims.value_or(0));
         }
 
-        for (auto e = view_indices_.rend(); indexIt != e; ++indexIt, ++sizeIt) {
-          ++*indexIt;
-          if (*indexIt < *sizeIt) {
+        for (auto e = view_indices_.rend(); index_it != e;
+             ++index_it, ++size_it) {
+          ++*index_it;
+          if (*index_it < *size_it) {
             return *this;
           }
-          *indexIt = 0;
+          *index_it = 0;
         }
 
         view_indices_.clear();
@@ -196,24 +197,24 @@ class Buffer {
     return std::make_shared<Buffer>(Dummy{}, size, sizeof(T));
   }
 
-  char* at(std::optional<int64_t> idx, int64_t elementSize) {
-    auto byteOffset = GetByteOffset(idx, elementSize);
-    if (!byteOffset) {
+  char* at(std::optional<int64_t> idx, int64_t element_size) {
+    auto byte_offset = GetByteOffset(idx, element_size);
+    if (!byte_offset) {
       return &storage_.data()[0];
     }
-    return &storage_.data()[*byteOffset];
+    return &storage_.data()[*byte_offset];
   }
 
-  const char* at(std::optional<int64_t> idx, int64_t elementSize) const {
-    auto byteOffset = GetByteOffset(idx, elementSize);
-    if (!byteOffset) {
+  const char* at(std::optional<int64_t> idx, int64_t element_size) const {
+    auto byte_offset = GetByteOffset(idx, element_size);
+    if (!byte_offset) {
       return &storage_.data()[0];
     }
-    return &storage_.data()[*byteOffset];
+    return &storage_.data()[*byte_offset];
   }
 
-  Buffer(Dummy, size_t numElements, size_t elementSize)
-      : storage_(numElements * elementSize) {}
+  Buffer(Dummy, size_t num_elements, size_t element_size)
+      : storage_(num_elements * element_size) {}
 
   int64_t GetByteSize() const { return storage_.size(); }
 
@@ -247,7 +248,7 @@ class Buffer {
 
  private:
   std::optional<size_t> GetByteOffset(std::optional<int64_t> idx,
-                                      int64_t elementSize) const {
+                                      int64_t element_size) const {
     if (!idx) {
       SetFailure("out of bounds access");
       return std::nullopt;
@@ -263,7 +264,7 @@ class Buffer {
       return std::nullopt;
     }
 
-    return *idx * elementSize;
+    return *idx * element_size;
   }
 
   llvm::SmallVector<char> storage_;
@@ -285,10 +286,10 @@ struct TensorOrMemref {
 
   static TensorOrMemref<T> EmptyLike(const BufferView& view,
                                      ArrayRef<int64_t> layout = {}) {
-    BufferView newView = view;
-    newView.offset = 0;
-    newView.strides = BufferView::GetStridesForLayout(view.sizes, layout);
-    return {Buffer::Allocate<T>(view.GetNumElements(true)), newView};
+    BufferView new_view = view;
+    new_view.offset = 0;
+    new_view.strides = BufferView::GetStridesForLayout(view.sizes, layout);
+    return {Buffer::Allocate<T>(view.GetNumElements(true)), new_view};
   }
 
   TensorOrMemref<T> Clone(ArrayRef<int64_t> layout = {}) const {

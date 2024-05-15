@@ -158,17 +158,17 @@ InterpreterValue Subview(InterpreterState& state, memref::SubViewOp subview,
 llvm::SmallVector<InterpreterValue> CollapseShape(
     InterpreterState& state, memref::CollapseShapeOp collapse,
     const InterpreterValue& memref) {
-  const BufferView& inputView = memref.View();
+  const BufferView& input_view = memref.View();
   InterpreterValue out = memref;
   auto& out_view = out.View();
   out_view.sizes.clear();
   out_view.strides.clear();
 
   for (const auto& group : collapse.getReassociationIndices()) {
-    if (auto stride = inputView.GetCollapsedStride(group)) {
+    if (auto stride = input_view.GetCollapsedStride(group)) {
       out_view.strides.push_back(*stride);
       int64_t& size = out_view.sizes.emplace_back(1);
-      for (int64_t dim : group) size *= inputView.sizes[dim];
+      for (int64_t dim : group) size *= input_view.sizes[dim];
     } else {
       state.AddFailure("cannot collapse dimensions without a common stride");
       return {};
@@ -186,9 +186,9 @@ InterpreterValue Cast(InterpreterState&, memref::CastOp,
 // TODO(jreiffers): Implement full expand_shape support.
 InterpreterValue ExpandShape(InterpreterState& state, memref::ExpandShapeOp op,
                              InterpreterValue memref) {
-  BufferView inputView = memref.View();
-  auto outTy = cast<MemRefType>(op->getResultTypes()[0]);
-  if (outTy.getNumDynamicDims() > 0) {
+  BufferView input_view = memref.View();
+  auto out_ty = cast<MemRefType>(op->getResultTypes()[0]);
+  if (out_ty.getNumDynamicDims() > 0) {
     state.AddFailure("dynamic dimensions unsupported.");
     return {};
   }
@@ -196,10 +196,10 @@ InterpreterValue ExpandShape(InterpreterState& state, memref::ExpandShapeOp op,
   InterpreterValue out = memref;
   auto& out_view = out.View();
   out_view.strides.clear();
-  out_view.sizes = llvm::to_vector(outTy.getShape());
+  out_view.sizes = llvm::to_vector(out_ty.getShape());
   int64_t dummy;
-  if (!getStridesAndOffset(outTy, out_view.strides, dummy).succeeded()) {
-    if (inputView.strides != BufferView::GetDefaultStrides(inputView.sizes)) {
+  if (!getStridesAndOffset(out_ty, out_view.strides, dummy).succeeded()) {
+    if (input_view.strides != BufferView::GetDefaultStrides(input_view.sizes)) {
       state.AddFailure("unsupported strides");
       return {};
     }
@@ -210,21 +210,21 @@ InterpreterValue ExpandShape(InterpreterState& state, memref::ExpandShapeOp op,
 }
 
 InterpreterValue GetGlobal(InterpreterState& state,
-                           memref::GetGlobalOp getGlobal) {
+                           memref::GetGlobalOp get_global) {
   auto global = llvm::cast<memref::GlobalOp>(
-      state.GetSymbols().lookup(getGlobal.getName()));
+      state.GetSymbols().lookup(get_global.getName()));
 
   auto value = global.getConstantInitValue();
   assert(value && "mutable globals are not implemented");
 
-  auto ty = getGlobal->getResultTypes()[0].cast<ShapedType>();
+  auto ty = cast<ShapedType>(get_global->getResultTypes()[0]);
   return DispatchScalarType(ty, [&](auto dummy) -> InterpreterValue {
     auto values = value.getValues<decltype(dummy)>();
     auto result = TensorOrMemref<decltype(dummy)>::Empty(ty.getShape());
-    auto valueIt = values.begin();
+    auto value_it = values.begin();
     for (const auto& index : result.view.Indices()) {
-      result.at(index) = *valueIt;
-      ++valueIt;
+      result.at(index) = *value_it;
+      ++value_it;
     }
     return {result};
   });
