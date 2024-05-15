@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
+#include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 
@@ -50,6 +51,10 @@ Status ExchangeTopologies(std::string_view platform, int node_id, int num_nodes,
 GlobalTopologyProto BuildGlobalTopology(
     absl::Span<LocalTopologyProto> local_topologies);
 
+// Builds a GpuTopologyProto representing the GPU configuration described in the
+// given GlobalTopologyProto.
+absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
+    const GlobalTopologyProto& global_topology);
 }  // namespace xla
 
 #endif  // XLA_PJRT_DISTRIBUTED_TOPOLOGY_UTIL_H_
