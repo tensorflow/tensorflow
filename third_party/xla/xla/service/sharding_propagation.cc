@@ -3281,6 +3281,14 @@ absl::StatusOr<bool> ShardingPropagation::Run(
           }
           for (auto user : hlo_for_users->users()) {
             already_inferred_from_operands.erase(user);
+            // If the user has called computations, then the parameter
+            // instructions of these called computations are also removed from
+            // already_inferred_from_operands.
+            for (auto c : user->called_computations()) {
+              for (auto parameter : c->parameter_instructions()) {
+                already_inferred_from_operands.erase(parameter);
+              }
+            }
           }
           if (instruction_to_shard_group_id.contains(hlo)) {
             const int64_t shard_group_id =
