@@ -203,16 +203,22 @@ class GemmFusionAutotunerVisitor : public DfsHloRewriteVisitor {
   AutotuneConfig config_;
 };
 
+using TilingConfigsMap =
+    absl::flat_hash_map<const HloFusionInstruction*, std::vector<Config>>;
+
 class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
  public:
   explicit GemmConfigSetCollector(GemmFusionAutotunerImpl* impl)
       : impl_(impl) {}
 
-  absl::StatusOr<
-      absl::flat_hash_map<const HloFusionInstruction*, std::vector<Config>>>
-  CollectGemmConfigSets(
+  // Find configurations to tune.
+  absl::StatusOr<TilingConfigsMap> CollectGemmConfigSets(
       const HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {}) {
+    error_out_on_cache_miss_ =
+        module->config()
+            .debug_options()
+            .xla_gpu_require_complete_aot_autotune_results();
     gemm_config_sets_.clear();
     for (HloComputation* computation :
          module->MakeNonfusionComputations(execution_threads)) {
@@ -249,6 +255,13 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
                           (backend_config.kind() == kCuDnnFusionKind &&
                            !backend_config.has_cudnn_fusion_config());
     if (missing_config) {
+      if (error_out_on_cache_miss_) {
+        return absl::NotFoundError(absl::StrCat(
+            "Complete autotuning results are required, but no cache result "
+            "found for key: ",
+            key.ToString()));
+      }
+
       TF_ASSIGN_OR_RETURN(std::vector<Config> configs,
                           impl_->GenerateConfigs(*fusion));
       TF_RET_CHECK(
@@ -264,9 +277,9 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
   }
 
  private:
+  bool error_out_on_cache_miss_;
   GemmFusionAutotunerImpl* impl_;
-  absl::flat_hash_map<const HloFusionInstruction*, std::vector<Config>>
-      gemm_config_sets_;
+  TilingConfigsMap gemm_config_sets_;
   AutoTuneCacheKeyCount fusion_count_map_;
   absl::flat_hash_set<AutotuneCacheKey> handled_fusions_;
 };
@@ -1128,9 +1141,7 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
   GemmFusionAutotunerImpl autotuner(config_, toolkit_version_, debug_options,
                                     thread_pool_);
   GemmConfigSetCollector gemm_config_set_collector(&autotuner);
-  absl::flat_hash_map<const HloFusionInstruction*, std::vector<Config>>
-      gemm_config_sets;
-  TF_ASSIGN_OR_RETURN(gemm_config_sets,
+  TF_ASSIGN_OR_RETURN(TilingConfigsMap gemm_config_sets,
                       gemm_config_set_collector.CollectGemmConfigSets(
                           module, execution_threads));
 
