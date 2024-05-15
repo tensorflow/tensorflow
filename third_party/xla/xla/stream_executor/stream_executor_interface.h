@@ -390,6 +390,38 @@ class StreamExecutorInterface {
   // Returns the memory limit in bytes supported by this executor.
   virtual int64_t GetMemoryLimitBytes() const = 0;
 
+  // The following methods access an internal log of some subset
+  // of arguments passed to other class methods.
+  // Used for testing/debugging purposes.
+
+  struct GemmCallTrace {
+    enum class GemmType {
+      kPlain = 0,
+      kStridedBatched = 1,
+      kBatched = 2,
+      kBlasLt = 3
+    };
+    GemmType op;
+    int flags;
+    uint64_t size1, size2;
+  };
+  // This may be expanded as necessary to trace other calls
+  using ApiTrace = std::variant<GemmCallTrace>;
+
+  // Retrieves and clears internal argument logs.
+  virtual absl::StatusOr<std::vector<ApiTrace>> ExtractApiTrace() {
+    return absl::UnimplementedError("Not implemented");
+  }
+  virtual absl::Status RecordApiTrace(ApiTrace call) {
+    return absl::UnimplementedError("Not implemented");
+  }
+
+  static constexpr uint64_t kLogGemm = 1 << 0;
+
+  // Sets the argument logging mode. Returns true if 'mode' is valid.
+  // The mode is a bitmask of the kLog* constants.
+  virtual bool SetArgumentLoggingMode(uint64_t mode) { return false; }
+
  private:
   StreamExecutorInterface(const StreamExecutorInterface&) = delete;
   void operator=(const StreamExecutorInterface&) = delete;
