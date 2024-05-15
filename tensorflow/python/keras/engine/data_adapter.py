@@ -1195,9 +1195,9 @@ class DataHandler(object):
       for epoch in range(self._initial_epoch, self._epochs):
         if self._insufficient_data:  # Set by `catch_stop_iteration`.
           break
+        yield epoch, data_iterator
         if self._adapter.should_recreate_iterator():
           data_iterator = iter(self._dataset)
-        yield epoch, data_iterator
         self._adapter.on_epoch_end()
 
   @contextlib.contextmanager
