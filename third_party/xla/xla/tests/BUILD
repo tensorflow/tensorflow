@@ -966,6 +966,7 @@ xla_test(
         "gpu",
         "interpreter",
     ],
+    shard_count = 50,
     tags = [
         "nozapfhahn",
         "optonly",
@@ -1647,7 +1648,7 @@ xla_test(
     name = "reduce_window_test",
     timeout = "long",
     srcs = [],
-    shard_count = 20,
+    shard_count = 40,
     tags = [
         "optonly",
     ],
@@ -2653,6 +2654,7 @@ xla_cc_test(
 xla_test(
     name = "transfer_manager_test",
     srcs = ["transfer_manager_test.cc"],
+    shard_count = 50,
     deps = [
         ":literal_test_util",
         ":local_client_test_base",
