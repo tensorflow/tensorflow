@@ -26,7 +26,8 @@ limitations under the License.
 
 namespace xla {
 
-Status VerifiedHloModule::ParseHloStringAndVerifyModule(absl::string_view str) {
+absl::Status VerifiedHloModule::ParseHloStringAndVerifyModule(
+    absl::string_view str) {
   TF_RET_CHECK(computation_count() == 0);
   auto parser = HloParser::CreateHloParserForTests(str);
   TF_RETURN_IF_ERROR(parser->Run(this));
@@ -34,7 +35,7 @@ Status VerifiedHloModule::ParseHloStringAndVerifyModule(absl::string_view str) {
 }
 
 void VerifiedHloModule::VerifyOrAddFailure(absl::string_view message) {
-  Status status = Verify();
+  absl::Status status = Verify();
   if (!status.ok()) {
     ADD_FAILURE() << "HloVerifier failed on module " << name()
                   << (message.empty() ? "" : absl::StrCat(" (", message, ")"))
@@ -44,7 +45,7 @@ void VerifiedHloModule::VerifyOrAddFailure(absl::string_view message) {
   }
 }
 
-Status VerifiedHloModule::Verify() {
+absl::Status VerifiedHloModule::Verify() {
   if (computation_count() == 0) {
     // The computation was never built. Nothing to verify.
     return OkStatus();

@@ -48,14 +48,14 @@ class VerifiedHloModule : public HloModule {
   // builds the VerifiedHloModule in place. Before calling this method, the
   // module must be empty (no computations). Finally verifies the module using
   // HloVerifier and returns the status.
-  Status ParseHloStringAndVerifyModule(absl::string_view str);
+  absl::Status ParseHloStringAndVerifyModule(absl::string_view str);
 
   // Verifies the module and flags any error with ADD_FAILURE. 'message' is
   // included in the failure message.
   void VerifyOrAddFailure(absl::string_view message);
 
   // Verifies the module using HloVerifier and returns the status.
-  Status Verify();
+  absl::Status Verify();
 
  private:
   HloVerifier verifier_;
