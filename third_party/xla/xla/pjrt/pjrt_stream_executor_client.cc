@@ -1463,6 +1463,7 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
   }
   LocalDeviceState* local_device_state = device_->local_device_state();
   if (wait_for_operations_to_complete) {
+    VLOG(2) << "wait_for_operations_to_complete";
     // Block the host until all usage events have completed. Usage events
     // dominate definition events, so this also waits for the buffer to be
     // defined.
@@ -1484,12 +1485,28 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
         LocalDeviceState::kComputeSynchronized) {
       std::unique_ptr<se::Stream> block_stream;
       for (const auto& stream_and_event : events) {
+        VLOG(2)
+            << "Checking whether need to wait for stream_and_event: stream: "
+            << stream_and_event.stream
+            << "; event: " << stream_and_event.event.get()
+            << "; reference_held: " << stream_and_event.reference_held
+            << "; is_defined_on_compute_stream: "
+            << stream_and_event.event->DefinedOn(
+                   local_device_state->compute_stream())
+            << "; is_complete: " << stream_and_event.event->IsComplete()
+            << "; is_predetermined_error: "
+            << stream_and_event.event->IsPredeterminedError();
         // We only need to do something for events that didn't already acquire a
         // reference to the buffer, and also which the compute stream didn't
         // already wait for. Based on our heuristics this rare case should only
         // occur when a buffer was copied to a device and then never used there.
         // In that case we get a new stream and use it to hold onto a reference
         // to the buffer until the events are complete.
+        //
+        // It is also important that we check IsPredeterminedError before
+        // checking DefinedOn(compute_stream) because otherwise DefinedOn would
+        // indefinitely wait since the event is never recorded when the buffer
+        // is predetermined error.
         if (!stream_and_event.event->IsPredeterminedError() &&
             !stream_and_event.reference_held &&
             !stream_and_event.event->DefinedOn(
@@ -1501,6 +1518,60 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
           stream_and_event.event->WaitForEventOnStream(block_stream.get());
         }
       }
+      // for (const auto& definition_event : device_buffer->definition_events())
+      // {
+      //   VLOG(2) << "Checking whether need to wait for definition_event: "
+      //           << definition_event.get() << "; is_defined_on_compute_stream:
+      //           "
+      //           << definition_event->DefinedOn(
+      //                  local_device_state->compute_stream())
+      //           << "; is_one_of_the_usage_events: "
+      //           << definition_event->DefinedOn(block_stream.get())
+      //           << "; is_complete: " << definition_event->IsComplete()
+      //           << "; is_predetermined_error: "
+      //           << definition_event->IsPredeterminedError();
+      //   // Here we wait for the definition events to complete on block_stream
+      //   as
+      //   // well, if they are not on the compute stream and not also recorded
+      //   as
+      //   // usage events.
+      //   //
+      //   // It is also important that we check IsPredeterminedError before
+      //   // checking DefinedOn(compute_stream) because otherwise DefinedOn
+      //   would
+      //   // indefinitely wait since the event is never recorded when the
+      //   buffer
+      //   // is predetermined error.
+      //   //
+      //   // Since it's possible that definition_event.SetSequencingEvent()
+      //   // is called on a different host thread than this host thread, when
+      //   in
+      //   // future more conditions are added to this check, we should be
+      //   careful
+      //   // about whether we put them before the DefinedOn check or after it.
+      //   // For example, we shouldn't add an IsDefined() check before the
+      //   // DefinedOn() check here because that could potentially cause a
+      //   // shortcut where we don't wait for
+      //   // definition_event.SetSequencingEvent() on the other thread and
+      //   // eventually cause memory corruption.
+      //   if (!definition_event->IsPredeterminedError() &&
+      //       !definition_event->DefinedOn(
+      //           local_device_state->compute_stream()) &&
+      //       (block_stream != nullptr &&
+      //        !definition_event->DefinedOn(block_stream.get())) &&
+      //       !definition_event->IsComplete()) {
+      //     // Note that we are also checking whether the definition event is
+      //     // defined on the block stream. This is because one of the usage
+      //     event
+      //     // above might be definition_event, in which case we don't need to
+      //     do
+      //     // anything here.
+      //     if (block_stream == nullptr) {
+      //       block_stream = local_device_state->BorrowStreamFromPool();
+      //     }
+      //     definition_event->WaitForEventOnStream(block_stream.get());
+      //   }
+      // }
       if (block_stream != nullptr) {
         se::Stream* block_stream_ptr = block_stream.release();
         TF_RETURN_IF_ERROR(local_device_state->ThenExecuteCallback(
@@ -1517,8 +1588,28 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
 
 void PjRtStreamExecutorBuffer::Delete() {
   VLOG(1) << "PjRtStreamExecutorBuffer::Delete";
+  std::shared_ptr<TrackedDeviceBuffer> device_buffer;
+  {
+    absl::MutexLock lock(&mu_);
+    device_buffer = device_buffer_;
+  }
+  if (device_buffer != nullptr && !device_buffer->definition_events().empty()) {
+    GetReadyFuture().Await();
+  }
+
   // When wait_for_reads_to_complete is false, Release should never fail.
-  TF_CHECK_OK(Release(/*wait_for_operations_to_complete=*/false).status());
+  absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> tracked_device_buffer =
+      Release(/*wait_for_operations_to_complete=*/false);
+
+  // The only usage events that
+  // Release(/*wait_for_operations_to_complete=*/false) doesn't wait for are
+  // events defined on the compute stream. So we schedule the deallocation on
+  // the compute stream so that there wouldn't be use-after-free usages on the
+  // compute stream.
+  TF_CHECK_OK(tracked_device_buffer.status());
+  TF_CHECK_OK(device_->local_device_state()->ThenRelease(
+      device_->local_device_state()->compute_stream(),
+      tracked_device_buffer.value()));
 }
 
 bool PjRtStreamExecutorBuffer::IsDeleted() {
