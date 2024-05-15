@@ -508,8 +508,11 @@ auto OptionalBitcast(HloInstruction **optional_bitcast, Pattern pattern) {
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
   explicit GemmRewriterVisitor(const se::GpuComputeCapability &gpu_version,
+                               const int32_t toolkit_version,
                                const bool f8_rewrite)
-      : gpu_version_(gpu_version), f8_rewrite_(f8_rewrite) {}
+      : gpu_version_(gpu_version),
+        toolkit_version_(toolkit_version),
+        f8_rewrite_(f8_rewrite) {}
 
   absl::Status HandleDot(HloInstruction *instr) override {
     if (!IsMatrixMultiplication(*instr) &&
@@ -933,24 +936,24 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       std::vector<std::pair<HloInstruction *, int>> b_ops) {
     GemmBackendConfig &gemm_backend_config =
         *gpu_backend_config.mutable_gemm_backend_config();
-#if GOOGLE_CUDA
-    auto cuda_compute_capability_ =
-        std::get<se::CudaComputeCapability>(gpu_version_);
-    // FP8 GEMM kernels are only available on Ada, Hopper, and later
-    // architectures.
-    if (!cuda_compute_capability_.IsAtLeast(8, 9)) {
-      VLOG(1)
-          << "FP8 Custom Calls require Ada, Hopper, or later architectures.";
-      return false;
+    if (std::holds_alternative<se::CudaComputeCapability>(gpu_version_)) {
+      auto cuda_compute_capability =
+          std::get<se::CudaComputeCapability>(gpu_version_);
+      // FP8 GEMM kernels are only available on Ada, Hopper, and later
+      // architectures.
+      if (!cuda_compute_capability.IsAtLeast(8, 9)) {
+        VLOG(1) << "FP8 Custom Calls require Ada, Hopper, or later "
+                   "architectures. Got: "
+                << cuda_compute_capability.ToString()
+                << " and toolkit version: " << toolkit_version_;
+        return false;
+      }
+      // FP8 GEMM kernels are only available with CUDA 12.0 and above
+      if (toolkit_version_ < 12000) {
+        VLOG(1) << "FP8 Custom Calls require CUDA 12.0 or newer.";
+        return false;
+      }
     }
-
-#if CUDA_VERSION < 12000
-    // FP8 GEMM kernels are only available with CUDA 12.0 and above
-    VLOG(1) << "FP8 Custom Calls require CUDA 12.0 or newer.";
-    return false;
-#endif  // CUDA_VERSION < 12000
-
-#endif  // GOOGLE_CUDA
 
 #if TENSORFLOW_USE_ROCM
     auto isrocm = std::get_if<se::RocmComputeCapability>(&gpu_version_);
@@ -1748,6 +1751,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
  private:
   se::GpuComputeCapability gpu_version_;
+  int32_t toolkit_version_;
   bool f8_rewrite_;
 
   // Choose cublas or cublasLt for the target of the custom call that instr will
@@ -2316,8 +2320,9 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
 
 absl::StatusOr<bool> RunOnComputation(HloComputation *computation,
                                       se::GpuComputeCapability gpu_version,
+                                      int32_t toolkit_version,
                                       bool f8_rewrite) {
-  GemmRewriterVisitor visitor(gpu_version, f8_rewrite);
+  GemmRewriterVisitor visitor(gpu_version, toolkit_version, f8_rewrite);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   GemmWorkspaceRewriteVisitor workspace_visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&workspace_visitor));
@@ -2327,8 +2332,10 @@ absl::StatusOr<bool> RunOnComputation(HloComputation *computation,
 }  // anonymous namespace
 
 GemmRewriter::GemmRewriter(se::GpuComputeCapability gpu_version,
-                           bool f8_rewrite)
-    : gpu_version_(gpu_version), f8_rewrite_(f8_rewrite) {}
+                           int32_t toolkit_version, bool f8_rewrite)
+    : gpu_version_(gpu_version),
+      toolkit_version_(toolkit_version),
+      f8_rewrite_(f8_rewrite) {}
 
 absl::StatusOr<bool> GemmRewriter::Run(
     HloModule *module,
@@ -2336,8 +2343,9 @@ absl::StatusOr<bool> GemmRewriter::Run(
   bool changed = false;
   for (HloComputation *computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(
-        bool result, RunOnComputation(computation, gpu_version_, f8_rewrite_));
+    TF_ASSIGN_OR_RETURN(bool result,
+                        RunOnComputation(computation, gpu_version_,
+                                         toolkit_version_, f8_rewrite_));
     changed |= result;
   }
   return changed;

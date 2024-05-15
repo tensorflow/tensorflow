@@ -373,7 +373,8 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
 absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
-  pipeline->AddPass<GemmFusionAutotuner>(autotune_config, thread_pool);
+  pipeline->AddPass<GemmFusionAutotuner>(autotune_config, GetToolkitVersion(),
+                                         thread_pool);
   return absl::OkStatus();
 }
 

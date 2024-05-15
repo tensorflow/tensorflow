@@ -814,7 +814,9 @@ xla_test(
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
-    ],
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
 )
 
 cc_library(
