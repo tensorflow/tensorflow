@@ -125,7 +125,7 @@ class IfrtModelContext {
   IfrtServingCoreSelector* ifrt_serving_core_selector_;  // May be nullptr
   const tsl::thread::ThreadPool& thread_pool_;
 
-  tensorflow::DeviceMgr* device_mgr_;  // Not owned.
+  tensorflow::DeviceMgr* device_mgr_ = nullptr;  // Not owned.
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_ =
       tensorflow::IdentityShapeRepresentationFn();
 
