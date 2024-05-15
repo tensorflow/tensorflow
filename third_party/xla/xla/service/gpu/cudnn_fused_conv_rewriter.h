@@ -100,6 +100,8 @@ class CudnnFusedConvRewriter : public HloModulePass {
  public:
   explicit CudnnFusedConvRewriter(se::CudaComputeCapability cc)
       : compute_capability_(cc) {}
+  explicit CudnnFusedConvRewriter(se::RocmComputeCapability cc)
+      : compute_capability_(cc) {}
 
   absl::string_view name() const override {
     return "cudnn-fused-convolution-rewriter";
@@ -111,7 +113,7 @@ class CudnnFusedConvRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const se::CudaComputeCapability compute_capability_;
+  const se::GpuComputeCapability compute_capability_;
 };
 
 }  // namespace gpu
