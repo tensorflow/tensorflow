@@ -280,7 +280,7 @@ struct LegalizeStablehloToVhloPass
     VhloToStablehloTypeConverter to_builtin_converter;
 
     // StableHLO --> VHLO (allow funcs)
-    //   VHLO -> Downgrade to 0.19.0 / tflite_supported_stablehlo_version
+    //   VHLO -> Downgrade to tflite_supported_stablehlo_version
     //     VHLO Tensor --> Builtin Tensor
     //       Remove cast(tensor->vhlo) -> cast(vhlo->tensor) pattern
     if (failed(ApplyStablehloToVhloPatterns(module,
