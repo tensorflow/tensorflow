@@ -19,6 +19,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
+#include "xla/service/cpu/onednn_pattern_utils.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/status_macros.h"
@@ -28,11 +29,7 @@ namespace cpu {
 
 namespace {
 namespace m = match;
-
-template <typename Pattern>
-auto OptionalConvert(Pattern pattern) {
-  return m::AnyOf<HloInstruction>(m::Convert(pattern), std::move(pattern));
-}
+namespace pu = ::xla::cpu::onednn_pattern_utils_internal;
 
 inline auto OneDnnConvertibleInstr(HloInstruction** instr) {
   return m::AnyOf<HloInstruction>(m::CustomCall(instr, {"__onednn$layernorm"}),
@@ -101,9 +98,9 @@ std::optional<HloInstruction*> MatchSoftmax(HloInstruction* instr) {
   if (!Match(instr,
              m::Divide(
                  m::Exp(&left_exponential, m::Op()),
-                 m::Broadcast(m::Reshape(
-                     m::Broadcast(OptionalConvert(m::Reshape(OptionalConvert(
-                         m::Reduce(OptionalConvert(
+                 m::Broadcast(m::Reshape(m::Broadcast(
+                     pu::OptionalConvert(m::Reshape(pu::OptionalConvert(
+                         m::Reduce(pu::OptionalConvert(
                                        m::Exp(&right_exponential, m::Op())),
                                    m::Op())
                              .WithPredicate([](const HloInstruction* reduce) {
@@ -256,7 +253,7 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
           .WithBinaryOperandsAnyOrder(
               m::Op(&hinge).WithOneUser(),
               m::Subtract(
-                  OptionalConvert(m::Op(&prod_s)),
+                  pu::OptionalConvert(m::Op(&prod_s)),
                   m::Broadcast(
                       m::Reshape(
                           m::Broadcast(m::Reshape(m::Op(&div_red).WithOpcode(
@@ -326,8 +323,8 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
   auto div_red_mul_src =
       m::Divide()
           .WithOperand(0, m::Reduce(m::Multiply().WithBinaryOperandsAnyOrder(
-                                        OptionalConvert(m::Op(&mul_in0)),
-                                        OptionalConvert(m::Op(&mul_in1))),
+                                        pu::OptionalConvert(m::Op(&mul_in0)),
+                                        pu::OptionalConvert(m::Op(&mul_in1))),
                                     m::Constant())
                               .WithPredicate([](const HloInstruction* reduce) {
                                 HloComputation* reducer = reduce->to_apply();
@@ -348,7 +345,7 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
       m::Divide()
           .WithOperand(
               0,
-              m::Reduce(OptionalConvert(m::Op(&reduce_in0)), m::Constant())
+              m::Reduce(pu::OptionalConvert(m::Op(&reduce_in0)), m::Constant())
                   .WithPredicate([](const HloInstruction* reduce) {
                     HloComputation* reducer = reduce->to_apply();
                     return (reducer->root_instruction()->opcode() ==

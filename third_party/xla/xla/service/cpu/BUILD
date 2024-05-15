@@ -1659,6 +1659,15 @@ cc_library(
 )
 
 cc_library(
+    name = "onednn_pattern_utils",
+    hdrs = ["onednn_pattern_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":onednn_util",
+    ] + mkl_deps(),
+)
+
+cc_library(
     name = "onednn_matmul_rewriter",
     srcs = ["onednn_matmul_rewriter.cc"],
     hdrs = [
@@ -1671,6 +1680,7 @@ cc_library(
         ":backend_config_proto_cc",
         ":onednn_matmul",
         ":onednn_memory_util",
+        ":onednn_pattern_utils",
         ":onednn_util",
         "//xla:executable_run_options",
         "//xla:shape_util",
@@ -1699,6 +1709,7 @@ cc_library(
     deps = [
         ":backend_config_proto_cc",
         ":onednn_memory_util",
+        ":onednn_pattern_utils",
         ":onednn_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
