@@ -339,7 +339,7 @@ PjRtLoadedExecutable::CreateInternal(
   auto append_arg = [&](const xla::PrimitiveType& element_type,
                         const xla::DimensionVector& dimensions,
                         const xla::HloSharding* sharding,
-                        MemoryKind memory_kind) -> Status {
+                        MemoryKind memory_kind) -> absl::Status {
     TF_ASSIGN_OR_RETURN(auto dtype, ToDType(element_type));
     output_dtypes.push_back(dtype);
     output_shapes.push_back(Shape(dimensions));
@@ -611,7 +611,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     result.status.OnReady(
         [all_loaded_host_callbacks = all_loaded_host_callbacks_,
          host_callback_states = std::move(host_callback_states)](
-            Status) mutable { all_loaded_host_callbacks.reset(); });
+            absl::Status) mutable { all_loaded_host_callbacks.reset(); });
   }
 
   // Convert 2-level PjRtBuffer vectors into an Array vector.
