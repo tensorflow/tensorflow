@@ -390,10 +390,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
 
   std::shared_ptr<se::Event> definition_event;
   if (use_multiple_streams_ && stream) {
-    definition_event = std::make_shared<se::Event>(stream->parent());
-    if (!definition_event->Init()) {
-      return errors::Internal("Failed to initialize tensor definition event.");
-    }
+    TF_ASSIGN_OR_RETURN(definition_event, stream->parent()->CreateEvent());
     TF_RETURN_IF_ERROR(stream->RecordEvent(definition_event.get()));
   }
 
