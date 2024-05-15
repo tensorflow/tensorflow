@@ -23,13 +23,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
-#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -145,20 +142,10 @@ class Stream {
   absl::Status ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
                           const TypedKernel<Params...> &kernel, Args... args);
 
-  template <typename... Params, typename... Args>
-  absl::Status ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
-                          ClusterDim cluster_dims,
-                          const TypedKernel<Params...> &kernel, Args... args);
-
   // Same as above, with an explicit argument for shared memory size in bytes.
   template <typename... Params, typename... Args>
   absl::Status ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
                           int32_t shmem_bytes,
-                          const TypedKernel<Params...> &kernel, Args... args);
-
-  template <typename... Params, typename... Args>
-  absl::Status ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
-                          ClusterDim cluster_dims, int32_t shmem_bytes,
                           const TypedKernel<Params...> &kernel, Args... args);
 
   // Create a dependency for this stream's next work on the other stream
@@ -279,7 +266,6 @@ class Stream {
     return parent_;
   }
 
-  //
   CudaComputeCapability GetCudaComputeCapability() const {
     return parent()->GetDeviceDescription().cuda_compute_capability();
   }
@@ -329,9 +315,6 @@ class Stream {
   void operator=(const Stream &) = delete;
 };
 
-////////////
-// Inlines
-
 template <typename... Params, typename... Args>
 inline absl::Status Stream::ThenLaunch(ThreadDim thread_dims,
                                        BlockDim block_dims,
@@ -351,28 +334,6 @@ inline absl::Status Stream::ThenLaunch(ThreadDim thread_dims,
   auto kernel_args = PackKernelArgs(shmem_bytes, args...);
   TF_RETURN_IF_ERROR(
       parent_->Launch(this, thread_dims, block_dims, *kernel, *kernel_args));
-  return absl::OkStatus();
-}
-
-template <typename... Params, typename... Args>
-inline absl::Status Stream::ThenLaunch(ThreadDim thread_dims,
-                                       BlockDim block_dims,
-                                       ClusterDim cluster_dims,
-                                       const TypedKernel<Params...> &kernel,
-                                       Args... args) {
-  auto kernel_args = PackKernelArgs(kernel, args...);
-  TF_RETURN_IF_ERROR(parent_->Launch(this, thread_dims, block_dims,
-                                     cluster_dims, *kernel, *kernel_args));
-  return absl::OkStatus();
-}
-
-template <typename... Params, typename... Args>
-inline absl::Status Stream::ThenLaunch(
-    ThreadDim thread_dims, BlockDim block_dims, ClusterDim cluster_dims,
-    int32_t shmem_bytes, const TypedKernel<Params...> &kernel, Args... args) {
-  auto kernel_args = PackKernelArgs(shmem_bytes, args...);
-  TF_RETURN_IF_ERROR(parent_->Launch(this, thread_dims, block_dims,
-                                     cluster_dims, *kernel, *kernel_args));
   return absl::OkStatus();
 }
 
