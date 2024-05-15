@@ -826,6 +826,9 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
   xla::Compiler::CompileOptions compile_options{
       build_options.device_allocator(), build_options.compile_thread_pool(),
       build_options.layout_canonicalization_callback()};
+  if (!compile_options.thread_pool) {
+    compile_options.thread_pool = pjrt_client_thread_pool();
+  }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> cpu_executable,
       JitCompile(computation, argument_layout_pointers, build_options,
