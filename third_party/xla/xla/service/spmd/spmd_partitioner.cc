@@ -2581,7 +2581,8 @@ Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
   int64_t offset = 0;
   auto state = MakePartitioningState();
   for (HloInstruction* operand : hlo->operands()) {
-    auto spmd_operand = GetPartitionedHlo(operand).Reshard(sharding).hlo();
+    auto spmd_operand =
+        GetPartitionedHlo(operand).Reshard(sharding).PadWithZero().hlo();
     std::vector<HloInstruction*> start_indices(
         hlo->shape().rank(), b_.AddInstruction(HloInstruction::CreateConstant(
                                  LiteralUtil::Zero(S32))));

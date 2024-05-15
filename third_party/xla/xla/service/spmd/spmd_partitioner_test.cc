@@ -2207,13 +2207,17 @@ ENTRY entry {
       AllOf(op::Copy(op::DynamicSlice(op::Pad(op::Parameter(), op::Constant()),
                                       op::Constant(), op::Reshape())),
             op::Shape("f32[14,129]"));
+  auto param0_adjusted =
+      AllOf(op::Select(op::Compare(op::Add(), op::Broadcast(op::Constant())),
+                       param0, op::Broadcast(op::Constant())),
+            op::Shape("f32[14,129]"));
   auto param1 = AllOf(op::Copy(op::DynamicSlice(op::Parameter(), op::Constant(),
                                                 op::Reshape())),
                       op::Shape("f32[14,58]"));
   EXPECT_THAT(root, AllOf(op::DynamicSlice(
                               AllOf(op::AllReduce(op::DynamicUpdateSlice(
                                         op::DynamicUpdateSlice(
-                                            op::Broadcast(), param0,
+                                            op::Broadcast(), param0_adjusted,
                                             op::Constant(), op::Multiply()),
                                         param1, op::Constant(), op::Add())),
                                     op::Shape("f32[14,374]")),
@@ -2238,11 +2242,15 @@ ENTRY entry {
 
   const auto root = module->entry_computation()->root_instruction();
   auto param0 = AllOf(op::Parameter(0), op::Shape("f32[7,129]"));
+  auto param0_adjusted =
+      AllOf(op::Select(op::Compare(op::Add(), op::Broadcast(op::Constant())),
+                       param0, op::Broadcast(op::Constant())),
+            op::Shape("f32[7,129]"));
   auto param1 = AllOf(op::Parameter(1), op::Shape("f32[7,58]"));
   EXPECT_THAT(root, AllOf(op::DynamicSlice(
                               AllOf(op::AllReduce(op::DynamicUpdateSlice(
                                         op::DynamicUpdateSlice(
-                                            op::Broadcast(), param0,
+                                            op::Broadcast(), param0_adjusted,
                                             op::Constant(), op::Multiply()),
                                         param1, op::Constant(), op::Add())),
                                     op::Shape("f32[7,374]")),
