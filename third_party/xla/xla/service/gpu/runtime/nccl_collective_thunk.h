@@ -25,7 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/node_hash_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -155,7 +155,7 @@ class NcclCollectiveThunk : public Thunk {
 
    private:
     absl::Mutex mu_;
-    absl::node_hash_map<se::StreamExecutor*, se::Event> events_
+    absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>> events_
         ABSL_GUARDED_BY(mu_);
   };
 

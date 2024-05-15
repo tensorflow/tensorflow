@@ -42,6 +42,7 @@ limitations under the License.
 
 namespace stream_executor {
 
+class Event;
 class Stream;
 
 // Interface which defines the method for interacting with an accelerator device
@@ -64,6 +65,9 @@ class StreamExecutorInterface {
   virtual absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority =
           std::nullopt) = 0;
+
+  // Creates and initializes an Event.
+  virtual absl::StatusOr<std::unique_ptr<Event>> CreateEvent() = 0;
 
   // Obtains metadata about the underlying device.
   // The value is cached on first use.

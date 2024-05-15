@@ -177,6 +177,8 @@ class MockStreamExecutor : public StreamExecutorInterface {
   MOCK_METHOD(int64_t, GetMemoryLimitBytes, (), (const.override));
   MOCK_METHOD(const DeviceDescription&, GetDeviceDescription, (),
               (const, override));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Event>>, CreateEvent, (),
+              (override));
 };
 
 }  // namespace stream_executor

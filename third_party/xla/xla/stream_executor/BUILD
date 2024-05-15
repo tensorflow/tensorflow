@@ -554,20 +554,6 @@ cc_library(
 )
 
 cc_library(
-    name = "event",
-    srcs = ["event.cc"],
-    hdrs = ["event.h"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":event_interface",
-        ":stream_executor_headers",
-        ":stream_executor_interface",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-    ],
-)
-
-cc_library(
     name = "executor_cache",
     srcs = ["executor_cache.cc"],
     hdrs = ["executor_cache.h"],
@@ -680,6 +666,7 @@ transitive_hdrs(
 cc_library(
     name = "stream_executor_pimpl",
     srcs = [
+        "event.cc",
         "stream.cc",
         "stream_executor_pimpl.cc",
     ],
@@ -690,6 +677,7 @@ cc_library(
         ":blas",  # build_cleaner: keep
         ":command_buffer",  # build_cleaner: keep
         ":dnn",  # build_cleaner: keep
+        ":event_interface",
         ":fft",
         ":host_memory_allocation",  # build_cleaner: keep
         ":kernel_spec",
@@ -728,7 +716,6 @@ cc_library(
         ":device_description",
         ":device_memory",
         ":dnn",
-        ":event",
         ":executor_cache",
         ":kernel",
         ":kernel_spec",
@@ -843,7 +830,6 @@ cc_library(
     visibility = [":internal"],
     deps = [
         ":dnn",
-        ":event",
         ":platform_manager",
         ":scratch_allocator",
         ":stream_executor",

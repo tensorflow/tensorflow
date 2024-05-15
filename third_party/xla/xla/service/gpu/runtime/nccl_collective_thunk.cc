@@ -353,11 +353,7 @@ absl::Status NcclCollectiveThunk::AsyncEvents::Initialize(
   absl::MutexLock lock(&mu_);
   if (events_.contains(executor)) return absl::OkStatus();
 
-  se::Event event(executor);
-  if (!event.Init()) {
-    return absl::InternalError(
-        "Failed to initialize collective operation async completion event");
-  }
+  TF_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
 
   events_.try_emplace(executor, std::move(event));
   return absl::OkStatus();
@@ -373,7 +369,7 @@ absl::StatusOr<se::Event*> NcclCollectiveThunk::AsyncEvents::GetEvent(
         "Collective operation async completion event not initialized");
   }
 
-  return &event->second;
+  return event->second.get();
 }
 
 absl::Status NcclCollectiveThunk::Prepare(const PrepareParams& params,
