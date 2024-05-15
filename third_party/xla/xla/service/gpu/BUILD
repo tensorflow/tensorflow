@@ -874,13 +874,6 @@ cc_library(
     ],
 )
 
-cuda_library(
-    name = "sleep_kernel",
-    srcs = if_cuda_is_configured(["sleep_kernel.cu.cc"]),
-    hdrs = if_cuda_is_configured(["sleep_kernel.h"]),
-    deps = ["@local_config_cuda//cuda:cuda_headers"],
-)
-
 # TODO(b/244780257): Remove this config.
 bool_flag(
     name = "enable_xlir",
