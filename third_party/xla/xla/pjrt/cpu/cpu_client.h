@@ -603,6 +603,8 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
           "cpu_executable_ has no hlo_proto.");
     }
     memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+    memory_stats.PopulateBufferStatsFromAllocations(
+        cpu_executable_.get()->GetAllocations());
     return memory_stats;
   }
 

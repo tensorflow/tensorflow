@@ -109,6 +109,10 @@ class CpuExecutable : public Executable {
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
+  absl::Span<const BufferAllocation> GetAllocations() const override {
+    return assignment_->Allocations();
+  }
+
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
   // JIT compiled function pointer.

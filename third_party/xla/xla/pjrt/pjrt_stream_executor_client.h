@@ -918,6 +918,8 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
     if (proto != nullptr) {
       memory_stats.serialized_hlo_proto = proto->SerializeAsString();
     }
+    memory_stats.PopulateBufferStatsFromAllocations(
+        executables_[0]->executable()->GetAllocations());
     return memory_stats;
   }
 
