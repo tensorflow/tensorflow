@@ -2875,6 +2875,21 @@ PjRtStreamExecutorLoadedExecutable::MakeOutputBuffers(
   return outputs;
 }
 
+static Status GetFirstInputError(
+    absl::Span<PjRtBuffer* const> argument_handles) {
+  for (auto* handle : argument_handles) {
+    auto* buffer = tensorflow::down_cast<PjRtStreamExecutorBuffer*>(handle);
+    PjRtStreamExecutorBuffer::ScopedHold hold =
+        buffer->GetBufferWithUsageHold();
+    for (const auto& event : hold->definition_events()) {
+      if (event->IsPredeterminedError()) {
+        return event->GetDefinedStatus();
+      }
+    }
+  }
+  return OkStatus();
+}
+
 StatusOr<PjRtLoadedExecutable::Result>
 PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
@@ -2895,6 +2910,23 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
     CHECK(addressable_devices_.empty());
     device_assignment = std::make_shared<DeviceAssignment>(1, 1);
     (*device_assignment)(0, 0) = device->id();
+  }
+
+  Status input_error = GetFirstInputError(argument_handles);
+  if (!input_error.ok()) {
+    TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
+                        device->default_memory_space());
+    std::vector<std::unique_ptr<PjRtBuffer>> outputs;
+    TF_ASSIGN_OR_RETURN(auto hlo_modules, GetHloModules());
+    for (const auto& hlo_module : hlo_modules) {
+      TF_ASSIGN_OR_RETURN(
+          auto error_buffer,
+          client_->CreateErrorBuffer(input_error, hlo_module->result_shape(),
+                                     memory_space));
+      outputs.push_back(std::move(error_buffer));
+    }
+    auto future = std::make_optional(PjRtFuture<>(input_error));
+    return Result({std::move(future), /*buffers=*/std::move(outputs)});
   }
 
   CHECK_EQ(device->process_index(), client_->process_index());
