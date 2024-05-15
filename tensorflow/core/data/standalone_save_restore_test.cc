@@ -17,10 +17,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"

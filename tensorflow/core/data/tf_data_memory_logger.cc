@@ -23,7 +23,9 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/data/tfdataz_metrics.h"
+#include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/status.h"
