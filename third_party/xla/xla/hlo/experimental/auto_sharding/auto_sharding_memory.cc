@@ -316,11 +316,24 @@ absl::flat_hash_set<int64_t> MemoryTermReducer::GetReducedTimes(
       interval.second = std::max(interval.second, reduced_interval.second);
     }
   }
-  // Then, collect the entering times across all primitive intervals.
-  absl::flat_hash_set<int64_t> reduced_times;
+  // Next, created a sorted set of all entering & eviction times.
+  absl::btree_set<std::pair<int64_t, /*is_eviction=*/bool>> times;
   for (const Interval& interval : intervals) {
-    if (IsValid(interval)) reduced_times.insert(interval.first);
+    if (!IsValid(interval)) continue;
+    times.insert({interval.first, false});
+    times.insert({interval.second, true});
   }
+  // Finally, collect the latest entering times across all primitive intervals.
+  int64_t last_entering_time = -1;
+  absl::flat_hash_set<int64_t> reduced_times;
+  for (const auto& time : times) {
+    if (/*is_eviction*/ time.second) {
+      reduced_times.insert(last_entering_time);
+    } else {
+      last_entering_time = time.first;
+    }
+  }
+  reduced_times.insert(last_entering_time);
   return reduced_times;
 }
 
