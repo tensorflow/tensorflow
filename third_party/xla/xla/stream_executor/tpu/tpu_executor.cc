@@ -95,7 +95,13 @@ bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
       get_stream(other->implementation()));
 }
 
-Status TpuExecutor::AllocateEvent(Event* event) { return absl::OkStatus(); }
+Status TpuExecutor::AllocateEvent(Event* event) {
+  StatusHelper status;
+  auto se_event = tpu_platform().LookupEvent(event->implementation());
+  ExecutorApiFn()->TpuExecutor_AllocateEventFn(executor_, se_event,
+                                               status.c_status);
+  return status.status();
+}
 
 Status TpuExecutor::DeallocateEvent(Event* event) {
   tpu_platform().EraseEvent(event->implementation());
