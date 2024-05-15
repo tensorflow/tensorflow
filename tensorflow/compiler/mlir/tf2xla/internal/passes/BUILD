@@ -409,6 +409,7 @@ cc_library(
         ":clustering_passes_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
+        "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:string_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",

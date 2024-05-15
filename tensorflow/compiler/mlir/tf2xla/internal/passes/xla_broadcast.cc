@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_rewrite_util.h"
 
@@ -167,7 +169,12 @@ LogicalResult MoveBroadcastToCluster(OpBuilder& builder,
                                      OpBuilder& inner_builder,
                                      ClusterOp cluster, ReplicateOp replicate,
                                      llvm::DenseMap<Value, Value>& orig_to_new,
-                                     Value val_bcast) {
+                                     Value val_bcast,
+                                     mlir::ModuleOp module_op) {
+  mlir::TF::RuntimeDevices devices;
+  if (failed(tensorflow::GetDevicesFromOp(module_op, &devices)))
+    return failure();
+
   Attribute zero_attr;
   DenseIntElementsAttr shape_attr;
   if (!GetDummyParams(builder, val_bcast, zero_attr, shape_attr))
@@ -175,10 +182,67 @@ LogicalResult MoveBroadcastToCluster(OpBuilder& builder,
   llvm::SmallVector<Value, 4> inputs;
   inputs.push_back(val_bcast);
   uint32_t num_replicas = replicate.getN();
-  for (uint32_t i = 1; i < num_replicas; ++i) {
-    inputs.push_back(
-        CreateZeroInput(val_bcast.getLoc(), builder, zero_attr, shape_attr));
+
+  auto num_cores_per_replica_attr = cluster->getAttrOfType<mlir::IntegerAttr>(
+      tensorflow::kNumCoresPerReplicaAttr);
+
+  int num_cores_per_replica = num_cores_per_replica_attr.getInt();
+  // llvm::errs() << "num_cores_per_replica: " << num_cores_per_replica << "\n";
+
+  auto topology_attr = cluster->getAttrOfType<StringAttr>("topology");
+
+  auto device_assignment_attr = cluster->getAttrOfType<mlir::ArrayAttr>(
+      tensorflow::kDeviceAssignmentAttr);
+
+  auto status_or_device_coodinates =
+      tensorflow::GetDeviceCoordinates(device_assignment_attr);
+
+  // Determine compilation and execution devices.
+  auto status_or_tpu_device_assignment =
+      tensorflow::GetTPUCompilationAndExecutionDevices(
+          devices.device_names(), num_replicas, num_cores_per_replica,
+          topology_attr.getValue(), status_or_device_coodinates.value());
+  if (!status_or_tpu_device_assignment.ok())
+    return replicate.emitError()
+           << "error in fetching TPU compilation/execution devices: "
+           << status_or_tpu_device_assignment.status().message();
+
+  auto& tpu_device_assignment = status_or_tpu_device_assignment.value();
+
+  llvm::ArrayRef<llvm::SmallVector<tensorflow::TPUDeviceAndHost, 8>>
+      tpu_devices = tpu_device_assignment.tpu_devices;
+
+  num_replicas = tpu_devices.size();
+  num_cores_per_replica = tpu_devices.front().size();
+
+  llvm::SmallVector<mlir::NamedAttribute, 8> device_attrs;
+  for (int core = 0; core < num_cores_per_replica; ++core) {
+    llvm::SmallVector<llvm::StringRef, 8> devices_by_core;
+    devices_by_core.reserve(num_replicas);
+    llvm::SmallVector<llvm::StringRef, 8> hosts_by_core;
+    hosts_by_core.reserve(num_replicas);
+    for (int replica = 0; replica < num_replicas; ++replica) {
+      devices_by_core.push_back(tpu_devices[replica][core].device);
+      hosts_by_core.push_back(tpu_devices[replica][core].host);
+      // llvm::errs() << "core: " << core << "\n"
+      //              << "replica" << replica << "\n"
+      //              << "devices_by_core: " << devices_by_core.back() << "\n"
+      //              << " hosts_by_core: " << hosts_by_core.back() << "\n";
+    }
   }
+
+  std::unordered_map<std::string, Value> host_to_fill;
+  for (uint32_t i = 1; i < num_replicas; ++i) {
+    if (!host_to_fill.contains(tpu_devices[i][0].host)) {
+      host_to_fill[tpu_devices[i][0].host] =
+          CreateZeroInput(val_bcast.getLoc(), builder, zero_attr, shape_attr);
+    }
+    inputs.push_back(host_to_fill[tpu_devices[i][0].host]);
+  }
+  // for (uint32_t i = 1; i < num_replicas; ++i) {
+  //   inputs.push_back(
+  //       CreateZeroInput(val_bcast.getLoc(), builder, zero_attr, shape_attr));
+  // }
   BlockArgument block_arg;
   if (failed(AppendReplicatedInput(builder, replicate, inputs,
                                    val_bcast.getType(), block_arg))) {
@@ -202,7 +266,8 @@ LogicalResult MoveBroadcastToCluster(OpBuilder& builder,
 // Move all suitable broadcasts across replicas to the `cluster` into the
 // `cluster`.
 LogicalResult MoveAllBroadcastsToCluster(ClusterOp cluster,
-                                         ReplicateOp replicate) {
+                                         ReplicateOp replicate,
+                                         mlir::ModuleOp module_op) {
   // TODO(b/325153657): Fix tpu_rewrite_pass so the parallel_execute case does
   //                    not need to be skipped.
   if (cluster->getParentOfType<ParallelExecuteOp>()) return success();
@@ -225,7 +290,8 @@ LogicalResult MoveAllBroadcastsToCluster(ClusterOp cluster,
 
   for (Value bcast : bcasts) {
     if (failed(MoveBroadcastToCluster(builder, inner_builder, cluster,
-                                      replicate, orig_to_new, bcast))) {
+                                      replicate, orig_to_new, bcast,
+                                      module_op))) {
       return failure();
     }
   }
@@ -245,9 +311,13 @@ LogicalResult MoveAllBroadcastsToCluster(ClusterOp cluster,
 
 void XlaBroadcast::runOnOperation() {
   FuncOp func = getOperation();
+  mlir::ModuleOp moduleOp = func->getParentOfType<mlir::ModuleOp>();
   func.walk([&](ClusterOp cluster) {
     if (auto replicate = cluster->getParentOfType<ReplicateOp>()) {
-      if (failed(MoveAllBroadcastsToCluster(cluster, replicate))) {
+      if (!moduleOp) {
+        return signalPassFailure();
+      }
+      if (failed(MoveAllBroadcastsToCluster(cluster, replicate, moduleOp))) {
         return signalPassFailure();
       }
     }
