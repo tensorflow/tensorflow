@@ -1,4 +1,3 @@
-go/debugstr    
 op {
   name: "Abort"
   attr {
