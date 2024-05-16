@@ -176,6 +176,8 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
         "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
