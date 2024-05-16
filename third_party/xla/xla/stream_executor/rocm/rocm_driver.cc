@@ -1860,7 +1860,7 @@ struct BitPatternToValue {
 }
 
 // Helper function that turns the integer output of hipDeviceGetAttribute to
-// type T and wraps it in a StatusOr.
+// type T and wraps it in a absl::StatusOr.
 template <typename T>
 static absl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
                                             hipDeviceAttribute_t attribute) {

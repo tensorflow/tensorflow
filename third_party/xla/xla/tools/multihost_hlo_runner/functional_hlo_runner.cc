@@ -424,7 +424,7 @@ FunctionalHloRunner::CreateExecutableBuildOptionsFromExecutionOptions(
   return build_options;
 }
 
-Status FunctionalHloRunner::DumpOutput(
+absl::Status FunctionalHloRunner::DumpOutput(
     const FunctionalHloRunner::PerDeviceLiteralVecType& output,
     absl::string_view dump_output_to, int task_id) {
   std::vector<std::string> output_path_vec =
@@ -443,7 +443,7 @@ Status FunctionalHloRunner::DumpOutput(
       output_path_vec[literal_id_index] = absl::StrCat("literal_", literal_id);
       std::string literal_path = absl::StrJoin(output_path_vec, ".");
       CHECK_EQ(suffix, std::string("txt"));
-      Status write_status =
+      absl::Status write_status =
           tsl::WriteStringToFile(tsl::Env::Default(), literal_path,
                                  literal_vec[literal_id].ToString());
       if (!write_status.ok()) {
@@ -488,7 +488,7 @@ FunctionalHloRunner::LoadHloModuleAndArguments(absl::string_view hlo_file,
   return hlo_module_and_arguments;
 }
 
-Status FunctionalHloRunner::LoadAndRunAndDump(
+absl::Status FunctionalHloRunner::LoadAndRunAndDump(
     PjRtClient& client, const DebugOptions& debug_options,
     const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
     const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
@@ -543,7 +543,7 @@ FunctionalHloRunner::LoadAndRun(PjRtClient& client,
       hlo_module_and_arguments.hlo_module.get(), loaded_arguments);
 }
 
-Status FunctionalHloRunner::LoadAndCompile(
+absl::Status FunctionalHloRunner::LoadAndCompile(
     PjRtClient& client, const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options,
     const RawCompileOptions& raw_compile_options, std::string_view hlo_file,
@@ -719,7 +719,7 @@ ParameterType GetParameterType(const HloModule& module) {
 
 }  // namespace
 
-Status FunctionalHloRunner::PrepareHloModuleForCompilation(
+absl::Status FunctionalHloRunner::PrepareHloModuleForCompilation(
     HloModule* hlo_module, const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options) {
   hlo_module->mutable_config().set_debug_options(debug_options);
@@ -894,7 +894,7 @@ std::vector<Shape> GetArgumentShapes(const HloModule& module) {
   return argument_shapes;
 }
 
-Status EnsureSingleTupleForFlattening(const HloModule& module) {
+absl::Status EnsureSingleTupleForFlattening(const HloModule& module) {
   if (module.entry_computation()->num_parameters() != 1) {
     return InvalidArgument(
         "Flattening arguments requires the number of parameters to be 1. "
@@ -1354,7 +1354,7 @@ FunctionalHloRunner::FetchAndLogOutput(
     ModuleOutputMode module_output_mode, bool log_output) {
   CHECK(!output_buffers.empty());
   absl::Mutex mu;
-  Status status;
+  absl::Status status;
   size_t num_pending_transfers = 0;
   bool device_0_is_local = false;
   for (PjRtDevice* device : GetLocalDevices(client)) {
@@ -1389,7 +1389,7 @@ FunctionalHloRunner::FetchAndLogOutput(
                "same device";
         output_slice.emplace_back(
             ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
-        buffer->ToLiteral(&output_slice.back()).OnReady([&](Status s) {
+        buffer->ToLiteral(&output_slice.back()).OnReady([&](absl::Status s) {
           absl::MutexLock lock(&mu);
           --num_pending_transfers;
           status.Update(s);

@@ -829,7 +829,7 @@ absl::StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(
 SVDResult SVD(XlaOp a, int64_t max_iter, float epsilon,
               PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  auto return_error = [&](const Status& status) {
+  auto return_error = [&](const absl::Status& status) {
     SVDResult result;
     result.u = builder->ReportError(status);
     result.v = builder->ReportError(status);
