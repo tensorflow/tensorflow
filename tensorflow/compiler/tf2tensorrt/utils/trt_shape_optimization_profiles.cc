@@ -661,10 +661,12 @@ Status TrtShapeOptimizationProfile::RestoreProfiles(
     // We do not need to restore profiles for an empty engine.
     return OkStatus();
   }
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   if (engine->hasImplicitBatchDimension()) {
     // Nothing to do, we cannot have profiles in implicit batch mode.
     return OkStatus();
   }
+#endif
   int n_profiles = engine->getNbOptimizationProfiles();
   need_profiles_ = n_profiles > 0;
   int n_inputs = GetNumberOfEngineInputs(engine);

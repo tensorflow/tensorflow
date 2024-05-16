@@ -136,7 +136,10 @@ using ::tensorflow::testing::IsOk;
 using ::tensorflow::testing::StatusIs;
 
 constexpr std::array<TrtTestMode, 3> ValidTrtModes = {
-    TrtTestMode::kImplicitBatch, TrtTestMode::kExplicitBatch,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+    TrtTestMode::kImplicitBatch,
+#endif
+    TrtTestMode::kExplicitBatch,
     TrtTestMode::kDynamicShape};
 
 bool TrtShapedWeightsEquals(const TRT_ShapedWeights& lhs,
