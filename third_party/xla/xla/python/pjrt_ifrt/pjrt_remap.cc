@@ -52,8 +52,6 @@ PjRtCompatibleClientRemapArrays(
           arrays[i]->DebugString());
     }
   }
-  VLOG(0) << "plan.input_specs.size(): " << plan.input_specs.size();
-  VLOG(0) << "plan.output_specs.size(): " << plan.output_specs.size();
   if (plan.input_specs.size() > 1 || plan.output_specs.size() > 1) {
     if (semantics != ArrayCopySemantics::kDonateInput) {
       return InvalidArgument(
@@ -67,7 +65,7 @@ PjRtCompatibleClientRemapArrays(
     out_buffers_list[i].resize(plan.output_specs[i].sharding->devices().size());
   }
 
-  for (const RemapPlan::Mapping& mapping : plan.mappings) {
+  for (const RemapPlan::Mapping& mapping : *plan.mappings) {
     TF_ASSIGN_OR_RETURN(
         absl::Span<std::shared_ptr<xla::PjRtBuffer>> in_buffers,
         static_cast<PjRtCompatibleArray*>(arrays[mapping.in_array].get())

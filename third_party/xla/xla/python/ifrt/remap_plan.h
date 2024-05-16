@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_REMAP_PLAN_H_
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -82,7 +83,7 @@ struct RemapPlan {
   std::vector<ArraySpec> output_specs;
 
   // Mappings.
-  std::vector<Mapping> mappings;
+  std::shared_ptr<std::vector<Mapping>> mappings;
 
   // Validates this plan against the requirements (see `RemapPlan` comment).
   // This is a slow operation. It should not be performed repeatedly.
