@@ -61,6 +61,10 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace xla {
 namespace gpu {
 
