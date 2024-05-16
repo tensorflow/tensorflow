@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/service/gpu/model/affine_map_printer.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
@@ -278,6 +279,30 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
   LOG(FATAL) << "unreachable";
 }
 
+// Simplifies the given affine expression using the constraints / bounds of
+// the reference indexing map.
+//
+// The dimensions and symbols of the expression should correspond to the
+// dimensions and symbols of the reference indexing map.
+AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
+                              const IndexingMap& reference) {
+  AffineMap tmp_affine_map =
+      AffineMap::get(/*dimCount=*/reference.GetDimVars().size(),
+                     /*symbolCount=*/reference.GetSymbolCount(),
+                     /*results=*/{expr},
+                     /*context=*/reference.GetMLIRContext());
+  IndexingMap tmp_indexing_map(
+      /*affine_map=*/std::move(tmp_affine_map),
+      /*dimensions=*/reference.GetDimVars(),
+      /*range_vars=*/reference.GetRangeVars(),
+      /*rt_vars=*/reference.GetRTVars(),
+      /*constraints=*/reference.GetConstraints());
+  tmp_indexing_map.Simplify(GetIndexingMapForInstruction);
+
+  CHECK_EQ(tmp_indexing_map.GetAffineMap().getResults().size(), 1);
+  return tmp_indexing_map.GetAffineMap().getResults().back();
+}
+
 }  // anonymous namespace
 
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
@@ -322,6 +347,9 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
           input_affine_map, getAffineConstantExpr(0, mlir_context),
           indexing_map.GetRangeVarsCount())
           .getResults();
+  for (AffineExpr& expr : offset_expressions) {
+    expr = SimplifyAffineExpr(expr, indexing_map);
+  }
 
   std::vector<AffineExpr> size_expressions;
   std::vector<AffineExpr> stride_expressions;
@@ -333,19 +361,9 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
   for (auto [composite_indexing, offset] :
        llvm::zip(input_affine_map.getResults(), offset_expressions)) {
     std::optional<SizeAndStrideExpression> maybe_size_and_stride =
-        ExtractSizeAndStride(composite_indexing - offset,
+        ExtractSizeAndStride(SimplifyAffineExpr(composite_indexing - offset,
+                                                /*reference=*/indexing_map),
                              indexing_map.GetSymbolBounds());
-    if (!maybe_size_and_stride.has_value()) {
-      // Retry with a simplified expression.
-      // For example `(d0 + s0 - s0)` will be simplified to `d0`.
-      // But the simplification doesn't help when it rewrites `mod` to
-      // `floordiv` & `add`, so at first we try without simplification.
-      maybe_size_and_stride = ExtractSizeAndStride(
-          simplifyAffineExpr(composite_indexing - offset,
-                             input_affine_map.getNumDims(),
-                             input_affine_map.getNumSymbols()),
-          indexing_map.GetSymbolBounds());
-    }
     if (!maybe_size_and_stride.has_value()) {
       VLOG(1) << "No size and stride extracted";
       return std::nullopt;
