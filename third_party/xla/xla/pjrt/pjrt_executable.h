@@ -111,15 +111,15 @@ struct CompileOptions {
       PrecisionConfig::DEFAULT;
 
   // Applies env_option_overrides to executable_build_options.debug_options().
-  Status ApplyAllOptionOverrides();
+  absl::Status ApplyAllOptionOverrides();
 
   // Applies a single option to executable_build_options.debug_options().
-  Status ApplyOption(const std::string& key, const OptionOverride& value);
+  absl::Status ApplyOption(const std::string& key, const OptionOverride& value);
 
-  Status ApplyOptionFromString(const tsl::protobuf::FieldDescriptor* field,
-                               const std::string& value);
+  absl::Status ApplyOptionFromString(
+      const tsl::protobuf::FieldDescriptor* field, const std::string& value);
 
-  static StatusOr<
+  static absl::StatusOr<
       std::vector<std::pair<std::string, CompileOptions::OptionOverride>>>
   LoadEnvOptionOverrides(
       const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
@@ -130,10 +130,11 @@ struct CompileOptions {
           output_env_option_overrides) const;
 
   // Serialize the CompileOptions into a CompileOptionsProto.
-  StatusOr<CompileOptionsProto> ToProto() const;
+  absl::StatusOr<CompileOptionsProto> ToProto() const;
 
   // Deserialize the CompileOptionsProto into a CompileOptions.
-  static StatusOr<CompileOptions> FromProto(const CompileOptionsProto& proto);
+  static absl::StatusOr<CompileOptions> FromProto(
+      const CompileOptionsProto& proto);
 };
 
 struct LoadOptions {
@@ -191,8 +192,9 @@ struct SendCallback {
   // TODO(chky): Currently the callback invocation order may not be consistent
   // with the HLO send op invocation order, due to limitations in some PjRt
   // implementation. Consider making it strictly the same order as HLO program.
-  std::function<Status(const PjRtTransferMetadata& metadata, PjRtChunk chunk,
-                       size_t total_size_in_bytes, bool done)>
+  std::function<absl::Status(const PjRtTransferMetadata& metadata,
+                             PjRtChunk chunk, size_t total_size_in_bytes,
+                             bool done)>
       callback;
 };
 
@@ -320,21 +322,21 @@ class PjRtExecutable {
   virtual absl::string_view name() const = 0;
 
   // Return an HloModule (optimized) per partition.
-  virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const = 0;
+  virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
+  GetHloModules() const = 0;
 
   // Returns an output Shape per program, the size should be equal to
   // `GetHloModules()`.
-  virtual StatusOr<std::vector<Shape>> GetOutputShapes() const;
+  virtual absl::StatusOr<std::vector<Shape>> GetOutputShapes() const;
 
   // Returns a list of element types for each output, the size of the outer list
   // should be equal to `GetHloModules()`.
-  virtual StatusOr<std::vector<std::vector<PrimitiveType>>>
+  virtual absl::StatusOr<std::vector<std::vector<PrimitiveType>>>
   GetOutputElementTypes() const;
 
   // Returns a list of dimensions for each output, the size of the outer list
   // should be equal to `GetHloModules()`.
-  virtual StatusOr<std::vector<std::vector<DimensionVector>>>
+  virtual absl::StatusOr<std::vector<std::vector<DimensionVector>>>
   GetOutputDimensions() const;
 
   // Returns the layout of each input parameter.
@@ -349,7 +351,7 @@ class PjRtExecutable {
   // value is `[num_programs, num_output]`. The size of the outer list should be
   // equal to `GetHloModules()`. Under SPMD, one can use
   // `GetOutputMemoryKinds().front()`.
-  virtual StatusOr<std::vector<std::vector<absl::string_view>>>
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const = 0;
 
   // Returns a list of parameter OpSharding protos.
@@ -360,38 +362,38 @@ class PjRtExecutable {
 
   // Return memory stats that allow callers to estimate device memory usage
   // when running this executable.
-  virtual StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
+  virtual absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
     return Unimplemented("Retrieving CompiledMemoryStats is not supported.");
   }
 
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
   // differ for different platforms.
-  virtual StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  virtual absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
   GetCostAnalysis() const = 0;
 
   // Serialize this executable into a string and return the value.
-  virtual StatusOr<std::string> SerializeExecutable() const {
+  virtual absl::StatusOr<std::string> SerializeExecutable() const {
     return Unimplemented("Serializing executable is not supported.");
   }
 
   // Return a fingerprint of this executable.
-  virtual StatusOr<std::string> FingerprintExecutable() const {
+  virtual absl::StatusOr<std::string> FingerprintExecutable() const {
     return Unimplemented("Fingerprinting executable is not supported.");
   }
 
-  virtual StatusOr<struct CompileOptions> GetCompileOptions() const {
+  virtual absl::StatusOr<struct CompileOptions> GetCompileOptions() const {
     return Unimplemented("CompileOptions not available.");
   }
 };
 
 class PjRtExecutableUtil {
  public:
-  static StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  static absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
   RunHloCostAnalysis(const PjRtExecutable& executable,
                      HloCostAnalysis* hlo_cost_analysis);
 
-  static StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  static absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
   RunHloCostAnalysis(
       const std::vector<std::shared_ptr<xla::HloModule>>& hlo_modules,
       HloCostAnalysis* hlo_cost_analysis);

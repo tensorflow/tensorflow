@@ -56,7 +56,7 @@ class PjRtTestTopology : public PjRtTopologyDescription {
       const override {
     LOG(FATAL) << "Unused";
   }
-  StatusOr<Layout> GetDefaultLayout(
+  absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override {
     return Unimplemented("TestTopology does not support GetDefaultLayout");
@@ -90,7 +90,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
         const override {
       LOG(FATAL) << "Unused";
     }
-    StatusOr<Layout> GetDefaultLayout(
+    absl::StatusOr<Layout> GetDefaultLayout(
         PrimitiveType element_type,
         absl::Span<const int64_t> dims) const override {
       return Unimplemented("TestTopology does not support GetDefaultLayout");
@@ -100,12 +100,12 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
 
   class PjRtTestCompiler : public PjRtCompiler {
    public:
-    StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+    absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
         CompileOptions options, const XlaComputation& computation,
         const PjRtTopologyDescription& topology, PjRtClient* client) override {
       return tsl::errors::Unimplemented("test compiler!");
     }
-    StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+    absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
         CompileOptions options, mlir::ModuleOp module,
         const PjRtTopologyDescription& topology, PjRtClient* client) override {
       return tsl::errors::Unimplemented("test compiler!");

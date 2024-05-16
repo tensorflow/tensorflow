@@ -70,7 +70,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
       /*gpu_run_options=*/nullptr);
 }
 
-StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
     PjRtStreamExecutorClient& client, Shape shape,
     absl::AnyInvocable<void(XlaBuilder&)> set_up_aliases) {
   CompileOptions compile_options;
@@ -88,7 +88,7 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
   return executable;
 }
 
-Status ExecuteWithSameInputBuffer(
+absl::Status ExecuteWithSameInputBuffer(
     absl::AnyInvocable<void(XlaBuilder&)> set_up_aliases) {
   auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
   TF_ASSIGN_OR_RETURN(auto client, GetClient());

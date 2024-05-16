@@ -72,7 +72,7 @@ void SetOptionOverride(OptionOverrideProto& option, double value) {
 
 }  // namespace
 
-StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
+absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
   CompileOptionsProto output;
   if (argument_layouts.has_value()) {
     for (const auto& layout : *argument_layouts) {
@@ -110,7 +110,7 @@ void CompileOptions::SerializeEnvOptionOverrides(
   }
 }
 
-StatusOr<CompileOptions> CompileOptions::FromProto(
+absl::StatusOr<CompileOptions> CompileOptions::FromProto(
     const CompileOptionsProto& proto) {
   if (!proto.serialized_multi_slice_config().empty()) {
     return Unimplemented(
@@ -365,7 +365,7 @@ std::optional<std::vector<OpSharding>> PjRtExecutable::GetParameterShardings()
   return out;
 }
 
-StatusOr<std::vector<Shape>> PjRtExecutable::GetOutputShapes() const {
+absl::StatusOr<std::vector<Shape>> PjRtExecutable::GetOutputShapes() const {
   TF_ASSIGN_OR_RETURN(auto modules, GetHloModules());
   std::vector<Shape> output_shapes;
   output_shapes.reserve(modules.size());
@@ -375,7 +375,7 @@ StatusOr<std::vector<Shape>> PjRtExecutable::GetOutputShapes() const {
   return output_shapes;
 }
 
-StatusOr<std::vector<std::vector<PrimitiveType>>>
+absl::StatusOr<std::vector<std::vector<PrimitiveType>>>
 PjRtExecutable::GetOutputElementTypes() const {
   TF_ASSIGN_OR_RETURN(auto output_shapes, GetOutputShapes());
   std::vector<std::vector<PrimitiveType>> output_element_types;
@@ -403,7 +403,7 @@ PjRtExecutable::GetOutputElementTypes() const {
   return output_element_types;
 }
 
-StatusOr<std::vector<std::vector<DimensionVector>>>
+absl::StatusOr<std::vector<std::vector<DimensionVector>>>
 PjRtExecutable::GetOutputDimensions() const {
   TF_ASSIGN_OR_RETURN(auto output_shapes, GetOutputShapes());
   std::vector<std::vector<DimensionVector>> output_dimensions;
@@ -483,7 +483,7 @@ PjRtExecutable::GetOutputLayouts() const {
   return result;
 }
 
-StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
 PjRtExecutableUtil::RunHloCostAnalysis(const PjRtExecutable& executable,
                                        HloCostAnalysis* hlo_cost_analysis) {
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> modules,
@@ -502,7 +502,7 @@ PjRtExecutableUtil::RunHloCostAnalysis(const PjRtExecutable& executable,
   return RunHloCostAnalysis(modules, hlo_cost_analysis);
 }
 
-StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
 PjRtExecutableUtil::RunHloCostAnalysis(
     const std::vector<std::shared_ptr<xla::HloModule>>& hlo_modules,
     HloCostAnalysis* hlo_cost_analysis) {
@@ -524,7 +524,8 @@ PjRtExecutableUtil::RunHloCostAnalysis(
   return ret;
 }
 
-StatusOr<std::vector<std::pair<std::string, CompileOptions::OptionOverride>>>
+absl::StatusOr<
+    std::vector<std::pair<std::string, CompileOptions::OptionOverride>>>
 CompileOptions::LoadEnvOptionOverrides(
     const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
         env_option_overrides) {
@@ -558,8 +559,8 @@ CompileOptions::LoadEnvOptionOverrides(
   return result;
 }
 
-Status CompileOptions::ApplyOption(const std::string& key,
-                                   const OptionOverride& value) {
+absl::Status CompileOptions::ApplyOption(const std::string& key,
+                                         const OptionOverride& value) {
   if (auto* xla_field = xla::DebugOptions::descriptor()->FindFieldByName(key)) {
     xla::DebugOptions& debug_options =
         *executable_build_options.mutable_debug_options();
@@ -607,14 +608,14 @@ Status CompileOptions::ApplyOption(const std::string& key,
   }
 }
 
-Status CompileOptions::ApplyAllOptionOverrides() {
+absl::Status CompileOptions::ApplyAllOptionOverrides() {
   for (auto& option : env_option_overrides) {
     TF_RETURN_IF_ERROR(ApplyOption(option.first, option.second));
   }
   return OkStatus();
 }
 
-Status CompileOptions::ApplyOptionFromString(
+absl::Status CompileOptions::ApplyOptionFromString(
     const tsl::protobuf::FieldDescriptor* field, const std::string& value) {
   xla::DebugOptions& debug_options =
       *executable_build_options.mutable_debug_options();

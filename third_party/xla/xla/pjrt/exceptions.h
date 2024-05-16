@@ -33,7 +33,7 @@ namespace xla {
 // Python code instead of RuntimeError.
 class XlaRuntimeError : public std::runtime_error {
  public:
-  explicit XlaRuntimeError(Status status)
+  explicit XlaRuntimeError(absl::Status status)
       : std::runtime_error(StatusToString(status)), status_(status) {
     CHECK(!status_->ok());
   }
@@ -43,7 +43,7 @@ class XlaRuntimeError : public std::runtime_error {
   std::optional<Status> status() const { return status_; }
 
  private:
-  static std::string StatusToString(const Status& st) {
+  static std::string StatusToString(const absl::Status& st) {
     if (!ShowStackTraces()) {
       return st.ToString(absl::StatusToStringMode::kWithNoExtraData);
     }

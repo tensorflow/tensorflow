@@ -91,14 +91,14 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
 }
 
 LocalDeviceState::~LocalDeviceState() {
-  Status status = SynchronizeAllActivity();
+  absl::Status status = SynchronizeAllActivity();
   if (!status.ok()) {
     LOG(ERROR) << "Error when closing device: " << status;
   }
 }
 
-Status LocalDeviceState::SynchronizeAllActivity() {
-  Status status;
+absl::Status LocalDeviceState::SynchronizeAllActivity() {
+  absl::Status status;
   // TODO(phawkins): in theory the call to SynchronizeAllActivity below should
   // suffice. However on the Host platform SynchronizeAllActivity is a dummy
   // implementation that doesn't actually block. To make sure activity has
@@ -121,7 +121,7 @@ Status LocalDeviceState::SynchronizeAllActivity() {
   return status;
 }
 
-Status LocalDeviceState::ThenMemcpyDeviceToDevice(
+absl::Status LocalDeviceState::ThenMemcpyDeviceToDevice(
     se::Stream* transfer_stream, se::Stream* dst_stream,
     se::DeviceMemoryBase src_buffer, se::DeviceMemoryBase dst_buffer) {
   // The default implementation simply calls MemcpyD2D, and assumes that
@@ -175,7 +175,7 @@ se::Stream* LocalDeviceState::GetExternalReadyEventStream() {
   return external_ready_event_streams_.at(i).get();
 }
 
-StatusOr<se::Stream*> LocalDeviceState::GetStreamFromExternalStream(
+absl::StatusOr<se::Stream*> LocalDeviceState::GetStreamFromExternalStream(
     std::intptr_t stream) {
   // TODO(skyewm): replace with map lookup if performance is an issue (currently
   // it just iterates over 4 streams).

@@ -146,7 +146,7 @@ class PjRtTopologyDescription {
   // default layout is used for program arguments and outputs unless
   // user-specified or compiler-chosen layouts are requested via the
   // "mhlo.layout_mode" attribute.
-  virtual StatusOr<Layout> GetDefaultLayout(
+  virtual absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) const = 0;
 };
 
@@ -157,12 +157,12 @@ class PjRtCompiler {
 
   // Compiles the 'computation' and returns a 'PjRtExecutable'. The returned
   // PjRtExecutable must be loaded by a compatible client before execution.
-  virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, const XlaComputation& computation,
       const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
 
   // Variant of `Compile` that accepts an MLIR module.
-  virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, mlir::ModuleOp module,
       const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
 };
@@ -183,12 +183,12 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
 // Returns error::NotFound if a compiler has not been registered for the
 // platform. Forwards errors returned from the registered compiler in case of a
 // compilation failure.
-StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
 
 // Variant of `PjRtCompile` that accepts an MLIR module.
-StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, mlir::ModuleOp module,
     const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
 
