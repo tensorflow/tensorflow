@@ -199,7 +199,6 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kCustomFusion;
   }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (fusion_backend_config_.kind() == kTritonGemmFusionKind ||
       fusion_backend_config_.kind() == kTritonSoftmaxFusionKind) {
     return EmitterFusionKind::kTriton;
@@ -208,7 +207,6 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
   if (fusion_backend_config_.kind() == kCuDnnFusionKind) {
     return EmitterFusionKind::kCuDnn;
   }
-#endif
 
   if (input_output_info_.smallest_input_dtype_bits < 8 ||
       input_output_info_.smallest_output_dtype_bits < 8) {
