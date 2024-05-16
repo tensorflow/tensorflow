@@ -27,7 +27,7 @@ namespace {
 using ::testing::EqualsProto;
 
 template <typename MessageType>
-StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {
+absl::StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {
   tsl::protobuf::TextFormat::Parser parser;
   MessageType parsed_proto;
   tsl::protobuf::io::ArrayInputStream input_stream(text_proto.data(),

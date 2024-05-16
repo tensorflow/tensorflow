@@ -76,9 +76,9 @@ using LoopVariantParameterInfo =
 
 // Update all control dependencies for a cloned instruction to connect other
 // cloned instructions rather than originals.
-Status UpdateControlDependencies(HloInstruction* original,
-                                 HloInstruction* new_instr,
-                                 const InstructionMap& cloned_map) {
+absl::Status UpdateControlDependencies(HloInstruction* original,
+                                       HloInstruction* new_instr,
+                                       const InstructionMap& cloned_map) {
   for (auto* pred : original->control_predecessors()) {
     auto it = cloned_map.find(pred);
     if (it == cloned_map.end()) {
@@ -1176,14 +1176,12 @@ HloInstruction* CreateZero(HloComputation* comp, const Shape& shape,
 // }
 // xg_last = all-reduce(x)
 // yg_last = all-reduce(y)
-Status TransformLoopForward(const WhileLoopAnalysis& loop_analysis,
-                            bool insert_non_alias_custom_call,
-                            int64_t level_to_operate_on, bool pipeline_use_tree,
-                            bool process_different_sized_ops,
-                            HloPredicate should_process,
-                            HloPredicate acceptable_formatting,
-                            HloPredicate reuse_output_buffer,
-                            int64_t& next_channel_id) {
+absl::Status TransformLoopForward(
+    const WhileLoopAnalysis& loop_analysis, bool insert_non_alias_custom_call,
+    int64_t level_to_operate_on, bool pipeline_use_tree,
+    bool process_different_sized_ops, HloPredicate should_process,
+    HloPredicate acceptable_formatting, HloPredicate reuse_output_buffer,
+    int64_t& next_channel_id) {
   // Defining some maps/sets to keep track of instructions duplicated.
   InstructionMap while_body_to_peeled;
   absl::flat_hash_set<HloInstruction*> to_skip_set;
@@ -1584,13 +1582,13 @@ Status TransformLoopForward(const WhileLoopAnalysis& loop_analysis,
 // }
 // xg_all = all-reduce(x_all)
 // yg_all = all-reduce(y_all)
-Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
-                                bool insert_non_alias_custom_call,
-                                int64_t level_to_operate_on,
-                                bool pipeline_use_tree,
-                                bool process_different_sized_ops,
-                                HloPredicate should_process,
-                                int64_t& next_channel_id) {
+absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
+                                      bool insert_non_alias_custom_call,
+                                      int64_t level_to_operate_on,
+                                      bool pipeline_use_tree,
+                                      bool process_different_sized_ops,
+                                      HloPredicate should_process,
+                                      int64_t& next_channel_id) {
   // Defining some maps/sets to keep track of instructions duplicated.
   absl::flat_hash_map<HloInstruction*, int64_t> is_output_instruction;
   absl::flat_hash_map<const HloInstruction*, bool> invariant_cache;
@@ -2082,7 +2080,7 @@ Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
 //   x_ag = p0_ag_next
 // }
 // x_last = computation(p0_ag_next)
-static Status TransformLoopBackward(
+static absl::Status TransformLoopBackward(
     const WhileLoopAnalysis& loop_analysis, bool insert_non_alias_custom_call,
     int64_t level_to_operate_on, bool process_different_sized_ops,
     HloPredicate should_process, HloPredicate acceptable_formatting,

@@ -239,7 +239,8 @@ std::optional<HloInstruction*> FindAnnotationFromDUS(HloInstruction* hlo) {
 
 }  // namespace
 
-Status HostOffloader::HandleMoveToHostCustomCall(HloInstruction* custom_call) {
+absl::Status HostOffloader::HandleMoveToHostCustomCall(
+    HloInstruction* custom_call) {
   VLOG(2) << "Found a custom call annotating start-of-host-offload: "
           << custom_call->ToString();
   // Save a pointer to this custom call for when we want to remove it later.
@@ -279,7 +280,7 @@ Status HostOffloader::HandleMoveToHostCustomCall(HloInstruction* custom_call) {
   return OkStatus();
 }
 
-Status HostOffloader::MemoryOnlyOffloadStartingWithDus(
+absl::Status HostOffloader::MemoryOnlyOffloadStartingWithDus(
     const HloInstruction* dynamic_update_slice) {
   // The user wants to offload the data defined by this dynamic-update-slice.
   VLOG(2) << "Host memory offload starts with a dynamic-update-slice: "
@@ -435,7 +436,7 @@ void HostOffloader::AddAllPositionsToBeMovedToHostMemory(
   }
 }
 
-Status HostOffloader::MemoryOnlyOffloadStartingWithCopy(
+absl::Status HostOffloader::MemoryOnlyOffloadStartingWithCopy(
     const HloInstruction* copy) {
   // The user wants to offload the data defined by this copy.
   VLOG(2) << "Host memory offload starts with a copy: " << copy->name();
@@ -518,7 +519,7 @@ Status HostOffloader::MemoryOnlyOffloadStartingWithCopy(
   return OkStatus();
 }
 
-Status HostOffloader::MemoryOnlyOffloadInsertCopies(
+absl::Status HostOffloader::MemoryOnlyOffloadInsertCopies(
     HloInstruction* custom_call) {
   VLOG(3) << "Found an offload annotation (" << custom_call->name()
           << "). Expecting that we'll need to insert copies";
@@ -556,7 +557,7 @@ Status HostOffloader::MemoryOnlyOffloadInsertCopies(
   return OkStatus();
 }
 
-Status HostOffloader::DynamifySlice(HloInstruction* slice) {
+absl::Status HostOffloader::DynamifySlice(HloInstruction* slice) {
   VLOG(3) << "Dynamifying slice " << slice->ToString();
   std::vector<HloInstruction*> start_constants;
   for (int64_t start : slice->slice_starts()) {
@@ -582,7 +583,8 @@ Status HostOffloader::DynamifySlice(HloInstruction* slice) {
 // Taking an instruction representing a move-to-device custom call, creates a
 // copy to device for that operand and replaces all uses of the operand of the
 // load annotation with the copy.
-Status HostOffloader::CreateCopyForInputStreaming(HloInstruction* custom_call) {
+absl::Status HostOffloader::CreateCopyForInputStreaming(
+    HloInstruction* custom_call) {
   HloInstruction* operand_of_load_annotation = custom_call->mutable_operand(0);
   Shape copy_shape = operand_of_load_annotation->shape();
   SetMemorySpace(&copy_shape, Layout::kDefaultMemorySpace);
@@ -631,7 +633,8 @@ Status HostOffloader::CreateCopyForInputStreaming(HloInstruction* custom_call) {
 
 // From a unique buffer on host memory, finds move-to-device custom calls
 // for this buffer and inserts the appropriate copies.
-Status HostOffloader::HandleStreamedBuffer(const HloBuffer& unique_buffer) {
+absl::Status HostOffloader::HandleStreamedBuffer(
+    const HloBuffer& unique_buffer) {
   // Find all move-to-device custom calls that are using this buffer.
   for (const HloValue* value : unique_buffer.values()) {
     // First, handle the defining instruction of this buffer, as a potential
@@ -684,7 +687,7 @@ Status HostOffloader::HandleStreamedBuffer(const HloBuffer& unique_buffer) {
 // corresponding move-to-device custom calls for these parameters. Once found,
 // adds these move-to-device custom calls to the expected host-to-device
 // annotations, and creates the necessary copies for input streaming.
-Status HostOffloader::HandleInputStreaming(HloComputation* computation) {
+absl::Status HostOffloader::HandleInputStreaming(HloComputation* computation) {
   const ComputationLayout& entry_computation_layout =
       computation->parent()->entry_computation_layout();
 
@@ -712,7 +715,7 @@ Status HostOffloader::HandleInputStreaming(HloComputation* computation) {
 // Starts from the result of the entry computation and looks for a case of
 // output streaming. This function will not change any hlo, it will only mark
 // instructions to be converted to host memory space.
-Status HostOffloader::HandleOutputStreaming(HloComputation* computation) {
+absl::Status HostOffloader::HandleOutputStreaming(HloComputation* computation) {
   const ComputationLayout& entry_computation_layout =
       computation->parent()->entry_computation_layout();
 

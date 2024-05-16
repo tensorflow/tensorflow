@@ -79,7 +79,8 @@ GpuCompilationEnvironment CreateGpuCompEnvWithDefaultValues() {
   return env;
 }
 
-Status InitializeMissingFieldsFromXLAFlags(GpuCompilationEnvironment& env) {
+absl::Status InitializeMissingFieldsFromXLAFlags(
+    GpuCompilationEnvironment& env) {
   TF_ASSIGN_OR_RETURN(GpuCompilationEnvironment from_env,
                       CreateGpuCompEnvFromEnvVar());
 

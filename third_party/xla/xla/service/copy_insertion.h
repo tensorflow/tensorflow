@@ -72,7 +72,7 @@ class CopyInsertion : public HloModulePass {
   // eligible for copy elision are considered for removal.
   // If check_live_range_ordering is true, check that live ranges are ordered
   // in all the existing aliased buffers.
-  Status RemoveUnnecessaryCopies(
+  absl::Status RemoveUnnecessaryCopies(
       HloModule* module, bool check_live_range_ordering = false,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
@@ -86,27 +86,27 @@ class CopyInsertion : public HloModulePass {
   //
   //    (3) Constants and parameters cannot be live out of the entry computation
   //
-  Status AddSpecialCaseCopies(
+  absl::Status AddSpecialCaseCopies(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
  protected:
   // Override which requires the caller to pass in a call graph.
-  virtual Status AddSpecialCaseCopies(
+  virtual absl::Status AddSpecialCaseCopies(
       const CallGraph& call_graph,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       HloModule* module);
 
   // Add copies for conditional instructions.
-  virtual Status AddCopiesForConditional(const HloAliasAnalysis& alias_analysis,
-                                         HloInstruction* conditional);
+  virtual absl::Status AddCopiesForConditional(
+      const HloAliasAnalysis& alias_analysis, HloInstruction* conditional);
 
   // Backend specific function that decides whether an instruction can share
   // buffer with its operand.
   HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
 
  private:
-  Status AddCopiesToResolveInterference(
+  absl::Status AddCopiesToResolveInterference(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
   int64_t use_region_based_live_range_analysis_;

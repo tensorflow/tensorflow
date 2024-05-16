@@ -673,7 +673,7 @@ WhileInitContext CreateNewWhileInit(
 // When moving reduce-scatter outside the while body, change the associated
 // accumulation buffers to use the shape of the operand of the reduce-scatter
 // (i.e., the pre-scatter shape).
-Status ChangeAccumulatorShapesInLoopBodies(
+absl::Status ChangeAccumulatorShapesInLoopBodies(
     HloInstruction* old_while_instruction,
     const HloInstructionMap<std::vector<AccumulationContext>>&
         all_reduce_to_accumulations) {
@@ -893,7 +893,7 @@ HloInstruction* CreateNewWhileResult(
 // The all-reduce outputs are then added to the original accumulation buffers.
 // Creates a tuple that groups the while loop output and the accumulated
 // buffers and replaces all uses of the old while with this new tuple.
-Status AddSinkedAllReducesAndReplaceWhile(
+absl::Status AddSinkedAllReducesAndReplaceWhile(
     HloInstruction* while_instruction,
     const HloInstructionMap<std::vector<AccumulationContext>>&
         all_reduce_to_accumulations) {

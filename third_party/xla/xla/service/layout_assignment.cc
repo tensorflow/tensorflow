@@ -266,11 +266,11 @@ bool LayoutAssignment::AllOperandBuffersForwarded(
   });
 }
 
-Status LayoutAssignment::SetBufferLayout(const Layout& layout,
-                                         const LogicalBuffer& buffer,
-                                         bool mandatory, bool dfs,
-                                         int64_t priority,
-                                         const HloInstruction* user) {
+absl::Status LayoutAssignment::SetBufferLayout(const Layout& layout,
+                                               const LogicalBuffer& buffer,
+                                               bool mandatory, bool dfs,
+                                               int64_t priority,
+                                               const HloInstruction* user) {
   VLOG(3) << "SetBufferLayout : " << buffer << " : "
           << LayoutUtil::HumanString(layout) << " with priority " << priority
           << "; mandatory = " << mandatory << "; dfs = " << dfs << "\n";
@@ -341,10 +341,9 @@ Status LayoutAssignment::SetBufferLayout(const Layout& layout,
   return OkStatus();
 }
 
-Status LayoutAssignment::SetOperandLayout(const Shape& shape_with_layout,
-                                          const HloInstruction* instruction,
-                                          int64_t operand_no, bool mandatory,
-                                          bool dfs, int64_t priority) {
+absl::Status LayoutAssignment::SetOperandLayout(
+    const Shape& shape_with_layout, const HloInstruction* instruction,
+    int64_t operand_no, bool mandatory, bool dfs, int64_t priority) {
   if (shape_with_layout.IsArray() && shape_with_layout.rank() == 0) {
     return OkStatus();
   }
@@ -419,7 +418,7 @@ void LayoutAssignment::PushAddedConstraints(
   }
 }
 
-Status LayoutAssignment::SetArrayOperandLayout(
+absl::Status LayoutAssignment::SetArrayOperandLayout(
     const Layout& layout, const HloInstruction* instruction, int64_t operand_no,
     bool mandatory, bool dfs, int64_t priority) {
   const HloInstruction* operand = instruction->operand(operand_no);
@@ -431,7 +430,7 @@ Status LayoutAssignment::SetArrayOperandLayout(
                           priority);
 }
 
-Status LayoutAssignment::LayoutConstraints::SetResultLayout(
+absl::Status LayoutAssignment::LayoutConstraints::SetResultLayout(
     LayoutAssignment* assignment, const Shape& shape_with_layout,
     int64_t priority) {
   VLOG(3) << "  : " << ShapeUtil::HumanStringWithLayout(shape_with_layout)
@@ -443,11 +442,9 @@ Status LayoutAssignment::LayoutConstraints::SetResultLayout(
   return OkStatus();
 }
 
-Status LayoutAssignment::SetInstructionLayout(const Layout& layout,
-                                              const HloInstruction* instruction,
-                                              bool mandatory, bool dfs,
-                                              bool allow_alias,
-                                              int64_t priority) {
+absl::Status LayoutAssignment::SetInstructionLayout(
+    const Layout& layout, const HloInstruction* instruction, bool mandatory,
+    bool dfs, bool allow_alias, int64_t priority) {
   if (priority < 0) {
     priority = current_priority_;
   }
@@ -467,7 +464,7 @@ Status LayoutAssignment::SetInstructionLayout(const Layout& layout,
   return ShapeUtil::ForEachSubshapeWithStatus(
       instruction->shape(),
       [this, layout, instruction, mandatory, allow_alias, priority](
-          const Shape& subshape, const ShapeIndex& index) -> Status {
+          const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         auto buffers =
             points_to_analysis_->GetPointsToSet(instruction).element(index);
         CHECK_EQ(1, buffers.size());
@@ -483,11 +480,9 @@ Status LayoutAssignment::SetInstructionLayout(const Layout& layout,
       });
 }
 
-Status LayoutAssignment::SetInstructionLayout(const Shape& shape_with_layout,
-                                              const HloInstruction* instruction,
-                                              bool mandatory, bool dfs,
-                                              bool allow_alias,
-                                              int64_t priority) {
+absl::Status LayoutAssignment::SetInstructionLayout(
+    const Shape& shape_with_layout, const HloInstruction* instruction,
+    bool mandatory, bool dfs, bool allow_alias, int64_t priority) {
   VLOG(3) << "SetInstructionLayout : " << instruction->name() << ", "
           << ShapeUtil::HumanStringWithLayout(shape_with_layout)
           << ": priority = " << priority << " : mandatory = " << mandatory
@@ -505,7 +500,7 @@ Status LayoutAssignment::SetInstructionLayout(const Shape& shape_with_layout,
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       shape_with_layout,
       [this, dfs, instruction, mandatory, allow_alias, priority](
-          const Shape& subshape, const ShapeIndex& index) -> Status {
+          const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         auto buffers =
             points_to_analysis_->GetPointsToSet(instruction).element(index);
         CHECK_EQ(1, buffers.size());
@@ -614,7 +609,7 @@ bool IsHostSendRecv(const HloInstruction* instruction) {
 
 }  // namespace
 
-Status LayoutAssignment::BuildHostChannelConstraints(
+absl::Status LayoutAssignment::BuildHostChannelConstraints(
     HloComputation* computation) {
   for (auto* instruction : computation->instructions()) {
     const HloSendRecvInstruction* send_recv_instr =
@@ -649,9 +644,9 @@ bool IsLayoutConstrainedCustomCall(HloInstruction* instruction) {
   return custom_call != nullptr && custom_call->layout_constrained();
 }
 
-Status PropagateParameterLayoutToUsers(const HloInstruction* instruction,
-                                       const Shape& shape,
-                                       LayoutAssignment* constraints) {
+absl::Status PropagateParameterLayoutToUsers(const HloInstruction* instruction,
+                                             const Shape& shape,
+                                             LayoutAssignment* constraints) {
   for (auto* user : instruction->users()) {
     // Excluding tuple operations as they do not participate in layout
     // propagations (they do not create or aliase buffers).
@@ -679,7 +674,7 @@ Status PropagateParameterLayoutToUsers(const HloInstruction* instruction,
 
 }  // namespace
 
-Status LayoutAssignment::AddMandatoryConstraints(
+absl::Status LayoutAssignment::AddMandatoryConstraints(
     ChannelLayoutConstraints* channel_constraints,
     LayoutConstraints* constraints) {
   VLOG(2) << "Adding mandatory layout constraints to computation "
@@ -968,7 +963,7 @@ bool LayoutsInShapesEqual(const Shape& lhs, const Shape& rhs) {
 
 // Operands of layout-constrained custom calls must match the expected
 // constrained layouts.
-Status CheckCustomCallLayout(HloInstruction* instruction) {
+absl::Status CheckCustomCallLayout(HloInstruction* instruction) {
   if (IsLayoutConstrainedCustomCall(instruction)) {
     const HloCustomCallInstruction* custom_call =
         DynCast<HloCustomCallInstruction>(instruction);
@@ -987,9 +982,10 @@ Status CheckCustomCallLayout(HloInstruction* instruction) {
 //   (3) body computation parameter
 //   (4) body computation result
 //   (5) while instruction result
-Status CheckWhileLayout(HloInstruction* while_inst,
-                        const ComputationLayout& condition_computation_layout,
-                        const ComputationLayout& body_computation_layout) {
+absl::Status CheckWhileLayout(
+    HloInstruction* while_inst,
+    const ComputationLayout& condition_computation_layout,
+    const ComputationLayout& body_computation_layout) {
   auto init_shape = while_inst->operand(0)->shape();
   TF_RET_CHECK(
       condition_computation_layout.parameter_layout(0).MatchesLayoutInShape(
@@ -1002,12 +998,12 @@ Status CheckWhileLayout(HloInstruction* while_inst,
   return OkStatus();
 }
 
-Status CheckOptimizationBarrierLayout(HloInstruction* inst) {
+absl::Status CheckOptimizationBarrierLayout(HloInstruction* inst) {
   TF_RET_CHECK(LayoutsInShapesEqual(inst->operand(0)->shape(), inst->shape()));
   return OkStatus();
 }
 
-Status CheckConditionalLayout(
+absl::Status CheckConditionalLayout(
     HloInstruction* instruction,
     absl::Span<const ComputationLayout> branch_computation_layouts) {
   for (int j = 0; j < instruction->branch_count(); ++j) {
@@ -1035,7 +1031,7 @@ Status CheckConditionalLayout(
 // Fusion parameters must match the layout of the fusion instructions operands,
 // and the root of the fusion expression must match the layout of the fusion
 // instruction.
-Status CheckFusionLayout(HloInstruction* fusion) {
+absl::Status CheckFusionLayout(HloInstruction* fusion) {
   TF_RET_CHECK(HloOpcode::kFusion == fusion->opcode());
 
   TF_RET_CHECK(LayoutsInShapesEqual(fusion->shape(),
@@ -1049,8 +1045,8 @@ Status CheckFusionLayout(HloInstruction* fusion) {
 
 // The layout of a parameter must match the respective layout in the
 // computation's ComputationLayout.
-Status CheckParameterLayout(HloInstruction* parameter,
-                            const ComputationLayout& computation_layout) {
+absl::Status CheckParameterLayout(HloInstruction* parameter,
+                                  const ComputationLayout& computation_layout) {
   const ShapeLayout& parameter_layout =
       computation_layout.parameter_layout(parameter->parameter_number());
   return ShapeUtil::ForEachSubshapeWithStatus(
@@ -1074,7 +1070,7 @@ Status CheckParameterLayout(HloInstruction* parameter,
 }
 
 // The layout of a constant instruction must match the layout of its literal.
-Status CheckConstantLayout(HloInstruction* constant) {
+absl::Status CheckConstantLayout(HloInstruction* constant) {
   if (!LayoutsInShapesEqual(constant->literal().shape(), constant->shape())) {
     return Internal(
         "constant instruction %s does not match the layout of its literal %s",
@@ -1097,7 +1093,7 @@ Layout GetBroadcastLayoutFromOutput(const Layout& layout,
   return shape.layout();
 }
 
-Status CheckBroadcastLayout(HloInstruction* broadcast) {
+absl::Status CheckBroadcastLayout(HloInstruction* broadcast) {
   CHECK_EQ(broadcast->opcode(), HloOpcode::kBroadcast);
   Shape shape = ShapeUtil::FilterDimensions(
       [&](int64_t dim) {
@@ -1114,7 +1110,7 @@ Status CheckBroadcastLayout(HloInstruction* broadcast) {
 
 }  // namespace
 
-Status LayoutAssignment::CheckCallLayout(
+absl::Status LayoutAssignment::CheckCallLayout(
     HloInstruction* call, const ComputationLayout& computation_layout) {
   HloComputation* computation = call->to_apply();
   TF_RET_CHECK(computation->num_parameters() == call->operand_count());
@@ -1188,7 +1184,7 @@ absl::StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
 // Creates a copy of the given operand if the operand's layout does not match
 // the given layout. This copy replaces the use in the given instruction. Tuple
 // operands will be deep-copied.
-Status LayoutAssignment::CopyOperandIfLayoutsDiffer(
+absl::Status LayoutAssignment::CopyOperandIfLayoutsDiffer(
     const ShapeLayout& operand_layout, HloInstruction* instruction,
     int64_t operand_no) {
   HloInstruction* operand = instruction->mutable_operand(operand_no);
@@ -1269,7 +1265,7 @@ void LayoutAssignment::SetupCopiedInstruction(const HloInstruction& instruction,
   copy->set_frontend_attributes(instruction.frontend_attributes());
 }
 
-Status LayoutAssignment::CheckLayouts(
+absl::Status LayoutAssignment::CheckLayouts(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(auto points_to_analysis,
@@ -1288,8 +1284,9 @@ Status LayoutAssignment::CheckLayouts(
       const PointsToSet& points_to_set =
           points_to_analysis->GetPointsToSet(instruction);
       TF_RETURN_IF_ERROR(points_to_set.ForEachElementWithStatus(
-          [&instruction](ShapeIndex index,
-                         const PointsToSet::BufferList& buffers) -> Status {
+          [&instruction](
+              ShapeIndex index,
+              const PointsToSet::BufferList& buffers) -> absl::Status {
             if (ShapeUtil::IsLeafIndex(instruction->shape(), index)) {
               const Shape& instruction_subshape =
                   ShapeUtil::GetSubshape(instruction->shape(), index);
@@ -1602,7 +1599,8 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
   return nullptr;
 }
 
-Status LayoutAssignment::PropagateConstraints(LayoutConstraints* constraints) {
+absl::Status LayoutAssignment::PropagateConstraints(
+    LayoutConstraints* constraints) {
   // Gathers all initial constraints in a worklist and propagates them in
   // depth-first order. DFS order seems to be better than BFS because a
   // constraint is propagated as far as possible before propagating unrelated
@@ -1683,7 +1681,7 @@ std::vector<std::pair<const HloInstruction*, int64_t>> GetArrayUsesOfBuffer(
 
 }  // namespace
 
-Status LayoutAssignment::PropagateUseConstraintToDefs(
+absl::Status LayoutAssignment::PropagateUseConstraintToDefs(
     const ShapeLayout& shape_layout, const HloInstruction* instruction,
     LayoutConstraints* constraints, int64_t priority,
     const HloInstruction* user) {
@@ -1694,7 +1692,7 @@ Status LayoutAssignment::PropagateUseConstraintToDefs(
   return points_to_set.ForEachElementWithStatus(
       [&shape_layout, this, priority, user](
           const ShapeIndex& index,
-          const PointsToSet::BufferList& buffers) -> Status {
+          const PointsToSet::BufferList& buffers) -> absl::Status {
         const auto& subshape =
             ShapeUtil::GetSubshape(shape_layout.shape(), index);
         if (ShapeUtil::IsLeafIndex(shape_layout.shape(), index) &&
@@ -1736,7 +1734,7 @@ bool InstructionShouldPropagateDepthFirst(const HloInstruction& hlo) {
 
 }  // namespace
 
-Status LayoutAssignment::PropagateOperandConstraint(
+absl::Status LayoutAssignment::PropagateOperandConstraint(
     const OperandLayoutConstraint& operand_constraint,
     LayoutConstraints* constraints) {
   if (IsAtMostRank1(operand_constraint.operand()->shape())) {
@@ -1900,7 +1898,7 @@ Status LayoutAssignment::PropagateOperandConstraint(
   return OkStatus();
 }
 
-Status LayoutAssignment::PropagateBufferConstraintToOperands(
+absl::Status LayoutAssignment::PropagateBufferConstraintToOperands(
     const BufferLayoutConstraint& buffer_constraint,
     LayoutConstraints* constraints) {
   const LogicalBuffer& buffer = buffer_constraint.buffer();
@@ -1965,7 +1963,7 @@ Status LayoutAssignment::PropagateBufferConstraintToOperands(
   return OkStatus();
 }
 
-Status LayoutAssignment::PropagateBufferConstraint(
+absl::Status LayoutAssignment::PropagateBufferConstraint(
     const BufferLayoutConstraint& buffer_constraint,
     LayoutConstraints* constraints) {
   // Only propagate array layouts.
@@ -1978,7 +1976,7 @@ Status LayoutAssignment::PropagateBufferConstraint(
   return PropagateBufferConstraintToUses(buffer_constraint, constraints);
 }
 
-Status LayoutAssignment::PropagateBufferConstraintToUses(
+absl::Status LayoutAssignment::PropagateBufferConstraintToUses(
     const BufferLayoutConstraint& buffer_constraint,
     LayoutConstraints* constraints) {
   VLOG(5) << "PropagateBufferConstraintToUses: "
@@ -2036,7 +2034,7 @@ Status LayoutAssignment::PropagateBufferConstraintToUses(
   return OkStatus();
 }
 
-Status LayoutAssignment::PropagateResultConstraint(
+absl::Status LayoutAssignment::PropagateResultConstraint(
     const ComputationLayoutConstraint& layout_constraint,
     LayoutConstraints* constraints) {
   ShapeLayout result_layout =
@@ -2112,7 +2110,7 @@ namespace {
 // to match the layout of its corresponding fusion instruction operand. Also,
 // set the layout of the fused root to match the layout of the fusion
 // instruction itself.
-Status SetFusionLayouts(HloInstruction* fusion) {
+absl::Status SetFusionLayouts(HloInstruction* fusion) {
   TF_RET_CHECK(fusion->opcode() == HloOpcode::kFusion);
   for (auto* fused_instruction :
        fusion->fused_instructions_computation()->MakeInstructionPostOrder()) {
@@ -2156,7 +2154,7 @@ Status SetFusionLayouts(HloInstruction* fusion) {
 
 }  // namespace
 
-Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
+absl::Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
   HloComputation* computation = constraints.computation();
   VLOG(2) << "Assigning layouts to computation: " << computation->name();
 
@@ -2284,7 +2282,7 @@ Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
   return OkStatus();
 }
 
-Status LayoutAssignment::CalculateComputationLayout(
+absl::Status LayoutAssignment::CalculateComputationLayout(
     LayoutConstraints* constraints) {
   // Process instructions that contain nested computations and may require
   // additional layouts to be assigned on the instructions nested inside.
@@ -2308,10 +2306,11 @@ Status LayoutAssignment::CalculateComputationLayout(
     return change;
   };
 
-  auto SetCalleeLayout =
-      [this, UpdateLayout](const HloInstruction* result,
-                           absl::Span<const HloInstruction* const> operands,
-                           LayoutConstraints* callee, int priority) -> Status {
+  auto SetCalleeLayout = [this, UpdateLayout](
+                             const HloInstruction* result,
+                             absl::Span<const HloInstruction* const> operands,
+                             LayoutConstraints* callee,
+                             int priority) -> absl::Status {
     CHECK_NE(result, nullptr);
     ComputationLayoutConstraint* callee_constraint =
         callee->mutable_computation_constraint();
@@ -2409,7 +2408,8 @@ Status LayoutAssignment::CalculateComputationLayout(
   return OkStatus();
 }
 
-Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
+absl::Status LayoutAssignment::ClearComputationLayouts(
+    HloComputation* computation) {
   // Clear existing layouts of the instructions.  All layouts must be assigned
   // by the LayoutAssignment pass, except for those on parameters, the
   // computation result, and a couple special cases. The former two are
@@ -2435,7 +2435,7 @@ Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
   return OkStatus();
 }
 
-Status LayoutAssignment::RunOnComputation(
+absl::Status LayoutAssignment::RunOnComputation(
     LayoutConstraints* constraints,
     ChannelLayoutConstraints* channel_constraints) {
   HloComputation* computation = constraints->computation();
@@ -2517,7 +2517,7 @@ Status LayoutAssignment::RunOnComputation(
   return OkStatus();
 }
 
-Status LayoutAssignment::ConstrainChannelLayouts(
+absl::Status LayoutAssignment::ConstrainChannelLayouts(
     HloComputation* computation,
     ChannelLayoutConstraints* channel_constraints) {
   for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
@@ -2532,7 +2532,7 @@ Status LayoutAssignment::ConstrainChannelLayouts(
   return OkStatus();
 }
 
-Status LayoutAssignment::PropagateComputationLayouts(
+absl::Status LayoutAssignment::PropagateComputationLayouts(
     HloComputation* computation, ComputationLayout* computation_layout) {
   ComputationLayout computed_computation_layout(
       computation->ComputeProgramShape(),
@@ -2947,7 +2947,7 @@ bool LayoutAssignment::IsAtMostRank1(const Shape& shape) {
   });
 }
 
-Status LayoutAssignment::Init(HloModule* module) {
+absl::Status LayoutAssignment::Init(HloModule* module) {
   computation_layouts_.clear();
   conditional_mismatch_.clear();
   current_priority_ = LayoutConstraint::kBeginningPriority;
@@ -2978,7 +2978,7 @@ Status LayoutAssignment::Init(HloModule* module) {
   return OkStatus();
 }
 
-Status LayoutAssignment::ClearPreviousPassSideEffects(
+absl::Status LayoutAssignment::ClearPreviousPassSideEffects(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Clearing previous side effects";
@@ -2993,8 +2993,8 @@ Status LayoutAssignment::ClearPreviousPassSideEffects(
   buffer_sets_cache_.clear();
   return OkStatus();
 }
-Status LayoutAssignment::AddCopyForOperand(HloInstruction* instruction,
-                                           int64_t operand_number) {
+absl::Status LayoutAssignment::AddCopyForOperand(HloInstruction* instruction,
+                                                 int64_t operand_number) {
   HloInstruction* operand = instruction->mutable_operand(operand_number);
   if (operand->opcode() != HloOpcode::kCopy || operand->user_count() > 1) {
     HloInstruction* copy =

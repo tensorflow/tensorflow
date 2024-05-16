@@ -117,7 +117,7 @@ BuildIdToLogicalBufferMap(
 
 }  // namespace
 
-Status GatherComputationsByAllocationType(
+absl::Status GatherComputationsByAllocationType(
     const HloModule* module,
     std::vector<const HloComputation*>* thread_local_computations,
     std::vector<const HloComputation*>* global_computations) {
@@ -522,7 +522,7 @@ bool BufferAssignment::HaveDisjointSlices(const HloInstruction* hlo_a,
   // assigned slice, returns the empty set.
   auto collect_slices = [&](const HloInstruction* instr) -> SliceSet {
     SliceSet slices;
-    Status status = ShapeUtil::ForEachSubshapeWithStatus(
+    absl::Status status = ShapeUtil::ForEachSubshapeWithStatus(
         instr->shape(),
         [&](const Shape& /*subshape*/,
             const ShapeIndex& index) -> absl::Status {
@@ -723,7 +723,7 @@ void BufferAssignment::CombineTempAllocations(
   }
 }
 
-Status BufferAssignment::ComputeSummaryStats() {
+absl::Status BufferAssignment::ComputeSummaryStats() {
   for (auto& allocation : Allocations()) {
     if (allocation.is_entry_computation_parameter()) {
       stats_.parameter_allocation_count++;
@@ -1277,7 +1277,7 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
   return true;
 }  // namespace xla
 
-Status BufferAssigner::AssignSingleHloBuffer(
+absl::Status BufferAssigner::AssignSingleHloBuffer(
     const HloBuffer* hlo_buffer, bool is_thread_local,
     absl::flat_hash_map<const HloComputation*,
                         absl::flat_hash_set<const HloValue*>>*
@@ -1415,7 +1415,7 @@ Status BufferAssigner::AssignSingleHloBuffer(
   return OkStatus();
 }
 
-Status BufferAssigner::AssignBuffersForComputations(
+absl::Status BufferAssigner::AssignBuffersForComputations(
     const std::vector<const HloComputation*>& computations,
     bool is_thread_local,
     absl::flat_hash_map<const HloComputation*,
@@ -1565,7 +1565,7 @@ BufferAssigner::SplitBuffersByPrivateStackComputation(
   return computation_map;
 }
 
-Status BufferAssigner::AssignPresetBuffers(
+absl::Status BufferAssigner::AssignPresetBuffers(
     absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
     BufferAssignment* assignment) {
   if (!preset_assignments_) {
@@ -1616,7 +1616,7 @@ Status BufferAssigner::AssignPresetBuffers(
   return OkStatus();
 }
 
-Status BufferAssigner::AssignBuffersWithSequentialOrdering(
+absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     const flat_hash_map<const HloComputation*, flat_hash_set<const HloValue*>>&
         buffers_to_assign_sequentially,
     bool run_whole_module_heap_simulation, BufferAssignment* assignment,

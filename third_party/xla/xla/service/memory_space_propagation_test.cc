@@ -29,7 +29,9 @@ class MemorySpacePropagationTest : public HloTestBase {
         verifier_(/*layout_sensitive=*/false, /*allow_mixed_precision*/ false) {
   }
 
-  Status Verify(HloModule* module) { return verifier_.Run(module).status(); }
+  absl::Status Verify(HloModule* module) {
+    return verifier_.Run(module).status();
+  }
 
  private:
   HloVerifier verifier_;

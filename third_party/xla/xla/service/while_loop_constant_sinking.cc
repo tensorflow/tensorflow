@@ -28,10 +28,9 @@ namespace {
 // `while_body_root` (which must be a tuple instruction) at index `tuple_index`.
 // This utility helps us replace an instruction in the while body with a
 // constant while still keeping it trivially loop invariant.
-Status ReplaceUsesWhileKeepingLoopInvariance(HloInstruction* old_instr,
-                                             HloInstruction* new_instr,
-                                             HloInstruction* while_body_root,
-                                             int64_t tuple_index) {
+absl::Status ReplaceUsesWhileKeepingLoopInvariance(
+    HloInstruction* old_instr, HloInstruction* new_instr,
+    HloInstruction* while_body_root, int64_t tuple_index) {
   CHECK_EQ(while_body_root->opcode(), HloOpcode::kTuple);
 
   std::vector<HloInstruction*> users;

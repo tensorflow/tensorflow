@@ -183,7 +183,7 @@ bool IsRemovableWhile(HloInstruction* instruction,
   return changed;
 }
 
-Status HloDCE::RecursivelyRemoveDeadComputation(
+absl::Status HloDCE::RecursivelyRemoveDeadComputation(
     HloModule* module, HloComputation* computation,
     absl::flat_hash_map<HloComputation*, int>& live_call_counts) {
   std::vector<HloComputation*> to_be_deleted;

@@ -25,7 +25,7 @@ namespace {
 
 class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleReshape(HloInstruction* reshape) override {
+  absl::Status HandleReshape(HloInstruction* reshape) override {
     HloInstruction* operand = reshape->mutable_operand(0);
     auto s = reshape->shape();
     auto s0 = operand->shape();

@@ -78,7 +78,7 @@ bool CompatibleDimensionSizes(int64_t size_a, int64_t size_b) {
          size_a == size_b;
 }
 
-Status ExpectArray(const Shape& shape, absl::string_view op_type) {
+absl::Status ExpectArray(const Shape& shape, absl::string_view op_type) {
   if (!shape.IsArray()) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
                            std::string(op_type), ShapeUtil::HumanString(shape));
@@ -86,10 +86,10 @@ Status ExpectArray(const Shape& shape, absl::string_view op_type) {
   return OkStatus();
 }
 
-Status VerifyReducerShape(const ProgramShape& reducer_shape,
-                          absl::Span<const Shape* const> init_value_shapes,
-                          absl::Span<const PrimitiveType> input_element_types,
-                          int64_t inputs) {
+absl::Status VerifyReducerShape(
+    const ProgramShape& reducer_shape,
+    absl::Span<const Shape* const> init_value_shapes,
+    absl::Span<const PrimitiveType> input_element_types, int64_t inputs) {
   if (reducer_shape.parameters_size() != inputs * 2) {
     return InvalidArgument(
         "Reduction function must take %d parameters, but "
@@ -791,7 +791,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 
 namespace {
 
-Status ValidateDotDimensionNumbers(
+absl::Status ValidateDotDimensionNumbers(
     const Shape& lhs, const Shape& rhs,
     const DotDimensionNumbers& dimension_numbers) {
   // Check that dimension numbers are in range.
@@ -850,7 +850,7 @@ Status ValidateDotDimensionNumbers(
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of dot"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of dot"));
 
-  auto fail = [lhs, rhs](const std::string& addendum) -> Status {
+  auto fail = [lhs, rhs](const std::string& addendum) -> absl::Status {
     std::string message =
         StrFormat("Cannot infer shape for dot operation: %s <dot> %s.",
                   ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs));
@@ -3784,7 +3784,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   return to_apply.result();
 }
 
-static Status ValidateGatherDimensionNumbers(
+static absl::Status ValidateGatherDimensionNumbers(
     const Shape& input_shape, absl::Span<const int64_t> start_indices_shape,
     const GatherDimensionNumbers& dim_numbers) {
   if (!absl::c_is_sorted(dim_numbers.offset_dims())) {
@@ -4020,7 +4020,7 @@ static Status ValidateGatherDimensionNumbers(
 
 namespace {
 
-Status ValidateScatterDimensionNumbers(
+absl::Status ValidateScatterDimensionNumbers(
     const Shape& operand_shape, absl::Span<const int64_t> scatter_indices_shape,
     const Shape& updates_shape, const ScatterDimensionNumbers& dim_numbers) {
   // Validate update_window_dims in ScatterDimensionNumbers.

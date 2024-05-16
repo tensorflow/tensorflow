@@ -130,8 +130,8 @@ class ShardingPropagation : public HloModulePass {
   // given domain. It will apply the sharding into the exit edges of the domain
   // and then rely on the rest of sharding propagation to ensure that the
   // intermediate nodes get the correct sharding.
-  static Status NormalizeDomain(const DomainMetadata::Domain& domain,
-                                const DomainMetadata* metadata);
+  static absl::Status NormalizeDomain(const DomainMetadata::Domain& domain,
+                                      const DomainMetadata* metadata);
 
   static std::optional<HloSharding> GetShardingFromUser(
       const HloInstruction& instruction, const HloInstruction& user,
