@@ -297,6 +297,7 @@ INSTANTIATE_TEST_CASE_P(
                           true   // convert_to_static_engine
                       },
                       {{1, 2}, {4, 2}}},
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
             // Implicit batch mode test with convert_to_static_engine=true.
             TestParam{TfTrtConversionParams{
                           1 << 20,  // max workspace size
@@ -310,6 +311,7 @@ INSTANTIATE_TEST_CASE_P(
                           true   // convert_to_static_engine
                       },
                       {{1, 2}}},
+#endif  // !IS_TRT_VERSION_GE(10, 0, 0, 0)
             // Dynamic shape mode test convert_to_static_engine=false: we cannot
             // save the engines, therefore we do not generate profiles. A single
             // engine will be built during runtime, with profile that matches
@@ -326,7 +328,9 @@ INSTANTIATE_TEST_CASE_P(
                           true,  // allow_build_at_runtime
                           false  // convert_to_static_engine
                       },
-                      {{1, 2}, {4, 2}}},
+                      {{1, 2}, {4, 2}}}
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+            ,
             // Implicit batch mode test with convert_to_static_engine=false.
             // We will have two engines in the cache to handle the two shapes.
             TestParam{TfTrtConversionParams{
@@ -340,7 +344,9 @@ INSTANTIATE_TEST_CASE_P(
                           true,  // allow_build_at_runtime
                           false  // convert_to_static_engine
                       },
-                      {{1, 2}, {4, 2}}}),
+                      {{1, 2}, {4, 2}}}
+#endif  // !IS_TRT_VERSION_GE(10, 0, 0, 0)
+        ),
         ::testing::Values(false, true),    // use_variables
         ::testing::Values(false, true)));  // use_function
 
