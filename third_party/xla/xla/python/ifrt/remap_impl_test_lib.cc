@@ -160,7 +160,8 @@ TEST(RemapImplTest, ExtractSingleShard) {
                     MemoryKind(), /*shape=*/Shape({2, 3}),
                     /*shard_shape=*/Shape({2, 3}))});
   // arrays[0].shards[1:2:1] is mapped into out_arrays[0].shards[0:1:1].
-  plan.mappings.push_back(
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(
       RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{1, 2, 1}},
                          /*to=*/{RemapPlan::Interval{0, 1, 1}}});
@@ -221,12 +222,14 @@ TEST(RemapImplTest, InterleaveArrays) {
                     MemoryKind(), /*shape=*/Shape({8, 3}),
                     /*shard_shape=*/Shape({2, 3}))});
   // arrays[0].shards[0:2:1] is mapped into out_arrays[0].shards[0:4:2].
-  plan.mappings.push_back(
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->reserve(2);
+  plan.mappings->push_back(
       RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{0, 2, 1}},
                          /*to=*/{RemapPlan::Interval{0, 4, 2}}});
   // arrays[1].shards[0:2:1] is mapped into out_arrays[0].shards[1:4:2].
-  plan.mappings.push_back(
+  plan.mappings->push_back(
       RemapPlan::Mapping{/*in_array=*/1, /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{0, 2, 1}},
                          /*to=*/{RemapPlan::Interval{1, 4, 2}}});
@@ -289,12 +292,14 @@ TEST(RemapImplTest, DeinterleaveArrays) {
                     MemoryKind(), /*shape=*/Shape({4, 3}),
                     /*shard_shape=*/Shape({2, 3}))});
   // arrays[0].shards[0:4:2] is mapped into out_arrays[0].shards[0:2:1].
-  plan.mappings.push_back(
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->reserve(2);
+  plan.mappings->push_back(
       RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{0, 4, 2}},
                          /*to=*/{RemapPlan::Interval{0, 2, 1}}});
   // arrays[0].shards[1:4:2] is mapped into out_arrays[1].shards[0:2:1].
-  plan.mappings.push_back(
+  plan.mappings->push_back(
       RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/1,
                          /*from=*/{RemapPlan::Interval{1, 4, 2}},
                          /*to=*/{RemapPlan::Interval{0, 2, 1}}});
