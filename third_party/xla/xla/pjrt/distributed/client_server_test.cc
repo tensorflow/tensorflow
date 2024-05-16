@@ -612,7 +612,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_Timeout) {
     if (node_id == 1) {
       n.WaitForNotification();
     }
-    Status barrier_status =
+    absl::Status barrier_status =
         client->WaitAtBarrier("barrier_1", kBarrierTimeout, std::nullopt);
     // Node 0 notifies that barrier has already timed out.
     if (node_id == 0) {

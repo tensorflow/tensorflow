@@ -59,7 +59,7 @@ void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors) {
       se::StreamExecutor* from = executors[i];
       se::StreamExecutor* to = executors[j];
       if (from->CanEnablePeerAccessTo(to)) {
-        Status status = from->EnablePeerAccessTo(to);
+        absl::Status status = from->EnablePeerAccessTo(to);
         if (!status.ok()) {
           LOG(WARNING) << "Unable to enable peer access between GPUs " << i
                        << " and " << j << "; status: " << status;
@@ -76,8 +76,8 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction, bool preallocate,
     std::optional<int64_t> gpu_system_memory_size) {
   bool enable_unified_memory;
-  Status status = tsl::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY", false,
-                                          &enable_unified_memory);
+  absl::Status status = tsl::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY",
+                                                false, &enable_unified_memory);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to read TF_FORCE_UNIFIED_MEMORY: "
                << status.message();
@@ -173,7 +173,7 @@ std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
                                   /*free_visitors=*/{}));
 
   int64_t xla_pjrt_gpu_host_memory_limit_gb;
-  Status status =
+  absl::Status status =
       tsl::ReadInt64FromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB", 64,
                                &xla_pjrt_gpu_host_memory_limit_gb);
   if (!status.ok()) {

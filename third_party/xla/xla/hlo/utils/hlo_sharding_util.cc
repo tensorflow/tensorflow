@@ -496,7 +496,7 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
     };
     // Try to find the intersection of to_merge and dst replication groups, in
     // order to determine the merged tile assignment.
-    Status compatible =
+    absl::Status compatible =
         new_tile_array.EachStatus([&](absl::Span<const int64_t> indices,
                                       int64_t* device) -> absl::Status {
           DimensionVector to_merge_index(
@@ -1866,7 +1866,7 @@ IdentityValueAndHloOpcodeForScatterReduceComputation(
   auto computation = scatter.to_apply();
   // We only handle computations with 2 parameters and only 1 calculation.
   if (computation->instruction_count() != 3) {
-    return Status(
+    return absl::Status(
         absl::StatusCode::kInvalidArgument,
         "Expected scatter reduce computation with 2 parameters and only 1 "
         "calculation");
@@ -1893,9 +1893,9 @@ IdentityValueAndHloOpcodeForScatterReduceComputation(
                           root_instruction->opcode());
   }
 
-  return Status(absl::StatusCode::kInvalidArgument,
-                "Expected scatter reduce computation which is "
-                "add/or/multiply/add/min/max");
+  return absl::Status(absl::StatusCode::kInvalidArgument,
+                      "Expected scatter reduce computation which is "
+                      "add/or/multiply/add/min/max");
 }
 
 namespace {
@@ -3156,7 +3156,7 @@ Shape TileLeafShape(const HloSharding& sharding, const Shape& shape) {
   return result_shape;
 }
 
-Status CanonicalizeLayoutAfterShardingPropagation(
+absl::Status CanonicalizeLayoutAfterShardingPropagation(
     HloModule* module, bool update_output_layout,
     bool update_parameters_layout) {
   if (!update_output_layout && !update_parameters_layout) {

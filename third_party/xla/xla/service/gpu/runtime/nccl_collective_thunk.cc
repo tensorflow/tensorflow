@@ -290,9 +290,9 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
   return device_buffers;
 }
 
-Status RegisterBufferOnce(NcclApi* nccl_api, int device_ordinal,
-                          NcclApi::NcclCommHandle comm,
-                          se::DeviceMemoryBase buffer) {
+absl::Status RegisterBufferOnce(NcclApi* nccl_api, int device_ordinal,
+                                NcclApi::NcclCommHandle comm,
+                                se::DeviceMemoryBase buffer) {
   // Keep track of which communicators we have registered for already.
   // Each ncclMemAlloc'd buffer needs to be registered once per comm.
   struct RegisteredBuffers {
@@ -332,9 +332,9 @@ Status RegisterBufferOnce(NcclApi* nccl_api, int device_ordinal,
   return OkStatus();
 }
 
-Status MaybeRegisterBuffers(NcclApi* nccl_api, int device_ordinal,
-                            const std::vector<DeviceBufferPair>& buffers,
-                            NcclApi::NcclCommHandle comm) {
+absl::Status MaybeRegisterBuffers(NcclApi* nccl_api, int device_ordinal,
+                                  const std::vector<DeviceBufferPair>& buffers,
+                                  NcclApi::NcclCommHandle comm) {
   for (int i = 0; i < buffers.size(); ++i) {
     if (buffers[i].source_memory_space == kCollectiveMemorySpaceColor) {
       TF_RETURN_IF_ERROR(RegisterBufferOnce(nccl_api, device_ordinal, comm,
@@ -428,7 +428,7 @@ bool operator==(const FirstCallRendezvousKey& a,
 }
 }  // namespace
 
-Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
                                 Thunk::KindToString(kind()));
   const NcclStreamId stream_id = nccl_stream_id();

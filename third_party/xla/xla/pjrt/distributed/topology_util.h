@@ -36,12 +36,13 @@ absl::StatusOr<std::string> GetBootIdString();
 // Performs a distributed exchange of topologies using a KV store. Each process
 // provides its local topology, and the local topologies are exchanged to
 // form a global topology.
-Status ExchangeTopologies(std::string_view platform, int node_id, int num_nodes,
-                          absl::Duration get_local_topology_timeout,
-                          absl::Duration get_global_topology_timeout,
-                          KeyValueStoreInterface* kv_store,
-                          const LocalTopologyProto& local_topology,
-                          GlobalTopologyProto* global_topology);
+absl::Status ExchangeTopologies(std::string_view platform, int node_id,
+                                int num_nodes,
+                                absl::Duration get_local_topology_timeout,
+                                absl::Duration get_global_topology_timeout,
+                                KeyValueStoreInterface* kv_store,
+                                const LocalTopologyProto& local_topology,
+                                GlobalTopologyProto* global_topology);
 
 // Functions below this point are public only for testing.
 

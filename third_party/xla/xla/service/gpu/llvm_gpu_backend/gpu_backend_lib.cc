@@ -383,8 +383,8 @@ std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
 }
 
 using TargetModuleLinker =
-    std::function<Status(llvm::Module*, se::GpuComputeCapability,
-                         const DebugOptions&, const std::string&)>;
+    std::function<absl::Status(llvm::Module*, se::GpuComputeCapability,
+                               const DebugOptions&, const std::string&)>;
 
 void DumpModule(const std::string output_filename, const llvm::Module* module) {
   std::error_code ec;

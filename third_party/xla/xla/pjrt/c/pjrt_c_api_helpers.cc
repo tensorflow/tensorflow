@@ -420,7 +420,7 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
 
 xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
                                            const PJRT_Api* c_api) {
-  using absl::Status, xla::PjRtFuture;
+  using xla::PjRtFuture;
   PJRT_Event_OnReady_Args event_onready_args;
   event_onready_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
   event_onready_args.extension_start = nullptr;

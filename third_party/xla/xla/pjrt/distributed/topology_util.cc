@@ -156,12 +156,13 @@ GlobalTopologyProto BuildGlobalTopology(
   return global_topology;
 }
 
-Status ExchangeTopologies(std::string_view platform, int node_id, int num_nodes,
-                          absl::Duration get_local_topology_timeout,
-                          absl::Duration get_global_topology_timeout,
-                          KeyValueStoreInterface* kv_store,
-                          const LocalTopologyProto& local_topology,
-                          GlobalTopologyProto* global_topology) {
+absl::Status ExchangeTopologies(std::string_view platform, int node_id,
+                                int num_nodes,
+                                absl::Duration get_local_topology_timeout,
+                                absl::Duration get_global_topology_timeout,
+                                KeyValueStoreInterface* kv_store,
+                                const LocalTopologyProto& local_topology,
+                                GlobalTopologyProto* global_topology) {
   VLOG(3) << "Local Topology for platform" << platform << ":\n"
           << local_topology.DebugString();
   if (num_nodes == 1) {

@@ -33,7 +33,7 @@ namespace tsl {
 
 // Proto: tensorflow::distributed_runtime::GrpcPayloadsLost
 // Location: tsl/protobuf/distributed_runtime_payloads.proto
-// Usage: Flags the Status to have lost payloads during GRPC conversion.
+// Usage: Flags the absl::Status to have lost payloads during GRPC conversion.
 constexpr char kGrpcPayloadsLost[] =
     "type.googleapis.com/tensorflow.distributed_runtime.GrpcPayloadsLost";
 

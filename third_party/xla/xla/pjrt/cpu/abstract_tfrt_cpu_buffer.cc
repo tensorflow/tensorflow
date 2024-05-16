@@ -349,7 +349,7 @@ AbstractTfrtCpuBuffer::Release(bool wait_for_operations_to_complete) {
     // Block the host until all usage events have completed. Usage events
     // dominate definition events, so this also waits for the buffer to be
     // defined. Return the first error encountered.
-    Status first_error;
+    absl::Status first_error;
     for (const auto& av : events) {
       BlockUntilReady(av.GetAsyncValue());
       if (auto* error = av.GetErrorIfPresent()) {
@@ -879,7 +879,8 @@ AbstractAsyncHostToHostMemoryTransferManager::RetrieveBuffer(int buffer_index) {
   return std::move(buffers_[buffer_index]);
 }
 
-Status AbstractAsyncHostToHostMemoryTransferManager::TransferLiteralToBuffer(
+absl::Status
+AbstractAsyncHostToHostMemoryTransferManager::TransferLiteralToBuffer(
     int buffer_index, const LiteralSlice& literal,
     absl::AnyInvocable<void() &&> on_done) {
   return TransferRawDataToSubBuffer(buffer_index, literal.untyped_data(),
@@ -888,7 +889,8 @@ Status AbstractAsyncHostToHostMemoryTransferManager::TransferLiteralToBuffer(
                                     std::move(on_done));
 }
 
-Status AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToBuffer(
+absl::Status
+AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToBuffer(
     int buffer_index, absl::string_view data,
     absl::AnyInvocable<void() &&> on_done) {
   return TransferRawDataToSubBuffer(
@@ -898,7 +900,8 @@ Status AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToBuffer(
 
 // The definition events of `device_buffers_` must be ready before calling this
 // function.
-Status AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToSubBuffer(
+absl::Status
+AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToSubBuffer(
     int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
     bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) {
   {
@@ -947,12 +950,12 @@ Status AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToSubBuffer(
 }
 
 void AbstractAsyncHostToHostMemoryTransferManager::SetBufferError(
-    int buffer_index, Status error) {
+    int buffer_index, absl::Status error) {
   absl::MutexLock l(&mu_);
   avs_[buffer_index]->SetError(error);
 }
 
-/*static*/ Status
+/*static*/ absl::Status
 AbstractAsyncHostToHostMemoryTransferManager::PopulateAsyncTransferManagerData(
     absl::Span<const std::unique_ptr<AbstractTfrtCpuBuffer>> buffers,
     absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4>& device_buffers,
