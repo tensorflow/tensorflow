@@ -54,9 +54,9 @@ struct EstimateRunTimeData {
         " compute_time: %s\n"
         " exec_time: %s\n"
         "}",
-        flops, bytes_written, num_threads, FormatDuration(read_time),
-        FormatDuration(write_time), FormatDuration(compute_time),
-        FormatDuration(exec_time));
+        flops, bytes_written, num_threads, absl::FormatDuration(read_time),
+        absl::FormatDuration(write_time), absl::FormatDuration(compute_time),
+        absl::FormatDuration(exec_time));
   }
 };
 
