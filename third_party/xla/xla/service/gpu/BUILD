@@ -537,6 +537,7 @@ cc_library(
         "//xla/service/gpu/model:indexing_map",
         "//xla/service/gpu/model:symbolic_tile_analysis",
         "//xla/service/gpu/model:symbolic_tiled_hlo_instruction",
+        "//xla/service/gpu/model:tiled_hlo_computation",
         "//xla/service/gpu/model:tiled_hlo_instruction",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",

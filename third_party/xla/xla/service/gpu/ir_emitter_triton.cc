@@ -116,6 +116,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
@@ -856,22 +857,22 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
 absl::StatusOr<Value> EmitTiledScope(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
-    const std::vector<std::unique_ptr<TiledHloInstruction>>&
-        tiled_hlo_instructions,
+    const TiledHloComputation& tiled_computation,
     std::function<absl::StatusOr<Value>(const TiledHloInstruction&)>
         emit_param_load_fn,
     absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
-  for (const auto& tiled_hlo : tiled_hlo_instructions) {
+  for (const TiledHloInstruction* tiled_hlo :
+       tiled_computation.instructions()) {
     TF_ASSIGN_OR_RETURN(
         Value result,
         EmitTiledHloInstruction(b, libdevice_path, device_info, *tiled_hlo,
                                 emit_param_load_fn, values));
-    TF_RET_CHECK(values.insert({tiled_hlo.get(), result}).second)
+    TF_RET_CHECK(values.insert({tiled_hlo, result}).second)
         << tiled_hlo->hlo()->ToString();
     VLOG(8) << "Emitted "
             << tiled_hlo->hlo()->ToString(HloPrintOptions::ShortParsable());
   }
-  return values[tiled_hlo_instructions.back().get()];
+  return values[tiled_computation.GetRoot()];
 }
 
 // Emit sequence of instructions using compatible tiling ordered producers
@@ -2323,9 +2324,8 @@ absl::Status EmitTiledSoftMax(mlir::OpBuilder builder,
       computation->root_instruction()->shape().rank(), 1);
   output_tile_sizes.back() = row_len;
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions,
-      analysis->ComputeTiledHloInstructions(output_tile_sizes));
+  TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
+                      analysis->ComputeTiledHloInstructions(output_tile_sizes));
 
   // block_size must be a power of two.
   int result_block_size = llvm::PowerOf2Ceil(row_len);
@@ -2373,11 +2373,11 @@ absl::Status EmitTiledSoftMax(mlir::OpBuilder builder,
   absl::flat_hash_map<const TiledHloInstruction*, Value> values_out;
   TF_ASSIGN_OR_RETURN(
       Value result,
-      EmitTiledScope(b, libdevice_path, device_info, tiled_hlo_instructions,
+      EmitTiledScope(b, libdevice_path, device_info, tiled_hlo_computation,
                      emit_param_load, values_out));
 
   Value ptr_offset =
-      ComputeBasePtrOffset(b, pid, *tiled_hlo_instructions.back());
+      ComputeBasePtrOffset(b, pid, *tiled_hlo_computation.GetRoot());
 
   Value store_tensor = b.create<mt::MakeTensorPtrOp>(
       /*base=*/AddPtr(b, fn.getArgument(computation->num_parameters()),
