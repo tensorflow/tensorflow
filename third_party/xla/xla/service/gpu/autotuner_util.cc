@@ -120,7 +120,7 @@ static void SerializeAutotuneEntry(AutotuneResults* results,
 /*static*/ absl::Status AutotunerUtil::LoadAutotuneResults(
     const AutotuneResults& results) {
   absl::MutexLock lock(&autotune_cache_mu);
-  for (const auto& result : results.results()) {
+  for (const AutotuneResults::Entry& result : results.results()) {
     autotune_cache[AutotuneCacheKey(result.device(), result.hlo())] =
         result.result();
   }
@@ -330,32 +330,6 @@ AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
       /*redzone_size=*/config.should_check_correctness()
           ? opts.xla_gpu_redzone_padding_bytes()
           : 0);
-}
-
-/*static*/ absl::StatusOr<std::string>
-AutotunerUtil::SerializeAutotuneResultsForModule(
-    const HloModule& module, const AutotuneConfig& autotune_config,
-    bool as_textproto) {
-  AutotuneResults results =
-      SerializeAutotuneResultsForModule(module, autotune_config);
-  return AutotuneResultsToString(results, as_textproto);
-}
-
-/*static*/ AutotuneResults AutotunerUtil::SerializeAutotuneResultsForModule(
-    const HloModule& module, const AutotuneConfig& autotune_config) {
-  AutotuneResults results;
-  results.set_version(kVersion);
-
-  for (const HloInstruction* instr :
-       module.entry_computation()->instructions()) {
-    AutotuneCacheKey k(autotune_config.GetModelStr(), *instr);
-    if (const AutotuneResult* res = TryFindInCache(k)) {
-      SerializeAutotuneEntry(&results, k, res);
-    }
-  }
-
-  SortAutotuneResults(&results);
-  return results;
 }
 
 }  // namespace gpu
