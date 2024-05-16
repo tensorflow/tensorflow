@@ -1486,16 +1486,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 #endif  // NDEBUG
 
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-
-  if (DumpingEnabledForHloModule(*hlo_module)) {
-    TF_ASSIGN_OR_RETURN(
-        std::string autotune_results,
-        AutotunerUtil::SerializeAutotuneResultsForModule(
-            *hlo_module, autotune_config, /*as_textproto=*/true));
-    DumpToFileInDirOrStdout(*hlo_module, "", "autotune_results.pbtxt",
-                            autotune_results);
-  }
-
   return absl::OkStatus();
 }
 
@@ -1580,12 +1570,12 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   DumpHloModuleMetadataIfEnabled({module.get()});
 
   AutotuneResults autotune_results;
+  TF_ASSIGN_OR_RETURN(
+      AutotuneConfig autotune_config,
+      GetAutotuneConfig(stream_exec, debug_opts, options, gpu_target_config));
   if (!is_deviceless) {
-    TF_ASSIGN_OR_RETURN(
-        AutotuneConfig autotune_config,
-        GetAutotuneConfig(stream_exec, debug_opts, options, gpu_target_config));
-    autotune_results = AutotunerUtil::SerializeAutotuneResultsForModule(
-        *module, autotune_config);
+    TF_RETURN_IF_ERROR(
+        AutotunerUtil::SerializeAutotuneResults(&autotune_results));
     TF_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_opts));
   }
   const std::optional<std::string> optimized_fingerprint =
@@ -1594,6 +1584,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
       optimized_fingerprint.has_value()) {
     MaybeUploadGpuSymbolMapping(*unoptimized_fingerprint,
                                 *optimized_fingerprint);
+  }
+
+  if (DumpingEnabledForHloModule(*module)) {
+    TF_ASSIGN_OR_RETURN(
+        std::string autotune_results,
+        AutotunerUtil::SerializeAutotuneResults(/*as_textproto=*/true));
+    DumpToFileInDirOrStdout(*module, "", "autotune_results.pbtxt",
+                            autotune_results);
   }
 
   return std::move(module);
