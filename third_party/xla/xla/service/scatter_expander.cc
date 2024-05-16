@@ -525,7 +525,7 @@ bool ScatterExpander::InstructionMatchesPattern(HloInstruction* inst) {
   return (scatter != nullptr) && (mode_ == kEliminateAllScatters ||
                                   (mode_ == kEliminateSimpleScatters &&
                                    ScatterTripCount(scatter) == 1) ||
-                                  (mode_ == kEliminateIndeterminisitcScatters &&
+                                  (mode_ == kEliminateIndeterministicScatters &&
                                    !IsDeterministic(scatter)));
 }
 

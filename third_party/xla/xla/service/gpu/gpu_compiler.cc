@@ -695,7 +695,7 @@ absl::Status RunOptimizationPasses(
     // Scatter can be indeterministic if indices are not unique or a non
     // associative combiner function is used. Eliminate these Scatter ops.
     pipeline.AddPass<ScatterExpander>(
-        ScatterExpander::kEliminateIndeterminisitcScatters);
+        ScatterExpander::kEliminateIndeterministicScatters);
   }
   // Scatters unsupported on XLA:GPU are eliminated.
   pipeline.AddPass<GpuScatterExpander>();

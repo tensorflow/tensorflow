@@ -23,7 +23,7 @@ namespace xla {
 // This pass rewrites scatter operations into (roughly) while loops of
 // dynamic-update-slices.
 //
-// This pass can be used in two ways:
+// This pass can be used in three ways:
 //
 //   - kEliminateAllScatters: For backends that don't support scatter, this pass
 //     can convert every scatter into a loop.
@@ -32,8 +32,8 @@ namespace xla {
 //     pass can strength-reduce "simple" scatters -- specifically, scatters that
 //     can be represented without a loop -- to dynamic-update-slices.
 //
-//   - kEliminateIndeterminisitcScatters: For backends that *do* support
-//     scatter, this pass converts scatters with potentially indeterminisitc
+//   - kEliminateIndeterministicScatters: For backends that *do* support
+//     scatter, this pass converts scatters with potentially indeterministic
 //     behavior, because of non-unique indices or non-associative combiner
 //     functions. There may be false positives, but no false negatives, i.e.
 //     some scatters are converted even when deterministic in practice.
@@ -46,7 +46,7 @@ class ScatterExpander : public OpExpanderPass {
   enum Mode {
     kEliminateAllScatters,
     kEliminateSimpleScatters,
-    kEliminateIndeterminisitcScatters,
+    kEliminateIndeterministicScatters,
   };
 
   explicit ScatterExpander(Mode m) : mode_(m) {}
