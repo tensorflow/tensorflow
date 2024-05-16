@@ -9,14 +9,6 @@ package(
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
-        # tensorflow/core/platform:monitoring depends on this package
-        "//tensorflow/core/platform:__subpackages__",
-        # tensorflow/compiler/xla/pjrt:metrics depends on this package
-        "@local_xla//xla/pjrt:__subpackages__",
-        "@local_xla//xla/service/gpu:__subpackages__",
-        # tensorflow/compiler/mlir/tfrt:tf_jitrt depends on this package
-        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
-        "@local_tsl//tsl/lib/monitoring:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -98,7 +90,6 @@ cc_library(
     visibility = [
         "//learning/brain/google/monitoring:__subpackages__",
         "//tensorflow/core:__subpackages__",
-        "@local_tsl//tsl:__subpackages__",
     ],
     deps = [
         ":collected_metrics",
@@ -148,11 +139,7 @@ cc_library(
 cc_library(
     name = "metric_def",
     hdrs = ["metric_def.h"],
-    visibility = [
-        "//learning/brain/google/monitoring:__subpackages__",
-        "//tensorflow/core:__subpackages__",
-        "@local_tsl//tsl/lib/monitoring:__subpackages__",
-    ],
+    visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
         ":types",
         "//tensorflow/core/framework:summary_proto_cc",
