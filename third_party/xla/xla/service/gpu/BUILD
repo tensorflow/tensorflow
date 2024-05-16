@@ -1129,9 +1129,6 @@ cc_library(
     name = "gemm_rewriter",
     srcs = ["gemm_rewriter.cc"],
     hdrs = ["gemm_rewriter.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
@@ -1166,9 +1163,7 @@ cc_library(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
+    ],
 )
 
 cc_library(
@@ -1534,9 +1529,6 @@ cc_library(
     name = "gemm_algorithm_picker",
     srcs = if_gpu_is_configured(["gemm_algorithm_picker.cc"]),
     hdrs = if_gpu_is_configured(["gemm_algorithm_picker.h"]),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     deps = if_gpu_is_configured([
         ":backend_configs_cc",
         ":buffer_comparator",
