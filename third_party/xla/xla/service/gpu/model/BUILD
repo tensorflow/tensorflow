@@ -526,6 +526,7 @@ cc_library(
     hdrs = ["symbolic_tile.h"],
     deps = [
         ":affine_map_printer",
+        ":indexing_analysis",
         ":indexing_map",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",

@@ -314,20 +314,18 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughDynamicSlice) {
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
       // s0, s1, s2: tile sizes
-      // s3, s4, s5: runtime parameters
-      // TODO(tdanyluk): If the RTVar can only have 1 value, maybe we should
-      // optimize it out?
+      // s3, s4: runtime parameters
+      // Note: We don't have s0 in the size map's rhs, because the first dim
+      // of the tile size can only be 1. The second offset is optimized to 0,
+      // because that is the only possible value.
       Optional(MatchSymbolicTileWithRtVars(
-          "()[s0, s1, s2, s3, s4, s5] -> (s3, s4, s5)",
-          "()[s0, s1, s2] -> (s0, s1, s2)", "()[s0, s1, s2] -> (1, 1, 1)",
+          "()[s0, s1, s2, s3, s4] -> (s3, 0, s4)",
+          "()[s0, s1, s2] -> (1, s1, s2)", "()[s0, s1, s2] -> (0, 1, 1)",
           R"(
 s3 in [0, 1]
   hlo: %of1 = s32[] parameter(1)
   (d0, d1, d2) -> ()
-s4 in [0, 0]
-  hlo: %of2 = s32[] parameter(2)
-  (d0, d1, d2) -> ()
-s5 in [0, 226]
+s4 in [0, 226]
   hlo: %of3 = s32[] parameter(3)
   (d0, d1, d2) -> ()
 )")));
