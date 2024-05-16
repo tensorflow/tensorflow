@@ -169,6 +169,6 @@ Bisecting between two weekly syncs is often necessary for debugging. The process
 * Check out `merge-YYMMDD-prev` tag
 * Select a commit in the middle of the sync (between `merge-YYMMDD-prev` and `merge-YYMMDD`)
 * Merge to that commit point (i.e. perform a "mini sync")
-* Resolve merge conflicts based on what was done in that weekly sync
+* Resolve merge conflicts based on what was done in that weekly sync. In case of build braking, cherry-pick neccessary hot-fixes listed here: [XLA hotfix track](https://confluence.amd.com/display/~cchen104/XLA+hotfix+track)
 * Test
 * Repeat until the required commit is found
