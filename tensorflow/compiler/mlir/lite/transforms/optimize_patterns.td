@@ -813,16 +813,6 @@ def MatchReluPattern : Pat<
   (TFL_ReluOp $input),
   [(FloatValueEquals<"0"> $Zero)]>;
 
-// Transpose conv supports hybrid computation with quantized weights.
-def FoldQuantWeightsIntoTposeConv : Pat<
-  (TFL_TransposeConvOp
-    $output_shape,
-    (TFL_DequantizeOp $quant_weights),
-    $quant_input,
-    $bias, $padding, $stride_h, $stride_w, $faf),
-  (TFL_TransposeConvOp $output_shape, $quant_weights,
-    $quant_input, $bias, $padding, $stride_h, $stride_w, $faf)>;
-
 // Optimize Minimum of tf.Relu and constant six to tf.Relu6
 def MinimumOfReluAnd6ToRelu6 :
   Pat<(TFL_MinimumOp (TFL_ReluOp $x), (Arith_ConstantOp $y)),

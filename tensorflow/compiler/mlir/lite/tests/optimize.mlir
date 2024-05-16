@@ -103,19 +103,6 @@ func.func @fuseSubIntoConv2d(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x
   // CHECK: %0 = "tfl.conv_2d"(%arg0, %arg1, %cst)
 }
 
-// CHECK-LABEL: foldQuantWeightsIntoTposeConv
-func.func @foldQuantWeightsIntoTposeConv(%arg0: tensor<2x2x3x2048xf32>) -> tensor<2x3x2x2048xf32> {
-  %output_shape = arith.constant dense<[2, 3, 2, 2048]> : tensor<4xi32>
-  %q_weighs = "tfl.pseudo_qconst"() {qtype = tensor<4x2x2x2048x!quant.uniform<u8<1:255>:f32, 0.15:151>>, value = dense<-76> : tensor<4x2x2x2048xi8>} : () -> tensor<4x2x2x2048x!quant.uniform<u8<1:255>:f32, 0.15:151>>
-  %dq_weights = "tfl.dequantize"(%q_weighs) : (tensor<4x2x2x2048x!quant.uniform<u8<1:255>:f32, 0.15:151>>) -> tensor<4x2x2x2048xf32>
-  %bias = "tfl.no_value"() {value} : () -> none
-  %out = "tfl.transpose_conv"(%output_shape, %dq_weights, %arg0, %bias) {fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<4xi32>, tensor<4x2x2x2048xf32>, tensor<2x2x3x2048xf32>, none) -> tensor<2x3x2x2048xf32>
-  func.return %out : tensor<2x3x2x2048xf32>
-
-  // CHECK-NOT: "tfl.dequantize"
-  // CHECK: "tfl.transpose_conv"(%cst, %1, %arg0, %0) <{fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<4xi32>, tensor<4x2x2x2048x!quant.uniform<u8<1:255>:f32
-}
-
 // CHECK-LABEL: fuseAddIntoTransposeConv
 func.func @fuseAddIntoTransposeConv(%arg0: tensor<1x32x42x128xf32>) -> tensor<1x64x84x32xf32> {
   %cst = arith.constant dense<1.5> : tensor<32xf32>
