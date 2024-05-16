@@ -3625,12 +3625,14 @@ cc_library(
         ":hlo_pass",
         "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:types",
+        "//xla:status",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
