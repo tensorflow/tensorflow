@@ -145,6 +145,7 @@ cc_library(
     deps = [
         ":hlo_domain_map",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/log",
     ],
 )
 
