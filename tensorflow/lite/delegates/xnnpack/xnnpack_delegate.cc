@@ -694,7 +694,7 @@ class Delegate {
 #endif
   }
 
-  TfLiteXNNPackDelegateOptions options() const { return options_; }
+  const TfLiteXNNPackDelegateOptions& options() const { return options_; }
 
   int64_t GetXNNPackDelegateFlags() {
     if (enable_subgraph_reshaping()) {
@@ -7880,14 +7880,6 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
   return options;
 }
 
-TfLiteXNNPackDelegateOptions GetOptions(const void* delegate_data) {
-  if (delegate_data == nullptr) {
-    return TfLiteXNNPackDelegateOptionsDefault();
-  }
-  return static_cast<const tflite::xnnpack::Delegate*>(delegate_data)
-      ->options();
-}
-
 TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     const TfLiteXNNPackDelegateOptions* options) {
   return TfLiteXNNPackDelegateCreateWithThreadpool(options, nullptr);
@@ -7917,6 +7909,15 @@ void* TfLiteXNNPackDelegateGetThreadPool(TfLiteDelegate* delegate) {
 
   return static_cast<void*>(
       static_cast<::tflite::xnnpack::Delegate*>(delegate->data_)->threadpool());
+}
+
+const TfLiteXNNPackDelegateOptions* TfLiteXNNPackDelegateGetOptions(
+    TfLiteDelegate* delegate) {
+  if (delegate == nullptr) {
+    return nullptr;
+  }
+  return &(static_cast<const tflite::xnnpack::Delegate*>(delegate->data_)
+               ->options());
 }
 
 int TfLiteXNNPackDelegateGetFlags(TfLiteDelegate* delegate) {

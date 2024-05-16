@@ -101,6 +101,13 @@ TfLiteDelegate* TfLiteXNNPackDelegateCreateWithThreadpool(
 TFL_CAPI_EXPORT void* TfLiteXNNPackDelegateGetThreadPool(
     TfLiteDelegate* delegate);
 
+// Returns the options in the delegate.
+// Returns NULL if the delegate is NULL.
+//
+// WARNING: This API is experimental and subject to change.
+TFL_CAPI_EXPORT const TfLiteXNNPackDelegateOptions*
+TfLiteXNNPackDelegateGetOptions(TfLiteDelegate* delegate);
+
 // Returns the flags used for an XNNPack delegate.
 // See documentation for TfLiteXNNPackDelegateOptions.flags.
 //
