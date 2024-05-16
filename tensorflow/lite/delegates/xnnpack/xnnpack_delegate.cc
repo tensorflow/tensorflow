@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
@@ -522,8 +523,8 @@ class Delegate {
     }
 
 #endif
-    TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
-                         "Created TensorFlow Lite XNNPACK delegate for CPU.");
+    TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
+                    "Created TensorFlow Lite XNNPACK delegate for CPU.");
 
     options_ =
         options != nullptr ? *options : TfLiteXNNPackDelegateOptionsDefault();
@@ -547,6 +548,8 @@ class Delegate {
         options_.weights_cache =
             reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(
                 weight_cache_provider_.GetCacheProvider().context);
+        options_.experimental_weight_cache_file_path =
+            weight_cache_provider_.GetFilePath().data();
       } else {
         TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
                         "XNNPack weight cache not enabled.");

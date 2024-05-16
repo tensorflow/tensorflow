@@ -254,6 +254,7 @@ cc_library(
         ":tflite_with_xnnpack_transient_indirection_buffer",
         ":weight_cache",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:logger",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:subgraph",

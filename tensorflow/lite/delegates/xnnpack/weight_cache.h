@@ -179,6 +179,8 @@ class MMapWeightCacheProvider {
   // WARNING: Can only be called if the cache isn't finalized.
   void SetFilePath(const char* file_path);
 
+  const std::string& GetFilePath() const { return file_path_; }
+
   // Set the weight file path and loads it.
   [[nodiscard /*Loading a cache file may fail.*/]]
   bool Load(const std::string& path);
