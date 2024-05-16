@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/CastInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
