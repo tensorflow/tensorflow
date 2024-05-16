@@ -49,6 +49,38 @@ class MklTestingUtil {
     *tensor_min = min();
     *tensor_max = max();
   }
+
+  // This utility function mimics Quantization of float/bfloat16 tensor with
+  // oneDNN backend QuantizeV2 operation. Since the op signature requires min
+  // and max values to be in float type, min_tensor and max_tensor should have
+  // their dtype set to DT_FLOAT.
+  template <typename T>
+  static Status GetQuantizationTensors(const Tensor& input, Tensor* output,
+                                       DataType out_type, const string mode,
+                                       Tensor* min_tensor, Tensor* max_tensor) {
+    if (min_tensor->dtype() != DT_FLOAT || max_tensor->dtype() != DT_FLOAT) {
+      return absl::UnimplementedError("Tensor must be float32.");
+    }
+    T min;
+    T max;
+    ComputeMinMax<T>(input, &min, &max);
+
+    float adjusted_min = static_cast<float>(min);
+    float adjusted_max = static_cast<float>(max);
+    if (mode == "SCALED") {
+      if (output->dtype() != DT_QINT8) {
+        return absl::UnimplementedError("Tensor must be QInt8 in SCALED mode.");
+      }
+      float range = std::max(std::abs(adjusted_min), std::abs(adjusted_max));
+      adjusted_min = -range;
+      adjusted_max = range;
+    }
+    RunMklQuantizeOp(input, adjusted_min, adjusted_max, out_type, mode, output);
+    min_tensor->flat<float>()(0) = adjusted_min;
+    max_tensor->flat<float>()(0) = adjusted_max;
+
+    return OkStatus();
+  }
 };
 
 #ifdef ENABLE_ONEDNN_V3
