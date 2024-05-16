@@ -144,7 +144,7 @@ TEST(MMapHandleTest, MapExistingFileWorks) {
 
   TempFileDesc tmp_file;
   ASSERT_TRUE(tmp_file.IsOpen());
-  write(tmp_file.GetFd(), payload.c_str(), size(payload));
+  static_cast<void>(write(tmp_file.GetFd(), payload.c_str(), size(payload)));
   tmp_file.Close();
 
   MMapHandle handle;
@@ -165,7 +165,7 @@ TEST(MMapHandleTest, MoveConstructs) {
 
   TempFileDesc tmp_file;
   ASSERT_TRUE(tmp_file.IsOpen());
-  write(tmp_file.GetFd(), payload.c_str(), size(payload));
+  static_cast<void>(write(tmp_file.GetFd(), payload.c_str(), size(payload)));
   tmp_file.Close();
 
   MMapHandle handle;
