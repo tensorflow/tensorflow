@@ -359,6 +359,7 @@ cc_library(
     hdrs = ["loop_mlir.h"],
     deps = [
         ":loop",
+        "//xla:shape_util",
         "//xla:status",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",

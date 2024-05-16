@@ -418,11 +418,10 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK:        %[[Y_BOUNDS:.*]] = arith.andi %[[Y_L]], %[[Y_H]]
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
-    // CHECK:          %[[X_IN:.*]] = affine.apply
-    // CHECK-SAME:         <()[s0] -> ((s0 - 1) floordiv 2)>()[%[[X]]]
-    // CHECK:          %[[Y_IN:.*]] = affine.apply
-    // CHECK-SAME:         <()[s0] -> (s0 - 4)>()[%[[Y]]]
-    // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[X_IN]], %[[Y_IN]]]
+    // CHECK:          %[[IN:.*]]:2 = xla_gpu.apply_indexing
+    // CHECK-SAME:         <(d0, d1) -> ((d0 - 1) floordiv 2, d1 - 4)>
+    // CHECK-SAME:         (%[[X]] in [1, 7], %[[Y]] in [4, 7])
+    // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN]]#0, %[[IN]]#1]
     // CHECK:          scf.yield %[[VAL]]
     // CHECK:        } else {
     // CHECK:          %[[PAD_VAL:.*]] = tensor.extract %[[ARG1]][]
@@ -461,11 +460,10 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK:        %[[Y_BOUNDS:.*]] = arith.andi %[[Y_L]], %[[Y_H]]
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
-    // CHECK:          %[[X_IN:.*]] = affine.apply
-    // CHECK-SAME:         <()[s0] -> ((s0 - 1) floordiv 2)>()[%[[X]]]
-    // CHECK:          %[[Y_IN:.*]] = affine.apply
-    // CHECK-SAME:         <()[s0] -> (s0 - 4)>()[%[[Y]]]
-    // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[X_IN]], %[[Y_IN]]]
+    // CHECK:          %[[IN:.*]]:2 = xla_gpu.apply_indexing
+    // CHECK-SAME:         <(d0, d1) -> ((d0 - 1) floordiv 2, d1 - 4)>
+    // CHECK-SAME:         (%[[X]] in [1, 7], %[[Y]] in [4, 7])
+    // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN]]#0, %[[IN]]#1]
     // CHECK:          %[[CAST0:.*]] = builtin.unrealized_conversion_cast %[[VAL]]
     // CHECK:          scf.yield %[[CAST0]]
     // CHECK:        } else {

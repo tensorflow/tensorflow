@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 
@@ -124,8 +125,9 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
 
   auto body_builder = [&](ValueRange output_tensors, ValueRange dim_values,
                           ValueRange symbol_values) -> SmallVector<Value> {
-    auto first_output_indices = mlir_converter::ApplyAffineMap(
-        indexing->GetAffineMap(), dim_values, symbol_values, builder);
+    llvm::SmallVector<Value> first_output_indices;
+    builder.createOrFold<ApplyIndexingOp>(first_output_indices, dim_values,
+                                          symbol_values, *indexing);
     auto root_fn = call_targets(
         fusion.fused_instructions_computation()->root_instruction());
 
@@ -141,11 +143,11 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
     result_tensors.reserve(output_tensor_args.size());
     for (auto [root_shape, tensor, value] :
          llvm::zip(result_shapes, output_tensors, result_scalars)) {
-      auto output_indices = mlir_converter::ApplyAffineMap(
+      llvm::SmallVector<Value> output_indices;
+      builder.createOrFold<ApplyIndexingOp>(
+          output_indices, first_output_indices, ValueRange{},
           GetBitcastMap(*result_shapes.front(), *root_shape,
-                        builder.getContext())
-              .GetAffineMap(),
-          first_output_indices, {}, builder);
+                        builder.getContext()));
       result_tensors.push_back(builder.create<mlir::tensor::InsertOp>(
           value, tensor, output_indices));
     }

@@ -483,9 +483,9 @@ SmallVector<SmallVector<Value>> GetInputIndices(
   SmallVector<SmallVector<Value>> indices;
   for (auto& maps : indexing.indexing_maps) {
     CHECK_EQ(maps.size(), 1);
-    auto map = maps.begin()->GetAffineMap();
     CHECK(!maps.begin()->IsUndefined());
-    indices.emplace_back() = ApplyAffineMap(map, output_indices, {}, b);
+    b.createOrFold<ApplyIndexingOp>(indices.emplace_back(), output_indices,
+                                    ValueRange{}, *maps.begin());
   }
   return indices;
 }
