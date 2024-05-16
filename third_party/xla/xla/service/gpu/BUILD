@@ -1291,14 +1291,12 @@ xla_cc_test(
     deps = [
         ":gemm_fusion",
         ":triton_fusion_analysis",
-        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -5535,7 +5533,6 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:status",
-        "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_creation_utils",
@@ -6114,7 +6111,7 @@ cc_library(
         "//xla/tools:hlo_decomposer_lib",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ]),
+    ]) + ["//xla:xla_proto_cc"],
 )
 
 xla_test(
@@ -6129,7 +6126,8 @@ xla_test(
         ":autotuner_util",
         ":triton_fusion_numerics_verifier",
         "//xla:shape_util",
-        "//xla:test_helpers",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:platform_util",
         "//xla/stream_executor:platform",
