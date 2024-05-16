@@ -75,9 +75,12 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
+#include "xla/mlir/tools/mlir_replay/public/compiler_trace_instrumentation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/dump.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
@@ -282,15 +285,19 @@ MlirFusionEmitterBase::CreateLLVMModule(
     const BufferAssignment* buffer_assignment) const {
   bool is_amd = std::holds_alternative<se::RocmComputeCapability>(
       device.gpu_compute_capability());
+  auto* hlo_module = fusion.GetModule();
+  std::unique_ptr<mlir::interpreter::MlirCompilationTrace> trace = nullptr;
+  if (DumpingEnabledForHloModule(*hlo_module) &&
+      DumpingEnabledForHloPass("mlir-fusion-emitter",
+                               hlo_module->config().debug_options())) {
+    trace = std::make_unique<mlir::interpreter::MlirCompilationTrace>();
+  }
   TF_RET_CHECK(!is_amd) << "Unsupported device type: " << device.name();
   TF_ASSIGN_OR_RETURN(
       auto module, CreateMLIRModule(mlir_context, fusion, entry_function_name,
                                     buffer_assignment));
 
   mlir::PassManager pm(&mlir_context);
-  if (VLOG_IS_ON(5)) {
-    pm.enableIRPrinting();
-  }
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -328,15 +335,13 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(CreateLowerToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 
-  if (pm.run(module.get()).failed()) {
-    std::string module_dump;
-    llvm::raw_string_ostream os(module_dump);
-    module->print(os);
-    return absl::InternalError(absl::StrFormat(
-        "Failed create LLVM module.\nHloFusionInstruction "
-        "computation:\n%s\nMLIR module:\n%s",
-        fusion.fused_instructions_computation()->ToString(), module_dump));
+  auto pipeline_status = RunPassPipeline(module.get(), pm, trace.get());
+  if (trace) {
+    DumpPerModuleProtobufToFile(
+        *hlo_module, *trace, hlo_module->config().debug_options(),
+        absl::StrCat(entry_function_name, ".mlir-trace"));
   }
+  TF_RETURN_IF_ERROR(pipeline_status);
 
   auto llvm_module = mlir::translateModuleToLLVMIR(module.get(), llvm_context);
   TF_RET_CHECK(llvm_module != nullptr)
@@ -349,7 +354,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 MlirFusionEmitterBase::CreateMLIRModule(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
-    const BufferAssignment* buffer_assignment) const {
+    const BufferAssignment* buffer_assignment,
+    mlir::interpreter::MlirCompilationTrace* trace) const {
   context.loadDialect<mlir::DLTIDialect, mlir::tensor::TensorDialect,
                       mlir::func::FuncDialect, mlir::affine::AffineDialect,
                       mlir::arith::ArithDialect, mlir::cf::ControlFlowDialect,
@@ -434,22 +440,13 @@ MlirFusionEmitterBase::CreateMLIRModule(
 
   // Run a minimal simplification pipeline.
   mlir::PassManager pm(&context);
-  if (VLOG_IS_ON(5)) {
-    context.disableMultithreading();
-    pm.enableIRPrinting();
-  }
   pm.addPass(CreateSimplifyArithPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  if (pm.run(module.get()).failed()) {
-    std::string module_dump;
-    llvm::raw_string_ostream os(module_dump);
-    module->print(os);
-    return absl::InternalError(absl::StrFormat(
-        "Failed to simplify module.\nHloFusionInstruction "
-        "computation:\n%s\nMLIR module:\n%s",
-        fusion.fused_instructions_computation()->ToString(), module_dump));
-  }
+  // We won't dump the trace here if the pipeline fails. This is acceptable,
+  // since failures this early are usually easy to debug from the single MLIR
+  // snapshot that is dumped in RunPassPipeline.
+  TF_RETURN_IF_ERROR(RunPassPipeline(module.get(), pm, trace));
 
   return module;
 }
@@ -559,6 +556,29 @@ MlirFusionEmitterBase::EmitEpilogue(
   }
   CHECK_EQ(results.size(), 0);
   return results_per_root;
+}
+
+absl::Status MlirFusionEmitterBase::RunPassPipeline(
+    mlir::ModuleOp module, mlir::PassManager& pm,
+    mlir::interpreter::MlirCompilationTrace* trace) const {
+  if (VLOG_IS_ON(5)) {
+    module.getContext()->disableMultithreading();
+    pm.enableIRPrinting();
+  }
+  if (trace) {
+    module.getContext()->disableMultithreading();
+    pm.addInstrumentation(
+        std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
+            *trace));
+  }
+  if (pm.run(module).failed()) {
+    std::string module_dump;
+    llvm::raw_string_ostream os(module_dump);
+    module->print(os);
+    return absl::InternalError(absl::StrFormat(
+        "Failed to run pass pipeline.\nMLIR module:\n%s", module_dump));
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace gpu
