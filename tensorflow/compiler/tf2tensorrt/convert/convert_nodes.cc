@@ -2274,6 +2274,11 @@ Status ConvertTranspose(const OpConverterParams* params) {
 
 Status ConvertShape(const OpConverterParams* params) {
   const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  DataType out_type;
+  TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node_def), "out_type", &out_type));
+  nvinfer1::DataType trt_out_type;
+  TF_RETURN_IF_ERROR(TfTypeToTrtType(out_type, &trt_out_type));
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"input", TrtInputArg::kBoth}}));
   if (params->use_implicit_batch) {
@@ -2286,20 +2291,27 @@ Status ConvertShape(const OpConverterParams* params) {
   StatusOr<TRTNetworkBuilder> builder = TRTNetworkBuilder::Create(
       params->converter->network(), params->weight_store);
   TRT_ENSURE_OK(builder);
+  nvinfer1::ITensor* out_tensor;
   if (input_dims.IsStatic()) {
     // Create a const node with the value of the shape.
     StatusOr<nvinfer1::IConstantLayer*> const_layer =
         builder->ConstantShape(input_dims);
     TRT_ENSURE_PTR_OK(const_layer);
-    params->outputs->push_back(
-        TRT_TensorOrWeights((*const_layer)->getOutput(0)));
-    return OkStatus();
+    out_tensor = (*const_layer)->getOutput(0);
+  } else {
+    StatusOr<nvinfer1::IShapeLayer*> shape_layer =
+        builder->Shape(inputs.at(0).tensor()->trt_tensor());
+    TRT_ENSURE_PTR_OK(shape_layer);
+    params->converter->SetLayerName(*shape_layer, params->node_def, "shape");
+    out_tensor = (*shape_layer)->getOutput(0);
   }
-  StatusOr<nvinfer1::IShapeLayer*> shape_layer =
-      builder->Shape(inputs.at(0).tensor()->trt_tensor());
-  TRT_ENSURE_PTR_OK(shape_layer);
-  params->converter->SetLayerName(*shape_layer, params->node_def, "shape");
-  params->outputs->push_back(TRT_TensorOrWeights((*shape_layer)->getOutput(0)));
+  if (out_tensor->getType() != trt_out_type) {
+    nvinfer1::ICastLayer* cast_layer =
+        params->converter->network()->addCast(*out_tensor, trt_out_type);
+    TRT_ENSURE(cast_layer);
+    out_tensor = cast_layer->getOutput(0);
+  }
+  params->outputs->push_back(TRT_TensorOrWeights(out_tensor));
   return OkStatus();
 }
 
@@ -2492,6 +2504,14 @@ Status Converter::DynamicReshape(ITensorProxyPtr input,
   }
   ITensorProxyPtr shape =
       network()->addShape(*input->trt_tensor())->getOutput(0);
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+  // TODO(benbarsdell): Casting to int32 makes this match the pre-TRT10
+  // behavior, but it would be better to instead cast all the other int32
+  // tensors below to int64.
+  shape = network()
+              ->addCast(*shape->trt_tensor(), nvinfer1::DataType::kINT32)
+              ->getOutput(0);
+#endif
   // Build new shape = shape[:trt_axis] + [1] + shape[trt_axis:]
   std::vector<ITensorProxyPtr> concat_inputs;
   int max_num_slices = std::max(slices.size(), size_for_added_dims.size());
@@ -5118,6 +5138,14 @@ CalcDepthSpaceDynamicShape(const OpConverterParams* params, int block_size,
   ITensorProxyPtr shape = params->converter->network()
                               ->addShape(*inputs.at(0).tensor()->trt_tensor())
                               ->getOutput(0);
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+  // TODO(benbarsdell): Casting to int32 makes this match the pre-TRT10
+  // behavior, but it would be better to instead cast all the other int32
+  // tensors below to int64.
+  shape = params->converter->network()
+              ->addCast(*shape->trt_tensor(), nvinfer1::DataType::kINT32)
+              ->getOutput(0);
+#endif
   ITensorProxyPtr batch_size =
       params->converter->network()
           ->addSlice(*shape->trt_tensor(), {1, {0}}, {1, {1}}, {1, {1}})
@@ -5767,6 +5795,14 @@ Status ConvertResize(const OpConverterParams* params) {
     ITensorProxyPtr shape = params->converter->network()
                                 ->addShape(*inputs_tensor->trt_tensor())
                                 ->getOutput(0);
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+    // TODO(benbarsdell): Casting to int32 makes this match the pre-TRT10
+    // behavior, but it would be better to instead cast all the other int32
+    // tensors below to int64.
+    shape = params->converter->network()
+                ->addCast(*shape->trt_tensor(), nvinfer1::DataType::kINT32)
+                ->getOutput(0);
+#endif
     ITensorProxyPtr batch_size =
         params->converter->network()
             ->addSlice(*shape->trt_tensor(), {1, {0}}, {1, {1}}, {1, {1}})
