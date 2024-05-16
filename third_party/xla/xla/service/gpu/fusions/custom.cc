@@ -335,7 +335,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   }
 
   bool deterministic_ops =
-      ir_emitter_context.debug_options().xla_gpu_deterministic_ops();
+      ir_emitter_context.debug_options().xla_gpu_exclude_nondeterministic_ops();
 
   TF_ASSIGN_OR_RETURN(
       GemmConfig config,

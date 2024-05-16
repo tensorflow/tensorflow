@@ -769,7 +769,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   const bool cudnn_frontend_enabled =
       debug_options.xla_gpu_enable_cudnn_frontend();
-  const bool deterministic_ops = debug_options.xla_gpu_deterministic_ops();
+  const bool deterministic_ops =
+      debug_options.xla_gpu_exclude_nondeterministic_ops();
   bool allow_tf32 = true;
   // TODO(b/284371623): Properly set allow_tf32 even if instr==nullptr, which is
   // the case when running an AOT compiled executable with runtime autotuning.
@@ -879,7 +880,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
 
   const DebugOptions& debug_options =
       instr->GetModule()->config().debug_options();
-  const bool deterministic_ops = debug_options.xla_gpu_deterministic_ops();
+  const bool deterministic_ops =
+      debug_options.xla_gpu_exclude_nondeterministic_ops();
   const bool allow_tf32 = absl::c_all_of(
       instr->precision_config().operand_precision(),
       [](int precision) { return precision <= PrecisionConfig::HIGH; });
