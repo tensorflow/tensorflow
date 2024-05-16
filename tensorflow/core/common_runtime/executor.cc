@@ -646,9 +646,9 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
         profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
     // Trace async op start.
-    profiler::TraceMeProducer producer(
+    tsl::profiler::TraceMeProducer producer(
         [&] {
-          return profiler::TraceMeEncode(
+          return tsl::profiler::TraceMeEncode(
               "ExecutorState::ProcessAsync::Start",
               {{"name", async_kernel->name()},
                {"kernel_type", async_kernel->type_string()},
@@ -658,7 +658,7 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
 
     auto done = [this, state, activity_id, ctx_id = producer.GetContextId()]() {
       // Trace async op done.
-      profiler::TraceMeConsumer consumer(
+      tsl::profiler::TraceMeConsumer consumer(
           [&] {
             return profiler::TraceMeEncode(
                 "ExecutorState::ProcessAsync::Done",
@@ -806,13 +806,13 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
 
   bool completed = false;
   int64_t last_iter_num = -1;
-  std::unique_ptr<profiler::TraceMeConsumer> iteration_scope;
+  std::unique_ptr<tsl::profiler::TraceMeConsumer> iteration_scope;
   while (!inline_ready->empty()) {
     TaggedNode tagged_node = inline_ready->front();
 
     int64_t current_iter_num = tagged_node.get_iter_num();
     if (current_iter_num != last_iter_num) {
-      iteration_scope = std::make_unique<profiler::TraceMeConsumer>(
+      iteration_scope = std::make_unique<tsl::profiler::TraceMeConsumer>(
           // From TraceMeProducer in DirectSession::RunInternal,
           // GraphMgr::ExecuteAsync, or FunctionLibraryRuntime::Run.
           [&] {
@@ -1458,12 +1458,12 @@ void ExecutorState<PropagatorStateType>::Finish() {
     }
     delete this;
     runner([step_id, trace_id, status, done_cb = std::move(done_cb)]() {
-      profiler::TraceMeConsumer activity(
+      tsl::profiler::TraceMeConsumer activity(
           // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
           // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
           [&] {
-            return profiler::TraceMeEncode("ExecutorDoneCallback",
-                                           {{"id", step_id}});
+            return tsl::profiler::TraceMeEncode("ExecutorDoneCallback",
+                                                {{"id", step_id}});
           },
           profiler::ContextType::kTfExecutor, trace_id,
           profiler::TraceMeLevel::kInfo);
@@ -1481,12 +1481,12 @@ void ExecutorState<PropagatorStateType>::Finish() {
                   done_cb = std::move(done_cb)](const Status& status) mutable {
       delete this;
       runner([step_id, trace_id, status, done_cb = std::move(done_cb)]() {
-        profiler::TraceMeConsumer activity(
+        tsl::profiler::TraceMeConsumer activity(
             // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
             // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
             [&] {
-              return profiler::TraceMeEncode("ExecutorDoneCallback",
-                                             {{"id", step_id}});
+              return tsl::profiler::TraceMeEncode("ExecutorDoneCallback",
+                                                  {{"id", step_id}});
             },
             profiler::ContextType::kTfExecutor, trace_id,
             profiler::TraceMeLevel::kInfo);
@@ -1496,12 +1496,12 @@ void ExecutorState<PropagatorStateType>::Finish() {
   } else {
     delete this;
     runner([step_id, trace_id, status, done_cb = std::move(done_cb)]() {
-      profiler::TraceMeConsumer activity(
+      tsl::profiler::TraceMeConsumer activity(
           // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
           // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
           [&] {
-            return profiler::TraceMeEncode("ExecutorDoneCallback",
-                                           {{"id", step_id}});
+            return tsl::profiler::TraceMeEncode("ExecutorDoneCallback",
+                                                {{"id", step_id}});
           },
           profiler::ContextType::kTfExecutor, trace_id,
           profiler::TraceMeLevel::kInfo);
