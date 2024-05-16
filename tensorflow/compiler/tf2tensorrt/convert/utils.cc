@@ -243,7 +243,11 @@ int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
   // Therefore, to get the number of input tensors, we need to divide by the
   // the number of profiles.
   int n_profiles = engine->getNbOptimizationProfiles();
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   return n_input / n_profiles;
+#else
+  return n_input;
+#endif
 }
 
 absl::string_view GetDeviceName(const Node* node) {
