@@ -405,7 +405,7 @@ absl::StatusOr<std::string> LiteralBase::SerializeAsString() const {
 }
 
 template <typename NativeT>
-Status MutableLiteralBase::CopySliceFromInternal(
+absl::Status MutableLiteralBase::CopySliceFromInternal(
     const LiteralBase& src_literal, absl::Span<const int64_t> src_base,
     absl::Span<const int64_t> dest_base, absl::Span<const int64_t> copy_size) {
   auto linear_index = [](const Shape& shape,
@@ -674,8 +674,8 @@ void LiteralBase::Piece::CopyElementsWithDynamicBound(
   } while (IndexUtil::BumpIndices(bound_shape, absl::MakeSpan(index)));
 }
 
-Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
-                                    bool only_dynamic_bound) {
+absl::Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
+                                          bool only_dynamic_bound) {
   CHECK(subshape_ != nullptr);
   CHECK(src.subshape_ != nullptr);
   CHECK(LayoutUtil::IsDenseArray(subshape()))
@@ -745,10 +745,10 @@ void MutableLiteralBase::SetDynamicSize(int64_t dim_index,
   piece(shape_index).SetDynamicSize(dim_index, size);
 }
 
-Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
-                                    const ShapeIndex& dest_shape_index,
-                                    const ShapeIndex& src_shape_index,
-                                    bool only_dynamic_bound) {
+absl::Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
+                                          const ShapeIndex& dest_shape_index,
+                                          const ShapeIndex& src_shape_index,
+                                          bool only_dynamic_bound) {
   const Shape& dest_subshape =
       ShapeUtil::GetSubshape(shape(), dest_shape_index);
   const Shape& src_subshape =
@@ -799,8 +799,8 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
       });
 }
 
-Status Literal::MoveFrom(Literal&& src_literal,
-                         const ShapeIndex& dest_shape_index) {
+absl::Status Literal::MoveFrom(Literal&& src_literal,
+                               const ShapeIndex& dest_shape_index) {
   const Shape& dest_subshape =
       ShapeUtil::GetSubshape(shape(), dest_shape_index);
   if (!ShapeUtil::Equal(dest_subshape, src_literal.shape())) {
@@ -832,10 +832,9 @@ Status Literal::MoveFrom(Literal&& src_literal,
   return OkStatus();
 }
 
-Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
-                                         absl::Span<const int64_t> src_base,
-                                         absl::Span<const int64_t> dest_base,
-                                         absl::Span<const int64_t> copy_size) {
+absl::Status MutableLiteralBase::CopySliceFrom(
+    const LiteralSlice& src_literal, absl::Span<const int64_t> src_base,
+    absl::Span<const int64_t> dest_base, absl::Span<const int64_t> copy_size) {
   TF_RET_CHECK(LayoutUtil::IsDenseArray(shape())) << shape();
   TF_RET_CHECK(LayoutUtil::IsDenseArray(src_literal.shape()))
       << src_literal.shape();
@@ -844,7 +843,7 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
   TF_RET_CHECK(shape().rank() == dest_base.size());
 
   return primitive_util::ArrayTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+      [&](auto primitive_type_constant) -> absl::Status {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         return CopySliceFromInternal<NativeT>(src_literal, src_base, dest_base,
                                               copy_size);
@@ -927,7 +926,7 @@ void MutableLiteralBase::PopulateInplaceInternal(
   }
 }
 
-Status MutableLiteralBase::PopulateInplace(
+absl::Status MutableLiteralBase::PopulateInplace(
     absl::FunctionRef<void(void*, absl::Span<const int64_t>)> populator) {
   TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
@@ -939,7 +938,7 @@ Status MutableLiteralBase::PopulateInplace(
   return OkStatus();
 }
 
-Status MutableLiteralBase::PopulateInplaceParallel(
+absl::Status MutableLiteralBase::PopulateInplaceParallel(
     absl::FunctionRef<void(void*, absl::Span<const int64_t>, int)> populator) {
   TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
@@ -1382,11 +1381,11 @@ std::optional<complex128> LiteralBase::GetAsComplex128(
       shape().element_type());
 }
 
-Status MutableLiteralBase::SetIntegralAsS64(
+absl::Status MutableLiteralBase::SetIntegralAsS64(
     absl::Span<const int64_t> multi_index, int64_t value) {
   CHECK(LayoutUtil::IsDenseArray(shape()));
   return primitive_util::PrimitiveTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+      [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsIntegralType(primitive_type_constant) ||
                       primitive_type_constant == PRED) {
           using NativeT = NativeTypeOf<primitive_type_constant>;
@@ -1399,8 +1398,8 @@ Status MutableLiteralBase::SetIntegralAsS64(
       shape().element_type());
 }
 
-Status MutableLiteralBase::SetFromDouble(absl::Span<const int64_t> multi_index,
-                                         double value) {
+absl::Status MutableLiteralBase::SetFromDouble(
+    absl::Span<const int64_t> multi_index, double value) {
   CHECK(LayoutUtil::IsDenseArray(shape()));
   if (!primitive_util::IsFloatingPointType(shape().element_type())) {
     return FailedPrecondition("Array element type is not integral: %s",
@@ -1695,8 +1694,8 @@ void ConvertBetweenNativeTypes(absl::Span<const NativeSrcT> src_data,
 }
 
 template <PrimitiveType kSrcType>
-Status ConvertIfDestTypeMatches(const LiteralBase& src_literal,
-                                MutableLiteralBase& dst_literal) {
+absl::Status ConvertIfDestTypeMatches(const LiteralBase& src_literal,
+                                      MutableLiteralBase& dst_literal) {
   DCHECK(dst_literal.shape().IsArray());
   using NativeSrcT = NativeTypeOf<kSrcType>;
   // Pass raw data Span/pointers to called template methods to avoid duplicating
@@ -1705,7 +1704,7 @@ Status ConvertIfDestTypeMatches(const LiteralBase& src_literal,
   void* dst_base = dst_literal.untyped_data();
   DCHECK_EQ(src_data.size(), dst_literal.element_count());
   return primitive_util::ArrayTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+      [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsComplexType(kSrcType) &&
                       !primitive_util::IsComplexType(primitive_type_constant)) {
           return Unimplemented("%s from type %s to type %s is not implemented.",
@@ -1741,7 +1740,7 @@ absl::StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
   Literal result(
       ShapeUtil::ChangeElementType(literal.shape(), primitive_dest_type));
   TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+      [&](auto primitive_type_constant) -> absl::Status {
         return ConvertIfDestTypeMatches<primitive_type_constant>(literal,
                                                                  result);
       },
@@ -2336,8 +2335,8 @@ void* LiteralBase::Piece::untyped_data() {
 namespace {
 
 template <typename RepeatedFieldT, typename NativeT>
-Status CopyFromRepeatedField(absl::Span<NativeT> dest,
-                             const RepeatedFieldT& src) {
+absl::Status CopyFromRepeatedField(absl::Span<NativeT> dest,
+                                   const RepeatedFieldT& src) {
   if (dest.size() != src.size()) {
     return InvalidArgument(
         "Expected %lu elements in LiteralProto repeated field, has %d",
@@ -2349,7 +2348,7 @@ Status CopyFromRepeatedField(absl::Span<NativeT> dest,
 
 }  // namespace
 
-Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
+absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   // These conditions should have been checked in
   // MutableLiteralBase::CreateFromProto.
   TF_RET_CHECK(proto.has_shape());

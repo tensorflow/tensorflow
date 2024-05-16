@@ -641,7 +641,7 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
     return true;
   };
 
-  Status error_status = ShapeUtil::ForEachIndexWithStatus(
+  absl::Status error_status = ShapeUtil::ForEachIndexWithStatus(
       shape, /*base=*/{0, 0}, /*count=*/{10, 10}, /*incr=*/{0, 1},
       increment_func);
 

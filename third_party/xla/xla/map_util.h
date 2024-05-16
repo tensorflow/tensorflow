@@ -54,7 +54,7 @@ typename Collection::value_type::second_type& FindOrDie(
 // Like FindOrDie but returns an error instead of dying if `key` is not in
 // `container`.
 template <class Collection>
-StatusOr<
+absl::StatusOr<
     std::reference_wrapper<const typename Collection::value_type::second_type>>
 MaybeFind(const Collection& collection,
           const typename Collection::value_type::first_type& key) {

@@ -68,7 +68,7 @@ std::vector<int64_t> ToMixedRadix(const int64_t n,
   return digits;
 }
 
-Status WithLogBacktrace(const Status& status) {
+absl::Status WithLogBacktrace(const absl::Status& status) {
   CHECK(!status.ok());
   VLOG(1) << status.ToString();
   VLOG(2) << tsl::CurrentStackTrace();
@@ -113,14 +113,16 @@ void ScopedLoggingTimer::StopAndLog() {
 
 ScopedLoggingTimer::~ScopedLoggingTimer() { StopAndLog(); }
 
-Status AddStatus(Status prior, absl::string_view context) {
+absl::Status AddStatus(absl::Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(), absl::StrCat(context, ": ", prior.message())};
+  return absl::Status{prior.code(),
+                      absl::StrCat(context, ": ", prior.message())};
 }
 
-Status AppendStatus(Status prior, absl::string_view context) {
+absl::Status AppendStatus(absl::Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(), absl::StrCat(prior.message(), ": ", context)};
+  return absl::Status{prior.code(),
+                      absl::StrCat(prior.message(), ": ", context)};
 }
 
 std::string Reindent(absl::string_view original,

@@ -27,37 +27,37 @@ limitations under the License.
 
 namespace xla {
 
-Status RetCheckFail() {
+absl::Status RetCheckFail() {
   TF_RET_CHECK(2 > 3);
   return OkStatus();
 }
 
-Status RetCheckFailWithExtraMessage() {
+absl::Status RetCheckFailWithExtraMessage() {
   TF_RET_CHECK(2 > 3) << "extra message";
   return OkStatus();
 }
 
-Status RetCheckSuccess() {
+absl::Status RetCheckSuccess() {
   TF_RET_CHECK(3 > 2);
   return OkStatus();
 }
 
 TEST(StatusMacros, RetCheckFailing) {
-  Status status = RetCheckFail();
+  absl::Status status = RetCheckFail();
   EXPECT_EQ(status.code(), tsl::error::INTERNAL);
   EXPECT_THAT(status.message(),
               ::testing::ContainsRegex("RET_CHECK failure.*2 > 3"));
 }
 
 TEST(StatusMacros, RetCheckFailingWithExtraMessage) {
-  Status status = RetCheckFailWithExtraMessage();
+  absl::Status status = RetCheckFailWithExtraMessage();
   EXPECT_EQ(status.code(), tsl::error::INTERNAL);
   EXPECT_THAT(status.message(),
               ::testing::ContainsRegex("RET_CHECK.*2 > 3 extra message"));
 }
 
 TEST(StatusMacros, RetCheckSucceeding) {
-  Status status = RetCheckSuccess();
+  absl::Status status = RetCheckSuccess();
   EXPECT_IS_OK(status);
 }
 
@@ -72,11 +72,11 @@ TEST(StatusMacros, AssignOrAssertOnOK) {
   EXPECT_EQ(42, result);
 }
 
-Status ReturnStatusOK() { return OkStatus(); }
+absl::Status ReturnStatusOK() { return OkStatus(); }
 
-Status ReturnStatusError() { return (tsl::errors::Internal("foobar")); }
+absl::Status ReturnStatusError() { return (tsl::errors::Internal("foobar")); }
 
-using StatusReturningFunction = std::function<Status()>;
+using StatusReturningFunction = std::function<absl::Status()>;
 
 absl::StatusOr<int> CallStatusReturningFunction(
     const StatusReturningFunction& func) {
@@ -97,7 +97,7 @@ TEST(StatusMacros, ReturnIfErrorOnError) {
 }
 
 TEST(StatusMacros, AssignOrReturnSuccessfully) {
-  Status status = []() {
+  absl::Status status = []() {
     TF_ASSIGN_OR_RETURN(int value, CreateIntSuccessfully());
     EXPECT_EQ(value, 42);
     return OkStatus();
@@ -106,7 +106,7 @@ TEST(StatusMacros, AssignOrReturnSuccessfully) {
 }
 
 TEST(StatusMacros, AssignOrReturnUnsuccessfully) {
-  Status status = []() {
+  absl::Status status = []() {
     TF_ASSIGN_OR_RETURN(int value, CreateIntUnsuccessfully());
     (void)value;
     return OkStatus();
