@@ -204,7 +204,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   LayoutUtil::SetToDefaultLayout(program_shape->mutable_result());
 }
 
-/* static */ Status LayoutUtil::ValidateLayoutInShape(
+/* static */ absl::Status LayoutUtil::ValidateLayoutInShape(
     const Shape& shape, bool allow_missing_layouts) {
   if (shape.IsTuple()) {
     // Tuple shape.
@@ -236,8 +236,8 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   }
 }
 
-/* static */ Status LayoutUtil::ValidateLayoutForShape(const Layout& layout,
-                                                       const Shape& shape) {
+/* static */ absl::Status LayoutUtil::ValidateLayoutForShape(
+    const Layout& layout, const Shape& shape) {
   if (shape.IsTuple()) {
     return InvalidArgument("a single Layout is not valid for tuple shapes");
   }
@@ -586,7 +586,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
 namespace {
 
 // Internal helper for recursively copying layouts.
-Status CopyLayoutInternal(const Shape& src, Shape* dst) {
+absl::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
   if (src.IsTuple() != dst->IsTuple()) {
     return InvalidArgument(
         "cannot copy layout from shape: shape structure differs");
@@ -619,7 +619,7 @@ Status CopyLayoutInternal(const Shape& src, Shape* dst) {
 }  // namespace
 
 /* static */
-Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
+absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return CopyLayoutInternal(src, dst);
 }
 

@@ -12,6 +12,8 @@ load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
 load("@local_xla//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 
+# TODO(jakeharmon): Test PRs once more
+
 # TODO(rdzhabarov): Tighten visibility after migration is complete.
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

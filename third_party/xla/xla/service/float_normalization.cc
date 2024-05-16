@@ -43,18 +43,18 @@ class FloatNormalizationVisitor : public DfsHloVisitorWithDefault {
         float_normalization_(float_normalization) {}
 
   bool changed() const { return changed_; }
-  Status DefaultAction(HloInstruction* hlo) override;
-  Status Preprocess(HloInstruction* hlo) override;
+  absl::Status DefaultAction(HloInstruction* hlo) override;
+  absl::Status Preprocess(HloInstruction* hlo) override;
 
  private:
   // Checks if the HLO uses low-precision in an unsupported way, and if so,
   // inserts conversions between the low- and high-precision types to make it
   // supported.
-  Status HandleInstruction(HloInstruction* hlo);
+  absl::Status HandleInstruction(HloInstruction* hlo);
 
   // Handle instructions with tuple outputs by examining each output
   // independently.
-  Status HandleMultipleOutputs(HloInstruction* hlo);
+  absl::Status HandleMultipleOutputs(HloInstruction* hlo);
 
   // Creates a copy of `hlo` with subshapes matching `from` type converted to
   // `to` type. If no matching subshapes are found, returns the original `hlo`.
@@ -65,27 +65,27 @@ class FloatNormalizationVisitor : public DfsHloVisitorWithDefault {
 
   // Inserts a conversion HLO that changes the given HLO's output type. If the
   // output is a tuple, change all elements that match the from type.
-  Status InsertConvertAfterOutput(HloInstruction* hlo, PrimitiveType from,
-                                  PrimitiveType to,
-                                  HloComputation* computation);
+  absl::Status InsertConvertAfterOutput(HloInstruction* hlo, PrimitiveType from,
+                                        PrimitiveType to,
+                                        HloComputation* computation);
 
   // Changes the output type to the specified type, then inserts a conversion
   // to the original type. If the output is a tuple, change all elements that
   // match the from type.
-  Status ChangeOutputTypeThenInsertConvertBack(HloInstruction* hlo,
-                                               PrimitiveType from,
-                                               PrimitiveType to,
-                                               HloComputation* computation);
+  absl::Status ChangeOutputTypeThenInsertConvertBack(
+      HloInstruction* hlo, PrimitiveType from, PrimitiveType to,
+      HloComputation* computation);
 
   // Inserts a conversion HLO that changes the given HLO's operand type. If the
   // operand is a tuple, change all elements that match the from type.
-  Status InsertConvertBeforeOperand(HloInstruction* hlo, int64_t operand_idx,
-                                    PrimitiveType from, PrimitiveType to,
-                                    HloComputation* computation);
+  absl::Status InsertConvertBeforeOperand(HloInstruction* hlo,
+                                          int64_t operand_idx,
+                                          PrimitiveType from, PrimitiveType to,
+                                          HloComputation* computation);
 
   // Inserts conversion HLOs to replace the called computations' low-precision
   // operands/outputs to high-precision.
-  Status ConvertCalledComputations(
+  absl::Status ConvertCalledComputations(
       HloInstruction* hlo,
       absl::Span<HloComputation* const> low_precision_called_comps);
 
@@ -156,7 +156,7 @@ absl::StatusOr<HloInstruction*> FloatNormalizationVisitor::ConvertType(
   return new_hlo;
 }
 
-Status FloatNormalizationVisitor::InsertConvertAfterOutput(
+absl::Status FloatNormalizationVisitor::InsertConvertAfterOutput(
     HloInstruction* hlo, PrimitiveType from, PrimitiveType to,
     HloComputation* computation) {
   bool is_root = computation->root_instruction() == hlo;
@@ -177,7 +177,7 @@ Status FloatNormalizationVisitor::InsertConvertAfterOutput(
   return OkStatus();
 }
 
-Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
+absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
     HloInstruction* hlo, PrimitiveType from, PrimitiveType to,
     HloComputation* computation) {
   auto original_shape = hlo->shape();
@@ -246,7 +246,7 @@ Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
   return OkStatus();
 }
 
-Status FloatNormalizationVisitor::InsertConvertBeforeOperand(
+absl::Status FloatNormalizationVisitor::InsertConvertBeforeOperand(
     HloInstruction* hlo, int64_t operand_idx, PrimitiveType from,
     PrimitiveType to, HloComputation* computation) {
   auto operand = hlo->mutable_operand(operand_idx);
@@ -261,7 +261,7 @@ Status FloatNormalizationVisitor::InsertConvertBeforeOperand(
   return OkStatus();
 }
 
-Status FloatNormalizationVisitor::ConvertCalledComputations(
+absl::Status FloatNormalizationVisitor::ConvertCalledComputations(
     HloInstruction* hlo,
     absl::Span<HloComputation* const> low_precision_called_comps) {
   absl::flat_hash_map<HloComputation*, HloComputation*> cloned_computations;
@@ -300,7 +300,8 @@ bool ShouldAvoidNormalizingComputationsForInstruction(HloInstruction* hlo) {
          hlo->opcode() == HloOpcode::kReduceScatter;
 }
 
-Status FloatNormalizationVisitor::HandleMultipleOutputs(HloInstruction* hlo) {
+absl::Status FloatNormalizationVisitor::HandleMultipleOutputs(
+    HloInstruction* hlo) {
   std::vector<PrimitiveType> operand_types(hlo->operand_count());
   std::vector<PrimitiveType> output_types(hlo->operand_count());
   int64_t high_prec_count = 0;
@@ -426,7 +427,7 @@ Status FloatNormalizationVisitor::HandleMultipleOutputs(HloInstruction* hlo) {
   return ConvertCalledComputations(hlo, low_precision_called_comps);
 }
 
-Status FloatNormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
+absl::Status FloatNormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
   int high_prec_count = 0;
   int low_prec_count = 0;
 
@@ -540,7 +541,7 @@ Status FloatNormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
   return ConvertCalledComputations(hlo, low_precision_called_comps);
 }
 
-Status FloatNormalizationVisitor::DefaultAction(HloInstruction* hlo) {
+absl::Status FloatNormalizationVisitor::DefaultAction(HloInstruction* hlo) {
   // Do not change instructions related to entry and exit of a computation,
   // tuples, fusion, convert, side-effecting instructions, control flow, and
   // bitcast-convert.
@@ -569,7 +570,7 @@ Status FloatNormalizationVisitor::DefaultAction(HloInstruction* hlo) {
   return HandleInstruction(hlo);
 }
 
-Status FloatNormalizationVisitor::Preprocess(HloInstruction* hlo) {
+absl::Status FloatNormalizationVisitor::Preprocess(HloInstruction* hlo) {
   computation_ = hlo->parent();
   return OkStatus();
 }

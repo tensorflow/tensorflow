@@ -244,7 +244,7 @@ class HloParserImpl : public HloParser {
 
   // Runs the parser and constructs the resulting HLO in the given (empty)
   // HloModule. Returns the error status in case an error occurred.
-  Status Run(HloModule* module) override;
+  absl::Status Run(HloModule* module) override;
 
   // Returns the error information.
   std::string GetError() const { return StrJoin(error_, "\n"); }
@@ -695,7 +695,7 @@ bool HloParserImpl::TokenError(absl::string_view msg) {
   return Error(lexer_.GetLoc(), msg);
 }
 
-Status HloParserImpl::Run(HloModule* module) {
+absl::Status HloParserImpl::Run(HloModule* module) {
   lexer_.Lex();
   if ((lexer_.GetKind() == TokKind::kw_HloModule) ||
       (lexer_.GetKind() == TokKind::kw_ENTRY) ||
@@ -1150,7 +1150,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   if (aliasing_data) {
     HloInputOutputAliasConfig alias_config(module->result_shape());
     for (auto& p : *aliasing_data) {
-      Status st =
+      absl::Status st =
           alias_config.SetUpAlias(p.first, p.second.parameter_number,
                                   p.second.parameter_index, p.second.kind);
       if (!st.ok()) {
@@ -1162,7 +1162,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   if (buffer_donor_data) {
     HloBufferDonorConfig buffer_donor_config;
     for (auto& p : *buffer_donor_data) {
-      Status st =
+      absl::Status st =
           buffer_donor_config.AddBufferDonor(p.param_number, p.param_index);
       if (!st.ok()) {
         return TokenError(st.message());
@@ -1424,7 +1424,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   }
   if (predecessors) {
     for (auto* pre : *predecessors) {
-      Status status = pre->AddControlDependencyTo(instruction);
+      absl::Status status = pre->AddControlDependencyTo(instruction);
       if (!status.ok()) {
         return Error(name_loc, StrCat("error adding control dependency for: ",
                                       name, " status: ", status.ToString()));

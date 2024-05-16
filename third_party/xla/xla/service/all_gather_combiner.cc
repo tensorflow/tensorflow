@@ -73,8 +73,8 @@ int64_t FindMostFrequentGatherDim(
 // Combines the elements of to_combine into a single AllGather op. All entries
 // in to_combine must be AllGather ops with exactly one operand and the same
 // preferred all_gather_dimension.
-Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
-                         bool combine_by_dim) {
+absl::Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
+                               bool combine_by_dim) {
   if (to_combine.size() < 2) {
     return OkStatus();
   }
@@ -225,7 +225,7 @@ absl::StatusOr<bool> AllGatherCombiner::Run(
       return CombineKey(instruction, *domain_map, combine_by_dim_);
     };
     auto combine_fn =
-        [&](absl::Span<HloInstruction* const> to_combine) -> Status {
+        [&](absl::Span<HloInstruction* const> to_combine) -> absl::Status {
       return CombineAllGathers(to_combine, combine_by_dim_);
     };
 

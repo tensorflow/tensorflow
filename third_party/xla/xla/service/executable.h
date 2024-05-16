@@ -96,7 +96,7 @@ class ExecutionInput {
     return host_shape_ != nullptr ? *host_shape_ : shape();
   }
 
-  Status SetDynamicShape(Shape dynamic_shape);
+  absl::Status SetDynamicShape(Shape dynamic_shape);
 
   absl::StatusOr<xla::ShapedBuffer> ToShapedBuffer(
       se::DeviceMemoryAllocator* allocator, int device_ordinal) const;

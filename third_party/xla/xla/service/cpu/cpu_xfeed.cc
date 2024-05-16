@@ -102,8 +102,8 @@ absl::StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
   return queued_buffer;
 }
 
-Status TransferBufferToInfeed(int device_ordinal, int64_t size,
-                              const void* source) {
+absl::Status TransferBufferToInfeed(int device_ordinal, int64_t size,
+                                    const void* source) {
   TF_ASSIGN_OR_RETURN(cpu::runtime::XfeedBuffer * buffer,
                       TransferBufferToInfeedInternal(size, source));
 
@@ -175,8 +175,8 @@ absl::StatusOr<Shape> TransferTupleBuffersFromOutfeed(
 }
 }  // namespace
 
-Status TransferLiteralToInfeedOnCpu(int device_ordinal,
-                                    const LiteralSlice& literal) {
+absl::Status TransferLiteralToInfeedOnCpu(int device_ordinal,
+                                          const LiteralSlice& literal) {
   const Shape& shape = literal.shape();
   VLOG(2) << "Transferring literal to infeed with shape: "
           << ShapeUtil::HumanString(shape);
@@ -221,8 +221,8 @@ Status TransferLiteralToInfeedOnCpu(int device_ordinal,
   return OkStatus();
 }
 
-Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
-                                       MutableBorrowingLiteral literal) {
+absl::Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
+                                             MutableBorrowingLiteral literal) {
   if (!literal.shape().IsTuple()) {
     int64_t size =
         cpu::runtime::GetByteSizeRequirement(literal.shape(), sizeof(void*));
@@ -275,7 +275,7 @@ Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
   return OkStatus();
 }
 
-Status ReadDynamicShapesOnCpu(
+absl::Status ReadDynamicShapesOnCpu(
     const ShapedBuffer* device_buffer, Shape* device_shape,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
   TF_RET_CHECK(device_shape->is_dynamic());

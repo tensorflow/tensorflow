@@ -399,7 +399,7 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
   return changed;
 }
 
-Status HloReplicationAnalysis::ComputeHloReplication() {
+absl::Status HloReplicationAnalysis::ComputeHloReplication() {
   // Add entry parameters to the above sets according to user annotation.
   // Replicated modules read from `parameter_replicated_at_leaf_buffers` whereas
   // SPMD partitioned modules read from HloSharding attributes.
@@ -410,7 +410,7 @@ Status HloReplicationAnalysis::ComputeHloReplication() {
                                          HloReplication::UniqueOnAllDevices());
     const auto& replication = param->parameter_replicated_at_leaf_buffers();
     int leaf_index = 0;
-    Status status = ShapeUtil::ForEachSubshapeWithStatus(
+    absl::Status status = ShapeUtil::ForEachSubshapeWithStatus(
         param->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           if (!ShapeUtil::IsLeafIndex(param->shape(), index)) {
             return OkStatus();

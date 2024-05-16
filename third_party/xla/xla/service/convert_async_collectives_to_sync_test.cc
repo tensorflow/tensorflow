@@ -35,8 +35,8 @@ namespace m = xla::testing::opcode_matchers;
 // to the HLO module string.
 class ConvertAsyncCollectivesToSyncTest : public HloTestBase {
  public:
-  Status RunPass(HloModule *module, bool expect_change,
-                 HloPredicate is_nop = {}) {
+  absl::Status RunPass(HloModule *module, bool expect_change,
+                       HloPredicate is_nop = {}) {
     TF_ASSIGN_OR_RETURN(bool changed,
                         ConvertAsyncCollectivesToSync{is_nop}.Run(module));
     EXPECT_EQ(changed, expect_change);

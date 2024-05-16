@@ -64,12 +64,12 @@ HloModuleGroupMetadata::Build(absl::Span<HloModule* const> modules) {
   return std::move(metadata);
 }
 
-Status HloModuleGroupMetadata::Build() {
+absl::Status HloModuleGroupMetadata::Build() {
   TF_RETURN_IF_ERROR(RecordInstructions());
   TF_RETURN_IF_ERROR(VerifyChannelInstructions());
 
   // Record all companion while instructions.
-  const auto visitor = [this](HloInstruction* hlo) -> Status {
+  const auto visitor = [this](HloInstruction* hlo) -> absl::Status {
     // We only need to process if the instruction is within the computation
     // of a companion instruction, like in the condition or body computation
     // of a While.
@@ -159,7 +159,7 @@ Status HloModuleGroupMetadata::Build() {
   return OkStatus();
 }
 
-Status HloModuleGroupMetadata::VerifyCompanionSets() const {
+absl::Status HloModuleGroupMetadata::VerifyCompanionSets() const {
   for (const auto& companions : companion_sets_) {
     // A companion set must be composed at most of an instruction per
     // device/module.
@@ -320,8 +320,8 @@ int64_t HloModuleGroupMetadata::GetDeviceModulesCount() const {
   return modules_.size();
 }
 
-Status HloModuleGroupMetadata::RecordInstructions() {
-  const auto visitor = [this](HloInstruction* hlo) -> Status {
+absl::Status HloModuleGroupMetadata::RecordInstructions() {
+  const auto visitor = [this](HloInstruction* hlo) -> absl::Status {
     if (hlo->opcode() == HloOpcode::kWhile) {
       tracked_instructions_[hlo->while_condition()] =
           TrackedInstruction(hlo, ComputationKind::kWhileCondition);
@@ -404,8 +404,8 @@ Status HloModuleGroupMetadata::RecordInstructions() {
   return OkStatus();
 }
 
-Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
-                                            HloInstruction* instruction2) {
+absl::Status HloModuleGroupMetadata::AddCompanion(
+    HloInstruction* instruction1, HloInstruction* instruction2) {
   TF_RET_CHECK(instruction1->opcode() == HloOpcode::kWhile ||
                instruction1->opcode() == HloOpcode::kConditional ||
                instruction1->opcode() == HloOpcode::kCall);
@@ -449,7 +449,7 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
   return OkStatus();
 }
 
-Status HloModuleGroupMetadata::VerifyChannelInstructions() {
+absl::Status HloModuleGroupMetadata::VerifyChannelInstructions() {
   for (const Channel& channel : channels_) {
     if (channel.send == nullptr) {
       return FailedPrecondition("missing send for id : %d", channel.id);
@@ -530,7 +530,7 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
   return OkStatus();
 }
 
-Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
+absl::Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
     HloInstruction* instruction) const {
   HloComputation* computation = instruction->parent();
   const HloModule* module = computation->parent();

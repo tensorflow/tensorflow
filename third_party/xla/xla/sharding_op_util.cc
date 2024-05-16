@@ -38,8 +38,8 @@ std::string EncodeAttributes(absl::Span<const int64_t> unspecified_dims) {
                       absl::StrJoin(unspecified_dims, ","), "]");
 }
 
-Status ParseAttributes(absl::string_view opaque,
-                       std::vector<int64_t>* unspecified_dims) {
+absl::Status ParseAttributes(absl::string_view opaque,
+                             std::vector<int64_t>* unspecified_dims) {
   HloLexer lexer(opaque);
   while (lexer.Lex() != TokKind::kEof) {
     if (lexer.GetKind() != TokKind::kAttributeName) {

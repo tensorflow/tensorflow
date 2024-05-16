@@ -180,7 +180,7 @@ CpuExecutable::CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
   return std::move(buffers);
 }
 
-Status CpuExecutable::ExecuteComputeFunction(
+absl::Status CpuExecutable::ExecuteComputeFunction(
     const ExecutableRunOptions* run_options,
     absl::Span<MaybeOwningDeviceMemory const> buffers,
     HloExecutionProfile* hlo_execution_profile) {
@@ -399,7 +399,7 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     std::shared_ptr<std::vector<MaybeOwningDeviceMemory>> task_buffers;
     HloExecutionProfile* hlo_execution_profile;
 
-    Status operator()() {
+    absl::Status operator()() {
       return executable->ExecuteComputeFunction(
           &run_options.run_options(), *task_buffers, hlo_execution_profile);
     }

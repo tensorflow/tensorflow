@@ -49,7 +49,7 @@ namespace xla {
 // elements in thread_local_computations and global_computations are in post
 // order (if computation A has an instruction which calls computation B, then A
 // will appear after B in the vector).
-Status GatherComputationsByAllocationType(
+absl::Status GatherComputationsByAllocationType(
     const HloModule* module,
     std::vector<const HloComputation*>* thread_local_computations,
     std::vector<const HloComputation*>* global_computations);
@@ -572,7 +572,7 @@ class BufferAssignment {
       const absl::flat_hash_set<BufferValue::Color>& private_stack_colors);
 
   // Computes stats for the assignment, to be retrieved by GetStats.
-  Status ComputeSummaryStats();
+  absl::Status ComputeSummaryStats();
 
   // The vector of buffer allocations. Indexed by BufferAllocation::Index.
   std::vector<BufferAllocation> allocations_;
@@ -611,7 +611,8 @@ class BufferAssignment {
 // A class which constructs a buffer assignment.
 class BufferAssigner {
  public:
-  using Colorer = std::function<Status(HloAliasAnalysis*, const HloOrdering&)>;
+  using Colorer =
+      std::function<absl::Status(HloAliasAnalysis*, const HloOrdering&)>;
   using MustNotLiveOut =
       std::function<bool(const HloInstruction*, const ShapeIndex&)>;
   using PrivateStacks = absl::flat_hash_map<BufferValue::Color,
@@ -683,7 +684,7 @@ class BufferAssigner {
   // is modified to reflect the new buffer assignments. If is_thread_local is
   // true, then all assigned buffers have the is_thread_local flag set to
   // true.
-  Status AssignBuffersForComputations(
+  absl::Status AssignBuffersForComputations(
       const std::vector<const HloComputation*>& computations,
       bool is_thread_local,
       absl::flat_hash_map<const HloComputation*,
@@ -697,12 +698,12 @@ class BufferAssigner {
 
   // Assigns pre-set assignments, if provided. These assignments will be added
   // to assigned_buffers and skip buffer allocation.
-  Status AssignPresetBuffers(
+  absl::Status AssignPresetBuffers(
       absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
       BufferAssignment* assignment);
 
   // Assigns a single hlo buffer to an HLO allocation.
-  Status AssignSingleHloBuffer(
+  absl::Status AssignSingleHloBuffer(
       const HloBuffer* hlo_buffer, bool is_thread_local,
       absl::flat_hash_map<const HloComputation*,
                           absl::flat_hash_set<const HloValue*>>*
@@ -715,7 +716,7 @@ class BufferAssigner {
   // assignment->liveness().hlo_ordering().SequentialOrder. If
   // 'run_whole_module_heap_simulation' is true, the heap simulation will be run
   // assuming all global computations are sequentially ordered.
-  Status AssignBuffersWithSequentialOrdering(
+  absl::Status AssignBuffersWithSequentialOrdering(
       const absl::flat_hash_map<const HloComputation*,
                                 absl::flat_hash_set<const HloValue*>>&
           buffers_to_assign_sequentially,
