@@ -768,7 +768,10 @@ message DebugOptions {
   // Base length to rewrite the reduce window to, no rewrite if set to 0.
   int64 xla_reduce_window_rewrite_base_length = 293;
 
-  // Next id: 296
+  // If true, will enable host memory offloading on a device.
+  bool xla_gpu_enable_host_memory_offloading = 296;
+
+  // Next id: 297
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

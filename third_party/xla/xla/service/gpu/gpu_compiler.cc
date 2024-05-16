@@ -2161,16 +2161,41 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
   {
     HloPassPipeline pipeline("remat-pipeline");
 
-    HloCostAnalysis hlo_cost_analysis(ShapeSizeBytesFunction());
+    const bool enable_offloading = module->config()
+                                       .debug_options()
+                                       .xla_gpu_enable_host_memory_offloading();
+    float flops_per_sec = gpu_device_info.core_count() *
+                          gpu_device_info.fpus_per_core() *
+                          gpu_device_info.clock_rate_ghz() * /*giga*/ 1e+9 * 2;
+    int64_t host_memory_space_color =
+        static_cast<int64_t>(se::MemoryType::kHost);
+
     HloRematerialization::RematerializationModeConfig
         rematerialization_mode_config(/*recompute=*/true, /*compress=*/true,
-                                      /*host_offload=*/false);
+                                      /*host_offload=*/enable_offloading);
+    HloCostAnalysis::Options hlo_cost_analysis_options;
+    hlo_cost_analysis_options.shape_size = ShapeSizeBytesFunction();
+    std::optional<HloRematerialization::HostMemoryOffloadConfig>
+        offloading_config = std::nullopt;
+    if (enable_offloading) {
+      hlo_cost_analysis_options.set_flops_per_second(flops_per_sec);
+      hlo_cost_analysis_options.set_transcendentals_per_second(flops_per_sec);
+      offloading_config =
+          std::make_optional<HloRematerialization::HostMemoryOffloadConfig>(
+              /*host_memory_space=*/host_memory_space_color,
+              /*bandwidth_to_host_bytes_per_second=*/
+              gpu_device_info.memory_bandwidth(),
+              /*bandwidth_from_host_bytes_per_second=*/
+              gpu_device_info.memory_bandwidth());
+    }
+    HloCostAnalysis hlo_cost_analysis(hlo_cost_analysis_options);
     HloRematerialization::Options options(
         hlo_cost_analysis, rematerialization_mode_config,
         // Assume 75% of the total device memory is available for XLA.
         /*memory_limit_bytes=*/scheduler_mem_limit,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
-        /*min_remat_size=*/0, /*compact_shape_function=*/nullptr);
+        /*min_remat_size=*/0, /*compact_shape_function=*/nullptr,
+        /*host_memory_offload_config=*/offloading_config);
     HloRematerialization::RematerializationSizes sizes;
     pipeline.AddPass<HloRematerialization>(options, sizes);
     pipeline.AddPass<StreamAttributeAnnotator>();
