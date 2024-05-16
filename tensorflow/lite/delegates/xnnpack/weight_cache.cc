@@ -105,9 +105,10 @@ bool MMapHandle::Map(const char* path) {
 
   const int fd = open(path, O_RDONLY);
   if (fd == -1) {
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                    "Could not open file to mmap: %s (%s).", strerror(errno),
-                    path)
+    TFLITE_LOG_PROD(
+        tflite::TFLITE_LOG_ERROR,
+        "XNNPack weight cache: could not open file to mmap ('%s'): %s.", path,
+        strerror(errno))
     return false;
   }
 
@@ -120,8 +121,9 @@ bool MMapHandle::Map(const char* path) {
   struct stat file_stats;
   if (fstat(fd, &file_stats)) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                    "Could not access file stats to get size: %s (%s).",
-                    strerror(errno), path)
+                    "XNNPack weight cache: could not access file stats to get "
+                    "size ('%s'): %s.",
+                    path, strerror(errno))
     return false;
   }
 
@@ -135,8 +137,8 @@ bool MMapHandle::Map(const char* path) {
       const auto bytes = read(fd, data_reader, remaining_bytes);
       if (bytes == -1) {
         TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                        "Could not read file ('%s'): %s.", path,
-                        strerror(errno))
+                        "XNNPack weight cache: could not read file ('%s'): %s.",
+                        path, strerror(errno))
         UnMap();
         return false;
       }
@@ -148,8 +150,9 @@ bool MMapHandle::Map(const char* path) {
   data_ = static_cast<uint8_t*>(
       mmap(/*addr=*/nullptr, size_, PROT_READ, MAP_SHARED, fd, /*offset=*/0));
   if (data_ == MAP_FAILED) {
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR, "Could not mmap file: %s (%s).",
-                    strerror(errno), path)
+    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
+                    "XNNPack weight cache: could not mmap file (%s): %s.", path,
+                    strerror(errno))
     data_ = nullptr;
     size_ = 0;
     return false;
@@ -221,9 +224,10 @@ bool WriteData(const int fd, const uint8_t* data, size_t size,
   for (size_t bytes = 0; bytes < size;) {
     const auto written_bytes = write(fd, data + bytes, size - bytes);
     if (written_bytes == -1) {
-      TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                      "Cache file write incomplete (%s). %s: %s", file_path,
-                      step_description, strerror(errno))
+      TFLITE_LOG_PROD(
+          tflite::TFLITE_LOG_ERROR,
+          "XNNPack weight cache: file write incomplete (%s). %s: %s.",
+          file_path, step_description, strerror(errno))
     }
     bytes += written_bytes;
   }
@@ -236,9 +240,11 @@ bool WriteData(const int fd, const uint8_t* data, size_t size,
 bool WeightCacheBuilder::Write(const char* path) {
   const int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
   if (fd == -1) {
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                    "Could not open cache file ('%s') for writing: %s", path,
-                    strerror(errno))
+    TFLITE_LOG_PROD(
+        tflite::TFLITE_LOG_ERROR,
+        "XNNPack weight cache: could not open cache file ('%s') for "
+        "writing: %s.",
+        path, strerror(errno))
     return false;
   }
 
@@ -265,7 +271,8 @@ bool WeightCacheBuilder::Write(const char* path) {
   mutable_packed_weights->mutate_base_offset(builder.GetSize() +
                                              alignment_offset);
 
-  // Write the flatbuffer which serves as a header to index the following data.
+  // Write the flatbuffer which serves as a header to index the following
+  // data.
   if (!WriteData(fd, builder.GetBufferPointer(), builder.GetSize(), path,
                  "Header")) {
     return false;
@@ -281,6 +288,8 @@ bool WeightCacheBuilder::Write(const char* path) {
                  "Buffer data")) {
     return false;
   }
+  TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
+                  "XNNPack weight cache: written to '%s'.", path);
   return true;
 }
 
@@ -329,8 +338,8 @@ bool MMapWeightCacheProvider::Load() {
 
   if (!FileExists(file_path_.c_str())) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_WARNING,
-                    "Could not load weight cache (%s): %s.", file_path_.c_str(),
-                    strerror(errno));
+                    "XNNPack weight cache: could not load '%s': %s.",
+                    file_path_.c_str(), strerror(errno));
     return false;
   }
 
@@ -345,7 +354,7 @@ bool MMapWeightCacheProvider::Load() {
   flatbuffers::Verifier verifier(mmap_handle_.data(), verifier_size);
   if (!cache::schema::VerifyPackedWeightsBuffer(verifier)) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                    "Packed weights buffer validation failed.");
+                    "XNNPack weight cache: header validation failed.");
     return false;
   }
 
@@ -353,16 +362,18 @@ bool MMapWeightCacheProvider::Load() {
   const cache::schema::PackedWeights* packed_weights =
       cache::schema::GetPackedWeights(mmap_handle_.data());
   if (!packed_weights) {
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                    "Could not get packed weights from flatbuffer.");
+    TFLITE_LOG_PROD(
+        tflite::TFLITE_LOG_ERROR,
+        "XNNPack weight cache: could not get packed weights from flatbuffer.");
     return false;
   }
   mmap_buffer_base_offset_ = packed_weights->base_offset();
   if (const auto buffers = packed_weights->buffers(); buffers) {
     for (auto* buffer : *buffers) {
       if (!buffer) {
-        TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                        "Invalid buffer address in buffer list.");
+        TFLITE_LOG_PROD(
+            tflite::TFLITE_LOG_ERROR,
+            "XNNPack weight cache: Invalid buffer address in buffer list.");
         return false;
       }
       cache_key_to_offset_.emplace(
@@ -388,7 +399,8 @@ void MMapWeightCacheProvider::MapTensorIdentifiers(
 size_t MMapWeightCacheProvider::LookUp(
     const xnn_weights_cache_look_up_key* cache_key) {
   if (!cache_key) {
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR, "A null cache key was provided.");
+    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
+                    "XNNPack weight cache: a null cache key was provided.");
     return SIZE_MAX;
   }
   const PackIdentifier pack_id = BuildPackIdentifier(*cache_key);
@@ -446,7 +458,8 @@ bool MMapWeightCacheProvider::Finalize() {
   }
   if (file_path_.empty()) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                    "File path wasn't set. Cannot finalize the cache.");
+                    "XNNPack weight cache: file path wasn't set. Cannot "
+                    "finalize the cache.");
     return false;
   }
   if (!builder_.Write(file_path_.c_str())) {
