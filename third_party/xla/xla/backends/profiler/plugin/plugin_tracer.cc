@@ -141,7 +141,7 @@ PluginTracer::~PluginTracer() {
   }
 }
 
-Status PluginTracer::Start() {
+absl::Status PluginTracer::Start() {
   PLUGIN_Profiler_Start_Args args;
   args.profiler = profiler_;
   RETURN_STATUS_IF_PLUGIN_PROFILER_ERROR(profiler_api_->start(&args),
@@ -149,7 +149,7 @@ Status PluginTracer::Start() {
   return OkStatus();
 }
 
-Status PluginTracer::Stop() {
+absl::Status PluginTracer::Stop() {
   PLUGIN_Profiler_Stop_Args args;
   args.profiler = profiler_;
   RETURN_STATUS_IF_PLUGIN_PROFILER_ERROR(profiler_api_->stop(&args),
@@ -157,7 +157,7 @@ Status PluginTracer::Stop() {
   return OkStatus();
 }
 
-Status PluginTracer::CollectData(XSpace* space) {
+absl::Status PluginTracer::CollectData(XSpace* space) {
   PLUGIN_Profiler_CollectData_Args args;
   args.profiler = profiler_;
   args.buffer = nullptr;

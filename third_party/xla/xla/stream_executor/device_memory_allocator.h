@@ -161,8 +161,9 @@ class DeviceMemoryAllocator {
 
   // Allocates memory on the device.
   //
-  // If size > 0 and the returned StatusOr is OK, the wrapped OwningDeviceMemory
-  // must not be null.  If size == 0, must return a null OwningDeviceMemory.
+  // If size > 0 and the returned absl::StatusOr is OK, the wrapped
+  // OwningDeviceMemory must not be null.  If size == 0, must return a null
+  // OwningDeviceMemory.
   //
   // 'retry_on_failure': If false, and the first attempt to allocate the memory
   // fails, the allocation should return immediately without retrying.  An

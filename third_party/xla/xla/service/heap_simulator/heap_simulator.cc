@@ -196,7 +196,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
 
 // Runs a heap simulation for the given 'computation', assuming the given
 // 'instruction_sequence'.
-Status HeapSimulator::RunComputation(
+absl::Status HeapSimulator::RunComputation(
     const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
     const HloAliasAnalysis& alias_analysis, HloLiveRange* hlo_live_range) {
@@ -557,7 +557,7 @@ void NoFragmentationStatsHeap<BufferType>::Free(const BufferType* buffer,
 }
 
 template <typename BufferType>
-StatusOr<HeapSimulator::Result<BufferType>>
+absl::StatusOr<HeapSimulator::Result<BufferType>>
 NoFragmentationStatsHeap<BufferType>::Finish() {
   // The result.chunk_map is empty, since we only collect stats, and don't
   // actually compute chunk assignments.
@@ -1938,10 +1938,11 @@ GlobalDecreasingSizeBestFitHeap<
 }
 
 template <typename BufferType>
-Status GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
-    DoesPermutationFit(absl::Span<const int64_t> permutation_of_slice_times,
-                       const FreeChunkRoot& root, int64_t offset) const {
-  Status result =
+absl::Status GlobalDecreasingSizeBestFitHeap<BufferType>::
+    SlicedAllocationFinder::DoesPermutationFit(
+        absl::Span<const int64_t> permutation_of_slice_times,
+        const FreeChunkRoot& root, int64_t offset) const {
+  absl::Status result =
       DoesPermutationFitImpl(permutation_of_slice_times, root, offset);
   VLOG(3) << "SlicedAllocationFinder::DoesPermutationFit\n"
           << "  permutation of slice times: [ "
@@ -1953,9 +1954,10 @@ Status GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
 }
 
 template <typename BufferType>
-Status GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
-    DoesPermutationFitImpl(absl::Span<const int64_t> permutation_of_slice_times,
-                           const FreeChunkRoot& root, int64_t offset) const {
+absl::Status GlobalDecreasingSizeBestFitHeap<BufferType>::
+    SlicedAllocationFinder::DoesPermutationFitImpl(
+        absl::Span<const int64_t> permutation_of_slice_times,
+        const FreeChunkRoot& root, int64_t offset) const {
   if (permutation_of_slice_times.size() != sorted_slice_sizes_.size()) {
     return InvalidArgumentStrCat(
         sorted_slice_sizes_.size(), " slices times expected in permutation. ",
@@ -2119,7 +2121,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
 }
 
 template <typename BufferType>
-StatusOr<HeapSimulator::Result<BufferType>>
+absl::StatusOr<HeapSimulator::Result<BufferType>>
 GlobalDecreasingSizeBestFitHeap<BufferType>::Finish() {
   std::vector<BufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
@@ -2396,7 +2398,7 @@ ConstrainedGlobalDecreasingSizeBestFitHeap::Finish() {
 }
 
 template <typename BufferType>
-StatusOr<HeapSimulator::Result<BufferType>>
+absl::StatusOr<HeapSimulator::Result<BufferType>>
 ChooseBestHeapAlgorithm<BufferType>::Finish() {
   DCHECK(!algorithms_.empty());
   std::vector<Result> results(algorithms_.size());

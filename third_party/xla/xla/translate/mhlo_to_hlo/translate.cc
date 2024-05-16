@@ -32,7 +32,7 @@ mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
   if (!module) return mlir::failure();
 
   HloProto hloProto;
-  Status status = mlir::ConvertMlirHloToHlo(
+  absl::Status status = mlir::ConvertMlirHloToHlo(
       module, &hloProto, emit_use_tuple_arg, emit_return_tuple);
   if (!status.ok()) {
     module.emitOpError() << status.message();
@@ -55,9 +55,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
 
 // Wraps BuildHloFromMlirHlo to output an HloProto that's the same as
 // ConvertMlirHloToHlo.
-Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
-                                     ::xla::HloProto* hlo_proto,
-                                     mlir::MlirToHloConversionOptions options) {
+absl::Status ConvertMlirHloToHloViaBuilder(
+    mlir::ModuleOp module, ::xla::HloProto* hlo_proto,
+    mlir::MlirToHloConversionOptions options) {
   mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::Block& block = main.getRegion().front();
   xla::XlaBuilder builder("main");
@@ -117,7 +117,7 @@ mlir::LogicalResult MlirHloToHloTextTranslateFunction(
   HloProto hloProto;
   mlir::MlirToHloConversionOptions options;
   options.propagate_layouts = with_layouts;
-  Status status =
+  absl::Status status =
       via_builder
           ? ConvertMlirHloToHloViaBuilder(module, &hloProto, options)
           : mlir::ConvertMlirHloToHlo(module, &hloProto, emit_use_tuple_arg,

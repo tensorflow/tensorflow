@@ -67,7 +67,6 @@ namespace stream_executor {
 namespace host {
 
 using absl::InternalError;
-using absl::StatusOr;
 using absl::StrFormat;
 
 using llvm::Expected;
@@ -198,7 +197,7 @@ static std::string ToString(const llvm::Error &err) {
   return str;
 }
 
-/*static*/ StatusOr<std::unique_ptr<RuntimeExecutionEngine>>
+/*static*/ absl::StatusOr<std::unique_ptr<RuntimeExecutionEngine>>
 RuntimeExecutionEngine::CreateFromModule(
     std::unique_ptr<llvm::LLVMContext> ctx,
     std::unique_ptr<llvm::Module> module, JitOptions options,

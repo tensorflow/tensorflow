@@ -42,7 +42,7 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
  public:
   MetadataCollector() = default;
 
-  Status Start() override {
+  absl::Status Start() override {
     if (!trace_active_) {
       xla::XlaDebugInfoManager::Get()->StartTracing();
       trace_active_ = true;
@@ -50,7 +50,7 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
     return OkStatus();
   }
 
-  Status Stop() override {
+  absl::Status Stop() override {
     if (trace_active_) {
       xla::XlaDebugInfoManager::Get()->StopTracing(&debug_info_);
       trace_active_ = false;
@@ -58,7 +58,7 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
     return OkStatus();
   }
 
-  Status CollectData(tsl::profiler::XSpace* space) override {
+  absl::Status CollectData(tsl::profiler::XSpace* space) override {
     if (!debug_info_.empty()) {
       tsl::profiler::XPlane* plane =
           tsl::profiler::FindOrAddMutablePlaneWithName(

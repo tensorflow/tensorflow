@@ -168,8 +168,8 @@ class ReductionEmitter {
   absl::StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
       const LaunchDimensions& launch_dimensions,
       absl::string_view discriminator,
-      std::function<Status(std::vector<llvm_ir::IrArray>,
-                           std::vector<llvm_ir::IrArray>)>
+      std::function<absl::Status(std::vector<llvm_ir::IrArray>,
+                                 std::vector<llvm_ir::IrArray>)>
           kernel_builder_fn);
 
   absl::StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunk(
@@ -387,8 +387,8 @@ void ReductionEmitter::EmitSyncThreads() {
 absl::StatusOr<std::unique_ptr<Thunk>>
 ReductionEmitter::BuildKernelThunkForFusion(
     const LaunchDimensions& launch_dimensions, absl::string_view discriminator,
-    std::function<Status(std::vector<llvm_ir::IrArray>,
-                         std::vector<llvm_ir::IrArray>)>
+    std::function<absl::Status(std::vector<llvm_ir::IrArray>,
+                               std::vector<llvm_ir::IrArray>)>
         kernel_builder_fn) {
   const HloComputation* fused_computation =
       fusion_.fused_instructions_computation();
