@@ -18,9 +18,9 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 
+#include "absl/status/status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/types.h"
 
