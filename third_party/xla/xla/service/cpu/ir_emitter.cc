@@ -126,7 +126,7 @@ IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
       target_machine_features_(*target_machine_features),
       emit_code_for_msan_(emit_code_for_msan) {
   b_.setFastMathFlags(llvm_ir::GetCpuFastMathFlags(hlo_module_config_));
-  Status s = GatherComputationsByAllocationType(
+  absl::Status s = GatherComputationsByAllocationType(
       &hlo_module, &thread_local_computations_, &global_computations_);
   absl::c_sort(thread_local_computations_);
   absl::c_sort(global_computations_);
@@ -255,7 +255,7 @@ void IrEmitter::InitializeIrFunction(const std::string& function_name) {
                                    module_, &b_, num_dynamic_loop_bounds_);
 }
 
-Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
+absl::Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   VLOG(2) << "HandleBitcast: " << bitcast->ToString();
   emitted_value_[bitcast] = GetEmittedValueFor(bitcast->operand(0));
   return OkStatus();
@@ -277,7 +277,7 @@ llvm::Constant* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
   return result_global;
 }
 
-Status IrEmitter::EmitConstantGlobals() {
+absl::Status IrEmitter::EmitConstantGlobals() {
   for (const BufferAllocation& allocation : assignment_.Allocations()) {
     if (!allocation.is_constant()) {
       continue;
@@ -300,14 +300,14 @@ Status IrEmitter::EmitConstantGlobals() {
   return OkStatus();
 }
 
-Status IrEmitter::HandleConstant(HloInstruction* constant) {
+absl::Status IrEmitter::HandleConstant(HloInstruction* constant) {
   VLOG(2) << "HandleConstant: " << constant->ToString();
   // IrEmitter::EmitConstantGlobals has already taken care of emitting the body
   // of the constant.
   return EmitTargetAddressForOp(constant);
 }
 
-Status IrEmitter::HandleCopy(HloInstruction* copy) {
+absl::Status IrEmitter::HandleCopy(HloInstruction* copy) {
   if (copy->shape().IsTuple() ||
       (copy->shape().IsArray() &&
        LayoutUtil::Equal(copy->operand(0)->shape().layout(),
@@ -382,7 +382,8 @@ void IrEmitter::AttachDereferenceableMetadataForLoad(llvm::LoadInst* load,
   }
 }
 
-Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
+absl::Status IrEmitter::HandleGetTupleElement(
+    HloInstruction* get_tuple_element) {
   // A tuple is an array of pointers, one for each operand. Each pointer points
   // to the output buffer of its corresponding operand. A GetTupleElement
   // instruction forwards a pointer to the tuple element buffer at the given
@@ -395,13 +396,13 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleSelect(HloInstruction* select) {
+absl::Status IrEmitter::HandleSelect(HloInstruction* select) {
   auto pred = select->operand(0);
   TF_RET_CHECK(pred->shape().element_type() == PRED);
   return DefaultAction(select);
 }
 
-Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
+absl::Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
   HloInfeedInstruction* infeed = Cast<HloInfeedInstruction>(instruction);
   VLOG(2) << "HandleInfeed: " << infeed->ToString();
 
@@ -461,8 +462,8 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
   return OkStatus();
 }
 
-Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
-                                    llvm::Value* program_buffer_address) {
+absl::Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
+                                          llvm::Value* program_buffer_address) {
   int64_t length = ByteSizeOf(shape);
   if (length < 0 || length > std::numeric_limits<int32_t>::max()) {
     return InvalidArgument(
@@ -526,7 +527,7 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
   return OkStatus();
 }
 
-Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
+absl::Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
   // Outfeed produces no useful result, but it does return a token[] that can be
   // threaded through to other side effecting operations to ensure ordering.  In
   // the IR emitter we treat this token as a normal u8[] and thus need to insert
@@ -556,7 +557,7 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleSort(HloInstruction* hlo) {
+absl::Status IrEmitter::HandleSort(HloInstruction* hlo) {
   const HloSortInstruction* sort = Cast<HloSortInstruction>(hlo);
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(sort));
   Shape keys_shape = sort->keys()->shape();
@@ -651,7 +652,7 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleTuple(HloInstruction* tuple) {
+absl::Status IrEmitter::HandleTuple(HloInstruction* tuple) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(tuple));
   llvm::SmallVector<llvm::Value*> base_ptrs;
   for (auto operand : tuple->operands()) {
@@ -661,7 +662,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
+absl::Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
   // Pseudo code for reduce window:
   //
   //   for (coordinates O in the output)
@@ -677,12 +678,13 @@ Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
   // that works.
   bool saved_allow_reassociation = allow_reassociation_;
   allow_reassociation_ = true;
-  Status status = DefaultAction(reduce_window);
+  absl::Status status = DefaultAction(reduce_window);
   allow_reassociation_ = saved_allow_reassociation;
   return status;
 }
 
-Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
+absl::Status IrEmitter::HandleSelectAndScatter(
+    HloInstruction* select_and_scatter) {
   CHECK_EQ(select_and_scatter->operand_count(), 3);
   const auto operand = select_and_scatter->operand(0);
   const auto source = select_and_scatter->operand(1);
@@ -864,7 +866,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleDot(HloInstruction* dot) {
+absl::Status IrEmitter::HandleDot(HloInstruction* dot) {
   auto lhs = dot->operand(0);
   auto rhs = dot->operand(1);
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
@@ -900,7 +902,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
                           hlo_module_config_, target_machine_features_);
 }
 
-Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
+absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   auto lhs = convolution->operand(0);
   auto rhs = convolution->operand(1);
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
@@ -1085,7 +1087,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   return DefaultAction(convolution);
 }
 
-Status IrEmitter::HandleFft(HloInstruction* fft) {
+absl::Status IrEmitter::HandleFft(HloInstruction* fft) {
   auto operand = fft->operand(0);
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*fft, /*operands=*/{operand},
@@ -1137,7 +1139,7 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleAllReduceSingleReplica(HloInstruction* crs) {
+absl::Status IrEmitter::HandleAllReduceSingleReplica(HloInstruction* crs) {
   // When there is a single replica, a cross replica sum is the identity
   // function, and the buffer assignment expects a copy.
   //
@@ -1196,7 +1198,7 @@ static bool DataTypeIsSupportedByReduceScatter(PrimitiveType datatype) {
   }
 }
 
-Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
+absl::Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
   CHECK_GE(crs->operand_count(), 1);
   PrimitiveType datatype = crs->operand(0)->shape().element_type();
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(crs));
@@ -1280,7 +1282,7 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
+absl::Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
   if (hlo_module_config_.replica_count() == 1 &&
       hlo_module_config_.num_partitions() == 1) {
     return HandleAllReduceSingleReplica(crs);
@@ -1288,7 +1290,7 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
   return HandleAllReduceMultipleReplica(crs);
 }
 
-Status IrEmitter::HandleReduceScatter(HloInstruction* rs) {
+absl::Status IrEmitter::HandleReduceScatter(HloInstruction* rs) {
   CHECK_EQ(rs->operand_count(), 1);
   PrimitiveType datatype = rs->operand(0)->shape().element_type();
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(rs));
@@ -1344,7 +1346,7 @@ Status IrEmitter::HandleReduceScatter(HloInstruction* rs) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
+absl::Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
   auto* instr = Cast<HloAllToAllInstruction>(instruction);
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(instruction));
   CHECK(!instr->split_dimension() && instr->shape().IsTuple())
@@ -1400,7 +1402,7 @@ Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleAllGather(HloInstruction* instruction) {
+absl::Status IrEmitter::HandleAllGather(HloInstruction* instruction) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(instruction));
 
   std::string replica_groups =
@@ -1451,7 +1453,7 @@ Status IrEmitter::HandleAllGather(HloInstruction* instruction) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
+absl::Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
   auto* instr = Cast<HloCollectivePermuteInstruction>(crs);
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(instr));
   std::string source_target_pairs = absl::StrJoin(
@@ -1488,7 +1490,7 @@ Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
   return OkStatus();
 }
 
-Status IrEmitter::HandlePartitionId(HloInstruction* hlo) {
+absl::Status IrEmitter::HandlePartitionId(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
                       assignment_.GetUniqueSlice(hlo, {}));
@@ -1500,7 +1502,7 @@ Status IrEmitter::HandlePartitionId(HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
+absl::Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
                       assignment_.GetUniqueSlice(hlo, {}));
@@ -1512,7 +1514,7 @@ Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleParameter(HloInstruction* parameter) {
+absl::Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   VLOG(2) << "HandleParameter: " << parameter->ToString();
   return EmitTargetAddressForOp(parameter);
 }
@@ -1998,7 +2000,7 @@ absl::StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   return true;
 }
 
-Status IrEmitter::HandleReduce(HloInstruction* reduce) {
+absl::Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   auto arg = reduce->mutable_operand(0);
   auto init_value = reduce->mutable_operand(1);
   absl::Span<const int64_t> dimensions(reduce->dimensions());
@@ -2027,21 +2029,21 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   return DefaultAction(reduce);
 }
 
-Status IrEmitter::HandleSend(HloInstruction* send) {
+absl::Status IrEmitter::HandleSend(HloInstruction* send) {
   // TODO(b/33942983): Support Send/Recv on CPU.
   return Unimplemented("Send is not implemented on CPU.");
 }
 
-Status IrEmitter::HandleSendDone(HloInstruction* send_done) {
+absl::Status IrEmitter::HandleSendDone(HloInstruction* send_done) {
   // TODO(b/33942983): Support Send/Recv on CPU.
   return Unimplemented("Send-done is not implemented on CPU.");
 }
 
-Status IrEmitter::HandleScatter(HloInstruction*) {
+absl::Status IrEmitter::HandleScatter(HloInstruction*) {
   return Unimplemented("Scatter is not implemented on CPUs.");
 }
 
-Status IrEmitter::HandleSlice(HloInstruction* slice) {
+absl::Status IrEmitter::HandleSlice(HloInstruction* slice) {
   VLOG(2) << "HandleSlice: " << slice->ToString();
   auto operand = slice->operand(0);
   // The code below emits a sequential loop nest. For the parallel backend, use
@@ -2178,7 +2180,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice) {
+absl::Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice) {
   if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(dynamic_slice));
     return EmitMemcpy(*dynamic_slice->operand(0), *dynamic_slice);
@@ -2186,7 +2188,7 @@ Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice) {
   return DefaultAction(dynamic_slice);
 }
 
-Status IrEmitter::HandleDynamicUpdateSlice(
+absl::Status IrEmitter::HandleDynamicUpdateSlice(
     HloInstruction* dynamic_update_slice) {
   auto update = dynamic_update_slice->operand(1);
   if (ShapeUtil::IsScalar(dynamic_update_slice->shape())) {
@@ -2203,17 +2205,17 @@ Status IrEmitter::HandleDynamicUpdateSlice(
   return DefaultAction(dynamic_update_slice);
 }
 
-Status IrEmitter::HandleRecv(HloInstruction* recv) {
+absl::Status IrEmitter::HandleRecv(HloInstruction* recv) {
   // TODO(b/33942983): Support Send/Recv on CPU.
   return Unimplemented("Recv is not implemented on CPU.");
 }
 
-Status IrEmitter::HandleRecvDone(HloInstruction* recv_done) {
+absl::Status IrEmitter::HandleRecvDone(HloInstruction* recv_done) {
   // TODO(b/33942983): Support Send/Recv on CPU.
   return Unimplemented("Recv-done is not implemented on CPU.");
 }
 
-Status IrEmitter::HandlePad(HloInstruction* pad) {
+absl::Status IrEmitter::HandlePad(HloInstruction* pad) {
   // CPU backend does not properly handle negative padding but this is ok
   // because negative padding should be removed by the algebraic simplifier.
   for (auto& padding_dimension : pad->padding_config().dimensions()) {
@@ -2272,7 +2274,7 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleFusion(HloInstruction* fusion) {
+absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   auto* root = fusion->fused_expression_root();
   if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion, assignment_)) {
     VLOG(3) << "HandleFusion FusedDynamicUpdateSliceInPlace";
@@ -2327,7 +2329,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   }
 }
 
-Status IrEmitter::HandleCall(HloInstruction* call) {
+absl::Status IrEmitter::HandleCall(HloInstruction* call) {
   HloComputation* computation = call->to_apply();
   llvm::Function* call_ir_function = FindOrDie(
       emitted_functions_, ComputationToEmit{computation, allow_reassociation_});
@@ -2372,7 +2374,7 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
+absl::Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
   std::vector<llvm::Value*> dynamic_dims;
   int32_t raw_data_size =
@@ -2400,7 +2402,7 @@ Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
   //     dest_index = delinearize(linearize(i, dynamic_dim), static_dim)
   //     dest[dest_index] = source[i]
   auto loop_body_emitter =
-      [&](const llvm_ir::IrArray::Index& array_index) -> Status {
+      [&](const llvm_ir::IrArray::Index& array_index) -> absl::Status {
     llvm::Value* source_element =
         GetIrArrayFor(hlo->operand(0)).EmitReadArrayElement(array_index, &b_);
     llvm::Value* linear_index = array_index.Linearize(dynamic_dims, &b_);
@@ -2415,7 +2417,7 @@ Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
       .EmitLoop(IrName(hlo));
 }
 
-Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
+absl::Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data_slice,
@@ -2463,7 +2465,7 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
   //     source_index = delinearize(inearize(i, dynamic_dim), static_dim)
   //     dest[i] = source[source_index]
   auto loop_body_emitter =
-      [&](const llvm_ir::IrArray::Index& array_index) -> Status {
+      [&](const llvm_ir::IrArray::Index& array_index) -> absl::Status {
     llvm::Value* linear_index = array_index.Linearize(dynamic_dims, &b_);
     llvm_ir::IrArray::Index source_index(linear_index, input_shape, &b_);
     llvm::Value* source_element =
@@ -2480,7 +2482,7 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleTopK(HloInstruction* hlo) {
+absl::Status IrEmitter::HandleTopK(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
   const HloInstruction* input = hlo->operand(0);
   const int64_t k = hlo->shape().tuple_shapes(0).dimensions().back();
@@ -2520,8 +2522,8 @@ Status IrEmitter::HandleTopK(HloInstruction* hlo) {
 }
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-Status IrEmitter::HandleOneDnnMatMulCalls(HloInstruction* custom_call,
-                                          std::string runtime_symbol_name) {
+absl::Status IrEmitter::HandleOneDnnMatMulCalls(
+    HloInstruction* custom_call, std::string runtime_symbol_name) {
   // We would like to emit LLVM IR for the following function call
   //      custom_call_target(void* result, void** args)
   // args can be thought of an array of pointers allocated on the stack,
@@ -2650,7 +2652,7 @@ Status IrEmitter::HandleOneDnnMatMulCalls(HloInstruction* custom_call,
   return OkStatus();
 }
 
-Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
+absl::Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
   //      args[0]: ptr to nargs
   //      args[1]: ptr to ExecutableRunOptions
   //      args[2]: ptr to OneDnnLayerNormConfig
@@ -2727,7 +2729,7 @@ Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleOneDnnSoftmax(HloInstruction* custom_call) {
+absl::Status IrEmitter::HandleOneDnnSoftmax(HloInstruction* custom_call) {
   auto input = custom_call->operand(0);
   llvm_ir::IrArray input_array(GetIrArrayFor(input));
   auto input_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, input_array);
@@ -2751,7 +2753,7 @@ Status IrEmitter::HandleOneDnnSoftmax(HloInstruction* custom_call) {
 }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
-Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
+absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   if (custom_call->custom_call_target() == "PadToStatic") {
     return HandlePadToStatic(custom_call);
   }
@@ -2856,7 +2858,7 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
+absl::Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   // Precondition: Condition computation must return a scalar bool.
   HloComputation* condition = xla_while->while_condition();
   TF_RET_CHECK(ShapeUtil::IsScalar(condition->root_instruction()->shape()) &&
@@ -2867,7 +2869,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       xla_while->shape(),
       [this, &xla_while](const Shape& /*subshape*/,
-                         const ShapeIndex& index) -> Status {
+                         const ShapeIndex& index) -> absl::Status {
         auto check = [this](const HloInstruction* a, const HloInstruction* b,
                             const ShapeIndex& index) -> absl::Status {
           const BufferAllocation::Slice slice_a =
@@ -3236,7 +3238,7 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
   }
 }
 
-Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
+absl::Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
   absl::Span<HloInstruction* const> operands(concatenate->operands());
   std::string failure_reason;
   TF_ASSIGN_OR_RETURN(
@@ -3253,7 +3255,7 @@ Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
   return DefaultAction(concatenate);
 }
 
-Status IrEmitter::HandleConditional(HloInstruction* conditional) {
+absl::Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   auto branch_index = conditional->operand(0);
   int num_branches = conditional->branch_count();
   TF_RET_CHECK(ShapeUtil::IsScalar(branch_index->shape()) &&
@@ -3362,25 +3364,25 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   return OkStatus();
 }
 
-Status IrEmitter::HandleAfterAll(HloInstruction* after_all) {
+absl::Status IrEmitter::HandleAfterAll(HloInstruction* after_all) {
   TF_RET_CHECK(ByteSizeOf(after_all->shape()) == 0);
   // No code to generate, but we need to emit an address for book-keeping.
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(after_all));
   return OkStatus();
 }
 
-Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
+absl::Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
   // AddDedendency just forwards its zero-th operand.
   emitted_value_[add_dependency] =
       GetEmittedValueFor(add_dependency->operand(0));
   return OkStatus();
 }
 
-Status IrEmitter::HandleRng(HloInstruction* rng) {
+absl::Status IrEmitter::HandleRng(HloInstruction* rng) {
   return Unimplemented("Rng should be expanded for CPU.");
 }
 
-Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
+absl::Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
   VLOG(2) << "RngGetAndUpdateState: " << rng_state->ToString();
   llvm::Value* old_state = llvm_ir::RngGetAndUpdateState(
       Cast<HloRngGetAndUpdateStateInstruction>(rng_state)->delta(), module_,
@@ -3398,7 +3400,7 @@ Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
   return OkStatus();
 }
 
-Status IrEmitter::FinishVisit(HloInstruction* root) {
+absl::Status IrEmitter::FinishVisit(HloInstruction* root) {
   // When this method is called, we should have already emitted an IR value for
   // the root (return) op. The IR value holds the address of the buffer holding
   // the value. If the root is a constant or parameter, we perform a memcpy from
@@ -3591,7 +3593,7 @@ bool IsHloVeryCheap(const HloInstruction* hlo) {
 }
 }  // namespace
 
-Status IrEmitter::Preprocess(HloInstruction* hlo) {
+absl::Status IrEmitter::Preprocess(HloInstruction* hlo) {
   VLOG(3) << "Visiting: " << hlo->ToString();
   // When profiling is enabled, trace the same HLOs that the profiler does.
   if (instruction_to_profile_idx_.count(hlo) ||
@@ -3604,7 +3606,7 @@ Status IrEmitter::Preprocess(HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status IrEmitter::Postprocess(HloInstruction* hlo) {
+absl::Status IrEmitter::Postprocess(HloInstruction* hlo) {
   if (auto* prof_counter = GetProfileCounterFor(*hlo)) {
     profiling_state_.RecordCycleDelta(&b_, hlo, prof_counter);
   }
@@ -3764,7 +3766,7 @@ llvm::Value* IrEmitter::EmitBufferPointer(const BufferAllocation::Slice& slice,
   }
 }
 
-Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
+absl::Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
   const Shape& target_shape = op->shape();
   TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
                       assignment_.GetUniqueTopLevelSlice(op));
@@ -3774,13 +3776,13 @@ Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
   return OkStatus();
 }
 
-Status IrEmitter::EmitTargetElementLoop(
+absl::Status IrEmitter::EmitTargetElementLoop(
     HloInstruction* target_op,
     const llvm_ir::ElementGenerator& element_generator) {
   return EmitTargetElementLoop(target_op, /*desc=*/"", element_generator);
 }
 
-Status IrEmitter::EmitTargetElementLoop(
+absl::Status IrEmitter::EmitTargetElementLoop(
     HloInstruction* target_op, absl::string_view desc,
     const llvm_ir::ElementGenerator& element_generator) {
   VLOG(2) << "EmitTargetElementLoop: " << target_op->ToString();
@@ -3833,8 +3835,8 @@ Status IrEmitter::EmitTargetElementLoop(
   return OkStatus();
 }
 
-Status IrEmitter::EmitMemcpy(const HloInstruction& source,
-                             const HloInstruction& destination) {
+absl::Status IrEmitter::EmitMemcpy(const HloInstruction& source,
+                                   const HloInstruction& destination) {
   llvm::Value* source_value = GetEmittedValueFor(&source);
   llvm::Value* destination_value = GetEmittedValueFor(&destination);
   int64_t source_size = ByteSizeOf(source.shape());
@@ -3844,7 +3846,7 @@ Status IrEmitter::EmitMemcpy(const HloInstruction& source,
   return OkStatus();
 }
 
-Status IrEmitter::ElementTypesSameAndSupported(
+absl::Status IrEmitter::ElementTypesSameAndSupported(
     const HloInstruction& instruction,
     absl::Span<const HloInstruction* const> operands,
     absl::Span<const PrimitiveType> supported_types) {
@@ -3863,7 +3865,7 @@ Status IrEmitter::ElementTypesSameAndSupported(
   return OkStatus();
 }
 
-Status IrEmitter::DefaultAction(HloInstruction* hlo) {
+absl::Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
