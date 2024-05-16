@@ -904,7 +904,8 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
 
       VLOG(5) << "Running the kernel took: " << profiling_output->duration;
       if (profiling_output->duration >= absl::Seconds(1)) {
-        LOG(WARNING) << "Slow kernel for " << fusion.name()
+        LOG(WARNING) << "Slow kernel for "
+                     << fusion.called_computations()[0]->ToString()
                      << " took: " << profiling_output->duration << ". "
                      << ToString(candidate.config);
       }
