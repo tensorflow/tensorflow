@@ -327,8 +327,9 @@ void TileAssignment::Each(
   array_->Each(f);
 }
 
-Status TileAssignment::EachStatus(
-    absl::FunctionRef<Status(absl::Span<const int64_t>, int64_t)> f) const {
+absl::Status TileAssignment::EachStatus(
+    absl::FunctionRef<absl::Status(absl::Span<const int64_t>, int64_t)> f)
+    const {
   MaybeMaterializeFullArray();
   return array_->EachStatus(f);
 }

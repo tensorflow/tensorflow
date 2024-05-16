@@ -2516,7 +2516,7 @@ std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
   return new_fusion_instruction;
 }
 
-Status HloFusionInstruction::DeduplicateFusionOperands() {
+absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   if (IsCustomFusion()) {
     return OkStatus();
   }

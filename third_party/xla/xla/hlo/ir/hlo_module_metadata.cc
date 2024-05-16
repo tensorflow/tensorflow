@@ -37,7 +37,7 @@ HloModuleMetadata::GetCurrentHloPassMetadata() {
   return running_passes_.back();
 }
 
-Status HloModuleMetadata::MutateCurrentHloPassMetadata(
+absl::Status HloModuleMetadata::MutateCurrentHloPassMetadata(
     absl::FunctionRef<void(HloPassMetadata*)> mutator) {
   TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                       GetCurrentHloPassMetadata());
@@ -52,7 +52,7 @@ void HloModuleMetadata::RecordPassStart() {
   running_passes_.push_back(pass_metadata);
 }
 
-Status HloModuleMetadata::RecordPassEnd() {
+absl::Status HloModuleMetadata::RecordPassEnd() {
   TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                       GetCurrentHloPassMetadata());
   pass_metadata->set_end_timestamp_usec(env_->NowMicros());
@@ -88,7 +88,7 @@ void HloModuleMetadata::set_prepartitioning_metadata(
   }
 }
 
-Status HloModuleMetadata::set_custom_metadata(
+absl::Status HloModuleMetadata::set_custom_metadata(
     const ::tsl::protobuf::Message& message) {
   TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                       GetCurrentHloPassMetadata());

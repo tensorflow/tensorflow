@@ -1979,6 +1979,11 @@ AutoShardingSolverResult CallSolver(
   request.set_deterministic_mode(deterministic_mode);
   request.set_request_name(std::string(request_name));
   request.set_enable_memory_edge_costs(option.model_resharding_memory_costs);
+  // If we're removing user shardings, we are probably doing internal testing /
+  // debugging where additional output from the solver might be helpful.
+  request.set_enable_output(
+      option.preserve_shardings ==
+      AutoShardingOption::PreserveShardingsType::kRemoveAllShardings);
   if (max_cost) {
     request.mutable_max_cost()->set_coeff(*max_cost);
   }

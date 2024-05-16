@@ -78,39 +78,6 @@ std::vector<AffineExpr> DimsToSymbols(std::vector<AffineExpr> expressions,
   return expressions;
 }
 
-// Internal helper that checks whether an affine map describes a tileable space.
-// In simple terms, this currently returns true if "dimensions don't mix", i.e.,
-// every result expression only refers to a single dimension (or symbol).
-//
-// TODO(b/328427138): this is too restrictive for expressions involving e.g.
-// (output-to-input) split reshapes, where several symbols may appear within the
-// same expression but still yield a tileable space. This will be handled in a
-// forthcoming change.
-bool IndexingMapDescribesTileableSpace(const IndexingMap& indexing_map) {
-  for (AffineExpr result_expr : indexing_map.GetAffineMap().getResults()) {
-    // Using a simple integer here might be overly restrictive, since there may
-    // be cases where the same symbol appears in several places within the
-    // expression. It is a bit unclear whether this is a case that would happen
-    // in practice and whether we would be able to handle it well in all cases
-    // if it did. For that reason, we err on the side of conservatism and
-    // explicitly do not support such cases.
-    int64_t num_hits = 0;
-    result_expr.walk([&num_hits, &indexing_map](AffineExpr expr) {
-      if ((expr.getKind() == AffineExprKind::DimId) ||
-          (expr.getKind() == AffineExprKind::SymbolId &&
-           indexing_map.IsRangeVarSymbol(
-               llvm::cast<mlir::AffineSymbolExpr>(expr)))) {
-        ++num_hits;
-      }
-    });
-
-    if (num_hits > 1) {
-      return false;
-    }
-  }
-  return true;
-}
-
 // Helper to perform function application to using the same parameter for every
 // dimension and symbol parameter.
 AffineMap SubstituteAllIndicesAndRangeVarSymbolsWithSameValue(
@@ -308,13 +275,6 @@ AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
     const IndexingMap& indexing_map) {
   VLOG(1) << "SymbolicTile::FromIndexingMap: " << indexing_map.ToString();
-
-  // TODO(b/328427138): handle multiple symbols in a single tile to support
-  // merging dimensions.
-  if (!IndexingMapDescribesTileableSpace(indexing_map)) {
-    VLOG(1) << "Not a tileable indexing map";
-    return std::nullopt;
-  }
 
   AffineMap input_affine_map = indexing_map.GetAffineMap();
   MLIRContext* mlir_context = input_affine_map.getContext();
