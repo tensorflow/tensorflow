@@ -306,6 +306,17 @@ int GetFlagsFromEnv() {
 
 }  // namespace
 
+absl::StatusOr<CUresult> QueryEvent(GpuContext* context, CUevent event) {
+  ScopedActivateContext activated{context};
+  CUresult res = cuEventQuery(event);
+  if (res != CUDA_SUCCESS && res != CUDA_ERROR_NOT_READY) {
+    return absl::InternalError(
+        absl::StrFormat("failed to query event: %s", ToString(res)));
+  }
+
+  return res;
+}
+
 /* static */ absl::Status GpuDriver::Init() {
   // Cached return value from calling InternalInit(), as cuInit need only be
   // called once, but GpuDriver::Init may be called many times.
@@ -1838,18 +1849,6 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   RETURN_IF_CUDA_RES_ERROR(cuEventRecord(event, stream),
                            "Error recording CUDA event");
   return absl::OkStatus();
-}
-
-/* static */ absl::StatusOr<CUresult> GpuDriver::QueryEvent(GpuContext* context,
-                                                            CUevent event) {
-  ScopedActivateContext activated{context};
-  CUresult res = cuEventQuery(event);
-  if (res != CUDA_SUCCESS && res != CUDA_ERROR_NOT_READY) {
-    return absl::InternalError(
-        absl::StrFormat("failed to query event: %s", ToString(res)));
-  }
-
-  return res;
 }
 
 /* static */ bool GpuDriver::GetEventElapsedTime(GpuContext* context,

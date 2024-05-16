@@ -16,8 +16,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 
@@ -26,7 +26,7 @@ namespace gpu {
 
 Event::Status GpuEvent::PollForStatus() {
   absl::StatusOr<CUresult> status =
-      GpuDriver::QueryEvent(parent_->gpu_context(), gpu_event_);
+      QueryEvent(parent_->gpu_context(), gpu_event_);
   if (!status.ok()) {
     LOG(ERROR) << "Error polling for event status: "
                << status.status().message();

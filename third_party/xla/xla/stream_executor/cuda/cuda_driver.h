@@ -48,6 +48,11 @@ static std::string ToString(CUresult result) {
   return absl::StrCat(error_name, ": ", error_string);
 }
 
+// Polls (without blocking) to determine the status of an event - pending or
+// complete (or an error status).
+// http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g6f0704d755066b0ee705749ae911deef
+absl::StatusOr<CUresult> QueryEvent(GpuContext* context, CUevent event);
+
 // CUDAContext wraps a cuda CUcontext handle, and includes a unique id. The
 // unique id is positive, and ids are not repeated within the process.
 class GpuContext {
