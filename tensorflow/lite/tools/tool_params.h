@@ -94,7 +94,7 @@ class TypedToolParam : public ToolParam {
     has_value_set_ = true;
   }
 
-  T Get() const { return value_; }
+  const T& Get() const { return value_; }
 
   void Set(const ToolParam& other) override {
     Set(other.AsConstTyped<T>()->Get());
