@@ -221,7 +221,8 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       if (check_mlir_emitters()) {
         return std::make_unique<MlirTransposeFusion>(analysis);
       }
-      return std::make_unique<TransposeFusion>(analysis);
+      return std::make_unique<TransposeFusion>(analysis.device_info(),
+                                               analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate: {
       if (check_mlir_emitters()) {
