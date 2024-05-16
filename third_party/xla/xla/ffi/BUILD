@@ -108,7 +108,6 @@ cc_library(
     hdrs = ["attribute_map.h"],
     deps = [
         ":call_frame",
-        "//xla:xla_data_proto_cc_impl",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

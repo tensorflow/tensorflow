@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/ffi/call_frame.h"
-#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
 using FlatAttribute = xla::ffi::CallFrameBuilder::FlatAttribute;
