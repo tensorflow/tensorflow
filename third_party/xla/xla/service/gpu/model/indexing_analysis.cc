@@ -1171,7 +1171,7 @@ IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(
     const Shape& shape, MLIRContext* mlir_context) {
   if (shape.rank() == 0) {
     return IndexingMap(AffineMap::get(mlir_context),
-                       /*dim_vars=*/{}, /*range vars=*/{}, /*rt_vars=*/{});
+                       /*dimensions=*/{}, /*range vars=*/{}, /*rt_vars=*/{});
   }
   return IndexingMap::FromTensorSizes(
       ComputeTransposeIndexingMap(
@@ -1186,7 +1186,7 @@ IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(
     const Shape& shape, MLIRContext* mlir_context) {
   if (shape.rank() == 0) {
     return IndexingMap(AffineMap::get(mlir_context),
-                       /*dim_vars=*/{}, /*range vars=*/{}, /*rt_vars=*/{});
+                       /*dimensions=*/{}, /*range vars=*/{}, /*rt_vars=*/{});
   }
   return IndexingMap::FromTensorSizes(
       ComputeTransposeIndexingMap(ToTransposeDimensions(shape.layout()),
