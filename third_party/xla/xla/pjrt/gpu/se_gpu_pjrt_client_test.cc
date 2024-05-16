@@ -374,7 +374,7 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
   TF_ASSERT_OK(
       transfer_manager->TransferLiteralToBuffer(0, src_literal, [&]() {}));
 
-  buffer->ToLiteral(literal.get()).OnReady([&](Status s) {
+  buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
     absl::MutexLock l(&mu);
     TF_ASSERT_OK(s);
     got_literal = true;
@@ -408,7 +408,7 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
   bool got_literal = false;
 
-  buffer->ToLiteral(literal.get()).OnReady([&](Status s) {
+  buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
     absl::MutexLock l(&mu);
     TF_ASSERT_OK(s);
     got_literal = true;
@@ -468,12 +468,12 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
   for (auto& buffer : buffers) {
     literals.push_back(std::make_shared<Literal>(
         ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape())));
-    buffer->ToLiteral(literals.back().get()).OnReady([&](Status s) {
+    buffer->ToLiteral(literals.back().get()).OnReady([&](absl::Status s) {
       absl::MutexLock l(&mu);
       TF_ASSERT_OK(s);
       ++got_literal_count;
     });
-    buffer->GetReadyFuture().OnReady([&](Status s) {
+    buffer->GetReadyFuture().OnReady([&](absl::Status s) {
       absl::MutexLock l(&mu);
       TF_ASSERT_OK(s);
       ++got_callback_count;

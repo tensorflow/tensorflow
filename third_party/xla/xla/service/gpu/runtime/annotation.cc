@@ -154,7 +154,7 @@ class SourceLocationVisitor : public ConstDfsHloVisitorWithDefault {
     return std::move(oss).str();
   }
 
-  Status DefaultAction(HloInstruction const* inst) final {
+  absl::Status DefaultAction(HloInstruction const* inst) final {
     OpMetadata const& meta = inst->metadata();
     // The full op_name is split across three places: the module-level
     // annotation shows the prefix that is common to the whole module, the

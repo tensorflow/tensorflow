@@ -203,7 +203,7 @@ class AsyncHostToDeviceTransferManager
     return std::move(buffers_[buffer_index]);
   };
 
-  Status TransferLiteralToBuffer(
+  absl::Status TransferLiteralToBuffer(
       int buffer_index, const LiteralSlice& literal,
       absl::AnyInvocable<void() &&> on_done) override {
     tsl::profiler::TraceMe traceme(
@@ -295,7 +295,7 @@ class AsyncHostToDeviceTransferManager
     return OkStatus();
   }
 
-  Status TransferRawDataToBuffer(
+  absl::Status TransferRawDataToBuffer(
       int buffer_index, absl::string_view data,
       absl::AnyInvocable<void() &&> on_done) override {
     return TransferRawDataToSubBuffer(buffer_index, data.data(),
@@ -304,7 +304,7 @@ class AsyncHostToDeviceTransferManager
                                       std::move(on_done));
   }
 
-  Status TransferRawDataToSubBuffer(
+  absl::Status TransferRawDataToSubBuffer(
       int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
       bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) override {
     auto* stream = device_->local_device_state()->host_to_device_stream();
@@ -401,7 +401,7 @@ class AsyncHostToDeviceTransferManager
     return stream->DoHostCallback(std::move(cleanup));
   }
 
-  void SetBufferError(int buffer_index, Status error) override {
+  void SetBufferError(int buffer_index, absl::Status error) override {
     {
       absl::MutexLock l(&mu_);
       // For a given buffer_index, SetBufferError can't be called twice, or
@@ -894,7 +894,7 @@ GetStreamExecutorGpuDeviceAllocator(
 
 }  // namespace
 
-Status BuildDistributedDevices(
+absl::Status BuildDistributedDevices(
     std::string_view platform_name,
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
     int node_id, int num_nodes,

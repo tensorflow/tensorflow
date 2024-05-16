@@ -229,9 +229,9 @@ class TfrtCpuDevice final : public PjRtDevice {
     return PjRtLocalHardwareId(description_.local_hardware_id());
   }
 
-  Status TransferToInfeed(const LiteralSlice& literal) override;
+  absl::Status TransferToInfeed(const LiteralSlice& literal) override;
 
-  Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
+  absl::Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
 
   void AttachMemorySpace(PjRtMemorySpace* memory_space);
 
@@ -330,10 +330,10 @@ class TfrtCpuClient final : public PjRtClient {
       std::optional<CompileOptions> options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
-      Status error, const Shape& shape, PjRtDevice* device) override;
+      absl::Status error, const Shape& shape, PjRtDevice* device) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
-      Status error, const Shape& shape, PjRtMemorySpace* memory) override;
+      absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override;
@@ -403,7 +403,7 @@ class TfrtCpuClient final : public PjRtClient {
     return Unimplemented("CreateHostToDeviceChannelHandle not implemented.");
   }
 
-  Status Defragment() override {
+  absl::Status Defragment() override {
     return Unimplemented("Defragment not implemented.");
   }
 
@@ -649,11 +649,11 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
  private:
   friend class TfrtCpuClient;
 
-  Status SetUpDonation(bool tuple_inputs);
+  absl::Status SetUpDonation(bool tuple_inputs);
 
   // Checks that the input buffers passed in by the user have the correct size
   // on device for the compiled program.
-  Status CheckBufferCompatibilities(
+  absl::Status CheckBufferCompatibilities(
       absl::Span<std::pair<bool, TrackedTfrtCpuDeviceBuffer*> const>
           input_buffers) const;
 

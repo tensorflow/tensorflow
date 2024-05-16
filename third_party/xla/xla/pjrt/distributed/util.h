@@ -21,16 +21,16 @@ limitations under the License.
 
 namespace xla {
 
-inline Status FromGrpcStatus(const ::grpc::Status& s) {
+inline absl::Status FromGrpcStatus(const ::grpc::Status& s) {
   if (s.ok()) {
     return OkStatus();
   } else {
-    return Status(static_cast<absl::StatusCode>(s.error_code()),
-                  s.error_message());
+    return absl::Status(static_cast<absl::StatusCode>(s.error_code()),
+                        s.error_message());
   }
 }
 
-inline ::grpc::Status ToGrpcStatus(const Status& s) {
+inline ::grpc::Status ToGrpcStatus(const absl::Status& s) {
   if (s.ok()) {
     return ::grpc::Status::OK;
   } else {

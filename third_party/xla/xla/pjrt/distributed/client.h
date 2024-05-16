@@ -83,7 +83,8 @@ class DistributedRuntimeClient {
                        "missing heartbeats. This most likely indicates that "
                        "another task died; see the other task logs for more "
                        "details. Disable Python buffering, i.e. `python -u`, "
-                       "to be sure to see all the previous output. Status: "
+                       "to be sure to see all the previous output. "
+                       "absl::Status: "
                     << status;
               } else {
                 LOG(QFATAL)
@@ -92,7 +93,7 @@ class DistributedRuntimeClient {
                        "indicates that the coordinator task died; see the "
                        "coordinator's task logs for more details. "
                        "Disable Python buffering, i.e. `python -u`, to be "
-                       "sure to see all the previous output. Status: "
+                       "sure to see all the previous output. absl::Status: "
                     << status;
               }
             };
