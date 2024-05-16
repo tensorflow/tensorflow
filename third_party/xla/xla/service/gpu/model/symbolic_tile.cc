@@ -49,43 +49,6 @@ using ::mlir::getAffineConstantExpr;
 using ::mlir::getAffineDimExpr;
 using ::mlir::MLIRContext;
 
-// Gets a modified version of `expressions` where the indices of the RTVars are
-// decreased, because no RangeVars appear anymore.
-//
-// (dimensions)[RangeVars, RTVars] -> (dimensions)[RTVars]
-//
-// Precondition: `expressions` must not contain any RangeVar symbols.
-//
-// This handles a vector of expressions at once, because we don't want to
-// regenerate `symbol_map` every time.
-std::vector<AffineExpr> WithoutRangeVars(std::vector<AffineExpr> expressions,
-                                         const IndexingMap& indexing_map) {
-  // Precondition check:
-  for (AffineExpr expression : expressions) {
-    expression.walk([&indexing_map](AffineExpr expr) {
-      CHECK(!(expr.getKind() == AffineExprKind::SymbolId &&
-              indexing_map.IsRangeVarSymbol(
-                  llvm::cast<mlir::AffineSymbolExpr>(expr))));
-    });
-  }
-
-  MLIRContext* mlir_context = indexing_map.GetMLIRContext();
-
-  // Cannot use AffineExpr::shiftSymbols, because it doesn't support negative
-  // shifts.
-  llvm::DenseMap<AffineExpr, AffineExpr> symbol_map;
-  for (int i = 0; i < indexing_map.GetRTVarsCount(); i++) {
-    symbol_map[getAffineSymbolExpr(indexing_map.GetRangeVarsCount() + i,
-                                   mlir_context)] =
-        getAffineSymbolExpr(i, mlir_context);
-  }
-  for (AffineExpr& expression : expressions) {
-    expression = expression.replace(symbol_map);
-  }
-
-  return expressions;
-}
-
 // Gets a modified version of `expressions` where both the original dimensions
 // and symbols are replaced with symbols.
 //
@@ -418,16 +381,13 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
   }
 
   std::vector<AffineExpr> results;
-  absl::c_move(WithoutRangeVars(std::move(offset_expressions), indexing_map),
-               std::back_inserter(results));
-  absl::c_move(WithoutRangeVars(std::move(size_expressions), indexing_map),
-               std::back_inserter(results));
-  absl::c_move(WithoutRangeVars(std::move(stride_expressions), indexing_map),
-               std::back_inserter(results));
+  absl::c_move(std::move(offset_expressions), std::back_inserter(results));
+  absl::c_move(std::move(size_expressions), std::back_inserter(results));
+  absl::c_move(std::move(stride_expressions), std::back_inserter(results));
 
   AffineMap tile_affine_map =
       AffineMap::get(/*dimCount=*/tile_sizes.size(),
-                     /*symbolCount=*/indexing_map.GetRTVarsCount(),
+                     /*symbolCount=*/indexing_map.GetSymbolCount(),
                      /*results=*/results,
                      /*context=*/indexing_map.GetMLIRContext());
 
@@ -437,8 +397,11 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
   IndexingMap tile_map(
       /*affine_map=*/std::move(tile_affine_map),
       /*dimensions=*/std::move(tile_sizes),
-      /*range_vars=*/{},
+      /*range_vars=*/indexing_map.GetRangeVars(),
       /*rt_vars=*/indexing_map.GetRTVars());
+  tile_map.RemoveUnusedSymbols();
+  CHECK_EQ(tile_map.GetRangeVarsCount(), 0);
+
   VLOG(1) << "tile_map: " << tile_map.ToString();
   return SymbolicTile(std::move(tile_map));
 }
