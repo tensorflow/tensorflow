@@ -4473,7 +4473,7 @@ cc_library(
     ]),
 )
 
-cuda_library(
+gpu_kernel_library(
     name = "buffer_comparator_kernel",
     srcs = if_gpu_is_configured(["buffer_comparator.cu.cc"]),
     copts = rocm_copts(),
