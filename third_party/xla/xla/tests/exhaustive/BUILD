@@ -46,7 +46,7 @@ xla_test(
     name = "exhaustive_unary_test_f32_or_smaller",
     srcs = ["exhaustive_unary_test_f32_or_smaller.cc"],
     real_hardware_only = True,  # Very slow on the interpreter.
-    shard_count = 48,
+    shard_count = 50,
     tags = [
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
@@ -55,6 +55,7 @@ xla_test(
     deps = [
         ":exhaustive_op_test_utils",
         "//xla:util",
+        "//xla/client:xla_builder",
         "//xla/tests:client_library_test_base",
     ],
 )
@@ -77,6 +78,7 @@ xla_test(
     deps = [
         ":exhaustive_op_test_utils",
         "//xla:util",
+        "//xla/client:xla_builder",
         "//xla/tests:client_library_test_base",
     ],
 )
@@ -96,8 +98,12 @@ xla_test(
     ],
     deps = [
         ":exhaustive_op_test_utils",
-        "//xla:util",
+        "//xla:types",
+        "//xla/client:xla_builder",
         "//xla/tests:client_library_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:test_macros_header",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
