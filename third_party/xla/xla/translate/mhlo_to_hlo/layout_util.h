@@ -61,9 +61,6 @@ typedef std::function<absl::StatusOr<xla::Shape>(
     XlaLayoutPreference layout_preference)>
     ShapeRepresentationFn;
 
-// Return a LayoutPreferenceFn that always uses kNoPreference layout.
-LayoutPreferenceFn UseNoPreferenceLayoutFn();
-
 // Rewrites the layout of xla_shape if there is tiled sharding.
 absl::Status RewriteLayoutWithShardedShape(
     const std::optional<xla::HloSharding>& sharding, bool use_fast_memory,
