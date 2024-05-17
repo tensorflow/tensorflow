@@ -37,8 +37,8 @@ namespace tensorflow {
 //  Tensor device_tensor(device_allocator, DT_FLOAT, TensorShape({2, 2}));
 //  se::DeviceMemoryBase gpu_dst{device_tensor.data(), 4 * sizeof(float)};
 //  xla::Shape shape(xla::F32, {2, 2}, {}, {})
-//  tsl::AsyncValueRef<se::Event> done_event =
-//      tsl::MakeConstructedAsyncValueRef<se::Event>(stream.parent());
+//  tsl::AsyncValueRef<std::unique_ptr<se::Event>> done_event =
+//      tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(stream.parent());
 //  done_event->Init();
 //
 //  XlaHostSendDeviceContext device_context(&stream, &gpu_dst,
@@ -48,10 +48,10 @@ namespace tensorflow {
 
 class XlaHostSendDeviceContext : public DeviceContext {
  public:
-  XlaHostSendDeviceContext(se::Stream* stream,
-                           se::DeviceMemoryBase* device_memory_base,
-                           const xla::Shape& shape,
-                           tsl::AsyncValueRef<se::Event>& done_event)
+  XlaHostSendDeviceContext(
+      se::Stream* stream, se::DeviceMemoryBase* device_memory_base,
+      const xla::Shape& shape,
+      tsl::AsyncValueRef<std::unique_ptr<se::Event>>& done_event)
       : stream_(stream),
         device_memory_base_(device_memory_base),
         shape_(shape),
@@ -79,7 +79,7 @@ class XlaHostSendDeviceContext : public DeviceContext {
   se::Stream* stream_;                        // Not owned.
   se::DeviceMemoryBase* device_memory_base_;  // Not owned.
   const xla::Shape shape_;
-  tsl::AsyncValueRef<se::Event> done_event_;
+  tsl::AsyncValueRef<std::unique_ptr<se::Event>> done_event_;
 
   XlaHostSendDeviceContext(const XlaHostSendDeviceContext&) = delete;
   void operator=(const XlaHostSendDeviceContext&) = delete;
