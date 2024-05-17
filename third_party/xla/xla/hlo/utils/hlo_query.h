@@ -78,6 +78,26 @@ bool IsBroadcastOfParameter(const HloInstruction& instr);
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               HloOpcode opcode);
 
+// Applies `fn` to a collection of instruction for a given `computation`.
+template <typename Fn>
+void ForEachInstructionWithOpcode(HloComputation& computation, HloOpcode opcode,
+                                  Fn&& fn) {
+  for (HloInstruction* instr : computation.instructions()) {
+    if (instr->opcode() == opcode) {
+      fn(instr);
+    }
+  }
+}
+
+// Applies `fn` to a collection of instruction for a given `module`.
+template <typename Fn>
+void ForEachInstructionWithOpcode(HloModule& module, HloOpcode opcode,
+                                  Fn&& fn) {
+  for (HloComputation* computation : module.computations()) {
+    ForEachInstructionWithOpcode(*computation, opcode, fn);
+  }
+}
+
 // Determines whether the given computation contains an instruction with one of
 // the given opcodes.  Checks both comp's instructions and the instructions of
 // any computations nested within it.

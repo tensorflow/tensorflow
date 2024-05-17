@@ -19,10 +19,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/pjrt/pjrt_common.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/util.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -55,6 +59,8 @@ std::shared_ptr<MockClient> MakeShardingTestClient(
     auto device = std::make_unique<MockDevice>();
     ON_CALL(*device, Id).WillByDefault(Return(DeviceId(i + 10)));
     ON_CALL(*device, IsAddressable).WillByDefault(Return(true));
+    ON_CALL(*device, DebugString)
+        .WillByDefault(Return(absl::StrCat("device(", i + 10, ")")));
     state->devices.push_back(device.get());
     state->device_map.insert({DeviceId(i + 10), std::move(device)});
   }

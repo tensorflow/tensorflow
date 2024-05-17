@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ReaderNumRecordsProduced"
   input_arg {
     name: "reader_handle"

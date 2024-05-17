@@ -21,7 +21,7 @@ func.func @parallel_loop(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
   %1 = bufferization.to_tensor %0 : memref<16xf32>
   bufferization.materialize_in_destination %1 in writable %arg1
       : (tensor<16xf32>, memref<16xf32>) -> ()
-  "lmhlo.terminator"() : () -> ()
+  return
 }
 
 // CHECK-LABEL: func @statically_unrolled
@@ -48,7 +48,7 @@ func.func @statically_unrolled(%arg0: memref<?xindex>) {
     scf.reduce
   }
 
-  "lmhlo.terminator"() : () -> ()
+  return
 }
 
 // CHECK-LABEL: func @dynamically_unrolled
@@ -80,7 +80,7 @@ func.func @dynamically_unrolled(%arg0: memref<?xindex>, %arg1 : index) {
     scf.reduce
   }
 
-  "lmhlo.terminator"() : () -> ()
+  return
 }
 
 // CHECK-LABEL: func @complex_access
@@ -104,5 +104,5 @@ func.func @complex_access(%arg0: memref<16xf32>, %arg1: memref<4xf32>) {
   %1 = bufferization.to_tensor %0 : memref<4xf32>
   bufferization.materialize_in_destination %1 in writable %arg1
       : (tensor<4xf32>, memref<4xf32>) -> ()
-  "lmhlo.terminator"() : () -> ()
+  return
 }

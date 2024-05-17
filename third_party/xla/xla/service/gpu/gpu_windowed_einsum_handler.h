@@ -38,16 +38,24 @@ class GpuWindowedEinsumHandler : public HloModulePass {
     return "gpu-windowed-einsum-handler";
   }
 
+  struct WindowedEinsumAgLoops {
+    WindowedEinsumAgLoops(HloInstruction* loop) : loop(loop) {}
+    HloInstruction* loop;
+    bool consumed = false;
+  };
+
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
- private:
   constexpr static const char* kWindowedEinsumRsLoopName =
       "windowed_dot_general_body_rs";
   constexpr static const char* kWindowedEinsumAgLoopName =
       "windowed_dot_general_body_ag";
+
+ private:
+  std::vector<WindowedEinsumAgLoops> all_ag_loops_;
 };
 
 }  // namespace xla::gpu

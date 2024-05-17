@@ -191,6 +191,12 @@ struct AutoShardingOption {
   // for resharding edges.
   bool model_resharding_memory_costs = true;
 
+  // Whether or not to generate strategies that model the windowed einsum (or
+  // collective matmul) optimization
+  // TODO(331684721,329508561): Generate windowed-einsum strategies by default
+  // once it is fully implemented.
+  bool generate_windowed_einsum_strategies = false;
+
   // Prints a debug string.
   std::string ToString() const;
 

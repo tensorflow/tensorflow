@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
@@ -44,6 +45,7 @@ struct XLA_FFI_Error {
 struct XLA_FFI_ExecutionContext {
   const xla::ServiceExecutableRunOptions* run_options;
   const xla::HloComputation* called_computation;
+  const xla::ffi::ExecutionContext* execution_context;
 };
 
 //===----------------------------------------------------------------------===//
@@ -61,27 +63,53 @@ bool IsCommandBufferCompatible(XLA_FFI_Handler_Traits traits) {
 // WARNING: These functions defined in `call_frame.h` as we need to make them
 // available without having to depend on `ffi.h` header.
 
-Status TakeStatus(XLA_FFI_Error* error) {
+absl::Status TakeStatus(XLA_FFI_Error* error) {
   if (error == nullptr) return absl::OkStatus();
-  Status status = std::move(error->status);
+  absl::Status status = std::move(error->status);
   delete error;
   return status;
 }
 
-Status Call(Ffi& handler, CallFrame& call_frame, const CallOptions& options) {
-  XLA_FFI_ExecutionContext ctx = {options.run_options,
-                                  options.called_computation};
+absl::Status Call(Ffi& handler, CallFrame& call_frame,
+                  const CallOptions& options) {
+  XLA_FFI_ExecutionContext ctx = {
+      options.run_options, options.called_computation,
+      internal::ScopedExecutionContext::GetCallExecutionContext(options)};
   XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(GetXlaFfiApi(), &ctx);
   return TakeStatus(handler.Call(&ffi_call_frame));
 }
 
-Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
-            const CallOptions& options) {
-  XLA_FFI_ExecutionContext ctx = {options.run_options,
-                                  options.called_computation};
+absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
+                  const CallOptions& options) {
+  XLA_FFI_ExecutionContext ctx = {
+      options.run_options, options.called_computation,
+      internal::ScopedExecutionContext::GetCallExecutionContext(options)};
   XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(GetXlaFfiApi(), &ctx);
   return TakeStatus((*handler)(&ffi_call_frame));
 }
+
+namespace internal {
+static thread_local const ExecutionContext* scoped_execution_context = nullptr;
+
+ScopedExecutionContext::ScopedExecutionContext(const ExecutionContext* context)
+    : recover_(scoped_execution_context) {
+  scoped_execution_context = context;
+}
+
+ScopedExecutionContext::~ScopedExecutionContext() {
+  scoped_execution_context = recover_;
+}
+
+const ExecutionContext* ScopedExecutionContext::GetCallExecutionContext(
+    const CallOptions& options) {
+  if (scoped_execution_context != nullptr) {
+    return scoped_execution_context;
+  }
+  return options.run_options
+             ? options.run_options->run_options().ffi_execution_context()
+             : nullptr;
+}
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // XLA FFI registry
@@ -100,9 +128,10 @@ static HandlerRegistry& GetHandlerRegistry() {
   return *registry;
 }
 
-static Status RegisterHandler(std::string_view name, std::string_view platform,
-                              XLA_FFI_Handler* handler,
-                              XLA_FFI_Handler_Traits traits) {
+static absl::Status RegisterHandler(std::string_view name,
+                                    std::string_view platform,
+                                    XLA_FFI_Handler* handler,
+                                    XLA_FFI_Handler_Traits traits) {
   auto emplaced = GetHandlerRegistry().try_emplace(
       MakeHandlerKey(name, platform), HandlerRegistration{handler, traits});
   if (!emplaced.second)
@@ -145,8 +174,8 @@ static std::string StructSizeErrorMsg(std::string_view struct_name,
                       XLA_FFI_API_MAJOR, ".", XLA_FFI_API_MINOR, ".");
 }
 
-static Status ActualStructSizeIsGreaterOrEqual(std::string_view struct_name,
-                                               size_t expected, size_t actual) {
+static absl::Status ActualStructSizeIsGreaterOrEqual(
+    std::string_view struct_name, size_t expected, size_t actual) {
   if (actual < expected) {
     return absl::InvalidArgumentError(
         StructSizeErrorMsg(struct_name, expected, actual));
@@ -198,7 +227,7 @@ static absl::StatusCode ToStatusCode(XLA_FFI_Error_Code errc) {
 
 #define XLA_FFI_RETURN_IF_ERROR(expr)                                   \
   do {                                                                  \
-    Status _status = (expr);                                            \
+    absl::Status _status = (expr);                                      \
     if (!_status.ok()) {                                                \
       XLA_FFI_Error* _c_status = new XLA_FFI_Error{std::move(_status)}; \
       return _c_status;                                                 \
@@ -214,7 +243,7 @@ static XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args) {
 }
 
 static void XLA_FFI_Error_GetMessage(XLA_FFI_Error_GetMessage_Args* args) {
-  Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
+  absl::Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_Error_GetMessage", XLA_FFI_Error_GetMessage_Args_STRUCT_SIZE,
       args->struct_size);
   if (!struct_size_check.ok()) {
@@ -226,7 +255,7 @@ static void XLA_FFI_Error_GetMessage(XLA_FFI_Error_GetMessage_Args* args) {
 }
 
 static void XLA_FFI_Error_Destroy(XLA_FFI_Error_Destroy_Args* args) {
-  Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
+  absl::Status struct_size_check = ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_Error_Destroy", XLA_FFI_Error_Destroy_Args_STRUCT_SIZE,
       args->struct_size);
   if (!struct_size_check.ok()) {
@@ -241,8 +270,10 @@ static XLA_FFI_Error* XLA_FFI_Handler_Register(
       "XLA_FFI_Handler_Register", XLA_FFI_Handler_Register_Args_STRUCT_SIZE,
       args->struct_size));
 
-  if (auto status = RegisterHandler(args->name, args->platform, args->handler,
-                                    args->traits);
+  if (auto status = RegisterHandler(
+          std::string_view(args->name.ptr, args->name.len),
+          std::string_view(args->platform.ptr, args->platform.len),
+          args->handler, args->traits);
       !status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
   }
@@ -257,6 +288,38 @@ static XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args) {
   auto handle = args->ctx->run_options->stream()->platform_specific_handle();
   args->stream = handle.stream;
 
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_TypeId_Register(
+    XLA_FFI_TypeId_Register_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_ExecutionContext_Get_Args",
+      XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE, args->struct_size));
+
+  auto type_id = ExecutionContext::RegisterExternalTypeId(
+      std::string_view(args->name.ptr, args->name.len));
+  if (!type_id.ok()) {
+    return new XLA_FFI_Error{std::move(type_id).status()};
+  }
+
+  args->type_id->type_id = type_id->value();
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
+    XLA_FFI_ExecutionContext_Get_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_ExecutionContext_Get_Args",
+      XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE, args->struct_size));
+
+  auto user_data = args->ctx->execution_context->Lookup(
+      ExecutionContext::TypeId(args->type_id->type_id));
+  if (!user_data.ok()) {
+    return new XLA_FFI_Error{std::move(user_data).status()};
+  }
+
+  args->data = *user_data;
   return nullptr;
 }
 
@@ -287,6 +350,11 @@ static void* XLA_FFI_INTERNAL_CalledComputation_Get(
   return const_cast<HloComputation*>(ctx->called_computation);
 }
 
+static void* XLA_FFI_INTERNAL_ExecutionContext_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  return const_cast<ffi::ExecutionContext*>(ctx->execution_context);
+}
+
 //===----------------------------------------------------------------------===//
 // XLA FFI Api access
 //===----------------------------------------------------------------------===//
@@ -299,6 +367,7 @@ static XLA_FFI_InternalApi internal_api = {
     XLA_FFI_INTERNAL_DeviceOrdinal_Get,
     XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
     XLA_FFI_INTERNAL_CalledComputation_Get,
+    XLA_FFI_INTERNAL_ExecutionContext_Get,
 };
 
 static XLA_FFI_Api api = {
@@ -307,11 +376,13 @@ static XLA_FFI_Api api = {
 
     &internal_api,
 
-    XLA_FFI_Error_Create,      // creates error
-    XLA_FFI_Error_GetMessage,  // get error message
-    XLA_FFI_Error_Destroy,     // frees error
-    XLA_FFI_Handler_Register,  // registers handler
-    XLA_FFI_Stream_Get,        // returns platform specific stream
+    XLA_FFI_Error_Create,
+    XLA_FFI_Error_GetMessage,
+    XLA_FFI_Error_Destroy,
+    XLA_FFI_Handler_Register,
+    XLA_FFI_Stream_Get,
+    XLA_FFI_TypeId_Register,
+    XLA_FFI_ExecutionContext_Get,
 };
 
 const XLA_FFI_Api* GetXlaFfiApi() { return &api; }

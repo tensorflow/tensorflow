@@ -351,20 +351,20 @@ TEST_F(BufferComparatorTest, BF16) {
 
   auto stream = stream_exec_->CreateStream().value();
 
-  se::ScopedDeviceMemory<Eigen::bfloat16> lhs(
+  se::DeviceMemoryHandle lhs(
       stream_exec_,
       stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
-  InitializeBuffer(stream.get(), BF16, &rng_state, *lhs.ptr());
+  InitializeBuffer(stream.get(), BF16, &rng_state, lhs.memory());
 
-  se::ScopedDeviceMemory<Eigen::bfloat16> rhs(
+  se::DeviceMemoryHandle rhs(
       stream_exec_,
       stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
-  InitializeBuffer(stream.get(), BF16, &rng_state, *rhs.ptr());
+  InitializeBuffer(stream.get(), BF16, &rng_state, rhs.memory());
 
   BufferComparator comparator(ShapeUtil::MakeShape(BF16, {element_count}),
                               HloModuleConfig());
-  EXPECT_FALSE(
-      comparator.CompareEqual(stream.get(), *lhs.ptr(), *rhs.ptr()).value());
+  EXPECT_FALSE(comparator.CompareEqual(stream.get(), lhs.memory(), rhs.memory())
+                   .value());
 }
 
 }  // namespace

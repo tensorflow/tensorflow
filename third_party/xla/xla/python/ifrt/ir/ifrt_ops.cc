@@ -16,10 +16,15 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <utility>
+#include <vector>
 
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -142,7 +147,7 @@ mlir::LogicalResult VerifyDevicePlacement(
     mlir::Operation* op, llvm::ArrayRef<int> devices,
     llvm::ArrayRef<IfrtArrayType> inputs,
     llvm::ArrayRef<IfrtArrayType> outputs) {
-  llvm::SmallSet<int, 4> device_set;
+  llvm::DenseSet<int> device_set;
   device_set.insert(devices.begin(), devices.end());
 
   for (const IfrtArrayType input : inputs) {
@@ -235,7 +240,7 @@ mlir::LogicalResult ReshardOp::verify() {
 }
 
 mlir::LogicalResult AssembleOp::verify() {
-  llvm::SmallVector<int, 4> input_devices;
+  std::vector<int> input_devices;
   for (const mlir::Value input : getInputs()) {
     const auto array = llvm::cast<IfrtArrayType>(input.getType());
     if (array.getDevices().size() != 1) {
@@ -255,7 +260,7 @@ mlir::LogicalResult AssembleOp::verify() {
 }
 
 mlir::LogicalResult DisassembleOp::verify() {
-  llvm::SmallVector<int, 4> output_devices;
+  std::vector<int> output_devices;
   for (const mlir::Value output : getOutputs()) {
     const auto array = llvm::cast<IfrtArrayType>(output.getType());
     if (array.getDevices().size() != 1) {
@@ -270,6 +275,142 @@ mlir::LogicalResult DisassembleOp::verify() {
                   output_devices.begin())) {
     return emitOpError() << "requires the same input/output device list. Input "
                          << input_devices << " vs Output " << output_devices;
+  }
+  return mlir::success();
+}
+
+mlir::LogicalResult RemapArraysOp::verify() {
+  int num_in_arrays = getInputs().size();
+  int num_out_arrays = getOutputs().size();
+  if (num_in_arrays == 0) {
+    return emitOpError() << "requires at least one input array";
+  }
+  IfrtArrayType first_array =
+      llvm::cast<IfrtArrayType>(getInputs()[0].getType());
+  mlir::Type dtype = first_array.getShape().getElementType();
+  absl::StatusOr<llvm::SmallVector<int64_t>> in_per_shard_shape =
+      first_array.getShardingAttr().LocalShapeFromGlobalShape(
+          first_array.getShape().getShape());
+  if (!in_per_shard_shape.ok()) {
+    return emitOpError() << "unable to get per-shard shape of input #0. "
+                         << in_per_shard_shape.status().message();
+  }
+  std::vector<std::vector<bool>> in_used_shards_list(num_in_arrays);
+  // Verify that all input/output arrays have the same DType and per-shard
+  // shape.
+  for (const auto [idx, input] : llvm::enumerate(getInputs())) {
+    const auto array = llvm::cast<IfrtArrayType>(input.getType());
+    if (array.getShape().getElementType() != dtype) {
+      return emitOpError()
+             << "requires every input and output array to have the same dtype.";
+    }
+    auto input_per_shard_shape =
+        array.getShardingAttr().LocalShapeFromGlobalShape(
+            array.getShape().getShape());
+    if (!input_per_shard_shape.ok()) {
+      return emitOpError() << "unable to get per-shard shape of input #" << idx
+                           << ". " << input_per_shard_shape.status().message();
+    }
+    if (*input_per_shard_shape != *in_per_shard_shape) {
+      return emitOpError() << "requires every input array to have the same "
+                              "per-shard shape, but input #"
+                           << idx << " has a different shape.";
+    }
+    in_used_shards_list[idx].resize(/*count=*/array.getDevices().size(),
+                                    /*value=*/false);
+  }
+  std::vector<std::vector<bool>> out_mapped_shards_list(num_out_arrays);
+  if (num_out_arrays > 0) {
+    IfrtArrayType first_out_array =
+        llvm::cast<IfrtArrayType>(getOutputs()[0].getType());
+    absl::StatusOr<llvm::SmallVector<int64_t>> out_per_shard_shape =
+        first_out_array.getShardingAttr().LocalShapeFromGlobalShape(
+            first_out_array.getShape().getShape());
+    if (!out_per_shard_shape.ok()) {
+      return emitOpError() << "unable to get per-shard shape of output #0. "
+                           << out_per_shard_shape.status().message();
+    }
+    for (const auto [idx, output] : llvm::enumerate(getOutputs())) {
+      const auto array = llvm::cast<IfrtArrayType>(output.getType());
+      if (array.getShape().getElementType() != dtype) {
+        return emitOpError() << "requires every input and output array to have "
+                                "the same dtype.";
+      }
+      auto output_per_shard_shape =
+          array.getShardingAttr().LocalShapeFromGlobalShape(
+              array.getShape().getShape());
+      if (!output_per_shard_shape.ok()) {
+        return emitOpError()
+               << "unable to get per-shard shape of output #" << idx << ". "
+               << output_per_shard_shape.status().message();
+      }
+      if (*output_per_shard_shape != *out_per_shard_shape) {
+        return emitOpError() << "requires every output array to have the same "
+                                "per-shard shape, but output #"
+                             << idx << " has a different shape.";
+      }
+      out_mapped_shards_list[idx].resize(/*count=*/array.getDevices().size(),
+                                         /*value=*/false);
+    }
+  }
+
+  // Verify that an input shard is used at most once, and that every output
+  // shard has exactly one input shard mapped.
+  for (const auto& array_mapping : getMappings()) {
+    const auto array_mapping_attr =
+        llvm::cast<IfrtArrayMappingAttr>(array_mapping);
+    int in_index = array_mapping_attr.getInArrayIndex();
+    int out_index = array_mapping_attr.getOutArrayIndex();
+    if (in_index < 0 || in_index >= in_used_shards_list.size()) {
+      return emitOpError() << "mapping array index " << in_index
+                           << " is out of range of input arrays.";
+    }
+    if (out_index < 0 || out_index >= out_mapped_shards_list.size()) {
+      return emitOpError() << "mapping array index " << out_index
+                           << " is out of range of output arrays.";
+    }
+    std::vector<bool>& in_used_shards = in_used_shards_list[in_index];
+    std::vector<bool>& out_mapped_shards = out_mapped_shards_list[out_index];
+    for (const auto& mapping : array_mapping_attr.getMappings()) {
+      const auto mapping_attr = llvm::cast<IfrtMappingAttr>(mapping);
+      auto from_shards = mapping_attr.getFromShards();
+      auto to_shards = mapping_attr.getToShards();
+      int in_shard = from_shards.getStart();
+      int out_shard = to_shards.getStart();
+      while (in_shard < from_shards.getEnd()) {
+        if (in_shard >= in_used_shards.size()) {
+          return emitOpError()
+                 << "input array #" << in_index << " shard #" << in_shard
+                 << " is out of range of input shards.";
+        }
+        if (out_shard >= out_mapped_shards.size()) {
+          return emitOpError()
+                 << "output array #" << out_index << " shard #" << out_shard
+                 << " is out of range of output shards.";
+        }
+        if (in_used_shards[in_shard]) {
+          return emitOpError() << "input array #" << in_index << " shard #"
+                               << in_shard << " is already used.";
+        }
+        in_used_shards[in_shard] = true;
+        if (out_mapped_shards[out_shard]) {
+          return emitOpError() << "output array #" << out_index << " shard #"
+                               << out_shard << " is already assigned.";
+        }
+        out_mapped_shards[out_shard] = true;
+        in_shard += from_shards.getStep();
+        out_shard += to_shards.getStep();
+      }
+    }
+  }
+  for (int idx = 0; idx < num_out_arrays; ++idx) {
+    for (int out_shard = 0; out_shard < out_mapped_shards_list[idx].size();
+         ++out_shard) {
+      if (!out_mapped_shards_list[idx][out_shard]) {
+        return emitOpError() << "output array #" << idx << " shard #"
+                             << out_shard << " is unassigned.";
+      }
+    }
   }
   return mlir::success();
 }
@@ -292,8 +433,8 @@ mlir::MutableOperandRange CallOp::getArgOperandsMutable() {
 }
 
 mlir::LogicalResult CallOp::verifySymbolUses(
-    mlir::SymbolTableCollection& symbol_table) {
-  mlir::func::FuncOp callee = getCalleeOp(symbol_table);
+    mlir::SymbolTableCollection& symbolTable) {
+  mlir::func::FuncOp callee = getCalleeOp(symbolTable);
   mlir::FunctionType callee_type = callee.getFunctionType();
   auto local_view_attr =
       (*this)->getAttrOfType<mlir::UnitAttr>(kIfrtLocalViewAttrName);
@@ -387,7 +528,7 @@ mlir::MutableOperandRange CallLoadedExecutableOp::getArgOperandsMutable() {
 }
 
 mlir::LogicalResult CallLoadedExecutableOp::verifySymbolUses(
-    mlir::SymbolTableCollection& symbol_table) {
+    mlir::SymbolTableCollection& symbolTable) {
   llvm::SmallVector<mlir::Type, 4> input_types;
   input_types.reserve(getInputs().size());
   for (const mlir::Value input : getInputs()) {
@@ -400,7 +541,7 @@ mlir::LogicalResult CallLoadedExecutableOp::verifySymbolUses(
   }
   auto func_type =
       mlir::FunctionType::get(getContext(), input_types, output_types);
-  LoadedExecutableOp callee = getCalleeOp(symbol_table);
+  LoadedExecutableOp callee = getCalleeOp(symbolTable);
   if (callee.getFunctionType() != func_type) {
     return emitOpError() << "requires callee signature matching " << func_type
                          << ". Actual " << callee.getFunctionType();

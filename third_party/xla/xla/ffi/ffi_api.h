@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
@@ -49,13 +50,38 @@ struct CallOptions {
 
 // Takes ownership of the XLA FFI error and returns underlying status. Frees
 // `error` if it's not nullptr; returns OK status otherwise.
-Status TakeStatus(XLA_FFI_Error* error);
+absl::Status TakeStatus(XLA_FFI_Error* error);
 
-Status Call(Ffi& handler, CallFrame& call_frame,
-            const CallOptions& options = {});
+absl::Status Call(Ffi& handler, CallFrame& call_frame,
+                  const CallOptions& options = {});
 
-Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
-            const CallOptions& options = {});
+absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
+                  const CallOptions& options = {});
+
+namespace internal {
+// This is an internal workaround to override FFI execution context for FFI
+// calls executed in the current thread with `context` in tests that use legacy
+// xla::Client, xla::Service and xla::Backend APIs because it's not worth it to
+// add proper execution context support throughout all abstraction layers
+// (legacy client APIs should be eventually deleted instead). This workaround
+// should not be used outside of tests.
+class ScopedExecutionContext {
+ public:
+  explicit ScopedExecutionContext(const ExecutionContext* context);
+  ~ScopedExecutionContext();
+
+  ScopedExecutionContext(ScopedExecutionContext&&) = delete;
+  ScopedExecutionContext& operator=(ScopedExecutionContext&&) = delete;
+
+  // Returns an execution context that should be used for FFI calls based on the
+  // call options and the current thread's execution context.
+  static const ExecutionContext* GetCallExecutionContext(
+      const CallOptions& options);
+
+ private:
+  const ExecutionContext* recover_;
+};
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // XLA FFI registry

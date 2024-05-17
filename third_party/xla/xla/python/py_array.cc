@@ -21,8 +21,10 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <new>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -30,6 +32,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -66,6 +69,7 @@ limitations under the License.
 #include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/py_client.h"
@@ -108,8 +112,8 @@ PjRtBuffer* GetPjrtBuffer(ifrt::Array* ifrt_array) {
   return arr->pjrt_buffers().front().get();
 }
 
-StatusOr<const Shape*> XlaDynamicShape(ifrt::Array* ifrt_array,
-                                       std::optional<Shape>& scratch) {
+absl::StatusOr<const Shape*> XlaDynamicShape(ifrt::Array* ifrt_array,
+                                             std::optional<Shape>& scratch) {
   auto* pjrt_buffer = GetPjrtBuffer(ifrt_array);
 
   if (!scratch) {
@@ -253,8 +257,10 @@ extern "C" void PyArray_tp_dealloc(PyObject* self) {
 #if PY_VERSION_HEX < 0x030C0000
   PyObject*& dict = *_PyObject_GetDictPtr(self);
   Py_CLEAR(dict);
-#else
+#elif PY_VERSION_HEX < 0x030D0000
   _PyObject_ClearManagedDict(self);
+#else
+  PyObject_ClearManagedDict(self);
 #endif  // PY_VERSION_HEX < 0x030C0000
 
   tp->tp_free(self);
@@ -267,8 +273,10 @@ extern "C" int PyArray_tp_traverse(PyObject* self, visitproc visit, void* arg) {
 #if PY_VERSION_HEX < 0x030C0000
   PyObject*& dict = *_PyObject_GetDictPtr(self);
   Py_VISIT(dict);
-#else
+#elif PY_VERSION_HEX < 0x030D0000
   _PyObject_VisitManagedDict(self, visit, arg);
+#else
+  PyObject_VisitManagedDict(self, visit, arg);
 #endif  // PY_VERSION_HEX < 0x030C0000
   // https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_traverse
   Py_VISIT(Py_TYPE(self));
@@ -280,8 +288,10 @@ extern "C" int PyArray_tp_clear(PyObject* self) {
 #if PY_VERSION_HEX < 0x030C0000
   PyObject*& dict = *_PyObject_GetDictPtr(self);
   Py_CLEAR(dict);
-#else
+#elif PY_VERSION_HEX < 0x030D0000
   _PyObject_ClearManagedDict(self);
+#else
+  PyObject_ClearManagedDict(self);
 #endif  // PY_VERSION_HEX < 0x030C0000
   return 0;
 }
@@ -622,7 +632,7 @@ Status PyArray::set_arrays(nb::object obj) {
   return OkStatus();
 }
 
-StatusOr<PyArray> PyArray::FullyReplicatedShard() {
+absl::StatusOr<PyArray> PyArray::FullyReplicatedShard() {
   auto& cached = GetStorage().fully_replicated_array;
   if (!cached.is_none()) {
     return nb::cast<PyArray>(cached);
@@ -653,7 +663,7 @@ Status PyArray::BlockUntilReady() const {
   return AwaitBuffersReady(absl::MakeConstSpan(&ifrt_array, 1));
 }
 
-StatusOr<size_t> PyArray::GetOnDeviceSizeInBytes() {
+absl::StatusOr<size_t> PyArray::GetOnDeviceSizeInBytes() {
   if (ifrt_array() == nullptr) {
     return InvalidArgument(
         "GetOnDeviceSizeInBytes() called on deleted or donated buffer");
@@ -679,7 +689,7 @@ absl::Status PyArray::BlockUntilResultStatusIsReady() {
   return result_status.Await();
 }
 
-StatusOr<nb::object> PyArray::SingleDeviceArrayToNumpyArray() {
+absl::StatusOr<nb::object> PyArray::SingleDeviceArrayToNumpyArray() {
   TF_ASSIGN_OR_RETURN(auto arr, FullyReplicatedShard());
   auto result = arr.GetStorage().host_value.AsNumPyArray(
       arr.GetStorage().dynamic_shape, arr.ifrt_array());
@@ -693,7 +703,7 @@ Status PyArray::CopySingleDeviceArrayToHostAsync() {
       arr.GetStorage().dynamic_shape, arr.ifrt_array());
 }
 
-StatusOr<PyArray> PyArray::AssertUnsharded(std::string_view api) {
+absl::StatusOr<PyArray> PyArray::AssertUnsharded(std::string_view api) {
   if (ifrt_array() == nullptr) {
     return InvalidArgument("%s( called on deleted or donated buffer", api);
   }
@@ -709,7 +719,7 @@ StatusOr<PyArray> PyArray::AssertUnsharded(std::string_view api) {
   return py_arrays[0];
 }
 
-StatusOr<std::uintptr_t> PyArray::UnsafeBufferPointer() {
+absl::StatusOr<std::uintptr_t> PyArray::UnsafeBufferPointer() {
   TF_ASSIGN_OR_RETURN(auto arr, AssertUnsharded("UnsafeBufferPointer"));
 
   return py_client()->pjrt_client()->UnsafeBufferPointer(
@@ -790,9 +800,9 @@ nb::dict PyArray::CudaArrayInterface() {
   return result;
 }
 
-StatusOr<nb::object> CudaArrayInterfaceToBuffer(const nb::dict& cai,
-                                                nb_class_ptr<PyClient> client,
-                                                std::optional<int> device_id) {
+absl::StatusOr<nb::object> CudaArrayInterfaceToBuffer(
+    const nb::dict& cai, nb_class_ptr<PyClient> client,
+    std::optional<int> device_id) {
   if (!cai.contains("data")) {
     return absl::InvalidArgumentError(
         "CUDA Array Interface does not define `data`");
@@ -852,7 +862,7 @@ StatusOr<nb::object> CudaArrayInterfaceToBuffer(const nb::dict& cai,
       (version == 3 && (!cai.contains("stream") || cai["stream"].is_none()));
   TF_ASSIGN_OR_RETURN(
       std::intptr_t stream,
-      ([is_default_stream, cai, device]() -> StatusOr<std::intptr_t> {
+      ([is_default_stream, cai, device]() -> absl::StatusOr<std::intptr_t> {
         if (is_default_stream) {
           return device->GetStreamForExternalReadyEvents();
         } else {
@@ -970,10 +980,15 @@ PyArray::Storage::~PyArray_Storage() {
   if (next) {
     next->prev = prev;
   }
+  // Release GIL and then explicitly destroy `ifrt_array` to prevent deadlock on
+  // CPU backend caused by interactions between argument donations and host
+  // callbacks.
+  nb::gil_scoped_release gil_release;
+  ifrt_array.reset();
 }
 
-StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(ifrt::DeviceList devices,
-                                                    nb::object dst_sharding) {
+absl::StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
+    ifrt::DeviceList devices, nb::object dst_sharding) {
   auto* ifrt_array_ptr = ifrt_array();
   ifrt::MemoryKind dst_memory_kind =
       CreateIfRtMemoryKindFromSharding(dst_sharding);
@@ -1054,7 +1069,7 @@ StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(ifrt::DeviceList devices,
                  /*skip_checks=*/true, result_status());
 }
 
-StatusOr<PyArray> PyArray::BatchedDevicePut(
+absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
     nb::object aval, nb::object sharding, std::vector<nb::object> xs,
     absl::Span<const PyDevice* const> dst_devices, bool committed,
     bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics,
@@ -1392,10 +1407,17 @@ bool IsZeroCopyableCpuBuffer(const PjRtBuffer* buf) {
 PyHostValue::PyHostValue() = default;
 PyHostValue::~PyHostValue() = default;
 
-StatusOr<nb::object> PyHostValue::AsNumPyArray(
+absl::StatusOr<nb::object> PyHostValue::AsNumPyArray(
     std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array) {
   if (ifrt_array->IsDeleted()) {
     return InvalidArgument("DeviceArray has been deleted.");
+  }
+  // The only `jax.Array` with token-shape buffer is the one wrapped by
+  // `jax.core.Token`. Since it is an internal implementation detail, we
+  // don't support converting it to a numpy array.
+  if (ifrt_array->dtype().kind() == ifrt::DType::kToken) {
+    return InvalidArgument(
+        "Cannot convert a token-shape buffer to a numpy array.");
   }
   auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array);
   if (arr != nullptr) {
@@ -1414,21 +1436,22 @@ StatusOr<nb::object> PyHostValue::AsNumPyArray(
         std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold;
       };
       auto hold = std::make_unique<Hold>();
-      TF_ASSIGN_OR_RETURN(hold->external_reference_hold,
-                          pjrt_buffer->AcquireExternalReference());
       hold->buffer = tsl::FormRef(ifrt_array);
+      auto* hold_ptr = hold.release();
+      nb::capsule hold_capsule(
+          hold_ptr, [](void* h) noexcept { delete static_cast<Hold*>(h); });
+      {
+        // Release the GIL as `AcquireExternalReference` may block.
+        nb::gil_scoped_release gil;
+        TF_ASSIGN_OR_RETURN(hold_ptr->external_reference_hold,
+                            pjrt_buffer->AcquireExternalReference());
+        TF_RETURN_IF_ERROR(ifrt_array->GetReadyFuture().Await());
+      }
       void* data =
-          hold->external_reference_hold->OpaqueDeviceMemoryDataPointer();
-      nb::capsule hold_capsule(hold.release(), [](void* h) noexcept {
-        delete static_cast<Hold*>(h);
-      });
+          hold_ptr->external_reference_hold->OpaqueDeviceMemoryDataPointer();
       nb_numpy_ndarray array(dtype, shape->dimensions(),
                              ByteStridesForShape(*shape), data, hold_capsule);
       array.attr("flags").attr("writeable") = nb::bool_(false);
-      {
-        nb::gil_scoped_release gil;
-        TF_RETURN_IF_ERROR(ifrt_array->GetReadyFuture().Await());
-      }
       return array;
     }
   }
@@ -1541,7 +1564,14 @@ Status PyArray::RegisterTypes(nb::module_& m) {
       absl::StrCat(nb::cast<std::string>(m.attr("__name__")), ".ArrayImpl");
 
   PyType_Spec PyArray_spec = {
+#if PY_VERSION_HEX < 0x030B0000
+      // Work around for https://github.com/python/cpython/issues/89478
+      // CPython 3.10 and earlier assume that the .name value remains alive
+      // forever.
+      /*.name=*/strdup(name.c_str()),
+#else
       /*.name=*/name.c_str(),
+#endif  // PY_VERSION_HEX < 0x030B0000
       /*.basicsize=*/static_cast<int>(sizeof(PyArrayObject)),
       /*.itemsize=*/0,
 #if PY_VERSION_HEX < 0x030C0000

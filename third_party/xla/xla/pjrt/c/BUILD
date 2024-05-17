@@ -2,10 +2,6 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
-)
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
@@ -76,6 +72,15 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_layouts_extension_hdrs",
+    hdrs = ["pjrt_c_api_layouts_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_wrapper_impl",
     srcs = ["pjrt_c_api_wrapper_impl.cc"],
     hdrs = ["pjrt_c_api_wrapper_impl.h"],
@@ -83,6 +88,7 @@ cc_library(
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
+        ":pjrt_c_api_layouts_extension_hdrs",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status",
@@ -131,6 +137,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_layouts_extension_hdrs",
         ":pjrt_c_api_profiler_extension_hdrs",
         "//xla:shape_util",
         "//xla:status",
@@ -141,6 +148,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
@@ -212,6 +220,7 @@ cc_library(
         ":pjrt_c_api_gpu_extension_hdrs",
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
+        ":pjrt_c_api_layouts_extension_hdrs",
         ":pjrt_c_api_profiler_extension_hdrs",
         ":pjrt_c_api_stream_extension_hdrs",
         ":pjrt_c_api_wrapper_impl",
@@ -239,7 +248,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -309,7 +317,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_c_api_gpu_test",
     srcs = ["pjrt_c_api_gpu_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":pjrt_c_api_gpu",
         ":pjrt_c_api_gpu_extension_hdrs",
@@ -331,6 +339,7 @@ xla_cc_test(
         "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/service:custom_call_target_registry",
         "//xla/service:gpu_plugin",
+        "//xla/stream_executor/gpu:gpu_init",
         "//xla/tests:literal_test_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",

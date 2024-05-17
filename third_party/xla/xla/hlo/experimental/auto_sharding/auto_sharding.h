@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -94,7 +95,7 @@ class AutoShardingImplementation {
   // PJRT which assigns layouts based on runtime shapes: see
   // DetermineArgumentLayoutsFromCompileOptions() in
   //     tensorflow/compiler/xla/pjrt/utils.cc
-  Status CanonicalizeLayouts(HloModule* module);
+  absl::Status CanonicalizeLayouts(HloModule* module);
 
   // Returns the optimal objective value that the ILP solver computes.
   double GetSolverOptimalObjectiveValue() {
@@ -163,30 +164,33 @@ void SetInNodesWithInstruction(std::unique_ptr<StrategyGroup>& strategy_group,
 
 void RemoveDuplicatedStrategy(std::unique_ptr<StrategyGroup>& strategy_group);
 
-Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
-                      std::unique_ptr<StrategyGroup>& strategy_group,
-                      const ClusterEnvironment& cluster_env,
-                      const InstructionBatchDimMap& batch_map,
-                      const AutoShardingOption& option);
+absl::Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
+                            std::unique_ptr<StrategyGroup>& strategy_group,
+                            const ClusterEnvironment& cluster_env,
+                            const InstructionBatchDimMap& batch_map,
+                            const AutoShardingOption& option);
 
-Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
-                 StrategyGroups& strategy_groups, StrategyMap& strategy_map,
-                 const HloInstruction* ins, size_t instruction_id,
-                 const HloInstructionSequence& instruction_sequence,
-                 const HloCostAnalysis& hlo_cost_analysis,
-                 const ClusterEnvironment& cluster_env,
-                 const InstructionBatchDimMap& batch_map,
-                 const AutoShardingOption& option, const CallGraph& call_graph);
+absl::Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
+                       StrategyGroups& strategy_groups,
+                       StrategyMap& strategy_map, const HloInstruction* ins,
+                       size_t instruction_id,
+                       const HloInstructionSequence& instruction_sequence,
+                       const HloCostAnalysis& hlo_cost_analysis,
+                       const ClusterEnvironment& cluster_env,
+                       const InstructionBatchDimMap& batch_map,
+                       const AutoShardingOption& option,
+                       const CallGraph& call_graph);
 
-Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
-                  StrategyGroups& strategy_groups, StrategyMap& strategy_map,
-                  const HloInstruction* ins, size_t instruction_id,
-                  const HloInstructionSequence& instruction_sequence,
-                  const HloCostAnalysis& hlo_cost_analysis,
-                  const ClusterEnvironment& cluster_env,
-                  const InstructionBatchDimMap& batch_map,
-                  const AutoShardingOption& option,
-                  const CallGraph& call_graph);
+absl::Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
+                        StrategyGroups& strategy_groups,
+                        StrategyMap& strategy_map, const HloInstruction* ins,
+                        size_t instruction_id,
+                        const HloInstructionSequence& instruction_sequence,
+                        const HloCostAnalysis& hlo_cost_analysis,
+                        const ClusterEnvironment& cluster_env,
+                        const InstructionBatchDimMap& batch_map,
+                        const AutoShardingOption& option,
+                        const CallGraph& call_graph);
 
 void AnnotateShardingWithSimpleHeuristic(HloModule* module,
                                          const std::string& heuristic,
@@ -206,10 +210,10 @@ AliasMap BuildAliasMap(const HloModule* module);
 AliasSet BuildAliasSet(const HloModule* module,
                        const StrategyMap& strategy_map);
 
-Status CheckAliasSetCompatibility(const AliasSet& alias_set,
-                                  const StrategyGroups& strategy_groups,
-                                  const HloInstructionSequence& sequence,
-                                  bool crash_on_error);
+absl::Status CheckAliasSetCompatibility(const AliasSet& alias_set,
+                                        const StrategyGroups& strategy_groups,
+                                        const HloInstructionSequence& sequence,
+                                        bool crash_on_error);
 
 absl::Status GenerateReduceScatter(
     const HloInstructionSequence& sequence, const AliasMap& alias_map,
@@ -231,6 +235,10 @@ AutoShardingSolverResult Solve(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
     const StrategyMap& strategy_map, const StrategyGroups& strategy_groups,
     const CostGraph& cost_graph, const AliasSet& alias_set,
+    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& node_intervals,
+    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& edge_intervals,
+    const std::vector<absl::btree_set<int64_t>>& node_groups,
+    const std::vector<absl::btree_set<int64_t>>& edge_groups,
     const AutoShardingOption& option, absl::string_view request_prefix,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution = {});
@@ -285,6 +293,11 @@ std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
 std::unique_ptr<StrategyGroup> HandleManuallyShardedInstruction(
     const HloInstruction* ins, const Shape& shape, size_t instruction_id,
     StrategyGroups& strategy_groups, StrategyMap& strategy_map);
+
+std::unique_ptr<StrategyGroup> HandlePartialReduce(
+    const HloInstruction* ins, size_t instruction_id, bool have_memory_cost,
+    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
+    StrategyMap& strategy_map, const CallGraph& call_graph);
 
 // Factory functions for StrategyGroup.
 std::unique_ptr<StrategyGroup> CreateLeafStrategyGroupWithoutInNodes(

@@ -2,7 +2,6 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
-    "tf_cuda_tests_tags",
 )
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
@@ -193,10 +192,8 @@ cuda_only_cc_library(
 xla_cc_test(
     name = "cuda_driver_test",
     srcs = ["cuda_driver_test.cc"],
-    tags = tf_cuda_tests_tags() + [
-        "no_rocm",
-        "requires-gpu-nvidia",
-    ],
+    tags = ["no_rocm"],
+    use_gpu = True,
     deps = [
         ":cuda_driver",
         "//xla/stream_executor/gpu:gpu_driver_header",
@@ -393,7 +390,7 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_stream",
-        "//xla/stream_executor/gpu:gpu_timer_header",
+        "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/platform",
         "//xla/tsl/cuda:cudnn",
         "//xla/tsl/util:env_var",
@@ -461,8 +458,8 @@ cuda_only_cc_library(
     srcs = ["cuda_event.cc"],
     hdrs = ["cuda_event.h"],
     deps = [
+        ":cuda_driver",
         "//xla/stream_executor",
-        "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_event",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "@com_google_absl//absl/log",
@@ -543,7 +540,7 @@ cc_library(
 xla_cc_test(
     name = "ptx_compiler_test",
     srcs = ["ptx_compiler_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":ptx_compiler",
         ":ptx_compiler_support",

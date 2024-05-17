@@ -29,8 +29,9 @@ namespace stream_executor::host {
 HostKernel::HostKernel(unsigned arity, SE_HOST_Kernel* kernel)
     : arity_(arity), kernel_(kernel) {}
 
-absl::Status HostKernel::Launch(const ThreadDim& thread_dims,
-                                absl::Span<const DeviceMemoryBase> buffers) {
+absl::Status HostKernel::Launch(
+    const ThreadDim& thread_dims,
+    absl::Span<const DeviceMemoryBase> buffers) const {
   SE_HOST_KernelThreadDim kernel_thread_dims = {thread_dims.x, thread_dims.y,
                                                 thread_dims.z};
 

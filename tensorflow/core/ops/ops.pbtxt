@@ -1,4 +1,3 @@
-go/debugproto    
 op {
   name: "Abort"
   attr {
@@ -22414,6 +22413,13 @@ op {
     type: "int"
     has_minimum: true
     minimum: 1
+  }
+}
+op {
+  name: "GetTpuTaskId"
+  output_arg {
+    name: "tpu_task_id"
+    type: DT_INT32
   }
 }
 op {
@@ -60054,6 +60060,8 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -65953,6 +65961,21 @@ op {
     name: "output_handle"
     type: DT_VARIANT
   }
+}
+op {
+  name: "UpdateTaskIdAndGlobalCoreArray"
+  input_arg {
+    name: "tpu_task_id_to_shard_id"
+    type: DT_INT32
+    number_attr: "task_count"
+  }
+  attr {
+    name: "task_count"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
 }
 op {
   name: "UpperBound"

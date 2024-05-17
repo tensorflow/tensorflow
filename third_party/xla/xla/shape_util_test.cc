@@ -30,10 +30,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
@@ -644,7 +641,7 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
     return true;
   };
 
-  Status error_status = ShapeUtil::ForEachIndexWithStatus(
+  absl::Status error_status = ShapeUtil::ForEachIndexWithStatus(
       shape, /*base=*/{0, 0}, /*count=*/{10, 10}, /*incr=*/{0, 1},
       increment_func);
 

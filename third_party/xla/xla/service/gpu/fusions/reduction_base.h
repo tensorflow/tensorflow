@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -44,7 +45,7 @@ struct ReductionGroups {
 
 class ReductionInfo {
  public:
-  static ReductionInfo Create(const HloFusionAnalysis& analysis);
+  static ReductionInfo Create(const HloFusionAnalysis& analysis, bool for_mlir);
 
   const Tiling& GetTiling() const { return tiling_; }
   const ReductionGroups& GetGroups() const { return groups_; }
@@ -89,11 +90,12 @@ class ReductionInfo {
 
 // Base class for reduction fusions. Computes shared information (reduction
 // grouping) and provides implementations of thread->input/output indexing.
-template <typename Base>
+template <typename Base, bool is_mlir = false>
 class ReductionFusionBase : public Base {
  public:
   explicit ReductionFusionBase(const HloFusionAnalysis& analysis)
-      : analysis_(analysis), reduction_info_(ReductionInfo::Create(analysis)) {}
+      : analysis_(analysis),
+        reduction_info_(ReductionInfo::Create(analysis, is_mlir)) {}
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* ctx) const override {

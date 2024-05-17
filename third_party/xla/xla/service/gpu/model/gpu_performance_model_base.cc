@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -44,31 +45,30 @@ namespace gpu {
 namespace {
 
 // Returns whether a fusion uses the parameter at the given index elementwise
-// from its root.
+// from its root. Also works if 'fusion' is a multi-output fusion.
 bool FusionUsesParameterElementwiseFromRoot(
     const HloInstruction* fusion, int parameter_index,
     const GpuHloCostAnalysis* cost_analysis) {
+  // This checks whether there is a path from fused_expression_root() to the
+  // parameter that only goes through elementwise, Tuple and GetTupleElement
+  // ops.
   return cost_analysis->CommonElementwiseUtilization(
              fusion->fused_parameter(parameter_index),
              fusion->fused_expression_root()) == 1.f;
 }
 
-int GetCoalescingWasteFactor(PrimitiveType element_type) {
+int GetCoalescingWasteFactor(PrimitiveType element_type,
+                             const se::DeviceDescription& gpu_device_info) {
   int64_t element_size_bytes =
       element_type == PrimitiveType::TUPLE ||
               element_type == PrimitiveType::TOKEN
           ? 4 /* Dummy value. TODO(jreiffers): Model this case. */
           : ShapeUtil::ByteSizeOfPrimitiveType(element_type);
-  // Cache line is 128B that is split into 4 sectors of 32B. Default transaction
-  // size from DRAM -> L2 = 64 Bytes = 2 sectors, since V100, but it can be also
-  // configured.
-  // https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21819-optimizing-applications-for-nvidia-ampere-gpu-architecture.pdf
-  // (page 10).
-  constexpr int kDRAMToL2TransactionSizeBytes = 64;
   // Assume we use one element from the cache line and waste the remaining
   // bandwidth. For example, if we're reading f32s, we use 1/16nd of the cache
   // line.
-  return kDRAMToL2TransactionSizeBytes / element_size_bytes;
+  return gpu_device_info.dram_to_l2_transaction_size_bytes() /
+         element_size_bytes;
 }
 
 // Limit the bandwidth for low occupancy cases. Each SM can issue at most
@@ -76,7 +76,8 @@ int GetCoalescingWasteFactor(PrimitiveType element_type) {
 // (1830 MHz) to saturate the memory bandwidth (3.35 TB/s).
 float AdjustBandwidth(const se::DeviceDescription& gpu_device_info,
                       float bandwidth, int64_t num_blocks) {
-  float per_block_bandwidth = gpu_device_info.clock_rate_ghz() * 1.0e9f * 32;
+  float per_block_bandwidth = gpu_device_info.clock_rate_ghz() * 1.0e9f *
+                              gpu_device_info.memory_transactions_per_clock();
   float max_bandwidth = num_blocks * per_block_bandwidth;
 
   return std::min(bandwidth, max_bandwidth);
@@ -135,7 +136,10 @@ void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
 
   // Iterate through operands to find all producer-consumer pairs where
   // instruction is consumer and remove them from cache.
-  for (const HloInstruction* operand : instruction.operands()) {
+  for (auto* operand : instruction.operands()) {
+    if (operand->opcode() == HloOpcode::kGetTupleElement) {
+      operand = operand->mutable_operand(0);
+    }
     auto it = fusion_runtime_data_.find(operand);
     if (it != fusion_runtime_data_.end()) {
       it->second.erase(&instruction);
@@ -164,8 +168,8 @@ LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
 int64_t GpuPerformanceModelBase::GetOperandBytesAccessed(
     const GpuHloCostAnalysis* cost_analysis, const HloInstruction* instr,
     const HloInstruction* operand) {
-  // When called for a consumer-producer fusion, the operand can be from a
-  // different instruction. GpuHloCostAnalysis can't fail gravefully in this
+  // When called for a producer-consumer fusion, the operand can be from a
+  // different instruction. GpuHloCostAnalysis can't fail gracefully in this
   // case, so we need an explicit check.
   if (!instr->IsUserOf(operand)) {
     return 0;
@@ -179,8 +183,20 @@ int64_t GpuPerformanceModelBase::GetOperandBytesAccessed(
 float GpuPerformanceModelBase::GetOperandUtilization(
     const GpuHloCostAnalysis* cost_analysis, const HloInstruction* instr,
     const HloInstruction* operand) {
-  // When called for a consumer-producer fusion, the operand can be from a
-  // different instruction. GpuHloCostAnalysis can't fail gravefully in this
+  if (operand->IsMultiOutputFusion()) {
+    // If 'operand' is a multi-output fusion, we need to check which of its
+    // outputs are used by 'instr'.
+    float res = 0.f;
+    for (int64_t i = 0; i < instr->operand_count(); ++i) {
+      if (instr->operand(i)->opcode() == HloOpcode::kGetTupleElement &&
+          instr->operand(i)->operand(0) == operand) {
+        res += cost_analysis->operand_utilization(*instr, i);
+      }
+    }
+    return res;
+  }
+  // When called for a producer-consumer fusion, the operand can be from a
+  // different instruction. GpuHloCostAnalysis can't fail gracefully in this
   // case, so we need an explicit check.
   if (!instr->IsUserOf(operand)) {
     return 0.f;
@@ -206,14 +222,27 @@ float GpuPerformanceModelBase::GetCommonUtilization(
                                               cost_analysis))) {
     if (consumer->opcode() == HloOpcode::kFusion) {
       int64_t consumer_idx_of_common_operand = consumer->operand_index(operand);
-      int64_t consumer_idx_of_producer = consumer->operand_index(producer);
-      return cost_analysis->CommonElementwiseUtilization(
-          consumer->fused_parameter(consumer_idx_of_common_operand),
-          consumer->fused_parameter(consumer_idx_of_producer));
-    } else {
-      if (consumer->IsElementwise()) {
-        return 1.f;
+      float res = 0.f;
+      std::vector<int64_t> consumer_indices_of_producer;
+      if (producer->IsMultiOutputFusion()) {
+        for (int64_t i = 0; i < consumer->operand_count(); ++i) {
+          if (consumer->operand(i)->opcode() == HloOpcode::kGetTupleElement &&
+              consumer->operand(i)->operand(0) == producer) {
+            consumer_indices_of_producer.push_back(i);
+          }
+        }
+      } else {
+        consumer_indices_of_producer.push_back(
+            consumer->operand_index(producer));
       }
+      for (int64_t consumer_idx_of_producer : consumer_indices_of_producer) {
+        res += cost_analysis->CommonElementwiseUtilization(
+            consumer->fused_parameter(consumer_idx_of_common_operand),
+            consumer->fused_parameter(consumer_idx_of_producer));
+      }
+      return res;
+    } else if (consumer->IsElementwise()) {
+      return 1.f;
     }
   }
   return 0.f;
@@ -254,7 +283,8 @@ absl::Duration GpuPerformanceModelBase::ReadTime(
   float bandwidth = gpu_device_info.memory_bandwidth();
   if (n_bytes_net < gpu_device_info.l2_cache_size()) {
     bandwidth *= kL2CacheSpeedup;
-    if (n_bytes_net < kL1CacheSizePerSM * gpu_device_info.core_count()) {
+    if (n_bytes_net <
+        gpu_device_info.l1_cache_size_per_SM() * gpu_device_info.core_count()) {
       bandwidth *= kL1CacheSpeedup;
     }
   }
@@ -268,7 +298,8 @@ absl::Duration GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
     const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
     int64_t n_bytes_net, int64_t n_bytes_total, PrimitiveType element_type,
     bool coalesced) {
-  int waste_factor = coalesced ? 1 : GetCoalescingWasteFactor(element_type);
+  int waste_factor =
+      coalesced ? 1 : GetCoalescingWasteFactor(element_type, gpu_device_info);
 
   // The first read of the input buffer always happens from DRAM. If reads are
   // no coaleced, bandwidth is reduced by the waste factor.
@@ -281,7 +312,8 @@ absl::Duration GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
   float rest_bandwidth = gpu_device_info.memory_bandwidth();
   if (n_bytes_net < gpu_device_info.l2_cache_size()) {
     rest_bandwidth *= kL2CacheSpeedup;
-    if (n_bytes_net < kL1CacheSizePerSM * gpu_device_info.core_count()) {
+    if (n_bytes_net <
+        gpu_device_info.l1_cache_size_per_SM() * gpu_device_info.core_count()) {
       rest_bandwidth *= kL1CacheSpeedup;
     }
   } else {

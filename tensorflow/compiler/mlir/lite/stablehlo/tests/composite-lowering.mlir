@@ -65,7 +65,7 @@ func.func private @XlaCallModule_aten.avg_pool2d.default.impl_0(%arg0: tensor<1x
 // CHECK:           %[[VAL_2:.*]] = "tfl.transpose"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x3x6x6xf32>, tensor<4xi32>) -> tensor<1x6x6x3xf32>
 // CHECK:           %[[VAL_3:.*]] = arith.constant dense<0> : tensor<4x2xi32>
 // CHECK:           %[[VAL_4:.*]] = "tfl.pad"(%[[VAL_2]], %[[VAL_3]]) : (tensor<1x6x6x3xf32>, tensor<4x2xi32>) -> tensor<1x6x6x3xf32>
-// CHECK:           %[[VAL_5:.*]] = "tfl.average_pool_2d"(%[[VAL_4]]) {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x6x6x3xf32>) -> tensor<1x4x4x3xf32>
+// CHECK:           %[[VAL_5:.*]] = "tfl.average_pool_2d"(%[[VAL_4]]) <{filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x6x6x3xf32>) -> tensor<1x4x4x3xf32>
 // CHECK:           %[[VAL_6:.*]] = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>
 // CHECK:           %[[VAL_7:.*]] = "tfl.transpose"(%[[VAL_5]], %[[VAL_6]]) : (tensor<1x4x4x3xf32>, tensor<4xi32>) -> tensor<1x3x4x4xf32>
 // CHECK:           %[[VAL_8:.*]] = "tf.Identity"(%[[VAL_7]]) {device = ""} : (tensor<1x3x4x4xf32>) -> tensor<*xf32>
@@ -102,7 +102,7 @@ func.func private @XlaCallModule_aten.avg_pool2d.default.impl_1(%arg0: tensor<1x
 // CHECK-SAME:                               %[[VAL_0:.*]]: tensor<1x3x6x6xf32>) -> tensor<*xf32> {
 // CHECK:           %[[VAL_1:.*]] = arith.constant dense<[0, 2, 3, 1]> : tensor<4xi32>
 // CHECK:           %[[VAL_2:.*]] = "tfl.transpose"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x3x6x6xf32>, tensor<4xi32>) -> tensor<1x6x6x3xf32>
-// CHECK:           %[[VAL_3:.*]] = "tfl.average_pool_2d"(%[[VAL_2]]) {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x6x6x3xf32>) -> tensor<1x6x6x3xf32>
+// CHECK:           %[[VAL_3:.*]] = "tfl.average_pool_2d"(%[[VAL_2]]) <{filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x6x6x3xf32>) -> tensor<1x6x6x3xf32>
 // CHECK:           %[[VAL_4:.*]] = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>
 // CHECK:           %[[VAL_5:.*]] = "tfl.transpose"(%[[VAL_3]], %[[VAL_4]]) : (tensor<1x6x6x3xf32>, tensor<4xi32>) -> tensor<1x3x6x6xf32>
 // CHECK:           %[[VAL_6:.*]] = "tf.Identity"(%[[VAL_5]]) {device = ""} : (tensor<1x3x6x6xf32>) -> tensor<*xf32>
@@ -172,8 +172,71 @@ func.func private @XlaCallModule_odml.upsample_bilinear2d.impl_21_0(%arg0: tenso
 // CHECK:           %[[VAL_1:.*]] = arith.constant dense<[0, 2, 3, 1]> : tensor<4xi32>
 // CHECK:           %[[VAL_2:.*]] = "tfl.transpose"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1x64x16x16xf32>, tensor<4xi32>) -> tensor<1x16x16x64xf32>
 // CHECK:           %[[VAL_3:.*]] = arith.constant dense<32> : tensor<2xi32>
-// CHECK:           %[[VAL_4:.*]] = "tfl.resize_bilinear"(%[[VAL_2]], %[[VAL_3]]) {align_corners = false, half_pixel_centers = true} : (tensor<1x16x16x64xf32>, tensor<2xi32>) -> tensor<1x32x32x64xf32>
+// CHECK:           %[[VAL_4:.*]] = "tfl.resize_bilinear"(%[[VAL_2]], %[[VAL_3]]) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x16x16x64xf32>, tensor<2xi32>) -> tensor<1x32x32x64xf32>
 // CHECK:           %[[VAL_5:.*]] = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>
 // CHECK:           %[[VAL_6:.*]] = "tfl.transpose"(%[[VAL_4]], %[[VAL_5]]) : (tensor<1x32x32x64xf32>, tensor<4xi32>) -> tensor<1x64x32x32xf32>
 // CHECK:           return %[[VAL_6]] : tensor<1x64x32x32xf32>
 // CHECK:         }
+
+func.func private @gelu_decomp(%arg0: tensor<2xf32>) -> tensor<2xf32>
+func.func @gelu(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = mhlo.composite "odml.internal.gelu" %arg0 {composite_attributes = {approx = false}, decomposition = @gelu_decomp} : (tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: gelu
+// CHECK: %0 = "tfl.gelu"(%arg0) <{approximate = false}> : (tensor<2xf32>) -> tensor<2xf32>
+
+// CHECK-LABEL  func.func @jax_image_resize_nearest
+func.func @jax_image_resize_nearest(%arg0: tensor<1x2x2x10xf32>) -> (tensor<1x4x4x10xf32>) {
+  %1 = mhlo.composite "odml.jax_resize_nearest_neighbor2d" %arg0 {composite_attributes = {output_size = dense<4> : tensor<2xi64>}, decomposition = @XlaCallModule_odml.jax_resize_nearest_neighbor2d.impl_0} : (tensor<1x2x2x10xf32>) -> tensor<1x4x4x10xf32>
+  return %1 : tensor<1x4x4x10xf32>
+}
+func.func private @XlaCallModule_odml.jax_resize_nearest_neighbor2d.impl_0(%arg0: tensor<1x2x2x10xf32>) -> tensor<1x4x4x10xf32> {
+  %0 = call @XlaCallModule__resize_0(%arg0) : (tensor<1x2x2x10xf32>) -> tensor<1x4x4x10xf32>
+  return %0 : tensor<1x4x4x10xf32>
+}
+func.func private @XlaCallModule__resize_0(%arg0: tensor<1x2x2x10xf32>) -> (tensor<1x4x4x10xf32>) {
+  %0 = mhlo.constant dense<2> : tensor<i32>
+  %1 = mhlo.constant dense<0> : tensor<i32>
+  %2 = mhlo.constant dense<4.000000e+00> : tensor<f32>
+  %3 = mhlo.constant dense<2.000000e+00> : tensor<f32>
+  %4 = mhlo.constant dense<5.000000e-01> : tensor<f32>
+  %5 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<4xf32>
+  %6 = "mhlo.broadcast_in_dim"(%4) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<4xf32>
+  %7 = mhlo.add %5, %6 : tensor<4xf32>
+  %8 = "mhlo.broadcast_in_dim"(%3) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<4xf32>
+  %9 = mhlo.multiply %7, %8 : tensor<4xf32>
+  %10 = "mhlo.broadcast_in_dim"(%2) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<4xf32>
+  %11 = mhlo.divide %9, %10 : tensor<4xf32>
+  %12 = mhlo.floor %11 : tensor<4xf32>
+  %13 = mhlo.convert %12 : (tensor<4xf32>) -> tensor<4xi32>
+  %14 = "mhlo.broadcast_in_dim"(%1) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<4xi32>
+  %15 = mhlo.compare  LT, %13, %14,  SIGNED : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+  %16 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<4xi32>
+  %17 = mhlo.add %13, %16 : tensor<4xi32>
+  %18 = mhlo.select %15, %17, %13 : tensor<4xi1>, tensor<4xi32>
+  %19 = "mhlo.broadcast_in_dim"(%18) <{broadcast_dimensions = dense<0> : tensor<1xi64>}> : (tensor<4xi32>) -> tensor<4x1xi32>
+  %20 = "mhlo.gather"(%arg0, %19) <{dimension_numbers = #mhlo.gather<offset_dims = [0, 2, 3], collapsed_slice_dims = [1], start_index_map = [1], index_vector_dim = 1>, slice_sizes = dense<[1, 1, 2, 10]> : tensor<4xi64>}> : (tensor<1x2x2x10xf32>, tensor<4x1xi32>) -> tensor<1x4x2x10xf32>
+  %21 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<4xf32>
+  %22 = "mhlo.broadcast_in_dim"(%4) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<4xf32>
+  %23 = mhlo.add %21, %22 : tensor<4xf32>
+  %24 = "mhlo.broadcast_in_dim"(%3) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<4xf32>
+  %25 = mhlo.multiply %23, %24 : tensor<4xf32>
+  %26 = "mhlo.broadcast_in_dim"(%2) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<4xf32>
+  %27 = mhlo.divide %25, %26 : tensor<4xf32>
+  %28 = mhlo.floor %27 : tensor<4xf32>
+  %29 = mhlo.convert %28 : (tensor<4xf32>) -> tensor<4xi32>
+  %30 = "mhlo.broadcast_in_dim"(%1) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<4xi32>
+  %31 = mhlo.compare  LT, %29, %30,  SIGNED : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+  %32 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<4xi32>
+  %33 = mhlo.add %29, %32 : tensor<4xi32>
+  %34 = mhlo.select %31, %33, %29 : tensor<4xi1>, tensor<4xi32>
+  %35 = "mhlo.broadcast_in_dim"(%34) <{broadcast_dimensions = dense<0> : tensor<1xi64>}> : (tensor<4xi32>) -> tensor<4x1xi32>
+  %36 = "mhlo.gather"(%20, %35) <{dimension_numbers = #mhlo.gather<offset_dims = [0, 1, 3], collapsed_slice_dims = [2], start_index_map = [2], index_vector_dim = 1>, slice_sizes = dense<[1, 4, 1, 10]> : tensor<4xi64>}> : (tensor<1x4x2x10xf32>, tensor<4x1xi32>) -> tensor<1x4x4x10xf32>
+  return %36 : tensor<1x4x4x10xf32>
+}
+
+// CHECK:  %cst = arith.constant dense<4> : tensor<2xi32>
+// CHECK:  %0 = "tfl.resize_nearest_neighbor"(%arg0, %cst) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x2x2x10xf32>, tensor<2xi32>) -> tensor<1x4x4x10xf32>
+// CHECK:  return %0 : tensor<1x4x4x10xf32>

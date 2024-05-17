@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "XlaSparseCoreAdagrad"
   input_arg {
     name: "indices"

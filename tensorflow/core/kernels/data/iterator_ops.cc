@@ -237,6 +237,16 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
                                 iterator_state_->pflr(), iterator_state_->flr(),
                                 /*iterator=*/nullptr);
     input_dataset = iterator_state_->dataset();
+
+    // This is to ensure the checkpoint can be restored correctly
+    // without worrying thread interleaving events.
+    // For example, `GlobalShuffleDatasetOp::Dataset::Iterator::Initialize`
+    // could be stateful due to the seed generator.
+    // Therefore, before restoring from the checkpoint, we need to make
+    // sure cancellation is marked so that
+    // `GlobalShuffleDatasetOp::Dataset::Iterator::Initialize` would know not to
+    // execute anymore stateful operations like seed generation.
+    iterator_state_->cancellation_manager()->StartCancel();
   }
   core::ScopedUnref scoped_unref(dataset);
   IteratorContext::Params params(ctx);

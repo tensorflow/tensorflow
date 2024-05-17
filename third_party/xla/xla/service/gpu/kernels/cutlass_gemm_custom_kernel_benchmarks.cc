@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -56,7 +57,8 @@ static void BM_RowMajorGemm(benchmark::State& state) {
                            /*indices=*/{0, 1, 2}, /*slices=*/{}, device);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto gemm, se::Kernel::Create(executor, custom_kernel->kernel_spec()));
+      auto gemm,
+      se::KernelFactory::Create(executor, custom_kernel->kernel_spec()));
 
   // Prepare arguments: a=1.1, b=1.2, c=0.0
   se::DeviceMemory<float> a = executor->AllocateArray<float>(m * k, 0);

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "MutableHashTableV2"
   output_arg {
     name: "table_handle"

@@ -153,7 +153,7 @@ absl::Status PreemptionSyncManagerImpl::Initialize(
             kPreemptionNoticeKey, absl::FormatTime(*death_time));
         LOG(INFO) << "Notified coordination service that this task will "
                      "be preempted at "
-                  << *death_time << ". Status: " << s;
+                  << *death_time << ". absl::Status: " << s;
       });
 
   /* Listen for preemption notice (death time) from coordination service, which

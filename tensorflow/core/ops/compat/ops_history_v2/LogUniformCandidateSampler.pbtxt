@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "LogUniformCandidateSampler"
   input_arg {
     name: "true_classes"

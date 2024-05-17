@@ -1,4 +1,6 @@
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/stream_interface.h"
 /* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -68,8 +70,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   absl::Status AllocateEvent(Event* event) override;
 
-  bool AllocateStream(Stream* stream) override;
-
   absl::Status BlockHostUntilDone(Stream* stream) override;
 
   StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
@@ -100,7 +100,9 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   absl::Status GetStatus(Stream* stream) override;
 
-  std::unique_ptr<StreamInterface> GetStreamImplementation() override;
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority =
+          std::nullopt) override;
 
   std::unique_ptr<EventInterface> CreateEventImplementation() override;
 

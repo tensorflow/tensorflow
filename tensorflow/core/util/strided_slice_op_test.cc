@@ -348,7 +348,7 @@ TEST(StridedSliceAssignBCastTest, RemapDimensionsOutOfBoundsFails) {
   }
 }
 
-using IntVector = gtl::InlinedVector<int64_t, 4>;
+using IntVector = absl::InlinedVector<int64_t, 4UL>;
 
 TensorShape AsTensorShape(absl::Span<const int64_t> dim_sizes) {
   TensorShape out;

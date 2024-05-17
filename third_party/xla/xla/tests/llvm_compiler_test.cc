@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/llvm_compiler.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -55,14 +56,17 @@ class GpuDummyCompiler : public GpuCompiler {
  public:
   GpuDummyCompiler()
       : GpuCompiler(kGpuPlatformId, kDummyTriple, kDummyLayout) {}
-  Status OptimizeHloConvolutionCanonicalization(
+
+  int32_t GetToolkitVersion() const override { return 0; }
+
+  absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) {
     return OkStatus();
   }
 
-  Status OptimizeHloPostLayoutAssignment(
+  absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_executor,
       const CompileOptions& options, const TargetConfig& gpu_target_config,
       tsl::thread::ThreadPool* thread_pool) override {

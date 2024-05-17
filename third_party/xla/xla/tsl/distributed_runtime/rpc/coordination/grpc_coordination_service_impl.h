@@ -67,7 +67,7 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
     }                                                                         \
     compute_pool_.Schedule([this, call]() {                                   \
       rpc_handler_.method##Async(&call->request, &call->response,             \
-                                 [call](const Status& s) {                    \
+                                 [call](const absl::Status& s) {              \
                                    call->ClearCancelCallback();               \
                                    call->SendResponse(ToGrpcStatus(s));       \
                                  });                                          \

@@ -63,9 +63,11 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/util.h"
@@ -292,7 +294,6 @@ absl::Status CommandBufferCmdSequence::Record(
     }
   }
 
-  se::StreamExecutor* device = execute_params.stream->parent();
   const ModuleAnnotations* annotations = GetCurrentModuleAnnotations();
 
   // Track the number of commands recorded between barriers.
@@ -309,7 +310,7 @@ absl::Status CommandBufferCmdSequence::Record(
               << num_recorded_commands[execution_scope_id]
               << " recorded commands into the execution scope #"
               << execution_scope_id.value();
-      TF_RETURN_IF_ERROR(command_buffer->Barrier(device, execution_scope_id));
+      TF_RETURN_IF_ERROR(command_buffer->Barrier(execution_scope_id));
       num_recorded_commands.erase(execution_scope_id);
     }
     VLOG(5) << " Record command buffer with scope id "
@@ -398,8 +399,9 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
     // Create a new entry by calling a user-provided tracing function, move it
     // to front and return a pointer to cached command buffer.
     if (entries_[i].command_buffer == nullptr) {
-      TF_ASSIGN_OR_RETURN(entries_[i].command_buffer,
-                          se::CommandBuffer::Trace(executor, stream, trace));
+      TF_ASSIGN_OR_RETURN(
+          entries_[i].command_buffer,
+          se::TraceCommandBufferFactory::Create(executor, stream, trace));
       entries_[i].recorded_allocs.assign(allocs.begin(), allocs.end());
       return shift_right(i).command_buffer.get();
     }
@@ -408,8 +410,9 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
   // Create a new entry by calling a user-provided tracing function, replace the
   // last entry with it, move it to front and return a pointer to cached command
   // buffer.
-  TF_ASSIGN_OR_RETURN(entries_[capacity_ - 1].command_buffer,
-                      se::CommandBuffer::Trace(executor, stream, trace));
+  TF_ASSIGN_OR_RETURN(
+      entries_[capacity_ - 1].command_buffer,
+      se::TraceCommandBufferFactory::Create(executor, stream, trace));
   entries_[capacity_ - 1].recorded_allocs.assign(allocs.begin(), allocs.end());
   return shift_right(capacity_ - 1).command_buffer.get();
 }
@@ -668,7 +671,7 @@ absl::Status CustomKernelLaunchCmd::Initialize(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<se::Kernel> kernel,
-      se::Kernel::Create(params.executor, custom_kernel_.kernel_spec()));
+      se::KernelFactory::Create(params.executor, custom_kernel_.kernel_spec()));
 
   absl::MutexLock lock(&mutex_);
   kernels_.emplace(params.executor, std::move(kernel));
@@ -849,8 +852,7 @@ absl::Status IfCmd::Record(const Thunk::ExecuteParams& execute_params,
   VLOG(5) << "  pred: " << pred_ << " (" << pred.opaque() << ")";
 
   return command_buffer->If(
-      execution_scope_id, execute_params.stream->parent(),
-      se::DeviceMemory<bool>(pred),
+      execution_scope_id, se::DeviceMemory<bool>(pred),
       CreateBuilder(&then_commands_, &execute_params, &record_params));
 }
 
@@ -893,8 +895,7 @@ absl::Status IfElseCmd::Record(const Thunk::ExecuteParams& execute_params,
   VLOG(5) << "  pred: " << pred_ << " (" << pred.opaque() << ")";
 
   return command_buffer->IfElse(
-      execution_scope_id, execute_params.stream->parent(),
-      se::DeviceMemory<bool>(pred),
+      execution_scope_id, se::DeviceMemory<bool>(pred),
       CreateBuilder(&then_commands_, &execute_params, &record_params),
       CreateBuilder(&else_commands_, &execute_params, &record_params));
 }
@@ -939,7 +940,6 @@ absl::Status CaseCmd::Record(const Thunk::ExecuteParams& execute_params,
   VLOG(5) << "  index: " << index_ << " (" << index.opaque() << ")";
 
   return command_buffer->Case(execution_scope_id,
-                              execute_params.stream->parent(),
                               se::DeviceMemory<int32_t>(index),
                               CreateBuilders(absl::MakeSpan(branches_commands_),
                                              &execute_params, &record_params));
@@ -985,7 +985,7 @@ absl::Status ForCmd::Record(const Thunk::ExecuteParams& execute_params,
           << loop_counter.opaque() << ")";
 
   return command_buffer->For(
-      execution_scope_id, execute_params.stream->parent(), num_iterations_,
+      execution_scope_id, num_iterations_,
       se::DeviceMemory<int32_t>(loop_counter),
       CreateBuilder(&body_commands_, &execute_params, &record_params));
 }
@@ -1030,8 +1030,7 @@ absl::Status WhileCmd::Record(const Thunk::ExecuteParams& execute_params,
   VLOG(5) << "  pred: " << pred_ << " (" << pred.opaque() << ")";
 
   return command_buffer->While(
-      execution_scope_id, execute_params.stream->parent(),
-      se::DeviceMemory<bool>(pred),
+      execution_scope_id, se::DeviceMemory<bool>(pred),
       CreateExecutionScopeBuilder(&cond_commands_, &execute_params,
                                   &record_params),
       CreateBuilder(&body_commands_, &execute_params, &record_params));
@@ -1214,7 +1213,7 @@ absl::Status CustomCallCmd::RecordLegacyCustomCall(
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(
       auto nested_cmd,
-      se::CommandBuffer::Trace(
+      se::TraceCommandBufferFactory::Create(
           execute_params.stream->parent(),
           execute_params.command_buffer_trace_stream, [&](se::Stream* stream) {
             se::gpu::GpuStreamHandle gpu_stream =
@@ -1294,7 +1293,7 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(
       auto nested_cmd,
-      se::CommandBuffer::Trace(
+      se::TraceCommandBufferFactory::Create(
           execute_params.stream->parent(),
           execute_params.command_buffer_trace_stream, [&](se::Stream* stream) {
             ExecutableRunOptions run_options;
@@ -1340,7 +1339,6 @@ absl::Status BarrierCmd::Record(const Thunk::ExecuteParams& execute_params,
           << " to stream " << execution_stream_id().value();
   if (from_stream_id_ != execution_stream_id()) {
     TF_RETURN_IF_ERROR(command_buffer->Barrier(
-        execute_params.stream->parent(),
         CommandBufferCmd::GetExecutionScope(record_params, from_stream_id_),
         CommandBufferCmd::GetExecutionScope(record_params,
                                             execution_stream_id())));
@@ -1357,7 +1355,7 @@ BarrierCmd::BufferUsageVector BarrierCmd::buffers() { return {}; }
 CollectiveCmd::CollectiveCmd(ExecutionStreamId execution_stream_id,
                              ExecutionStreamId async_from_stream_id,
                              NcclApi* nccl_api, NcclCollectiveConfig config)
-    : TracedCommandBufferCmd(execution_stream_id),
+    : CommandBufferCmd(execution_stream_id),
       async_from_stream_id_(async_from_stream_id),
       nccl_api_(nccl_api),
       config_(std::move(config)) {}
@@ -1367,8 +1365,7 @@ absl::Status CollectiveCmd::BarrierIfAsync(
     const CommandBufferCmd::RecordParams& record_params) {
   if (IsAsync()) {
     TF_RETURN_IF_ERROR(
-        command_buffer->Barrier(executor,
-                                CommandBufferCmd::GetExecutionScope(
+        command_buffer->Barrier(CommandBufferCmd::GetExecutionScope(
                                     record_params, async_from_stream_id_),
                                 CommandBufferCmd::GetExecutionScope(
                                     record_params, execution_stream_id())));
@@ -1406,6 +1403,20 @@ absl::Status CollectiveCmd::Prepare(
       NcclCliqueKey(std::move(participants), nccl_stream_id(),
                     GetAsyncStreamKind()),
       num_local_participants);
+}
+
+absl::Status CollectiveCmd::AddTracedCommandBuffer(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, se::CommandBuffer* command_buffer,
+    absl::FunctionRef<absl::Status(se::Stream*)> trace) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::CommandBuffer> nested_cmd,
+                      se::TraceCommandBufferFactory::Create(
+                          execute_params.stream->parent(),
+                          execute_params.command_buffer_trace_stream, trace));
+
+  ExecutionScopeId execution_scope_id = GetExecutionScope(record_params);
+  return command_buffer->AddNestedCommandBuffer(execution_scope_id,
+                                                *nested_cmd);
 }
 
 //===----------------------------------------------------------------------===//

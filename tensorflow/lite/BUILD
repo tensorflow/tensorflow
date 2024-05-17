@@ -495,9 +495,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    deps = [
-        "//tensorflow/lite/core/api:error_reporter",
-    ],
+    deps = ["//tensorflow/lite/core/api:error_reporter"],
 )
 
 cc_library(

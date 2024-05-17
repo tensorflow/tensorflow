@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace xla {
 
-// Use steam_executor's StatusOr so we don't duplicate code.
+// Use steam_executor's absl::StatusOr so we don't duplicate code.
 using tsl::StatusOr;  // TENSORFLOW_STATUS_OK
 
 }  // namespace xla

@@ -643,9 +643,9 @@ void ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
     const EntryFuncBodyQuantizationPattern& body_rewrite_pattern,
     const Method& quantization_method) {
   const ModuleOp module_op = xla_call_module_op->getParentOfType<ModuleOp>();
-  const SymbolTable symbol_table(module_op);
 
-  func::FuncOp entry_func_op = GetEntryFuncOp(xla_call_module_op, symbol_table);
+  func::FuncOp entry_func_op =
+      GetEntryFuncOp(xla_call_module_op, SymbolTable(module_op));
   QuantizeEntryFuncOp(ctx, rewriter, xla_call_module_op, entry_func_op,
                       body_rewrite_pattern, quantization_method);
 
@@ -678,7 +678,6 @@ class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
 
   LogicalResult match(TF::XlaCallModuleOp op) const override {
     ModuleOp module_op = op->getParentOfType<ModuleOp>();
-    SymbolTable symbol_table(module_op);
 
     // Ignore ops without quantization method.
     // Consider adding checks for individual methods.
@@ -692,7 +691,7 @@ class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
       return failure();
     }
 
-    func::FuncOp entry_func_op = GetEntryFuncOp(op, symbol_table);
+    func::FuncOp entry_func_op = GetEntryFuncOp(op, SymbolTable(module_op));
     if (!entry_func_op) {
       op->emitError("Failed to find a valid entry function.");
       return failure();

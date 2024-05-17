@@ -215,10 +215,10 @@ class HeapSimulator {
                     memory_by_computation = nullptr);
   ~HeapSimulator();
 
-  Status RunComputation(const HloComputation& computation,
-                        const HloInstructionSequence& instruction_sequence,
-                        const HloAliasAnalysis& alias_analysis,
-                        HloLiveRange* live_range);
+  absl::Status RunComputation(
+      const HloComputation& computation,
+      const HloInstructionSequence& instruction_sequence,
+      const HloAliasAnalysis& alias_analysis, HloLiveRange* live_range);
 
   bool IgnoreBuffer(const HloValue* buffer) const;
   void Alloc(const HloValue* buffer, const HloInstruction* instruction);
@@ -756,14 +756,14 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     // (spatially) should be allocated. Such a slice has size
     // sorted_slice_sizes_[i] and would be allocated at offset +
     // sum(sorted_slice_sizes[j], for j in [0, i-1]).
-    Status DoesPermutationFit(
+    absl::Status DoesPermutationFit(
         absl::Span<const int64_t> permutation_of_slice_times,
         const FreeChunkRoot& root, int64_t offset) const;
 
     // Only DoesSlicedPermutationFit() should call this method directly. Other
     // callers should call DoesSlicedPermutationFit(), which contains some
     // wrapper VLOGGING.
-    Status DoesPermutationFitImpl(
+    absl::Status DoesPermutationFitImpl(
         absl::Span<const int64_t> permutation_of_slice_times,
         const FreeChunkRoot& root, int64_t offset) const;
 
@@ -811,7 +811,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   void ShareWith(const BufferType* buffer, const BufferType* share_with,
                  int64_t size) override;
 
-  StatusOr<Result> Finish() override;
+  absl::StatusOr<Result> Finish() override;
 
   // Return a BufferIntervalCompare function that sort by spatial size. We don't
   // look at co-locates as they should have the same size.
@@ -992,7 +992,7 @@ class ChooseBestHeapAlgorithm : public HeapAlgorithm<BufferType> {
     }
   }
 
-  StatusOr<Result> Finish() override;
+  absl::StatusOr<Result> Finish() override;
 
  private:
   std::vector<std::unique_ptr<HeapAlgorithm<BufferType>>> algorithms_;

@@ -173,6 +173,20 @@ cc_library_with_tflite(
     alwayslink = 1,
 )
 
+cc_test(
+    name = "xnnpack_delegate_provider_test",
+    srcs = ["xnnpack_delegate_provider_test.cc"],
+    copts = tflite_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":delegate_provider_hdr",
+        ":xnnpack_delegate_provider",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/tools:tool_params",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "external_delegate_provider",
     srcs = ["external_delegate_provider.cc"],

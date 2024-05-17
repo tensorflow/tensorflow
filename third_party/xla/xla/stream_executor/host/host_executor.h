@@ -57,14 +57,13 @@ class HostExecutor : public StreamExecutor {
   absl::Status Init() override;
 
   absl::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                         Kernel* kernel) override {
-    return absl::UnimplementedError("Not Implemented");
-  }
+                         Kernel* kernel) override;
+
+  absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() override;
+
   absl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                       const BlockDim& block_dims, const Kernel& kernel,
-                      const KernelArgs& args) override {
-    return absl::UnimplementedError("Not Implemented");
-  }
+                      const KernelArgs& args) override;
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
   void Deallocate(DeviceMemoryBase* mem) override;
@@ -112,7 +111,6 @@ class HostExecutor : public StreamExecutor {
   absl::Status WaitForEvent(Stream* stream, Event* event) override;
   Event::Status PollForEventStatus(Event* event) override;
 
-  bool AllocateStream(Stream* stream) override;
   void DeallocateStream(Stream* stream) override;
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;
 
@@ -139,7 +137,9 @@ class HostExecutor : public StreamExecutor {
 
   std::unique_ptr<EventInterface> CreateEventImplementation() override;
 
-  std::unique_ptr<StreamInterface> GetStreamImplementation() override;
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority =
+          std::nullopt) override;
 
  private:
   int device_ordinal_;

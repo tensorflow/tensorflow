@@ -576,7 +576,7 @@ bool MightTrace(const tracing::EventCollector* event_collector,
     return true;
   }
 
-  if (profiler::ScopedAnnotation::IsEnabled()) return true;
+  if (tsl::profiler::ScopedAnnotation::IsEnabled()) return true;
 
   return profiler::TraceMe::Active(profiler::GetTFTraceMeLevel(is_expensive));
 }

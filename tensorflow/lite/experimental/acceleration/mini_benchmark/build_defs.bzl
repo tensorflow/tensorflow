@@ -104,7 +104,7 @@ def validation_model(
         srcs = [
             main_model,
             jpegs,
-            "//tensorflow/lite/schema:schema.fbs",
+            "//tensorflow/compiler/mlir/lite/schema:schema.fbs",
             metrics_model,
         ],
         outs = [name + ".tflite"],
@@ -112,7 +112,7 @@ def validation_model(
           JPEGS='$(locations %s)'
           JPEGS=$${JPEGS// /,}
           $(location //tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:embedder_cmdline) \
-              --schema=$(location //tensorflow/lite/schema:schema.fbs) \
+              --schema=$(location //tensorflow/compiler/mlir/lite/schema:schema.fbs) \
               --main_model=$(location %s) \
               --metrics_model=$(location %s) \
               %s %s \

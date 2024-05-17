@@ -600,8 +600,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<MhloOp> {
   LogicalResult matchAndRewrite(
       MhloOp mhloOp, ConversionPatternRewriter& rewriter) const final {
     auto loc = mhloOp.getLoc();
-    auto argType =
-        mhloOp.getOperand(0).getType().template dyn_cast<ShapedType>();
+    auto argType = mlir::dyn_cast<ShapedType>(mhloOp.getOperand(0).getType());
     if (!argType || !argType.getElementType().isSignlessIntOrFloat() ||
         (argType.getRank() != 0)) {
       return failure();

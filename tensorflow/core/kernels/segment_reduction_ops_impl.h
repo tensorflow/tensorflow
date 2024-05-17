@@ -493,7 +493,7 @@ class UnsortedSegmentReductionOp : public OpKernel {
                    internal::ValidateUnsortedSegmentReduction(
                        this, context, data, segment_ids, num_segments));
     const auto segment_flat = segment_ids.flat<Index>();
-    const int64_t output_rows = internal::SubtleMustCopy(static_cast<int64_t>(
+    const Index output_rows = internal::SubtleMustCopy(static_cast<Index>(
         num_segments.dtype() == DT_INT32 ? num_segments.scalar<int32>()()
                                          : num_segments.scalar<int64_t>()()));
     OP_REQUIRES(context, output_rows >= 0,

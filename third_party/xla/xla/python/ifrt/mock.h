@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_MOCK_H_
 #define XLA_PYTHON_IFRT_MOCK_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -24,24 +25,40 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/executable_serdes.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/tuple.h"
+#include "xla/python/ifrt/value.h"
+#include "xla/status.h"
 #include "xla/test.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "tsl/framework/allocator.h"
 
 namespace xla {
 namespace ifrt {
@@ -109,6 +126,11 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>,
               AssembleArrayFromSingleDeviceArrays,
               (Shape shape, std::shared_ptr<const Sharding> sharding,
+               absl::Span<tsl::RCReference<Array>> arrays,
+               ArrayCopySemantics semantics),
+              (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>, RemapArrays,
+              (const RemapPlan& plan,
                absl::Span<tsl::RCReference<Array>> arrays,
                ArrayCopySemantics semantics),
               (final));

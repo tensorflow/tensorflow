@@ -129,7 +129,7 @@ mlir::LogicalResult BackwardShapeInferenceToRestoreOp(mlir::ModuleOp module,
         module, new_recv_op);
 
     if (!send_op.ok())
-      return recv_op.emitOpError(tsl::NullTerminatedMessage(send_op.status()));
+      return recv_op.emitOpError(absl::StatusMessageAsCStr(send_op.status()));
 
     // Recursively shape inference to the input of the send op.
     return BackwardShapeInferenceToRestoreOp(

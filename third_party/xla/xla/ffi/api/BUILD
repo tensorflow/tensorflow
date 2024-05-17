@@ -60,10 +60,6 @@ cc_library(
     ],
 )
 
-#===-------------------------------------------------------------------------------------------===//
-# Internal tests for XLA FFI API
-#===-------------------------------------------------------------------------------------------===//
-
 xla_cc_test(
     name = "ffi_test",
     srcs = ["ffi_test.cc"],
@@ -71,7 +67,9 @@ xla_cc_test(
         ":ffi",
         "//xla:xla_data_proto_cc",
         "//xla/ffi:call_frame",
+        "//xla/ffi:execution_context",
         "//xla/ffi:ffi_api",
+        "//xla/service:executable",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

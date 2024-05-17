@@ -109,19 +109,6 @@ namespace gpu {
 
 using ::tsl::profiler::ScopedAnnotation;
 
-bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config) {
-  bool enabled = config.debug_options().xla_gpu_enable_xla_runtime_executable();
-  if (enabled) {
-    LOG(ERROR)
-        << "XLA:GPU tried to use deprecated xla runtime by setting "
-           "--xla_gpu_enable_xla_runtime_executable flag to `true` but the "
-           "flag value was ignored as XLA:GPU uses default runtime. This flag "
-           "together with the deprecated code will be removed soon. Please "
-           "report bugs to XLA team if this breaks your workloads.";
-  }
-  return false;
-}
-
 static bool NeedsAsyncCommsStream(Thunk& thunk) {
   switch (thunk.kind()) {
     case Thunk::Kind::kNcclAllReduceStart:
@@ -207,7 +194,7 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
   se::Stream* main_stream = run_options->stream();
 
   stream_executor::Platform::Id platform_id =
-      main_stream->parent()->platform()->id();
+      main_stream->parent()->GetPlatform()->id();
   if (platform_id == stream_executor::rocm::kROCmPlatformId) {
     auto cc = main_stream->GetRocmComputeCapability();
     std::string stream_arch = cc.gcn_arch_name();
@@ -471,9 +458,14 @@ absl::Status ExecuteThunks(
 
   {  // Initialize thunks using prepared resources before execution.
     Thunk::InitializeParams initialize_params{
-        executor,           executable_source,           &buffer_allocations,
-        main_stream,        command_buffer_trace_stream, &collective_params,
-        &collective_cliques};
+        executor,
+        executable_source,
+        &buffer_allocations,
+        main_stream,
+        command_buffer_trace_stream,
+        &collective_params,
+        &collective_cliques,
+        run_options->run_options().ffi_execution_context()};
 
     tsl::profiler::TraceMe trace([&] { return "Thunks::Initialize"; });
     for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
@@ -647,7 +639,8 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   // The CUDA driver isn't able to load a PTX and a binary which are both empty.
   // It's okay if we skip loading in this case; if the module isn't loaded, all
   // symbol lookups will fail, just as they should for an empty module.
-  if (!(executor->platform()->id() == stream_executor::cuda::kCudaPlatformId &&
+  if (!(executor->GetPlatform()->id() ==
+            stream_executor::cuda::kCudaPlatformId &&
         binary().empty() && text().empty())) {
     TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
   }
@@ -659,8 +652,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   for (const ConstantInfo& info : constants_) {
     absl::StatusOr<stream_executor::DeviceMemoryBase> global_status;
     if (static_cast<bool>(module_handle)) {
-      global_status =
-          executor->GetUntypedSymbol(info.symbol_name, module_handle);
+      global_status = executor->GetSymbol(info.symbol_name, module_handle);
     }
 
     se::DeviceMemoryBase global;
@@ -754,16 +746,12 @@ absl::StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     const int64_t buffer_size = allocation.size();
     se::DeviceMemoryBase buffer_address;
     if (buffer_size > 0) {
-      absl::StatusOr<se::OwningDeviceMemory> buffer =
+      TF_ASSIGN_OR_RETURN(
+          se::OwningDeviceMemory buffer,
           memory_allocator->Allocate(device_ordinal, buffer_size,
                                      /*retry_on_failure=*/true,
-                                     /*memory_space=*/allocation.color());
-      if (!buffer.ok()) {
-        return ResourceExhausted("%s\n%s\n", buffer.status().message(),
-                                 buffer_assignment_->ToVerboseString(
-                                     debug_buffer_assignment_show_max_));
-      }
-      buffer_address = buffer->Release();
+                                     /*memory_space=*/allocation.color()));
+      buffer_address = buffer.Release();
     }
     return buffer_address;
   }

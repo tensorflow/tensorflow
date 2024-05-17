@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/buffer_comparator.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -48,17 +49,12 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "xla/stream_executor/scratch_allocator.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/buffer_comparator.h"
-#endif
 
 namespace xla {
 namespace gpu {
@@ -90,8 +86,6 @@ absl::StatusOr<BlasLt::Epilogue> AsBlasLtEpilogue(
   }
 }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 class GemmAutotuner {
   const AutotuneConfig& autotune_config_;
   RedzoneBuffers rz_buffers_;
@@ -114,7 +108,8 @@ class GemmAutotuner {
     TF_ASSIGN_OR_RETURN(stream_, autotune_config_.GetStream());
     const DebugOptions& debug_options =
         gemm->GetModule()->config().debug_options();
-    deterministic_ops_ = debug_options.xla_gpu_deterministic_ops();
+    deterministic_ops_ = debug_options.xla_gpu_deterministic_ops() ||
+                         debug_options.xla_gpu_exclude_nondeterministic_ops();
     solutions_limit_ = debug_options.xla_gpu_autotune_max_solutions();
 
     TF_ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm));
@@ -145,6 +140,9 @@ class GemmAutotuner {
 
   absl::StatusOr<AutotuneResult> TuneGpuBlasLt(const HloInstruction* gemm,
                                                const GemmConfig& gemm_config) {
+    auto workspace_buffer =
+        rz_buffers_.output_buffers().at(gemm->shape().tuple_shapes_size() - 1);
+
     GpuBackendConfig gpu_config =
         gemm->backend_config<GpuBackendConfig>().value();
     const GemmBackendConfig& backend_config = gpu_config.gemm_backend_config();
@@ -175,25 +173,26 @@ class GemmAutotuner {
     TF_ASSIGN_OR_RETURN(auto plan,
                         BlasLt::GetMatmulPlan(stream_, gemm_config, epilogue));
 
-    TF_ASSIGN_OR_RETURN(auto algorithms, plan->GetAlgorithms());
+    TF_ASSIGN_OR_RETURN(
+        auto algorithms,
+        plan->GetAlgorithms(/*max_algorithm_count*/ 128,
+                            /*max_workspace_size*/ workspace_buffer.size()));
 
     auto tuned_func = [&](const BlasLt::MatmulAlgorithm& algorithm)
         -> absl::StatusOr<se::blas::ProfileResult> {
-      se::OwningScratchAllocator<> scratch_allocator(
-          stream_->parent()->device_ordinal(), autotune_config_.GetAllocator());
       // Run a warmup iteration without the profiler active.
       TF_RETURN_IF_ERROR(plan->ExecuteOnStream(
           stream_, LhsBuffer(), RhsBuffer(), OutputBuffer(), OutputBuffer(),
           bias_buffer, aux_buffer, a_scale_buffer, b_scale_buffer,
           c_scale_buffer, d_scale_buffer, d_amax_buffer, algorithm,
-          scratch_allocator));
+          workspace_buffer));
       se::blas::ProfileResult profile_result;
       profile_result.set_warmup_run_executed(true);
       TF_RETURN_IF_ERROR(plan->ExecuteOnStream(
           stream_, LhsBuffer(), RhsBuffer(), OutputBuffer(), OutputBuffer(),
           bias_buffer, aux_buffer, a_scale_buffer, b_scale_buffer,
           c_scale_buffer, d_scale_buffer, d_amax_buffer, algorithm,
-          scratch_allocator, &profile_result));
+          workspace_buffer, &profile_result));
       return std::move(profile_result);
     };
 
@@ -367,8 +366,6 @@ class GemmAutotuner {
     return AutotuneResult{};
   }  // GetBestAlgorithm
 };  // GemmAutotuner
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Do Gemm Autotune without stream executor. Use results from autotune cache
 // only.

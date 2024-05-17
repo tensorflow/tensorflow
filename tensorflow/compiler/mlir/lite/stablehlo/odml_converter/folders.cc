@@ -15,7 +15,6 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -66,39 +65,42 @@ class FoldAdaptor {
   Operation* const operation_;
 };
 
-// Tries to fold stablehlo::DivOp. Datatype must be floating point. Currently
-// only supports splat values for the left hand side.
-static LogicalResult FoldDivOp(stablehlo::DivOp op, PatternRewriter& rewriter) {
+// APSInt provides operators which APInt does not, so allow for converting
+// to APSInt for computation. Only APInts can be directly read from
+// element attributes.
+static const APFloat& AddSign(const APFloat& v) { return v; }
+static APSInt AddSign(const APInt& v) { return APSInt(v); }
+
+template <typename ResultType>
+static LogicalResult FoldDivOpInternal(stablehlo::DivOp op,
+                                       PatternRewriter& rewriter) {
   auto adaptor = FoldAdaptor::Create(op);
-  if (!adaptor.has_value()) return failure();
-  if (!op.getType().getElementType().isa<FloatType>()) {
+  if (!adaptor.has_value()) {
     return failure();
   }
   auto const_oprs = adaptor.value().OperandData();
-  if (const_oprs[1].isSplat()) {
-    return failure();
-  }
 
-  std::vector<APFloat> res;
-  res.reserve(const_oprs[1].getNumElements());
+  const bool lhs_splat = const_oprs[0].isSplat();
+  const bool rhs_splat = const_oprs[1].isSplat();
 
-  if (const_oprs[0].isSplat()) {
-    const APFloat lhs = const_oprs[0].getSplatValue<APFloat>();
-    for (const auto rhs : const_oprs[1].getValues<APFloat>()) {
-      if (rhs.isZero()) {
-        return failure();
-      }
-      res.push_back(lhs / rhs);
+  auto lhs_vals = const_oprs[0].getValues<ResultType>();
+  auto rhs_vals = const_oprs[1].getValues<ResultType>();
+  const auto num_results = std::max(lhs_vals.size(), rhs_vals.size());
+  std::vector<ResultType> res;
+  res.reserve(num_results);
+
+  auto lhs_start = lhs_vals.begin();
+  auto rhs_start = rhs_vals.begin();
+
+  for (int i = 0; i < num_results; ++i) {
+    auto lhs_val = lhs_splat ? *lhs_start : *(lhs_start++);
+    auto rhs_val = rhs_splat ? *rhs_start : *(rhs_start++);
+    auto signed_lhs_val = AddSign(lhs_val);
+    auto signed_rhs_val = AddSign(rhs_val);
+    if (signed_rhs_val.isZero()) {
+      return failure();
     }
-  } else {
-    for (const auto [lhs, rhs] :
-         llvm::zip(const_oprs[0].getValues<APFloat>(),
-                   const_oprs[1].getValues<APFloat>())) {
-      if (rhs.isZero()) {
-        return failure();
-      }
-      res.push_back(lhs / rhs);
-    }
+    res.push_back(signed_lhs_val / signed_rhs_val);
   }
 
   auto res_attr = DenseElementsAttr::get(
@@ -107,10 +109,21 @@ static LogicalResult FoldDivOp(stablehlo::DivOp op, PatternRewriter& rewriter) {
                                                      res_attr);
   return success();
 }
+
+static LogicalResult FoldDivOp(stablehlo::DivOp op, PatternRewriter& rewriter) {
+  auto etype = op.getType().getElementType();
+  if (etype.isa<FloatType>()) {
+    return FoldDivOpInternal<APFloat>(op, rewriter);
+  }
+  if (etype.isa<IntegerType>()) {
+    return FoldDivOpInternal<APInt>(op, rewriter);
+  }
+  return failure();
+}
 }  // namespace
 
 void PopulateFolderPatterns(RewritePatternSet& patternSet) {
-  patternSet.add(FoldDivOp, 10);
+  patternSet.add(FoldDivOp);
 }
 
 }  // namespace mlir::odml

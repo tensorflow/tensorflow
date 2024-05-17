@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_fusible.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -719,10 +720,9 @@ FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
       MaxOperandsAndOutputsPerFusion()) {
     return {};
   } else {
-    VLOG(5) << "Operand count of "
-            << "(" << instr1.ToString() << " ) = " << instr1.operand_count()
-            << " and ( " << instr2.ToString()
-            << " ) = " << instr2.operand_count()
+    VLOG(5) << "Operand count of " << "(" << instr1.ToString()
+            << " ) = " << instr1.operand_count() << " and ( "
+            << instr2.ToString() << " ) = " << instr2.operand_count()
             << " and num_output_buffers = " << num_output_buffers
             << " is bigger than the bound of "
             << MaxOperandsAndOutputsPerFusion();
@@ -938,6 +938,36 @@ bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
         return false;
     }
   });
+}
+
+std::vector<HloComputation*> GetFusibleComputations(
+    const HloModule& module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  auto result = module.MakeComputationPostOrder(execution_threads);
+  absl::flat_hash_set<const HloComputation*> computations_not_to_fuse;
+  for (const auto* computation : result) {
+    for (const auto* instr : computation->instructions()) {
+      // Don't fuse within called computations, unless they are for control
+      // flow. See also fusion_wrapper.cc, which does the same.
+      if (HloInstruction::MightHaveCalledComputations(instr->opcode()) &&
+          instr->opcode() != HloOpcode::kWhile &&
+          instr->opcode() != HloOpcode::kConditional &&
+          // No need to add fusion computations, just check the flag.
+          instr->opcode() != HloOpcode::kFusion) {
+        for (auto* called : instr->called_computations()) {
+          computations_not_to_fuse.insert(called);
+        }
+      }
+    }
+  }
+  result.erase(
+      std::remove_if(result.begin(), result.end(),
+                     [&](HloComputation* computation) {
+                       return computation->IsFusionComputation() ||
+                              computations_not_to_fuse.contains(computation);
+                     }),
+      result.end());
+  return result;
 }
 
 }  // namespace gpu

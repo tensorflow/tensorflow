@@ -1102,10 +1102,10 @@ void* FlexSinhInit(TfLiteOpaqueContext* context, const char* buffer,
                    size_t length) {
   auto sinh_params = new SinhParams;
   // The buffer that is passed into here is the custom_options
-  // field from the flatbuffer (tensorflow/lite/schema/schema.fbs)
-  // `Operator` for this node.
-  // Typically it should be stored as a FlexBuffer, but for this test
-  // we assume that it is just a string.
+  // field from the flatbuffer
+  // (third_party/tensorflow/compiler/mlir/lite/schema/schema.fbs) `Operator`
+  // for this node. Typically it should be stored as a FlexBuffer, but for this
+  // test we assume that it is just a string.
   if (std::string(buffer, length) == "use_cosh") {
     sinh_params->use_cosh_instead = true;
   }

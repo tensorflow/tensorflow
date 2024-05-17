@@ -67,7 +67,7 @@ class LlvmIrGenTestBase : public CodegenTestBase {
   void ResetIrHook();
 
   std::string ir_;
-  Status IrHook(const llvm::Module& module);
+  absl::Status IrHook(const llvm::Module& module);
 };
 
 }  // namespace xla

@@ -590,3 +590,9 @@ tensorflow::dtensor::SetIteratorElementLayouts
 tensorflow::dtensor::Mesh
 tensorflow::dtensor::Layout
 tensorflow::dtensor::Layout::LayoutType
+
+[//tensorflow/core/tpu/kernels:sparse_core_layout] #SparseCoreLayoutStacker
+tensorflow::tpu::SparseCoreLayoutStacker::AddTable
+tensorflow::tpu::SparseCoreLayoutStacker::SparseCoreLayoutStacker
+tensorflow::tpu::SparseCoreLayoutStacker::AddTable
+tensorflow::tpu::SparseCoreLayoutStacker::GetLayouts

@@ -122,8 +122,8 @@ class Allocation {
   // Adds a use to this allocation.
   void AddUse(HloUse use);
   // Replaces all uses of the allocation with the copy_complete instruction.
-  Status UpdateUses(HloComputation* computation,
-                    HloInstruction* producing_instruction);
+  absl::Status UpdateUses(HloComputation* computation,
+                          HloInstruction* producing_instruction);
 
   // Allocation type methods
   // --------------------------------------------------------------------------
@@ -140,10 +140,10 @@ class Allocation {
   // After all of the time ranges for the allocations have been assigned,
   // Process morphs the instructions affected to assign the memory spaces and
   // insert asynchronous copy instructions if necessary.
-  virtual Status Process() = 0;
+  virtual absl::Status Process() = 0;
   // An optional post-process step that will be called after all allocations
   // have been processed.
-  virtual Status PostProcess() = 0;
+  virtual absl::Status PostProcess() = 0;
   // Marks (adds this allocation to needed_allocations) if this allocation is
   // needed. PinnedAllocation and CopyAllocations are always needed and
   // ParentAllocations are needed if they have any uses or if other
@@ -209,8 +209,8 @@ class PinnedAllocation final : public Allocation {
   int64_t earliest_available_time() const override { return start_time(); }
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
-  Status Process() override;
-  Status PostProcess() override { return OkStatus(); }
+  absl::Status Process() override;
+  absl::Status PostProcess() override { return OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
       const override;
   void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -246,8 +246,8 @@ class CopyAllocation final : public Allocation {
   int64_t earliest_available_time() const override;
   bool is_copy_allocation() const override { return true; }
   bool is_sliced_copy_allocation() const override { return false; }
-  Status Process() override;
-  Status PostProcess() override { return OkStatus(); }
+  absl::Status Process() override;
+  absl::Status PostProcess() override { return OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
       const override;
   void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -317,8 +317,9 @@ class SlicedCopyAllocation final : public Allocation {
 
     // Create the instructions to copy the slice. This method updates
     // copy_start and copy_done.
-    Status CreateAsyncSlice(const Shape& original_shape,
-                            HloInstruction& producer, HloComputation& parent);
+    absl::Status CreateAsyncSlice(const Shape& original_shape,
+                                  HloInstruction& producer,
+                                  HloComputation& parent);
 
     SliceDecision slice_decision;
     int64_t copy_start_after_time = -1;
@@ -347,8 +348,8 @@ class SlicedCopyAllocation final : public Allocation {
   bool is_sliced_copy_allocation() const override { return true; }
   // MemorySpaceAssignment::Process() calls Process() to create asynchronous
   // slice copies, and a bitcast-concat call to glue the slices back together.
-  Status Process() override;
-  Status PostProcess() override { return OkStatus(); }
+  absl::Status Process() override;
+  absl::Status PostProcess() override { return OkStatus(); }
   // Marks the allocation as needed.
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
       const override;
@@ -372,8 +373,8 @@ class SlicedCopyAllocation final : public Allocation {
   SlicedCopyAllocation() = delete;
 
   // Create an instruction to concatenate the slices. Populates concat_.
-  Status CreateBitcastConcat(const Shape& shape,
-                             absl::Span<HloInstruction* const> slices);
+  absl::Status CreateBitcastConcat(const Shape& shape,
+                                   absl::Span<HloInstruction* const> slices);
 
   Shape original_shape_to_slice_;
   const Allocation& prev_allocation_;
@@ -403,8 +404,8 @@ class MirroredAllocation final : public Allocation {
   int64_t earliest_available_time() const override { return start_time(); }
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
-  Status Process() override;
-  Status PostProcess() override { return OkStatus(); }
+  absl::Status Process() override;
+  absl::Status PostProcess() override { return OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
       const override;
   void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -435,8 +436,8 @@ class ParentAllocation final : public Allocation {
   int64_t earliest_available_time() const override { return start_time(); }
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
-  Status Process() override;
-  Status PostProcess() override;
+  absl::Status Process() override;
+  absl::Status PostProcess() override;
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
       const override;
   void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)

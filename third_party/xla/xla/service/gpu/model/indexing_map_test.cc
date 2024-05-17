@@ -575,7 +575,7 @@ TEST_F(IndexingMapTest,
       ParseAffineMap(serialized_map, &mlir_context_), {10, 10, 10}, {});
   indexing_map.Simplify(GetIndexingMapForInstruction);
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
-    (d0, d1, d2) -> (d0 * 2 + (d1 + d2 floordiv 4) floordiv 2,
+    (d0, d1, d2) -> (d0 * 2 + (d2 floordiv 4 + d1) floordiv 2,
                      (d1 * 4 + d2) mod 8)
     domain:
     d0 in [0, 9]
@@ -619,7 +619,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape_Regression) {
       ParseAffineMap(serialized_map, &mlir_context_), {}, {128});
   indexing_map.Simplify(GetIndexingMapForInstruction);
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
-      ()[s0] -> ((s0 * 128) mod 715 + ((s0 * 64) floordiv 715) * 715)
+      ()[s0] -> (((s0 * 64) floordiv 715) * 715 + (s0 * 128) mod 715)
       domain: s0 in [0, 127]
   )"));
 }
@@ -663,7 +663,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ExtractFromMod) {
   indexing_map.Simplify(GetIndexingMapForInstruction);
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
       ()[s0, s1, s2, s3] -> (
-        s1 + (s0 * 458752 + s2 * 4 + s3 * 512) mod 20000
+        (s0 * 458752 + s2 * 4 + s3 * 512) mod 20000 + s1
       )
       domain:
       s0 in [0, 871]

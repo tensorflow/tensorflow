@@ -652,9 +652,9 @@ std::vector<bool> TupleElementsUsedInCond(HloInstruction* loop) {
 
 // Adds copies to returned values to keep RewriteLoopWithConcatGroups simple:
 // the copies do not have other users and only appear once in the root tuple.
-Status AddCopiesToRoot(HloComputation* body,
-                       absl::Span<HloInstruction* const> param_gtes,
-                       ConcatGroups* groups) {
+absl::Status AddCopiesToRoot(HloComputation* body,
+                             absl::Span<HloInstruction* const> param_gtes,
+                             ConcatGroups* groups) {
   auto root = body->root_instruction();
   CHECK_EQ(root->opcode(), HloOpcode::kTuple);
   std::vector<HloInstruction*> copies(root->operand_count(), nullptr);
@@ -691,7 +691,7 @@ Status AddCopiesToRoot(HloComputation* body,
   return OkStatus();
 }
 
-Status RemoveCopiesFromRoot(HloComputation* body) {
+absl::Status RemoveCopiesFromRoot(HloComputation* body) {
   auto root = body->root_instruction();
   CHECK_EQ(root->opcode(), HloOpcode::kTuple);
   for (int64_t i = 0; i < root->operand_count(); ++i) {
@@ -703,9 +703,9 @@ Status RemoveCopiesFromRoot(HloComputation* body) {
   return OkStatus();
 }
 
-Status RewriteLoopWithConcatGroups(HloInstruction* loop,
-                                   absl::Span<HloInstruction* const> param_gtes,
-                                   ConcatGroups& groups) {
+absl::Status RewriteLoopWithConcatGroups(
+    HloInstruction* loop, absl::Span<HloInstruction* const> param_gtes,
+    ConcatGroups& groups) {
   VLOG(1) << "RewriteLoopWithConcatGroups with " << groups.Groups().size()
           << " groups.";
   // For simplicity, for each group, we rewrite the first element into full

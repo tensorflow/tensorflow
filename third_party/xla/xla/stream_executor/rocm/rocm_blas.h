@@ -38,6 +38,7 @@ limitations under the License.
 #if TF_HIPBLASLT
 #include "xla/stream_executor/rocm/hip_blas_lt.h"
 #endif
+#include "xla/stream_executor/stream_executor_interface.h"
 
 namespace stream_executor {
 
@@ -198,6 +199,10 @@ class ROCMBlas : public blas::BlasSupport {
 
   // container holding solutions vector (to avoid reallocating it each time)
   std::vector<rocblas_int> solutions_;
+
+  void MaybeLogGemmOp(StreamExecutorInterface::GemmCallTrace::GemmType op,
+                      blas::CallContext context, uint64_t size1,
+                      uint64_t size2);
 
 #if TF_HIPBLASLT
   rocm::BlasLt blas_lt_;

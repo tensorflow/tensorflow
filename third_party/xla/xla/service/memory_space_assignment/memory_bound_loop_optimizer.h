@@ -207,7 +207,7 @@ class MemoryBoundLoopOptimizer {
       const ReservedScopedMemoryFunction& reserved_scoped_memory_fn);
 
   // Initializes the data structures used by the optimizer.
-  Status Initialize();
+  absl::Status Initialize();
 
   // Given an HloBuffer object, determines if this buffer represents a LoopValue
   // that can be optimized by the optimizer, and if so it adds a LoopValue to

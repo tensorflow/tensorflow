@@ -8,7 +8,6 @@ package(
     default_visibility = [
         # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
         # copybara:uncomment "//learning/brain/tfrt:__subpackages__",
-        # copybara:uncomment "//learning/infra/mira/distributed:__subpackages__",
         # copybara:uncomment "//smartass/brain/inference:__subpackages__",
         # copybara:uncomment "//smartass/brain/ops/tfrt_kernels:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt/translate/mlrt:__subpackages__",
@@ -47,6 +46,8 @@ tf_cc_test(
     srcs = ["context_test.cc"],
     deps = [
         ":context",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -62,6 +63,8 @@ cc_library(
         "//tensorflow/core/tfrt/mlrt/bytecode:kernel",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )

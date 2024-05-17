@@ -175,6 +175,31 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
+--- stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
++++ stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
+@@ -155,7 +155,7 @@
+ 
+ // CHECK-LABEL: @maximum_f64
+ func.func @maximum_f64(%arg0 : tensor<10xf64>, %arg1 : tensor<10xf64>) -> tensor<10xf64> {
+-  // CHECK: stablehlo.maximum
++  // CHECK: tosa.maximum
+   %0 = "stablehlo.maximum"(%arg0, %arg1) : (tensor<10xf64>, tensor<10xf64>) -> tensor<10xf64>
+   return %0 : tensor<10xf64>
+ }
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
+--- stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
++++ stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
+@@ -9,8 +9,7 @@
+ 
+ // CHECK-LABEL: @constant_f64
+ func.func @constant_f64() -> tensor<10xf64> {
+-  // TOSA does not support 64-bit types, so this should not legalize.
+-  // CHECK: stablehlo.constant
++  // CHECK: tosa.const
+   %0 = stablehlo.constant dense<0.000000e+00> : tensor<10xf64>
+   return %0 : tensor<10xf64>
+ }
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
@@ -2057,7 +2082,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp b/
 +    auto res = verifyCustomCallOpAttributes(
 +        op, rewriter, [&](NamedAttribute attr) -> LogicalResult {
 +          if (attr.getName() != "largest") return success();
-+          if (attr.getValue().cast<BoolAttr>().getValue() == false)
++          if (cast<BoolAttr>(attr.getValue()).getValue() == false)
 +            return rewriter.notifyMatchFailure(
 +                op, "largest = false is not supported.");
 +          return success();
@@ -2319,7 +2344,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 +    // the verifier to make sure that its value is consistent with result type.
 +    if (!succeeded(hlo::matchInts(op.getOutputShape())))
 +      return rewriter.notifyMatchFailure(op, "expected static output_shape");
-+    if (!op.getOutput().getType().cast<ShapedType>().hasStaticShape())
++    if (!cast<ShapedType>(op.getOutput().getType()).hasStaticShape())
 +      return rewriter.notifyMatchFailure(op, "expected static output type");
 +    rewriter.replaceOpWithNewOp<RngBitGeneratorOp>(
 +        op, op->getResultTypes(), op.getRngAlgorithm(), op.getInitialState());
@@ -2341,7 +2366,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 +      return rewriter.notifyMatchFailure(impl, "expected constant k");
 +
 +    // We rely on many of the properties checked by verification.
-+    auto valuesType = op.getValues().getType().cast<ShapedType>();
++    auto valuesType = cast<ShapedType>(op.getValues().getType());
 +    auto valuesLastDimSize = valuesType.getShape()[valuesType.getRank() - 1];
 +    if (hlo::isDynamicDimSize(valuesLastDimSize) ||
 +        valuesLastDimSize != k[0])
@@ -2493,7 +2518,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    // At the moment, we only support refining return types using fully static
 +    // shape values which serves the current use cases well.
 +    // Support for partially static shape values is left for future work.
-+    auto initialStateType = op.getInitialState().getType().cast<ShapedType>();
++    auto initialStateType = cast<ShapedType>(op.getInitialState().getType());
 +    SmallVector<int64_t> outputShape;
 +    if (failed(hlo::matchInts(op.getOutputShape(), outputShape)))
 +      return rewriter.notifyMatchFailure(op, "expected constant output_shape");
@@ -2513,7 +2538,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    if (!maybeOp || failed(maybeOp->verify())) return failure();
 +    DynamicTopKOpAdaptor op = *maybeOp;
 +
-+    auto operandType = op.getOperand().getType().cast<ShapedType>();
++    auto operandType = cast<ShapedType>(op.getOperand().getType());
 +    SmallVector<int64_t> outputShape(operandType.getShape());
 +    SmallVector<int64_t> k;
 +    if (failed(hlo::matchInts(op.getK(), k)))

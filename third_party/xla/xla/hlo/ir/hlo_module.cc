@@ -79,7 +79,7 @@ HloModule::HloModule(const std::string& name,
   metadata_.set_canonical_module_id(unique_id_);
 }
 
-Status HloModule::set_schedule(HloSchedule schedule) {
+absl::Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
   TF_RETURN_IF_ERROR(schedule.Verify());
   schedule_ = std::move(schedule);
@@ -187,7 +187,7 @@ HloComputation* HloModule::AddEntryComputationWithLayouts(
                                 /*preserve_entry_layouts=*/true);
 }
 
-Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
+absl::Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
   if (has_schedule()) {
     schedule_->remove_computation(to_remove);
   }
@@ -511,7 +511,8 @@ absl::StatusOr<HloModuleProtoWithConfig> HloModule::ToProtoWithConfig() const {
   return result;
 }
 
-Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
+absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
+    const {
   absl::flat_hash_set<absl::string_view> computation_names;
   absl::flat_hash_set<int> computation_ids;
   absl::flat_hash_set<absl::string_view> instruction_names;
@@ -1118,7 +1119,7 @@ std::unique_ptr<HloModule> HloModule::Clone(
   return module;
 }
 
-Status HloModule::RemoveUnusedComputations() {
+absl::Status HloModule::RemoveUnusedComputations() {
   std::string suffix = "tmp";
   auto module = std::make_unique<HloModule>(
       absl::StrCat(name_, "-", suffix), config(),

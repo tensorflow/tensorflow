@@ -52,7 +52,13 @@ class DeviceMemoryBase {
   // region. An opaque pointer may be provided -- see header for details on the
   // opacity of that pointer.
   explicit DeviceMemoryBase(void *opaque = nullptr, uint64_t size = 0)
-      : opaque_(opaque), size_(size) {}
+      : opaque_(opaque), size_(size) {
+    // TODO(b/336267585): This constructor dangerously encourages
+    //                 DeviceMemoryBase(mem) which would imply
+    //                 DeviceMemoryBase(mem, 0)
+    //                 We should delete & resolve any dependencies.
+    //  explicit DeviceMemoryBase(void *opaque) = delete;
+  }
 
   // Returns whether the backing memory is the null pointer.
   // A `== nullptr` convenience method is also provided.

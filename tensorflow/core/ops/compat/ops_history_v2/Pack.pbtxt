@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Pack"
   input_arg {
     name: "values"

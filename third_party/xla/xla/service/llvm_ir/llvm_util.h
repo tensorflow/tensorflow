@@ -60,13 +60,11 @@ std::string DumpToString(const llvm::Module* module);
 std::string DumpToString(const llvm::Type* type);
 std::string DumpToString(const llvm::Value* value);
 
-// This also works for mlir::Op<...> descendants, such as mlir::ModuleOp and
-// mlir::lmhlo::FusionOp.
+// This also works for mlir::Op<...> descendants, such as mlir::ModuleOp.
 //
 // For findability:
 //   std::string DumpToString(mlir::Op<...>& op);
 //   std::string DumpToString(mlir::ModuleOp& module_op);
-//   std::string DumpToString(mlir::lmhlo::FusionOp& fusion_op);
 //
 // The `operation` parameter is not const, because the used print() method is
 // not const.

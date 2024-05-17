@@ -628,6 +628,7 @@ tflite_cc_library_with_c_headers_test(
     ] + c_api_visibility_allowlist(),
     deps = [
         "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/c:c_api_types",
@@ -646,6 +647,7 @@ tflite_cc_library_with_c_headers_test(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/c:c_api_types",

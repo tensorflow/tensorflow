@@ -301,6 +301,27 @@ TEST_F(HloConstantFoldingTest, DoesNotFoldLargePad) {
               GmockMatch(m::Pad(m::Constant(), m::Constant())));
 }
 
+TEST_F(HloConstantFoldingTest, DoesNotFoldSlicesWithLargeOperand) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  ENTRY r {
+    a = f32[] constant(42)
+    broadcast = f32[1000000000]{0} broadcast(a), dimensions={}
+    slice1 = f32[10000]{0} slice(broadcast), slice={[0:10000]}
+    slice2 = f32[10000]{0} slice(broadcast), slice={[10000:20000]}
+    ROOT add = f32[10000]{0} add(slice1, slice2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  EXPECT_FALSE(result);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(m::Slice(), m::Slice())));
+}
+
 TEST_F(HloConstantFoldingTest, DontFoldSubcomputationContainingAfterAll) {
   const char* const kModuleStr = R"(
   HloModule test

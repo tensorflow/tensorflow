@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 
@@ -524,6 +525,7 @@ struct GpuInfo {
   // returns true if device have fixed wave size equal to 32
   bool IsWaveSizeEqualTo32() const;
   bool SupportsSubGroupWithSize(int sub_group_size) const;
+  absl::Status GetMinSubGroupSize(int& min_sub_group_size) const;
 
   bool SupportsFloatImage2D(DataType data_type, int channels) const;
   bool SupportsExtension(const std::string& extension) const;

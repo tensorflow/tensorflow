@@ -1516,7 +1516,7 @@ class HloFusionInstruction : public HloCallableInstruction {
   void set_fusion_kind(FusionKind kind) { fusion_kind_ = kind; }
 
   // If multiple operands are the same instruction, keeps only one of them.
-  Status DeduplicateFusionOperands();
+  absl::Status DeduplicateFusionOperands();
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kFusion;
@@ -2093,6 +2093,11 @@ class HloCustomCallInstruction : public HloCallableInstruction {
   const std::vector<Shape>& operand_shapes_with_layout() const {
     CHECK(layout_constrained());
     return operand_shapes_with_layout_;
+  }
+  void set_operand_shapes_with_layout(
+      std::vector<Shape> operand_shapes_with_layout) {
+    CHECK(layout_constrained());
+    operand_shapes_with_layout_ = std::move(operand_shapes_with_layout);
   }
   void set_custom_call_schedule(CustomCallSchedule custom_call_schedule) {
     custom_call_schedule_ = custom_call_schedule;

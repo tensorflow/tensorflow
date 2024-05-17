@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
@@ -148,7 +149,34 @@ class ConvBfloat16Support : public FloatSupport {
   bool is_conv_bf16_supported_;
 };
 
+class MatmulBfloat16Support : public FloatSupport {
+ public:
+  explicit MatmulBfloat16Support(
+      se::CudaComputeCapability cuda_compute_capability)
+      : FloatSupport(BF16),
+        is_matmul_bf16_supported_(cuda_compute_capability.IsAtLeast(
+            se::CudaComputeCapability::AMPERE)) {}
+
+  bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
+                                   int64_t operand_index) const override {
+    return (hlo.opcode() != HloOpcode::kDot) || is_matmul_bf16_supported_;
+  }
+
+  bool SupportsLowPrecisionOutput(const HloInstruction& hlo) const override {
+    return (hlo.opcode() != HloOpcode::kDot) || is_matmul_bf16_supported_;
+  }
+
+  bool SupportsMixedPrecisions(const HloInstruction& hlo) const override {
+    return true;
+  }
+
+ private:
+  bool is_matmul_bf16_supported_;
+};
+
 }  // namespace
+
+int32_t NVPTXCompiler::GetToolkitVersion() const { return CUDA_VERSION; }
 
 absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::GpuComputeCapability gpu_version,
@@ -166,6 +194,10 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   // Convert unsupported bf16 convolutions to f32.
   ConvBfloat16Support conv_bf16_support(dnn_version, cuda_compute_capability);
   pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
+
+  // Convert unsupported bf16 matmuls to f32.
+  MatmulBfloat16Support matmul_bf16_support(cuda_compute_capability);
+  pipeline.AddPass<FloatNormalization>(&matmul_bf16_support);
 
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
@@ -200,7 +232,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
           "reshape_mover_after_conv_canonicalization")] {
     ReshapeMoverOptions reshape_mover_options;
     reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
-    pipeline.AddPass<HloPassFix<ReshapeMover>>(reshape_mover_options);
+    pipeline.AddPass<ReshapeMover>(reshape_mover_options);
     pipeline.AddPass<AlgebraicSimplifier>(algsimp_options);
   }();
 
@@ -337,7 +369,8 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
 absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
-  pipeline->AddPass<GemmFusionAutotuner>(autotune_config, thread_pool);
+  pipeline->AddPass<GemmFusionAutotuner>(autotune_config, GetToolkitVersion(),
+                                         thread_pool);
   return absl::OkStatus();
 }
 

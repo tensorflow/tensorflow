@@ -136,6 +136,9 @@ std::string AutoShardingOption::ToString() const {
   lines.push_back(absl::StrCat("model_resharding_memory_costs: ",
                                model_resharding_memory_costs));
 
+  lines.push_back(absl::StrCat("generate_windowed_einsum_strategies: ",
+                               generate_windowed_einsum_strategies));
+
   return absl::StrJoin(lines, "\n");
 }
 

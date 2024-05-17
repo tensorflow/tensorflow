@@ -65,12 +65,12 @@ class IfrtModelContext {
       std::shared_ptr<xla::ifrt::Client> client,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
       const tsl::thread::ThreadPool* thread_pool,
-      std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
+      tensorflow::DeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
       : client_(std::move(client)),
         ifrt_serving_core_selector_(ifrt_serving_core_selector),
         thread_pool_(*thread_pool),
-        device_mgr_(std::move(device_mgr)),
+        device_mgr_(device_mgr),
         shape_representation_fn_(shape_representation_fn) {}
 
   void RegisterHandle(ServingExecutableRegistry::Handle handle) {
@@ -100,9 +100,7 @@ class IfrtModelContext {
     return restore_tensor_registry_;
   }
 
-  tensorflow::StaticDeviceMgr* GetDeviceMgr() const {
-    return device_mgr_.get();
-  }
+  tensorflow::DeviceMgr* GetDeviceMgr() const { return device_mgr_; }
   IfrtServingCoreSelector* GetIfrtServingCoreSelector() const {
     return ifrt_serving_core_selector_;
   }
@@ -120,15 +118,14 @@ class IfrtModelContext {
   // After Freeze() is called, no new model signature will be compiled. Using a
   // signature or an input shape that wasn't compiled before the freeze will
   // leads to an error.
-  // TODO(b/337926686): prevent further compilation after freeze.
-  void Freeze();
+  absl::Status Freeze();
 
  private:
   std::shared_ptr<xla::ifrt::Client> client_;
   IfrtServingCoreSelector* ifrt_serving_core_selector_;  // May be nullptr
   const tsl::thread::ThreadPool& thread_pool_;
 
-  std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr_;
+  tensorflow::DeviceMgr* device_mgr_ = nullptr;  // Not owned.
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_ =
       tensorflow::IdentityShapeRepresentationFn();
 

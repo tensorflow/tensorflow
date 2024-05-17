@@ -74,31 +74,33 @@ string FileSystem::TranslateName(const string& name) const {
   return this->CleanPath(path);
 }
 
-Status FileSystem::IsDirectory(const string& name, TransactionToken* token) {
+absl::Status FileSystem::IsDirectory(const string& name,
+                                     TransactionToken* token) {
   // Check if path exists.
   // TODO(sami):Forward token to other methods once migration is complete.
   TF_RETURN_IF_ERROR(FileExists(name));
   FileStatistics stat;
   TF_RETURN_IF_ERROR(Stat(name, &stat));
   if (stat.is_directory) {
-    return OkStatus();
+    return absl::OkStatus();
   }
-  return Status(absl::StatusCode::kFailedPrecondition, "Not a directory");
+  return absl::Status(absl::StatusCode::kFailedPrecondition, "Not a directory");
 }
 
-Status FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
+absl::Status FileSystem::HasAtomicMove(const string& path,
+                                       bool* has_atomic_move) {
   *has_atomic_move = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void FileSystem::FlushCaches(TransactionToken* token) {}
 
 bool FileSystem::FilesExist(const std::vector<string>& files,
                             TransactionToken* token,
-                            std::vector<Status>* status) {
+                            std::vector<absl::Status>* status) {
   bool result = true;
   for (const auto& file : files) {
-    Status s = FileExists(file);
+    absl::Status s = FileExists(file);
     result &= s.ok();
     if (status != nullptr) {
       status->push_back(s);
@@ -110,17 +112,17 @@ bool FileSystem::FilesExist(const std::vector<string>& files,
   return result;
 }
 
-Status FileSystem::DeleteRecursively(const string& dirname,
-                                     TransactionToken* token,
-                                     int64_t* undeleted_files,
-                                     int64_t* undeleted_dirs) {
+absl::Status FileSystem::DeleteRecursively(const string& dirname,
+                                           TransactionToken* token,
+                                           int64_t* undeleted_files,
+                                           int64_t* undeleted_dirs) {
   CHECK_NOTNULL(undeleted_files);
   CHECK_NOTNULL(undeleted_dirs);
 
   *undeleted_files = 0;
   *undeleted_dirs = 0;
   // Make sure that dirname exists;
-  Status exists_status = FileExists(dirname);
+  absl::Status exists_status = FileExists(dirname);
   if (!exists_status.ok()) {
     (*undeleted_dirs)++;
     return exists_status;
@@ -128,7 +130,7 @@ Status FileSystem::DeleteRecursively(const string& dirname,
 
   // If given path to a single file, we should just delete it.
   if (!IsDirectory(dirname).ok()) {
-    Status delete_root_status = DeleteFile(dirname);
+    absl::Status delete_root_status = DeleteFile(dirname);
     if (!delete_root_status.ok()) (*undeleted_files)++;
     return delete_root_status;
   }
@@ -136,7 +138,7 @@ Status FileSystem::DeleteRecursively(const string& dirname,
   std::deque<string> dir_q;      // Queue for the BFS
   std::vector<string> dir_list;  // List of all dirs discovered
   dir_q.push_back(dirname);
-  Status ret;  // Status to be returned.
+  absl::Status ret;  // Status to be returned.
   // Do a BFS on the directory to discover all the sub-directories. Remove all
   // children that are files along the way. Then cleanup and remove the
   // directories in reverse order.;
@@ -146,7 +148,7 @@ Status FileSystem::DeleteRecursively(const string& dirname,
     dir_list.push_back(dir);
     std::vector<string> children;
     // GetChildren might fail if we don't have appropriate permissions.
-    Status s = GetChildren(dir, &children);
+    absl::Status s = GetChildren(dir, &children);
     ret.Update(s);
     if (!s.ok()) {
       (*undeleted_dirs)++;
@@ -160,7 +162,7 @@ Status FileSystem::DeleteRecursively(const string& dirname,
       } else {
         // Delete file might fail because of permissions issues or might be
         // unimplemented.
-        Status del_status = DeleteFile(child_path);
+        absl::Status del_status = DeleteFile(child_path);
         ret.Update(del_status);
         if (!del_status.ok()) {
           (*undeleted_files)++;
@@ -174,7 +176,7 @@ Status FileSystem::DeleteRecursively(const string& dirname,
   for (const string& dir : dir_list) {
     // Delete dir might fail because of permissions issues or might be
     // unimplemented.
-    Status s = DeleteDir(dir);
+    absl::Status s = DeleteDir(dir);
     ret.Update(s);
     if (!s.ok()) {
       (*undeleted_dirs)++;
@@ -183,19 +185,19 @@ Status FileSystem::DeleteRecursively(const string& dirname,
   return ret;
 }
 
-Status FileSystem::RecursivelyCreateDir(const string& dirname,
-                                        TransactionToken* token) {
+absl::Status FileSystem::RecursivelyCreateDir(const string& dirname,
+                                              TransactionToken* token) {
   StringPiece scheme, host, remaining_dir;
   this->ParseURI(dirname, &scheme, &host, &remaining_dir);
   std::vector<StringPiece> sub_dirs;
   while (!remaining_dir.empty()) {
     std::string current_entry = this->CreateURI(scheme, host, remaining_dir);
-    Status exists_status = FileExists(current_entry);
+    absl::Status exists_status = FileExists(current_entry);
     if (exists_status.ok()) {
       // FileExists cannot differentiate between existence of a file or a
       // directory, hence we need an additional test as we must not assume that
       // a path to a file is a path to a parent directory.
-      Status directory_status = IsDirectory(current_entry);
+      absl::Status directory_status = IsDirectory(current_entry);
       if (directory_status.ok()) {
         break;  // We need to start creating directories from here.
       } else if (directory_status.code() == absl::StatusCode::kUnimplemented) {
@@ -221,16 +223,16 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname,
   string built_path(remaining_dir);
   for (const StringPiece sub_dir : sub_dirs) {
     built_path = this->JoinPath(built_path, sub_dir);
-    Status status = CreateDir(this->CreateURI(scheme, host, built_path));
+    absl::Status status = CreateDir(this->CreateURI(scheme, host, built_path));
     if (!status.ok() && status.code() != absl::StatusCode::kAlreadyExists) {
       return status;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status FileSystem::CopyFile(const string& src, const string& target,
-                            TransactionToken* token) {
+absl::Status FileSystem::CopyFile(const string& src, const string& target,
+                                  TransactionToken* token) {
   return FileSystemCopyFile(this, src, this, target);
 }
 

@@ -168,7 +168,7 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
   return out_combined;
 }
 
-Status RunOpt(int argc, char** argv, const HloOptConfig& opts) {
+absl::Status RunOpt(int argc, char** argv, const HloOptConfig& opts) {
   TF_ASSIGN_OR_RETURN(std::string output, TranslateToStage(argc, argv, opts));
   if (opts.output_file == "-") {
     std::cout << output << std::endl;

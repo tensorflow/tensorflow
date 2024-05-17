@@ -1098,7 +1098,7 @@ class MklFusedMatMulCacheTest : public OpsTestBase {
     // Bias vector.
     AddInputFromArray<float>(TensorShape({4}), {1, 2, 3, 4});
 
-    using KernelType = MklDnnMatMulOpBase<float, void, float>;
+    using KernelType = MklDnnMatMulOpBase<float, float, float>;
     // Before the first time kernel execution, weight should be empty
     EXPECT_TRUE(static_cast<KernelType*>(this->kernel_.get())
                     ->IsWeightCacheEmpty(this->context_.get()));

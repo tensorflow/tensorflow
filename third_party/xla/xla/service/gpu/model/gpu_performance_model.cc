@@ -19,7 +19,6 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <optional>
-#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -43,27 +42,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
-
-std::vector<const HloInstruction*> GetUniqueFusionOperands(
-    const HloInstruction* producer, const HloInstruction* consumer) {
-  std::vector<const HloInstruction*> fusion_operands;
-  for (const HloInstruction* operand : producer->operands()) {
-    fusion_operands.push_back(operand);
-  }
-  for (const HloInstruction* operand : consumer->operands()) {
-    if (operand != producer) {
-      fusion_operands.push_back(operand);
-    }
-  }
-  std::sort(fusion_operands.begin(), fusion_operands.end());
-  fusion_operands.erase(
-      std::unique(fusion_operands.begin(), fusion_operands.end()),
-      fusion_operands.end());
-  return fusion_operands;
-}
-
-}  // namespace
 
 /*static*/ EstimateRunTimeData
 GpuPerformanceModel::EstimateRunTimeForInstruction(
@@ -206,8 +184,15 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
           << " consumer: " << consumer->name();
   const se::DeviceDescription* device_info = cost_analysis->device_info_;
 
-  float utilization_by_this_consumer = cost_analysis->operand_utilization(
-      *consumer, consumer->operand_index(producer));
+  float utilization_by_this_consumer = 0;
+  for (int64_t i = 0; i < consumer->operand_count(); ++i) {
+    if (consumer->operand(i) == producer ||
+        (consumer->operand(i)->opcode() == HloOpcode::kGetTupleElement &&
+         consumer->operand(i)->operand(0) == producer)) {
+      utilization_by_this_consumer +=
+          cost_analysis->operand_utilization(*consumer, i);
+    }
+  }
 
   std::optional<HloFusionAnalysis> local_analysis_fused;
   if (!config.fusion_analysis_cache) {
@@ -229,8 +214,7 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
   int64_t num_threads = launch_dimensions.launch_bound();
   absl::Duration compute_time = ComputeTime(*device_info, flops, num_threads);
 
-  std::vector<const HloInstruction*> fusion_operands =
-      GetUniqueFusionOperands(producer, consumer);
+  auto fusion_operands = fusion_analysis.fusion().GetParameters();
   CoalescingAnalysis coalescing_analysis(producer, consumer, fusion_operands,
                                          fusion_analysis);
 

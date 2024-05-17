@@ -47,7 +47,7 @@ HloCostAnalysis::HloCostAnalysis(ShapeSizeFunction shape_size,
                                  const Properties& per_second_rates)
     : HloCostAnalysis(Options{shape_size, per_second_rates}) {}
 
-Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
+absl::Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   // Set current instruction cost values to reasonable default values. Each
   // handler can overwrite these values. In Postprocess, these values are
   // accumulated and written to the per-instruction maps.
@@ -71,7 +71,7 @@ Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
+absl::Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
   if (current_should_compute_bottleneck_time_) {
     // Compute the time as the time of the bottleneck, i.e. the slowest property
     // given the per-second rate of each property.
@@ -101,7 +101,7 @@ Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::RemoveInstruction(HloInstruction* instruction) {
+absl::Status HloCostAnalysis::RemoveInstruction(HloInstruction* instruction) {
   // Subtract the previously calculated properties of the instruction
   // from HLO graph's total properties_sum_ if instruction was analyzed before.
   auto it = hlo_properties_.find(instruction);
@@ -114,7 +114,7 @@ Status HloCostAnalysis::RemoveInstruction(HloInstruction* instruction) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::RevisitInstruction(HloInstruction* instruction) {
+absl::Status HloCostAnalysis::RevisitInstruction(HloInstruction* instruction) {
   TF_RETURN_IF_ERROR(RemoveInstruction(instruction));
   // Now do Preprocess() -> Visit() -> Postprocess() for the instruction same
   // way it is done during the complete analysis.
@@ -124,7 +124,7 @@ Status HloCostAnalysis::RevisitInstruction(HloInstruction* instruction) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleElementwiseOp(
+absl::Status HloCostAnalysis::HandleElementwiseOp(
     const HloInstruction* hlo_instruction) {
   const auto& shape = hlo_instruction->shape();
   // For element-wise operations, the number of computations is the same as the
@@ -241,7 +241,7 @@ int64_t HloCostAnalysis::FusionParameterReadBytes(
   return size;
 }
 
-Status HloCostAnalysis::FusionCalculateUtilizations(
+absl::Status HloCostAnalysis::FusionCalculateUtilizations(
     const HloInstruction* fusion) {
   // Default trivial implementation: assume 100% utilization of every fusion
   // instruction.
@@ -256,27 +256,29 @@ Status HloCostAnalysis::FusionCalculateUtilizations(
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleElementwiseUnary(const HloInstruction* hlo) {
+absl::Status HloCostAnalysis::HandleElementwiseUnary(
+    const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
-Status HloCostAnalysis::HandleElementwiseBinary(const HloInstruction* hlo) {
+absl::Status HloCostAnalysis::HandleElementwiseBinary(
+    const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
-Status HloCostAnalysis::HandleCompare(const HloInstruction* compare) {
+absl::Status HloCostAnalysis::HandleCompare(const HloInstruction* compare) {
   return HandleElementwiseOp(compare);
 }
 
-Status HloCostAnalysis::HandleClamp(const HloInstruction* clamp) {
+absl::Status HloCostAnalysis::HandleClamp(const HloInstruction* clamp) {
   return HandleElementwiseOp(clamp);
 }
 
-Status HloCostAnalysis::HandleReducePrecision(const HloInstruction* hlo) {
+absl::Status HloCostAnalysis::HandleReducePrecision(const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
-Status HloCostAnalysis::HandleParameter(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleParameter(const HloInstruction*) {
   current_should_compute_bottleneck_time_ = false;
   current_properties_[kBytesAccessedKey] = 0;
   current_properties_.set_output_bytes_accessed(0);
@@ -284,7 +286,7 @@ Status HloCostAnalysis::HandleParameter(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleConstant(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleConstant(const HloInstruction*) {
   current_should_compute_bottleneck_time_ = false;
   current_properties_[kBytesAccessedKey] = 0;
   current_properties_.set_output_bytes_accessed(0);
@@ -292,9 +294,11 @@ Status HloCostAnalysis::HandleConstant(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleIota(const HloInstruction*) { return OkStatus(); }
+absl::Status HloCostAnalysis::HandleIota(const HloInstruction*) {
+  return OkStatus();
+}
 
-Status HloCostAnalysis::HandleGetTupleElement(
+absl::Status HloCostAnalysis::HandleGetTupleElement(
     const HloInstruction* get_tuple_element) {
   // GetTupleElement forwards a pointer and does not touch each element in the
   // output.
@@ -306,15 +310,15 @@ Status HloCostAnalysis::HandleGetTupleElement(
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleSelect(const HloInstruction* hlo) {
+absl::Status HloCostAnalysis::HandleSelect(const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
-Status HloCostAnalysis::HandleReverse(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleReverse(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleSlice(const HloInstruction* slice) {
+absl::Status HloCostAnalysis::HandleSlice(const HloInstruction* slice) {
   const int64_t output_shape_size = GetShapeSize(slice->shape());
 
   const int64_t num_input_elements =
@@ -329,7 +333,7 @@ Status HloCostAnalysis::HandleSlice(const HloInstruction* slice) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleDynamicSlice(
+absl::Status HloCostAnalysis::HandleDynamicSlice(
     const HloInstruction* dynamic_slice) {
   const int64_t output_shape_size = GetShapeSize(dynamic_slice->shape());
   const int64_t start_indices_shape_size =
@@ -350,7 +354,7 @@ Status HloCostAnalysis::HandleDynamicSlice(
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleDynamicUpdateSlice(
+absl::Status HloCostAnalysis::HandleDynamicUpdateSlice(
     const HloInstruction* dynamic_update_slice) {
   const int64_t update_shape_size =
       GetShapeSize(dynamic_update_slice->operand(1)->shape());
@@ -377,7 +381,7 @@ Status HloCostAnalysis::HandleDynamicUpdateSlice(
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleTuple(const HloInstruction* tuple) {
+absl::Status HloCostAnalysis::HandleTuple(const HloInstruction* tuple) {
   // The tuple instruction only gathers pointers from inputs (it doesn't iterate
   // through them). The memory touched is then only the size of the output
   // index table of the tuple.
@@ -390,17 +394,19 @@ Status HloCostAnalysis::HandleTuple(const HloInstruction* tuple) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleConcatenate(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleConcatenate(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleConvert(const HloInstruction* convert) {
+absl::Status HloCostAnalysis::HandleConvert(const HloInstruction* convert) {
   return HandleElementwiseOp(convert);
 }
 
-Status HloCostAnalysis::HandleCopy(const HloInstruction*) { return OkStatus(); }
+absl::Status HloCostAnalysis::HandleCopy(const HloInstruction*) {
+  return OkStatus();
+}
 
-Status HloCostAnalysis::HandleDomain(const HloInstruction* domain) {
+absl::Status HloCostAnalysis::HandleDomain(const HloInstruction* domain) {
   // Domain does not have any computation or data transfer.
   current_should_compute_bottleneck_time_ = false;
   current_properties_[kBytesAccessedKey] = 0;
@@ -425,13 +431,13 @@ int64_t HloCostAnalysis::GetDotFlops(const Shape& lhs_shape,
   return kFmaFlops * ShapeUtil::ElementsIn(result_shape) * reduction_width;
 }
 
-Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
+absl::Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   current_properties_[kFlopsKey] = GetDotFlops(
       dot->operand(0)->shape(), dot->shape(), dot->dot_dimension_numbers());
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleInfeed(const HloInstruction* infeed) {
+absl::Status HloCostAnalysis::HandleInfeed(const HloInstruction* infeed) {
   // Count nested infeed output tuples.
   int64_t size = 0;
   ShapeUtil::ForEachLeafShape(
@@ -445,7 +451,7 @@ Status HloCostAnalysis::HandleInfeed(const HloInstruction* infeed) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleOutfeed(const HloInstruction* outfeed) {
+absl::Status HloCostAnalysis::HandleOutfeed(const HloInstruction* outfeed) {
   // Count nested outfeed operand tuples.
   current_properties_[kBytesAccessedKey] = 0;
   for (int64_t i = 0; i < outfeed->operand_count(); ++i) {
@@ -465,7 +471,7 @@ Status HloCostAnalysis::HandleOutfeed(const HloInstruction* outfeed) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
+absl::Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
   // Compute properties of the mapped function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
                       ProcessSubcomputation(map->to_apply()));
@@ -480,7 +486,7 @@ Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
+absl::Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
   HloComputation* function = reduce->to_apply();
   // Compute the cost of the user function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
@@ -504,7 +510,7 @@ Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleReduceWindow(
+absl::Status HloCostAnalysis::HandleReduceWindow(
     const HloInstruction* reduce_window) {
   const Window& window = reduce_window->window();
   auto function = reduce_window->to_apply();
@@ -587,7 +593,7 @@ Status HloCostAnalysis::HandleReduceWindow(
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleSelectAndScatter(
+absl::Status HloCostAnalysis::HandleSelectAndScatter(
     const HloInstruction* instruction) {
   // Compute the properties of the select and scatter function.
   // Compute the properties of the reduction function.
@@ -620,7 +626,7 @@ Status HloCostAnalysis::HandleSelectAndScatter(
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleBitcast(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleBitcast(const HloInstruction*) {
   // A bitcast does no computation and touches no memory.
   current_properties_[kBytesAccessedKey] = 0;
   current_properties_.set_output_bytes_accessed(0);
@@ -629,7 +635,7 @@ Status HloCostAnalysis::HandleBitcast(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleBroadcast(const HloInstruction* broadcast) {
+absl::Status HloCostAnalysis::HandleBroadcast(const HloInstruction* broadcast) {
   if (options_.count_multiple_input_accesses) {
     current_properties_.set_operand_bytes_accessed(
         0, GetShapeSize(broadcast->shape()));
@@ -640,74 +646,81 @@ Status HloCostAnalysis::HandleBroadcast(const HloInstruction* broadcast) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandlePad(const HloInstruction*) { return OkStatus(); }
+absl::Status HloCostAnalysis::HandlePad(const HloInstruction*) {
+  return OkStatus();
+}
 
-Status HloCostAnalysis::HandleAsyncStart(const HloInstruction* async_start) {
+absl::Status HloCostAnalysis::HandleAsyncStart(
+    const HloInstruction* async_start) {
   TF_ASSIGN_OR_RETURN(
       current_properties_,
       ProcessSubcomputation(async_start->called_computations()[0]));
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleAsyncUpdate(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleAsyncUpdate(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleAsyncDone(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleAsyncDone(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleCopyStart(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleCopyStart(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleCopyDone(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleCopyDone(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleSend(const HloInstruction*) { return OkStatus(); }
-
-Status HloCostAnalysis::HandleSendDone(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleSend(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleRecv(const HloInstruction*) { return OkStatus(); }
-
-Status HloCostAnalysis::HandleRecvDone(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleSendDone(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleReshape(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleRecv(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleDynamicReshape(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleRecvDone(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleBatchNormTraining(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleReshape(const HloInstruction*) {
+  return OkStatus();
+}
+
+absl::Status HloCostAnalysis::HandleDynamicReshape(const HloInstruction*) {
+  return OkStatus();
+}
+
+absl::Status HloCostAnalysis::HandleBatchNormTraining(const HloInstruction*) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-training.
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleBatchNormInference(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleBatchNormInference(const HloInstruction*) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-inference.
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleBatchNormGrad(const HloInstruction*) {
+absl::Status HloCostAnalysis::HandleBatchNormGrad(const HloInstruction*) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-grad.
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleTranspose(const HloInstruction* transpose) {
+absl::Status HloCostAnalysis::HandleTranspose(const HloInstruction* transpose) {
   if (transpose->IsEffectiveBitcast()) {
     return HandleBitcast(transpose);
   }
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleAfterAll(const HloInstruction* token) {
+absl::Status HloCostAnalysis::HandleAfterAll(const HloInstruction* token) {
   // This instruction is used to enforce ordering at compile time. No code is
   // emitted.
   current_should_compute_bottleneck_time_ = false;
@@ -720,7 +733,7 @@ Status HloCostAnalysis::HandleAfterAll(const HloInstruction* token) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleAddDependency(
+absl::Status HloCostAnalysis::HandleAddDependency(
     const HloInstruction* add_dependency) {
   // This instruction is used to enforce ordering at compile time. No code is
   // emitted.
@@ -879,12 +892,13 @@ int64_t HloCostAnalysis::GetConvolutionFlops(const HloInstruction* convolution,
   return fma_count * kFmaFlops;
 }
 
-Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
+absl::Status HloCostAnalysis::HandleConvolution(
+    const HloInstruction* convolution) {
   current_properties_[kFlopsKey] = GetConvolutionFlops(convolution);
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
+absl::Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
   auto real_shape =
       fft->operand(0)->shape().IsTuple()
           ? ShapeUtil::GetTupleElementShape(fft->operand(0)->shape(), 0)
@@ -899,7 +913,7 @@ Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleTriangularSolve(const HloInstruction* hlo) {
+absl::Status HloCostAnalysis::HandleTriangularSolve(const HloInstruction* hlo) {
   // Half of operand 0 is read.
   float bytes_accessed = GetShapeSize(hlo->shape());
   current_properties_.set_output_bytes_accessed(GetShapeSize(hlo->shape()));
@@ -920,7 +934,7 @@ Status HloCostAnalysis::HandleTriangularSolve(const HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
+absl::Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
   // Half of operand 0 is read and half of the output will be written.
   float bytes_accessed = GetShapeSize(hlo->operand(0)->shape()) / 2.0f;
   current_properties_.set_output_bytes_accessed(
@@ -938,24 +952,25 @@ Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleOptimizationBarrier(
+absl::Status HloCostAnalysis::HandleOptimizationBarrier(
     const HloInstruction* /*hlo*/) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleAllGather(const HloInstruction* /*hlo*/) {
+absl::Status HloCostAnalysis::HandleAllGather(const HloInstruction* /*hlo*/) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleAllGatherStart(const HloInstruction* hlo) {
+absl::Status HloCostAnalysis::HandleAllGatherStart(const HloInstruction* hlo) {
   return HandleAllGather(hlo);
 }
 
-Status HloCostAnalysis::HandleAllGatherDone(const HloInstruction* /*hlo*/) {
+absl::Status HloCostAnalysis::HandleAllGatherDone(
+    const HloInstruction* /*hlo*/) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleAllReduce(const HloInstruction* crs) {
+absl::Status HloCostAnalysis::HandleAllReduce(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.
   //
@@ -980,50 +995,52 @@ Status HloCostAnalysis::HandleAllReduce(const HloInstruction* crs) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleReduceScatter(const HloInstruction* hlo) {
+absl::Status HloCostAnalysis::HandleReduceScatter(const HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleAllReduceStart(const HloInstruction* hlo) {
+absl::Status HloCostAnalysis::HandleAllReduceStart(const HloInstruction* hlo) {
   return HandleAllReduce(hlo);
 }
 
-Status HloCostAnalysis::HandleAllReduceDone(const HloInstruction* /*hlo*/) {
-  return OkStatus();
-}
-
-Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
-  return OkStatus();
-}
-
-Status HloCostAnalysis::HandleCollectiveBroadcast(
+absl::Status HloCostAnalysis::HandleAllReduceDone(
     const HloInstruction* /*hlo*/) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
+absl::Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleCollectivePermuteStart(
+absl::Status HloCostAnalysis::HandleCollectiveBroadcast(
     const HloInstruction* /*hlo*/) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleCollectivePermuteDone(
+absl::Status HloCostAnalysis::HandleCollectivePermute(
     const HloInstruction* /*hlo*/) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandlePartitionId(const HloInstruction* /*hlo*/) {
+absl::Status HloCostAnalysis::HandleCollectivePermuteStart(
+    const HloInstruction* /*hlo*/) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleReplicaId(const HloInstruction* /*hlo*/) {
+absl::Status HloCostAnalysis::HandleCollectivePermuteDone(
+    const HloInstruction* /*hlo*/) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleRng(const HloInstruction* random) {
+absl::Status HloCostAnalysis::HandlePartitionId(const HloInstruction* /*hlo*/) {
+  return OkStatus();
+}
+
+absl::Status HloCostAnalysis::HandleReplicaId(const HloInstruction* /*hlo*/) {
+  return OkStatus();
+}
+
+absl::Status HloCostAnalysis::HandleRng(const HloInstruction* random) {
   // TODO(b/26346211): Implement better estimates for the RNG cost, since the
   // cost changes with the implementation and the distribution. For now, assume
   // the cost of each RNG is same as a transcendental operation.
@@ -1032,7 +1049,8 @@ Status HloCostAnalysis::HandleRng(const HloInstruction* random) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleRngBitGenerator(const HloInstruction* random) {
+absl::Status HloCostAnalysis::HandleRngBitGenerator(
+    const HloInstruction* random) {
   // TODO(b/26346211): Implement better estimates for the RNG cost, since the
   // cost changes with the implementation and the distribution. For now, assume
   // the cost of each RNG is same as a transcendental operation.
@@ -1041,12 +1059,12 @@ Status HloCostAnalysis::HandleRngBitGenerator(const HloInstruction* random) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleRngGetAndUpdateState(
+absl::Status HloCostAnalysis::HandleRngGetAndUpdateState(
     const HloInstruction* random) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::FusionProcessOutputBytesAccessed(
+absl::Status HloCostAnalysis::FusionProcessOutputBytesAccessed(
     const HloInstruction* fusion) {
   // Fusion nodes that produce a tuple also produce the entries in the tuple.
   // Ignore the memory accessed inside fused ops, since fusion is supposed to
@@ -1118,7 +1136,7 @@ Status HloCostAnalysis::FusionProcessOutputBytesAccessed(
   return OkStatus();
 }
 
-Status HloCostAnalysis::FusionProcessOperandBytesRead(
+absl::Status HloCostAnalysis::FusionProcessOperandBytesRead(
     const HloInstruction* fusion) {
   for (int64_t i = 0; i < fusion->fused_parameters().size(); ++i) {
     const HloInstruction* operand = fusion->fused_parameter(i);
@@ -1160,7 +1178,7 @@ Status HloCostAnalysis::FusionProcessOperandBytesRead(
   return OkStatus();
 }
 
-Status HloCostAnalysis::FusionCountConstantsMemoryAccess(
+absl::Status HloCostAnalysis::FusionCountConstantsMemoryAccess(
     const HloInstruction* fusion) {
   // Count memory access to all large constants.
   for (const HloInstruction* instr :
@@ -1179,7 +1197,7 @@ Status HloCostAnalysis::FusionCountConstantsMemoryAccess(
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
+absl::Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
   VLOG(8) << "Processing fusion " << fusion->ToString();
 
   if (fusion->IsCustomFusion()) {
@@ -1206,14 +1224,15 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
+absl::Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
   TF_ASSIGN_OR_RETURN(current_properties_,
                       ProcessSubcomputation(call->to_apply()));
   current_should_compute_bottleneck_time_ = false;
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
+absl::Status HloCostAnalysis::HandleCustomCall(
+    const HloInstruction* custom_call) {
   // Mark applicable fields as "unknown", since we don't know what this
   // CustomCall does.  This is better than returning an error, which would stop
   // iteration, and therefore would prevent us from getting *any* stats for a
@@ -1229,7 +1248,7 @@ Status HloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleSort(const HloInstruction* sort) {
+absl::Status HloCostAnalysis::HandleSort(const HloInstruction* sort) {
   // This assumes a comparison based N*log(N) algorithm. As for all ops, the
   // actual properties of the op depend on the backend implementation.
   int64_t elements = ShapeUtil::ElementsIn(sort->operand(0)->shape());
@@ -1237,12 +1256,12 @@ Status HloCostAnalysis::HandleSort(const HloInstruction* sort) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleTopK(const HloInstruction* topk) {
+absl::Status HloCostAnalysis::HandleTopK(const HloInstruction* topk) {
   // TODO(cheshire): Cost analysis for TopK.
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleWhile(const HloInstruction* xla_while) {
+absl::Status HloCostAnalysis::HandleWhile(const HloInstruction* xla_while) {
   // Since the number of iterations of the while node will not always be
   // something that we can statically analyze, we cannot precisely compute the
   // cost of a while node. For now compute the cost of a single iteration.
@@ -1264,7 +1283,8 @@ Status HloCostAnalysis::HandleWhile(const HloInstruction* xla_while) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
+absl::Status HloCostAnalysis::HandleConditional(
+    const HloInstruction* conditional) {
   // Compute the cost of the branch computations and take the maximum from those
   // for each property.
   TF_ASSIGN_OR_RETURN(
@@ -1286,7 +1306,7 @@ Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
+absl::Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
   // Gather doesn't read the whole input buffer, it's equivalent to a copy the
   // size of the output shape and a read of the gather indices.
   int64_t output_size = GetShapeSize(gather->shape());
@@ -1303,7 +1323,7 @@ Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleScatter(const HloInstruction* hlo) {
+absl::Status HloCostAnalysis::HandleScatter(const HloInstruction* hlo) {
   auto* scatter = Cast<HloScatterInstruction>(hlo);
   // Scatter accesses the equivalent of 3N update shapes (input, output, and
   // updates), and the scatter indices.
@@ -1333,17 +1353,17 @@ Status HloCostAnalysis::HandleScatter(const HloInstruction* hlo) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleGetDimensionSize(
+absl::Status HloCostAnalysis::HandleGetDimensionSize(
     const HloInstruction* /*get_size*/) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleSetDimensionSize(
+absl::Status HloCostAnalysis::HandleSetDimensionSize(
     const HloInstruction* /*set_size*/) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::FinishVisit(const HloInstruction*) {
+absl::Status HloCostAnalysis::FinishVisit(const HloInstruction*) {
   return OkStatus();
 }
 

@@ -310,9 +310,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateNameAnonymousIteratorsPass();
 
 // Creates a pass that breaks up an island with multiple ops into multiple
 // islands, each with a single op. This pass intentionally does not propagate
-// control dependencies across newly created islands, a following pass will
-// handle this.
-// TODO(b/244596254) Implement followup pass for creating control deps.
+// control dependencies across newly created islands and is handled by
+// CreateTFExecutorUpdateControlDependenciesPass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitIntoIslandPerOpPass();
 
 // Prints, but otherwise pipes through without changes, the current module.

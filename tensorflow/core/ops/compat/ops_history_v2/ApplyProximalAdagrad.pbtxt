@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ApplyProximalAdagrad"
   input_arg {
     name: "var"

@@ -262,6 +262,7 @@ class IndexingMap {
 
   // Returns the affine map.
   mlir::AffineMap GetAffineMap() const { return affine_map_; }
+  mlir::AffineMap& GetMutableAffineMap() { return affine_map_; }
 
   // Returns the range evaluator for the indexing map's domain.
   RangeEvaluator GetRangeEvaluator() const;

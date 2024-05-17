@@ -44,7 +44,7 @@ absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
-  const se::Platform* platform = executor->platform();
+  const se::Platform* platform = executor->GetPlatform();
 
   // Convert the ShapeTree to a ShapedBuffer. We do this so we can call
   // TransferManager methods below.
@@ -175,7 +175,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
       }));
 
   se::StreamExecutor* executor = stream->parent();
-  const se::Platform* platform = executor->platform();
+  const se::Platform* platform = executor->GetPlatform();
   TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager,
                       TransferManager::GetForPlatform(platform));
 

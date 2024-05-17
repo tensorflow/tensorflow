@@ -438,14 +438,6 @@ class CStreamExecutor : public StreamExecutor {
         stream_executor_->get_event_status(&device_, event_handle);
     return SEEventStatusToEventStatus(event_status);
   }
-  bool AllocateStream(Stream* stream) override {
-    DCHECK(stream != nullptr);
-    absl::Status status =
-        static_cast<CStream*>(stream->implementation())->Create();
-    // TODO(annarev): update AllocateStream to return status instead
-    // (similar to AllocateEvent).
-    return status.ok();
-  }
   void DeallocateStream(Stream* stream) override {
     static_cast<CStream*>(stream->implementation())->Destroy();
   }
@@ -565,9 +557,13 @@ class CStreamExecutor : public StreamExecutor {
     return std::unique_ptr<EventInterface>(
         new CEvent(&device_, stream_executor_));
   }
-  std::unique_ptr<StreamInterface> GetStreamImplementation() override {
-    return std::unique_ptr<StreamInterface>(
-        new CStream(&device_, stream_executor_));
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority =
+          std::nullopt) override {
+    auto c_stream = std::make_unique<CStream>(&device_, stream_executor_);
+    TF_RETURN_IF_ERROR(c_stream->Create());
+    auto stream = std::make_unique<Stream>(this, std::move(c_stream));
+    return std::move(stream);
   }
 
  private:

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ResourceSparseApplyProximalGradientDescent"
   input_arg {
     name: "var"

@@ -18,10 +18,13 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir::odml {
+
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOutlineCompositesPass();
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateSHLOSimplifyPass();
 

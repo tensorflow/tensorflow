@@ -76,7 +76,7 @@ bool ShouldAllowLoopVariantParameterInChain(const HloInstruction* instr) {
   return true;
 }
 
-Status PostprocessP2PImpl(
+absl::Status PostprocessP2PImpl(
     HloInstruction* instr,
     std::function<std::string(std::vector<ReplicaGroup>&)> transformer) {
   // The input instruction is a Done instruction.
@@ -106,7 +106,7 @@ Status PostprocessP2PImpl(
 
 // Modifies the loop iteration frontend attribute for the peeled off Send and
 // Recv for the first iteration of a loop.
-Status PostprocessPeeledP2P(HloInstruction* instr) {
+absl::Status PostprocessPeeledP2P(HloInstruction* instr) {
   auto transform_bounds = [&](std::vector<ReplicaGroup>& replica_groups) {
     std::vector<std::pair<int64_t, int64_t>> bounds;
     bounds.reserve(replica_groups.size());
@@ -149,7 +149,7 @@ Status PostprocessPeeledP2P(HloInstruction* instr) {
 
 // Modifies the loop iteration frontend attribute for the rotated Send and Recv
 // for the remaining iterations in a loop.
-Status PostprocessRotatedP2P(HloInstruction* instr) {
+absl::Status PostprocessRotatedP2P(HloInstruction* instr) {
   auto transform_bounds = [&](std::vector<ReplicaGroup>& replica_groups) {
     std::vector<std::pair<int64_t, int64_t>> bounds;
     bounds.reserve(replica_groups.size());
@@ -211,12 +211,15 @@ void AddP2PPipeliner(HloPassPipeline& pipeline) {
       /*pipeline_use_tree=*/false,
       /*process_different_sized_ops=*/true,
       /*pipelining_direction=*/
-      CollectivePipeliner::PipeliningDirection::kBackward, ShouldPipeline,
+      CollectivePipeliner::PipeliningDirection::kBackward,
+      /*should_process=*/ShouldPipeline,
       /*acceptable_formatting=*/HloPredicateTrue,
       /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
+      /*should_allow_loop_variant_parameter_in_chain=*/
       ShouldAllowLoopVariantParameterInChain,
-      /*should_allow_control_dependencies=*/true, PostprocessPeeledP2P,
-      PostprocessRotatedP2P};
+      /*should_allow_control_dependencies=*/true,
+      /*=postprocess_backward_peeled_op*/ PostprocessPeeledP2P,
+      /*=postprocess_backward_rotated_op*/ PostprocessRotatedP2P};
   pipeline.AddPass<CollectivePipeliner>(config);
 }
 

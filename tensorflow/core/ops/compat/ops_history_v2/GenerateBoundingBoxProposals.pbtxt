@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "GenerateBoundingBoxProposals"
   input_arg {
     name: "scores"

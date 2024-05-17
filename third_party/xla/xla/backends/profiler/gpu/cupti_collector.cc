@@ -335,8 +335,7 @@ class PerDeviceCollector {
         continue;
       }
       auto* plane = is_host_event ? host_plane : device_plane;
-      VLOG(9) << "Event"
-              << " type=" << static_cast<int>(event.type)
+      VLOG(9) << "Event" << " type=" << static_cast<int>(event.type)
               << " line_id=" << line_id
               << (is_host_event ? " host plane=" : " device plane=")
               << plane->Name();
@@ -469,33 +468,19 @@ class PerDeviceCollector {
 
 }  // namespace
 
-void AnnotationMap::Add(uint32_t device_id, uint32_t correlation_id,
-                        const absl::string_view annotation,
-                        const absl::string_view nvtx_range) {
-  if (annotation.empty() && nvtx_range.empty()) return;
-  VLOG(3) << "Add annotation: device_id: " << device_id
-          << " correlation_id: " << correlation_id
-          << " annotation: " << annotation;
-  if (device_id >= per_device_map_.size()) return;
-  auto& per_device_map = per_device_map_[device_id];
-  absl::MutexLock lock(&per_device_map.mutex);
-  if (per_device_map.annotations.size() < max_size_) {
-    AnnotationInfo info;
-    info.annotation = *per_device_map.annotations.emplace(annotation).first;
-    if (!nvtx_range.empty())
-      info.nvtx_range = *per_device_map.nvtx_ranges.emplace(nvtx_range).first;
-    per_device_map.correlation_map.emplace(correlation_id, info);
+void CuptiTraceCollector::OnTracerCachedActivityBuffers(
+    std::unique_ptr<CuptiActivityBufferManager> activity_buffers) {
+  size_t dropped_activity_event_count = 0;
+  CuptiEventCollectorDelegate collector(
+      *annotation_map(),
+      [this](CuptiTracerEvent&& ev) { this->AddEvent(std::move(ev)); });
+  activity_buffers->AddCachedActivityEventsTo(collector,
+                                              options_.max_activity_api_events,
+                                              dropped_activity_event_count);
+  if (dropped_activity_event_count > 0) {
+    OnEventsDropped("total device(activity) events reaches max",
+                    dropped_activity_event_count);
   }
-}
-
-AnnotationMap::AnnotationInfo AnnotationMap::LookUp(uint32_t device_id,
-                                                    uint32_t correlation_id) {
-  if (device_id >= per_device_map_.size()) return AnnotationInfo();
-  auto& per_device_map = per_device_map_[device_id];
-  absl::MutexLock lock(&per_device_map.mutex);
-  auto it = per_device_map.correlation_map.find(correlation_id);
-  return it != per_device_map.correlation_map.end() ? it->second
-                                                    : AnnotationInfo();
 }
 
 // CuptiTraceCollectorImpl store the CuptiTracerEvents from CuptiTracer and
@@ -534,9 +519,18 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     absl::MutexLock lock(&mutex_);
     dropped_events_[reason] += num_events;
   }
+
+  void OnTracerCachedActivityBuffers(
+      std::unique_ptr<CuptiActivityBufferManager> activity_buffers) override {
+    activity_buffers_ = std::move(activity_buffers);
+  }
+
   void Flush() override {}
   // Returns true if some GPU events are captured.
   bool Export(XSpace* space, uint64_t end_gpu_ns) override {
+    CuptiTraceCollector::OnTracerCachedActivityBuffers(
+        std::move(activity_buffers_));
+
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
               << " activity events. " << ReportDroppedEvents();
@@ -547,8 +541,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       std::string name = GpuPlaneName(device_ordinal);
       XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
       device_plane.SetId(device_ordinal);
-      VLOG(4) << "Creating plane for"
-              << " name=" << name << " ordinal=" << device_ordinal;
+      VLOG(4) << "Creating plane for" << " name=" << name
+              << " ordinal=" << device_ordinal;
 
       // Calculate device capabilities before flushing, so that device
       // properties are available to the occupancy calculator in Flush().
@@ -585,6 +579,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
  private:
   std::atomic<int> num_callback_events_;
   std::atomic<int> num_activity_events_;
+  std::unique_ptr<CuptiActivityBufferManager> activity_buffers_;
   absl::Mutex mutex_;
   absl::flat_hash_map<std::string, uint64_t> dropped_events_
       ABSL_GUARDED_BY(mutex_);

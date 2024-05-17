@@ -166,6 +166,7 @@ typedef enum {
   XLA_FFI_DataType_BF16 = 16,
   XLA_FFI_DataType_C64 = 15,
   XLA_FFI_DataType_C128 = 18,
+  XLA_FFI_DataType_TOKEN = 17,
 } XLA_FFI_DataType;
 // LINT.ThenChange(ffi_test.cc)
 
@@ -216,44 +217,38 @@ typedef enum {
 typedef struct XLA_FFI_ExecutionContext XLA_FFI_ExecutionContext;
 
 //===----------------------------------------------------------------------===//
-// Call frame
+// Primitives.
 //===----------------------------------------------------------------------===//
+
+// TypeId uniquely identifies a user-defined type in a given XLA FFI instance.
+struct XLA_FFI_TypeId {
+  int64_t type_id;
+};
 
 // We use byte spans to pass strings to handlers because strings might not be
 // null terminated, and even if they are, looking for a null terminator can
 // become very expensive in tight loops.
 struct XLA_FFI_ByteSpan {
-  size_t struct_size;
-  void* priv;
-
   const char* ptr;
   size_t len;
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_ByteSpan, len);
-
 // A struct to pass a scalar value to FFI handler.
 struct XLA_FFI_Scalar {
-  size_t struct_size;
-  void* priv;
-
   XLA_FFI_DataType dtype;
   void* value;
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Scalar, value);
-
 // A struct to pass a dense array to FFI handler.
 struct XLA_FFI_Array {
-  size_t struct_size;
-  void* priv;
-
   XLA_FFI_DataType dtype;
   size_t size;
   void* data;
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Array, data);
+//===----------------------------------------------------------------------===//
+// Call frame
+//===----------------------------------------------------------------------===//
 
 struct XLA_FFI_Args {
   size_t struct_size;
@@ -324,8 +319,8 @@ struct XLA_FFI_Handler_Register_Args {
   size_t struct_size;
   void* priv;
 
-  const char* name;      // null terminated
-  const char* platform;  // null terminated
+  XLA_FFI_ByteSpan name;
+  XLA_FFI_ByteSpan platform;
   XLA_FFI_Handler* handler;
   XLA_FFI_Handler_Traits traits;
 };
@@ -334,6 +329,43 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Handler_Register_Args, traits);
 
 typedef XLA_FFI_Error* XLA_FFI_Handler_Register(
     XLA_FFI_Handler_Register_Args* args);
+
+//===----------------------------------------------------------------------===//
+// TypeId
+//===----------------------------------------------------------------------===//
+
+struct XLA_FFI_TypeId_Register_Args {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_ByteSpan name;
+  XLA_FFI_TypeId* type_id;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_TypeId_Register_Args, type_id);
+
+// Registers user type `name` and returns a unique `type_id`.
+typedef XLA_FFI_Error* XLA_FFI_TypeId_Register(
+    XLA_FFI_TypeId_Register_Args* args);
+
+//===----------------------------------------------------------------------===//
+// ExecutionContext
+//===----------------------------------------------------------------------===//
+
+struct XLA_FFI_ExecutionContext_Get_Args {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_TypeId* type_id;
+  void* data;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_ExecutionContext_Get_Args, data);
+
+// Returns an opaque data from the execution context for a given name.
+typedef XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
+    XLA_FFI_ExecutionContext_Get_Args* args);
 
 //===----------------------------------------------------------------------===//
 // Stream
@@ -370,6 +402,8 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Destroy);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Handler_Register);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Stream_Get);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_TypeId_Register);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ExecutionContext_Get);
 };
 
 #undef _XLA_FFI_API_STRUCT_FIELD

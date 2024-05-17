@@ -102,7 +102,7 @@ int ROCmPlatform::VisibleDeviceCount() const {
   return GpuDriver::GetDeviceCount();
 }
 
-const string& ROCmPlatform::Name() const { return name_; }
+const std::string& ROCmPlatform::Name() const { return name_; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 ROCmPlatform::DescriptionForDevice(int ordinal) const {

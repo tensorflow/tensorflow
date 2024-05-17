@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "UniformQuantizedConvolutionHybrid"
   input_arg {
     name: "lhs"

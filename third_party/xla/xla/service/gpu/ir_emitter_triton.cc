@@ -116,6 +116,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
@@ -447,6 +448,10 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
         return b.create<mm::AbsIOp>(inputs[0]);
       }
       return b.create<mm::AbsFOp>(inputs[0]);
+    case HloOpcode::kCeil:
+      return b.create<mm::CeilOp>(inputs[0]);
+    case HloOpcode::kFloor:
+      return b.create<mm::FloorOp>(inputs[0]);
     case HloOpcode::kNot:
       return b.create<ma::XOrIOp>(inputs[0], OnesLike(b, inputs[0]));
     case HloOpcode::kNegate:
@@ -852,22 +857,22 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
 absl::StatusOr<Value> EmitTiledScope(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
-    const std::vector<std::unique_ptr<TiledHloInstruction>>&
-        tiled_hlo_instructions,
+    const TiledHloComputation& tiled_computation,
     std::function<absl::StatusOr<Value>(const TiledHloInstruction&)>
         emit_param_load_fn,
     absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
-  for (const auto& tiled_hlo : tiled_hlo_instructions) {
+  for (const TiledHloInstruction* tiled_hlo :
+       tiled_computation.instructions()) {
     TF_ASSIGN_OR_RETURN(
         Value result,
         EmitTiledHloInstruction(b, libdevice_path, device_info, *tiled_hlo,
                                 emit_param_load_fn, values));
-    TF_RET_CHECK(values.insert({tiled_hlo.get(), result}).second)
+    TF_RET_CHECK(values.insert({tiled_hlo, result}).second)
         << tiled_hlo->hlo()->ToString();
     VLOG(8) << "Emitted "
             << tiled_hlo->hlo()->ToString(HloPrintOptions::ShortParsable());
   }
-  return values[tiled_hlo_instructions.back().get()];
+  return values[tiled_computation.GetRoot()];
 }
 
 // Emit sequence of instructions using compatible tiling ordered producers
@@ -881,12 +886,14 @@ absl::StatusOr<Value> EmitScope(
     absl::flat_hash_map<const HloInstruction*, Value>& values) {
   for (const HloInstruction* hlo : instructions) {
     Value result;
-    if (hlo->opcode() == HloOpcode::kConcatenate) {
+    if (hlo->opcode() == HloOpcode::kConcatenate ||
+        hlo->opcode() == HloOpcode::kDynamicSlice) {
       // Parameter loads and their concatenations are handled outside EmitScope.
       TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
       continue;
     } else if (hlo->opcode() == HloOpcode::kParameter) {
-      if (hlo->users()[0]->opcode() == HloOpcode::kConcatenate) {
+      if (hlo->users()[0]->opcode() == HloOpcode::kConcatenate ||
+          hlo->users()[0]->opcode() == HloOpcode::kDynamicSlice) {
         continue;
       }
       TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
@@ -1371,6 +1378,18 @@ class MatMulEmitterHelper {
         values);
   }
 
+  int64_t GetNonContractingDimIdxForOperandScope(
+      TritonFusionAnalysis::Scope scope) {
+    if (scope == TritonFusionAnalysis::Scope::LHS) {
+      return dims_.lhs_noncontracting_dim_idx;
+    } else if (scope == TritonFusionAnalysis::Scope::RHS) {
+      return dims_.rhs_noncontracting_dim_idx;
+    } else {
+      CHECK(false) << "This shouldn't be called for the output scope.";
+    }
+  }
+
+  // bases: The base pointers of each argument.
   absl::StatusOr<Value> EmitTensorPointer(
       const HloInstruction* hlo, const Side& side, ValueRange bases,
       Value pid_k, std::vector<int32_t>& boundary_checks) {
@@ -1486,7 +1505,74 @@ class MatMulEmitterHelper {
             select_value,
             EmitMultiSelect(b_, pid_offset, concat_boundaries, input_bounds));
         bounds.push_back(select_value);
+        tensor_offsets.push_back(Cst32(specs.front()->at(0).slice_start));
+      } else if (hlo->opcode() == HloOpcode::kDynamicSlice &&
+                 (side.scope == TritonFusionAnalysis::Scope::LHS ||
+                  side.scope == TritonFusionAnalysis::Scope::RHS) &&
+                 properties.index ==
+                     GetNonContractingDimIdxForOperandScope(side.scope)) {
+        // Here we compute the offset of where we should read the slice from.
+        // TODO(b/323255699): Add support for slices of the contracting dim.
+        // Dynamic slices are guaranteed to only be offset along the majormost
+        // dimension.
+
+        // The only fragment of the non-contracting dim of the dot's input in
+        // the current scope:
+        TF_RET_CHECK(specs.back()->size() == 1);
+        const TensorIterationSpec::IterationSpecFragment
+            only_fragment_of_nc_dim = specs.back()->at(0);
+        // The majormost dim index in the dynamic slice's output.
+        const int majormost_dim = hlo->shape().layout().minor_to_major().back();
+
+        // dynamic slice operands are (input, start_index0, start_index1, ...)
+        // so the start index corresponding to the ith dimension is bases[i+1].
+        Value majormost_dim_start_index_ptr_val = bases[majormost_dim + 1];
+        Value majormost_dim_start_index_val = b_.create<mt::LoadOp>(
+            majormost_dim_start_index_ptr_val, mt::CacheModifier::NONE,
+            mt::EvictionPolicy::NORMAL,
+            /*isVolatile=*/false);
+        Value majormost_dim_start_index_lower_limit_val =
+            CreateConst(b_, majormost_dim_start_index_val.getType(), 0);
+        int64_t majormost_dim_start_index_upper_limit =
+            hlo->operand(0)->shape().dimensions(majormost_dim) -
+            hlo->dynamic_slice_sizes().at(majormost_dim);
+        Value majormost_dim_start_index_upper_limit_val =
+            CreateConst(b_, majormost_dim_start_index_val.getType(),
+                        majormost_dim_start_index_upper_limit);
+        // Our Triton codegen only supports signed integers so far.
+        majormost_dim_start_index_val =
+            b_.create<ma::MaxSIOp>(majormost_dim_start_index_val,
+                                   majormost_dim_start_index_lower_limit_val);
+        majormost_dim_start_index_val =
+            b_.create<ma::MinSIOp>(majormost_dim_start_index_val,
+                                   majormost_dim_start_index_upper_limit_val);
+
+        // How many "rows" (non-contracting dim values) are there in a slice of
+        // size 1?
+        int64_t rows_per_majormost_dim = 1;
+        for (int i = 0; i < hlo->shape().dimensions().size() - 1; ++i) {
+          rows_per_majormost_dim *= hlo->shape().dimensions_minor(i);
+        }
+        rows_per_majormost_dim =
+            rows_per_majormost_dim / only_fragment_of_nc_dim.stride;
+        Value rows_per_majormost_dim_val = Cst32(rows_per_majormost_dim);
+
+        Value tensor_offset_val_i32 = b_.create<ma::MulIOp>(
+            majormost_dim_start_index_val, rows_per_majormost_dim_val);
+        tensor_offsets.push_back(tensor_offset_val_i32);
+
+        // tt.make_tensor_ptr expects an i64 for shape and size, but expects
+        // i32 for offsets. We extend the offset to calculate the upper bound.
+        Value tensor_offset_val_i64 =
+            b_.create<ma::ExtSIOp>(i64_ty_, tensor_offset_val_i32);
+        Value sliced_count_val = Cst64(only_fragment_of_nc_dim.sliced_count);
+        Value upper_bound_val =
+            b_.create<ma::AddIOp>(tensor_offset_val_i64, sliced_count_val);
+        bounds.push_back(upper_bound_val);
+
+        block_offsets.push_back(pid_offset);
       } else {
+        tensor_offsets.push_back(Cst32(specs.front()->at(0).slice_start));
         block_offsets.push_back(pid_offset);
         int64_t count = specs.front()->at(0).count;
         if (side.scope == TritonFusionAnalysis::Scope::OUTPUT &&
@@ -1502,7 +1588,6 @@ class MatMulEmitterHelper {
           boundary_checks.push_back(bounds.size() - 1);
         }
       }
-      tensor_offsets.push_back(Cst32(specs.front()->at(0).slice_start));
       block_dims.push_back(properties.block_size);
       dim_order.emplace(dim_order.begin(), dim_order.size());
       return absl::OkStatus();
@@ -1646,13 +1731,17 @@ absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
   return launch_config.launch_dims;
 }
 
-SmallVector<Value> GetArguments(mlir::triton::FuncOp fn,
-                                const HloInstruction& input) {
+absl::StatusOr<SmallVector<Value>> GetArguments(mlir::triton::FuncOp fn,
+                                                const HloInstruction& input) {
   if (input.opcode() == HloOpcode::kParameter) {
-    return {fn.getArgument(input.parameter_number())};
-  } else if (input.opcode() == HloOpcode::kConcatenate) {
+    return {{fn.getArgument(input.parameter_number())}};
+  } else if (input.opcode() == HloOpcode::kConcatenate ||
+             input.opcode() == HloOpcode::kDynamicSlice) {
+    // As defined in GemmFusion, all inputs of concatenate and dynamic slice are
+    // parameters.
     SmallVector<Value> result;
     for (const HloInstruction* operand : input.operands()) {
+      TF_RET_CHECK(operand->opcode() == HloOpcode::kParameter);
       result.push_back(fn.getArgument(operand->parameter_number()));
     }
     return result;
@@ -1669,7 +1758,8 @@ ConstHloInstructionSet ScopeInputs(const TritonFusionAnalysis& analysis,
   ConstHloInstructionSet result;
   for (const HloInstruction* parameter : analysis.ScopeParameters(scope)) {
     if (absl::c_any_of(parameter->users(), [](const HloInstruction* user) {
-          return user->opcode() == HloOpcode::kConcatenate;
+          return user->opcode() == HloOpcode::kConcatenate ||
+                 user->opcode() == HloOpcode::kDynamicSlice;
         })) {
       // Concatenation is always the only user of its parameters by
       // construction.
@@ -1938,18 +2028,15 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   const HloInstruction* root = dot_instr->parent()->root_instruction();
   TF_RET_CHECK(!root->shape().IsTuple());
 
-  auto fusion_adaptor = HloFusionAdaptor::ForComputation(computation);
-  HloInstructionAdaptor instr_adaptor{*instr, fusion_adaptor.get()};
   // TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
-  bool is_8_bit_or_less_dot_with_F32 = HloAnyOf(
-      instr_adaptor.GetOperands(), *fusion_adaptor,
-      [&](HloInstructionAdaptor node) {
-        if (node.opcode() != HloOpcode::kConvert) {
+  bool is_unsupported_bitwidth =
+      HloAnyOf({dot_instr}, [&](const HloInstruction* node) {
+        if (node->opcode() != HloOpcode::kConvert) {
           return false;
         }
-        Type in_type =
-            TritonType(builder, node.GetOperand(0).shape().element_type());
-        Type out_type = TritonType(builder, node.shape().element_type());
+        auto in_type =
+            TritonType(builder, node->operand(0)->shape().element_type());
+        Type out_type = TritonType(builder, node->shape().element_type());
         return in_type.getIntOrFloatBitWidth() <= 8 && out_type.isF32();
       });
 
@@ -2164,7 +2251,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
       // lower precision than the output type. The change was introduced here:
       // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
       auto input_precision =
-          IsTf32Allowed(dot_instr) && !is_8_bit_or_less_dot_with_F32
+          IsTf32Allowed(dot_instr) && !is_unsupported_bitwidth
               ? mt::InputPrecision::TF32
               : mt::InputPrecision::IEEE;
       accumulator_next =
@@ -2186,9 +2273,11 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
     for (const HloInstruction* input : ScopeInputs(analysis, side.scope)) {
       TF_RET_CHECK(
           iter_args_to_inputs.insert({iter_args.size(), input}).second);
+      TF_ASSIGN_OR_RETURN(SmallVector<Value> arguments,
+                          GetArguments(fn, *input));
       TF_ASSIGN_OR_RETURN(Value tensor_ptr,
                           emitter.EmitTensorPointer(
-                              input, side, GetArguments(fn, *input), pid_k,
+                              input, side, arguments, pid_k,
                               iter_args_to_boundary_checks[iter_args.size()]));
       iter_args.push_back(tensor_ptr);
     }
@@ -2212,10 +2301,11 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
     for (const HloInstruction* input :
          ScopeInputs(analysis, TritonFusionAnalysis::Scope::OUTPUT)) {
       std::vector<int32_t> boundary_checks;
-      TF_ASSIGN_OR_RETURN(
-          Value tensor_pointer,
-          emitter.EmitTensorPointer(input, out, GetArguments(fn, *input), pid_k,
-                                    boundary_checks));
+      TF_ASSIGN_OR_RETURN(SmallVector<Value> arguments,
+                          GetArguments(fn, *input));
+      TF_ASSIGN_OR_RETURN(Value tensor_pointer,
+                          emitter.EmitTensorPointer(input, out, arguments,
+                                                    pid_k, boundary_checks));
       TF_RET_CHECK(values_out
                        .insert({input, EmitParameterLoad(b, tensor_pointer,
                                                          boundary_checks)})
@@ -2322,9 +2412,8 @@ absl::Status EmitTiledSoftMax(mlir::OpBuilder builder,
       computation->root_instruction()->shape().rank(), 1);
   output_tile_sizes.back() = row_len;
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions,
-      analysis->ComputeTiledHloInstructions(output_tile_sizes));
+  TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
+                      analysis->ComputeTiledHloInstructions(output_tile_sizes));
 
   // block_size must be a power of two.
   int result_block_size = llvm::PowerOf2Ceil(row_len);
@@ -2372,11 +2461,11 @@ absl::Status EmitTiledSoftMax(mlir::OpBuilder builder,
   absl::flat_hash_map<const TiledHloInstruction*, Value> values_out;
   TF_ASSIGN_OR_RETURN(
       Value result,
-      EmitTiledScope(b, libdevice_path, device_info, tiled_hlo_instructions,
+      EmitTiledScope(b, libdevice_path, device_info, tiled_hlo_computation,
                      emit_param_load, values_out));
 
   Value ptr_offset =
-      ComputeBasePtrOffset(b, pid, *tiled_hlo_instructions.back());
+      ComputeBasePtrOffset(b, pid, *tiled_hlo_computation.GetRoot());
 
   Value store_tensor = b.create<mt::MakeTensorPtrOp>(
       /*base=*/AddPtr(b, fn.getArgument(computation->num_parameters()),

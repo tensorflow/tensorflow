@@ -8,6 +8,7 @@ load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
     "tf_exec_properties",
+    "tf_gpu_tests_tags",
 )
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
@@ -21,8 +22,6 @@ load(
 def xla_py_proto_library(**_kwargs):
     # Note: we don't currently define a proto library target for Python in OSS.
     pass
-
-ORC_JIT_MEMORY_MAPPER_TARGETS = []
 
 def xla_py_test_deps():
     return []
@@ -71,7 +70,11 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
 def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):
     native.cc_binary(deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS, copts = copts, **kwargs)
 
-def xla_cc_test(name, deps = [], **kwargs):
+def xla_cc_test(name, deps = [], use_gpu = False, **kwargs):
+    # Need to do it this way so that `tf_exec_properties` can read tags.
+    _tags = kwargs.get("tags", [])
+    kwargs["tags"] = _tags + tf_gpu_tests_tags() if use_gpu else _tags
+
     native.cc_test(
         name = name,
         deps = deps + _XLA_SHARED_OBJECT_SENSITIVE_DEPS,
@@ -79,20 +82,15 @@ def xla_cc_test(name, deps = [], **kwargs):
         **kwargs
     )
 
-def auto_sharding_deps():
-    return [Label("//xla/hlo/experimental/auto_sharding:auto_sharding_impl")]
-
-def auto_sharding_solver_deps():
-    return [Label("//xla/hlo/experimental/auto_sharding:auto_sharding_solver_impl")]
-
-def xla_export_hlo_deps():
-    return []
-
 def xla_nvml_deps():
     return ["@local_config_cuda//cuda:nvml_headers"]
 
 def xla_cub_deps():
     return ["@local_config_cuda//cuda:cub_headers"]
 
-def xla_symbol_repository_deps():
+def xla_internal(targets, otherwise = []):
+    _ = targets  # buildifier: disable=unused-variable
+    return otherwise
+
+def tests_build_defs_bzl_deps():
     return []

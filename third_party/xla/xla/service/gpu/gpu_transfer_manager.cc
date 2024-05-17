@@ -102,8 +102,8 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
   DCHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
 
-  TF_ASSIGN_OR_RETURN(auto compiler,
-                      Compiler::GetForPlatform(stream->parent()->platform()));
+  TF_ASSIGN_OR_RETURN(
+      auto compiler, Compiler::GetForPlatform(stream->parent()->GetPlatform()));
   auto shape_size_fn = compiler->ShapeSizeBytesFunction();
 
   // First, figure out which parts of `device_shape` are dynamic and where the
@@ -318,10 +318,7 @@ GpuTransferManager::GetOrCreateStagingBuffer(se::StreamExecutor* executor) {
   TF_ASSIGN_OR_RETURN(auto staging_buffer,
                       executor->HostMemoryAllocate(kStagingBufferSize));
 
-  auto transfer_completed = std::make_unique<se::Event>(executor);
-  if (!transfer_completed->Init()) {
-    return absl::InternalError("Failed to initialize transfer completed event");
-  }
+  TF_ASSIGN_OR_RETURN(auto transfer_completed, executor->CreateEvent());
 
   auto emplaced = staging_buffers_.try_emplace(
       executor, std::move(staging_buffer), std::move(transfer_completed));

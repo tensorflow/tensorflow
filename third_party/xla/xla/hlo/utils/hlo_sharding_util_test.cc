@@ -179,6 +179,18 @@ TEST(HloShardingUtilTest, ReshapeShardingTiledSplit2) {
   EXPECT_EQ(result.value(), output_sharding);
 }
 
+TEST(HloShardingUtilTest, ReshapeShardingTiledSplit3) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {36});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {6, 6});
+  HloSharding input_sharding = HloSharding::IotaTile({4});
+  HloSharding output_sharding =
+      HloSharding::PartialTile(TileAssignment({2, 1, 2}));
+  std::optional<HloSharding> result =
+      ReshapeSharding(input_shape, output_shape, input_sharding);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result.value(), output_sharding);
+}
+
 TEST(HloShardingUtilTest, ReshapeShardingTiledSplitThenMerge) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {16, 4, 7});
   Shape output_shape = ShapeUtil::MakeShape(F32, {4, 16, 7});
@@ -515,6 +527,17 @@ TEST(HloShardingUtilTest,
   HloSharding result = PropagateShardingThroughReshape(
       input_shape, output_shape, input_sharding);
   EXPECT_EQ(result, output_sharding);
+}
+
+TEST(HloShardingUtilTest, MergeManualSubgroupSharding) {
+  TileAssignment tile_assignment({16, 4});
+  std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL,
+                                                  OpSharding::REPLICATED};
+  // Subgroup sharding
+  //  {devices=[16,4]<=[64] last_tile_dims={manual, replicated}}
+  HloSharding dst = HloSharding::Subgroup(tile_assignment, subgroup_types);
+  HloSharding to_merge = dst;
+  EXPECT_FALSE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
 }
 
 TEST(HloShardingUtilTest, GetManualSubgroupSharding_ManualOnly) {

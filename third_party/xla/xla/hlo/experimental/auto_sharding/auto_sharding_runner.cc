@@ -28,7 +28,7 @@ namespace xla {
 namespace spmd {
 namespace {
 
-Status RunAutoShardingPassFromFile(const std::string& file_name) {
+absl::Status RunAutoShardingPassFromFile(const std::string& file_name) {
   std::string hlo_text;
   TF_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), file_name, &hlo_text));

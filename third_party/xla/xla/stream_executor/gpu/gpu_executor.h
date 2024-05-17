@@ -229,8 +229,6 @@ class GpuExecutor : public StreamExecutor {
   bool HostCallback(Stream* stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
-  bool AllocateStream(Stream* stream) override;
-
   void DeallocateStream(Stream* stream) override;
 
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;
@@ -256,11 +254,8 @@ class GpuExecutor : public StreamExecutor {
 
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
-  // Search for the symbol in the given module and returns a device pointer and
-  // size. Returns false if symbol does not exist. 'module_handle' must not
-  // be null.
-  bool GetSymbol(const std::string& symbol_name, ModuleHandle module_handle,
-                 void** mem, size_t* bytes) override;
+  absl::StatusOr<DeviceMemoryBase> GetSymbol(
+      const std::string& symbol_name, ModuleHandle module_handle) override;
 
   absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
@@ -278,7 +273,9 @@ class GpuExecutor : public StreamExecutor {
 
   std::unique_ptr<EventInterface> CreateEventImplementation() override;
 
-  std::unique_ptr<StreamInterface> GetStreamImplementation() override;
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority =
+          std::nullopt) override;
 
   absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() override;
 
@@ -319,6 +316,28 @@ class GpuExecutor : public StreamExecutor {
   GpuDeviceHandle device() const { return device_; }
   int cc_major() const { return cc_major_; }
   int cc_minor() const { return cc_minor_; }
+
+  absl::StatusOr<std::vector<ApiTrace>> ExtractApiTrace() override {
+    absl::MutexLock lock(&logger_mu_);
+    return std::move(argument_logs_);
+  }
+
+  absl::Status RecordApiTrace(ApiTrace call) override {
+    absl::MutexLock lock(&logger_mu_);
+    if (std::holds_alternative<GemmCallTrace>(call) &&
+        (argument_logging_mode_ & kLogGemm)) {
+      argument_logs_.push_back(call);
+    }
+    return absl::OkStatus();
+  }
+
+  bool SetArgumentLoggingMode(uint64_t mode) override {
+    absl::MutexLock lock(&logger_mu_);
+    argument_logging_mode_ = mode;
+    return true;
+  }
+
+  uint64_t GetArgumentLoggingMode() const { return argument_logging_mode_; }
 
  private:
   // Host callback landing routine invoked by CUDA.
@@ -439,6 +458,12 @@ class GpuExecutor : public StreamExecutor {
   // Memoized BLAS support object -- we only want to create this once when asked
   // for a BLAS interface.
   std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);
+
+  absl::Mutex logger_mu_;
+
+  mutable std::vector<ApiTrace> argument_logs_ ABSL_GUARDED_BY(logger_mu_);
+
+  uint64_t argument_logging_mode_ = 0;
 
   GpuExecutor(const GpuExecutor&) = delete;
   void operator=(const GpuExecutor&) = delete;

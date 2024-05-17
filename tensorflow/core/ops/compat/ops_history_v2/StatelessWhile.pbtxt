@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "StatelessWhile"
   input_arg {
     name: "input"

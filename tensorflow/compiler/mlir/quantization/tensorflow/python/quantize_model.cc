@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/weight_only_ptq.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
@@ -80,10 +81,12 @@ using ::mlir::quant::stablehlo::PostCalibrationComponent;
 using ::mlir::quant::stablehlo::PreCalibrationComponent;
 using ::mlir::quant::stablehlo::RunCalibrationPasses;
 using ::mlir::quant::stablehlo::UpdateFunctionAliases;
+using ::mlir::quant::stablehlo::WeightOnlyPtqComponent;
 using ::stablehlo::quantization::AddCalibrationStatistics;
 using ::stablehlo::quantization::ChangeToQuantizedFilename;
 using ::stablehlo::quantization::DebuggerConfig;
 using ::stablehlo::quantization::ExpandPresets;
+using ::stablehlo::quantization::IsCalibrationRequired;
 using ::stablehlo::quantization::PopulateDefaults;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::CreateTmpDir;
@@ -163,7 +166,10 @@ absl::StatusOr<ExportedModel> ExportCalibrationModel(
   mlir::OwningOpRef<mlir::ModuleOp> cloned_module_ref(module_op.clone());
 
   TF_RETURN_IF_ERROR(
-      RunCalibrationPasses(*cloned_module_ref, *context, calibration_data_dir));
+      RunCalibrationPasses(*cloned_module_ref, *context, calibration_data_dir,
+                           quantization_options.calibration_options()
+                               .force_regenerate_calibration_data()));
+  if (!IsCalibrationRequired(*cloned_module_ref)) return ExportedModel();
 
   absl::StatusOr<ExportedModel> exported_model = ModuleOpToExportedModel(
       *cloned_module_ref, context, kTfQuantPtqPreCalibrationStepName,
@@ -215,6 +221,20 @@ QuantizationConfig GetQuantizationConfigForStaticRangePtq(
   quantization_config.mutable_static_range_ptq_preset();
   *quantization_config.mutable_calibration_options() =
       quantization_options.calibration_options();
+
+  return ExpandPresets(PopulateDefaults(quantization_config));
+}
+
+QuantizationConfig GetQuantizationConfigForWeightOnlyPtq(
+    const QuantizationOptions &quantization_options) {
+  QuantizationConfig quantization_config{};
+  quantization_config.mutable_weight_only_ptq_preset();
+  // When targeting server TPUs quantized types should be unpacked into
+  // integer ops.
+  quantization_config.mutable_pipeline_config()->set_unpack_quantized_types(
+      true);
+  *quantization_config.mutable_debugger_config() =
+      quantization_options.debugger_config();
 
   return ExpandPresets(PopulateDefaults(quantization_config));
 }
@@ -381,6 +401,7 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
         "Failed to get function alias: ", function_aliases.status().message()));
   }
 
+  const bool is_stablehlo = quantization_options.op_set() == OpSet::STABLEHLO;
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
       ImportAndPreprocessSavedModel(
           saved_model_path,
@@ -388,7 +409,8 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
            quantization_options.signature_keys().end()},
           {quantization_options.tags().begin(),
            quantization_options.tags().end()},
-          context.get(), /*is_inliner_run=*/true, /*run_tf_to_stablehlo=*/false,
+          context.get(), /*is_inliner_run=*/true,
+          /*run_tf_to_stablehlo=*/is_stablehlo,
           /*deserialize_xla_call_module=*/false, *function_aliases);
   if (!module.status().ok()) {
     return absl::InternalError(
@@ -397,14 +419,24 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
   }
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  TF_RETURN_IF_ERROR(RunPasses(
-      kTfQuantWeightOnlyStepName,
-      /*add_passes_func=*/
-      [&quantization_options](mlir::PassManager &pm) {
-        AddQuantizeWeightOnlyPasses(pm, quantization_options,
-                                    kTfQuantWeightOnlyStepName);
-      },
-      *context, *module_ref));
+  // Use StableHLO Quantizer option if opset is specified.
+  if (is_stablehlo) {
+    const QuantizationConfig quantization_config =
+        GetQuantizationConfigForWeightOnlyPtq(quantization_options);
+
+    WeightOnlyPtqComponent weight_only_ptq_component(context.get());
+    TF_ASSIGN_OR_RETURN(*module_ref, weight_only_ptq_component.Run(
+                                         *module_ref, quantization_config));
+  } else {
+    TF_RETURN_IF_ERROR(RunPasses(
+        kTfQuantWeightOnlyStepName,
+        /*add_passes_func=*/
+        [&quantization_options](mlir::PassManager &pm) {
+          AddQuantizeWeightOnlyPasses(pm, quantization_options,
+                                      kTfQuantWeightOnlyStepName);
+        },
+        *context, *module_ref));
+  }
 
   return ModuleOpToExportedModel(
       *module_ref, context.get(), kTfQuantWeightOnlyStepName,
@@ -457,16 +489,18 @@ absl::StatusOr<ExportedModel> QuantizeStaticRangePtq(
                           *function_aliases, calibration_data_dir));
 
   // Save and run the calibration model.
-  TF_ASSIGN_OR_RETURN(std::string precalibrated_saved_model_dir,
-                      CreateTmpDir());
-  py_function_library.SaveExportedModel(
-      precalibrated_saved_model_dir, calibration_exported_model,
-      saved_model_path, tags, signature_def_map);
+  if (calibration_exported_model.has_graph_def()) {
+    TF_ASSIGN_OR_RETURN(std::string calibration_saved_model_dir,
+                        CreateTmpDir());
+    py_function_library.SaveExportedModel(
+        calibration_saved_model_dir, calibration_exported_model,
+        saved_model_path, tags, signature_def_map);
 
-  py_function_library.RunCalibration(
-      precalibrated_saved_model_dir, signature_keys, tags,
-      quantization_options.force_graph_mode_calibration(),
-      representative_dataset_file_map_serialized);
+    py_function_library.RunCalibration(
+        calibration_saved_model_dir, signature_keys, tags,
+        quantization_options.force_graph_mode_calibration(),
+        representative_dataset_file_map_serialized);
+  }
 
   if (absl::Status status = AddCalibrationStatistics(
           *module_ref, calibration_data_dir,

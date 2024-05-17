@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TensorArray"
   input_arg {
     name: "size"

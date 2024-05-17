@@ -114,11 +114,12 @@ class HloPassPipeline : public HloPassInterface {
   // `execution_threads`. Empty `execution_threads` means all execution threads
   // are included. HloT can be either HloModule or HloModuleGroup.
   template <typename HloT>
-  Status RunInvariantCheckers(HloT* hlo, absl::string_view after_pass_name) {
+  absl::Status RunInvariantCheckers(HloT* hlo,
+                                    absl::string_view after_pass_name) {
     return RunInvariantCheckers(hlo, after_pass_name, /*execution_threads=*/{});
   }
   template <typename HloT>
-  Status RunInvariantCheckers(
+  absl::Status RunInvariantCheckers(
       HloT* hlo, absl::string_view after_pass_name,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 

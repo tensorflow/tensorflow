@@ -1,20 +1,20 @@
-// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="is_amd_gpu=false gpu_arch=6.0" \
 // RUN: | FileCheck %s
 
-// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="is_amd_gpu=false gpu_arch=7.0" \
 // RUN: | FileCheck %s --check-prefix=CHECK-VOLTA
 
-// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="is_amd_gpu=false gpu_arch=8.0" \
 // RUN: | FileCheck %s --check-prefix=CHECK-AMPERE
 
-// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="is_amd_gpu=true gpu_arch=gfx908:sramecc+:xnack" \
 // RUN: | FileCheck %s --check-prefix=CHECK-GFX908-MI100
 
-// RUN: mlir_fusions_opt %s -split-input-file \
+// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="is_amd_gpu=true gpu_arch=gfx90a:sramecc+:xnack" \
 // RUN: | FileCheck %s --check-prefix=CHECK-GFX90A-MI200
 
@@ -163,8 +163,8 @@ module {
     return %0 : f32
   }
 }
-// CHECK: llvm.mlir.global private constant @global_cst_0(dense<[
-// CHECK-SAME: [1.000000e+00], [2.000000e+00]]> : tensor<2x1xf32>) {addr_space = 0 : i32} : !llvm.array<2 x f32>
+// CHECK: llvm.mlir.global private constant @global_cst_0(dense<
+// CHECK-SAME: [1.000000e+00, 2.000000e+00]> : tensor<2xf32>) {addr_space = 0 : i32} : !llvm.array<2 x f32>
 // CHECK: @extract_from_constant
 // CHECK: %[[ADDR_OF:.*]] = llvm.mlir.addressof @global_cst_0 : !llvm.ptr
 // CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ADDR_OF]][%{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, f32
@@ -643,3 +643,54 @@ module {
 // CHECK:   }
 // CHECK: }
 // CHECK: return
+
+// -----
+
+module {
+  func.func @atomic_rmw_c32(%in: tensor<2x4xcomplex<f32>>, %i: index, %j: index)
+      -> (tensor<2x4xcomplex<f32>>) {
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xcomplex<f32>> {
+      ^bb0(%current : complex<f32>):
+        %a = complex.add %current, %current : complex<f32>
+        xla_gpu.yield %a : complex<f32>
+    }
+    return %ret : tensor<2x4xcomplex<f32>>
+  }
+}
+
+// CHECK-LABEL: @atomic_rmw_c32
+
+// CHECK: scf.while (%[[ITER_ARG:.*]] = %{{.*}}) : (i64) -> i64
+// CHECK: %[[TMP:.*]] = llvm.alloca
+// CHECK: llvm.store %[[ITER_ARG]], %[[TMP]]
+// CHECK: %[[LD:.*]] = llvm.load %[[TMP]] : {{.*}} -> !llvm.struct<(f32, f32)>
+// CHECK: builtin.unrealized_conversion_cast %[[LD]] : {{.*}} to complex<f32>
+
+// -----
+
+module {
+  func.func @unused_index_switch_results(%i: index) -> index {
+    %ret, %ret2 = scf.index_switch %i -> tensor<2x4xi32>, tensor<3xf32>
+    case 0 {
+      %x, %y = "dummy.op1"() : () -> (tensor<2x4xi32>, tensor<3xf32>)
+      scf.yield %x, %y : tensor<2x4xi32>, tensor<3xf32>
+    }
+    default {
+      %x, %y = "dummy.op2"() : () -> (tensor<2x4xi32>, tensor<3xf32>)
+      scf.yield %x, %y : tensor<2x4xi32>, tensor<3xf32>
+    }
+    return %i : index
+  }
+}
+
+// CHECK-LABEL: func.func @unused_index_switch_results
+// CHECK-SAME:      (%[[I:.*]]: index)
+// CHECK-NEXT:    scf.index_switch %[[I]]
+// CHECK-NEXT:    case 0 {
+// CHECK-NEXT:      "dummy.op1"
+// CHECK-NEXT:      scf.yield
+// CHECK-NEXT:    }
+// CHECK-NEXT:    default {
+// CHECK-NEXT:      "dummy.op2"
+// CHECK-NEXT:    }
+// CHECK-NEXT:    return %[[I]] : index

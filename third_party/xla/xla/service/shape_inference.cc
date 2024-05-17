@@ -78,7 +78,7 @@ bool CompatibleDimensionSizes(int64_t size_a, int64_t size_b) {
          size_a == size_b;
 }
 
-Status ExpectArray(const Shape& shape, absl::string_view op_type) {
+absl::Status ExpectArray(const Shape& shape, absl::string_view op_type) {
   if (!shape.IsArray()) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
                            std::string(op_type), ShapeUtil::HumanString(shape));
@@ -86,10 +86,10 @@ Status ExpectArray(const Shape& shape, absl::string_view op_type) {
   return OkStatus();
 }
 
-Status VerifyReducerShape(const ProgramShape& reducer_shape,
-                          absl::Span<const Shape* const> init_value_shapes,
-                          absl::Span<const PrimitiveType> input_element_types,
-                          int64_t inputs) {
+absl::Status VerifyReducerShape(
+    const ProgramShape& reducer_shape,
+    absl::Span<const Shape* const> init_value_shapes,
+    absl::Span<const PrimitiveType> input_element_types, int64_t inputs) {
   if (reducer_shape.parameters_size() != inputs * 2) {
     return InvalidArgument(
         "Reduction function must take %d parameters, but "
@@ -791,7 +791,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 
 namespace {
 
-Status ValidateDotDimensionNumbers(
+absl::Status ValidateDotDimensionNumbers(
     const Shape& lhs, const Shape& rhs,
     const DotDimensionNumbers& dimension_numbers) {
   // Check that dimension numbers are in range.
@@ -850,7 +850,7 @@ Status ValidateDotDimensionNumbers(
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of dot"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of dot"));
 
-  auto fail = [lhs, rhs](const std::string& addendum) -> Status {
+  auto fail = [lhs, rhs](const std::string& addendum) -> absl::Status {
     std::string message =
         StrFormat("Cannot infer shape for dot operation: %s <dot> %s.",
                   ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs));
@@ -2492,6 +2492,8 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     const Shape& shape, int64_t split_dimension, int64_t concat_dimension,
     int64_t split_count) {
   TF_RET_CHECK(split_count > 0);
+  TF_RET_CHECK(!shape.is_bounded_dynamic())
+      << "AllToAll does not support bounded dynamic shapes";
   if (split_dimension >= shape.rank() || split_dimension < 0) {
     return InvalidArgument(
         "AllToAll split_dimension %d is out-of-bounds in shape %s.",
@@ -2502,25 +2504,41 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         "AllToAll concat_dimension %d is out-of-bounds in shape %s.",
         concat_dimension, ShapeUtil::HumanString(shape));
   }
-  if (shape.dimensions(split_dimension) % split_count != 0) {
+  int64_t split_dimension_size = shape.dimensions(split_dimension);
+  if (!IsUnboundedDynamicSize(split_dimension_size) &&
+      split_dimension_size % split_count != 0) {
     return InvalidArgument(
         "AllToAll split dimension size %d must be dividable by split_count "
         "%d.",
-        shape.dimensions(split_dimension), split_count);
+        split_dimension_size, split_count);
   }
   std::vector<int64_t> new_dimensions(shape.dimensions().begin(),
                                       shape.dimensions().end());
-  new_dimensions[split_dimension] /= split_count;
-  new_dimensions[concat_dimension] *= split_count;
-  return ShapeUtil::MakeShape(shape.element_type(), new_dimensions);
+  new_dimensions[split_dimension] =
+      IsUnboundedDynamicSize(new_dimensions[split_dimension])
+          ? Shape::kUnboundedSize
+          : new_dimensions[split_dimension] / split_count;
+  new_dimensions[concat_dimension] =
+      IsUnboundedDynamicSize(new_dimensions[concat_dimension])
+          ? Shape::kUnboundedSize
+          : new_dimensions[concat_dimension] * split_count;
+
+  const std::vector<bool> dynamic_dimensions(shape.dynamic_dimensions().begin(),
+                                             shape.dynamic_dimensions().end());
+  return ShapeUtil::MakeShape(shape.element_type(), new_dimensions,
+                              dynamic_dimensions);
 }
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferAllToAllTupleShape(
     absl::Span<const Shape* const> operand_shapes) {
-  // An Alltoall HLO instruction receives N operands (with the same shape) and
+  // An AllToAll HLO instruction receives N operands (with the same shape) and
   // returns a tuple that contains N array shapes.
   TF_RET_CHECK(!operand_shapes.empty());
   for (int i = 0; i < operand_shapes.size(); i++) {
+    if (operand_shapes[i]->is_unbounded_dynamic()) {
+      return InvalidArgument(
+          "AllToAllTuple does not support unbounded dynamic shapes");
+    }
     if (!Shape::Equal().IgnoreMemorySpaceInLayout()(*operand_shapes[0],
                                                     *operand_shapes[i])) {
       return InvalidArgument(
@@ -3766,7 +3784,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   return to_apply.result();
 }
 
-static Status ValidateGatherDimensionNumbers(
+static absl::Status ValidateGatherDimensionNumbers(
     const Shape& input_shape, absl::Span<const int64_t> start_indices_shape,
     const GatherDimensionNumbers& dim_numbers) {
   if (!absl::c_is_sorted(dim_numbers.offset_dims())) {
@@ -4002,7 +4020,7 @@ static Status ValidateGatherDimensionNumbers(
 
 namespace {
 
-Status ValidateScatterDimensionNumbers(
+absl::Status ValidateScatterDimensionNumbers(
     const Shape& operand_shape, absl::Span<const int64_t> scatter_indices_shape,
     const Shape& updates_shape, const ScatterDimensionNumbers& dim_numbers) {
   // Validate update_window_dims in ScatterDimensionNumbers.

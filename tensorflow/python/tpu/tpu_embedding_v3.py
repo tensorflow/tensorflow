@@ -70,6 +70,18 @@ FeatureConfig = tpu_embedding_v2_utils.TableConfig
 QuantizationConfig = tpu_embedding_v2_utils.QuantizationConfig
 
 
+@tf_export("tpu.experimental.embedding.SparseCoreEmbeddingConfig")
+@dataclasses.dataclass(frozen=True)
+class SparseCoreEmbeddingConfig:
+  """Config for sparsecore embedding."""
+
+  disable_table_stacking: bool = True
+  max_ids_per_chip_per_sample: int = 64
+  max_ids_per_table: Optional[Dict[str, int]] = None
+  max_unique_ids_per_table: Optional[Dict[str, int]] = None
+  allow_id_dropping: bool = False
+
+
 class EmbeddingPipeliningContext(control_flow_ops.ControlFlowContext):
   """Sets the _embedding_pipelining attribute on all ops created in the scope."""
 
@@ -300,17 +312,24 @@ def _stack_tables_with_same_table_dim_and_optimizer(
     flat_features: Sequence[Tuple[Any, FeatureConfig]],
     num_partitions: int,
     num_sc_per_partition: int,
+    sparse_core_embedding_config: Optional[SparseCoreEmbeddingConfig] = None,
 ) -> TableStacking:
   """Stack tables with the same table dim and optimizer."""
   logging.info("Number of tables before stacking is %d", len(table_config))
+  disable_table_stacking = False
+  if sparse_core_embedding_config:
+    disable_table_stacking = sparse_core_embedding_config.disable_table_stacking
+
   s = TableStacking()
+
   # Round the table sizes to be divisible by the number of SCs.
   num_shards = num_partitions * num_sc_per_partition * 8
 
   s.table_to_padding_columns = {}
   s.table_to_padding_rows = {}
-
+  table_name_to_table = {}
   for table in table_config:
+    table_name_to_table[table.name] = table
     extra_rows = (
         num_shards - (table.vocabulary_size % num_shards)
     ) % num_shards
@@ -344,49 +363,54 @@ def _stack_tables_with_same_table_dim_and_optimizer(
     table.vocabulary_size += extra_rows
     table.dim += extra_cols
 
-  table_names = []
-  table_widths = []
-  table_heights = []
-  table_num_samples = []
-  table_groups = []
+  if disable_table_stacking:
+    logging.warn("Table stacking is disabled.")
+    table_stacks = [[table] for table in table_config]
+  else:
+    table_names = []
+    table_widths = []
+    table_heights = []
+    table_num_samples = []
+    table_groups = []
 
-  table_data_to_group = {}
-  table_to_num_samples = {table.name: 0 for table in table_config}
-  table_name_to_table = {}
-  for _, feature in flat_features:
-    table_to_num_samples[feature.table.name] += functools.reduce(
-        operator.mul, feature.output_shape
+    table_data_to_group = {}
+    table_to_num_samples = {table.name: 0 for table in table_config}
+    for _, feature in flat_features:
+      table_to_num_samples[feature.table.name] += functools.reduce(
+          operator.mul, feature.output_shape
+      )
+
+    for table in table_config:
+      key = (
+          table.dim,
+          table.optimizer,
+          repr(table.quantization_config)
+          if table.quantization_config
+          else None,
+      )
+      if key not in table_data_to_group:
+        table_data_to_group[key] = len(table_data_to_group)
+      table_groups.append(table_data_to_group[key])
+      table_names.append(table.name)
+      table_widths.append(table.dim)
+      table_heights.append(table.vocabulary_size)
+      table_num_samples.append(table_to_num_samples[table.name])
+
+    table_stacks_by_name = _pywrap_tpu_embedding.stack_tables(
+        table_heights,
+        table_widths,
+        table_num_samples,
+        table_groups,
+        table_names,
+        num_partitions,
     )
 
-  for table in table_config:
-    table_name_to_table[table.name] = table
-    key = (
-        table.dim,
-        table.optimizer,
-        repr(table.quantization_config) if table.quantization_config else None,
-    )
-    if key not in table_data_to_group:
-      table_data_to_group[key] = len(table_data_to_group)
-    table_groups.append(table_data_to_group[key])
-    table_names.append(table.name)
-    table_widths.append(table.dim)
-    table_heights.append(table.vocabulary_size)
-    table_num_samples.append(table_to_num_samples[table.name])
+    table_stacks = [
+        [table_name_to_table[table_name] for table_name in stack_by_name]
+        for stack_by_name in table_stacks_by_name
+    ]
 
-  table_stacks_by_name = _pywrap_tpu_embedding.stack_tables(
-      table_heights,
-      table_widths,
-      table_num_samples,
-      table_groups,
-      table_names,
-      num_partitions,
-  )
-
-  table_stacks = [
-      [table_name_to_table[table_name] for table_name in stack_by_name]
-      for stack_by_name in table_stacks_by_name
-  ]
-
+  s.table_name_to_table = table_name_to_table
   # Store the mapping between stacked table names to the actual tableConfigs.
   s.stacked_table_to_tables = {}
   # Store the mapping between table to name of the stacked table which
@@ -437,11 +461,15 @@ def _stack_tables_with_same_table_dim_and_optimizer(
 class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
   """The TPUEmbedding mid level API running on TPU with sparse core accelerator."""
 
+  DEFAULT_MAX_IDS_PER_TABLE = 256
+  DEFAULT_MAX_UNIQUE_IDS_PER_TABLE = 256
+
   def __init__(
       self,
       feature_config: Union[tpu_embedding_v2_utils.FeatureConfig, Iterable],  # pylint:disable=g-bare-generic
       optimizer: Optional[tpu_embedding_v2_utils._Optimizer] = None,  # pylint:disable=protected-access
       pipeline_execution_with_tensor_core: bool = False,
+      sparse_core_embedding_config: Optional[SparseCoreEmbeddingConfig] = None,
   ):
     """Creates the TPUEmbeddingV2 mid level API object.
 
@@ -457,6 +485,8 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       pipeline_execution_with_tensor_core: If True, the TPU embedding
         computations will overlap with the TensorCore computations (and hence
         will be one step old). Set to True for improved performance.
+      sparse_core_embedding_config: Configs for sparse core embedding including
+        settings for table stacking, input feature static buffer size etc.
 
     Raises:
       ValueError: If optimizer is not one of tf.tpu.experimental.embedding.(SGD,
@@ -475,6 +505,19 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           "TPUEmbeddingV2 should be created under TPUStrategy but found {}."
           .format(self._strategy)
       )
+
+    # TODO(pineapplejuice233): Remove this once weight decay is supported.
+    for table in self._table_config:
+      if (
+          table.optimizer.weight_decay_factor is not None
+          or table.optimizer.multiply_weight_decay_factor_by_learning_rate
+          is not None
+      ):
+        raise NotImplementedError(
+            "weight_decay_factor and"
+            " multiply_weight_decay_factor_by_learning_rate are not supported"
+            f" yet. But found in table {table.name} setting."
+        )
 
     self._num_sc_per_chip = (
         self._strategy.extended.tpu_hardware_feature.num_embedding_devices_per_chip
@@ -496,11 +539,21 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
         self._feature_config
     )
 
+    if sparse_core_embedding_config is None:
+      self._sparse_core_embedding_config = SparseCoreEmbeddingConfig()
+      logging.warning(
+          "SparseCoreEmbeddingConfig is not provided. Using default values %s",
+          self._sparse_core_embedding_config,
+      )
+    else:
+      self._sparse_core_embedding_config = sparse_core_embedding_config
+
     self._s = _stack_tables_with_same_table_dim_and_optimizer(
         self._table_config,
         self._flat_features,
         self._strategy.num_replicas_in_sync,
         self._num_sc_per_chip,
+        self._sparse_core_embedding_config,
     )
 
     self._table_name_to_table = self._s.table_name_to_table
@@ -514,18 +567,59 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
 
     # These hyperparameters will be provided by the FDO. Currently hardcode
     # here just for testing.
-    # TODO(pineapplejuice233): Remove these hyperparameters.
-    self.max_ids_per_chip_per_sample = 64
+    self.max_ids_per_chip_per_sample = (
+        self._sparse_core_embedding_config.max_ids_per_chip_per_sample
+    )
     self.max_minibatches_per_sc = 64
 
-    self._table_to_max_ids_per_sparse_core = {
-        table_name: 256 for table_name in self._stacked_table_to_tables
-    }
-    self._table_to_max_unique_ids_per_sparse_core = {
-        table_name: 256 for table_name in self._stacked_table_to_tables
-    }
+    self._table_to_max_ids_per_sparse_core = {}
+    self._table_to_max_unique_ids_per_sparse_core = {}
+
+    self._update_sparse_core_buffer_size_after_table_stacking()
 
     self._pipelining = pipeline_execution_with_tensor_core
+
+  def _update_sparse_core_buffer_size_after_table_stacking(self):
+    """Update the sparse core buffer size after table stacking."""
+    for table_name in self._stacked_table_to_tables:
+      if (
+          self._sparse_core_embedding_config.max_ids_per_table is None
+          or table_name
+          not in self._sparse_core_embedding_config.max_ids_per_table
+      ):
+        logging.warning(
+            "Table %s is not found in max_ids_per_table provided by"
+            " SparseCoreEmbeddingConfig. Using default value 256.",
+            table_name,
+        )
+        self._table_to_max_ids_per_sparse_core[table_name] = (
+            self.DEFAULT_MAX_IDS_PER_TABLE
+        )
+      else:
+        self._table_to_max_ids_per_sparse_core[table_name] = (
+            self._sparse_core_embedding_config.max_ids_per_table[table_name]
+        )
+      if (
+          self._sparse_core_embedding_config.max_unique_ids_per_table is None
+          or table_name
+          not in self._sparse_core_embedding_config.max_unique_ids_per_table
+      ):
+        logging.warning(
+            (
+                "Table %s is not found in max_unique_ids_per_table provided by"
+                " SparseCoreEmbeddingConfig. Using default value 256."
+            ),
+            table_name,
+        )
+        self._table_to_max_unique_ids_per_sparse_core[table_name] = (
+            self.DEFAULT_MAX_UNIQUE_IDS_PER_TABLE
+        )
+      else:
+        self._table_to_max_unique_ids_per_sparse_core[table_name] = (
+            self._sparse_core_embedding_config.max_unique_ids_per_table[
+                table_name
+            ]
+        )
 
   def _clone_feature_config(self, feature_config):
     old_to_new_table = {}
@@ -997,6 +1091,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       num_tpu_chips: int,
       num_sc_per_chip: int = 4,
       optimizer: Optional[tpu_embedding_v2_utils._Optimizer] = None,  # pylint:disable=protected-access
+      sparse_core_embedding_config: Optional[SparseCoreEmbeddingConfig] = None,
   ) -> Tuple[Any, Any]:
     """Computes the max_ids/unique ids settings from the input features."""
 
@@ -1011,7 +1106,11 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     flat_features = nest.flatten_with_joined_string_paths(feature_config)
 
     s = _stack_tables_with_same_table_dim_and_optimizer(
-        table_config, flat_features, num_tpu_chips, num_sc_per_chip
+        table_config,
+        flat_features,
+        num_tpu_chips,
+        num_sc_per_chip,
+        sparse_core_embedding_config,
     )
 
     flat_inputs = nest.flatten(features)

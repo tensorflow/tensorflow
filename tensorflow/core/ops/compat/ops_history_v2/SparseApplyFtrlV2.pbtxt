@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseApplyFtrlV2"
   input_arg {
     name: "var"

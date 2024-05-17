@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <fenv.h>  // NOLINT
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include "xla/client/xla_builder.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
 #include "xla/util.h"
@@ -305,96 +307,60 @@ using ExhaustiveBF16UnaryTest = Exhaustive32BitOrLessUnaryTest<BF16>;
   UNARY_TEST_BF16(test_name, __VA_ARGS__)
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Log, {
-  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
-  if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
-    error_spec_gen = +[](NativeT x) { return ErrorSpec{0.001, 0.001}; };
+  auto error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ != "Host" && platform_ != "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{.abs_err = 2e-4, .rel_err = eps};
+    };
   }
   Run(Log, std::log, error_spec_gen);
 })
-
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Log1p, {
-  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
-  if (platform_ != "Host" && platform_ != "CUDA" && ty_ == F32) {
-    error_spec_gen = +[](NativeT x) { return ErrorSpec{0.001, 0.001}; };
+  auto error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ != "Host" && platform_ != "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{.abs_err = 2e-4, .rel_err = eps};
+    };
   }
   Run(Log1p, std::log1p, error_spec_gen);
 })
-
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Exp, {
-  // When x < -105, the true value of exp(x) is smaller than the smallest F32,
-  // so exp(x) should return exactly 0. We want our implementation of exp to
-  // return exactly 0 as well, as not doing so implies either that our
-  // implementation of exp is not following the asymptotic behavior that exp(x)
-  // approaches 0 as x approaches -inf, or that our implementation is not
-  // approaching 0 fast enough.
-  ErrorSpecGen error_spec_gen = +[](NativeT x) {
-    if (x < static_cast<NativeT>(-105)) {
-      return ErrorSpec{0, 0};
-    }
-    return GetDefaultSpecGenerator()(x);
-  };
-
-  // Our CPU implementation of exp returns one incorrect value: says
-  // exp(88.7228394) = max-float, but the correct answer is inf.  We deem this
-  // acceptable and check for it explicitly so that we can be aware if anything
-  // changes.
-  if (platform_ == "Host") {
-    auto host_exp_with_overflow = +[](float f) {
-      if (f == 88.7228394f) {
-        return 3.40282347e+38f;
-      }
-      return std::exp(f);
+  auto error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ != "Host" && platform_ != "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      NativeT min = std::numeric_limits<NativeT>::min();
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{.abs_err = min, .rel_err = 75 * eps};
     };
-    Run(Exp, host_exp_with_overflow, error_spec_gen);
-  } else {
-    Run(Exp, std::exp, error_spec_gen);
   }
+  Run(Exp, std::exp, error_spec_gen);
 })
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Expm1, {
-  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
-  if (ty_ == F32) {
-    if (platform_ == "Host") {
-      error_spec_gen = +[](NativeT x) {
-        // We expect no worse than an error of 8 ULPs.
-        return ErrorSpec{
-            0.0, std::scalbn(8.0f, -std::numeric_limits<float>::digits)};
-      };
-    } else {
-      error_spec_gen = +[](NativeT x) { return ErrorSpec{0, 0.00015}; };
-    }
-  }
-
-  // Our CPU implementation of expm1 returns one incorrect value: says
-  // exp(88.7228394) = max-float, but the correct answer is inf.  We deem this
-  // acceptable and check for it explicitly so that we can be aware if anything
-  // changes.
-  if (platform_ == "Host") {
-    auto host_expm1_with_overflow = +[](float f) {
-      if (f == 88.7228394f) {
-        return 3.40282347e+38f;
-      }
-      return std::expm1(f);
+  auto error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ != "Host" && platform_ != "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      // FIXME(rmlarsen): Break into region around zero and everything else.
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{.abs_err = 5e-4, .rel_err = 200 * eps};
     };
-    Run(Expm1, host_expm1_with_overflow, error_spec_gen);
-  } else {
-    Run(Expm1, std::expm1, error_spec_gen);
   }
+  Run(Expm1, std::expm1, error_spec_gen);
 })
-
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Logistic, {
+  // FIXME(rmlarsen): Break into region around zero and everything else.
+  auto error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ != "Host" && platform_ != "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      float eps = std::numeric_limits<NativeT>::epsilon();
+      float atol = std::min(0.004f, 200 * eps);
+      return ErrorSpec{.abs_err = atol, .rel_err = 0};
+    };
+  }
   EvaluateOp fn = +[](float x) { return 1.0f / (1.0f + std::exp(-x)); };
-
-  Run(
-      Logistic, fn, +[](NativeT) {
-        // Notice that we use the same absolute and relative tolerance.
-        // Since Logistic(x) -> 0 for x -> -Inf, the relative error
-        // is actually enormous for x < -5, say.
-        // For example, Logistic(-13.8183346) = 1.9967556e-06 while the expected
-        // value is 9.97178972e-07.
-        float tol = 200.0f * std::numeric_limits<NativeT>::epsilon();
-        return ErrorSpec(tol, tol);
-      });
+  Run(Logistic, fn, error_spec_gen);
 })
 
 // It feels a little overkill to exhaustively test sqrt and pow(x, 0.5), but
@@ -402,127 +368,127 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Logistic, {
 // pow(x, 0.5), but this is not true for x == -inf.
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(PowOneHalf, {
   EvaluateOp fn = +[](float x) { return std::pow(x, 0.5f); };
-
   Run([](XlaOp x) { return Pow(x, ScalarLike(x, 0.5)); }, fn);
 })
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Rsqrt, {
-  Run(
-      Rsqrt, +[](float x) { return 1 / std::sqrt(x); });
+  Run(Rsqrt, +[](float x) { return 1 / std::sqrt(x); });
 })
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Sqrt, {
-  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
-  if (platform_ == "Host" || platform_ == "CUDA") {
-    error_spec_gen = +[](NativeT x) {
-      auto spec = GetDefaultSpecGenerator()(x);
-      spec.strict_signed_zeros = true;
-      return spec;
-    };
-  }
-
+  auto error_spec_gen = +[](NativeT x) {
+    auto spec = GetDefaultSpecGenerator()(x);
+    spec.strict_signed_zeros = true;
+    return spec;
+  };
   Run(Sqrt, std::sqrt, error_spec_gen);
 })
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Cbrt, {
-  if (platform_ == "Host" || platform_ == "CUDA") {
-    ErrorSpecGen error_spec_gen = +[](NativeT x) {
-      return ErrorSpec{0.01, 0.01};
-    };
-    Run(Cbrt, std::cbrt, error_spec_gen);
-  } else {
-    Run(Cbrt, std::cbrt);
-  }
+  auto error_spec_gen = +[](NativeT x) {
+    NativeT eps = std::numeric_limits<NativeT>::epsilon();
+    NativeT min = std::numeric_limits<NativeT>::min();
+    // Allow a small absollute error (e.g. 9e-16 for F32).
+    // This corresponds to a 0.5% relative error for the
+    // smallest normalized floating point values.
+    return ErrorSpec{.abs_err = std::cbrt(min) / 200, .rel_err = 10 * eps};
+  };
+  Run(Cbrt, std::cbrt, error_spec_gen);
 })
 
-// TODO(jlebar): Test trig functions over complex inputs.
-XLA_TEST_P(ExhaustiveF32UnaryTest, Acosh) {
-  // Error inherited from Log, which our implementation of Acosh uses.
-  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
+// Tests for inverse hyperbolic functions.
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Acosh, {
+  auto error_spec_gen = +[](NativeT x) {
+    NativeT eps = std::numeric_limits<NativeT>::epsilon();
+    return ErrorSpec{.abs_err = 1e-7, .rel_err = 50 * eps};
+  };
   if (platform_ != "Host" && platform_ != "CUDA") {
-    error_spec_gen = +[](float x) { return ErrorSpec{0.001, 0.001}; };
-  }
-
-  Run(Acosh, std::acosh, error_spec_gen);
-}
-
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
-XLA_TEST_P(ExhaustiveF16UnaryTest, Acosh) { Run(Acosh, std::acosh); }
-#endif
-
-#if defined(XLA_BACKEND_SUPPORTS_BFLOAT16)
-XLA_TEST_P(ExhaustiveBF16UnaryTest, Acosh) { Run(Acosh, std::acosh); }
-#endif
-
-// Tests for Asinh
-XLA_TEST_P(ExhaustiveF32UnaryTest, Asinh) {
-  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
-  if (platform_ != "Host" && platform_ != "CUDA") {
-    error_spec_gen = +[](float x) { return ErrorSpec{0.001, 0.001}; };
-  }
-
-  Run(Asinh, std::asinh, error_spec_gen);
-}
-
-#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
-XLA_TEST_P(ExhaustiveF16UnaryTest, Asinh) { Run(Asinh, std::asinh); }
-#endif
-
-#if defined(XLA_BACKEND_SUPPORTS_BFLOAT16)
-XLA_TEST_P(ExhaustiveBF16UnaryTest, Asinh) { Run(Asinh, std::asinh); }
-#endif
-
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(Atanh, { Run(Atanh, std::atanh); })
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(Acos, { Run(Acos, std::acos); })
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(Asin, { Run(Asin, std::asin); })
-
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(Cosh, {
-  // Our cosh implementation incorrectly overflows to inf for +/-89.4159851.
-  // The correct answer of 3.40281961e+38 (0x7f7fffec) is very close to
-  // max-float, so we deem this acceptable.
-  //
-  // This does not occur on CPU because we have an offsetting error in our
-  // implementation of exp.
-  float (*host_cosh)(float);
-  if (platform_ == "Host") {
-    host_cosh = &std::cosh;
-  } else {
-    host_cosh = +[](float x) {
-      if (std::abs(x) == 89.4159851f) {
-        return std::numeric_limits<float>::infinity();
-      }
-      return std::cosh(x);
+    error_spec_gen = +[](NativeT x) {
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{2e-4, eps};
     };
   }
-  Run(Cosh, host_cosh);
+  Run(Acosh, std::acosh, error_spec_gen);
+})
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Asinh, {
+  auto error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ != "Host" && platform_ != "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{.abs_err = 2e-4, .rel_err = eps};
+    };
+  }
+  Run(Asinh, std::asinh, error_spec_gen);
+})
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Atanh, {
+  auto error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ != "Host" && platform_ != "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{.abs_err = 1e-4, .rel_err = eps};
+    };
+  }
+  Run(Atanh, std::atanh, error_spec_gen);
+})
+
+// Tests for inverse trogonometric functions.
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Acos, {
+  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ != "Host") {
+    error_spec_gen = +[](NativeT x) {
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{.abs_err = 1e-6, .rel_err = 10 * eps};
+    };
+  }
+  Run(Acos, std::acos, error_spec_gen);
+})
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Asin, {
+  auto error_spec_gen = +[](NativeT x) {
+    NativeT min = std::numeric_limits<NativeT>::min();
+    NativeT eps = std::numeric_limits<NativeT>::epsilon();
+    return ErrorSpec{.abs_err = 2.0f * min, .rel_err = 10 * eps};
+  };
+  Run(Asin, std::asin, error_spec_gen);
+})
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Atan, {
+  auto error_spec_gen = +[](NativeT x) {
+    NativeT min = std::numeric_limits<NativeT>::min();
+    NativeT eps = std::numeric_limits<NativeT>::epsilon();
+    return ErrorSpec{.abs_err = 2.0f * min, .rel_err = 20 * eps};
+  };
+  Run(Atan, std::atan, error_spec_gen);
+})
+
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Cosh, {
+  auto error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ != "Host" && platform_ != "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      // Cosh is always greater than or equal to 1, so an absolute
+      // tolerance does not make sense.
+      return ErrorSpec{.abs_err = 0, .rel_err = 100 * eps};
+    };
+  }
+  Run(Cosh, std::cosh, error_spec_gen);
 })
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Sinh, {
-  // Our sinh implementation incorrectly overflows to +/-inf for +/-89.4159851.
-  // The correct answer of 3.40281961e+38 (0x7f7fffec) is very close to
-  // max-float, so we deem this acceptable.
-  //
-  // This does not occur on CPU because we have an offsetting error in our
-  // implementation of exp.
-  float (*host_sinh)(float);
-  if (platform_ == "Host") {
-    host_sinh = &std::sinh;
-  } else {
-    host_sinh = +[](float x) {
-      if (std::abs(x) == 89.4159851f) {
-        return std::copysign(std::numeric_limits<float>::infinity(), x);
-      }
-      return std::sinh(x);
+  auto error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ != "Host" && platform_ != "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{.abs_err = 1e-5, .rel_err = 100 * eps};
     };
   }
-  Run(Sinh, host_sinh);
+  Run(Sinh, std::sinh, error_spec_gen);
 })
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhBounderTestUpperBound, {
   SetBounder(8, 9);
   ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
-  if (platform_ == "CUDA" || platform_ == "CPU") {
-    error_spec_gen = +[](NativeT x) { return ErrorSpec{0, 0}; };
+  if (platform_ == "CUDA" || platform_ == "Host") {
+    error_spec_gen =
+        +[](NativeT x) { return ErrorSpec{.abs_err = 0, .rel_err = 0}; };
   }
   Run(
       Tanh, +[](float) { return 1.0f; }, error_spec_gen,
@@ -532,7 +498,7 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhBounderTestUpperBound, {
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhBounderTestLowerBound, {
   SetBounder(-9, -8);
   ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
-  if (platform_ == "CUDA" || platform_ == "CPU") {
+  if (platform_ == "CUDA" || platform_ == "Host") {
     error_spec_gen = +[](NativeT x) { return ErrorSpec{0, 0}; };
   }
   Run(
@@ -542,154 +508,104 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhBounderTestLowerBound, {
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhNormalTest, {
   ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
-  if (platform_ == "CUDA") {
+  if (platform_ != "CUDA" && platform_ != "Host") {
     error_spec_gen = +[](NativeT x) {
-      return x <= static_cast<NativeT>(-20.0) || x >= static_cast<NativeT>(20.0)
-                 ? ErrorSpec{0, 0}
-                 : GetDefaultSpecGenerator()(x);
+      // The range of tanh is [-1:1], so no point in giving a relative
+      // tolerance when we have an absolute one.
+      return ErrorSpec{.abs_err = 5e-4, .rel_err = 0};
     };
   }
   Run(Tanh, std::tanh, error_spec_gen);
 })
 
-UNARY_TEST_F32(Cos, {
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Cos, {
   Run(
       Cos, std::cos, +[](NativeT) {
         // This error spec corresponds to a maximum relative error of 2 ULP.
-        return ErrorSpec(0, 2 * std::numeric_limits<float>::epsilon());
+        NativeT eps = std::numeric_limits<NativeT>::epsilon();
+        return ErrorSpec{.abs_err = 0, .rel_err = 2 * eps};
       });
 })
 
-UNARY_TEST_F16(Cos, { Run(Cos, std::cos); })
-
-UNARY_TEST_BF16(Cos, { Run(Cos, std::cos); })
-
-UNARY_TEST_F32(Sin, {
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Sin, {
   Run(
       Sin, std::sin, +[](NativeT) {
         // This error spec corresponds to a maximum relative error of 2 ULP.
-        return ErrorSpec(0, 2 * std::numeric_limits<float>::epsilon());
+        NativeT eps = std::numeric_limits<NativeT>::epsilon();
+        return ErrorSpec{.abs_err = 0, .rel_err = 2 * eps};
       });
 })
 
-UNARY_TEST_F16(Sin, { Run(Sin, std::sin); })
-
-UNARY_TEST_BF16(Sin, { Run(Sin, std::sin); })
-
-UNARY_TEST_F32(Tan, {
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Tan, {
   Run(
       Tan, std::tan, +[](NativeT) {
         // This error spec corresponds to a maximum relative error of 4 ULP.
-        return ErrorSpec(0, 4 * std::numeric_limits<float>::epsilon());
+        NativeT eps = std::numeric_limits<NativeT>::epsilon();
+        return ErrorSpec{.abs_err = 0, .rel_err = 4 * eps};
       });
 })
 
-UNARY_TEST_F16(Tan, {
-  Run(
-      Tan, std::tan, +[](NativeT) {
-        // This error spec corresponds to a maximum relative error of 2 ULP.
-        return ErrorSpec(0, 2 * std::numeric_limits<Eigen::half>::epsilon());
-      });
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erf, { Run(Erf, std::erf); })
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erfc, {
+  auto error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ != "Host" && platform_ != "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      NativeT min = std::numeric_limits<NativeT>::min();
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{.abs_err = 2 * min, .rel_err = 100 * eps};
+    };
+  }
+  Run(Erfc, std::erfc, error_spec_gen);
 })
-
-UNARY_TEST_BF16(Tan, {
-  Run(
-      Tan, std::tan, +[](NativeT) {
-        // This error spec corresponds to a maximum relative error of 1 ULP.
-        return ErrorSpec(0, std::numeric_limits<Eigen::bfloat16>::epsilon());
-      });
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(ErfInv, {
+  auto error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ != "Host" && platform_ != "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{.abs_err = 5e-5, .rel_err = 2 * eps};
+    };
+  }
+  Run(ErfInv, HostErfInv, error_spec_gen);
 })
-
-// TODO(jlebar): Enable these.
-// UNARY_TEST_FLOAT_32_BITS_OR_LESS(Atan) { Run(Atan, std::atan); }
-// UNARY_TEST_FLOAT_32_BITS_OR_LESS(Atan2) { Run(Atan2, std::atan2); }
-
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erf, {
-  Run(
-      Erf, std::erf, +[](NativeT x) {
-        NativeT tol =
-            std::max(std::numeric_limits<NativeT>::epsilon(),
-                     NativeT(4 * std::numeric_limits<float>::epsilon()));
-        NativeT abs_tol = std::min(tol, NativeT(1 - std::abs(std::erf(x))));
-        return ErrorSpec(abs_tol, tol);
-      });
-})
-
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erfc, { Run(Erfc, std::erfc); })
-
-UNARY_TEST_F32(ErfInv, { Run(ErfInv, HostErfInv); })
-
-UNARY_TEST_F16(ErfInv, {
-  Run(ErfInv, HostErfInv, [](Eigen::half) { return ErrorSpec{0.002, 0.002}; });
-})
-
-UNARY_TEST_BF16(ErfInv, { Run(ErfInv, HostErfInv); })
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Digamma, {
-  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
+  auto error_spec_gen = +[](NativeT x) {
+    NativeT eps = std::numeric_limits<NativeT>::epsilon();
+    return ErrorSpec{2e-5, 10 * eps};
+  };
   if (platform_ != "Host" && platform_ != "CUDA") {
-    // TODO(b/123956399): This is a fairly high error, significantly higher than
-    // we see on CPU/GPU.
-    error_spec_gen = +[](NativeT) { return ErrorSpec{0.01, 0.01}; };
-  }
-
-  if (platform_ == "CUDA") {
-    // On GPU we get a wrong answer for the denormal inputs +/-2.93873588e-39
-    // (0x00200000 and 0x80200000).  These should return -/+inf (at least
-    // according to our reference implementation!) but XLA:GPU returns
-    // -/+3.40282326e+38 (0xff7ffffe and 0x7f7ffffe).
-    //
-    // I deem this an acceptable result, as XLA:GPU flushes denormals, and as
-    // the results we get here are very close to MAX_FLOAT.  We just hardcode
-    // these results, as this is better than ignoring these inputs altogether.
-    auto host_digamma_with_gpu_ftz_errors = +[](float x) {
-      if (BitCast<uint32_t>(x) == 0x00200000 ||
-          BitCast<uint32_t>(x) == 0x80200000) {
-        return std::copysign(std::numeric_limits<float>::max(), -x);
-      }
-      return HostDigamma(x);
+    error_spec_gen = +[](NativeT x) {
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{.abs_err = 2e-4, .rel_err = 10 * eps};
     };
-    Run(Digamma, host_digamma_with_gpu_ftz_errors, error_spec_gen);
-  } else {
-    Run(Digamma, HostDigamma, error_spec_gen);
   }
+  Run(Digamma, HostDigamma, error_spec_gen);
 })
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Lgamma, {
-  // Our implementation gets within 0.0001 rel error except for ~20 denormal
-  // inputs on GPU.  Anyway 0.001 rel error should be good enough for lgamma.
-  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
-  if (platform_ == "CUDA" && (ty_ == F32 || ty_ == F16)) {
+  auto error_spec_gen = +[](NativeT x) {
+    NativeT eps = std::numeric_limits<NativeT>::epsilon();
+    return ErrorSpec{.abs_err = 1e-5, .rel_err = 150 * eps};
+  };
+  if (platform_ == "CUDA") {
     error_spec_gen = +[](NativeT x) {
-      auto spec = GetDefaultSpecGenerator()(x);
-      spec.rel_err = 0.001;
-      return spec;
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{.abs_err = 1e-5, .rel_err = 5000 * eps};
+    };
+  } else if (platform_ != "Host") {
+    error_spec_gen = +[](NativeT x) {
+      NativeT eps = std::numeric_limits<NativeT>::epsilon();
+      return ErrorSpec{.abs_err = 5e-4, .rel_err = 5000 * eps};
     };
   }
-
-  float (*host_lgamma)(float) = std::lgamma;
-  if (platform_ != "Host" && platform_ != "CUDA") {
-    // TODO(b/123956399): This is a fairly high error, significantly higher than
-    // we see on CPU/GPU.
-    error_spec_gen = +[](NativeT) { return ErrorSpec{0.01, 0.01}; };
-
-    // Overflows to inf for input 4.08500343e+36 (0x7c44af8e).
-    if (ty_ == F32) {
-      host_lgamma = +[](float v) {
-        if (BitCast<uint32_t>(v) == 0x7c44af8e) {
-          return std::numeric_limits<float>::infinity();
-        }
-        return std::lgamma(v);
-      };
-    }
-  }
-  Run(Lgamma, host_lgamma, error_spec_gen);
+  Run(Lgamma, std::lgamma, error_spec_gen);
 })
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Round, { Run(Round, std::round); })
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(RoundNearestEven, {
-  ErrorSpecGen error_spec_gen = +[](NativeT) { return ErrorSpec{0.0, 0.0}; };
+  ErrorSpecGen error_spec_gen =
+      +[](NativeT) { return ErrorSpec{.abs_err = 0.0, .rel_err = 0.0}; };
   int curr_direction = fegetround();
   fesetround(FE_TONEAREST);
   Run(RoundNearestEven, std::nearbyint, error_spec_gen);

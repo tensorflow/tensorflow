@@ -130,21 +130,13 @@ class ShardingPropagation : public HloModulePass {
   // given domain. It will apply the sharding into the exit edges of the domain
   // and then rely on the rest of sharding propagation to ensure that the
   // intermediate nodes get the correct sharding.
-  static Status NormalizeDomain(const DomainMetadata::Domain& domain,
-                                const DomainMetadata* metadata);
+  static absl::Status NormalizeDomain(const DomainMetadata::Domain& domain,
+                                      const DomainMetadata* metadata);
 
   static std::optional<HloSharding> GetShardingFromUser(
       const HloInstruction& instruction, const HloInstruction& user,
       int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph,
       const CustomCallShardingHelper* sharding_helper);
-
-  // Canonicalizes entry_computation_layouts by calling
-  // module.layout_canonicalization_callback(), which gives canolicalized
-  // argument and result layouts based on current module. Currently used by
-  // PJRT which assigns layouts based on runtime shapes: see
-  // DetermineArgumentLayoutsFromCompileOptions() in
-  //     tensorflow/compiler/xla/pjrt/utils.cc
-  Status CanonicalizeLayouts(HloModule* module);
 
  private:
   bool InferShardingFromShardGroup(

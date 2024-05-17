@@ -33,11 +33,8 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/redzone_allocator.h"
-#endif
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {

@@ -41,7 +41,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   explicit ReductionRewriterVisitor(int64_t reduce_window_size)
       : reduce_window_size_(reduce_window_size) {}
 
-  Status HandleReduce(HloInstruction *hlo) override {
+  absl::Status HandleReduce(HloInstruction *hlo) override {
     HloInstruction *reduced_op = hlo->mutable_operand(0);
     HloInstruction *initial_value = hlo->mutable_operand(1);
     const Shape &input_shape = reduced_op->shape();

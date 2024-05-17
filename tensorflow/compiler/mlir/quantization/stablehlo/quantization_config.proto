@@ -77,8 +77,8 @@ message StaticRangePtqPreset {
   bool enable_full_int_quantization = 3;
 }
 
-// Applies int8 per-tensor weight-only post-training quantization for all
-// dot_general op.
+// Applies int8 per-channel weight-only post-training quantization for all
+// dot_general and convolution ops.
 message WeightOnlyPtqPreset {}
 
 // Metadata specific to the input TensorFlow SavedModel, which may be required
@@ -278,7 +278,7 @@ message DebuggerConfig {
 }
 
 // Defines various calibration options.
-// Next ID: 5
+// Next ID: 6
 message CalibrationOptions {
   // Configurations for calibration methods.
   // Next ID: 7
@@ -332,13 +332,18 @@ message CalibrationOptions {
   // representative dataset used to calibrate a function.
   repeated RepresentativeDatasetConfig representative_datasets = 3;
 
-  // The path to save calibration statistics data.
+  // The path to save calibration statistics data. If not set, use a temporary
+  // directory.
   string calibration_data_dir = 4;
+
+  // Whether to reuse the existing calibration data in `calibration_data_dir`.
+  // Default to False.
+  bool force_regenerate_calibration_data = 5;
 }
 
 // Quantization configuration for StableHLO Quantizer. This is the primary
 // message containing all configurable options.
-// Next ID: 8
+// Next ID: 9
 message QuantizationConfig {
   // Config presets provide predefined popular or common quantization specs.
   // Lightweight users may choose one of the presets for quick experiments. Each
@@ -367,4 +372,9 @@ message QuantizationConfig {
   // activation of static range quantization (SRQ). Quantization calibration
   // method is set to MIN_MAX by default.
   CalibrationOptions calibration_options = 6;
+
+  // Path to file to save the quantization report, which is essentially a
+  // textproto rendering of `QuantizationResults`. If not set, the report will
+  // only be emitted to stdout.
+  optional string report_file_path = 8;
 }

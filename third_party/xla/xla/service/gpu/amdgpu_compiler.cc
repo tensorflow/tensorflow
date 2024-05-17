@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/service/gpu/conv_algorithm_picker.h"
 #include "xla/service/gpu/cublas_pad_for_gemms.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
+#include "xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "xla/service/gpu/cusolver_rewriter.h"
 #include "xla/service/gpu/gemm_algorithm_picker.h"
 #include "xla/service/gpu/gpu_compiler.h"
@@ -58,6 +60,10 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
+
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -90,6 +96,13 @@ struct ConvBfloat16Support : public FloatSupport {
 
 }  // namespace
 
+int32_t AMDGPUCompiler::GetToolkitVersion() const {
+#if TENSORFLOW_USE_ROCM
+  return TF_ROCM_VERSION;
+#endif
+  LOG(FATAL) << "Failed to get ROCm version.";
+}
+
 absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::GpuComputeCapability gpu_version,
     se::dnn::VersionInfo dnn_version,
@@ -109,6 +122,8 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<GpuConvPaddingLegalization>();
+  auto rcc = std::get<se::RocmComputeCapability>(gpu_version);
+  pipeline.AddPass<CudnnFusedConvRewriter>(rcc);
 
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that
@@ -132,7 +147,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
           "reshape_mover_after_conv_canonicalization")] {
     ReshapeMoverOptions reshape_mover_options;
     reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
-    pipeline.AddPass<HloPassFix<ReshapeMover>>(reshape_mover_options);
+    pipeline.AddPass<ReshapeMover>(reshape_mover_options);
     pipeline.AddPass<AlgebraicSimplifier>(options);
   }();
 

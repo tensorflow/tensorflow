@@ -54,9 +54,10 @@ xla_cc_test(
     name = "alias_analysis_test",
     srcs = ["alias_analysis_test.cc"],
     deps = [
-        "//xla/service:custom_call_status_public_headers",
-        "//xla/service:custom_call_target_registry",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
         "//xla/service/cpu/tests:cpu_codegen_test",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:test",
     ],
 )

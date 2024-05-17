@@ -49,7 +49,7 @@ BuildConstantInitializerThunk(IrEmitterContext& ir_emitter_context,
         literal.size_bytes());
     int64_t num_bytes = literal_bytes.size();
 
-    const Shape dest_shape = instr->shape();
+    const Shape& dest_shape = instr->shape();
 
     Thunk::ThunkInfo thunk_info =
         Thunk::ThunkInfo::WithProfileAnnotation(instr);

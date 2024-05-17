@@ -99,9 +99,12 @@ ENTRY main {
   se::StreamExecutor* stream_exec = executors[0];
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(GemmRewriter(stream_exec->GetDeviceDescription()
-                                           .gpu_compute_capability()),
-                          m.get()));
+      changed,
+      RunHloPass(
+          GemmRewriter(
+              stream_exec->GetDeviceDescription().gpu_compute_capability(),
+              /*toolkit_version=*/12040),
+          m.get()));
   changed = false;
   DebugOptions opts;
   AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr}, opts};
@@ -125,9 +128,12 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kHlo, module_cfg));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(GemmRewriter(stream_exec->GetDeviceDescription()
-                                           .gpu_compute_capability()),
-                          m.get()));
+      changed,
+      RunHloPass(
+          GemmRewriter(
+              stream_exec->GetDeviceDescription().gpu_compute_capability(),
+              /*toolkit_version=*/12040),
+          m.get()));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GemmAlgorithmPicker(cfg), m.get()));
@@ -135,13 +141,8 @@ ENTRY main {
 
   SCOPED_TRACE(m->ToString());
   HloInstruction* dot;
-  if (module_cfg.debug_options().xla_gpu_enable_cublaslt()) {
-    ASSERT_THAT(m->entry_computation()->root_instruction(),
-                GmockMatch(m::CustomCall(&dot)));
-  } else {
-    ASSERT_THAT(m->entry_computation()->root_instruction(),
-                GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
-  }
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
 
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           dot->backend_config<GpuBackendConfig>());
@@ -179,9 +180,12 @@ ENTRY main {
 
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(GemmRewriter(stream_exec->GetDeviceDescription()
-                                           .gpu_compute_capability()),
-                          m.get()));
+      changed,
+      RunHloPass(
+          GemmRewriter(
+              stream_exec->GetDeviceDescription().gpu_compute_capability(),
+              /*toolkit_version=*/12040),
+          m.get()));
   changed = false;
 
   DebugOptions opts;
@@ -213,9 +217,12 @@ ENTRY main {
       stream_exec->GetDeviceDescription().cuda_compute_capability()};
   AutotuneConfig deviceless_cfg{deviceless_config, opts};
   TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(GemmRewriter(stream_exec->GetDeviceDescription()
-                                           .gpu_compute_capability()),
-                          m.get()));
+      changed,
+      RunHloPass(
+          GemmRewriter(
+              stream_exec->GetDeviceDescription().gpu_compute_capability(),
+              /*toolkit_version=*/12040),
+          m.get()));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
       changed, RunHloPass(GemmAlgorithmPicker(deviceless_cfg), m.get()))
@@ -224,13 +231,8 @@ ENTRY main {
   SCOPED_TRACE(m->ToString());
   HloInstruction* dot;
 
-  if (module_cfg.debug_options().xla_gpu_enable_cublaslt()) {
-    ASSERT_THAT(m->entry_computation()->root_instruction(),
-                GmockMatch(m::CustomCall(&dot)));
-  } else {
-    ASSERT_THAT(m->entry_computation()->root_instruction(),
-                GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
-  }
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
 
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           dot->backend_config<GpuBackendConfig>());

@@ -739,9 +739,8 @@ Status TPUExecuteOp::DoWork(OpKernelContext* context) {
         });
   }
 
-  auto definition_event = std::make_shared<se::Event>(stream->parent());
-  TF_RET_CHECK(definition_event->Init())
-      << "TPU definition event initialization failed";
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<se::Event> definition_event,
+                      stream->parent()->CreateEvent());
 
   trace_me_init.Stop();
 

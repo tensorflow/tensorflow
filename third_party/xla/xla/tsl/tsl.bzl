@@ -786,3 +786,6 @@ def tsl_pybind_extension_opensource(
 
 def nvtx_headers():
     return if_oss(["@nvtx_archive//:headers"], ["@local_config_cuda//cuda:cuda_headers"])
+
+def tsl_google_bzl_deps():
+    return []

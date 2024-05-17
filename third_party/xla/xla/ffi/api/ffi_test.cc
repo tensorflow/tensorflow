@@ -17,12 +17,16 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -64,6 +68,8 @@ TEST(FfiTest, DataTypeEnumValue) {
 
   EXPECT_EQ(encoded(PrimitiveType::C64), encoded(DataType::C64));
   EXPECT_EQ(encoded(PrimitiveType::C128), encoded(DataType::C128));
+
+  EXPECT_EQ(encoded(PrimitiveType::TOKEN), encoded(DataType::TOKEN));
 }
 
 TEST(FfiTest, BufferBaseArgument) {
@@ -167,6 +173,23 @@ TEST(FfiTest, WrongTypeBufferArgument) {
       status,
       StatusIs(absl::StatusCode::kInvalidArgument,
                HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
+}
+
+TEST(FfiTest, TokenArgument) {
+  CallFrameBuilder builder;
+  builder.AddBufferArg(se::DeviceMemoryBase(), PrimitiveType::TOKEN,
+                       /*dims=*/{});
+  auto call_frame = builder.Build();
+
+  auto fn = [&](Token tok) {
+    EXPECT_EQ(tok.data, nullptr);
+    EXPECT_EQ(tok.dimensions.size(), 0);
+    return ffi::Error::Success();
+  };
+
+  auto handler = Ffi::Bind().Arg<Token>().To(fn);
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, AutoBinding) {
@@ -324,6 +347,41 @@ TEST(FfiTest, PointerAttr) {
 
   auto handler = Ffi::Bind().Attr<Pointer<std::string>>("ptr").To(fn);
   auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+struct MyData {
+  static TypeId id;
+  std::string str;
+};
+
+TypeId MyData::id = {};  // zero-initialize type id
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data", &MyData::id);
+
+TEST(FfiTest, UserData) {
+  MyData data{"foo"};
+
+  ExecutionContext execution_context;
+  TF_ASSERT_OK(execution_context.Insert(
+      ExecutionContext::TypeId(MyData::id.type_id), &data));
+
+  CallFrameBuilder builder;
+  auto call_frame = builder.Build();
+
+  auto fn = [&](MyData* data) {
+    EXPECT_EQ(data->str, "foo");
+    return Error::Success();
+  };
+
+  auto handler = Ffi::Bind().Ctx<UserData<MyData>>().To(fn);
+
+  ServiceExecutableRunOptions service_run_options;
+  service_run_options.mutable_run_options()->set_ffi_execution_context(
+      &execution_context);
+
+  CallOptions options = {&service_run_options};
+  auto status = Call(*handler, call_frame, options);
 
   TF_ASSERT_OK(status);
 }

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Assign"
   input_arg {
     name: "ref"

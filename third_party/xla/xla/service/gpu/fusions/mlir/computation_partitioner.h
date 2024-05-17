@@ -87,10 +87,10 @@ struct EpilogueSpecification {
 // than its users.
 class PartitionedComputation {
  public:
-  explicit PartitionedComputation(
-      const HloComputation* computation, mlir::MLIRContext* mlir_context,
-      std::function<bool(const HloInstruction*)> is_subgraph_root =
-          [](const HloInstruction*) { return false; });
+  explicit PartitionedComputation(const HloComputation* computation,
+                                  mlir::MLIRContext* mlir_context,
+                                  std::function<bool(const HloInstruction*)>
+                                      is_subgraph_root = HloPredicateFalse);
 
   struct Subgraph {
     // A unique name of the subgraph. Used for function names.
@@ -102,7 +102,8 @@ class PartitionedComputation {
     // The roots (return values of the function).
     std::vector<const HloInstruction*> roots;
 
-    // The ranges of the indices that the subgraph is called with.
+    // The ranges of the indices that the subgraph is called with (dimensions
+    // and symbols).
     std::vector<int64_t> index_ranges;
 
     // Maps from raw indices to root indices.

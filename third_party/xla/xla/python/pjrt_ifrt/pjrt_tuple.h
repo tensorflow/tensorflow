@@ -56,7 +56,7 @@ class PjRtTuple final : public llvm::RTTIExtends<PjRtTuple, Tuple> {
 
   int Arity() override;
 
-  Status Unpack(absl::Span<tsl::RCReference<Value>> values) override;
+  absl::Status Unpack(absl::Span<tsl::RCReference<Value>> values) override;
 
   static char ID;  // NOLINT
 

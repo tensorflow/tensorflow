@@ -65,7 +65,7 @@ bool MaybeConv1dToConv2d(HloInstruction* conv) {
   if (reshape_degenerate.has_value() &&
       reshape_degenerate->deleted_dimensions.empty() &&
       reshape_degenerate->inserted_dimensions.size() == 1) {
-    auto dnums = conv->convolution_dimension_numbers();
+    const auto& dnums = conv->convolution_dimension_numbers();
     for (auto dim : dnums.kernel_spatial_dimensions()) {
       if (dim == reshape_degenerate->inserted_dimensions[0]) {
         return true;

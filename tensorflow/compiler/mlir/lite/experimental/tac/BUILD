@@ -284,7 +284,6 @@ cc_library(
     deps = [
         ":target_aware_conversion",
         "//tensorflow/compiler/mlir:tf_mlir_opt_main",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
     ],
     alwayslink = 1,
 )
@@ -326,7 +325,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/experimental/tac/utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/status",

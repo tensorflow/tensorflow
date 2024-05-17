@@ -306,6 +306,17 @@ int GetFlagsFromEnv() {
 
 }  // namespace
 
+absl::StatusOr<CUresult> QueryEvent(GpuContext* context, CUevent event) {
+  ScopedActivateContext activated{context};
+  CUresult res = cuEventQuery(event);
+  if (res != CUDA_SUCCESS && res != CUDA_ERROR_NOT_READY) {
+    return absl::InternalError(
+        absl::StrFormat("failed to query event: %s", ToString(res)));
+  }
+
+  return res;
+}
+
 /* static */ absl::Status GpuDriver::Init() {
   // Cached return value from calling InternalInit(), as cuInit need only be
   // called once, but GpuDriver::Init may be called many times.
@@ -1840,18 +1851,6 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   return absl::OkStatus();
 }
 
-/* static */ absl::StatusOr<CUresult> GpuDriver::QueryEvent(GpuContext* context,
-                                                            CUevent event) {
-  ScopedActivateContext activated{context};
-  CUresult res = cuEventQuery(event);
-  if (res != CUDA_SUCCESS && res != CUDA_ERROR_NOT_READY) {
-    return absl::InternalError(
-        absl::StrFormat("failed to query event: %s", ToString(res)));
-  }
-
-  return res;
-}
-
 /* static */ bool GpuDriver::GetEventElapsedTime(GpuContext* context,
                                                  float* elapsed_milliseconds,
                                                  CUevent start, CUevent stop) {
@@ -2260,7 +2259,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
 }
 
 // Helper function that turns the integer output of cuDeviceGetAttribute to type
-// T and wraps it in a StatusOr.
+// T and wraps it in a absl::StatusOr.
 template <typename T>
 static absl::StatusOr<T> GetSimpleAttribute(CUdevice device,
                                             CUdevice_attribute attribute) {

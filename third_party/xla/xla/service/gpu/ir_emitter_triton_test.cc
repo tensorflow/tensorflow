@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emitter_triton.h"
 
+#include <cstdlib>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -27,7 +28,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/raw_ostream.h"
@@ -116,6 +119,12 @@ class TritonGemmTest : public TritonTest {
     // Always rewrite Gemms with Triton regardless of size.
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     return debug_options;
+  }
+
+  void MatchHloModule(HloModule& module, absl::string_view pattern) {
+    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                            RunFileCheck(module.ToString(), pattern));
+    EXPECT_TRUE(filecheck_result);
   }
 };
 
@@ -284,7 +293,7 @@ ENTRY e {
 })";
 
   TritonGemmConfig config(16, 16, 32, 1, 1, 1);
-  EXPECT_OK(
+  TF_EXPECT_OK(
       CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
 CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:  %[[ZERO_KN:.*]] = arith.constant dense<0.000000e+00> : tensor<32x16xf32>
@@ -1083,8 +1092,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kHloText));
 
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
-                                       "triton_softmax_computation", R"(
+  TF_ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
+                                          "triton_softmax_computation", R"(
 // CHECK: #[[MAP:.*]] = affine_map<()[s0] -> (s0 * 16)>
 // CHECK-LABEL:   tt.func @triton_fn(
 // CHECK-SAME:                       %[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32},
@@ -1206,6 +1215,59 @@ CHECK-DAG: %[[PID_BATCH:.*]] = tt.get_program_id y
 CHECK-DAG: %[[OFFSET:.*]] = arith.muli %[[PID_BATCH]], %[[BATCH_STRIDE]]
 CHECK:     %[[BLOCK_BASE_PTR:.*]] = tt.addptr %[[ARG_PTR]], %[[OFFSET]]
 )"));
+}
+
+TEST_F(TritonFilecheckTest, CodegenDynamicSliceWithCorrectOffsets) {
+  // The start index(es) for the non-majormost dimension(s) are constant zero(s)
+  // because we don't support dynamic slice on those dimensions.
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm {
+  dot_lhs = f32[2,4] parameter(0)
+  dynamic_slice_input = f32[4,5,2] parameter(1)
+  start_index0 = s32[] parameter(2)
+  start_index1 = s32[] parameter(3)
+  start_index2 = s32[] parameter(4)
+  dynamic_slice = f32[1,5,2] dynamic-slice(dynamic_slice_input, start_index0, start_index1, start_index2), dynamic_slice_sizes={1,5,2}
+  bitcast = f32[5,2] bitcast(dynamic_slice)
+  ROOT dot = f32[4,5] dot(dot_lhs, bitcast), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  dot_lhs = f32[2,4] parameter(0)
+  dynamic_slice_input = f32[4,5,2] parameter(1)
+  start_index0 = s32[] parameter(2)
+  start_index1 = s32[] constant(0)
+  start_index2 = s32[] constant(0)
+  ROOT fusion = f32[4,5] fusion(dot_lhs, dynamic_slice_input, start_index0, start_index1, start_index2),
+       kind=kCustom, calls=triton_gemm,
+       backend_config={
+         "fusion_backend_config":{
+           "kind":"__triton_gemm","triton_gemm_config":{
+             "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
+             "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  TritonGemmConfig config(16, 64, 32, 1, 1, 2);
+  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul,
+                                         "triton_gemm", R"(
+CHECK:     tt.func @triton_fn({{[^,]*}}, %[[DYNAMIC_SLICE_INPUT:[^:]*]]: !tt.ptr<f32> {{[^,]*}}, %[[START_INDEX0_PTR:[^:]*]]: !tt.ptr<i32>
+CHECK-DAG:   %[[C0_i32:.*]] = arith.constant 0 : i32
+CHECK-DAG:   %[[C1_i64:.*]] = arith.constant 1 : i64
+CHECK-DAG:   %[[C2_i64:.*]] = arith.constant 2 : i64
+CHECK-DAG:   %[[C3_i32:.*]] = arith.constant 3 : i32
+CHECK-DAG:   %[[C5_i32:.*]] = arith.constant 5 : i32
+CHECK-DAG:   %[[C5_i64:.*]] = arith.constant 5 : i64
+CHECK-DAG:   %[[START_INDEX0:.*]] = tt.load %[[START_INDEX0_PTR]] : !tt.ptr<i32>
+CHECK-DAG:   %[[SEMI_CLAMPED_START_INDEX0:.*]] = arith.maxsi %[[START_INDEX0]], %[[C0_i32]] : i32
+CHECK-DAG:   %[[CLAMPED_START_INDEX0:.*]] = arith.minsi %[[SEMI_CLAMPED_START_INDEX0]], %[[C3_i32]] : i32
+CHECK-DAG:   %[[ROW_OFFSET:.*]] = arith.muli %[[CLAMPED_START_INDEX0]], %[[C5_i32]] : i32
+CHECK-DAG:   %[[ROW_OFFSET_i64:.*]] = arith.extsi %[[ROW_OFFSET]] : i32 to i64
+CHECK-DAG:   %[[ROW_LIMIT:.*]] = arith.addi %[[ROW_OFFSET_i64]], %[[C5_i64]] : i64
+CHECK-DAG:   tt.make_tensor_ptr %[[DYNAMIC_SLICE_INPUT]], [%[[C2_i64]], %[[ROW_LIMIT]]], [%[[C1_i64]], %[[C2_i64]]], [%[[C0_i32]], %[[ROW_OFFSET]]]
+)"),
+              tsl::testing::IsOk());
 }
 
 TEST_F(TritonFilecheckTest, SparseDot) {
@@ -1373,6 +1435,29 @@ ENTRY e {
   TF_EXPECT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(output_directory, "*.triton-passes.log"), &paths));
   EXPECT_EQ(paths.size(), 1);
+}
+
+TEST_F(TritonGemmTest, DotWithPredFromCompareProducesCorrectResult) {
+  const std::string hlo_text = R"(
+triton_dot {
+  parameter_0 = s32[4,128]{1,0} parameter(0)
+  broadcast.255 = s32[4,128,64]{2,1,0} broadcast(parameter_0), dimensions={0,1}
+  parameter_1 = s32[4,128,64]{2,1,0} parameter(1)
+  compare.39 = pred[4,128,64]{2,1,0} compare(broadcast.255, parameter_1), direction=EQ
+  bitcast.1097 = pred[512,64]{1,0} reshape(compare.39)
+  convert.229 = bf16[512,64]{1,0} convert(bitcast.1097)
+  parameter_2 = bf16[64,256]{0,1} parameter(2)
+  ROOT dot.21 = bf16[512,256]{1,0} dot(convert.229, parameter_2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+ENTRY main {
+  p0 = s32[4,128]{1,0} parameter(0)
+  p1 = s32[4,128,64]{2,1,0} parameter(1)
+  p2 = bf16[64,256]{0,1} parameter(2)
+  ROOT gemm_fusion_dot.0 = bf16[512,256]{1,0} fusion(p0, p1, p2), kind=kCustom, calls=triton_dot, backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"64","block_n":"128","block_k":"32","split_k":"1","num_stages":"4","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, UseTensorCoresForF32OnAmpere) {
@@ -2148,6 +2233,241 @@ ENTRY e {
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
+}
+
+TEST_F(TritonGemmTest, DynamicSliceIsSupportedInLhsEndToEnd) {
+  // The select is used to restrict the start index to values that make sense.
+  // If it was constant, then the dynamic-slice would be optimized to slice. It
+  // is not strictly needed, because we also support clamping the indices.
+  // The start index(es) for the non-majormost dimension(s) are constant zero(s)
+  // because we don't support dynamic slice on those dimensions.
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+ENTRY e {
+  dot_lhs = f32[2,4] parameter(0)
+  dynamic_slice_input = f32[7,2] parameter(1)
+  pred0 = pred[] parameter(2)
+  c1 = s32[] constant(1)
+  c2 = s32[] constant(2)
+  start_index0 = s32[] select(pred0, c1, c2)
+  start_index1 = s32[] constant(0)
+  dynamic_slice = f32[5,2] dynamic-slice(dynamic_slice_input, start_index0, start_index1),
+                  dynamic_slice_sizes={5,2}
+  ROOT dot = f32[4,5] dot(dot_lhs, dynamic_slice),
+          lhs_contracting_dims={0}, rhs_contracting_dims={1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(),
+                           m::Fusion(m::Parameter()), m::Constant())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+  // Check that it's not optimized away.
+  MatchHloModule(*module, "; CHECK: dynamic-slice(");
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
+TEST_F(TritonGemmTest, DynamicSliceIsSupportedInRhs) {
+  // The start index(es) for the non-majormost dimension(s) are constant zero(s)
+  // because we don't support dynamic slice on those dimensions.
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+triton_gemm {
+  dynamic_slice_input = f32[7,2] parameter(0)
+  dot_rhs = f32[2,4] parameter(1)
+  start_index0 = s32[] parameter(2)
+  start_index1 = s32[] parameter(3)
+  dynamic_slice = f32[5,2] dynamic-slice(dynamic_slice_input, start_index0, start_index1),
+                  dynamic_slice_sizes={5,2}
+  ROOT dot = f32[5, 4] dot(dynamic_slice, dot_rhs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  dynamic_slice_input = f32[7,2] parameter(0)
+  dot_rhs = f32[2,4] parameter(1)
+  start_index0 = s32[] constant(1)
+  start_index1 = s32[] constant(0)
+  ROOT fusion = f32[5,4] fusion(dynamic_slice_input, dot_rhs, start_index0, start_index1),
+       kind=kCustom, calls=triton_gemm,
+       backend_config={
+         "fusion_backend_config":{
+           "kind":"__triton_gemm","triton_gemm_config":{
+             "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
+             "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
+class TritonGemmDynamicSliceClampingTest
+    : public TritonTest,
+      public ::testing::WithParamInterface<int> {};
+
+TEST_P(TritonGemmDynamicSliceClampingTest,
+       DynamicSliceIsSupportedWhenTheStartIndexNeedsClamping) {
+  // The start index(es) for the non-majormost dimension(s) are constant zero(s)
+  // because we don't support dynamic slice on those dimensions.
+
+  const std::string hlo_text = absl::Substitute(R"(
+HloModule m
+
+triton_gemm {
+  dynamic_slice_input = f32[7,2] parameter(0)
+  dot_rhs = f32[2,4] parameter(1)
+  start_index0 = s32[] parameter(2)
+  start_index1 = s32[] parameter(3)
+  dynamic_slice = f32[5,2] dynamic-slice(dynamic_slice_input, start_index0, start_index1),
+                  dynamic_slice_sizes={5,2}
+  ROOT dot = f32[5, 4] dot(dynamic_slice, dot_rhs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  dynamic_slice_input = f32[7,2] parameter(0)
+  dot_rhs = f32[2,4] parameter(1)
+  start_index0 = s32[] constant($0)
+  start_index1 = s32[] constant(0)
+  ROOT fusion = f32[5,4] fusion(dynamic_slice_input, dot_rhs, start_index0, start_index1),
+       kind=kCustom, calls=triton_gemm,
+       backend_config={
+         "fusion_backend_config":{
+           "kind":"__triton_gemm","triton_gemm_config":{
+             "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
+             "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})",
+                                                GetParam());
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
+std::string OffsetParamToString(const ::testing::TestParamInfo<int>& data) {
+  return absl::StrCat("WithOffsetEq", data.param < 0 ? "Negative" : "",
+                      std::abs(data.param));
+}
+
+INSTANTIATE_TEST_SUITE_P(All, TritonGemmDynamicSliceClampingTest,
+                         ::testing::Values(-100, 3, 999), OffsetParamToString);
+
+TEST_F(TritonGemmTest, DynamicSliceOfMajormostContractingDimIsSupported) {
+  // Tests that dynamic-slice works on the majormost dimension even if that
+  // dimension is contracted.
+  // The start index(es) for the non-majormost dimension(s) are constant zero(s)
+  // because we don't support dynamic slice on those dimensions.
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+triton_gemm {
+  dot_lhs = f32[2,4] parameter(0)
+  dynamic_slice_input = f32[5,4] parameter(1)
+  start_index0 = s32[] parameter(2)
+  start_index1 = s32[] parameter(3)
+  dynamic_slice = f32[2,4] dynamic-slice(dynamic_slice_input, start_index0, start_index1),
+                  dynamic_slice_sizes={2,4}
+  ROOT dot = f32[4,4] dot(dot_lhs, dynamic_slice),
+             lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  dot_lhs = f32[2,4] parameter(0)
+  dynamic_slice_input = f32[5,4] parameter(1)
+  start_index0 = s32[] constant(2)
+  start_index1 = s32[] constant(0)
+  ROOT fusion = f32[4,4] fusion(dot_lhs, dynamic_slice_input, start_index0, start_index1),
+       kind=kCustom, calls=triton_gemm,
+       backend_config={
+         "fusion_backend_config":{
+           "kind":"__triton_gemm","triton_gemm_config":{
+             "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
+             "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
+TEST_F(TritonGemmTest, DynamicSliceOfMajormostBatchDimIsSupported) {
+  // Tests that dynamic-slice works on the majormost dimension even if that
+  // dimension is a batch.
+  // The start index(es) for the non-majormost dimension(s) are constant zero(s)
+  // because we don't support dynamic slice on those dimensions.
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+triton_gemm {
+  dot_lhs = f32[2,2,4] parameter(0)
+  dynamic_slice_input = f32[7,2,4] parameter(1)
+  start_index0 = s32[] parameter(2)
+  start_index1 = s32[] parameter(3)
+  start_index2 = s32[] parameter(4)
+  dynamic_slice = f32[2,2,4] dynamic-slice(dynamic_slice_input, start_index0, start_index1, start_index2),
+                  dynamic_slice_sizes={2,2,4}
+  ROOT dot = f32[2,4,4] dot(dot_lhs, dynamic_slice),
+             lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  dot_lhs = f32[2,2,4] parameter(0)
+  dynamic_slice_input = f32[7,2,4] parameter(1)
+  start_index0 = s32[] constant(2)
+  start_index1 = s32[] constant(0)
+  start_index2 = s32[] constant(0)
+  ROOT fusion = f32[2,4,4] fusion(dot_lhs, dynamic_slice_input, start_index0, start_index1, start_index2),
+       kind=kCustom, calls=triton_gemm,
+       backend_config={
+         "fusion_backend_config":{
+           "kind":"__triton_gemm","triton_gemm_config":{
+             "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
+             "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
+TEST_F(TritonGemmTest, DynamicSliceSingleDimensionIntoReshapeIsSupported) {
+  // This directly tests the targeted use case (b/307922364) of iterating over
+  // layer weights and extracting them with dynamic slice.
+  // The start index(es) for the non-majormost dimension(s) are constant zero(s)
+  // because we don't support dynamic slice on those dimensions.
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+triton_gemm {
+  dot_lhs = f32[2,4] parameter(0)
+  dynamic_slice_input = f32[4,5,2] parameter(1)
+  start_index0 = s32[] parameter(2)
+  start_index1 = s32[] parameter(3)
+  start_index2 = s32[] parameter(4)
+  dynamic_slice = f32[1,5,2] dynamic-slice(dynamic_slice_input, start_index0, start_index1, start_index2),
+                             dynamic_slice_sizes={1,5,2}
+  reshape = f32[5,2] reshape(dynamic_slice)
+  ROOT d = f32[4,5] dot(dot_lhs, reshape),
+           lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  dot_lhs = f32[2,4] parameter(0)
+  dynamic_slice_input = f32[4,5,2] parameter(1)
+  start_index0 = s32[] constant(3)
+  start_index1 = s32[] constant(0)
+  start_index2 = s32[] constant(0)
+  ROOT fusion = f32[4,5] fusion(dot_lhs, dynamic_slice_input, start_index0, start_index1, start_index2),
+       kind=kCustom, calls=triton_gemm,
+       backend_config={
+         "fusion_backend_config":{
+           "kind":"__triton_gemm","triton_gemm_config":{
+             "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
+             "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
 TEST_F(TritonGemmTestAny,
@@ -4504,7 +4824,7 @@ ENTRY e {
 }
 )";
   TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  ASSERT_OK(
+  TF_ASSERT_OK(
       CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
 CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
 CHECK:          %[[C_MASK:.*]] = arith.constant dense<-65536> : tensor<32x32xi32>
@@ -4835,7 +5155,7 @@ ENTRY e {
 }
 )";
   TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  ASSERT_OK(
+  TF_ASSERT_OK(
       CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
 CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
 CHECK:          %[[C_MASK:.*]] = arith.constant dense<-65536> : tensor<32x32xi32>
@@ -5156,6 +5476,46 @@ ENTRY entry {
           absl::StatusCode::kFailedPrecondition,
           ::testing::StrEq(
               "Triton support is only enabled for Ampere GPUs and up.")));
+}
+
+// This test could be modified to allow TF32 once this bug is fixed.
+// TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
+TEST_F(TritonFilecheckTest, NoTF32For8BitOrLessWithF32) {
+  const std::string hlo_text = R"(
+HloModule t
+
+triton_dot {
+  parameter_0 = s32[11,24]{1,0} parameter(0)
+  broadcast.1747 = s32[11,24,128]{2,1,0} broadcast(parameter_0),
+  dimensions={0,1} parameter_1 = s32[11,24,128]{2,1,0} parameter(1)
+  compare.49 = pred[11,24,128]{2,1,0} compare(broadcast.1747, parameter_1),
+      direction=EQ bitcast.4717 = pred[264,128]{1,0} bitcast(compare.49)
+  convert.142 = f32[264,128]{1,0} convert(bitcast.4717)
+  parameter_2 = f32[128,8]{1,0} parameter(2)
+  ROOT dot.381 = f32[264,8]{1,0} dot(convert.142, parameter_2),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = s32[11,24]{1,0} parameter(0)
+  p1 = s32[11,24,128]{2,1,0} parameter(1)
+  p2 = f32[128,8]{1,0} parameter(2)
+  ROOT _ = f32[264,8] fusion(p0, p1, p2), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+      triton_gemm_config:
+        {"block_m":32,"block_n":16,"block_k":128,
+         "split_k":1,"num_stages":1,"num_warps":4,
+         "num_ctas":1}}}
+})";
+
+  TritonGemmConfig config(32, 16, 128, 1, 1, 4);
+  TF_ASSERT_OK(
+      CreateTritonIrAndFileCheck(hlo_text, config, EmitMatMul, "triton_dot", R"(
+CHECK:      tt.dot
+CHECK-NOT:  inputPrecision = tf32
+  )"));
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 }  // namespace

@@ -18,10 +18,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/hash/hash.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/status.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
 
@@ -49,10 +49,10 @@ size_t ProtobufHash(const tsl::protobuf::Message& m) {
   return absl::HashOf(serialized);
 }
 
-Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
-                            const std::string& directory,
-                            const std::string& file_name,
-                            std::string* full_path) {
+absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
+                                  const std::string& directory,
+                                  const std::string& file_name,
+                                  std::string* full_path) {
   tsl::Env* env = tsl::Env::Default();
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
   std::string safe_file_name = SanitizeFileName(file_name) + ".pb";

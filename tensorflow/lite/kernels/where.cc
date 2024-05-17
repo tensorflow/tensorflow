@@ -103,7 +103,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                          TfLiteTypeGetName(cond_tensor->type));
       return kTfLiteError;
   }
-  return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {

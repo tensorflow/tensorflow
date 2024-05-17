@@ -321,10 +321,17 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
     dist_iter = iter(dist)
     data = next(dist_iter)
 
+    sparse_core_embedding_config = tpu_embedding_v3.SparseCoreEmbeddingConfig(
+        disable_table_stacking=False,
+        max_ids_per_chip_per_sample=64,
+        allow_id_dropping=False,
+    )
+
     with strategy.scope():
       mid_level_api = tpu_embedding_v3.TPUEmbeddingV2(
           feature_config=feature_config,
           optimizer=tpu_embedding_v2_utils.SGD(learning_rate=1.0),
+          sparse_core_embedding_config=sparse_core_embedding_config,
       )
     self.assertLen(mid_level_api.embedding_tables, 1)
 
@@ -581,10 +588,18 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
     dist_iter = iter(dist)
     data = next(dist_iter)
 
+    sparse_core_embedding_config = tpu_embedding_v3.SparseCoreEmbeddingConfig(
+        disable_table_stacking=False,
+        max_ids_per_chip_per_sample=64,
+        allow_id_dropping=False,
+    )
+
     with strategy.scope():
       optimizer = tpu_embedding_v2_utils.SGD(learning_rate=1.0)
       mid_level_api = tpu_embedding_v3.TPUEmbeddingV2(
-          feature_config=feature_config, optimizer=optimizer
+          feature_config=feature_config,
+          optimizer=optimizer,
+          sparse_core_embedding_config=sparse_core_embedding_config,
       )
       mid_level_api.build()
     random1 = np.random.uniform(size=(16, self.embedding_dim)).astype(
@@ -624,6 +639,108 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
       goldens[1][i, :] = goldens[1][i, :] - random1[i % 16]
 
     self.assertAllClose(full_tables, goldens)
+
+  def test_compute_sparse_core_stats_and_pass_it_to_api(self):
+    feature_config = tpu_embedding_v2_utils.FeatureConfig(
+        table=self.table_video, name='watched', output_shape=[16]
+    )
+
+    resolver = tpu_cluster_resolver.TPUClusterResolver(tpu='')
+    remote.connect_to_cluster(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
+    strategy = tpu_strategy.TPUStrategy(resolver)
+
+    sparse_features = sparse_ops.sparse_reorder(
+        sparse_tensor.SparseTensor(
+            indices=[[i % 16, i] for i in range(1024)],
+            values=np.arange(1024),
+            dense_shape=[16, 1024],
+        )
+    )
+
+    dataset = dataset_ops.DatasetV2.from_tensors(sparse_features)
+    dataset = (
+        dataset.unbatch()
+        .repeat()
+        .batch(16 * strategy.num_replicas_in_sync, drop_remainder=True)
+    )
+
+    dist = strategy.experimental_distribute_dataset(
+        dataset,
+        options=distribute_lib.InputOptions(experimental_fetch_to_device=False),
+    )
+    dist_iter = iter(dist)
+    data = next(dist_iter)
+
+    num_tpu_chips = strategy.num_replicas_in_sync
+
+    # profile the dataset to get the max ids per table and max unique ids per
+    # table.
+    table_to_max_ids, table_to_max_unique_ids = (
+        tpu_embedding_v3.TPUEmbeddingV2.compute_sparse_core_stats(
+            features=data,
+            feature_config=feature_config,
+            num_tpu_chips=num_tpu_chips,
+            optimizer=tpu_embedding_v2_utils.SGD(learning_rate=1.0),
+        )
+    )
+
+    sparse_core_embedding_config = tpu_embedding_v3.SparseCoreEmbeddingConfig(
+        disable_table_stacking=False,
+        max_ids_per_chip_per_sample=64,
+        max_ids_per_table=table_to_max_ids,
+        max_unique_ids_per_table=table_to_max_unique_ids,
+        allow_id_dropping=False,
+    )
+
+    with strategy.scope():
+      mid_level_api = tpu_embedding_v3.TPUEmbeddingV2(
+          feature_config=feature_config,
+          optimizer=tpu_embedding_v2_utils.SGD(learning_rate=1.0),
+          sparse_core_embedding_config=sparse_core_embedding_config,
+      )
+
+    @def_function.function
+    def test_fn():
+      def step(data):
+        return mid_level_api(data)
+
+      return strategy.run(step, args=(data,))
+
+    result = test_fn()
+
+    mid_level_api_cpu = tpu_embedding_for_serving.TPUEmbeddingForServing(
+        feature_config=feature_config,
+        optimizer=tpu_embedding_v2_utils.SGD(learning_rate=1.0),
+    )
+
+    cpu_result = mid_level_api_cpu(data)
+
+    for per_feature_result, per_feature_result_cpu in zip(
+        nest.flatten(result[0]), nest.flatten(cpu_result)
+    ):
+      self.assertAllEqual(per_feature_result, per_feature_result_cpu)
+
+  def test_raise_error_when_weight_decay_is_set(self):
+    feature_config = tpu_embedding_v2_utils.FeatureConfig(
+        table=self.table_video, name='watched', output_shape=[16]
+    )
+
+    resolver = tpu_cluster_resolver.TPUClusterResolver(tpu='')
+    remote.connect_to_cluster(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
+    strategy = tpu_strategy.TPUStrategy(resolver)
+
+    with self.assertRaises(NotImplementedError):
+      with strategy.scope():
+        tpu_embedding_v3.TPUEmbeddingV2(
+            feature_config=feature_config,
+            optimizer=tpu_embedding_v2_utils.SGD(
+                learning_rate=1.0,
+                weight_decay_factor=0.1,
+                multiply_weight_decay_factor_by_learning_rate=True,
+            ),
+        )
 
 
 if __name__ == '__main__':

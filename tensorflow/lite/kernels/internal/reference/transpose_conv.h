@@ -219,6 +219,103 @@ inline void TransposeConv(
   }
 }
 
+inline void HybridTransposeConv(
+    const ConvParams& params, float* scaling_factors_ptr,
+    const RuntimeShape& input_shape, const int8_t* input_data,
+    const RuntimeShape& filter_shape, const int8_t* filter_data,
+    const RuntimeShape& bias_shape, const float* bias_data,
+    const RuntimeShape& output_shape, float* output_data,
+    const float* per_channel_scale, int32_t* input_offset) {
+  const int stride_width = params.stride_width;
+  const int stride_height = params.stride_height;
+  const int pad_width = params.padding_values.width;
+  const int pad_height = params.padding_values.height;
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+
+  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
+  const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const int filter_height = filter_shape.Dims(1);
+  const int filter_width = filter_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  const float output_activation_min = params.float_activation_min;
+  const float output_activation_max = params.float_activation_max;
+  if (bias_data) {
+    TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
+  }
+
+  // Although transpose convolution simplifies to convolution with transposed
+  // weights for strides of 1, non-unitary striding complicates matters. To
+  // keep this reference implementation as clear as possible, we use a
+  // "scatter" access pattern, where we loop through all the input elements,
+  // computing their influence on the output, rather than looping through the
+  // output elements in the typical "gather" access pattern of a conv. We
+  // therefore must initialize the output array to zero.
+  const int num_elements = output_shape.FlatSize();
+  for (int i = 0; i < num_elements; i++) {
+    output_data[i] = 0.0f;
+  }
+
+  // Loop through input elements one at a time.
+  for (int batch = 0; batch < batches; ++batch) {
+    const float scaling_factor = scaling_factors_ptr[batch];
+    for (int in_y = 0; in_y < input_height; ++in_y) {
+      for (int in_x = 0; in_x < input_width; ++in_x) {
+        for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
+          // Loop through the output elements it will influence
+          const int out_x_origin = (in_x * stride_width) - pad_width;
+          const int out_y_origin = (in_y * stride_height) - pad_height;
+          for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+              for (int out_channel = 0; out_channel < output_depth;
+                   ++out_channel) {
+                // Compute output element location
+                const int out_x = out_x_origin + filter_x;
+                const int out_y = out_y_origin + filter_y;
+                // We cannot accumulate out of bounds
+                if ((out_x >= 0) && (out_x < output_width) && (out_y >= 0) &&
+                    (out_y < output_height)) {
+                  int32_t input_value = input_data[Offset(
+                      input_shape, batch, in_y, in_x, in_channel)];
+                  int32_t filter_value =
+                      filter_data[Offset(filter_shape, out_channel, filter_y,
+                                         filter_x, in_channel)];
+                  int32_t acc =
+                      (input_value - input_offset[batch]) * filter_value;
+                  output_data[Offset(output_shape, batch, out_y, out_x,
+                                     out_channel)] +=
+                      acc * per_channel_scale[out_channel] * scaling_factor;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (int batch = 0; batch < batches; ++batch) {
+    for (int out_y = 0; out_y < output_height; ++out_y) {
+      for (int out_x = 0; out_x < output_width; ++out_x) {
+        for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
+          float acc = output_data[Offset(output_shape, batch, out_y, out_x,
+                                         out_channel)];
+          if (bias_data) acc += bias_data[out_channel];
+
+          output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =
+              ActivationFunctionWithMinMax(acc, output_activation_min,
+                                           output_activation_max);
+        }
+      }
+    }
+  }
+}
+
 }  // namespace reference_ops
 }  // namespace tflite
 

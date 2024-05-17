@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
@@ -76,10 +77,10 @@ ENTRY main {
   EXPECT_TRUE(SetAnalysis(module.get()));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions,
+      TiledHloComputation tiled_hlo_computation,
       analysis_->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 10}));
 
-  TiledHloInstruction* root = tiled_hlo_instructions.back().get();
+  const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
 
   EXPECT_THAT(root->block_id_to_tile_offsets_indexing(), MatchIndexingMap(R"(
     (d0) -> (d0 floordiv 10, (d0 mod 10) * 10)
@@ -124,10 +125,10 @@ ENTRY main {
   EXPECT_TRUE(SetAnalysis(module.get()));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions,
+      TiledHloComputation tiled_hlo_computation,
       analysis_->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 10}));
 
-  TiledHloInstruction* root = tiled_hlo_instructions.back().get();
+  const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
 
   auto p0_from_subtract0 = root->operand(0)->operand(0);
   auto p0_from_subtract1 = root->operand(1)->operand(0);
@@ -146,10 +147,10 @@ ENTRY main {
   EXPECT_TRUE(SetAnalysis(module.get()));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions,
+      TiledHloComputation tiled_hlo_computation,
       analysis_->ComputeTiledHloInstructions(/*tile_parameters=*/{2, 4, 2}));
 
-  TiledHloInstruction* root = tiled_hlo_instructions.back().get();
+  const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
 
   EXPECT_THAT(root->block_id_to_tile_offsets_indexing(), MatchIndexingMap(R"(
     (d0) -> ((d0 floordiv 16) * 2, ((d0 floordiv 8) mod 2) * 4, (d0 mod 8) * 2)
@@ -178,10 +179,10 @@ ENTRY main {
   EXPECT_TRUE(SetAnalysis(module.get()));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions,
+      TiledHloComputation tiled_hlo_computation,
       analysis_->ComputeTiledHloInstructions(/*tile_parameters=*/{2, 2}));
 
-  TiledHloInstruction* root = tiled_hlo_instructions.back().get();
+  const TiledHloInstruction* root = tiled_hlo_computation.GetRoot();
   const TiledHloInstruction* p0_from_slice0 = root->operand(0)->operand(0);
   const TiledHloInstruction* p0_from_slice1 = root->operand(1)->operand(0);
 

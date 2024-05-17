@@ -55,7 +55,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
-Tiling ComputeTransposeTiling(const TransposeDescription& tiled_transpose) {
+Tiling ComputeTransposeTiling(const se::DeviceDescription& gpu_device_info,
+                              const TransposeDescription& tiled_transpose) {
   constexpr int kNumRows = 4;
   static_assert(WarpSize() % kNumRows == 0);
 
@@ -76,6 +77,20 @@ Tiling ComputeTransposeTiling(const TransposeDescription& tiled_transpose) {
   tile_sizes[permutation[2]] = WarpSize() / kNumRows;
   absl::InlinedVector<int64_t, 4> num_threads{1, 1, WarpSize()};
   num_threads[permutation[2]] = kNumRows;
+
+  auto capability = gpu_device_info.gpu_compute_capability();
+  std::visit(
+      [&](const auto& capability) {
+        if constexpr (std::is_same_v<std::decay_t<decltype(capability)>,
+                                     stream_executor::RocmComputeCapability>) {
+          // kNumRows = 8 works well on MI300 with wavefront size 64.
+          if (capability.gfx9_mi300()) {
+            tile_sizes[permutation[2]] = gpu_device_info.threads_per_warp() / 8;
+            num_threads[permutation[2]] = 8;
+          }
+        }
+      },
+      capability);
 
   return Tiling(input_dims, tile_sizes, num_threads);
 }
@@ -106,9 +121,11 @@ llvm_ir::IrArray::Index PermuteIndex(const llvm_ir::IrArray::Index& index,
 
 }  // namespace
 
-TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
+TransposeFusion::TransposeFusion(const se::DeviceDescription& gpu_device_info,
+                                 const HloFusionAnalysis& analysis)
     : analysis_(analysis),
-      tiling_(ComputeTransposeTiling(analysis.tiled_transpose())) {
+      tiling_(
+          ComputeTransposeTiling(gpu_device_info, analysis.tiled_transpose())) {
   for (auto [root, hero] :
        llvm::zip(analysis_.fusion_roots(), analysis_.fusion_heroes())) {
     if (auto transpose = GetDescriptionForTiledTransposeEmitter(*root, *hero)) {

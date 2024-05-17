@@ -2,6 +2,7 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("tsl.bzl", "if_google", "if_oss")
+load("tsl.default.bzl", "tsl_google_bzl_deps")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -540,6 +541,16 @@ bzl_library(
         "@local_tsl//third_party/mkl_dnn:build_defs_bzl",
         "@local_tsl//tsl/platform:rules_cc_bzl",
     ],
+)
+
+bzl_library(
+    name = "tsl_google_bzl",
+    srcs = if_google(["tsl.default.bzl"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tsl_bzl",
+        "@local_tsl//tsl/platform:build_config_root_bzl",
+    ] + tsl_google_bzl_deps(),
 )
 
 # copybara:comment_begin(oss-only)

@@ -29,8 +29,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/kernels/topk_kernel_common.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -83,9 +85,10 @@ absl::Status TypedTopK(se::Stream* stream, se::DeviceMemoryBase data,
   TF_ASSIGN_OR_RETURN(void* kernel_symbol, GetKernel<T>(num_elements, k));
   TF_ASSIGN_OR_RETURN(
       auto kernel,
-      (se::TypedKernel<se::DeviceMemory<T>, size_t, se::DeviceMemory<T>,
-                       se::DeviceMemory<uint32_t>,
-                       size_t>::Create(executor, "topk", kernel_symbol)));
+      (se::TypedKernelFactory<se::DeviceMemory<T>, size_t, se::DeviceMemory<T>,
+                              se::DeviceMemory<uint32_t>,
+                              size_t>::Create(executor, "topk",
+                                              kernel_symbol)));
 
   TF_RETURN_IF_ERROR(stream->ThenLaunch(
       se::ThreadDim(num_threads, 1, 1), se::BlockDim(batch_size, 1, 1),

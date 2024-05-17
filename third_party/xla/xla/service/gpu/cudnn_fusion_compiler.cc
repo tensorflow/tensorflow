@@ -71,6 +71,8 @@ inline std::optional<fe::PointwiseMode_t> GetElementwiseMode(
       return m::ABS;
     case HloOpcode::kAdd:
       return m::ADD;
+    case HloOpcode::kCeil:
+      return m::CEIL;
     case HloOpcode::kCompare:
       switch (instruction.comparison_direction()) {
         case Comparison::Direction::kEq:
@@ -95,6 +97,8 @@ inline std::optional<fe::PointwiseMode_t> GetElementwiseMode(
       return m::DIV;
     case HloOpcode::kExp:
       return m::EXP;
+    case HloOpcode::kFloor:
+      return m::FLOOR;
     case HloOpcode::kLog:
       return m::LOG;
     case HloOpcode::kMaximum:
@@ -143,6 +147,10 @@ inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
       return t::INT8;
     case PrimitiveType::PRED:
       return t::INT8;
+    case PrimitiveType::F8E5M2:
+      return t::FP8_E5M2;
+    case PrimitiveType::F8E4M3FN:
+      return t::FP8_E4M3;
     default:
       return std::nullopt;
   }
@@ -549,8 +557,8 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
   return *graph;
 }
 
-StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
-                                       const int64_t workspace_size) {
+absl::StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
+                                             const int64_t workspace_size) {
   if (workspace_size == 0 || fusion.shape().IsTuple()) {
     return &fusion;
   }

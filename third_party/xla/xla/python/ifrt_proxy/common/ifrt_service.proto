@@ -19,6 +19,7 @@ package xla.ifrt.proxy;
 import "google/protobuf/any.proto";
 import "xla/pjrt/execute_options.proto";
 import "xla/python/ifrt/dtype.proto";
+import "xla/python/ifrt/remap_plan.proto";
 import "xla/python/ifrt/serdes.proto";
 import "xla/python/ifrt/shape.proto";
 import "xla/python/ifrt/sharding.proto";
@@ -45,6 +46,7 @@ message IfrtRequest {
     MakeArrayFromHostBufferRequest make_array_from_host_buffer_request = 4;
     AssembleArrayFromSingleDeviceArraysRequest
         assemble_array_from_single_device_arrays_request = 5;
+    RemapArraysRequest remap_arrays_request = 23;
     CopyToHostBufferRequest copy_to_host_buffer_request = 6;
     DisassembleIntoSingleDeviceArraysRequest
         disassemble_into_single_device_arrays_request = 7;
@@ -88,6 +90,7 @@ message IfrtResponse {
     MakeArrayFromHostBufferResponse make_array_from_host_buffer_response = 4;
     AssembleArrayFromSingleDeviceArraysResponse
         assemble_array_from_single_device_arrays_response = 5;
+    RemapArraysResponse remap_arrays_response = 23;
     CopyToHostBufferResponse copy_to_host_buffer_response = 6;
     DisassembleIntoSingleDeviceArraysResponse
         disassemble_into_single_device_arrays_response = 7;
@@ -160,21 +163,21 @@ message ResponseMetadata {
   // ID of the operation this response belongs to.
   fixed64 op_id = 1;
 
-  // Status of the operation.
+  // absl::Status of the operation.
   //
   //    In case of "chunked" responses (i.e., the full logical response is
   //    spread across a sequence of IfrtResponse protos), the actual sequence of
-  //    IfrtResponse messages will follow only if this Status is OK in the very
-  //    first message. That is, in case of errors, server sends a single
+  //    IfrtResponse messages will follow only if this absl::Status is OK in the
+  //    very first message. That is, in case of errors, server sends a single
   //    IfrtResponse with the appropriate error included.
   //
   //    In case of "batched" operations (i.e., where the response is carrying
   //    the outcomes of multiple requests that were "batched" in the same
-  //    IfrtRequest proto - such as deleting a bunch of Arrays) this Status
-  //    field provides a way to quickly check if none of the individual
-  //    operations encountered errors. Clients should not rely on specific error
-  //    type or string when this is not OK, they should check the response
-  //    message for individual Statuses.
+  //    IfrtRequest proto - such as deleting a bunch of Arrays) this
+  //    absl::Status field provides a way to quickly check if none of the
+  //    individual operations encountered errors. Clients should not rely on
+  //    specific error type or string when this is not OK, they should check the
+  //    response message for individual absl::Statuses.
   tensorflow.StatusProto status = 2;
 }
 
@@ -266,6 +269,17 @@ message AssembleArrayFromSingleDeviceArraysRequest {
 }
 message AssembleArrayFromSingleDeviceArraysResponse {
   fixed64 array_handle = 1;
+}
+
+// Remaps the shards of given IFRT arrays to new IFRT arrays.
+// Equivalent to ifrt::Client::RemapArrays.
+message RemapArraysRequest {
+  RemapPlanProto plan = 1;
+  repeated fixed64 array_handles = 2;
+  proto.ArrayCopySemantics copy_semantics = 3;
+}
+message RemapArraysResponse {
+  repeated fixed64 array_handles = 1;
 }
 
 // Reads the contents of a given IFRT Array.

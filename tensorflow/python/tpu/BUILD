@@ -786,11 +786,11 @@ pytype_strict_library(
     name = "tpu_embedding_v3_utils",
     srcs = ["tpu_embedding_v3_utils.py"],
     deps = [
-        "//tensorflow/core/tpu/kernels:sparse_core_layout_proto_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:control_flow_ops_gen",
         "//tensorflow/python/ops:manip_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/trackable:base",
@@ -1016,6 +1016,26 @@ tf_proto_library(
 # copybara:uncomment_end
 
 tf_python_pybind_extension(
+    name = "_pywrap_sparse_core_layout",
+    srcs = ["pywrap_sparse_core_layout.cc"],
+    enable_stub_generation = True,
+    features = ["-layering_check"],
+    pytype_srcs = [
+        "_pywrap_sparse_core_layout.pyi",
+    ],
+    deps = [
+        "//tensorflow/core/tpu/kernels:_pywrap_sparse_core_layout_header_only",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:pybind11_status_headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+    ],
+)
+
+tf_python_pybind_extension(
     name = "_pywrap_tpu_embedding",
     srcs = ["pywrap_tpu_embedding.cc"],
     enable_stub_generation = True,
@@ -1039,6 +1059,7 @@ py_strict_library(
     name = "tpu_embedding_v3",
     srcs = ["tpu_embedding_v3.py"],
     deps = [
+        ":_pywrap_sparse_core_layout",
         ":_pywrap_tpu_embedding",
         ":tpu_embedding_base",
         ":tpu_embedding_v2_utils",

@@ -27,11 +27,10 @@ limitations under the License.
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/platform.h"
 
 namespace stream_executor {
 namespace wrap {
-
-using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
 
 #ifdef PLATFORM_GOOGLE
 #define ROCBLAS_API_WRAPPER(__name)               \
@@ -39,11 +38,12 @@ using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
     constexpr static const char* kName = #__name; \
     template <typename... Args>                   \
     rocblas_status operator()(Args... args) {     \
-      return ::__name(args...);                   \
+      return (::__name)(args...);                 \
     }                                             \
   } __name;
 
 #else
+using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
 
 #define ROCBLAS_API_WRAPPER(__name)                                      \
   static struct DynLoadShim__##__name {                                  \

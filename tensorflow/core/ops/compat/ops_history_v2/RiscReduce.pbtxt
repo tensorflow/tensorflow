@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RiscReduce"
   input_arg {
     name: "tensor"

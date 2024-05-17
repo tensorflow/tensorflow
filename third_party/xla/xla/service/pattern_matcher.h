@@ -2680,12 +2680,14 @@ XLA_UNOP_PATTERN(Cos)
 XLA_UNOP_PATTERN(AllReduceStart)
 XLA_UNOP_PATTERN(AllReduceDone)
 XLA_UNOP_PATTERN(AllToAll)
+XLA_UNOP_PATTERN(AsyncDone)
 XLA_UNOP_PATTERN(CollectiveBroadcast)
 XLA_UNOP_PATTERN(CollectivePermute)
 XLA_UNOP_PATTERN(CollectivePermuteStart)
 XLA_UNOP_PATTERN(CollectivePermuteDone)
 XLA_UNOP_PATTERN(Domain)
 XLA_UNOP_PATTERN(Exp)
+XLA_UNOP_PATTERN(Expm1)
 XLA_UNOP_PATTERN(Fft)
 XLA_UNOP_PATTERN(Floor)
 XLA_UNOP_PATTERN(GetTupleElement)
@@ -2849,6 +2851,7 @@ inline auto WithOperands(Matcher&& m, int64_t operand_num, FirstArg&& first_arg,
 XLA_VARIADIC_OP_PATTERN(AfterAll);
 XLA_VARIADIC_OP_PATTERN(AllGather)
 XLA_VARIADIC_OP_PATTERN(AllReduce)
+XLA_VARIADIC_OP_PATTERN(AsyncStart)
 XLA_VARIADIC_OP_PATTERN(Concatenate);
 XLA_VARIADIC_OP_PATTERN(Conditional);
 XLA_VARIADIC_OP_PATTERN(DynamicSlice)

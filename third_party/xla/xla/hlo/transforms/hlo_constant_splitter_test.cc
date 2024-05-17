@@ -86,7 +86,7 @@ TEST_F(HloConstantSplitterTest, PreservingConstantsWithZeroUsers) {
   EXPECT_FALSE(status_or.value());
 }
 
-TEST_F(HloConstantSplitterTest, SplittingExpressions) {
+TEST_F(HloConstantSplitterTest, SplittingExpressionsWithBroadcast) {
   const char* module_str = R"(
     HloModule test_module
 
@@ -119,6 +119,36 @@ TEST_F(HloConstantSplitterTest, SplittingExpressions) {
   TF_ASSERT_OK(dce.Run(module.get()).status());
   XLA_VLOG_LINES(1, module->entry_computation()->ToString());
   EXPECT_EQ(module->entry_computation()->instruction_count(), 23);
+}
+
+TEST_F(HloConstantSplitterTest, SplittingExpressionsWithSlice) {
+  const char* module_str = R"(
+    HloModule test_module
+
+    ENTRY entry_computation {
+      iota.0 = u32[64] iota(), iota_dimension=0
+      slice.0 = u32[32] slice(iota.0), slice={[0:32]}
+      broadcast.0 = u32[16,32] broadcast(slice.0), dimensions={1}
+      broadcast.1 = u32[32,32] broadcast(slice.0), dimensions={1}
+      p.0 = u32[16,32] parameter(0)
+      p.1 = u32[32,32] parameter(1)
+      add.0 = u32[16,32] add(p.0, broadcast.0)
+      add.1 = u32[32,32] add(p.1, broadcast.1)
+      ROOT root = (u32[16,32], u32[32,32]) tuple(add.0, add.1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(module_str));
+  HloConstantSplitter pass = HloConstantSplitter(/*split_expressions=*/true);
+  const auto status_or = HloTestBase::RunHloPass(&pass, module.get());
+  TF_ASSERT_OK(status_or.status());
+  // Verify that the changed flag returned is correct.
+  EXPECT_TRUE(status_or.value());
+  HloDCE dce;
+  TF_ASSERT_OK(dce.Run(module.get()).status());
+  XLA_VLOG_LINES(1, module->entry_computation()->ToString());
+  EXPECT_EQ(module->entry_computation()->instruction_count(), 11);
 }
 
 TEST_F(HloConstantSplitterTest, NoSplittingSideEffectExpressions) {

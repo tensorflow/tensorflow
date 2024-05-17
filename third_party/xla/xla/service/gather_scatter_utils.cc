@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/layout_util.h"
 #include "xla/permutation_util.h"
 #include "xla/service/hlo_creation_utils.h"
 
@@ -68,6 +69,10 @@ absl::StatusOr<HloInstruction*> MaybeTranspose(
     return operand;
   }
   TF_ASSIGN_OR_RETURN(auto* result, MakeTransposeHlo(operand, permutation));
+  // Assign the default layout to the transpose. This method is also used after
+  // layout normalization, and before, we don't care about the layout.
+  *result->mutable_shape()->mutable_layout() =
+      LayoutUtil::GetDefaultLayoutForShape(result->shape());
   return result;
 }
 

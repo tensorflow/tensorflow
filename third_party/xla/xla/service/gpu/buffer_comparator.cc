@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -75,11 +76,10 @@ static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
 
   TF_ASSIGN_OR_RETURN(
       ComparisonKernelT<ElementT> comparison_kernel,
-      (se::TypedKernel<se::DeviceMemory<ElementT>, se::DeviceMemory<ElementT>,
-                       float, uint64_t,
-                       se::DeviceMemory<uint64_t>>::Create(executor,
-                                                           kernel_name,
-                                                           kernel_symbol)));
+      (se::TypedKernelFactory<
+          se::DeviceMemory<ElementT>, se::DeviceMemory<ElementT>, float,
+          uint64_t, se::DeviceMemory<uint64_t>>::Create(executor, kernel_name,
+                                                        kernel_symbol)));
 
   const se::DeviceDescription& gpu_device_info =
       executor->GetDeviceDescription();

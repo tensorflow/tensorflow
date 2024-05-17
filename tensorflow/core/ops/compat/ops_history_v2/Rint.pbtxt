@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Rint"
   input_arg {
     name: "x"

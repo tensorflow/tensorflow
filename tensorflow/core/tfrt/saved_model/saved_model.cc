@@ -449,6 +449,16 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
     Options options, tensorflow::MetaGraphDef meta_graph_def,
     absl::string_view saved_model_dir) {
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
+
+  if (options.graph_execution_options.use_ifrt) {
+    if (!options.graph_execution_options.enable_mlrt ||
+        !options.enable_lazy_loading ||
+        !options.lazy_loading_use_graph_executor) {
+      return absl::UnimplementedError(
+          "Using IFRT in TFRT requires mlrt and lazy loading.");
+    }
+  }
+
   tfrt::metrics::AddTFRTVersionMetric();
 
   UpdateTpuTargetByBridgeCompatibility(options.graph_execution_options,
@@ -567,6 +577,8 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
         CombineSignatureDefs(meta_graph_def.signature_def());
     model_context.set_graph_def(&meta_graph_def.graph_def());
     model_context.set_callable_options(&callable_options);
+    model_context.set_device_mgr(&fallback_state->device_manager());
+
     TF_RETURN_IF_ERROR(
         options.graph_execution_options.runtime->CreateRuntimeResources(
             model_context));

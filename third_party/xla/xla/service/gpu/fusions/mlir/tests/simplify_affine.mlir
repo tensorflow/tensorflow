@@ -103,12 +103,12 @@ func.func @arg_ranges(%arg0: index, %arg1: index) -> index {
 
 // -----
 
-func.func @cant_lower(%arg0: index, %arg1: index) -> index {
-  %0 = xla_gpu.apply_indexing
-    affine_map<()[s0, s1] -> (s0 floordiv 100 + s1 floordiv 100)>
+func.func @cant_lower(%arg0: index, %arg1: index) -> (index, index) {
+  %0:2 = xla_gpu.apply_indexing
+    affine_map<()[s0, s1] -> (s0 floordiv 100 + s1 floordiv 100, s0 + s1)>
     [%arg0 in [-10, 42], %arg1 in [0, 1000]]
-  return %0 : index
+  return %0#0, %0#1 : index, index
 }
-
-// CHECK-LABEL:       @cant_lower
-// CHECK:       affine.apply
+// CHECK-LABEL: @cant_lower
+// CHECK:         affine.apply
+// CHECK-NEXT:    arith.addi

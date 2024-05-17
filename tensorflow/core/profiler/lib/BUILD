@@ -61,10 +61,7 @@ alias(
 cc_library(
     name = "profiler_factory",
     hdrs = ["profiler_factory.h"],
-    visibility = [
-        "//perftools/accelerators/xprof/xprofilez/tpu:__pkg__",
-        "//tensorflow/c/experimental/pluggable_profiler:__pkg__",
-    ],
+    visibility = ["//tensorflow/c/experimental/pluggable_profiler:__pkg__"],
     deps = [
         ":profiler_interface",
         "@com_google_absl//absl/base:core_headers",

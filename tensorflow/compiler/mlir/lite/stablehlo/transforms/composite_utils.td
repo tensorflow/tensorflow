@@ -22,7 +22,6 @@ include "mlir/IR/PatternBase.td"
 def GetNhwcReturnTypeFromNchw: NativeCodeCall<
   "GetNhwcReturnTypeFromNchw((*$0.begin()).getDefiningOp())">;
 
-
 // When given a DenseIntElementsAttr containing I64 elements, this extracts
 // one I32IntegerAttr from the given index.
 class GetI32At<int index>: NativeCodeCall<

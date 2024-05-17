@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -33,8 +34,9 @@ limitations under the License.
 namespace stream_executor::gpu {
 
 TEST(GpuKernelTest, Add) {
-  using AddI32Kernel = TypedKernel<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
-                                   DeviceMemory<int32_t>>;
+  using AddI32Kernel =
+      TypedKernelFactory<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
+                         DeviceMemory<int32_t>>;
   auto name = absl::AsciiStrToUpper(
       xla::PlatformUtil::CanonicalPlatformName("gpu").value());
   Platform* platform = PlatformManager::PlatformWithName(name).value();

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stringpiece.h"
+#include "tsl/lib/core/bits.h"
 
 namespace tensorflow {
 namespace strings {
@@ -403,49 +404,15 @@ static const uint64 kLengthToMask[1 + kMaxSigned64Length] = {
 // For positive numbers, the number of bits is 1 plus the most significant
 // bit position (the highest bit position in a positive int64 is 63).
 // For a negative number n, we count the bits in ~n.
-// That is, length = kBitsToLength[Bits::Log2Floor64(n < 0 ? ~n : n) + 1].
+// That is, length = kBitsToLength[tsl::Log2Floor64(n < 0 ? ~n : n) + 1].
 static const int8 kBitsToLength[1 + 63] = {
     1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4,
     4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 7, 7,
     7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 10};
 
-#if defined(__GNUC__)
-// Returns floor(lg(n)).  Returns -1 if n == 0.
-static int Log2Floor64(uint64 n) {
-  return n == 0 ? -1 : 63 ^ __builtin_clzll(n);
-}
-#else
-// Portable slow version
-static int Log2Floor32_Portable(uint32 n) {
-  if (n == 0) return -1;
-  int log = 0;
-  uint32 value = n;
-  for (int i = 4; i >= 0; --i) {
-    int shift = (1 << i);
-    uint32 x = value >> shift;
-    if (x != 0) {
-      value = x;
-      log += shift;
-    }
-  }
-  assert(value == 1);
-  return log;
-}
-// Returns floor(lg(n)).  Returns -1 if n == 0.
-static int Log2Floor64(uint64 n) {
-  const uint32 topbits = static_cast<uint32>(n >> 32);
-  if (topbits == 0) {
-    // Top bits are zero, so scan in bottom bits
-    return Log2Floor32_Portable(static_cast<uint32>(n));
-  } else {
-    return 32 + Log2Floor32_Portable(topbits);
-  }
-}
-#endif
-
 // Calculates the encoding length in bytes of the signed number n.
 static inline int SignedEncodingLength(int64_t n) {
-  return kBitsToLength[Log2Floor64(n < 0 ? ~n : n) + 1];
+  return kBitsToLength[tsl::Log2Floor64(n < 0 ? ~n : n) + 1];
 }
 
 static void StoreBigEndian64(char* dst, uint64 v) {
@@ -494,7 +461,7 @@ bool OrderedCode::ReadSignedNumIncreasing(StringPiece* src, int64_t* result) {
   int len;
   uint64 x;
   if (first_byte != 0xff) {
-    len = 7 - Log2Floor64(first_byte ^ 0xff);
+    len = 7 - tsl::Log2Floor64(first_byte ^ 0xff);
     if (src->size() < static_cast<size_t>(len)) return false;
     x = xor_mask;  // sign extend using xor_mask
     for (int i = 0; i < len; ++i)

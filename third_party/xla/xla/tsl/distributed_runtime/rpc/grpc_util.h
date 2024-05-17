@@ -33,7 +33,7 @@ namespace tsl {
 
 // Proto: tensorflow::distributed_runtime::GrpcPayloadsLost
 // Location: tsl/protobuf/distributed_runtime_payloads.proto
-// Usage: Flags the Status to have lost payloads during GRPC conversion.
+// Usage: Flags the absl::Status to have lost payloads during GRPC conversion.
 constexpr char kGrpcPayloadsLost[] =
     "type.googleapis.com/tensorflow.distributed_runtime.GrpcPayloadsLost";
 
@@ -98,7 +98,7 @@ inline ::grpc::Status ToGrpcStatus(const absl::Status& s) {
     if (s.message().size() > 3072 /* 3k bytes */) {
       // TODO(b/62947679): Remove truncation once the gRPC issue is resolved.
       string scratch = strings::Printf("%.3072s ... [truncated]",
-                                       tsl::NullTerminatedMessage(s));
+                                       absl::StatusMessageAsCStr(s));
       LOG(ERROR) << "Truncated error message: " << s;
       return ::grpc::Status(static_cast<::grpc::StatusCode>(s.code()), scratch,
                             SerializePayloads(s));

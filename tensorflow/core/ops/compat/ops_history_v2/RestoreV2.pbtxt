@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RestoreV2"
   input_arg {
     name: "prefix"

@@ -38,9 +38,10 @@ class HloPassFix : public Pass {
   template <typename... Args>
   explicit HloPassFix(Args&&... args) : Pass(args...) {}
 
-  Status RunOnChangedComputations(HloModule* module, RunState* outer_run_state,
-                                  const absl::flat_hash_set<absl::string_view>&
-                                      execution_threads) override {
+  absl::Status RunOnChangedComputations(
+      HloModule* module, RunState* outer_run_state,
+      const absl::flat_hash_set<absl::string_view>& execution_threads)
+      override {
     RunState run_state;
     run_state.changed_last_iteration = outer_run_state->changed_last_iteration;
     TF_RETURN_IF_ERROR(RunToFixPoint(module, &run_state, execution_threads));
@@ -85,7 +86,7 @@ class HloPassFix : public Pass {
   }
 
  private:
-  Status RunToFixPoint(
+  absl::Status RunToFixPoint(
       HloModule* module, RunState* run_state,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     VLOG(3) << "Running HloPassFix on " << Pass::name();
@@ -108,7 +109,7 @@ class HloPassFix : public Pass {
     return OkStatus();
   }
 
-  Status RunOnChangedComputationsOnce(
+  absl::Status RunOnChangedComputationsOnce(
       HloModule* module, RunState* run_state,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     // If Pass overrides RunOnChangedComputations, just forward to it.

@@ -1643,7 +1643,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape2DTo3D) {
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
                 (d0, d1, d2) -> (d0 * 2 + d1 floordiv 2,
-                                d2 + (d1 mod 2) * 4)
+                                (d1 mod 2) * 4 + d2)
                 domain:
                 d0 in [0, 1]
                 d1 in [0, 3]
@@ -1662,7 +1662,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape3DTo2D) {
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d0 floordiv 2,
-                                        d1 floordiv 4 + (d0 mod 2) * 2,
+                                        (d0 mod 2) * 2 + d1 floordiv 4,
                                         d1 mod 4)
                             domain:
                             d0 in [0, 3]
@@ -2615,7 +2615,7 @@ TEST_F(IndexingAnalysisTest, TilingIndexing) {
   EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           (d3 floordiv 64) * 8 + s0,
-          d0 floordiv 4 + (d3 mod 64) * 4,
+          (d3 mod 64) * 4 + d0 floordiv 4,
           d0 mod 4 + s2 * 4
         )
         domain:
@@ -2635,20 +2635,31 @@ TEST_F(IndexingAnalysisTest, TilingIndexing) {
 TEST_F(IndexingAnalysisTest, EpilogueIndexing) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
-    ENTRY e {
+    fused_computation {
       p0 = f32[1000, 1000] parameter(0)
       t = f32[1000, 1000]{0, 1} transpose(p0), dimensions={1, 0}
       a0 = f32[1000000] bitcast(t)
       ROOT log = f32[1000000] log(a0)
     }
+    ENTRY e {
+      p0 = f32[1000, 1000] parameter(0)
+      ROOT fusion = f32[1000000] fusion(p0), kind=kLoop,
+          calls=fused_computation
+    }
   )");
   ASSERT_TRUE(module.ok());
-  EXPECT_THAT(ComputeEpilogueInputToOutputIndexing(
-                  (*module)->entry_computation()->GetInstructionWithName("t"),
-                  &mlir_context_)
-                  .ToString(),
-              MatchIndexingString(R"(
-                  (d0, d1) -> (d0 + d1 * 1000)
+  auto* computation = (*module)->GetComputationWithName("fused_computation");
+  auto fusion = HloFusionAdaptor::ForComputation(computation);
+  HloInstructionAdaptor transpose(*computation->GetInstructionWithName("t"),
+                                  fusion.get());
+  HloInstructionAdaptor log(*computation->GetInstructionWithName("log"),
+                            fusion.get());
+
+  EXPECT_THAT(
+      ComputeEpilogueInputToOutputIndexing(transpose, log, &mlir_context_)
+          .ToString(),
+      MatchIndexingString(R"(
+                  (d0, d1) -> (d1 * 1000 + d0)
                   domain:
                   d0 in [0, 999]
                   d1 in [0, 999]
@@ -2658,17 +2669,26 @@ TEST_F(IndexingAnalysisTest, EpilogueIndexing) {
 TEST_F(IndexingAnalysisTest, EpilogueIndexing_NoEpilogue) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
-    ENTRY e {
+    fused_computation {
       p0 = f32[1000, 1000] parameter(0)
       ROOT t = f32[1000, 1000]{0, 1} transpose(p0), dimensions={1, 0}
     }
+    ENTRY e {
+      p0 = f32[1000, 1000] parameter(0)
+      ROOT fusion = f32[1000, 1000] fusion(p0), kind=kLoop,
+          calls=fused_computation
+    }
   )");
   ASSERT_TRUE(module.ok());
-  EXPECT_THAT(ComputeEpilogueInputToOutputIndexing(
-                  (*module)->entry_computation()->GetInstructionWithName("t"),
-                  &mlir_context_)
-                  .ToString(),
-              MatchIndexingString(R"(
+  auto* computation = (*module)->GetComputationWithName("fused_computation");
+  auto fusion = HloFusionAdaptor::ForComputation(computation);
+  HloInstructionAdaptor transpose(*computation->GetInstructionWithName("t"),
+                                  fusion.get());
+
+  EXPECT_THAT(
+      ComputeEpilogueInputToOutputIndexing(transpose, transpose, &mlir_context_)
+          .ToString(),
+      MatchIndexingString(R"(
                   (d0, d1) -> (d0, d1)
                   domain:
                   d0 in [0, 999]

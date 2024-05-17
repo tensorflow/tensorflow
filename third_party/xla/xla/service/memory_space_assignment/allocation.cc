@@ -152,8 +152,8 @@ void Allocation::AddUse(HloUse use) {
   uses_.push_back(use);
 }
 
-Status Allocation::UpdateUses(HloComputation* computation,
-                              HloInstruction* producing_instruction) {
+absl::Status Allocation::UpdateUses(HloComputation* computation,
+                                    HloInstruction* producing_instruction) {
   for (const HloUse& use : uses()) {
     HloInstruction* replacement_instruction = producing_instruction;
     Shape operand_shape = use.instruction->operand(use.operand_number)->shape();
@@ -259,7 +259,7 @@ bool PinnedAllocation::operator==(const Allocation& other) const {
   return casted_other != nullptr && (*this) == (*casted_other);
 }
 
-Status PinnedAllocation::Process() {
+absl::Status PinnedAllocation::Process() {
   if (is_scoped_allocation()) {
     // Nothing to do here for scoped allocations.
     return OkStatus();
@@ -313,7 +313,7 @@ int64_t CopyAllocation::earliest_available_time() const {
   return copy_done_schedule_before_;
 }
 
-Status CopyAllocation::Process() {
+absl::Status CopyAllocation::Process() {
   // Copy allocations need to insert asynchronous copy nodes.
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
@@ -439,7 +439,7 @@ SlicedCopyAllocation::SlicedCopyAllocation(
   }
 }
 
-Status SlicedCopyAllocation::Process() {
+absl::Status SlicedCopyAllocation::Process() {
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
 
@@ -619,7 +619,7 @@ std::string SlicedCopyAllocation::ToString() const {
       ", uses: ", UsesToString(uses()), ", from ", prev_allocation_.ToString());
 }
 
-Status SlicedCopyAllocation::CreateBitcastConcat(
+absl::Status SlicedCopyAllocation::CreateBitcastConcat(
     const Shape& shape, absl::Span<HloInstruction* const> slices) {
   CHECK(!slices.empty());
   concat_ =
@@ -649,7 +649,7 @@ bool SlicedCopyAllocation::SliceDetail::operator==(
   return SliceDetailToTuple(*this) == SliceDetailToTuple(other);
 }
 
-Status SlicedCopyAllocation::SliceDetail::CreateAsyncSlice(
+absl::Status SlicedCopyAllocation::SliceDetail::CreateAsyncSlice(
     const Shape& original_shape, HloInstruction& producer,
     HloComputation& parent) {
   if (original_shape.rank() != slice_decision.sizing.slice_params.size()) {
@@ -728,7 +728,7 @@ MirroredAllocation::MirroredAllocation(const Allocation& original_allocation,
                  /*cross_program_prefetch_index=*/std::nullopt),
       original_allocation_(original_allocation) {}
 
-Status MirroredAllocation::Process() {
+absl::Status MirroredAllocation::Process() {
   set_original_defining_position(original_allocation_.defining_position());
   if (is_scoped_allocation()) {
     // Nothing to do here for scoped allocations.
@@ -754,7 +754,7 @@ HloPosition ParentAllocation::defining_position() const {
   return original_defining_position();
 }
 
-Status ParentAllocation::Process() {
+absl::Status ParentAllocation::Process() {
   // Add an additional parameter to the while HLO with a reference to the buffer
   // in the default memory space.
   HloInstruction* producing_instruction =
@@ -796,7 +796,7 @@ Status ParentAllocation::Process() {
   return UpdateUses(computation, final_instruction);
 }
 
-Status ParentAllocation::PostProcess() {
+absl::Status ParentAllocation::PostProcess() {
   // Update the root of the while body with the new parameter. The reason why we
   // need a separate post-process for this is because other allocations may have
   // while body root as a use, so they would update the old root instead of the

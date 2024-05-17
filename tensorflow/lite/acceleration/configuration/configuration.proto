@@ -317,6 +317,10 @@ enum XNNPackFlags {
 message XNNPackSettings {
   optional int32 num_threads = 1;
   optional XNNPackFlags flags = 2 [default = TFLITE_XNNPACK_DELEGATE_NO_FLAGS];
+  // Path to the experimental XNNPack cache file. XNNPack packed buffers are
+  // saved to and reloaded from this cache which can reduce initialization time
+  // and the packing memory footprint.
+  optional string experimental_weight_cache_file_path = 3;
 }
 
 // CoreML Delegate settings.

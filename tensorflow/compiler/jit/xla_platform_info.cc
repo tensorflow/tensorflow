@@ -377,7 +377,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
     auto device = static_cast<Device*>(device_base);
     platform_id = device->tensorflow_accelerator_device_info()
                       ->stream->parent()
-                      ->platform()
+                      ->GetPlatform()
                       ->id();
   } else if (XlaDevice::GetMetadataFromDevice(device_base, &xla_device_metadata)
                  .ok()) {

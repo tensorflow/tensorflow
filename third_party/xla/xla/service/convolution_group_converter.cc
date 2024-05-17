@@ -45,13 +45,13 @@ namespace {
 class ConvolutionVisitor : public DfsHloVisitorWithDefault {
  public:
   // Default visitor action is to do nothing and return OK.
-  Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
+  absl::Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
     return OkStatus();
   }
 
-  Status HandleConvolution(HloInstruction* convolution) override;
+  absl::Status HandleConvolution(HloInstruction* convolution) override;
 
-  Status HandleBatchGroupCount(HloInstruction* convolution);
+  absl::Status HandleBatchGroupCount(HloInstruction* convolution);
 
   // Runs the visitor on a computation.
   static bool Run(HloComputation* computation,
@@ -201,7 +201,8 @@ HloInstruction* GetExpandedFilterMask(
 
 // This function handles batch_group_counts which are relevant only for
 // depthwise backprop filter convolutions.
-Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
+absl::Status ConvolutionVisitor::HandleBatchGroupCount(
+    HloInstruction* convolution) {
   auto dim_numbers = convolution->convolution_dimension_numbers();
   auto activation = convolution->mutable_operand(0);
   auto filter = convolution->mutable_operand(1);
@@ -418,7 +419,8 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
   return OkStatus();
 }
 
-Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
+absl::Status ConvolutionVisitor::HandleConvolution(
+    HloInstruction* convolution) {
   if (convert_batch_groups_only_) {
     return HandleBatchGroupCount(convolution);
   }

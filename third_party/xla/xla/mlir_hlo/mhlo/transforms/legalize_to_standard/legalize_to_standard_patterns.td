@@ -33,8 +33,8 @@ def : Pat<(MHLO_ConstantOp ElementsAttr:$value),
 //===----------------------------------------------------------------------===//
 
 def IsSameSizePred : CPred<
-    "$0.getType().cast<ShapedType>().getShape() "
-    "== $1.getType().cast<ShapedType>().getShape()">;
+    "cast<ShapedType>($0.getType()).getShape() "
+    "== cast<ShapedType>($1.getType()).getShape()">;
 def IsSameSizeConstraint : Constraint<IsSameSizePred, "inputs are same size">;
 def createFastMathNone : NativeCodeCall<
     "::mlir::arith::FastMathFlagsAttr::get("

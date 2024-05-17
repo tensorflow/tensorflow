@@ -89,6 +89,7 @@ absl::flat_hash_map<const HloInstruction*, int> PartitionGraphByIndexing(
     for (auto* user : instr->users()) {
       auto user_indexing = indexing_for_instr(user);
       if (user->opcode() == HloOpcode::kConcatenate ||
+          user->opcode() == HloOpcode::kSelect ||
           user->opcode() == HloOpcode::kTuple ||
           (instr_indexing && user_indexing != *instr_indexing)) {
         instr_indexing = std::nullopt;
@@ -151,10 +152,9 @@ EpilogueSpecification EpilogueSpecification::FromOutputIndexing(
         result.index_ranges.push_back(sym.upper + 1);
       }
     }
-
     auto* hero = root_to_hero[root];
-    auto epilogue_indexing =
-        ComputeEpilogueInputToOutputIndexing(hero, mlir_context);
+    auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(
+        {*hero, &analysis.fusion()}, {*root, &analysis.fusion()}, mlir_context);
     auto root_indexing = ComposeIndexingMaps(*indexing, epilogue_indexing);
 
     result.root_indexing.push_back(root_indexing.GetAffineMap());
@@ -286,7 +286,7 @@ PartitionedComputation::PartitionedComputation(
           }
         } else {
           first_root_shape = &instruction->shape();
-          if (first_root_shape->IsTuple()) {
+          while (first_root_shape->IsTuple()) {
             first_root_shape = &first_root_shape->tuple_shapes()[0];
           }
           root_indexing.push_back(mlir::AffineMap::getMultiDimIdentityMap(
@@ -321,6 +321,7 @@ PartitionedComputation::PartitionedComputation(
 
 PartitionedComputation::Subgraph PartitionedComputation::Subgraph::ForEpilogue(
     const EpilogueSpecification& epilogue) {
+  if (epilogue.roots.empty()) return {};
   const auto* computation = epilogue.heroes.front()->parent();
   PartitionedComputation::Subgraph subgraph;
   subgraph.name = llvm_ir::SanitizeFunctionName(
@@ -407,6 +408,7 @@ PartitionedComputations::DeclareFunctions(mlir::ModuleOp module) const {
   auto create_funcs =
       [&](absl::Span<const PartitionedComputation::Subgraph> subgraphs) {
         for (const auto& subgraph : subgraphs) {
+          if (subgraph.roots.empty()) continue;
           auto func_op = CreateSubgraphMlirFunction(subgraph, builder);
           func_op->setAttr("llvm.linkage", mlir::LLVM::LinkageAttr::get(
                                                module->getContext(),
@@ -450,12 +452,9 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
   };
 
   for (auto* root : subgraph.roots) {
-    if (root->shape().IsTuple()) {
-      for (auto& shape : root->shape().tuple_shapes()) {
-        result_types.push_back(element_type(shape));
-      }
-    } else {
-      result_types.push_back(element_type(root->shape()));
+    for (auto ty : ShapeToMlirTypes(root->shape(), b)) {
+      result_types.push_back(
+          mlir::cast<mlir::RankedTensorType>(ty).getElementType());
     }
   }
 

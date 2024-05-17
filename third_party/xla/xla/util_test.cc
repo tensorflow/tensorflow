@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <list>
+#include <memory>
 #include <numeric>
 #include <set>
 #include <string>
@@ -26,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/maybe_owning.h"
 #include "xla/test.h"
 #include "xla/types.h"
 #include "tsl/platform/logging.h"
@@ -316,6 +318,29 @@ TEST(UtilTest, PackInt4) {
   for (size_t i = 0; i < input.size(); ++i) {
     EXPECT_EQ(unpacked[i], input[i]) << i;
   }
+}
+
+TEST(UtilTest, MaybeOwningTestNull) {
+  MaybeOwning<char> m(nullptr);
+  EXPECT_EQ(m.get(), nullptr);
+  EXPECT_EQ(m.get_mutable(), nullptr);
+}
+
+TEST(UtilTest, MaybeOwningTestOwning) {
+  MaybeOwning<char> m(std::make_unique<char>());
+  *m.get_mutable() = 'a';
+  EXPECT_EQ(*m, 'a');
+}
+
+TEST(UtilTest, MaybeOwningTestShared) {
+  auto owner = std::make_unique<char>();
+  *owner = 'x';
+  MaybeOwning<char> c1(owner.get());
+  MaybeOwning<char> c2(owner.get());
+
+  EXPECT_EQ(*c1, 'x');
+  EXPECT_EQ(*c2, 'x');
+  EXPECT_EQ(c1.get(), c2.get());
 }
 
 }  // namespace

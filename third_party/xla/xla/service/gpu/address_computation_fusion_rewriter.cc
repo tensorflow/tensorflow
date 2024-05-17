@@ -179,10 +179,7 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr) {
             }
           }
 
-          // TODO(vuson): lift the first restriction by considering fusing other
-          // uses of the operand to reuse the address computation. Only worth it
-          // if other uses are also custom calls though.
-          return cur->user_count() > 1 || !IsNoOp(cur);
+          return !IsNoOp(cur);
         });
 
     if (maybe_slice_instr == std::nullopt) continue;
@@ -278,10 +275,11 @@ absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
   return captures;
 }
 
-Status CreateRootTuple(HloInstruction* hero, HloComputation::Builder& builder,
-                       DataflowPathsView sliced_user_paths,
-                       absl::flat_hash_map<const HloInstruction*,
-                                           HloInstruction*>& instr_mapping) {
+absl::Status CreateRootTuple(
+    HloInstruction* hero, HloComputation::Builder& builder,
+    DataflowPathsView sliced_user_paths,
+    absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
+        instr_mapping) {
   unsigned tuple_size = hero->shape().tuple_shapes_size();
 
   std::vector<HloInstruction*> sliced_elems(tuple_size, nullptr);

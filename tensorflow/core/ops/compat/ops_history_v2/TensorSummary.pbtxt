@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TensorSummary"
   input_arg {
     name: "tensor"

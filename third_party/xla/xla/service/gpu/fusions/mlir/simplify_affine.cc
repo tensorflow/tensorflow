@@ -181,13 +181,17 @@ struct RewriteApplyIndexingOp : OpRewritePattern<ApplyIndexingOp> {
     b.setInsertionPoint(op);
     SmallVector<Value, 4> results;
     results.reserve(affine_map.getNumResults());
-    for (AffineExpr result_expr : affine_map.getResults()) {
+    for (unsigned i = 0; i < affine_map.getNumResults(); ++i) {
+      AffineExpr result_expr = affine_map.getResult(i);
       // If the expression cannot be lowered, we convert it to affine.apply,
       // since it supports more expression types.
-      results.push_back(
-          IsLoweringSupported(result_expr, range_evaluator)
-              ? EvaluateExpression(b, result_expr, dim_count, operands)
-              : b.create<AffineApplyOp>(affine_map, operands));
+      if (IsLoweringSupported(result_expr, range_evaluator)) {
+        results.push_back(
+            EvaluateExpression(b, result_expr, dim_count, operands));
+      } else {
+        results.push_back(
+            b.create<AffineApplyOp>(affine_map.getSubMap({i}), operands));
+      }
     }
     rewriter.replaceOp(op, results);
     return mlir::success();

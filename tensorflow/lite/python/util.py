@@ -46,6 +46,7 @@ HASH_CONST = 0x9e3779b97f4a7800
 # Keras functions used by TFLite
 model_input_signature = _tflite_keras_util.model_input_signature
 trace_model_call = _tflite_keras_util.trace_model_call
+get_save_spec = _tflite_keras_util.get_save_spec
 
 # Jax functions used by TFLite
 # pylint: disable=g-import-not-at-top

@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -359,6 +360,69 @@ AffineExpr AffineExprSimplifier::RewriteSumIf(
   return pred(expr) ? expr : mlir::getAffineConstantExpr(0, expr.getContext());
 }
 
+// Compares the two expression by their AST. The ordering is arbitrary but
+// similar to what MLIR's simplifier does.
+int CompareExprs(AffineExpr a, AffineExpr b) {
+  if ((b.getKind() == AffineExprKind::Constant) !=
+      (a.getKind() == AffineExprKind::Constant)) {
+    return a.getKind() == AffineExprKind::Constant ? 1 : -1;
+  }
+  if (a.getKind() < b.getKind()) {
+    return -1;
+  }
+  if (a.getKind() > b.getKind()) {
+    return 1;
+  }
+  assert(a.getKind() == b.getKind());
+  int64_t a_value = 0;
+  int64_t b_value = 0;
+  switch (a.getKind()) {
+    case AffineExprKind::Add:
+    case AffineExprKind::FloorDiv:
+    case AffineExprKind::CeilDiv:
+    case AffineExprKind::Mul:
+    case AffineExprKind::Mod: {
+      auto a_bin = mlir::cast<AffineBinaryOpExpr>(a);
+      auto b_bin = mlir::cast<AffineBinaryOpExpr>(b);
+      auto lhs = CompareExprs(a_bin.getLHS(), b_bin.getLHS());
+      if (lhs != 0) {
+        return lhs;
+      }
+      return CompareExprs(a_bin.getRHS(), b_bin.getRHS());
+    }
+    case AffineExprKind::Constant: {
+      a_value = mlir::cast<AffineConstantExpr>(a).getValue();
+      b_value = mlir::cast<AffineConstantExpr>(b).getValue();
+      break;
+    }
+    case AffineExprKind::SymbolId: {
+      a_value = mlir::cast<AffineSymbolExpr>(a).getPosition();
+      b_value = mlir::cast<AffineSymbolExpr>(b).getPosition();
+      break;
+    }
+    case AffineExprKind::DimId: {
+      a_value = mlir::cast<AffineDimExpr>(a).getPosition();
+      b_value = mlir::cast<AffineDimExpr>(b).getPosition();
+      break;
+    }
+  }
+  return a_value < b_value ? -1 : (a_value > b_value ? 1 : 0);
+}
+
+AffineExpr CanonicalizeOrder(AffineExpr in) {
+  if (auto binop = mlir::dyn_cast<AffineBinaryOpExpr>(in)) {
+    auto lhs = CanonicalizeOrder(binop.getLHS());
+    auto rhs = CanonicalizeOrder(binop.getRHS());
+    if ((binop.getKind() == AffineExprKind::Add ||
+         binop.getKind() == AffineExprKind::Mul) &&
+        CompareExprs(lhs, rhs) > 0) {
+      std::swap(lhs, rhs);
+    }
+    return getAffineBinaryOpExpr(binop.getKind(), lhs, rhs);
+  }
+  return in;
+}
+
 AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
   switch (expr.getKind()) {
     case AffineExprKind::Mul: {
@@ -478,7 +542,11 @@ AffineMap AffineExprSimplifier::Simplify(AffineMap affine_map) {
     results.push_back(simplified);
   }
   if (nothing_changed) {
-    return affine_map;
+    for (auto& result : results) {
+      result = CanonicalizeOrder(result);
+    }
+    return AffineMap::get(affine_map.getNumDims(), affine_map.getNumSymbols(),
+                          results, affine_map.getContext());
   }
   return Simplify(AffineMap::get(affine_map.getNumDims(),
                                  affine_map.getNumSymbols(), results,

@@ -91,8 +91,8 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
   const int64_t kAlternateMemorySpace = 1;
   const int64_t kDefaultMemorySpace = 0;
 
-  Status Initialize(const HloModule* module,
-                    uint64_t alternate_memory_size = 256) {
+  absl::Status Initialize(const HloModule* module,
+                          uint64_t alternate_memory_size = 256) {
     HloCostAnalysis::Options options;
     MemoryBoundLoopOptimizerOptions optimizer_options;
     optimizer_options.set_enabled(true);
@@ -110,8 +110,10 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
     hlo_cost_analysis_ = std::make_unique<HloCostAnalysis>(options);
     TF_RETURN_IF_ERROR(
         module->entry_computation()->Accept(hlo_cost_analysis_.get()));
+    hlo_cost_analysis_costs_ =
+        std::make_unique<HloCostAnalysisCosts>(*hlo_cost_analysis_);
     TF_ASSIGN_OR_RETURN(cost_analysis_,
-                        CostAnalysis::Create(*hlo_cost_analysis_,
+                        CostAnalysis::Create(*hlo_cost_analysis_costs_,
                                              cost_analysis_options_, *module));
     TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));
     TF_ASSIGN_OR_RETURN(live_range_,
@@ -368,8 +370,8 @@ ENTRY Entry {
     return preset_assignments;
   }
 
-  Status VerifyMsaEquivalence(HloModule* module,
-                              bool expect_unsupported_allocations = false) {
+  absl::Status VerifyMsaEquivalence(
+      HloModule* module, bool expect_unsupported_allocations = false) {
     // Create a map indexed by instruction number and operand number.
     absl::flat_hash_map<std::pair<int, int>, const Allocation*> allocation_map;
     for (const MemoryBoundLoopOptimizer::LoopValue& value :
@@ -501,6 +503,7 @@ ENTRY Entry {
   Options options_;
   CostAnalysisOptions cost_analysis_options_;
   std::unique_ptr<HloCostAnalysis> hlo_cost_analysis_;
+  std::unique_ptr<HloCostAnalysisCosts> hlo_cost_analysis_costs_;
   std::unique_ptr<CostAnalysis> cost_analysis_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
   std::unique_ptr<HloLiveRange> live_range_;

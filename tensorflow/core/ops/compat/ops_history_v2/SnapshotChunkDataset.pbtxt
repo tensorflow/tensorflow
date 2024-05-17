@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SnapshotChunkDataset"
   input_arg {
     name: "chunk_file"

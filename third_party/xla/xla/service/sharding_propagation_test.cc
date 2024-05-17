@@ -2582,7 +2582,7 @@ ENTRY %entry {
   EXPECT_THAT(crs_f_tiled, op::Sharding("{devices=[2]0,1}"));
   auto* crs_f_none = FindInstruction(module.get(), "crs_f.none");
   ASSERT_NE(crs_f_none, nullptr);
-  EXPECT_THAT(crs_f_none, op::NoSharding());
+  EXPECT_THAT(crs_f_none, op::Sharding("{devices=[2]0,1}"));
   auto* crs_b_replicated = FindInstruction(module.get(), "crs_b.replicated");
   ASSERT_NE(crs_b_replicated, nullptr);
   EXPECT_THAT(crs_b_replicated, op::Sharding("{replicated}"));
@@ -3843,26 +3843,43 @@ TEST_P(ParameterizedMetadataTest, Conditional) {
   const char* const hlo_string = R"(
 HloModule module
 
+%add-call {
+  %x = f32[4,4] parameter(0)
+  ROOT %add = f32[4,4] add(%x, %x)
+}
+
 %true_comp {
-  %tp = (f32[3,5]) parameter(0)
-  %tgte = f32[3,5] get-tuple-element(%tp), index=0
-  %ttr = f32[5,3] transpose(%tgte), dimensions={1,0}
-  ROOT %tr = (f32[5,3]) tuple(%ttr)
+  %tp = (f32[3,5], f32[4,4]) parameter(0)
+  %tgte.0 = f32[3,5] get-tuple-element(%tp), index=0
+  %ttr = f32[5,3] transpose(%tgte.0), dimensions={1,0}
+  %tgte.1 = f32[4,4] get-tuple-element(%tp), index=1
+  %tadd = f32[4,4] call(%tgte.1), to_apply=%add-call
+  ROOT %tr = (f32[5,3], f32[4,4]) tuple(%ttr, %tadd)
+}
+
+%mul-call {
+  %y = f32[4,4] parameter(0)
+  ROOT %mul = f32[4,4] multiply(%y, %y)
 }
 
 %false_comp {
-  %fp = (f32[5,3]) parameter(0)
-  %fgte = f32[5,3] get-tuple-element(%fp), index=0
-  ROOT %fr = (f32[5,3]) tuple(%fgte)
+  %fp = (f32[5,3], f32[4,4]) parameter(0)
+  %fgte.0 = f32[5,3] get-tuple-element(%fp), index=0
+  %fgte.1 = f32[4,4] get-tuple-element(%fp), index=1
+  %fmul = f32[4,4] call(%fgte.1), to_apply=%mul-call
+  ROOT %fr = (f32[5,3], f32[4,4]) tuple(%fgte.0, %fmul)
 }
 
 ENTRY entry {
   %cond = pred[] parameter(0)
-  %true_param = (f32[3,5]) parameter(1),
-    sharding={{devices=[1,2]0,1 metadata={op_name="a"}}}
-  %false_param = (f32[5,3]) parameter(2),
-    sharding={{devices=[1,3]0,1,2 metadata={op_name="b"}}}
-  %conditional = (f32[5,3]) conditional(
+  %tp.0 = f32[3,5] parameter(1), sharding={devices=[1,2]0,1 metadata={op_name="a"}}
+  %fp.0 = f32[5,3] parameter(2), sharding={devices=[1,3]0,1,2 metadata={op_name="b"}}
+  %constant = f32[4] constant({1,2,3,4}), sharding={devices=[4]0,1,2,3 metadata={op_name="c"}}
+  %broadcast = f32[4,4] broadcast(%constant), dimensions={1}
+  %add = f32[4,4] add(%broadcast, %broadcast)
+  %true_param = (f32[3,5], f32[4,4]) tuple(%tp.0, %add)
+  %false_param = (f32[5,3], f32[4,4]) tuple(%fp.0, %add)
+  %conditional = (f32[5,3], f32[4,4]) conditional(
       %cond, %true_param, %false_param),
     true_computation=%true_comp,
     false_computation=%false_comp
@@ -3879,60 +3896,76 @@ ENTRY entry {
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
+
   auto* tp = FindInstruction(module.get(), "tp");
-  ASSERT_NE(tp, nullptr);
-  EXPECT_THAT(tp, op::Sharding("{{devices=[1,2]0,1}}"));
-  auto* tgte = FindInstruction(module.get(), "tgte");
-  ASSERT_NE(tgte, nullptr);
-  EXPECT_THAT(tgte, op::Sharding("{devices=[1,2]0,1}"));
+  auto* tgte_0 = FindInstruction(module.get(), "tgte.0");
   auto* ttr = FindInstruction(module.get(), "ttr");
-  ASSERT_NE(ttr, nullptr);
-  EXPECT_THAT(ttr, op::Sharding("{devices=[2,1]0,1}"));
+  auto* tgte_1 = FindInstruction(module.get(), "tgte.1");
+  auto* tadd = FindInstruction(module.get(), "tadd");
   auto* tr = FindInstruction(module.get(), "tr");
-  ASSERT_NE(tr, nullptr);
-  EXPECT_THAT(tr, op::Sharding("{{devices=[1,3]0,1,2}}"));
+
   auto* fp = FindInstruction(module.get(), "fp");
-  ASSERT_NE(fp, nullptr);
-  EXPECT_THAT(fp, op::Sharding("{{devices=[1,3]0,1,2}}"));
-  auto* fgte = FindInstruction(module.get(), "fgte");
-  ASSERT_NE(fgte, nullptr);
-  EXPECT_THAT(fgte, op::Sharding("{devices=[1,3]0,1,2}"));
+  auto* fgte_0 = FindInstruction(module.get(), "fgte.0");
+  auto* fgte_1 = FindInstruction(module.get(), "fgte.1");
+  auto* fmul = FindInstruction(module.get(), "fmul");
   auto* fr = FindInstruction(module.get(), "fr");
-  ASSERT_NE(fr, nullptr);
-  EXPECT_THAT(fr, op::Sharding("{{devices=[1,3]0,1,2}}"));
+
+  auto* x = FindInstruction(module.get(), "x");
+  auto* add = FindInstruction(module.get(), "add");
+  auto* y = FindInstruction(module.get(), "y");
+  auto* mul = FindInstruction(module.get(), "mul");
+
   auto* conditional = FindInstruction(module.get(), "conditional");
-  ASSERT_NE(conditional, nullptr);
-  EXPECT_THAT(conditional, op::Sharding("{{devices=[1,3]0,1,2}}"));
 
-  auto check_metadata = [](const HloSharding& sharding,
-                           const OpMetadata& metadata) {
-    if (sharding.IsTuple()) {
-      EXPECT_THAT(sharding.tuple_elements()[0], ShardingMetadata({metadata}));
-    } else {
-      EXPECT_THAT(sharding, ShardingMetadata({metadata}));
-    }
-  };
+  const std::vector<HloInstruction*> instructions(
+      {tp, tgte_0, ttr, tgte_1, tadd, tr, fp, fgte_0, fgte_1, fmul, fr, x, add,
+       y, mul, conditional});
 
-  auto check_empty_metadata = [](const HloSharding& sharding) {
-    if (sharding.IsTuple()) {
-      EXPECT_THAT(sharding.tuple_elements()[0], ShardingMetadata({}));
-    } else {
-      EXPECT_THAT(sharding, ShardingMetadata({}));
-    }
-  };
-
-  for (HloInstruction* instruction : {tp, tgte, ttr}) {
-    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-      check_metadata(instruction->sharding(), CreateMetadata("a"));
-    } else {
-      check_empty_metadata(instruction->sharding());
-    }
+  for (HloInstruction* instruction : instructions) {
+    EXPECT_NE(instruction, nullptr);
+    EXPECT_TRUE(instruction->has_sharding());
   }
-  for (HloInstruction* instruction : {tr, fp, fgte, fr, conditional}) {
-    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-      check_metadata(instruction->sharding(), CreateMetadata("b"));
-    } else {
-      check_empty_metadata(instruction->sharding());
+
+  for (HloInstruction* instruction :
+       {tgte_1, tadd, fgte_1, fmul, x, add, y, mul}) {
+    EXPECT_THAT(instruction, op::Sharding("{devices=[1,4]0,1,2,3}"));
+  }
+  for (HloInstruction* instruction : {tr, fr, conditional, fp}) {
+    EXPECT_THAT(instruction,
+                op::Sharding("{{devices=[1,3]0,1,2}, {devices=[1,4]0,1,2,3}}"));
+  }
+  EXPECT_THAT(tp, op::Sharding("{{devices=[1,2]0,1}, {devices=[1,4]0,1,2,3}}"));
+  EXPECT_THAT(tgte_0, op::Sharding("{devices=[1,2]0,1}"));
+  EXPECT_THAT(ttr, op::Sharding("{devices=[2,1]0,1}"));
+  EXPECT_THAT(fgte_0, op::Sharding("{devices=[1,3]0,1,2}"));
+
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    for (HloInstruction* instruction :
+         {tgte_1, tadd, fgte_1, fmul, x, add, y, mul}) {
+      EXPECT_THAT(instruction->sharding(),
+                  ShardingMetadata({CreateMetadata("c")}));
+    }
+    for (HloInstruction* instruction : {tr, fr, conditional, fp}) {
+      const std::vector<HloSharding>& shardings =
+          instruction->sharding().tuple_elements();
+      EXPECT_THAT(shardings[0], ShardingMetadata({CreateMetadata("b")}));
+      EXPECT_THAT(shardings[1], ShardingMetadata({CreateMetadata("c")}));
+    }
+    for (HloInstruction* instruction : {tgte_0, ttr}) {
+      EXPECT_THAT(instruction->sharding(),
+                  ShardingMetadata({CreateMetadata("a")}));
+    }
+    EXPECT_THAT(fgte_0->sharding(), ShardingMetadata({CreateMetadata("b")}));
+  } else {
+    for (HloInstruction* instruction : instructions) {
+      if (instruction->sharding().IsTuple()) {
+        for (const HloSharding& tuple_element :
+             instruction->sharding().tuple_elements()) {
+          EXPECT_THAT(tuple_element, ShardingMetadata({}));
+        }
+      } else {
+        EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+      }
     }
   }
 }

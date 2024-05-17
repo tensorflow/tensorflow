@@ -120,7 +120,7 @@ static bool OperandsAndResultMustHaveRowMajorLayout(
   return false;
 }
 
-Status CpuLayoutAssignment::AddBackendConstraints(
+absl::Status CpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   ShouldMakeOperandColMajorCache cache;
 

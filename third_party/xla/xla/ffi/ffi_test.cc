@@ -17,14 +17,17 @@ limitations under the License.
 
 #include <complex>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_memory.h"
@@ -453,7 +456,7 @@ TEST(FfiTest, BufferBaseArgument) {
 
 TEST(FfiTest, TypedAndRankedBufferArgument) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceMemoryBase memory(storage.data(), storage.size() * sizeof(float));
 
   CallFrameBuilder builder;
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -481,7 +484,8 @@ TEST(FfiTest, TypedAndRankedBufferArgument) {
 
 TEST(FfiTest, ComplexBufferArgument) {
   std::vector<std::complex<float>> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(std::complex<float>));
+  se::DeviceMemoryBase memory(storage.data(),
+                              storage.size() * sizeof(std::complex<float>));
 
   CallFrameBuilder builder;
   builder.AddBufferArg(memory, PrimitiveType::C64, /*dims=*/{2, 2});
@@ -494,6 +498,23 @@ TEST(FfiTest, ComplexBufferArgument) {
   };
 
   auto handler = Ffi::Bind().Arg<BufferR2<PrimitiveType::C64>>().To(fn);
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, TokenArgument) {
+  CallFrameBuilder builder;
+  builder.AddBufferArg(se::DeviceMemoryBase(), PrimitiveType::TOKEN,
+                       /*dims=*/{});
+  auto call_frame = builder.Build();
+
+  auto fn = [&](Token tok) {
+    EXPECT_EQ(tok.data.opaque(), nullptr);
+    EXPECT_EQ(tok.dimensions.size(), 0);
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Arg<Token>().To(fn);
   auto status = Call(*handler, call_frame);
   TF_ASSERT_OK(status);
 }
@@ -590,6 +611,34 @@ TEST(FfiTest, RunOptionsCtx) {
 
   auto handler = Ffi::Bind().Ctx<Stream>().To(fn);
   auto status = Call(*handler, call_frame, {&opts});
+
+  TF_ASSERT_OK(status);
+}
+
+struct StrUserData {
+  explicit StrUserData(std::string str) : str(std::move(str)) {}
+  std::string str;
+};
+
+TEST(FfiTest, UserData) {
+  ExecutionContext execution_context;
+  TF_ASSERT_OK(execution_context.Emplace<StrUserData>("foo"));
+
+  CallFrameBuilder builder;
+  auto call_frame = builder.Build();
+
+  auto fn = [&](StrUserData* data) {
+    EXPECT_EQ(data->str, "foo");
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Ctx<UserData<StrUserData>>().To(fn);
+
+  ServiceExecutableRunOptions opts;
+  opts.mutable_run_options()->set_ffi_execution_context(&execution_context);
+
+  CallOptions options = {&opts};
+  auto status = Call(*handler, call_frame, options);
 
   TF_ASSERT_OK(status);
 }

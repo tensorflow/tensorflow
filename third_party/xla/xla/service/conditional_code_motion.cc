@@ -498,8 +498,8 @@ absl::flat_hash_set<int64_t> FindSpecialConverts(HloInstruction* old_root,
 // z = tuple(y.0, y.1, ...y.n)
 // Doing so ensures that we can accommodate the possible shape-change of the
 // conditional when the instructions are hoisted.
-Status RestructureConditionalInstruction(HloComputation* computation,
-                                         HloInstruction* conditional) {
+absl::Status RestructureConditionalInstruction(HloComputation* computation,
+                                               HloInstruction* conditional) {
   HloInstruction* old_root = computation->root_instruction();
   std::vector<HloInstruction*> new_operands;
   int cur_index = 0;
@@ -937,7 +937,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
 class MoveOperandIntoBranch {
  public:
   MoveOperandIntoBranch() = default;
-  Status operator()(HloInstruction* inst, HloInstruction*& user) {
+  absl::Status operator()(HloInstruction* inst, HloInstruction*& user) {
     VLOG(1) << "operand to move into branch: " << inst->ToString();
     VLOG(2) << "MoveIntoBranches user =" << user->ToString() << "\n";
     CHECK(inst->user_count() == 1 || inst->opcode() == HloOpcode::kBroadcast);
@@ -1061,7 +1061,7 @@ class MoveOperandIntoBranch {
   // Replace input with its operands inside user. Use matching_tuple_indices to
   // remember which operands of input is matched to which entries in the new
   // user.
-  Status ReplaceInputInUser(
+  absl::Status ReplaceInputInUser(
       HloInstruction* input, HloInstruction*& user,
       absl::InlinedVector<HloInstruction*, 4>& new_operands,
       std::vector<std::vector<int64_t>>& matching_tuple_indices) {
@@ -1137,7 +1137,7 @@ class MoveOperandIntoBranch {
     }
     return OkStatus();
   }
-  Status MoveInputIntoBranch(
+  absl::Status MoveInputIntoBranch(
       HloInstruction* input, HloInstruction*& user,
       absl::InlinedVector<HloInstruction*, 4>& new_operands,
       std::vector<std::vector<int64_t>>& matching_tuple_indices) {

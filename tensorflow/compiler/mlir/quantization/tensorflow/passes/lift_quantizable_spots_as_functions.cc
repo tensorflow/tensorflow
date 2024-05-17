@@ -391,7 +391,9 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
   populateWithGenerated(patterns);
   patterns.add<CheckQuantizableOps>(ctx, quant_options_);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
-  for (auto func : module.getOps<func::FuncOp>()) {
+
+  // Iterate over the sorted list of functions to keep the order deterministic.
+  for (func::FuncOp func : GetSortedFunctions(module)) {
     if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
       func.emitError() << "quant-lift-quantizable-spots-as-functions failed.";
       signalPassFailure();

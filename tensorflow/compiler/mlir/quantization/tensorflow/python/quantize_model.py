@@ -638,7 +638,7 @@ def _populate_calibration_options(
   if calib_opts.calibration_data_dir:
     save_model.create_empty_output_dir(
         calib_opts.calibration_data_dir,
-        overwrite=True,
+        overwrite=calib_opts.force_regenerate_calibration_data,
     )
 
 
@@ -741,10 +741,12 @@ def _populate_quantization_options_default_values(
   if (quantization_options.op_set == quant_opts_pb2.OpSet.STABLEHLO) and (
       quantization_options.quantization_method.preset_method
       != _PresetMethod.METHOD_STATIC_RANGE_INT8
+      and quantization_options.quantization_method.preset_method
+      != _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
   ):
     raise ValueError(
         'StableHLO quantized opset currently only supports static range'
-        ' quantization via TF Quantizer.'
+        ' quantization and weight-only quantizationvia TF Quantizer.'
     )
 
   # Set `force_graph_mode_calibration` to True to avoid skipping op execution,
