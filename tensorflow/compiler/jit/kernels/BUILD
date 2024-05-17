@@ -59,8 +59,10 @@ cc_library(
         "//tensorflow/compiler/jit:xla_compile_util",
         "//tensorflow/core/platform:refcount",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/tsl/concurrency:async_value",
     ],
     alwayslink = 1,
 )
