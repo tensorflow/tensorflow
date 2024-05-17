@@ -1731,16 +1731,20 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
+    ] + if_gpu_is_configured([
+        #keep sorted
+        "//xla/stream_executor:host_or_device_scalar",
+    ]) + if_cuda_is_configured([
+        #keep sorted
         "//xla/stream_executor/cuda:cublas_lt_header",
         "//xla/stream_executor/cuda:cublas_plugin",
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
-        "//xla/stream_executor:host_or_device_scalar",
     ]) + if_rocm_is_configured([
-        "//xla/stream_executor/rocm:hipblas_lt_header",
-        "//xla/stream_executor/rocm:amdhipblaslt_plugin",
-        "//xla/stream_executor:host_or_device_scalar",
+        #keep sorted
+        "//third_party/gpus/rocm:rocm_headers",
         "//xla/stream_executor/platform:dso_loader",
+        "//xla/stream_executor/rocm:amdhipblaslt_plugin",
+        "//xla/stream_executor/rocm:hipblas_lt_header",
     ]) + if_static([
         "@local_tsl//tsl/platform:tensor_float_32_utils",
     ]),
@@ -4010,7 +4014,10 @@ cc_library(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ],
+    ] + if_rocm_is_configured([
+        # keep sorted
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 cc_library(
