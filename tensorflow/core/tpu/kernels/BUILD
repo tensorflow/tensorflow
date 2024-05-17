@@ -1482,6 +1482,21 @@ cc_library(
 )
 
 cc_library(
+    name = "_pywrap_sparse_core_layout_header_only",
+    srcs = [],
+    hdrs = ["sparse_core_layout.h"],
+    visibility = ["//tensorflow/python/tpu:__pkg__"],  # ONLY for `_pywrap_sparse_core_layout`.
+    deps = [
+        ":sparse_core_layout_proto_cc",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "sparse_core_layout",
     srcs = ["sparse_core_layout.cc"],
     hdrs = ["sparse_core_layout.h"],

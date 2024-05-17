@@ -285,6 +285,7 @@ py_strict_library(
         "//tensorflow/python/summary/writer",
         "//tensorflow/python/tools:module_util",
         "//tensorflow/python/tools/api/generator:create_python_api",
+        "//tensorflow/python/tpu:_pywrap_sparse_core_layout",
         "//tensorflow/python/tpu:datasets",
         "//tensorflow/python/tpu:functional",
         "//tensorflow/python/tpu:preempted_hook_py",
@@ -799,6 +800,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/profiler:profiler_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
+        "//tensorflow/core/tpu/kernels:sparse_core_layout",
         "//tensorflow/core/util:determinism",
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
@@ -920,6 +922,7 @@ filegroup(
         "//tensorflow/core/platform:statusor",  # tfe
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
+        "//tensorflow/core/tpu/kernels:sparse_core_layout",  # sparse_core_layouts
         "//tensorflow/core/util:determinism",  # determinism
         "//tensorflow/core/util:port",  # util_port
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader

@@ -1416,6 +1416,7 @@ tf_cc_shared_library(
         "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/kernels:data_service_ops",
         "//tensorflow/core/kernels:dataset_ops",
+        "//tensorflow/core/tpu/kernels:sparse_core_layout",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:stacktrace_handler",
