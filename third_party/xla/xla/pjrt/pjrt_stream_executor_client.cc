@@ -2427,7 +2427,7 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
              int64_t channel_id, se::Stream* stream, const Shape& shape,
              const se::DeviceMemoryBase& src,
              const absl::flat_hash_map<std::string, std::string>&)
-             -> absl::StatusOr<AsyncValueRef<se::Event>> {
+             -> absl::StatusOr<AsyncValueRef<std::unique_ptr<se::Event>>> {
     VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
 
@@ -2441,10 +2441,9 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
     // Allocate event that will signal completion of send operation. We do not
     // actually track the completion of the send callback, we only have to keep
     // the device memory long enough to complete the memcpy command.
-    auto done_event = MakeConstructedAsyncValueRef<se::Event>(stream->parent());
-    if (!done_event->Init())
-      return Internal("Failed to initialize done event (channel_id=%d)",
-                      channel_id);
+    TF_ASSIGN_OR_RETURN(auto se_event, stream->parent()->CreateEvent());
+    auto done_event = MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
+        std::move(se_event));
 
     thread_pool->Schedule([done_event, stream, src, channel_id, shape, send] {
       tsl::profiler::TraceMe trace([&] {
@@ -2461,7 +2460,7 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
         done_event.SetError(status);
         return;
       }
-      status = stream->RecordEvent(&done_event.get());
+      status = stream->RecordEvent(done_event.get().get());
       if (!status.ok()) {
         done_event.SetError(status);
         return;
@@ -2494,9 +2493,9 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
 namespace {
 class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
  public:
-  StreamExecutorCopyToDeviceStream(int64_t channel_id, se::Stream* stream,
-                                   se::DeviceMemoryBase dst,
-                                   AsyncValueRef<se::Event> done)
+  StreamExecutorCopyToDeviceStream(
+      int64_t channel_id, se::Stream* stream, se::DeviceMemoryBase dst,
+      AsyncValueRef<std::unique_ptr<se::Event>> done)
       : CopyToDeviceStream(dst.size(), /*granule_bytes=*/1),
         channel_id_(channel_id),
         stream_(stream),
@@ -2558,7 +2557,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
     // responsibility to synchronize with this event before submitting any new
     // computations to the stream.
     if (complete) {
-      auto recorded = stream_->RecordEvent(&done_.get());
+      auto recorded = stream_->RecordEvent(done_.get().get());
       if (!recorded.ok()) {
         done_.SetError(recorded);
         return PjRtFuture<>(done_.GetError());
@@ -2576,7 +2575,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
 
   // Async value will become available after we'll submit the last memcpy
   // operation, and the event will be recorded on the stream.
-  AsyncValueRef<se::Event> done_;
+  AsyncValueRef<std::unique_ptr<se::Event>> done_;
 };
 }  // namespace
 
@@ -2600,7 +2599,7 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
   return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
                      se::DeviceMemoryBase* dst,
                      const absl::flat_hash_map<std::string, std::string>&)
-             -> absl::StatusOr<AsyncValueRef<se::Event>> {
+             -> absl::StatusOr<AsyncValueRef<std::unique_ptr<se::Event>>> {
     VLOG(3) << "Recv from channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
 
@@ -2620,10 +2619,9 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
     // Allocate event that will signal completion of recv operation. We record
     // it on a stream after submitting the memcpy for the last chunk (see
     // `StreamExecutorCopyToDeviceStream` implementation above).
-    auto done_event = MakeConstructedAsyncValueRef<se::Event>(stream->parent());
-    if (!done_event->Init())
-      return Internal("Failed to initialize done event (channel_id=%d)",
-                      channel_id);
+    TF_ASSIGN_OR_RETURN(auto event, stream->parent()->CreateEvent());
+    auto done_event = MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
+        std::move(event));
 
     recv->callback({shape}, std::make_unique<StreamExecutorCopyToDeviceStream>(
                                 channel_id, stream, *dst, done_event));
