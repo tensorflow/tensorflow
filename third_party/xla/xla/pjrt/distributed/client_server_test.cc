@@ -20,6 +20,7 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/barrier.h"
@@ -583,7 +584,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_Succeed) {
         client->WaitAtBarrier("barrier_2", kBarrierTimeout, std::nullopt));
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::OkStatus();
+    return absl::OkStatus();
   };
 
   std::vector<absl::Status> statuses(num_nodes);
@@ -621,7 +622,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_Timeout) {
     TF_RETURN_IF_ERROR(barrier_status);
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::OkStatus();
+    return absl::OkStatus();
   };
 
   std::vector<absl::Status> statuses(num_nodes);
@@ -658,7 +659,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
         client->WaitAtBarrier(barrier_id, kBarrierTimeout, std::nullopt));
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::OkStatus();
+    return absl::OkStatus();
   };
 
   std::vector<absl::Status> statuses(num_nodes);
@@ -689,7 +690,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
         client->WaitAtBarrier("barrier_1", kBarrierTimeout, std::nullopt));
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::OkStatus();
+    return absl::OkStatus();
   };
 
   std::vector<absl::Status> statuses(num_nodes);
@@ -721,7 +722,7 @@ TEST_F(ClientServerTest, WaitAtBarrierSubset_Succeeds) {
     }
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::OkStatus();
+    return absl::OkStatus();
   };
 
   std::vector<absl::Status> statuses(num_nodes);
