@@ -46,7 +46,7 @@ namespace convert {
 namespace ops = ::tensorflow::ops;
 using ::tensorflow::testing::StatusIs;
 
-// This anonymous namespace contains helper functions for instatiating small TF
+// This anonymous namespace contains helper functions for instantiating small TF
 // building blocks. These are used below to construct specific graph patterns
 // which test end-to-end conversion of the TF graph to an explciit-precision
 // enabled TensorRT network.
@@ -140,9 +140,6 @@ Output AddConv2D(Scope scope, Input input, int in_channels, int out_channels,
   auto conv_input =
       !qdq_on_output ? AddQDQV2(scope.WithOpName("qdq_input"), input) : input;
 
-  std::array<int, 4> strides =
-      data_format == "NCHW" ? std::array<int, 4>{1, 1, stride[0], stride[1]}
-                            : std::array<int, 4>{1, stride[0], stride[1], 1};
   Output result = ops::Conv2D(
       scope.WithOpName("conv2d"), conv_input, AddQDQV2(scope, weights_const),
       /*strides=*/{1, 1, 1, 1},
@@ -261,7 +258,7 @@ std::ostream& operator<<(std::ostream& os, const QDQTestOptions opts) {
 
 std::vector<QDQTestOptions> EnumerateQDQTestOptions() {
   std::vector<QDQTestOptions> result;
-  for (const auto* data_format : {"NCHW", "NHWC"}) {
+  for (const absl::string_view data_format : {"NCHW", "NHWC"}) {
     for (auto use_bias : {true, false}) {
       for (auto qdq_on_output : {false, true}) {
         // For now, always append a QDQ before output. For small single-op tests
@@ -358,7 +355,7 @@ class QDQExplicitTest : public ::testing::Test,
       }
     }
     TRT_ENSURE(n_trt_ops == 1);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ConvertAndRun(Scope* scope) {
@@ -366,7 +363,7 @@ class QDQExplicitTest : public ::testing::Test,
     std::vector<const NodeDef*> outputs;
 
     GraphDef gdef;
-    scope->ToGraphDef(&gdef);
+    TF_RETURN_IF_ERROR(scope->ToGraphDef(&gdef));
 
     std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
     TF_RETURN_IF_ERROR(scope->ToGraph(graph.get()));

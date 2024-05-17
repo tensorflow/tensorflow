@@ -16,8 +16,10 @@ limitations under the License.
 
 #include <cstdio>
 #include <memory>
+#include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/platform/errors.h"
@@ -59,9 +61,7 @@ class RunHandlerThreadWorkQueueTest : public ::testing::Test {
                                           std::move(work_queue));
     RequestContextBuilder req_ctx_builder{host_.get(),
                                           /*resource_context=*/nullptr};
-    tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-    auto queue =
-        pool_->InitializeRequest(&req_ctx_builder, &intra_op_threadpool);
+    auto queue = pool_->InitializeRequest(/*request_id=*/100);
     TF_CHECK_OK(queue.status());
     queue_ = std::move(*queue);
     auto req_ctx = std::move(req_ctx_builder).build();
@@ -162,16 +162,16 @@ TEST_F(RunHandlerThreadWorkQueueTest, RunningMixedTask) {
 }
 
 TEST_F(RunHandlerThreadWorkQueueTest, NameReturnsValidString) {
-  EXPECT_EQ(queue_->name(), "run_handler");
+  EXPECT_TRUE(absl::StrContains(pool_->name(), "RunHandlerThreadWorkQueue"));
 }
 
 TEST_F(RunHandlerThreadWorkQueueTest, GetParallelismLevelOk) {
-  EXPECT_EQ(queue_->GetParallelismLevel(),
+  EXPECT_EQ(pool_->GetParallelismLevel(),
             kNumComplementaryThreads + kNumMainThreads);
 }
 
 TEST_F(RunHandlerThreadWorkQueueTest, IsWorkerThreadOk) {
-  EXPECT_TRUE(queue_->IsInWorkerThread());
+  EXPECT_TRUE(pool_->IsInWorkerThread());
 }
 
 TEST_F(RunHandlerThreadWorkQueueTest, NoHandlerReturnsError) {
@@ -181,10 +181,9 @@ TEST_F(RunHandlerThreadWorkQueueTest, NoHandlerReturnsError) {
   options.init_timeout_ms = 1;
   options.max_concurrent_handler = 0;
   auto queue = std::make_unique<RunHandlerThreadWorkQueue>(options);
-  tensorflow::thread::ThreadPoolInterface* interface;
   tfrt::RequestContextBuilder ctx_builder(nullptr, nullptr);
   EXPECT_THAT(
-      queue->InitializeRequest(&ctx_builder, &interface),
+      queue->InitializeRequest(/*request_id=*/100),
       tensorflow::testing::StatusIs(
           tensorflow::error::INTERNAL,
           "Could not obtain RunHandler for request after waiting for 1 ms."));

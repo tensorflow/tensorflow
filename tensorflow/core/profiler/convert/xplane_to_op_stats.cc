@@ -18,71 +18,105 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
-#include "tensorflow/core/profiler/convert/op_stats_combiner.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
-#include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
-#include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/device_caps_utils.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
+#include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tensorflow/core/profiler/utils/step_intersection.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tsl/profiler/utils/tpu_xplane_utils.h"
+#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
+using tsl::profiler::FindTensorCorePlanes;
+
 std::string Hostname(const XSpace& space) {
   if (space.hostnames().empty()) return "localhost";
   DCHECK_EQ(space.hostnames_size(), 1);
   const std::string& hostname = space.hostnames(0);
-  // This shouldn't be a taskname in host:port format.
-  DCHECK(!absl::StrContains(hostname, ':'));
   return hostname;
 }
 
 }  // namespace
 
 PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
-                    double peak_hbm_bw_giga_bytes_per_second) {
+                    std::vector<double> peak_bws) {
   PerfEnv result;
   result.set_peak_tera_flops_per_second(peak_tera_flops_per_second);
-  result.set_peak_hbm_bw_giga_bytes_per_second(
-      peak_hbm_bw_giga_bytes_per_second);
-  result.set_ridge_point(TeraToGiga(peak_tera_flops_per_second) /
-                         peak_hbm_bw_giga_bytes_per_second);
+
+  for (const auto bw : peak_bws) {
+    result.add_peak_bws_giga_bytes_per_second(bw);
+  }
+  result.set_ridge_point(tsl::profiler::TeraToGiga(peak_tera_flops_per_second) /
+                         peak_bws[MemBwType::MEM_BW_TYPE_HBM_RW]);
   return result;
 }
 
 PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
   DeviceCapabilities cap = GetDeviceCaps(device_plane);
-  return MakePerfEnv(
-      GigaToTera(GetFlopMaxThroughputPerSM(cap)) * cap.num_cores(),
-      UniToGiga(cap.memory_bandwidth()));
+  if (!absl::StartsWith(device_plane.name(), kTpuPlanePrefix)) {
+    return MakePerfEnv(
+        tsl::profiler::GigaToTera(GetFlopMaxThroughputPerSM(cap)) *
+            cap.num_cores(),
+        // Ideally, the cap should report separate hbm BW, for now set to same.
+        {tsl::profiler::UniToGiga(cap.memory_bandwidth()),
+         tsl::profiler::UniToGiga(cap.memory_bandwidth()),
+         tsl::profiler::UniToGiga(cap.memory_bandwidth()),
+         tsl::profiler::UniToGiga(cap.memory_bandwidth())});
+  } else {
+    XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(&device_plane);
+    auto peak_tera_flops_per_second =
+        visitor.GetStat(StatType::kDevCapPeakTeraflopsPerSecond);
+    auto peak_tera_flops_per_second_val =
+        peak_tera_flops_per_second.has_value()
+            ? peak_tera_flops_per_second->DoubleValue()
+            : 0.0;
+    auto peak_hbm_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakHbmBwGigabytesPerSecond);
+    auto peak_hbm_bw_giga_bytes_per_second_val =
+        peak_hbm_bw_giga_bytes_per_second.has_value()
+            ? peak_hbm_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    auto peak_sram_rd_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakSramRdBwGigabytesPerSecond);
+    auto peak_sram_rd_bw_giga_bytes_per_second_val =
+        peak_sram_rd_bw_giga_bytes_per_second.has_value()
+            ? peak_sram_rd_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    auto peak_sram_wr_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakSramWrBwGigabytesPerSecond);
+    auto peak_sram_wr_bw_giga_bytes_per_second_val =
+        peak_sram_wr_bw_giga_bytes_per_second.has_value()
+            ? peak_sram_wr_bw_giga_bytes_per_second->DoubleValue()
+            : 0.0;
+    return MakePerfEnv(peak_tera_flops_per_second_val,
+                       {peak_hbm_bw_giga_bytes_per_second_val,
+                        peak_sram_rd_bw_giga_bytes_per_second_val,
+                        peak_sram_wr_bw_giga_bytes_per_second_val});
+  }
 }
 
 void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
@@ -105,7 +139,8 @@ void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
   } else if (std::vector<const XPlane*> tpu_planes =
                  FindTensorCorePlanes(space);
              !tpu_planes.empty()) {
-    XPlaneVisitor visitor = CreateTfXPlaneVisitor(tpu_planes.at(0));
+    XPlaneVisitor visitor =
+        tsl::profiler::CreateTfXPlaneVisitor(tpu_planes.at(0));
     auto xstat = visitor.GetStat(StatType::kDeviceTypeString);
     if (xstat.has_value()) {
       env->set_device_type(std::string(xstat->StrOrRefValue()));
@@ -133,11 +168,23 @@ void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
   }
 }
 
+// This function should be idempotent to be called
+void SetProgramIdToNameMap(const HloProtoMap& hlo_proto_map,
+                           tensorflow::profiler::OpStats& op_stats) {
+  auto& program_id_to_name_map = *op_stats.mutable_program_id_to_name_map();
+  for (const auto& [program_id, hlo_proto] : hlo_proto_map) {
+    program_id_to_name_map[program_id] = hlo_proto->hlo_module().name();
+  }
+}
+
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options) {
-  const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
-  std::vector<const XPlane*> device_planes =
-      FindPlanesWithPrefix(space, kGpuPlanePrefix);
+  std::vector<const XPlane*> device_planes = FindTensorCorePlanes(space);
+  bool is_gpu = device_planes.empty();
+  if (is_gpu) {
+    device_planes = FindPlanesWithPrefix(space, kGpuPlanePrefix);
+  }
+
   OpStats op_stats;
   StepEvents step_events;
   PropagateXSpaceDiagnosticsToOpStats(space, &op_stats);
@@ -150,17 +197,27 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
 
   // TODO(b/161942993) parallelize XPlane processing per thread.
   for (const XPlane* device_trace : device_planes) {
+    XPlane aggregated_xplane;
+    bool use_aggregated_xplane = false;
     if (options.generate_op_metrics_db) {
       if (!op_stats.has_perf_env()) {
         *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
       }
-      OpMetricsDb device_op_metrics_db =
-          ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
-      op_metrics_db_combiner.Combine(device_op_metrics_db);
+      if (is_gpu) {
+        OpMetricsDb device_op_metrics_db =
+            ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
+        op_metrics_db_combiner.Combine(device_op_metrics_db);
+      } else {
+        AggregateXPlane(*device_trace, aggregated_xplane);
+        use_aggregated_xplane = true;
+        OpMetricsDb device_op_metrics_db =
+            ConvertTpuDeviceTraceXPlaneToOpMetricsDb(aggregated_xplane);
+        op_metrics_db_combiner.Combine(device_op_metrics_db);
+      }
     }
     if (options.generate_step_db) {
-      StepEvents device_step_events =
-          ConvertDeviceTraceXPlaneToStepEvents(*device_trace);
+      StepEvents device_step_events = ConvertDeviceTraceXPlaneToStepEvents(
+          use_aggregated_xplane ? aggregated_xplane : *device_trace);
       CombineStepEvents(device_step_events, &step_events);
     }
     if (options.generate_kernel_stats_db) {
@@ -177,6 +234,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
 
   bool has_device = !device_planes.empty();
   // Convert a host plane.
+  const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
   if (host_plane) {
     if (options.generate_op_metrics_db) {
       *op_stats.mutable_host_op_metrics_db() =
@@ -189,6 +247,12 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
           ConvertHostThreadsXPlaneToStepEvents(*host_plane, device_step_events);
       CombineStepEvents(host_step_events, &step_events);
     }
+    XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(host_plane);
+    auto stat = visitor.GetStat(StatType::kMatrixUnitUtilizationPercent);
+    if (stat.has_value()) {
+      op_stats.mutable_performance_counter_result()
+          ->set_matrix_unit_utilization_percent(stat->DoubleValue());
+    }
   }
   if (options.generate_step_db) {
     StepEvents nonoverlapped_step_events =
@@ -200,44 +264,20 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
         ComputePrecisionStats(nonoverlapped_step_events);
   }
 
-  CoreDetails& details =
-      (*op_stats.mutable_core_id_to_details())[kDefaultGpuLocalCoreId];
-  details.set_hostname(Hostname(space));
+  // TODO(bvandermoon): Add the TPU equivalent for setting core details hostname
+  if (is_gpu) {
+    CoreDetails& details =
+        (*op_stats.mutable_core_id_to_details())[kDefaultGpuLocalCoreId];
+    details.set_hostname(Hostname(space));
+  }
+
+  // Set program_id_to_name map in OpStats from Xspace
+  // Will be non-op if the space does not have materialized device traces
+  HloProtoMap hlo_proto_map;
+  hlo_proto_map.AddHloProtosFromXSpace(space);
+  SetProgramIdToNameMap(hlo_proto_map, op_stats);
+
   return op_stats;
-}
-
-Status ConvertMultiXSpacesToCombinedOpStats(const std::vector<XSpace>& xspaces,
-                                            const OpStatsOptions& options,
-                                            OpStats* combined_op_stats) {
-  // A shortcut code path for a single XSpace. There is no need to merge OpStats
-  // if there is only a single XSpace.
-  if (xspaces.size() == 1) {
-    *combined_op_stats = ConvertXSpaceToOpStats(xspaces[0], options);
-    return OkStatus();
-  }
-
-  // Read multiple XSpaces and convert to multiple OpStats.
-  std::vector<OpStats> all_op_stats;
-  all_op_stats.reserve(xspaces.size());
-  for (const XSpace& xspace : xspaces) {
-    all_op_stats.push_back(ConvertXSpaceToOpStats(xspace, options));
-  }
-
-  // Combine OpStats.
-  std::vector<OpStatsInfo> all_op_stats_info;
-  all_op_stats_info.reserve(all_op_stats.size());
-  for (int i = 0; i < all_op_stats.size(); i++) {
-    all_op_stats_info.emplace_back(
-        &all_op_stats[i],
-        ParseHardwareType(all_op_stats[i].run_environment().device_type()), i);
-  }
-
-  // Do not limit the maximum number of steps during the merge of OpStats.
-  StepIntersection step_intersection =
-      ComputeStepIntersectionToMergeOpStats(all_op_stats_info, kuint32max);
-  CombineAllOpStats(all_op_stats_info, step_intersection, combined_op_stats);
-
-  return OkStatus();
 }
 
 }  // namespace profiler

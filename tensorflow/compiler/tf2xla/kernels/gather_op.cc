@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <optional>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
@@ -24,9 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/slicing.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/client/lib/slicing.h"
+#include "xla/client/xla_builder.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -84,14 +86,19 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
 
     *gather_output =
         xla::Broadcast(XlaHelpers::Zero(builder, dtype), out_shape.dim_sizes());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   for (int64_t i = 0; i < num_index_dims; ++i) {
     if (input_shape.dim_size(axis + i) == 0) {
-      return errors::InvalidArgument("Gather dimension ", axis + i,
-                                     " is of size zero in tensor with shape ",
-                                     input_shape.DebugString());
+      // Gather dimension of size zero in tensor results in constant 0.
+      // This is done to match the legacy behavior of the MLIR legalization and
+      // avoid breaking existing models.
+      auto slice_sizes = input_shape.dim_sizes();
+      slice_sizes.erase(slice_sizes.begin() + axis);
+      *gather_output =
+          xla::Broadcast(XlaHelpers::Zero(builder, dtype), slice_sizes);
+      return absl::OkStatus();
     }
   }
 
@@ -150,7 +157,7 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
   }
 
   *gather_output = xla::Gather(input, indices, dim_numbers, slice_sizes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
@@ -218,8 +225,9 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
 
   axis = axis.value_or(0);
   DataType index_type = context->input_type(1);
-  if (index_type != DT_INT32 && index_type != DT_INT64) {
-    return errors::InvalidArgument("indices must be int32 or int64");
+  if (index_type != DT_INT16 && index_type != DT_INT32 &&
+      index_type != DT_INT64) {
+    return errors::InvalidArgument("indices must be int16, int32, or int64");
   }
 
   xla::XlaOp gather;
@@ -233,7 +241,7 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
                   /*indices_are_nd=*/false, context->expected_output_dtype(0),
                   index_type, context->builder(), gather_output));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 class GatherOp : public XlaOpKernel {
  public:
@@ -258,7 +266,8 @@ class GatherOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(GatherOp);
+  GatherOp(const GatherOp&) = delete;
+  void operator=(const GatherOp&) = delete;
 
   // The number of batch dimensions, as passed in the batch_dims attribute.
   // It must be less than or equal to rank(indices).

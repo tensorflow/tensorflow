@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_TPU_EMBEDDING_OPTIMIZATION_PARAMETERS_UTILS_H_
 #define TENSORFLOW_CORE_TPU_TPU_EMBEDDING_OPTIMIZATION_PARAMETERS_UTILS_H_
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "absl/base/casts.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/optimization_parameters.pb.h"
 
 namespace tensorflow {
@@ -29,10 +31,10 @@ namespace tpu {
 using OptimizationAlgorithm = OptimizationParameters::ParametersCase;
 
 // Returns the name of the optimization algorithm.
-string GetOptimizationAlgorithmName(OptimizationAlgorithm alg);
+std::string GetOptimizationAlgorithmName(OptimizationAlgorithm alg);
 
 // Returns a user-friendly name for the optimization algorithm.
-string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg);
+std::string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg);
 
 // Returns all supported optimization algorithms.
 std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms();
@@ -93,7 +95,7 @@ static constexpr int kMaxAuxiliaryParameterCount = 7;
 // gradient of zero from one that has been cleared after its gradients have
 // already been applied to the parameters and accumulators.
 inline float GradientAccumulatorInitialValue() {
-  return absl::bit_cast<float, uint32>(1);
+  return absl::bit_cast<float, uint32_t>(1);
 }
 
 // Generic shape function for per-optimization-algorithm load ops.

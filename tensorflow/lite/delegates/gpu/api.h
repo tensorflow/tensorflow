@@ -230,8 +230,8 @@ bool IsValid(const TensorObjectDef& def);
 uint32_t NumElements(const TensorObjectDef& def);
 
 using TensorObject =
-    std::variant<std::monostate, OpenGlBuffer, OpenGlTexture, CpuMemory,
-                 OpenClBuffer, OpenClTexture, VulkanBuffer, VulkanTexture>;
+    absl::variant<std::monostate, OpenGlBuffer, OpenGlTexture, CpuMemory,
+                  OpenClBuffer, OpenClTexture, VulkanBuffer, VulkanTexture>;
 
 // @return true if object is set and corresponding values are defined.
 bool IsValid(const TensorObjectDef& def, const TensorObject& object);
@@ -327,6 +327,11 @@ enum class InferenceUsage {
   // Prefer maximizing the throughput. Same inference runner will be used
   // repeatedly on different inputs.
   SUSTAINED_SPEED,
+
+  // Balance init latency and throughput. This option will result in slightly
+  // higher init latency than FAST_SINGLE_ANSWER but should have inference
+  // latency closer to SUSTAINED_SPEED.
+  BALANCED,
 };
 
 // Defines aspects to control while instantiating a runner.
@@ -366,6 +371,11 @@ struct InferenceOptions {
   InferencePriority priority2 = InferencePriority::AUTO;
 
   InferencePriority priority3 = InferencePriority::AUTO;
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+  // Number of times to invoke the inference in GPU delegate, to collect more
+  // accurate latency result. Default as 1, which is the original behavior.
+  int gpu_invoke_loop_times = 1;
+#endif
 };
 
 // Returns a position number for the priority. If priority is missing,

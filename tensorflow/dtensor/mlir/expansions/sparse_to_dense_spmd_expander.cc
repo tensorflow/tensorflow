@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/sparse_to_dense_spmd_expander.h"
 
+#include <optional>
+
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
@@ -26,14 +29,14 @@ StatusOr<mlir::Operation*> SparseToDenseSPMDExpander::ExpandOp(
     mlir::Operation* op) {
   // Set the op's shape as the local shape of the input tensors from the
   // layouts.
-  TF_ASSIGN_OR_RETURN(absl::optional<Layout> computed_layout,
+  TF_ASSIGN_OR_RETURN(std::optional<Layout> computed_layout,
                       ExtractSingleLayoutFromOp(op));
   auto local_shape = computed_layout->LocalShapeFromGlobalShape(
-      ExtractGlobalOutputShape(op->getResult(0)).ValueOrDie());
+      ExtractGlobalOutputShape(op->getResult(0)).value());
   auto op_result = op->getResult(0);
 
   const auto element_type =
-      op_result.getType().cast<mlir::TensorType>().getElementType();
+      mlir::cast<mlir::TensorType>(op_result.getType()).getElementType();
   op_result.setType(mlir::RankedTensorType::get(local_shape, element_type));
   // No-op
   return op;

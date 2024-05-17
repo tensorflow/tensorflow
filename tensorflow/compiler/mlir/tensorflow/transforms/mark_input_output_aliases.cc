@@ -14,19 +14,26 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 #define DEBUG_TYPE "tf-device-mark-input-output-aliases"
 
 namespace mlir {
 namespace TFDevice {
 
+#define GEN_PASS_DEF_MARKINPUTOUTPUTALIASESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 namespace {
 struct MarkInputOutputAliasesPass
-    : public TF::MarkInputOutputAliasesPassBase<MarkInputOutputAliasesPass> {
+    : public impl::MarkInputOutputAliasesPassBase<MarkInputOutputAliasesPass> {
   void runOnOperation() override;
 };
 
@@ -40,7 +47,7 @@ struct AliasInfo {
 };
 
 // Idenitfy tf_device.cluster_func input-output alias pairs.
-// This is currently conservative, and handles the following simple case:
+// This is currently conservative, primarily handling the following base case:
 // ```
 // %value = tf.ReadVariableOp(%resource_var)
 // %output:N = tf_device.cluster_func(..., /*input index = a*/ %value, ...)
@@ -49,24 +56,67 @@ struct AliasInfo {
 // where `%value` and `%output#b` have only one use. (a, b) would be added as
 // input-output alias pair for `%resource_var`.
 //
+// This pass also handles the case where instead
+// ```
+// %output:N = tf_device.parallel_execute(...)
+// ```
+// with a `cluster_func` nested within the `parallel_execute`. This occurs when
+// there are outside-compiled ops are in the middle of an XLA cluster, which are
+// extracted to be run on CPU host by the `ExtractOutsideCompilation` pass and
+// wrapped in `parallel_execute` alongside the device `cluster_func`.
+
+TF::AssignVariableOp FindAssignVariableOp(OpResult result) {
+  auto use = result.use_begin();
+
+  Operation* device_return = use->getOwner();
+  if (!device_return) return nullptr;
+  Operation* parent = device_return->getParentOp();
+
+  if (parent) {
+    if (llvm::isa<tf_device::ParallelExecuteOp>(parent)) {
+      if (auto execute =
+              llvm::dyn_cast_or_null<tf_device::ParallelExecuteOp>(parent)) {
+        int operand_idx = use->getOperandNumber();
+        auto execute_results = execute.GetRegionOutputs(
+            device_return->getParentRegion()->getRegionNumber());
+        if (operand_idx >= execute_results.size()) return nullptr;
+
+        auto result_from_use = execute_results[operand_idx];
+        if (!result_from_use.hasOneUse()) return nullptr;
+
+        device_return = result_from_use.use_begin()->getOwner();
+        if (!device_return) return nullptr;
+      }
+    } else {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "No supported special parent found, using "
+                    "tf_device.cluster_func outputs directly to search for "
+                    "consuming AssignVariableOp.\n");
+    }
+  }
+  return llvm::dyn_cast_or_null<TF::AssignVariableOp>(device_return);
+}
+
 // TODO(b/184420848): Explore relaxing these constraints.
 LogicalResult BuildAliasingInfo(
     tf_device::ClusterFuncOp cluster_func,
     llvm::DenseMap<Value, AliasInfo>& resource_alias_info_map) {
   for (auto result : cluster_func.getResults()) {
     if (!result.hasOneUse()) continue;
-    auto assign_op = llvm::dyn_cast_or_null<TF::AssignVariableOp>(
-        result.use_begin()->getOwner());
+
+    TF::AssignVariableOp assign_op = FindAssignVariableOp(result);
     if (!assign_op) continue;
-    AliasInfo& alias_info = resource_alias_info_map[assign_op.resource()];
+
+    AliasInfo& alias_info = resource_alias_info_map[assign_op.getResource()];
     // TODO(b/184420848): We may not need to skip aliasing for entire function
     // in case of multiple assigns.
     if (alias_info.output_index != kUnassigned) {
-      LLVM_DEBUG(
-          llvm::dbgs()
-          << "Skip adding aliasing information because of multiple assigns to "
-             "the same resource from tf_device.cluster_func outputs. This can "
-             "lead to poor memory management on device.\n");
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Skip adding aliasing information because of multiple "
+                    "assigns to "
+                    "the same resource from tf_device.cluster_func outputs. "
+                    "This can "
+                    "lead to poor memory management on device.\n");
 
       return failure();
     }
@@ -78,7 +128,7 @@ LogicalResult BuildAliasingInfo(
         operand.get().getDefiningOp());
     if (!read_op) continue;
     if (!read_op->hasOneUse()) continue;
-    auto it = resource_alias_info_map.find(read_op.resource());
+    auto it = resource_alias_info_map.find(read_op.getResource());
     if (it == resource_alias_info_map.end()) continue;
     AliasInfo& alias_info = it->getSecond();
     // TODO(b/184420848): We may not need to skip aliasing for entire function
@@ -132,7 +182,7 @@ void MarkInputOutputAliasesPass::runOnOperation() {
       return;
     }
 
-    FlatSymbolRefAttr func_attr = cluster_func.funcAttr();
+    FlatSymbolRefAttr func_attr = cluster_func.getFuncAttr();
     func::FuncOp device_func =
         module.lookupSymbol<func::FuncOp>(func_attr.getValue());
     AddAliasingAttributeToDeviceFunc(device_func, resource_alias_info_map);

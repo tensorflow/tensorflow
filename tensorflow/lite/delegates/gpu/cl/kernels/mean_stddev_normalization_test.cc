@@ -31,54 +31,54 @@ namespace {
 TEST_F(OpenCLOperationTest, MeanStddevNormSeparateBatches) {
   // zero mean, zero variance
   auto status = MeanStddevNormSeparateBatchesTest(0.0f, 0.0f, 0.0f, &exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   // zero mean, small variance
   status = MeanStddevNormSeparateBatchesTest(0.0f, 0.01f, 2.63e-4f, &exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   // zero mean, large variance
   status =
       MeanStddevNormSeparateBatchesTest(0.0f, 100.0f, 2.63e-4f, &exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   // small mean, zero variance
   status = MeanStddevNormSeparateBatchesTest(0.01f, 0.0f, 0.0f, &exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   // small mean, small variance
   status =
       MeanStddevNormSeparateBatchesTest(0.01f, 0.01f, 3.57e-4f, &exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   // small mean, large variance
   status =
       MeanStddevNormSeparateBatchesTest(1.0f, 100.0f, 2.63e-4f, &exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   // large mean, zero variance
   status = MeanStddevNormSeparateBatchesTest(100.0f, 0.0f, 0.0f, &exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   // large mean, small variance
   status =
       MeanStddevNormSeparateBatchesTest(100.0f, 1.0f, 2.63e-4f, &exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   // large mean, large variance
   status =
       MeanStddevNormSeparateBatchesTest(100.0f, 100.0f, 2.63e-4f, &exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, MeanStddevNormalizationAllBatches) {
   auto status = MeanStddevNormalizationAllBatchesTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, MeanStddevNormalizationLargeVector) {
   auto status = MeanStddevNormalizationLargeVectorTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

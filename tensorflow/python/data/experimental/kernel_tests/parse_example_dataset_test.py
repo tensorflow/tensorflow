@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
@@ -96,8 +97,10 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
     # Check shapes; if serialized is a Tensor we need its size to
     # properly check.
     batch_size = (
-        self.evaluate(input_tensor).size if isinstance(input_tensor, ops.Tensor)
-        else np.asarray(input_tensor).size)
+        self.evaluate(input_tensor).size
+        if isinstance(input_tensor, tensor.Tensor)
+        else np.asarray(input_tensor).size
+    )
     for k, f in feature_val.items():
       if isinstance(f, parsing_ops.FixedLenFeature) and f.shape is not None:
         self.assertEqual(

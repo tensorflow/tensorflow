@@ -1,0 +1,161 @@
+op {
+  graph_op_name: "UniformQuantizedAdd"
+  visibility: HIDDEN
+  in_arg {
+    name: "lhs"
+    description: <<END
+Must be a quantized tensor.
+END
+  }
+  in_arg {
+    name: "rhs"
+    description: <<END
+Must be a quantized tensor.
+END
+  }
+  in_arg {
+    name: "lhs_scales"
+    description: <<END
+The float value(s) used as scale factors when quantizing the original data that `lhs` represents.
+END
+  }
+  in_arg {
+    name: "lhs_zero_points"
+    description: <<END
+The int32 value(s) used as zero points when quantizing original data that `lhs` represents.
+Must have same shape with `lhs_scales`.
+END
+  }
+  in_arg {
+    name: "rhs_scales"
+    description: <<END
+The float value(s) used as scale factors when quantizing the original data that `rhs` represents.
+END
+  }
+  in_arg {
+    name: "rhs_zero_points"
+    description: <<END
+The int32 value(s) used as zero points when quantizing original data that `rhs` represents.
+Must have same shape with `rhs_scales`.
+END
+  }
+  in_arg {
+    name: "output_scales"
+    description: <<END
+The float value(s) to use as scale factors when quantizing original data that `output` represents.
+END
+  }
+  in_arg {
+    name: "output_zero_points"
+    description: <<END
+The int32 value(s) used as zero points when quantizing original data that output represents.
+Must have same shape with `output_scales`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The output quantized tensor.
+END
+  }
+  attr {
+    name: "T"
+    description: <<END
+The type of `lhs`, `rhs`, and `output`.
+END
+  }
+  attr {
+    name: "lhs_quantization_axis"
+    description: <<END
+Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+If set to -1 (default), this indicates per-tensor quantization.
+For the `lhs`, only per-tensor quantization is supported.
+Thus, this must be set to -1.
+Other values will raise error at OpKernel construction.
+END
+  }
+  attr {
+    name: "lhs_quantization_min_val"
+    description: <<END
+The min value of the quantized data stored in `lhs`.
+For example, if `Tin` is `qint8`, this must be set to -127 if narrow range quantized or -128 if not.
+END
+  }
+  attr {
+    name: "lhs_quantization_max_val"
+    description: <<END
+The max value of the quantized data stored in `lhs`.
+For example, if `Tin` is `qint8`, this must be set to 127.
+END
+  }
+  attr {
+    name: "rhs_quantization_axis"
+    description: <<END
+Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+If set to -1 (default), this indicates per-tensor quantization.
+For the `rhs`, only per-tensor quantization
+or per-channel quantization along `kernel_output_feature_dimension` is supported.
+Thus, this must be set to -1 or `dimension_numbers.kernel_output_feature_dimension`.
+Other values will raise error at OpKernel construction.
+END
+  }
+  attr {
+    name: "rhs_quantization_min_val"
+    description: <<END
+The min value of the quantized data stored in `rhs`.
+For example, if `Tin` is `qint8`, this must be set to -127 if narrow range quantized or -128 if not.
+END
+  }
+  attr {
+    name: "rhs_quantization_max_val"
+    description: <<END
+The max value of the quantized data stored in `rhs`.
+For example, if `Tin` is `qint8`, this must be set to 127.
+END
+  }
+  attr {
+    name: "output_quantization_axis"
+    description: <<END
+Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+If set to -1 (default), this indicates per-tensor quantization.
+For the `output`, only per-tensor quantization or per-channel quantization along `output_feature_dimension` is supported.
+Thus, this must be set to -1 or `dimension_numbers.output_feature_dimension`.
+Other values will raise error at OpKernel construction.
+END
+  }
+  attr {
+    name: "output_quantization_min_val"
+    description: <<END
+The min value of the quantized data stored in `output`.
+For example, if  `Tout` is `qint8`, this must be set to -127 if narrow range quantized or -128 if not.
+END
+  }
+  attr {
+    name: "output_quantization_max_val"
+    description: <<END
+The max value of the quantized data stored in `output`.
+For example, if `Tout` is `qint8`, this must be set to 127.
+END
+  }
+  summary: "Perform quantized add of quantized Tensor `lhs` and quantized Tensor `rhs` to make quantized `output`."
+  description: <<END
+Given quantized `lhs` and quantized `rhs`, performs quantized add on `lhs` and `rhs` to make quantized `output`.
+
+`UniformQuantizedAdd` follows Numpy broadcasting rules.
+The two input array shapes are compared element-wise.
+Starting with the trailing dimensions, the two dimensions either have to be equal or one of them needs to be 1.
+
+`lhs` and `rhs` must be quantized Tensor, where data value is quantized using the formula:
+```
+quantized_data = clip(original_data / scale + zero_point, quantization_min_val, quantization_max_val)
+```
+`output` is also quantized, using the same formula.
+
+If `lhs` and `output` is both per-axis quantized, the quantization axis must match.
+Also, if `rhs` and `output` is both per-axis quantized, the quantization axis must match.
+*Match* means the axis must match when adding, regarding the broadcasting.
+i.e. For both operands `lhs` and `rhs`,
+if `operand.quantization_axis` >= 0 and `output.quantization_axis` >= 0,
+`operand.dims` - `operand.quantization_axis` must be equal to `output.dims` - `output.quantization_axis`.
+END
+}

@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -29,26 +31,26 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
 
 class TestEnv {
  public:
-  TestEnv() : flib_def_(OpRegistry::Global(), {}) {
+  TestEnv() : flib_def_(OpRegistry::Global(), FunctionDefLibrary()) {
     std::vector<std::unique_ptr<Device>> devices;
     devices.push_back(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
     cpu_device_ = devices.back().get();
     device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
     OptimizerOptions opts;
-    pflr_ = tensorflow::MakeUnique<ProcessFunctionLibraryRuntime>(
+    pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, &flib_def_, opts,
         /*default_thread_pool=*/nullptr);
@@ -116,7 +118,7 @@ void BM_KernelAndDeviceInit(::testing::benchmark::State& state) {
   KernelAndDeviceOp k(nullptr, false, env.function_library_runtime(), nullptr,
                       nullptr, env.cpu_device());
   for (auto s : state) {
-    TF_CHECK_OK(k.Init({}, ndef, nullptr));
+    TF_CHECK_OK(k.Init({}, ndef, nullptr, std::nullopt));
   }
 }
 BENCHMARK(BM_KernelAndDeviceInit);
@@ -136,11 +138,11 @@ void BM_KernelAndDeviceRun(::testing::benchmark::State& state) {
   TestEnv env;
   KernelAndDeviceOp k(nullptr, false, env.function_library_runtime(), nullptr,
                       nullptr, env.cpu_device());
-  TF_CHECK_OK(k.Init({}, ndef, nullptr));
+  TF_CHECK_OK(k.Init({}, ndef, nullptr, std::nullopt));
   const EagerKernelArgs args(std::move(inputs));
   for (auto s : state) {
-    TF_CHECK_OK(k.Run(nullptr, args, &outputs, nullptr, absl::nullopt,
-                      absl::nullopt, nullptr));
+    TF_CHECK_OK(k.Run(nullptr, args, &outputs, nullptr, std::nullopt,
+                      std::nullopt, nullptr));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

@@ -91,7 +91,7 @@ def _get_checkpoint_size(prefix):
   return size
 
 
-class BaseSaverBuilder(object):
+class BaseSaverBuilder:
   """Base class for Savers.
 
   Can be extended to create different Ops.
@@ -511,6 +511,9 @@ class BaseSaverBuilder(object):
       raise ValueError("save and restore operations need to be built together "
                        " when eager execution is not enabled.")
 
+    if not isinstance(names_to_saveables, dict):
+      names_to_saveables = saveable_object_util.op_list_to_dict(
+          names_to_saveables)
     saveables = saveable_object_util.validate_and_slice_inputs(
         names_to_saveables)
     if max_to_keep is None:
@@ -636,7 +639,7 @@ def _get_saver_or_default():
 
 
 @tf_export(v1=["train.Saver"])
-class Saver(object):
+class Saver:
   # pylint: disable=line-too-long
   """Saves and restores variables.
 
@@ -1026,9 +1029,10 @@ class Saver(object):
     if not self.saver_def.max_to_keep:
       return
     # Remove first from list if the same name was used before.
-    for p in self._last_checkpoints:
+    for p in self._last_checkpoints[:]:
       if latest_save_path == self._CheckpointFilename(p):
         self._last_checkpoints.remove(p)
+
     # Append new path to list
     self._last_checkpoints.append((latest_save_path, time.time()))
 
@@ -1368,7 +1372,9 @@ class Saver(object):
     # pylint: enable=line-too-long
     return export_meta_graph(
         filename=filename,
-        graph_def=ops.get_default_graph().as_graph_def(add_shapes=True),
+        graph_def=ops.get_default_graph().as_graph_def(
+            add_shapes=True, use_pybind11_proto=True
+        ),
         saver_def=self.saver_def,
         collection_list=collection_list,
         as_text=as_text,
@@ -1376,7 +1382,8 @@ class Saver(object):
         clear_devices=clear_devices,
         clear_extraneous_savers=clear_extraneous_savers,
         strip_default_attrs=strip_default_attrs,
-        save_debug_info=save_debug_info)
+        save_debug_info=save_debug_info,
+    )
 
   def restore(self, sess, save_path):
     """Restores previously saved variables.
@@ -1808,6 +1815,8 @@ def saver_from_object_based_checkpoint(checkpoint_path,
   if builder is None:
     builder = BulkSaverBuilder()
 
+  if not isinstance(var_list, dict):
+    var_list = saveable_object_util.op_list_to_dict(var_list)
   saveables = saveable_object_util.validate_and_slice_inputs(var_list)
   current_names = set()
   for saveable in saveables:
@@ -1836,11 +1845,9 @@ def saver_from_object_based_checkpoint(checkpoint_path,
             "when the checkpoint was written. You can construct a "
             "Saver(var_list=...) with only the variables which previously "
             "existed, and if variable names have changed you may need to "
-            "make this a dictionary with the old names as keys. If you're "
-            "using an Estimator, you'll need to return a tf.train.Saver "
-            "inside a tf.train.Scaffold from your model_fn.") %
-        (", ".join(sorted(missing_names)), ", ".join(
-            sorted(extra_names)), len(intersecting_names)))
+            "make this a dictionary with the old names as keys.") %
+                (", ".join(sorted(missing_names)), ", ".join(
+                    sorted(extra_names)), len(intersecting_names)))
   for saveable in saveables:
     for spec in saveable.specs:
       spec.name = names_to_keys[spec.name]

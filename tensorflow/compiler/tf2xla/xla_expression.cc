@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
+#include "xla/client/value_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -89,7 +89,7 @@ string XlaExpression::HumanString() const {
 }
 
 xla::XlaOp XlaExpression::AsXlaOp(xla::XlaBuilder* builder) const {
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<xla::XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<xla::XlaOp> {
     switch (kind_) {
       case Kind::kConstant: {
         xla::BorrowingLiteral literal;
@@ -112,7 +112,7 @@ xla::XlaOp XlaExpression::AsXlaOp(xla::XlaBuilder* builder) const {
   });
 }
 
-StatusOr<Tensor> XlaExpression::ResolveDynamism(xla::Client* client) const {
+absl::StatusOr<Tensor> XlaExpression::ResolveDynamism() const {
   switch (kind()) {
     case Kind::kConstant: {
       // Constant values are considered static.
@@ -133,9 +133,6 @@ StatusOr<Tensor> XlaExpression::ResolveDynamism(xla::Client* client) const {
           HumanString());
   }
 
-  if (!client)
-    return errors::InvalidArgument("client is required to resolve constant");
-
   TF_ASSIGN_OR_RETURN(TensorShape shape, GetShape());
 
   // The XLA layout is specified minor to major, and TensorFlow uses a major to
@@ -150,7 +147,7 @@ StatusOr<Tensor> XlaExpression::ResolveDynamism(xla::Client* client) const {
   return tensor;
 }
 
-StatusOr<std::optional<Tensor>> XlaExpression::ResolveConstant(
+absl::StatusOr<std::optional<Tensor>> XlaExpression::ResolveConstant(
     xla::Client* client, bool dynamic_dimension_is_minus_one,
     xla::ValueInferenceMode mode) const {
   switch (kind()) {
@@ -208,7 +205,7 @@ StatusOr<std::optional<Tensor>> XlaExpression::ResolveConstant(
   return {tensor};
 }
 
-StatusOr<TensorShape> XlaExpression::GetShape() const {
+absl::StatusOr<TensorShape> XlaExpression::GetShape() const {
   switch (kind_) {
     case Kind::kConstant:
       return constant_value()->shape();
@@ -230,6 +227,14 @@ StatusOr<TensorShape> XlaExpression::GetShape() const {
       return errors::InvalidArgument(
           "GetShape() called on invalid XlaExpression");
   }
+}
+
+absl::StatusOr<xla::Shape> XlaExpression::GetXlaShape() const {
+  if (kind_ == Kind::kXlaOp) {
+    return handle().builder()->GetShape(handle());
+  }
+  TF_ASSIGN_OR_RETURN(TensorShape shape, GetShape());
+  return TensorShapeToXLAShape(dtype_, shape);
 }
 
 const XlaExpression* XlaExpression::CastExpressionFromTensor(

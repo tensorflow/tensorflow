@@ -17,16 +17,15 @@
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import gen_training_ops
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.optimizers.Adamax')
 class Adamax(optimizer_v2.OptimizerV2):
   """Optimizer that implements the Adamax algorithm.
 
@@ -119,13 +118,16 @@ class Adamax(optimizer_v2.OptimizerV2):
     apply_state[(var_device, var_dtype)].update(
         dict(
             neg_scaled_lr=-lr_t / (1 - beta_1_power),
-            epsilon=ops.convert_to_tensor_v2_with_dispatch(
-                self.epsilon, var_dtype),
+            epsilon=tensor_conversion.convert_to_tensor_v2_with_dispatch(
+                self.epsilon, var_dtype
+            ),
             beta_1_t=beta_1_t,
             beta_1_power=beta_1_power,
             one_minus_beta_1_t=1 - beta_1_t,
             beta_2_t=beta_2_t,
-            zero=array_ops.zeros((), dtype=dtypes.int64)))
+            zero=array_ops.zeros((), dtype=dtypes.int64),
+        )
+    )
 
   def _resource_apply_dense(self, grad, var, apply_state=None):
     var_device, var_dtype = var.device, var.dtype.base_dtype

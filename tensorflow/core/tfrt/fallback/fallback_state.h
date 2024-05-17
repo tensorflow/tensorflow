@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_FALLBACK_FALLBACK_STATE_H_
 
 #include <memory>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -34,7 +35,15 @@ class FallbackState {
  public:
   // The FunctionDefLibrary is passed in to initialize the
   // ProcessFunctionLibraryRuntime member of this class
-  static StatusOr<std::unique_ptr<FallbackState>> Create(
+  static absl::StatusOr<std::unique_ptr<FallbackState>> Create(
+      const SessionOptions &session_options,
+      const tensorflow::FunctionDefLibrary &fdef_lib);
+
+  static absl::StatusOr<std::unique_ptr<FallbackState>> CreateWithCpuDevice(
+      const SessionOptions &session_options,
+      const tensorflow::FunctionDefLibrary &fdef_lib);
+
+  static absl::StatusOr<std::unique_ptr<FallbackState>> CreateWithMockGpuDevice(
       const SessionOptions &session_options,
       const tensorflow::FunctionDefLibrary &fdef_lib);
 
@@ -44,18 +53,26 @@ class FallbackState {
 
   // Create GraphExecutionState from the `graph_def`. The result will contain a
   // preprocessed graph with runtime information such as devices.
-  StatusOr<std::unique_ptr<GraphExecutionState>> CreateGraphExecutionState(
-      GraphDef graph_def) const;
+  absl::StatusOr<std::unique_ptr<GraphExecutionState>>
+  CreateGraphExecutionState(GraphDef graph_def, bool run_placer = true) const;
+
+  // Adds `func_def` to the function library.
+  Status AddFunctionDef(const FunctionDef &func_def);
 
   const SessionOptions &session_options() const { return session_options_; }
 
   const DeviceMgr &device_manager() const { return device_manager_; }
+  DeviceMgr &device_manager() { return device_manager_; }
 
   const DeviceSet &device_set() const { return device_set_; }
 
   const ProcessFunctionLibraryRuntime &process_function_library_runtime()
       const {
     return pflr_;
+  }
+
+  const FunctionLibraryDefinition &func_lib_def() const {
+    return func_lib_def_;
   }
 
  private:

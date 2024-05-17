@@ -15,9 +15,10 @@ limitations under the License.
 
 #include <vector>
 
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
-#include "tensorflow/lite/c/common.h"
+#include "pybind11/attr.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 
 namespace py = pybind11;
@@ -36,6 +37,9 @@ PYBIND11_MODULE(format_converter_wrapper_pybind11, m) {
       .value("TF_LITE_DIM_DENSE", TfLiteDimensionType::kTfLiteDimDense)
       .value("TF_LITE_DIM_SPARSE_CSR", TfLiteDimensionType::kTfLiteDimSparseCSR)
       .export_values();
+
+  py::class_<TfLiteSparsity> sparsity_class(m, "TfLiteSparsity",
+                                            py::module_local());
 
   py::class_<FormatConverterFp32>(m, "FormatConverterFp32")
       .def(py::init</*shape=*/const std::vector<int>&,

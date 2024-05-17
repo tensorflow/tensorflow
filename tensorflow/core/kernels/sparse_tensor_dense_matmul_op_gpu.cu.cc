@@ -132,7 +132,7 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
       out.device(d) = temp_out_t.matrix<Tsum>().template cast<T>();
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 

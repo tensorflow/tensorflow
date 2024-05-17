@@ -22,13 +22,14 @@ import tempfile
 import tensorflow.compat.v1 as tf
 from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 
-# CHECK: "tf_saved_model.session_initializer"() {initializers = [@[[init:.*]]]} : () -> ()
-# CHECK: "tf_saved_model.asset"() {filename = {{.*}}, sym_name = "[[asset1:__tf_saved_model_asset1_.*]]"}
-# CHECK: "tf_saved_model.asset"() {filename = {{.*}}, sym_name = "[[asset0:__tf_saved_model_asset0_.*]]"}
+# CHECK: "tf_saved_model.session_initializer"() <{initializers = [@[[init:.*]]]}> : () -> ()
+# CHECK: "tf_saved_model.asset"() <{filename = {{.*}}, sym_name = "[[asset1:__tf_saved_model_asset1_.*]]"}>
+# CHECK: "tf_saved_model.asset"() <{filename = {{.*}}, sym_name = "[[asset0:__tf_saved_model_asset0_.*]]"}>
 
 # CHECK:      func @[[init]]
 # CHECK-SAME: [[ARG0:%.*]]: tensor<!tf_type.string> {tf_saved_model.bound_input = @[[asset0]]}
 # CHECK-SAME: [[ARG1:%.*]]: tensor<!tf_type.string> {tf_saved_model.bound_input = @[[asset1]]}
+# CHECK-SAME: tf_saved_model.initializer_type = "init_op"
 # CHECK-NEXT: [[R0:%.*]] = "tf.HashTableV2"()
 # CHECK-SAME: shared_name = "[[hash_table:.*]]"
 # CHECK-NEXT: "tf.InitializeTableFromTextFileV2"([[R0]], [[ARG0]])

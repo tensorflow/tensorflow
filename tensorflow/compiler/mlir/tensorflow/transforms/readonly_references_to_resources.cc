@@ -26,10 +26,10 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -39,6 +39,9 @@ namespace {
 constexpr StringRef kClassAttr = "_class";
 constexpr StringRef kSharedNameAttr = "shared_name";
 constexpr StringRef kLocationPrefix = "loc:@";
+
+#define GEN_PASS_DEF_CONVERTREADONLYREFERENCEVARIABLESTORESOURCEVARIABLESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
 // A pass that converts readonly reference variables to the corresponding
 // resource variables.
@@ -56,7 +59,7 @@ constexpr StringRef kLocationPrefix = "loc:@";
 // heuristic method that assumes that all the users of them is Identity op,
 // fed directly.
 class ConvertReadonlyReferenceVariablesToResourceVariablesPass
-    : public ConvertReadonlyReferenceVariablesToResourceVariablesPassBase<
+    : public impl::ConvertReadonlyReferenceVariablesToResourceVariablesPassBase<
           ConvertReadonlyReferenceVariablesToResourceVariablesPass> {
   void runOnOperation() override;
 };
@@ -89,8 +92,8 @@ StringRef GetNodeNameFromClassAttrOrSharedNameAttr(Operation *op) {
 
   StringRef result;
   for (Attribute class_attr : classes_attr) {
-    StringRef node_name = class_attr.cast<StringAttr>().getValue();
-    if (!node_name.startswith(kLocationPrefix)) {
+    StringRef node_name = mlir::cast<StringAttr>(class_attr).getValue();
+    if (!node_name.starts_with(kLocationPrefix)) {
       continue;
     }
     if (!result.empty()) {
@@ -148,8 +151,8 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
   for (VariableV2Op variable_v2_op : variable_v2s_to_replace) {
     builder.setInsertionPoint(variable_v2_op);
     ShapedType shaped_type =
-        variable_v2_op.getResult().getType().cast<ShapedType>();
-    TensorType tensor_type = DropRefType(shaped_type).cast<TensorType>();
+        mlir::cast<ShapedType>(variable_v2_op.getResult().getType());
+    TensorType tensor_type = mlir::cast<TensorType>(DropRefType(shaped_type));
     StringAttr device_attr =
         variable_v2_op->getAttrOfType<StringAttr>("device");
     if (!device_attr) device_attr = builder.getStringAttr("");
@@ -166,7 +169,8 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
         ArrayRef<Value>{},
         ArrayRef<NamedAttribute>{
             builder.getNamedAttr("device", device_attr),
-            builder.getNamedAttr("container", variable_v2_op.containerAttr()),
+            builder.getNamedAttr("container",
+                                 variable_v2_op.getContainerAttr()),
             builder.getNamedAttr("shared_name",
                                  builder.getStringAttr(variable_name))});
     for (Operation *user :

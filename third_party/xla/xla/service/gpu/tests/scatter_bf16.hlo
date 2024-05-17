@@ -1,0 +1,34 @@
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/a6000.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM86
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/h100.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM90
+// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/h100.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-PTX-SM90
+
+HloModule TensorFlowScatter_Add, is_scheduled=true
+
+add_bf16 (lhs: bf16[], rhs: bf16[]) -> bf16[] {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(bf16[] lhs, bf16[] rhs)
+}
+
+fused_computation {
+  operand = bf16[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = bf16[2,3] parameter(2)
+  ROOT scatter_TensorFlowScatter_Mul = bf16[3,3] scatter(operand, indices, updates),
+      to_apply=add_bf16,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+
+ENTRY main {
+  p0 = bf16[3,3] parameter(0)
+  p1 = s32[2] parameter(1)
+  p2 = bf16[2,3] parameter(2)
+  ROOT wrapped_scatter = bf16[3,3] fusion(p0, p1, p2), kind=kInput, calls=fused_computation
+}
+
+// CHECK-SM86-NOT: atomicrmw fadd
+// CHECK-SM90: atomicrmw fadd
+// CHECK-PTX-SM90: atom.global.add.noftz.bf16

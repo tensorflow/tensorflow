@@ -103,7 +103,6 @@ pip3 install --upgrade h5py==3.1.0
 
 # Keras
 pip3 install keras-nightly --no-deps
-pip3 install keras_preprocessing==1.0.5
 
 # Estimator
 pip3 install tf-estimator-nightly==1.12.0.dev20181203 --no-deps

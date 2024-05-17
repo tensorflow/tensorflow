@@ -44,11 +44,11 @@ class GetOptionsParams : public DatasetParams {
 
   Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->emplace_back(OptionsDatasetOp::kInputDataset);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override { return "GetOptions"; }

@@ -15,55 +15,93 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/tpu_functional_ops.h"
 
+#include <cstdint>
+#include <functional>
+#include <map>
 #include <memory>
-
-#include "absl/strings/match.h"
-#include "tensorflow/core/framework/cancellation.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
+#include <numeric>
+#include <optional>
+#include <set>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #define EIGEN_USE_THREADS
 
 #include "absl/base/call_once.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/array4d.h"
+#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_fingerprint_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_util.h"
-#include "tensorflow/core/tpu/kernels/tpu_util.h"
+#include "tensorflow/core/tpu/kernels/tpu_ordinal_selector.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tensorflow/core/util/reffed_status_callback.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
+#include "absl/container/flat_hash_map.h"
 
 namespace tensorflow {
 namespace {
@@ -75,23 +113,34 @@ constexpr int kOtherDimOfTpuInputFastPath = 8;
 constexpr char kXLAShardingAttrName[] = "sharding";
 constexpr char kXLAShardingAttrAltName[] = "_XlaSharding";
 
-Status GenerateDeviceNaturalOrder(int x_num_cores, int y_num_cores,
-                                  int z_num_cores, int num_cores_per_chip,
-                                  std::vector<int>* natural_order) {
-  for (int y = 0; y < y_num_cores; ++y) {
-    for (int x = 0; x < x_num_cores; ++x) {
-      for (int z = 0; z < z_num_cores; ++z) {
-        for (int c = 0; c < num_cores_per_chip; ++c) {
-          natural_order->push_back(x);
-          natural_order->push_back(y);
-          natural_order->push_back(z);
-          natural_order->push_back(c);
-        }
-      }
-    }
+tpu::TopologyProto GetTPUTopology() {
+  const tpu::TpuTopologyExternal& topology =
+      tpu::TpuPlatformInterface::GetRegisteredPlatform()->topology();
+
+  tpu::TopologyProto topology_proto;
+  topology_proto.set_num_tasks(topology.HostCount());
+  topology_proto.set_num_tpu_devices_per_task(
+      topology.LogicalDevicesPerHost(TpuCoreTypeEnum::kTensorCore));
+
+  // mesh shape.
+  int devices_per_chip =
+      topology.LogicalDevicesPerChip(TpuCoreTypeEnum::kTensorCore);
+  topology_proto.add_mesh_shape(topology.chip_bounds().x);
+  topology_proto.add_mesh_shape(topology.chip_bounds().y);
+  topology_proto.add_mesh_shape(topology.chip_bounds().z);
+  topology_proto.add_mesh_shape(devices_per_chip);
+
+  // device coordinates.
+  for (const tpu::TpuCoreLocationExternal& core :
+       topology.cores(TpuCoreTypeEnum::kTensorCore)) {
+    const tpu::TpuDimensionsExternal coords = core.chip_coordinates();
+    topology_proto.add_device_coordinates(coords.x);
+    topology_proto.add_device_coordinates(coords.y);
+    topology_proto.add_device_coordinates(coords.z);
+    topology_proto.add_device_coordinates(core.index());
   }
 
-  return OkStatus();
+  return topology_proto;
 }
 
 struct TPUVariableInfo {
@@ -131,7 +180,7 @@ Status ParseTPUVariableInfor(const Node* node, const int num_cores_per_replica,
     if (next != edge->dst()) {
       VLOG(3) << "Looked through Enter/Switch node " << next->DebugString();
     }
-    TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
+    TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                         ParseShardingFromDevice(*next, num_cores_per_replica,
                                                 /*add_metadata=*/false));
     if (sharding.has_value() && sharding->tile_assignment_devices_size() > 0) {
@@ -148,7 +197,7 @@ Status ParseTPUVariableInfor(const Node* node, const int num_cores_per_replica,
   var_info->device_ordinal = core;
   var_info->fast_mem = use_fast_mem;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Helper to instantiate function "func" in the library "lib".
@@ -183,7 +232,7 @@ bool IsSupportedTPUOp(const string& op_name) {
 // Sets the sharding attributes for an XlaSharding node.
 void SetXlaShardingNodeAttr(Node* xla_sharding_node, int num_cores_per_replica,
                             int rank, int shard_dim) {
-  auto sharding = absl::make_optional<xla::OpSharding>();
+  auto sharding = std::make_optional<xla::OpSharding>();
   sharding->set_type(xla::OpSharding::OTHER);
 
   std::vector<int64_t> dims(rank, 1LL);
@@ -211,15 +260,15 @@ Status UpdateTPUDeviceOrdinal(int device_ordinal, string* device_name,
                               bool* rewritten) {
   DeviceNameUtils::ParsedName device;
   if (!DeviceNameUtils::ParseFullName(*device_name, &device)) {
-    return errors::InvalidArgument("Unable to parse device name ",
-                                   *device_name);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unable to parse device name ", *device_name));
   }
   if (device.type == DEVICE_TPU_NODE) {
     device.id = device_ordinal;
     *rewritten = true;
   }
   *device_name = DeviceNameUtils::ParsedNameToString(device);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const Edge* FindHostToDeviceEdge(Node* arg_node) {
@@ -281,7 +330,7 @@ Status CreateInputProxy(Graph* graph, const Edge* candidate_edge,
     graph->AddEdge(input_identity_node, 0, input_edge->dst(),
                    input_edge->dst_input());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetClusterName(Graph* graph, string* cluster_name) {
@@ -293,12 +342,12 @@ Status GetClusterName(Graph* graph, string* cluster_name) {
     // When optimization is turned on, the graph should only have one TPU
     // cluster.
     if (*cluster_name != node->attrs().Find(kTpuReplicateAttr)->s())
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Only one cluster is allowed when optimization is turned on for "
           "TPUPartitionedCall. Found ",
-          node->attrs().Find(kTpuReplicateAttr)->s(), " and ", *cluster_name);
+          node->attrs().Find(kTpuReplicateAttr)->s(), " and ", *cluster_name));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Removes nodes that has no effect that directly descends from _Arg node.
@@ -354,8 +403,8 @@ int64_t RemoveDescendantNodeOfArg(
   return nodes_removed;
 }
 
-uint64 GetInputHash(OpKernelContext* ctx) {
-  uint64 input_hash = 0;  // initialization for determinism.
+uint64_t GetInputHash(OpKernelContext* ctx) {
+  uint64_t input_hash = 0;  // initialization for determinism.
   // Use the number of elements to compute hash.
   // TODO(chiachenc): use fhe full shape to compute the hash.
   for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -411,7 +460,8 @@ Status GetInputOutputInfo(
     TF_RETURN_IF_ERROR(
         CreateInputProxy(graph, candidate_edge, &tpu_input_edge));
     if (tpu_input_edge == nullptr)
-      return errors::NotFound("Couldn't find TPU input edge for", node->name());
+      return absl::NotFoundError(
+          absl::StrCat("Couldn't find TPU input edge for", node->name()));
 
     // Optimize edge: original source to proxy identity.
     VLOG(3) << "Input: " << tpu_input_edge->src()->name();
@@ -430,7 +480,7 @@ Status GetInputOutputInfo(
     InferredShape inferred_shape = {partial_tensor_shape};
     arg_shapes[arg_index] = inferred_shape;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts a integer vector that represents the shapes to a Tensorshape.
@@ -451,7 +501,7 @@ Status ConvertEdgeShapesToTensorShapes(
     TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(dims, &(*shapes)[i]));
     i++;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Get the TF fingerprint with the information from the TPUCompileOp or
@@ -459,29 +509,25 @@ Status ConvertEdgeShapesToTensorShapes(
 Status MaybeRegisterFingerprint(
     Graph* graph,
     const std::map<std::string, std::vector<int>>& named_input_shapes,
-    uint64 input_hash) {
+    uint64_t input_hash) {
   // Find the compiler metadata.
   tpu::TPUCompileMetadataProto metadata_proto;
   std::map<std::string, std::vector<int>> inputs_to_keep;
   int num_dynamic_shapes = -1;
-  tensorflow::uint64 fingerprint = 0;
+  uint64_t fingerprint = 0;
 
   for (Node* node : graph->op_nodes()) {
     if (node->type_string() == "TPUCompile" ||
         node->type_string() == "_TPUCompileMlir") {
       num_dynamic_shapes = node->attrs().Find("NumDynamicShapes")->i();
-      if (num_dynamic_shapes <= 0) {
-        break;
-      }
+      if (num_dynamic_shapes <= 0) break;
       int visited = 0;
       // TPUCompileOp/_TPUCompileMlirOp take Shape nodes as inputs.
       // The number of Shape nodes matches the number of dynamic shaped inputs.
       // The Shape nodes come from the input nodes:
       //   [TPU Input] --> [Input Shape] --> [TPUCompileOp]
       for (auto in_node : node->in_nodes()) {
-        if (in_node->type_string() != "Shape") {
-          continue;
-        }
+        if (in_node->type_string() != "Shape") continue;
         for (auto input_node : in_node->in_nodes()) {
           auto iter = named_input_shapes.find(input_node->name());
           if (iter != named_input_shapes.end()) {
@@ -489,9 +535,7 @@ Status MaybeRegisterFingerprint(
           }
         }
         visited++;
-        if (visited == num_dynamic_shapes) {
-          break;
-        }
+        if (visited == num_dynamic_shapes) break;
       }
       std::string metadata = node->attrs().Find("metadata")->s();
       metadata_proto.ParseFromString(metadata);
@@ -509,7 +553,7 @@ Status MaybeRegisterFingerprint(
   VLOG(2) << "inputs_to_keep size: " << inputs_to_keep.size();
   if (inputs_to_keep.size() != num_dynamic_shapes) {
     VLOG(2) << "Cannot match all inputs shapes. Skip fingerprint registration.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<TensorShape> input_shapes;
@@ -520,10 +564,10 @@ Status MaybeRegisterFingerprint(
   auto status =
       tpu::ComputeArgumentShapes(metadata_proto, input_shapes, &arg_shapes);
   if (!status.ok()) {
-    VLOG(2) << status.error_message();
-    return OkStatus();
+    VLOG(2) << status.message();
+    return absl::OkStatus();
   }
-  uint64 tf_fingerprint =
+  uint64_t tf_fingerprint =
       tpu::CreateFingerprintWithNameAndShapes(fingerprint, arg_shapes);
   VLOG(2) << "fingerprint: " << fingerprint;
   VLOG(2) << "TF fingerprint: " << tf_fingerprint;
@@ -535,7 +579,7 @@ Status MaybeRegisterFingerprint(
       &fingerprint_lookup));
   fingerprint_lookup->RegisterKeyAndIntermediatePair(input_hash,
                                                      tf_fingerprint);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool FindTpuReplicatedInputAndXlaSharding(
@@ -588,12 +632,20 @@ bool FindTpuReplicatedInputAndXlaSharding(
 // Returns the name of the framework that rewrote the graph to support
 // inference on TPUs. This name is accessed later during metric collection.
 string GetProducerName(const string& function_name) {
-  if (absl::StrContains(function_name, "tpu_fn_icv2_"))
+  if (absl::StrContains(function_name, "tpu_fn_icv2_")) {
+    if (absl::StrContains(function_name, "_tf_quant")) {
+      return "TPU_INFERENCE_CONVERTER_V2_TF_QUANTIZER";
+    }
     return "TPU_INFERENCE_CONVERTER_V2";
+  }
   if (absl::StrContains(function_name, "tpu_func_0") ||
       absl::StrContains(function_name, "_with_batch") ||
-      absl::StrContains(function_name, "_optim"))
+      absl::StrContains(function_name, "_optim")) {
+    if (absl::StrContains(function_name, "_tf_quant")) {
+      return "TPU_INFERENCE_CONVERTER_TF_QUANTIZER";
+    }
     return "TPU_INFERENCE_CONVERTER";
+  }
   return "UNKNOWN";
 }
 
@@ -788,7 +840,7 @@ Status CreateConcatAndSplitNodesForInputTensor(
 
     Node* split_vec_node = nullptr;
     TensorShape split_vec_shape;
-    split_vec_shape.AddDim(1);
+    TF_RETURN_IF_ERROR(split_vec_shape.AddDimWithStatus(1));
     split_vec_shape.set_dim(0, last_dim_vec.size());
 
     Tensor split_vec_tensor(DT_INT32, split_vec_shape);
@@ -894,7 +946,7 @@ Status CreateConcatAndSplitNodesForInputTensor(
     }
     VLOG(3) << "Concat node: " << concat_node->DebugString();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Concatenates input tensors on TPU along the last dimension if all other
@@ -973,7 +1025,7 @@ Status CreateConcatAndSplitNodesForOutputTensor(
 
     Node* split_vec_node = nullptr;
     TensorShape split_vec_shape;
-    split_vec_shape.AddDim(1);
+    TF_RETURN_IF_ERROR(split_vec_shape.AddDimWithStatus(1));
     split_vec_shape.set_dim(0, last_dim_vec.size());
 
     Tensor split_vec_tensor(DT_INT32, split_vec_shape);
@@ -1038,7 +1090,7 @@ Status CreateConcatAndSplitNodesForOutputTensor(
     }
     VLOG(3) << "Concat node: " << concat_node->DebugString();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
@@ -1173,7 +1225,7 @@ Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
     }
     VLOG(3) << "Reshape optimization done for " << edge->src()->name();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace tpu_functional_internal
 
@@ -1183,7 +1235,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
   absl::call_once(once_, [&]() {
     library_runtime_ = ctx->function_library();
     if (library_runtime_ == nullptr) {
-      init_status = errors::Internal("No function library is provided.");
+      init_status = absl::InternalError("No function library is provided.");
       return;
     }
     flib_def_ = std::make_unique<FunctionLibraryDefinition>(
@@ -1205,31 +1257,38 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
   // the first time we are running this op.
   absl::call_once(ordinal_selector_once_, [&]() {
     std::unique_ptr<Graph> graph(new Graph(flib_def_.get()));
-    int num_cores_per_replica = 1;
     bool enable_spmd_xla_partitioning = false;
+    TPUMetadata tpu_metadata;
     {
       absl::MutexLock l(&mu_);
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          GetGraphFromFunction(graph.get(), /*device_ordinal=*/0,
-                               &num_cores_per_replica,
-                               &enable_spmd_xla_partitioning),
-          done);
+      // We are not using OP_REQUIRES_OK_ASYNC here as we are inside the
+      // call_once. It will be checked later whether `ordinal_selector_` is
+      // initialized.
+      if (auto status = GetGraphFromFunction(graph.get(), /*device_ordinal=*/0,
+                                             &enable_spmd_xla_partitioning,
+                                             &tpu_metadata);
+          !status.ok()) {
+        init_status = std::move(status);
+        return;
+      }
     }
     if (enable_spmd_xla_partitioning) {
-      ordinal_selector_ =
-          std::make_shared<tpu::TPUOrdinalSelector>(num_cores_per_replica);
+      ordinal_selector_ = std::make_shared<tpu::TPUOrdinalSelector>(
+          tpu_metadata.num_cores_per_replica);
     } else {
       ordinal_selector_ = std::make_shared<tpu::TPUOrdinalSelector>();
     }
 
-    metrics::RecordTPUXlaSpmdCoresPerReplica(num_cores_per_replica);
+    metrics::RecordTPUXlaSpmdCoresPerReplica(
+        tpu_metadata.num_cores_per_replica);
   });
-  OP_REQUIRES_ASYNC(
-      ctx, ordinal_selector_ != nullptr,
-      errors::Internal("The TPUOrdinalSelector is not initialized."), done);
+  OP_REQUIRES_ASYNC(ctx, ordinal_selector_ != nullptr,
+                    absl::InternalError(absl::StrCat(
+                        "The TPUOrdinalSelector is not initialized: ",
+                        init_status.message())),
+                    done);
 
-  uint64 input_hash = GetInputHash(ctx);
+  uint64_t input_hash = GetInputHash(ctx);
   int64_t ordinal_selector_req_id = -1;
   // Select a TPU core.
   int32_t device_ordinal = 0;
@@ -1238,7 +1297,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
       GetTpuCoreOrdinal(ctx, input_hash, &ordinal_selector_req_id,
                         &device_ordinal),
       done);
-  uint64 cache_hash = Hash64Combine(input_hash, device_ordinal);
+  uint64_t cache_hash = Hash64Combine(input_hash, device_ordinal);
   absl::ReleasableMutexLock lock(&mu_);
 
   const std::vector<DeviceAndFHandle>* functions;
@@ -1249,36 +1308,36 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
             << " cache_hash: " << cache_hash
             << " device_ordinal: " << device_ordinal;
 
-    profiler::TraceMe trace_me(
+    tsl::profiler::TraceMe trace_me(
         "TPUPartitionedCallOp-RewriteAndInstantiateFunctions");
     std::unique_ptr<Graph> graph(new Graph(flib_def_.get()));
-    int num_cores_per_replica = 1;
     bool enable_spmd_xla_partitioning = false;
-    OP_REQUIRES_OK_ASYNC(ctx,
-                         GetGraphFromFunction(graph.get(), device_ordinal,
-                                              &num_cores_per_replica,
-                                              &enable_spmd_xla_partitioning),
-                         done);
+    TPUMetadata tpu_metadata;
+    OP_REQUIRES_OK_ASYNC(
+        ctx,
+        GetGraphFromFunction(graph.get(), device_ordinal,
+                             &enable_spmd_xla_partitioning, &tpu_metadata),
+        done);
 
     VLOG(1) << DumpGraphToFile("before_input_output_optimizations", *graph,
                                flib_def_.get());
 
     std::map<std::string, std::vector<int>> named_input_shapes;
-    OP_REQUIRES_OK_ASYNC(ctx,
-                         OptimizeTpuInputOutputTensors(
-                             graph.get(), enable_spmd_xla_partitioning,
-                             num_cores_per_replica, named_input_shapes, ctx),
-                         done);
+    OP_REQUIRES_OK_ASYNC(
+        ctx,
+        OptimizeTpuInputOutputTensors(graph.get(), enable_spmd_xla_partitioning,
+                                      tpu_metadata.num_cores_per_replica,
+                                      named_input_shapes, ctx),
+        done);
 
     VLOG(1) << DumpGraphToFile(
         "before_replace_resource_args_with_var_handle_ops", *graph,
         flib_def_.get());
-    OP_REQUIRES_OK_ASYNC(
-        ctx,
-        ReplaceResourceArgsWithVarHandleOps(graph.get(), ctx, device_ordinal,
-                                            num_cores_per_replica,
-                                            enable_spmd_xla_partitioning),
-        done);
+    OP_REQUIRES_OK_ASYNC(ctx,
+                         ReplaceResourceArgsWithVarHandleOps(
+                             graph.get(), ctx, device_ordinal,
+                             enable_spmd_xla_partitioning, tpu_metadata),
+                         done);
 
     VLOG(1) << DumpGraphToFile(
         "after_replace_resource_args_with_var_handle_ops", *graph,
@@ -1302,7 +1361,8 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
         ctx, PlacementHelper(device_set_, optimization_options, func_.name()),
         done);
 
-    if (!enable_spmd_xla_partitioning || num_cores_per_replica == 1) {
+    if (!enable_spmd_xla_partitioning ||
+        tpu_metadata.num_cores_per_replica == 1) {
       OP_REQUIRES_OK_ASYNC(
           ctx,
           MaybeRegisterFingerprint(graph.get(), named_input_shapes, input_hash),
@@ -1319,11 +1379,12 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
                          PartitionHelper(device_set_, optimization_options,
                                          graph.get(), &subgraphs),
                          done);
-    OP_REQUIRES_OK_ASYNC(ctx,
-                         InstantiateFunctionsFromSubgraphs(
-                             device_set_, device_ordinal, cache_hash,
-                             num_cores_per_replica, std::move(subgraphs)),
-                         done);
+    OP_REQUIRES_OK_ASYNC(
+        ctx,
+        InstantiateFunctionsFromSubgraphs(
+            device_set_, device_ordinal, cache_hash,
+            tpu_metadata.num_cores_per_replica, std::move(subgraphs)),
+        done);
   }
   functions = &partition_cache_[cache_hash];
   lock.Release();
@@ -1333,10 +1394,10 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
 }
 
 Status TPUPartitionedCallOp::GetTpuCoreOrdinal(OpKernelContext* ctx,
-                                               uint64 input_hash,
+                                               uint64_t input_hash,
                                                int64_t* ordinal_selector_req_id,
                                                int32_t* core_ordinal) {
-  profiler::TraceMe trace_me("TPUPartitionedCallOp-GetTpuCoreOrdinal");
+  tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-GetTpuCoreOrdinal");
   const Tensor* device_ordinal_t;
   TF_RETURN_IF_ERROR(ctx->input(kDeviceOrdinalAttr, &device_ordinal_t));
   int device_ordinal = device_ordinal_t->scalar<int>()();
@@ -1345,14 +1406,13 @@ Status TPUPartitionedCallOp::GetTpuCoreOrdinal(OpKernelContext* ctx,
         ordinal_selector_->GetOrdinal(input_hash, ordinal_selector_req_id);
   }
   *core_ordinal = device_ordinal;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TPUPartitionedCallOp::InitializeVarOnTPU(
     OpKernelContext* ctx, const core::RefCountPtr<Var>& var, NodeDef* ndef,
     int device_ordinal, bool fast_mem) {
   const string device = strings::StrCat(kTPUDeviceNamePrefix, device_ordinal);
-  Status status;
   std::unique_ptr<Graph> init_graph(new Graph(OpRegistry::Global()));
   TF_ASSIGN_OR_RETURN(Node * init_handle, init_graph->AddNode(*ndef));
   init_handle->set_assigned_device_name(device);
@@ -1387,7 +1447,7 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
   TF_RETURN_IF_ERROR(
       InstantiatePartition(*init_graph, fname, device, &fhandle, nullptr));
 
-  FunctionLibraryRuntime::Options opts;
+  FunctionLibraryRuntime::Options opts(ctx->step_id());
   opts.step_container = ctx->step_container();
   opts.cancellation_manager = ctx->cancellation_manager();
   opts.stats_collector = ctx->stats_collector();
@@ -1407,16 +1467,17 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
   std::vector<Tensor> dummy_args;
   std::vector<Tensor>* dummy_rets = new std::vector<Tensor>;
   Notification done;
-  profiler::TraceMe trace_me("TPUPartitionedCallOp-InitializeVarOnTPU");
+  Status status;
+  tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-InitializeVarOnTPU");
   library_runtime_->Run(opts, fhandle, dummy_args, dummy_rets,
-                        [dummy_rets, &done, ctx](const Status& status) {
-                          if (!status.ok()) {
-                            ctx->SetStatus(status);
-                          }
+                        [dummy_rets, &done, &status](const Status& s) {
+                          status = s;
                           delete dummy_rets;
                           done.Notify();
                         });
   done.WaitForNotification();
+  TF_RETURN_IF_ERROR(status);
+
   // We don't actually want the variable initialization functions
   // in the function library definition and the function library
   // runtime, because flib_def_ is used for the graph rewrite passes.
@@ -1426,24 +1487,21 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
   // to the library definition.
   TF_RETURN_IF_ERROR(flib_def_->RemoveFunction(fname));
   TF_RETURN_IF_ERROR(library_runtime_->ReleaseHandle(fhandle));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
     OpKernelContext* ctx, const core::RefCountPtr<Var>& var,
-    std::vector<NodeDef>& ndefs, int split_dim, int device_ordinal) {
+    std::vector<NodeDef>& ndefs, int split_dim,
+    const std::vector<string>& tpu_devices) {
   std::unique_ptr<Graph> init_graph(new Graph(OpRegistry::Global()));
   int num_cores = ndefs.size();
   string cpu_device = "/device:CPU:0";
 
-  Status status;
-  std::vector<std::string> devices;
   std::vector<Node*> init_handles;
   for (int i = 0; i < num_cores; i++) {
     TF_ASSIGN_OR_RETURN(Node * init_handle, init_graph->AddNode(ndefs[i]));
-    string device = strings::StrCat(kTPUDeviceNamePrefix, device_ordinal + i);
-    init_handle->set_assigned_device_name(device);
-    devices.push_back(device);
+    init_handle->set_assigned_device_name(tpu_devices[i]);
     init_handles.push_back(init_handle);
   }
 
@@ -1504,11 +1562,11 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
     NodeDef assign_node_def;
     assign_node_def.set_name(absl::StrCat("Assign_", i));
     assign_node_def.set_op("AssignVariableOp");
-    assign_node_def.set_device(devices[i]);
+    assign_node_def.set_device(tpu_devices[i]);
     AddNodeAttr("dtype", var->tensor()->dtype(), &assign_node_def);
     TF_ASSIGN_OR_RETURN(Node * init_assign,
                         init_graph->AddNode(assign_node_def));
-    init_assign->set_assigned_device_name(devices[i]);
+    init_assign->set_assigned_device_name(tpu_devices[i]);
 
     init_graph->AddEdge(init_handles[i], 0, init_assign, 0);
     if (split_dim >= 0) {
@@ -1548,7 +1606,7 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
     functions.push_back(DeviceAndFHandle{.device = target, .handle = handle});
   }
 
-  FunctionLibraryRuntime::Options opts;
+  FunctionLibraryRuntime::Options opts(ctx->step_id());
 
   // Blocking on threads in the same thread pool is disallowed because
   // concurrent warm-up requests can exhaust the default thread pool.
@@ -1570,7 +1628,9 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
   opts.rendezvous = &rendez;
 
   BlockingCounter bcount(functions.size());
-  for (const DeviceAndFHandle& entry : functions) {
+  std::vector<Status> statuses(functions.size());
+  for (int i = 0; i < functions.size(); i++) {
+    const DeviceAndFHandle& entry = functions[i];
     const string& target_device = entry.device;
     FHandle handle = entry.handle;
 
@@ -1579,24 +1639,28 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
     std::vector<Tensor> dummy_args;
     std::vector<Tensor>* dummy_rets = new std::vector<Tensor>;
 
-    profiler::TraceMe trace_me(
+    tsl::profiler::TraceMe trace_me(
         "TPUPartitionedCallOp-InitializeShardedVarOnTPU");
     library_runtime_->Run(opts, handle, dummy_args, dummy_rets,
-                          [dummy_rets, &bcount, ctx](const Status& status) {
-                            if (!status.ok()) {
-                              ctx->SetStatus(status);
-                            }
+                          [dummy_rets, i, &bcount, &statuses](const Status& s) {
+                            statuses[i] = s;
                             delete dummy_rets;
                             bcount.DecrementCount();
                           });
   }
   bcount.Wait();
 
+  StatusGroup status_group;
+  for (const auto& status : statuses) {
+    status_group.Update(status);
+  }
+  TF_RETURN_IF_ERROR(status_group.as_summary_status());
+
   for (int i = 0; i < functions.size(); i++) {
     TF_RETURN_IF_ERROR(flib_def_->RemoveFunction(function_names[i]));
     TF_RETURN_IF_ERROR(library_runtime_->ReleaseHandle(functions[i].handle));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool TPUPartitionedCallOp::IsInputToTPUReplicate(Node* node) {
@@ -1610,12 +1674,12 @@ bool TPUPartitionedCallOp::IsInputToTPUReplicate(Node* node) {
 
 Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
     Graph* graph, OpKernelContext* ctx, int device_ordinal,
-    int num_cores_per_replica, bool enable_spmd_xla_partitioning) {
+    bool enable_spmd_xla_partitioning, const TPUMetadata& tpu_metadata) {
   // Currently variable deduplication is not supported for XLA SPMD
   // partitioning. It is possible that it could be supported in the future.
   bool enable_variable_deduplication =
       runtime_params_.enable_variable_deduplication;
-  if (enable_spmd_xla_partitioning && num_cores_per_replica > 1) {
+  if (enable_spmd_xla_partitioning && tpu_metadata.num_cores_per_replica > 1) {
     // If enable_spmd_xla_partitioning is true, the user set the
     // enable_auto_xla_input_sharding flag. Warn them that only one of the flags
     // can be set safely when num_cores_per_replica > 1. If
@@ -1650,26 +1714,29 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
   // ResourceHandle backs several variable nodes, the variable nodes refer to
   // the same underlying resource. In that case, only one variable node needs
   // to be mirrored to the TPU for that resource.
-  absl::flat_hash_map<uint64, Node*> tpu_variables;
+  absl::flat_hash_map<uint64_t, Node*> tpu_variables;
+  ResourceHandle handle;
   for (int i = 0; i < tpu_resource_args.size(); i++) {
     Node* node = tpu_resource_args[i];
-    ResourceHandle handle = HandleFromInput(ctx, arg_indices[i]);
+    TF_RETURN_IF_ERROR(HandleFromInput(ctx, arg_indices[i], &handle));
 
-    if (num_cores_per_replica > 1 && enable_spmd_xla_partitioning) {
+    if (tpu_metadata.num_cores_per_replica > 1 &&
+        enable_spmd_xla_partitioning) {
       TF_RETURN_IF_ERROR(ReplaceAndPartitionXLAShardingVariable(
-          graph, ctx, device_ordinal, handle, node, num_cores_per_replica));
+          graph, ctx, device_ordinal, handle, node, tpu_metadata));
       continue;
     }
     TPUVariableInfo var_info(/*device_ordinal_id=*/0, /*use_fast_mem=*/false);
-    TF_RETURN_IF_ERROR(
-        ParseTPUVariableInfor(node, num_cores_per_replica, &var_info));
+    TF_RETURN_IF_ERROR(ParseTPUVariableInfor(
+        node, tpu_metadata.num_cores_per_replica, &var_info));
     // Only respect graph's placement when model parallelism enabled.
-    if (num_cores_per_replica > 1) device_ordinal = var_info.device_ordinal;
+    if (tpu_metadata.num_cores_per_replica > 1)
+      device_ordinal = var_info.device_ordinal;
 
-    const uint64 handle_fp =
+    const uint64_t handle_fp =
         Fingerprint64(strings::StrCat(handle.container(), handle.name()));
     if (enable_variable_deduplication && tpu_variables.contains(handle_fp) &&
-        num_cores_per_replica == 1) {
+        tpu_metadata.num_cores_per_replica == 1) {
       Node* tpu_variable = tpu_variables.at(handle_fp);
       std::vector<Node*> dst_nodes;
       std::vector<int> src_indices;
@@ -1685,12 +1752,12 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
                        dst_indices[i]);
       }
     } else {
-      uint64 fp =
+      uint64_t fp =
           Fingerprint64(strings::StrCat(handle.container(), handle.name(), i));
       NodeDef ndef;
       ndef.set_name(strings::StrCat(handle.name(), fp));
       ndef.set_op(kVarHandleOp);
-      if (num_cores_per_replica > 1) {
+      if (tpu_metadata.num_cores_per_replica > 1) {
         ndef.set_device(strings::StrCat(kTPUDeviceNamePrefix, device_ordinal));
       } else {
         // Assign this new VarHandleOp to TPU:0 so the partitioner only
@@ -1766,12 +1833,19 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
 
   seen_ordinals_.insert(device_ordinal);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
     Graph* graph, OpKernelContext* ctx, int device_ordinal,
-    ResourceHandle& handle, Node* variable, int num_cores_per_replica) {
+    ResourceHandle& handle, Node* variable, const TPUMetadata& tpu_metadata) {
+  if (device_ordinal >= tpu_metadata.topology.num_tpu_devices_per_task()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "There are ", tpu_metadata.topology.num_tpu_devices_per_task(),
+        " TPU devices, however selected device_ordinal: ", device_ordinal,
+        " exceeds the range"));
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto sharding,
       GetShardingFromNodeDef(variable->def(), /*add_metadata=*/false));
@@ -1787,11 +1861,14 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
     xla_sharding.set_type(xla::OpSharding::REPLICATED);
     is_var_sharded = false;
   }
-  VLOG(3) << "Replace and partition variable " << variable->name()
-          << " with xla_sharding: " << xla_sharding.DebugString();
 
   core::RefCountPtr<Var> var;
   TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
+
+  VLOG(3) << "Replace and partition variable " << variable->name()
+          << " is_var_sharded: " << is_var_sharded
+          << " shape: " << var->tensor()->shape().DebugString()
+          << " with xla_sharding: " << xla_sharding.DebugString();
 
   int split_dim = -1;
   int split_size = 0;
@@ -1800,39 +1877,61 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
     for (int dim = 0; dim < GetDimsFromXLAShardingTiled(xla_sharding); dim++) {
       if (xla_sharding.tile_assignment_dimensions(dim) > 1) {
         if (split_dim != -1) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Currently we only support inference with one split dimension, "
               "however got sharding: ",
-              xla_sharding.DebugString());
+              xla_sharding.DebugString()));
         }
         split_dim = dim;
         split_size = xla_sharding.tile_assignment_dimensions(dim);
       }
     }
     if (split_dim == -1 || split_dim >= var->tensor()->dims()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "sharding split_dim ", split_dim, " for variable: ", variable->name(),
           " is -1 or large than the number of dimensions ",
-          var->tensor()->dims());
+          var->tensor()->dims()));
     }
+  }
+
+  const auto& topology = tpu_metadata.topology;
+  int num_cores_per_replica = tpu_metadata.num_cores_per_replica;
+  xla::Array4D<int> mapping(topology.mesh_shape(0), topology.mesh_shape(1),
+                            topology.mesh_shape(2), topology.mesh_shape(3), -1);
+  int pos = 0;
+  // The topology should only have one task.
+  for (int device = 0; device < topology.num_tpu_devices_per_task(); device++) {
+    int32_t x = topology.device_coordinates(pos++);
+    int32_t y = topology.device_coordinates(pos++);
+    int32_t z = topology.device_coordinates(pos++);
+    int32_t core = topology.device_coordinates(pos++);
+    mapping(x, y, z, core) = device;
   }
 
   const string cname = ctx->resource_manager()->default_container();
   std::vector<Node*> per_core_vars;
-  for (int core_index = device_ordinal;
-       core_index < (device_ordinal + num_cores_per_replica); core_index++) {
+  std::vector<string> tpu_devices;
+  for (int i = 0; i < num_cores_per_replica; i++) {
+    int offset = i * 4;
+    int device_index = mapping(tpu_metadata.device_assignment[offset],
+                               tpu_metadata.device_assignment[offset + 1],
+                               tpu_metadata.device_assignment[offset + 2],
+                               tpu_metadata.device_assignment[offset + 3]);
+
     NodeDef ndef;
-    uint64 fp = Fingerprint64(
-        strings::StrCat(handle.container(), handle.name(), "_", core_index));
+    uint64_t fp = Fingerprint64(
+        strings::StrCat(handle.container(), handle.name(), "_", device_index));
     ndef.set_name(strings::StrCat(handle.name(), fp));
     ndef.set_op(kVarHandleOp);
-    ndef.set_device(strings::StrCat(kTPUDeviceNamePrefix, core_index));
+    string tpu_device = strings::StrCat(kTPUDeviceNamePrefix, device_index);
+    ndef.set_device(tpu_device);
+    tpu_devices.push_back(tpu_device);
 
     // Replace each _Arg node of type DT_RESOURCE that goes into a TPU node
     // by a VarHandleOp on TPU with shared_name "v_tpu_x" where "v" is the
     // shared_name of the variable on CPU and "x" is the rewritten device
     // ordinal.
-    const string sname = strings::StrCat(handle.name(), "_tpu_", core_index);
+    const string sname = strings::StrCat(handle.name(), "_tpu_", device_index);
     AddNodeAttr("shared_name", sname, &ndef);
     AddNodeAttr("container", cname, &ndef);
     AddNodeAttr("dtype", var->tensor()->dtype(), &ndef);
@@ -1843,15 +1942,21 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
     if (is_var_sharded) {
       int dim_size = proto.dim(split_dim).size();
       if (dim_size % split_size != 0) {
-        return errors::InvalidArgument("dimension size ", dim_size,
-                                       " cannot be divisible by split size ",
-                                       split_size);
+        return absl::InvalidArgumentError(
+            absl::StrCat("dimension size ", dim_size,
+                         " cannot be divisible by split size ", split_size));
       }
       proto.mutable_dim(split_dim)->set_size(dim_size / split_size);
     }
     AddNodeAttr("shape", proto, &ndef);
 
     TF_ASSIGN_OR_RETURN(Node * new_node, graph->AddNode(ndef));
+
+    // connect new node to source graph, so it can meet the graph specification
+    for (const Edge* edge : variable->in_edges()) {
+      graph->AddEdge(edge->src(), edge->src_output(), new_node,
+                     edge->dst_input());
+    }
     per_core_vars.push_back(new_node);
   }
 
@@ -1864,8 +1969,8 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
   builder.Attr("_XlaSharding", xla_sharding.SerializeAsString());
   std::vector<NodeDefBuilder::NodeOut> inputs;
   inputs.reserve(num_cores_per_replica);
-  for (int core_index = 0; core_index < num_cores_per_replica; core_index++) {
-    inputs.push_back({per_core_vars[core_index]->name(), 0, DT_RESOURCE});
+  for (int i = 0; i < num_cores_per_replica; i++) {
+    inputs.push_back({per_core_vars[i]->name(), 0, DT_RESOURCE});
   }
   builder.Input(inputs);
   NodeDef node_def;
@@ -1873,9 +1978,8 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
   TF_ASSIGN_OR_RETURN(Node * tpu_partitioned_input_node,
                       graph->AddNode(node_def));
 
-  for (int core_index = 0; core_index < num_cores_per_replica; core_index++) {
-    graph->AddEdge(per_core_vars[core_index], 0, tpu_partitioned_input_node,
-                   core_index);
+  for (int i = 0; i < num_cores_per_replica; i++) {
+    graph->AddEdge(per_core_vars[i], 0, tpu_partitioned_input_node, i);
   }
 
   // Insert TPUReplicatedInput op.
@@ -1918,13 +2022,12 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
 
   std::vector<NodeDef> ndefs;
   Status status;
-  for (int core_index = 0; core_index < num_cores_per_replica; core_index++) {
+  for (int i = 0; i < num_cores_per_replica; i++) {
     Device* d;
-    TF_RETURN_IF_ERROR(library_runtime_->device_mgr()->LookupDevice(
-        strings::StrCat(kTPUDeviceNamePrefix, device_ordinal + core_index),
-        &d));
+    TF_RETURN_IF_ERROR(
+        library_runtime_->device_mgr()->LookupDevice(tpu_devices[i], &d));
     string sname;
-    const NodeDef& ndef = per_core_vars[core_index]->def();
+    const NodeDef& ndef = per_core_vars[i]->def();
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "shared_name", &sname));
     ndefs.push_back(ndef);
     Var* tpu_var;
@@ -1933,10 +2036,18 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
 
   if (!status.ok()) {
     TF_RETURN_IF_ERROR(
-        InitializeShardedVarOnTPU(ctx, var, ndefs, split_dim, device_ordinal));
+        InitializeShardedVarOnTPU(ctx, var, ndefs, split_dim, tpu_devices));
+    if (VLOG_IS_ON(4)) {
+      for (int i = 0; i < num_cores_per_replica; i++) {
+        string sname;
+        TF_RETURN_IF_ERROR(GetNodeAttr(ndefs[i], "shared_name", &sname));
+        LOG(INFO) << "Initialized sharded variable on TPU: " << sname
+                  << " device: " << tpu_devices[i];
+      }
+    }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TPUPartitionedCallOp::InferShapesWithResourceVar(
@@ -1944,7 +2055,7 @@ Status TPUPartitionedCallOp::InferShapesWithResourceVar(
     std::map<int, InferredShape>& arg_shapes,
     GraphShapeInfo* tpu_inferred_info) {
   auto shape_inference_graph_interim =
-      absl::make_unique<Graph>(graph->flib_def());
+      std::make_unique<Graph>(graph->flib_def());
   CopyGraph(*graph, shape_inference_graph_interim.get());
 
   for (Node* node : shape_inference_graph_interim->nodes()) {
@@ -1976,15 +2087,14 @@ Status TPUPartitionedCallOp::InferShapesWithResourceVar(
           });
     }
 
-    for (auto& func : to_remove) {
-      func();
-    }
+    for (auto& func : to_remove) func();
 
     int resource_arg_index = node->attrs().Find("index")->i();
 
     // Get resource variable tensor
     core::RefCountPtr<Var> variable;
-    const ResourceHandle& handle = HandleFromInput(ctx, resource_arg_index);
+    ResourceHandle handle;
+    TF_RETURN_IF_ERROR(HandleFromInput(ctx, resource_arg_index, &handle));
     TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &variable));
 
     const Tensor* variable_tensor = variable->tensor();
@@ -2006,11 +2116,12 @@ Status TPUPartitionedCallOp::InferShapesWithResourceVar(
   TF_RETURN_IF_ERROR(tensorflow::InferShapes(
       shape_inference_graph_interim.get(), arg_shapes,
       &shape_inference_graph_interim->flib_def(), tpu_inferred_info));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
-    Graph* graph, int num_cores_per_replica, OpKernelContext* ctx) {
+    Graph* graph, const std::string& cluster_name, int num_cores_per_replica,
+    OpKernelContext* ctx) {
   for (Node* replicated_input_node : graph->nodes()) {
     if (replicated_input_node->type_string() != "TPUReplicatedInput") continue;
 
@@ -2019,7 +2130,7 @@ Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
     if (!input_node_status.ok()) {
       VLOG(2) << "Skip because cannot retrieve input node 0 of "
               << replicated_input_node->name() << " because "
-              << input_node_status.ToString();
+              << input_node_status;
       continue;
     }
 
@@ -2061,7 +2172,7 @@ Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
         continue;
       }
 
-      auto sharding = absl::make_optional<xla::OpSharding>();
+      auto sharding = std::make_optional<xla::OpSharding>();
       sharding->set_type(xla::OpSharding::OTHER);
 
       // Sets up tile_assignment_dimensions.
@@ -2091,7 +2202,7 @@ Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
               .Attr("T", replicated_input_node->output_type(0))
               .Attr(kXLAShardingAttrName, sharding->SerializeAsString())
               .Attr(kXLAShardingAttrAltName, sharding->SerializeAsString())
-              .Attr("_tpu_replicate", "cluster")
+              .Attr("_tpu_replicate", cluster_name)
               .Finalize(graph, &sharding_op));
       for (const Edge* edge : edges_to_remove) {
         VLOG(3) << "XlaSharding op creation output edge "
@@ -2107,7 +2218,7 @@ Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // OptimizeTpuInputOutputTensors does the following things;
@@ -2128,12 +2239,15 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
     Graph* graph, bool enable_spmd_xla_partitioning, int num_cores_per_replica,
     std::map<std::string, std::vector<int>>& named_input_shapes,
     OpKernelContext* ctx) {
+  std::string cluster_name;
+  TF_RETURN_IF_ERROR(GetClusterName(graph, &cluster_name));
+
   if (runtime_params_.enable_auto_xla_input_sharding) {
     VLOG(2) << DumpGraphToFile("before_enable_auto_xla_input_sharding", *graph,
                                flib_def_.get());
 
-    TF_RETURN_IF_ERROR(
-        ShardInputsWithXlaSharding(graph, num_cores_per_replica, ctx));
+    TF_RETURN_IF_ERROR(ShardInputsWithXlaSharding(graph, cluster_name,
+                                                  num_cores_per_replica, ctx));
   }
 
   GraphShapeInfo tpu_inferred_info;
@@ -2163,10 +2277,8 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
       runtime_params_.enable_auto_xla_input_sharding) {
     // Currently we remove `TPUReplicatedInput` nodes when the input tensors are
     // not sharded, input tensors packing optimization is enabled or when
-    // auto xla input sharding is there.
-    //
-    // In all thse cases, we want to remove both the TPUReplicatedInput and
-    // XlaSharding ops or else downstream rewrites will be confused.
+    // auto xla input sharding is there, or else downstream rewrites will be
+    // confused.
     RemoveDescendantNodeOfArg(graph, "TPUReplicatedInput",
                               /*must_be_child_of=*/{});
   }
@@ -2189,9 +2301,6 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
 
   VLOG(2) << DumpGraphToFile("before_optimize_tpu_input_output_tensors", *graph,
                              flib_def_.get());
-
-  string cluster_name;
-  TF_RETURN_IF_ERROR(GetClusterName(graph, &cluster_name));
 
   if (runtime_params_.minimum_output_tensors_packing > 1) {
     // Copy graph to shape_inference_graph
@@ -2233,19 +2342,19 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
     std::string name = iter.first->src()->name();
     named_input_shapes[name] = iter.second;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TPUPartitionedCallOp::GetGraphFromFunction(
-    Graph* graph, int device_ordinal, int* num_core_per_replica,
-    bool* use_spmd_for_xla_partitioning) {
+    Graph* graph, int device_ordinal, bool* use_spmd_for_xla_partitioning,
+    TPUMetadata* tpu_metadata) {
   FunctionLibraryRuntime::InstantiateOptions opts;
   FHandle handle;
   TF_RETURN_IF_ERROR(library_runtime_->Instantiate(
       func_.name(), AttrSlice(&func_.attr()), opts, &handle));
   const FunctionBody* fbody = library_runtime_->GetFunctionBody(handle);
   if (fbody == nullptr) {
-    return errors::Internal("Could not find handle ", handle);
+    return absl::InternalError(absl::StrCat("Could not find handle ", handle));
   }
   CopyGraph(*fbody->graph, graph);
 
@@ -2263,106 +2372,91 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
       node->AddAttr("_producer_name", producer_name);
 
       TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "num_cores_per_replica",
-                                     num_core_per_replica));
+                                     &tpu_metadata->num_cores_per_replica));
       TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(),
                                      "use_spmd_for_xla_partitioning",
                                      use_spmd_for_xla_partitioning));
-      VLOG(1) << "num_core_per_replica = " << *num_core_per_replica
+      VLOG(1) << "num_core_per_replica = "
+              << tpu_metadata->num_cores_per_replica
               << ", use_spmd_for_xla_partitioning = "
               << *use_spmd_for_xla_partitioning;
 
-      if (*num_core_per_replica > 1) {
+      if (tpu_metadata->num_cores_per_replica > 1) {
+        int num_replicas;
+        TF_RETURN_IF_ERROR(
+            GetNodeAttr(node->attrs(), "num_replicas", &num_replicas));
+        if (num_replicas > 1) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "num_replicas shouldn't be large than 1, however it is: ",
+              num_replicas));
+        }
+
+        TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "device_assignment",
+                                       &tpu_metadata->device_assignment));
+
+        if (!tpu_metadata->device_assignment.empty() && device_ordinal > 0) {
+          return absl::InvalidArgumentError(
+              "`device_assignment` shouldn't be set manually in the graph when "
+              "core selector is enabled or device_ordinal of the op is "
+              "non-zero.");
+        }
+
+        tpu_metadata->topology = GetTPUTopology();
+        VLOG(1) << "TPU topology: " << tpu_metadata->topology.DebugString();
         std::string topology_str;
-        std::vector<int> device_assignment;
         TF_RETURN_IF_ERROR(
             GetNodeAttr(node->attrs(), "topology", &topology_str));
-        TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "device_assignment",
-                                       &device_assignment));
+        if (!topology_str.empty()) {
+          LOG(WARNING)
+              << "Ignore the `topology` value set in TPUReplicateMetadata "
+                 "node, the TPU topology is queried in the runtime.";
+        }
+        node->ClearAttr("topology");
+        node->AddAttr("topology", tpu_metadata->topology.SerializeAsString());
 
-        tpu::TopologyProto topology;
-        topology.ParseFromString(topology_str);
-        int num_cores = topology.device_coordinates_size() / 4;
+        if (tpu_metadata->topology.num_tasks() > 1) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "TPUPartitionedCallOp is only supported in single-host setup, "
+              "however num_task is: ",
+              tpu_metadata->topology.num_tasks()));
+        }
 
-        if (device_assignment.empty()) {
+        if (tpu_metadata->device_assignment.empty()) {
           VLOG(1) << "Auto assigning device assignment";
-          // Number of devices match the cores per replica, so we can just use
-          // the device assignment from the existing topology instead of
-          // generating our own.
-          //
-          // TODO(b/179292031): Add support for non-natural orders for pods.
 
-          // check that the device coordinates for a donut is always in
-          // natural order.
-          std::vector<int> natural_order;
-          // Be smart about mesh choice considering TPU platform, given V4
-          // has potentially different mesh shapes.
-          tpu::TpuPlatformInterface* tpu_platform =
-              tpu::TpuPlatformInterface::GetRegisteredPlatform();
-          tpu::TpuTopologyExternal tpu_topology = tpu_platform->topology();
-          bool single_logic_device_per_chip =
-              tpu_topology.LogicalDevicesPerChip(
-                  TpuCoreTypeEnum::kTensorCore) == 1;
-          switch (num_cores) {
-            case 2:
-              if (single_logic_device_per_chip) {
-                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                    /*x_num_cores=*/1, /*y_num_cores=*/2, /*z_num_cores=*/1,
-                    /*num_cores_per_chip=*/1, &natural_order));
-              } else {
-                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                    /*x_num_cores=*/1, /*y_num_cores=*/1, /*z_num_cores=*/1,
-                    /*num_cores_per_chip=*/2, &natural_order));
-              }
-              break;
-            case 4:
-              if (single_logic_device_per_chip) {
-                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                    /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
-                    /*num_cores_per_chip=*/1, &natural_order));
-              } else {
-                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                    /*x_num_cores=*/1, /*y_num_cores=*/2, /*z_num_cores=*/1,
-                    /*num_cores_per_chip=*/2, &natural_order));
-              }
-              break;
-            case 8:
-              if (!single_logic_device_per_chip) {
-                TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
-                    /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
-                    /*num_cores_per_chip=*/2, &natural_order));
-                break;
-              }
-              // Intentionally fall through since with v4 shape and 8 cores per
-              // replica, we're crossing host bounds -- so we ask for a explicit
-              // device assignment.
-              ABSL_FALLTHROUGH_INTENDED;
-            default:
-              return errors::Unimplemented(
-                  "Unable to auto assign device assignment. For topology cross "
-                  "host bounds, you must explicit specify an assignment.");
-          }
-          if (*num_core_per_replica != num_cores &&
-              !std::equal(natural_order.begin(), natural_order.end(),
-                          topology.device_coordinates().begin())) {
-            return errors::InvalidArgument(
-                "Topology device coordinates for XLA SPMD on donuts must be in "
-                "natural order.");
-          }
+          // The auto generated device assignment should be the same as or a
+          // slice of TPU topology device_coordinates. This guarantees the
+          // logical device IDs order the same as the physical device IDs order.
+          // It is important for core selection, as we assume the TPU device
+          // group for one inference request is
+          // [TPU:device_ordinal, TPU:device_ordinal + num_cores_per_replica].
 
           auto coordinates_start =
-              topology.device_coordinates().begin() + device_ordinal * 4;
-          auto coordinates_end = topology.device_coordinates().begin() +
-                                 (device_ordinal + *num_core_per_replica) * 4;
+              tpu_metadata->topology.device_coordinates().begin() +
+              device_ordinal * 4;
+          auto coordinates_end =
+              tpu_metadata->topology.device_coordinates().begin() +
+              (device_ordinal + tpu_metadata->num_cores_per_replica) * 4;
 
           node->ClearAttr("device_assignment");
-          device_assignment.insert(device_assignment.begin(), coordinates_start,
-                                   coordinates_end);
-          node->AddAttr("device_assignment", device_assignment);
+          tpu_metadata->device_assignment.insert(
+              tpu_metadata->device_assignment.begin(), coordinates_start,
+              coordinates_end);
+          node->AddAttr("device_assignment", tpu_metadata->device_assignment);
+        }
+
+        if (tpu_metadata->topology.num_tpu_devices_per_task() <
+            tpu_metadata->num_cores_per_replica) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "num_cores_per_replica: ", tpu_metadata->num_cores_per_replica,
+              " in the graph is larger than the number of available TPU "
+              "devices: ",
+              tpu_metadata->topology.num_tpu_devices_per_task()));
         }
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TPUPartitionedCallOp::PlacementHelper(
@@ -2378,7 +2472,7 @@ Status TPUPartitionedCallOp::PlacementHelper(
       OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TPUPartitionedCallOp::PartitionHelper(
@@ -2428,7 +2522,7 @@ Status TPUPartitionedCallOp::PartitionHelper(
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TPUPartitionedCallOp::InstantiatePartition(
@@ -2475,16 +2569,14 @@ Status TPUPartitionedCallOp::SetDeviceOrdinal(const DeviceSet& device_set,
     const AttrValue* attr = node->attrs().Find(kDeviceOrdinalAttr);
     if (attr != nullptr) {
       if (!IsSupportedTPUOp(node->type_string())) {
-        return errors::InvalidArgument("Node ", node->type_string(),
-                                       " is not yet supported.");
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Node ", node->type_string(), " is not yet supported."));
       }
       if (ordinal == -1) {
         ordinal = attr->i();
-      } else {
-        if (ordinal != attr->i()) {
-          return errors::InvalidArgument(
-              "Can only partition graphs that use a single device ordinal.");
-        }
+      } else if (ordinal != attr->i()) {
+        return absl::InvalidArgumentError(
+            "Can only partition graphs that use a single device ordinal.");
       }
       node->ClearAttr(kDeviceOrdinalAttr);
       node->AddAttr(kDeviceOrdinalAttr, device_ordinal);
@@ -2520,11 +2612,11 @@ Status TPUPartitionedCallOp::SetDeviceOrdinal(const DeviceSet& device_set,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TPUPartitionedCallOp::InstantiateFunctionsFromSubgraphs(
-    const DeviceSet& device_set, int replica_id, uint64 cache_hash,
+    const DeviceSet& device_set, int replica_id, uint64_t cache_hash,
     int num_cores_per_replica,
     std::unordered_map<std::string, std::unique_ptr<Graph>> subgraphs) {
   const Device* reference_device = nullptr;
@@ -2538,8 +2630,8 @@ Status TPUPartitionedCallOp::InstantiateFunctionsFromSubgraphs(
     if (num_cores_per_replica > 1) {
       DeviceNameUtils::ParsedName parsed_device;
       if (!DeviceNameUtils::ParseFullName(target, &parsed_device)) {
-        return errors::InvalidArgument("Malformed assigned device '", target,
-                                       "'");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Malformed assigned device '", target, "'"));
       }
       device_ordinal = parsed_device.id;
     }
@@ -2551,7 +2643,7 @@ Status TPUPartitionedCallOp::InstantiateFunctionsFromSubgraphs(
     } else {
       if (!DeviceNameUtils::IsSameAddressSpace(
               device->parsed_name(), reference_device->parsed_name())) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "TPUPartitionedCallOp does not yet support inter-process"
             "execution.");
       }
@@ -2598,7 +2690,7 @@ Status TPUPartitionedCallOp::InstantiateFunctionsFromSubgraphs(
               << "This is probably a bug unless you are initializing "
               << "TPUs eagerly.";
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void TPUPartitionedCallOp::ExecuteRemoteFunction(
@@ -2607,7 +2699,7 @@ void TPUPartitionedCallOp::ExecuteRemoteFunction(
   std::vector<Tensor> dummy_args;
   std::vector<Tensor>* dummy_rets = new std::vector<Tensor>;
 
-  profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteRemote");
+  tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteRemote");
   library_runtime_->Run(opts, handle, dummy_args, dummy_rets,
                         [dummy_rets, done, ctx](const Status& status) {
                           if (!status.ok()) {
@@ -2633,7 +2725,7 @@ void TPUPartitionedCallOp::ExecuteLocalFunction(
   }
   auto* rets = new std::vector<Tensor>;
 
-  profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteLocal");
+  tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteLocal");
   library_runtime_->Run(opts, handle, args, rets,
                         [rets, done, ctx](const Status& status) {
                           if (!status.ok()) {
@@ -2651,8 +2743,8 @@ void TPUPartitionedCallOp::ExecuteLocalFunction(
 void TPUPartitionedCallOp::ExecuteFunctions(
     const std::vector<DeviceAndFHandle>& functions, OpKernelContext* ctx,
     int device_ordinal, int64_t ordinal_selector_req_id, DoneCallback done) {
-  profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteFunctions");
-  FunctionLibraryRuntime::Options opts;
+  tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteFunctions");
+  FunctionLibraryRuntime::Options opts(ctx->step_id());
   opts.step_container = ctx->step_container();
   opts.stats_collector = ctx->stats_collector();
   // TODO(akshayka): Consider selecting a runner on a per-device basis,
@@ -2675,9 +2767,7 @@ void TPUPartitionedCallOp::ExecuteFunctions(
        ordinal_selector = ordinal_selector_](const Status& status) {
         delete local_cm;
         rendez->Unref();
-        if (!status.ok()) {
-          ctx->SetStatus(status);
-        }
+        if (!status.ok()) ctx->SetStatus(status);
         done();
         if (req_id >= 0) {
           ordinal_selector->DequeueFromCoreSelector(device_ordinal, req_id);

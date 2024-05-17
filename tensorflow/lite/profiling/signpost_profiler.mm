@@ -69,6 +69,7 @@ class SignpostProfiler : public tflite::Profiler {
           os_signpost_interval_begin(log_, signpost_id, "operator invoke", "%s", msg);
           break;
         case EventType::DELEGATE_OPERATOR_INVOKE_EVENT:
+        case EventType::DELEGATE_PROFILED_OPERATOR_INVOKE_EVENT:
           os_signpost_interval_begin(log_, signpost_id, "delegate operator invoke", "%s", msg);
           break;
         case EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT:
@@ -103,6 +104,7 @@ class SignpostProfiler : public tflite::Profiler {
             os_signpost_interval_end(log_, signpost_id, "operator invoke");
             break;
           case EventType::DELEGATE_OPERATOR_INVOKE_EVENT:
+          case EventType::DELEGATE_PROFILED_OPERATOR_INVOKE_EVENT:
             os_signpost_interval_end(log_, signpost_id, "delegate operator invoke");
             break;
           case EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT:

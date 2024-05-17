@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -41,7 +41,8 @@ TfLiteStatus ResizeOutputImpl(TfLiteContext* context, const TfLiteTensor* dims,
     T data = GetTensorData<T>(dims)[i];
     if (data < 0) {
       TfLiteIntArrayFree(output_shape);
-      TF_LITE_KERNEL_LOG(context, "Fill dimensions must be >= 0", dims->type);
+      TF_LITE_KERNEL_LOG(context, "Fill dimensions must be >= 0 got %d",
+                         dims->type);
       return kTfLiteError;
     }
     output_shape->data[i] = data;
@@ -100,7 +101,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, value->params.zero_point, 0);
   }
 
-  if (IsConstantTensor(dims)) {
+  if (IsConstantOrPersistentTensor(dims)) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, dims, output));
   } else {
     SetTensorToDynamic(output);
@@ -151,6 +152,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteInt64:
       TF_LITE_FILL(int64_t);
+      break;
+    case kTfLiteFloat16:
+      TF_LITE_FILL(Eigen::half);
       break;
     case kTfLiteFloat32:
       TF_LITE_FILL(float);

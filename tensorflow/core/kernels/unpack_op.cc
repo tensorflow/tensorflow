@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -127,6 +127,8 @@ class UnpackOp : public OpKernel {
       UnpackOp<CPUDevice, type>)
 
 TF_CALL_ALL_TYPES(REGISTER_UNPACK);
+TF_CALL_float8_e5m2(REGISTER_UNPACK);
+TF_CALL_float8_e4m3fn(REGISTER_UNPACK);
 
 #undef REGISTER_UNPACK
 
@@ -137,7 +139,6 @@ TF_CALL_ALL_TYPES(REGISTER_UNPACK);
       Name("Unpack").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       UnpackOp<GPUDevice, type>)
 
-TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_uint8(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU

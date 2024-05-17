@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 
+#include <memory>
+
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/percentile_sampler.h"
@@ -76,7 +78,7 @@ TEST(CollectionRegistryDeathTest, DuplicateRegistration) {
       collection_registry->Register(&metric_def, EmptyCollectionFunction);
   auto duplicate_handle =
       collection_registry->Register(&metric_def, EmptyCollectionFunction);
-  EXPECT_EQ(duplicate_handle, nullptr);
+  EXPECT_NE(duplicate_handle, nullptr);
 }
 
 TEST(CollectMetricsTest, Counter) {

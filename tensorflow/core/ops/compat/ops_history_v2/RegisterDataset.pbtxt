@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RegisterDataset"
   input_arg {
     name: "dataset"

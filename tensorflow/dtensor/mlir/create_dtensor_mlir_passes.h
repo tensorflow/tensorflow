@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_MLIR_CREATE_DTENSOR_MLIR_PASSES_H_
 
 #include <memory>
+#include <optional>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -38,6 +39,9 @@ std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateDTensorDCE();
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorUndoMergeConstAcrossMesh();
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateDTensorElideIdentityBeforeCopyToMesh();
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorConstantFolding();
@@ -94,19 +98,16 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorUpdateTPUMetadata();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDTensorEmbeddingPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDTensorEmbeddingPassV2();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDTensorEmbeddingCheckpointPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateFunctionRenamingPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorMultiDeviceExpansionPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorAllReduceLoweringPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorAllToAllLoweringPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorReduceScatterLoweringPass();
@@ -121,6 +122,9 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorMergeClustersPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorDecomposeControlflowPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorLowerSendRecv();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
@@ -131,6 +135,29 @@ CreateDTensorSparseTensorToDenseTensor();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorSparseExpansion();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorInferShapesForRestoreV2Op();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorSetHloShardingPass(
+    std::optional<bool> check_layout_use_xla_spmd = std::optional<bool>(false));
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateDTensorLayoutToXlaShardingOpPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorReplaceAuxiliaryDTensorLayoutOpPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorRemoveDTensorLayoutPass();
+
+// Creates a pass that replaces `tf.Relayout` with `tf.Identity`.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateDTensorReplaceRelayoutWithIdentityPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateDTensorCollectiveTypeLoweringPass();
 
 // Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

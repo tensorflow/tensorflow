@@ -18,18 +18,25 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <ios>
+#include <iterator>
 #include <memory>
 #include <streambuf>
 #include <string>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/strings/ascii.h"
-#include "tensorflow/core/lib/jpeg/jpeg_handle.h"
+#include "jpeglib.h"  // from @libjpeg_turbo
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/kernels/internal/reference/pad.h"
+#include "tensorflow/lite/kernels/internal/reference/resize_bilinear.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/profiling/time.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/preprocessing_steps.pb.h"
@@ -316,17 +323,18 @@ TfLiteStatus ImagePreprocessingStage::Run() {
   // Converts data to output type.
   if (output_type_ == kTfLiteUInt8) {
     uint8_preprocessed_image_.clear();
-    uint8_preprocessed_image_.reserve(image_data.data->size());
+    uint8_preprocessed_image_.resize(image_data.data->size() +
+                                     /*XNN_EXTRA_BYTES=*/16);
     for (int i = 0; i < image_data.data->size(); ++i) {
-      uint8_preprocessed_image_.push_back(
-          static_cast<uint8_t>(image_data.data->at(i)));
+      uint8_preprocessed_image_[i] =
+          static_cast<uint8_t>(image_data.data->at(i));
     }
   } else if (output_type_ == kTfLiteInt8) {
     int8_preprocessed_image_.clear();
-    int8_preprocessed_image_.reserve(image_data.data->size());
+    int8_preprocessed_image_.resize(image_data.data->size() +
+                                    /*XNN_EXTRA_BYTES=*/16);
     for (int i = 0; i < image_data.data->size(); ++i) {
-      int8_preprocessed_image_.push_back(
-          static_cast<int8_t>(image_data.data->at(i)));
+      int8_preprocessed_image_[i] = static_cast<int8_t>(image_data.data->at(i));
     }
   } else if (output_type_ == kTfLiteFloat32) {
     float_preprocessed_image_ = *image_data.data;

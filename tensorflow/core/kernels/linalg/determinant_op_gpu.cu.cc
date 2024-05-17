@@ -19,10 +19,9 @@ limitations under the License.
 
 #include <complex>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/linalg/determinant_op.h"
-#include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_solvers.h"
 
@@ -69,12 +68,7 @@ __global__ void DeterminantFromPivotedLUKernel(
     for (int i = 0; i < n; ++i, i_idx += stride) {
       const RealScalar abs_i = Eigen::numext::abs(lu_factor[i_idx]);
       sum_log_abs_det += Eigen::numext::log(abs_i);
-      prod_sign = prod_sign * (lu_factor[i_idx] / abs_i);
-    }
-    if (!Eigen::numext::isfinite(sum_log_abs_det)) {
-      prod_sign = Scalar(0);
-      sum_log_abs_det = sum_log_abs_det > 0 ? -Eigen::numext::log(RealScalar(0))
-                                            : Eigen::numext::log(RealScalar(0));
+      prod_sign = prod_sign * Eigen::numext::sign(lu_factor[i_idx]);
     }
     if (compute_log_abs_det) {
       sign[o_idx] = prod_sign;

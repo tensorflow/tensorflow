@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package tensorflow;
+
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
+// Represents a job type and the number of tasks under this job.
+// For example, ("worker", 20) implies that there will be 20 worker tasks.
+message CoordinatedJob {
+  string name = 1;
+  int32 num_tasks = 2;
+}
+
+// Coordination service configuration parameters.
+// The system picks appropriate values for fields that are not set.
+message CoordinationServiceConfig {
+  // Type of coordination service implementation to enable.
+  // For example, setting the service type as "standalone" starts a service
+  // instance on the leader task to provide the coordination services such as
+  // heartbeats and consistent key-value store.
+  string service_type = 1;
+
+  // Address where the coordination service instance is hosted.
+  string service_leader = 2;
+
+  // Whether to enable the health check mechanism.
+  bool enable_health_check = 3;
+
+  // Maximum wait time for all members in the cluster to be registered.
+  int64 cluster_register_timeout_in_ms = 4;
+
+  // Heartbeat timeout, if a task does not record heartbeat in this time
+  // window, it will be considered disconnected.
+  // Note: This is also used as a grace period to accept any heartbeats after
+  // the agent has disconnected, to account for the lag time between the service
+  // recording the state change and the agent stopping heartbeats.
+  int64 heartbeat_timeout_in_ms = 5;
+
+  // The list of `CoordinatedJob`s that will register in coordination service.
+  reserved 6;
+  repeated CoordinatedJob coordinated_job_list = 10;
+
+  // Denotes how long to wait for all coordination agents to reach the barriers
+  // (after the first shutdown request) before disconnecting together. If
+  // set to 0, no barrier is imposed upon shutdown and each worker can
+  // disconnect individually.
+  int64 shutdown_barrier_timeout_in_ms = 7;
+
+  // If set, agents do not make an explicit Shutdown() call. Service will only
+  // find out about the disconnecte agent via stale heartbeats. Used for
+  // testing.
+  bool agent_destruction_without_shutdown = 8;
+
+  // The list of jobs which are recoverable. If a task in this list fails,
+  // it will not propagate error to other tasks.
+  // If empty, no jobs will be recoverable and every task failure will cause
+  // error propagation to other tasks.
+  repeated string recoverable_jobs = 9;
+
+  // If a task restarts with a new incarnation, we may allow it to reconnect
+  // silently. This is useful when we know that a task can immediately resume
+  // work upon re-connecting to the service.
+  bool allow_new_incarnation_to_reconnect = 11;
+
+  // Disables coordination service.
+  // Some libraries enable coordination service by default even if the user did
+  // not specify any config. This field allows users to explicitly disable
+  // coordination service under all situations.
+  bool force_disable = 12;
+}

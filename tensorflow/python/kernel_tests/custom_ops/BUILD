@@ -1,10 +1,10 @@
 # Tests of TensorFlow custom ops written
 
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -14,7 +14,7 @@ tf_custom_op_library(
     srcs = ["ackermann_op.cc"],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "ackermann_test",
     size = "small",
     srcs = ["ackermann_test.py"],
@@ -24,9 +24,10 @@ tf_py_test(
         "notap",
     ],
     deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/framework:load_library",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 
@@ -35,7 +36,7 @@ tf_custom_op_library(
     srcs = ["duplicate_op.cc"],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "duplicate_op_test",
     size = "small",
     srcs = ["duplicate_op_test.py"],
@@ -45,10 +46,11 @@ tf_py_test(
         "notap",
     ],
     deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/framework:load_library",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 
@@ -57,7 +59,7 @@ tf_custom_op_library(
     srcs = ["invalid_op.cc"],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "invalid_op_test",
     size = "small",
     srcs = ["invalid_op_test.py"],
@@ -67,9 +69,9 @@ tf_py_test(
         "notap",
     ],
     deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:load_library",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )

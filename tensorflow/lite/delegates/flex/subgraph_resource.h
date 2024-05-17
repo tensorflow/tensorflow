@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 
 namespace tflite {
@@ -34,13 +34,6 @@ class TFLiteSubgraphResource : public tensorflow::ResourceBase {
  public:
   explicit TFLiteSubgraphResource(Subgraph& subgraph, TfLiteDelegate* delegate)
       : subgraph_(subgraph), delegate_(delegate) {}
-
-  // This class is movable but not copyable.
-  TFLiteSubgraphResource(TFLiteSubgraphResource&&) = default;
-  TFLiteSubgraphResource& operator=(TFLiteSubgraphResource&&) = default;
-
-  TFLiteSubgraphResource(const TFLiteSubgraphResource&) = delete;
-  TFLiteSubgraphResource& operator=(TFLiteSubgraphResource&) = delete;
 
   std::string DebugString() const override { return "TFLiteSubgraphResource"; }
 

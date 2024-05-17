@@ -51,7 +51,7 @@ cmake ../tensorflow_src/tensorflow/lite
 #### Debug build
 
 If you need to produce a debug build which has symbol information, you need to
-provide `-DCMAKE_BUILD_TYPE=Debug` option.
+provide the `-DCMAKE_BUILD_TYPE=Debug` option.
 
 ```sh
 cmake ../tensorflow_src/tensorflow/lite -DCMAKE_BUILD_TYPE=Debug
@@ -59,13 +59,42 @@ cmake ../tensorflow_src/tensorflow/lite -DCMAKE_BUILD_TYPE=Debug
 
 #### Build with kernel unit tests
 
-In order to be able to run kernel tests, you need to provide
-'-DTFLITE_KERNEL_TEST=on' flag. Unit test cross-compilation specifics can be
+In order to be able to run kernel tests, you need to provide the
+`-DTFLITE_KERNEL_TEST=on` flag. Unit test cross-compilation specifics can be
 found in the next subsection.
 
 ```sh
 cmake ../tensorflow_src/tensorflow/lite -DTFLITE_KERNEL_TEST=on
 ```
+
+#### Build installable package
+
+To build an installable package that can be used as a dependency by another
+CMake project with `find_package(tensorflow-lite CONFIG)`, use the
+`-DTFLITE_ENABLE_INSTALL=ON` option.
+
+You should ideally also provide your own versions of library dependencies.
+These will also need to used by the project that depends on TF Lite. You can
+use the `-DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON` and set the `<PackageName>_DIR`
+variables to point to your library installations.
+
+```sh
+cmake ../tensorflow_src/tensorflow/lite -DTFLITE_ENABLE_INSTALL=ON \
+  -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON \
+  -DSYSTEM_FARMHASH=ON \
+  -DSYSTEM_PTHREADPOOL=ON \
+  -Dabsl_DIR=<install path>/lib/cmake/absl \
+  -DEigen3_DIR=<install path>/share/eigen3/cmake \
+  -DFlatBuffers_DIR=<install path>/lib/cmake/flatbuffers \
+  -Dgemmlowp_DIR=<install path>/lib/cmake/gemmlowp \
+  -DNEON_2_SSE_DIR=<install path>/lib/cmake/NEON_2_SSE \
+  -Dcpuinfo_DIR=<install path>/share/cpuinfo \
+  -Druy_DIR=<install path>/lib/cmake/ruy
+```
+
+**Note:** Refer to CMake documentation for
+[`find_package`](https://cmake.org/cmake/help/latest/command/find_package.html)
+to learn more about handling and locating packages.
 
 #### Cross-compilation
 
@@ -176,7 +205,7 @@ NVidia CUDA OpenCL 1.2.
 
 ### Step 5. Build TensorFlow Lite
 
-In the tflite_build directory,
+In the `tflite_build` directory,
 
 ```sh
 cmake --build . -j
@@ -191,7 +220,7 @@ section.
 
 ### Step 6. Build TensorFlow Lite Benchmark Tool and Label Image Example (Optional)
 
-In the tflite_build directory,
+In the `tflite_build` directory,
 
 ```sh
 cmake --build . -j -t benchmark_model
@@ -207,19 +236,19 @@ Here is the list of available options. You can override it with
 `-D<option_name>=[ON|OFF]`. For example, `-DTFLITE_ENABLE_XNNPACK=OFF` to
 disable XNNPACK which is enabled by default.
 
-| Option Name           | Feature        | Android | Linux | macOS | Windows |
-| --------------------- | -------------- | ------- | ----- | ----- | ------- |
-| TFLITE_ENABLE_RUY     | Enable RUY     | ON      | OFF   | OFF   | OFF     |
-:                       : matrix         :         :       :       :         :
-:                       : multiplication :         :       :       :         :
-:                       : library        :         :       :       :         :
-| TFLITE_ENABLE_NNAPI   | Enable NNAPI   | ON      | OFF   | N/A   | N/A     |
-:                       : delegate       :         :       :       :         :
-| TFLITE_ENABLE_GPU     | Enable GPU     | OFF     | OFF   | N/A   | N/A     |
-:                       : delegate       :         :       :       :         :
-| TFLITE_ENABLE_XNNPACK | Enable XNNPACK | ON      | ON    | ON    | ON      |
-:                       : delegate       :         :       :       :         :
-| TFLITE_ENABLE_MMAP    | Enable MMAP    | ON      | ON    | ON    | N/A     |
+| Option Name             | Feature        | Android | Linux | macOS | Windows |
+| ----------------------- | -------------- | ------- | ----- | ----- | ------- |
+| `TFLITE_ENABLE_RUY`     | Enable RUY     | ON      | OFF   | OFF   | OFF     |
+:                         : matrix         :         :       :       :         :
+:                         : multiplication :         :       :       :         :
+:                         : library        :         :       :       :         :
+| `TFLITE_ENABLE_NNAPI`   | Enable NNAPI   | ON      | OFF   | N/A   | N/A     |
+:                         : delegate       :         :       :       :         :
+| `TFLITE_ENABLE_GPU`     | Enable GPU     | OFF     | OFF   | N/A   | N/A     |
+:                         : delegate       :         :       :       :         :
+| `TFLITE_ENABLE_XNNPACK` | Enable XNNPACK | ON      | ON    | ON    | ON      |
+:                         : delegate       :         :       :       :         :
+| `TFLITE_ENABLE_MMAP`    | Enable MMAP    | ON      | ON    | ON    | N/A     |
 
 ## Create a CMake project which uses TensorFlow Lite
 
@@ -256,18 +285,31 @@ follow [step 1](#step-1-install-cmake-tool) to
 [step 3](#step-3-create-cmake-build-directory) first. After that, run the
 following commands.
 
+### Linux / MacOS
 ```sh
 cmake ../tensorflow_src/tensorflow/lite/c
 cmake --build . -j
 ```
 
-This command generates the following shared library in the current directory.
+### Windows
+```sh
+cmake ../tensorflow_src/tensorflow/lite/c
+cmake --build . -j --config Release
+```
+
+### Compiled Library
+
+The above command generates the following shared library in the current
+directory.
 
 Platform | Library name
--------- | -------------------------
-Linux    | libtensorflowlite_c.so
-macOS    | libtensorflowlite_c.dylib
-Windows  | tensorflowlite_c.dll
+-------- | ---------------------------
+Linux    | `libtensorflowlite_c.so`
+macOS    | `libtensorflowlite_c.dylib`
+Windows  | `tensorflowlite_c.dll`
 
-**Note:** You need necessary headers (c_api.h, c_api_experimental.h and
-common.h) to use the generated shared library.
+**Note:** You need the public headers (`tensorflow/lite/c_api.h`,
+`tensorflow/lite/c_api_experimental.h`, `tensorflow/lite/c_api_types.h`, and
+`tensorflow/lite/common.h`), and the private headers that those public headers
+include (`tensorflow/lite/core/builtin_ops.h`, `tensorflow/lite/core/c/*.h`, and
+`tensorflow/lite/core/async/c/*.h`, ) to use the generated shared library.

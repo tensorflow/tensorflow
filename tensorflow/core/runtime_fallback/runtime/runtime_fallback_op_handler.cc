@@ -18,6 +18,10 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_op_handler.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Error.h"
@@ -45,12 +49,6 @@ limitations under the License.
 #include "tfrt/tensor/scalar_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_metadata.h"  // from @tf_runtime
-// TODO(b/160798174): Avoid CUDA/ROCM macro.
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tfrt/gpu/device/device.h"  // from @tf_runtime
-#include "tfrt/gpu/device/device_util.h"  // from @tf_runtime
-#include "tfrt/gpu/tensor/dense_gpu_tensor.h"  // from @tf_runtime
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 namespace tfd {
@@ -90,11 +88,9 @@ using tfrt::AsyncValueRef;
 using tfrt::Chain;
 using tfrt::CoreRuntime;
 using tfrt::CoreRuntimeOp;
-using tfrt::DenseHostTensor;
 using tfrt::ExecutionContext;
 using tfrt::Expected;
 using tfrt::OpAttrsRef;
-using tfrt::OpHandler;
 using tfrt::OpInvocation;
 using tfrt::OpMetadataFn;
 using tfrt::raw_ostream;
@@ -121,8 +117,8 @@ static Expected<tfrt::RCReference<tfrt::Device>> GetDeviceFromFallbackTensor(
     const ExecutionContext& exec_ctx) {
   tensorflow::Status status;
   // Obtain the device. Please note that this device is probably not
-  // the device that the TensorHandle is located on. E.g. for a GPU resource
-  // its device is GPU but it is physicially located on CPU.
+  // the device that the TensorHandle is located on. E.g. for a TPU resource
+  // its device is TPU but it is physicially located on CPU.
   // We use this device because upper layer (e.g. distributed strategy) may
   // use it for colocation. On the other hand, the actual device is not widely
   // used in upper layers.
@@ -131,14 +127,14 @@ static Expected<tfrt::RCReference<tfrt::Device>> GetDeviceFromFallbackTensor(
   const char* tf_device_name =
       result_tensor.GetTensorHandle()->DeviceName(&status);
   if (!status.ok()) {
-    return tfrt::MakeStringError(status.error_message());
+    return tfrt::MakeStringError(status.message());
   }
 
   // TODO(b/165872892): Unify device name for tests.
   auto device = exec_ctx.host()->GetDeviceManager()->GetDeviceRef<tfrt::Device>(
       tf_device_name);
   if (!device) {
-    // Convert device name to the short form, e.g. "GPU:0".
+    // Convert device name to the short form, e.g. "TPU:0".
     const char* tfrt_device_name =
         ConvertTfDeviceNameToTfrtDefault(tf_device_name);
     device = exec_ctx.host()->GetDeviceManager()->GetDeviceRef<tfrt::Device>(
@@ -184,14 +180,13 @@ struct RuntimeFallbackOpHandlerTraits {
       if (!expected_device) {
         return tfrt::AsyncValueRef<tfrt::RCReference<tfrt::Device>>(
             tfrt::MakeErrorAsyncValueRef(
-                exec_ctx.host(), tfrt::StrCat(expected_device.takeError())));
+                tfrt::StrCat(expected_device.takeError())));
       }
       return std::move(expected_device.get());
     }
 
     auto result_device =
-        tfrt::MakeUnconstructedAsyncValueRef<tfrt::RCReference<tfrt::Device>>(
-            exec_ctx.host());
+        tfrt::MakeUnconstructedAsyncValueRef<tfrt::RCReference<tfrt::Device>>();
 
     result_tensor_av.AndThen([result_tensor_av_ref = result_tensor_av.CopyRef(),
                               result_device = result_device.CopyRef(),
@@ -202,8 +197,10 @@ struct RuntimeFallbackOpHandlerTraits {
       }
       auto expected_device = GetDeviceFromFallbackTensor(
           result_tensor_av_ref.get<RuntimeFallbackTensor>(), exec_ctx);
-      result_device.emplace(GetDeviceFromFallbackTensor(
-          result_tensor_av_ref.get<RuntimeFallbackTensor>(), exec_ctx));
+      tfrt::Emplace(
+          result_device,
+          GetDeviceFromFallbackTensor(
+              result_tensor_av_ref.get<RuntimeFallbackTensor>(), exec_ctx));
     });
     return std::move(result_device);
   }
@@ -244,40 +241,6 @@ Expected<CoreRuntimeOp> RuntimeFallbackOpHandler::MakeOp(string_view op_name) {
 
         tfrt::ExecuteOnOpHandler<RuntimeFallbackOpHandlerTraits>(
             update_chain, invocation, std::move(op_entry), this);
-
-// TODO(b/160798174): Avoid CUDA/ROCM macro.
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-        // If the RuntimeFallbackTensor contains a tensorflow::TensorHandle
-        // that holds a GPU tensor, convert it to tfrt::DenseGpuTensor, and
-        // populate the correct device name to the result tfrt::TensorHandle.
-        //
-        // Note that if the GPU tensor contains a DataType that is not natively
-        // supported by TFRT, e.g. Resource DataType, we skip the conversion.
-        //
-        // If the RuntimeFallbackTensor's tensorflow::TensorHandle holds a CPU
-        // tensor, do not convert it to DenseHostTensor (it will be lazily
-        // converted) for performance reason.
-        for (auto& result : invocation.results) {
-          auto* host_ctx = invocation.exec_ctx.host();
-          auto* result_tensor_av = result.GetAsyncTensor();
-
-          if (!result_tensor_av->IsAvailable())
-            host_ctx->Await(FormRef(result_tensor_av));
-
-          if (result_tensor_av->IsError()) continue;
-
-          auto result_tensor_tf_th =
-              result_tensor_av->get<RuntimeFallbackTensor>().GetTensorHandle();
-
-          // Check if we need to convert the RuntimeFallbackTensor.
-          if (!(IsGpuTensorHandle(*result_tensor_tf_th) &&
-                IsSupportedByTFRTGpu(result_tensor_tf_th->DataType())))
-            continue;
-
-          result = result.TransferToSameDevice(
-              invocation.exec_ctx, tfrt::gpu::DenseGpuTensor::kTensorType);
-        }
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       },
       // device and arg_tensor_type are not used in runtime fallback ops.
       /*is_fallback=*/true, /*device=*/device_);
@@ -305,17 +268,9 @@ RuntimeFallbackOpHandler::RuntimeFallbackOpHandler(
       device_(std::move(device)),
       tf_device_name_(tf_device_name) {}
 
-RuntimeFallbackOpHandler::~RuntimeFallbackOpHandler() {}
+RuntimeFallbackOpHandler::~RuntimeFallbackOpHandler() = default;
 
 llvm::Error RuntimeFallbackOpHandler::Initialize() {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  Status status = InjectTfGpuResources();
-  if (!status.ok()) {
-    return tfrt::MakeStringError(tfrt::StrCat("error injecting GPU resources: ",
-                                              status.error_message()));
-  }
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
   return llvm::Error::success();
 }
 

@@ -10,7 +10,7 @@ func.func @single_cluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
       // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"(%[[ARG_0]])
       %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
-      // CHECK: %[[CLUSTER_OUTPUT:[0-9]*]] = "tf_device.cluster_func"(%[[A_OUTPUT]]) {func = @[[CLUSTER:.*]]}
+      // CHECK: %[[CLUSTER_OUTPUT:[0-9]*]] = "tf_device.cluster_func"(%[[A_OUTPUT]]) <{func = @[[CLUSTER:.*]]}>
       %3 = "tf_device.cluster"() ({
         %4 = "tf.B"(%2) : (tensor<?xi32>) -> tensor<?xi32>
         tf_device.return %4 : tensor<?xi32>
@@ -42,7 +42,7 @@ func.func @multiple_clusters(%arg0: tensor<?xi32>) -> tensor<?xi32> {
       // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"(%[[ARG_0]])
       %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
-      // CHECK: %[[CLUSTER_0_OUTPUT:[0-9]*]] = "tf_device.cluster_func"(%[[A_OUTPUT]]) {func = @[[CLUSTER_0:.*]]}
+      // CHECK: %[[CLUSTER_0_OUTPUT:[0-9]*]] = "tf_device.cluster_func"(%[[A_OUTPUT]]) <{func = @[[CLUSTER_0:.*]]}>
       %3 = "tf_device.cluster"() ({
         %6 = "tf.B"(%2) : (tensor<?xi32>) -> tensor<?xi32>
         tf_device.return %6 : tensor<?xi32>
@@ -51,7 +51,7 @@ func.func @multiple_clusters(%arg0: tensor<?xi32>) -> tensor<?xi32> {
       // CHECK: %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[CLUSTER_0_OUTPUT]])
       %4 = "tf.D"(%3) : (tensor<?xi32>) -> tensor<?xi32>
 
-      // CHECK: %[[CLUSTER_1_OUTPUT:[0-9]*]] = "tf_device.cluster_func"(%[[CLUSTER_0_OUTPUT]], %[[D_OUTPUT]]) {func = @[[CLUSTER_1:.*]]}
+      // CHECK: %[[CLUSTER_1_OUTPUT:[0-9]*]] = "tf_device.cluster_func"(%[[CLUSTER_0_OUTPUT]], %[[D_OUTPUT]]) <{func = @[[CLUSTER_1:.*]]}>
       %5 = "tf_device.cluster"() ({
         %6 = "tf.E"(%3) : (tensor<?xi32>) -> tensor<?xi32>
         %7 = "tf.F"(%4, %6) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
@@ -86,7 +86,7 @@ func.func @multiple_clusters(%arg0: tensor<?xi32>) -> tensor<?xi32> {
 func.func @cluster_operands(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   %0 = tf_executor.graph {
     %1:2 = tf_executor.island wraps
-      // CHECK: %[[CLUSTER_OUTPUT:[a-z0-9]*]], %{{.*}} = {{.*}} "tf_device.cluster_func"() {func = @[[CLUSTER:.*]]}
+      // CHECK: %[[CLUSTER_OUTPUT:[a-z0-9]*]], %{{.*}} = {{.*}} "tf_device.cluster_func"() <{func = @[[CLUSTER:.*]]}>
       "tf_device.cluster"() ({
         %3 = "tf.A"() : () -> tensor<?xi32>
         tf_device.return %3 : tensor<?xi32>
@@ -117,3 +117,19 @@ func.func @cluster_attrs() -> tensor<?xi32> {
 
 // CHECK: "tf_device.cluster_func"
 // CHECK-SAME: cluster_attr = "cluster_attr"
+
+// -----
+
+// Tests user-specified name is used as the outlined funciton name.
+
+// CHECK-LABEL: func @cluster_outlined_function_name
+func.func @cluster_outlined_function_name() -> tensor<?xi32> {
+  %0 = "tf_device.cluster"() ({
+    %1 = "tf.A"() : () -> tensor<?xi32>
+    tf_device.return %1 : tensor<?xi32>
+  }) {_cluster_outlined_function_name = "cluster_func"} : () -> tensor<?xi32>
+  func.return %0 : tensor<?xi32>
+}
+
+// CHECK: "tf_device.cluster_func"
+// CHECK-SAME: func = @cluster_func

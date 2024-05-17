@@ -46,8 +46,8 @@ In the example above, we've optimized away the conditional on a constant
 condition. The AutoGraph dispatch rules have the same effect: anything that is
 not a TensorFlow object is a compile-time constant for TensorFlow, and can be
 optimized away. For this reason, you can usually mix Python and TensorFlow
-computation and it will transparently have the expected result even
-when only some computations are executed in the graph.
+computation, and it will transparently have the expected result even when only
+some computations are executed in the graph.
 
 <!-- TODO(mdan): This is actually a limitation (a very subtle one) -->
 Caution: The assumption of invariant code made above is not true if the
@@ -475,7 +475,7 @@ has executed). AutoGraph keeps track of this by using a special value.
 This special value is converted to `None` (the default return value) upon
 exiting the function.
 
-Caution: TensorFlow control flow doe not support undefined values, and an
+Caution: TensorFlow control flow does not support undefined values, and an
 undefined return value is no exception. Therefore, AutoGraph will raise an
 error for TensorFlow control flow in which the return value is not known for
 all code paths.

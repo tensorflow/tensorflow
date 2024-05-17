@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <type_traits>
@@ -26,9 +27,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -62,6 +62,7 @@ std::string GraphImportConfig::str() const {
   ss << "\nenable_shape_inference: " << enable_shape_inference;
   ss << "\nunconditionally_use_set_output_shapes: "
      << unconditionally_use_set_output_shapes;
+  ss << "\nxla_compile_device_type: " << xla_compile_device_type;
 
   return ss.str();
 }
@@ -69,7 +70,7 @@ std::string GraphImportConfig::str() const {
 Status ParseOutputArrayInfo(absl::string_view array_names,
                             std::vector<string>* outputs) {
   TF_RETURN_IF_ERROR(ParseNodeNames(array_names, *outputs));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseOutputArrayInfo(const std::vector<string>& output_names,
@@ -78,7 +79,7 @@ Status ParseOutputArrayInfo(const std::vector<string>& output_names,
     if (output_name.empty()) continue;
     outputs->push_back(output_name);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseInputArrayInfo(absl::string_view array_names,
@@ -87,14 +88,14 @@ Status ParseInputArrayInfo(absl::string_view array_names,
                            GraphImportConfig::InputArrays* inputs) {
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
-  std::vector<llvm::Optional<std::vector<int>>> node_shapes;
+  std::vector<std::optional<std::vector<int>>> node_shapes;
   TF_RETURN_IF_ERROR(ParseNodeNames(array_names, node_names));
   TF_RETURN_IF_ERROR(ParseNodeDataTypes(data_types, node_dtypes));
   TF_RETURN_IF_ERROR(ParseNodeShapes(shapes, node_shapes));
   return ParseInputArrayInfo(node_names, node_dtypes, node_shapes, inputs);
 }
 
-static StatusOr<std::vector<int>> ParseShapeStr(
+static absl::StatusOr<std::vector<int>> ParseShapeStr(
     absl::string_view node_shapes_str) {
   std::vector<int> dims;
   for (absl::string_view dim_str : absl::StrSplit(node_shapes_str, ',')) {
@@ -137,13 +138,13 @@ static Status HandleSubtype(absl::string_view subtype,
     subtype_tensor_shape.add_dim()->set_size(dim);
   }
   *result = {subtype_dtype, subtype_tensor_shape};
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseInputArrayInfo(
     const std::vector<string>& node_names,
     const std::vector<string>& node_dtypes,
-    const std::vector<llvm::Optional<std::vector<int>>>& node_shapes,
+    const std::vector<std::optional<std::vector<int>>>& node_shapes,
     GraphImportConfig::InputArrays* inputs) {
   std::vector<std::string> used_node_dtypes;
   if (node_dtypes.empty()) {
@@ -204,48 +205,48 @@ Status ParseInputArrayInfo(
     }
 
     if (!node_shapes.empty()) {
-      if (!node_shapes[i].hasValue()) {
+      if (!node_shapes[i].has_value()) {
         info.shape.set_unknown_rank(true);
         continue;
       }
-      for (auto& dim : node_shapes[i].getValue()) {
+      for (auto& dim : node_shapes[i].value()) {
         info.shape.add_dim()->set_size(dim);
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseNodeShapes(
     absl::string_view shapes_str,
-    std::vector<llvm::Optional<std::vector<int>>>& shapes_vector) {
+    std::vector<std::optional<std::vector<int>>>& shapes_vector) {
   shapes_vector.clear();
   if (!shapes_str.empty()) {
     std::vector<string> node_shapes_str = absl::StrSplit(shapes_str, ':');
     for (int i = 0; i < node_shapes_str.size(); i++) {
       if (node_shapes_str[i] == "*") {
-        shapes_vector.push_back(llvm::None);
+        shapes_vector.push_back(std::nullopt);
         continue;
       }
       TF_ASSIGN_OR_RETURN(auto shape, ParseShapeStr(node_shapes_str[i]));
       shapes_vector.push_back(std::move(shape));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseNodeNames(absl::string_view names_str,
                       std::vector<std::string>& names_vector) {
   names_vector = absl::StrSplit(names_str, ',', absl::SkipEmpty());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-static StatusOr<std::vector<std::string>> ParseDTypesHelper(
+static absl::StatusOr<std::vector<std::string>> ParseDTypesHelper(
     absl::string_view data_types_str) {
   bool inside_subtype = false;
   int cur_pos = 0;
   std::vector<std::string> dtypes;
-  for (auto& it : llvm::enumerate(data_types_str)) {
+  for (const auto& it : llvm::enumerate(data_types_str)) {
     char c = it.value();
     int i = it.index();
     // Skip parsing the subtypes of a type
@@ -289,7 +290,7 @@ Status ParseNodeDataTypes(absl::string_view data_types_str,
   if (!data_types_str.empty()) {
     TF_ASSIGN_OR_RETURN(data_type_vector, ParseDTypesHelper(data_types_str));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

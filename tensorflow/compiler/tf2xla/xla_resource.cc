@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/xla_builder.h"
 
 namespace tensorflow {
 
@@ -109,7 +109,7 @@ Status XlaResource::SetTypeAndShape(DataType type, const TensorShape& shape) {
   }
   type_ = type;
   shape_ = shape;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaResource::SetValue(const xla::XlaOp& value) {
@@ -120,7 +120,7 @@ Status XlaResource::SetValue(const xla::XlaOp& value) {
   }
   value_ = value;
   is_overwritten_ = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
@@ -138,7 +138,7 @@ Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
     }
     case kTensorArray: {
       TensorShape ta_shape;
-      ta_shape.AddDim(max_array_size_);
+      TF_RETURN_IF_ERROR(ta_shape.AddDimWithStatus(max_array_size_));
       ta_shape.AppendShape(shape_);
       value_ = xla::Broadcast(XlaHelpers::Zero(builder, type_),
                               ta_shape.dim_sizes());
@@ -146,7 +146,7 @@ Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
     }
     case kStack: {
       TensorShape ta_shape;
-      ta_shape.AddDim(max_array_size_);
+      TF_RETURN_IF_ERROR(ta_shape.AddDimWithStatus(max_array_size_));
       ta_shape.AppendShape(shape_);
       value_ =
           xla::Tuple(builder, {xla::Broadcast(XlaHelpers::Zero(builder, type_),
@@ -159,7 +159,7 @@ Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
     default:
       LOG(FATAL) << "Invalid resource type";
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaResource::GetOrCreateTensorArrayGradient(const string& source,
@@ -171,7 +171,7 @@ Status XlaResource::GetOrCreateTensorArrayGradient(const string& source,
   std::unique_ptr<XlaResource>& gradient = tensor_array_gradients_[source];
   if (!gradient) {
     TensorShape ta_shape;
-    ta_shape.AddDim(max_array_size_);
+    TF_RETURN_IF_ERROR(ta_shape.AddDimWithStatus(max_array_size_));
     ta_shape.AppendShape(shape_);
     xla::XlaOp gradient_value =
         xla::Broadcast(XlaHelpers::Zero(builder, type_), ta_shape.dim_sizes());
@@ -183,7 +183,7 @@ Status XlaResource::GetOrCreateTensorArrayGradient(const string& source,
                         /*tensor_array_multiple_writes_aggregate=*/true));
   }
   *gradient_out = gradient.get();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaResource::Pack(xla::XlaOp* pack, xla::XlaBuilder* builder) const {
@@ -198,7 +198,7 @@ Status XlaResource::Pack(xla::XlaOp* pack, xla::XlaBuilder* builder) const {
     }
     *pack = xla::Tuple(builder, elems);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaResource::SetFromPack(const std::set<string>& gradient_sources,
@@ -229,7 +229,7 @@ Status XlaResource::SetFromPack(const std::set<string>& gradient_sources,
       gradient->value_ = v;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

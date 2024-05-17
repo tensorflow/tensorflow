@@ -39,11 +39,14 @@ __global__ void GatherSliceOpKernel(
     const auto indices_i = indices + IXDIM * loc;
     bool out_of_bounds = false;
     Index offset = 0;
+    // Avoid empty std::array access, which fails to compile on GPU.
+    if constexpr (IXDIM > 0) {
 #pragma unroll
-    for (int j = 0; j < IXDIM; ++j) {
-      const Index index_j = ldg(indices_i + j);
-      out_of_bounds |= !FastBoundsCheck(index_j, batch_indices[j]);
-      offset += batch_strides[j] * index_j;
+      for (int j = 0; j < IXDIM; ++j) {
+        const Index index_j = ldg(indices_i + j);
+        out_of_bounds |= !FastBoundsCheck(index_j, batch_indices[j]);
+        offset += batch_strides[j] * index_j;
+      }
     }
     // TODO(ebrevdo):
     // This is the only part that depends on the offset.  The part
@@ -118,8 +121,7 @@ struct GatherNdSlice<GPUDevice, T, Index, IXDIM> {
   DEFINE_GPU_SPECS_INDEX(T, int32); \
   DEFINE_GPU_SPECS_INDEX(T, int64);
 
-TF_CALL_int32(DEFINE_GPU_SPECS);
-TF_CALL_int64(DEFINE_GPU_SPECS);
+TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 TF_CALL_COMPLEX_TYPES(DEFINE_GPU_SPECS);
 

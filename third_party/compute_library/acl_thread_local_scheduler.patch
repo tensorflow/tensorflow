@@ -1,0 +1,98 @@
+diff --git a/arm_compute/runtime/Scheduler.h b/arm_compute/runtime/Scheduler.h
+index 9e8add1f9..cf5e2bf4c 100644
+--- a/arm_compute/runtime/Scheduler.h
++++ b/arm_compute/runtime/Scheduler.h
+@@ -75,7 +75,7 @@ public:
+
+ private:
+     static Type                        _scheduler_type;
+-    static std::shared_ptr<IScheduler> _custom_scheduler;
++    static thread_local std::shared_ptr<IScheduler> _custom_scheduler;
+     static std::map<Type, std::unique_ptr<IScheduler>> _schedulers;
+
+     Scheduler();
+diff --git a/src/cpu/operators/CpuDepthwiseConv2dAssemblyDispatch.cpp b/src/cpu/operators/CpuDepthwiseConv2dAssemblyDispatch.cpp
+index a5b9eca56..d1ab19397 100644
+--- a/src/cpu/operators/CpuDepthwiseConv2dAssemblyDispatch.cpp
++++ b/src/cpu/operators/CpuDepthwiseConv2dAssemblyDispatch.cpp
+@@ -60,8 +60,8 @@ void CpuDepthwiseConv2dAssemblyDispatch::configure(const ITensorInfo     *src,
+                                                    const ConvolutionInfo &info)
+ {
+     ARM_COMPUTE_LOG_PARAMS(src, weights, bias, dst, info);
+-    const CPUInfo     &ci          = NEScheduler::get().cpu_info();
+-    const unsigned int num_threads = NEScheduler::get().num_threads();
++    const CPUInfo     &ci          = CPUInfo::get();
++    const unsigned int num_threads = CPUInfo::get().get_cpu_num();
+     _pImpl->is_prepared            = false;
+     _pImpl->are_weights_const      = weights->are_values_constant();
+
+diff --git a/src/cpu/operators/CpuPool2d.cpp b/src/cpu/operators/CpuPool2d.cpp
+index 722cd36ee..03aef1632 100644
+--- a/src/cpu/operators/CpuPool2d.cpp
++++ b/src/cpu/operators/CpuPool2d.cpp
+@@ -66,8 +66,8 @@ void CpuPool2d::configure(ITensorInfo *src, ITensorInfo *dst, const PoolingLayer
+
+     if(run_optimised)
+     {
+-        const CPUInfo     &ci          = NEScheduler::get().cpu_info();
+-        const unsigned int num_threads = NEScheduler::get().num_threads();
++        const CPUInfo     &ci          = CPUInfo::get();
++        const unsigned int num_threads = CPUInfo::get().get_cpu_num();
+
+         auto pooling_wrapper = std::make_unique<kernels::CpuPool2dAssemblyWrapperKernel>();
+         ARM_COMPUTE_ERROR_ON(pooling_wrapper == nullptr);
+diff --git a/src/cpu/operators/internal/CpuGemmAssemblyDispatch.cpp b/src/cpu/operators/internal/CpuGemmAssemblyDispatch.cpp
+ *******************************************************************************
+ Copyright 2023 Arm Limited and affiliates.
+ SPDX-License-Identifier: Apache-2.0
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ *******************************************************************************
+index 9c8563140..f7771945a 100644
+--- a/src/cpu/operators/internal/CpuGemmAssemblyDispatch.cpp
++++ b/src/cpu/operators/internal/CpuGemmAssemblyDispatch.cpp
+@@ -623,8 +623,8 @@ void create_arm_gemm(std::unique_ptr<CpuGemmAssemblyDispatch::IFallback> &arm_ge
+                      arm_gemm::Activation activation, const AsmGemmInfo &info)
+ {
+     Params         p           = extract_parameters(a, b, d, info);
+-    const CPUInfo &ci          = NEScheduler::get().cpu_info();
+-    unsigned int   num_threads = NEScheduler::get().num_threads();
++    const CPUInfo &ci          = CPUInfo::get();
++    unsigned int   num_threads = CPUInfo::get().get_cpu_num();
+
+     arm_gemm::GemmConfig cfg;
+     cfg.weight_format = assembly_utils::map_to_arm_gemm_weight_format(info.weight_format);
+@@ -696,8 +696,8 @@ Status CpuGemmAssemblyDispatch::has_opt_impl(arm_compute::WeightFormat &expected
+     ARM_COMPUTE_UNUSED(c);
+     arm_gemm::Activation act         = assembly_utils::map_to_arm_gemm_activation(info.activation_info);
+     Params               p           = extract_parameters(a, b, d, info);
+-    const CPUInfo       &ci          = NEScheduler::get().cpu_info();
+-    unsigned int         num_threads = NEScheduler::get().num_threads();
++    const CPUInfo       &ci          = CPUInfo::get();
++    unsigned int         num_threads = CPUInfo::get().get_cpu_num();
+     arm_gemm::GemmConfig cfg;
+     cfg.weight_format                           = assembly_utils::map_to_arm_gemm_weight_format(info.weight_format);
+     arm_gemm::WeightFormat arm_gemm_expected_wf = assembly_utils::map_to_arm_gemm_weight_format(expected_weight_format);
+diff --git a/src/runtime/Scheduler.cpp b/src/runtime/Scheduler.cpp
+index 0713b9a2a..f15ac2e22 100644
+--- a/src/runtime/Scheduler.cpp
++++ b/src/runtime/Scheduler.cpp
+@@ -47,7 +47,7 @@ Scheduler::Type Scheduler::_scheduler_type = Scheduler::Type::CPP;
+ Scheduler::Type Scheduler::_scheduler_type = Scheduler::Type::ST;
+ #endif /* ARM_COMPUTE_*_SCHEDULER */
+
+-std::shared_ptr<IScheduler> Scheduler::_custom_scheduler = nullptr;
++thread_local std::shared_ptr<IScheduler> Scheduler::_custom_scheduler = nullptr;
+
+ namespace
+ {

@@ -10,8 +10,8 @@ func.func @convbiasaddmul(%arg: tensor<256x32x32x3xf32>) -> tensor<256x8x7x16xf3
   %2 = "tf.Mul"(%1, %value) {T = "tfdtype$DT_FLOAT"} : (tensor<256x8x7x16xf32>, tensor<16xf32>) -> tensor<256x8x7x16xf32>
   func.return %2 : tensor<256x8x7x16xf32>
 
-// CHECK-NEXT: %[[cst:.*]] = "tf.Const{{.*}} dense<8.000000e+00> : tensor<3x3x3x16xf32>
-// CHECK-NEXT: %[[cst_0:.*]] = "tf.Const{{.*}} dense<1.200000e+01> : tensor<16xf32>
+// CHECK-DAG: %[[cst:.*]] = "tf.Const{{.*}} dense<8.000000e+00> : tensor<3x3x3x16xf32>
+// CHECK-DAG: %[[cst_0:.*]] = "tf.Const{{.*}} dense<1.200000e+01> : tensor<16xf32>
 // CHECK-NEXT: %[[conv:.*]] = "tf.Conv2D"(%arg0, %[[cst]])
 // CHECK-NEXT: %[[bias:.*]] = "tf.AddV2"(%[[conv]], %[[cst_0]])
 // CHECK-NEXT: return %[[bias]] : tensor<256x8x7x16xf32>
@@ -27,8 +27,8 @@ func.func @convaddv2mul(%arg: tensor<256x32x32x3xf32>) -> tensor<256x8x7x16xf32>
   %2 = "tf.Mul"(%1, %value) {T = "tfdtype$DT_FLOAT"} : (tensor<256x8x7x16xf32>, tensor<16xf32>) -> tensor<256x8x7x16xf32>
   func.return %2 : tensor<256x8x7x16xf32>
 
-// CHECK-NEXT: %[[cst:.*]] = "tf.Const{{.*}} dense<8.000000e+00> : tensor<3x3x3x16xf32>
-// CHECK-NEXT: %[[cst_0:.*]] = "tf.Const{{.*}} dense<1.200000e+01> : tensor<16xf32>
+// CHECK-DAG: %[[cst:.*]] = "tf.Const{{.*}} dense<8.000000e+00> : tensor<3x3x3x16xf32>
+// CHECK-DAG: %[[cst_0:.*]] = "tf.Const{{.*}} dense<1.200000e+01> : tensor<16xf32>
 // CHECK-NEXT: %[[conv:.*]] = "tf.Conv2D"(%arg0, %[[cst]])
 // CHECK-NEXT: %[[add:.*]] = "tf.AddV2"(%[[conv]], %[[cst_0]])
 // CHECK-NEXT: return %[[add]] : tensor<256x8x7x16xf32>

@@ -102,15 +102,15 @@ tf_module {
   }
   member_method {
     name: "segment_mean"
-    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\', \'num_segments\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\', \'num_segments\', \'sparse_gradient\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "segment_sqrt_n"
-    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\', \'num_segments\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\', \'num_segments\', \'sparse_gradient\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "segment_sum"
-    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\', \'num_segments\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\', \'num_segments\', \'sparse_gradient\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "slice"

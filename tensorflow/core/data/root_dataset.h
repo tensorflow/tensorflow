@@ -15,9 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_ROOT_DATASET_H_
 #define TENSORFLOW_CORE_DATA_ROOT_DATASET_H_
 
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/model.pb.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
@@ -30,10 +35,19 @@ class RootDataset : public DatasetBase {
   struct Params {
     bool autotune = true;
     model::AutotuneAlgorithm autotune_algorithm;
-    int64_t autotune_cpu_budget = 0;
-    int64_t autotune_ram_budget = 0;
+    std::function<int64_t()> autotune_cpu_budget_func;
+    double ram_budget_share;
+    int64_t autotune_ram_budget_from_options;
     int64_t max_intra_op_parallelism = 1;
     int64_t private_threadpool_size = 0;
+
+    int64_t ComputeInitialAutotuneRamBudget() const {
+      if (autotune_ram_budget_from_options > 0) {
+        return autotune_ram_budget_from_options;
+      } else {
+        return ram_budget_share * port::AvailableRam();
+      }
+    }
   };
 
   static Status FromOptions(const DatasetBase* input, DatasetBase** output);
@@ -45,7 +59,6 @@ class RootDataset : public DatasetBase {
   const DataTypeVector& output_dtypes() const override;
   const std::vector<PartialTensorShape>& output_shapes() const override;
 
-  int64_t CardinalityInternal() const override;
   int64_t CardinalityInternal(CardinalityOptions options) const override;
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override;
@@ -54,6 +67,9 @@ class RootDataset : public DatasetBase {
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override;
+  Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -71,6 +87,7 @@ class RootDataset : public DatasetBase {
   core::RefCountPtr<DatasetBase> owned_input_;
   const Params params_;
   TraceMeMetadata traceme_metadata_;
+  Status random_indexing_compatible_;
 };
 
 // Finalizes the `input` dataset, which is expected to be called before the

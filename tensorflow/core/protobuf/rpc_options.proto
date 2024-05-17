@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package tensorflow.dummy;
+
+import public "tsl/protobuf/rpc_options.proto";
+
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";

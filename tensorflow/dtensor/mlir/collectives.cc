@@ -16,20 +16,34 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/collectives.h"
 
 #include <cstdint>
+#include <iterator>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives_common.h"
+#include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -51,7 +65,7 @@ StatusOr<mlir::Value> EmitAllGather(
     mlir::OpBuilder& builder, mlir::Value input,
     const dtensor::Layout& src_layout, const dtensor::Layout& tgt_layout,
     llvm::SmallPtrSet<mlir::Operation*, 4>* newly_created_ops) {
-  if (src_layout == tgt_layout) return input;
+  if (src_layout.IsEquivalent(tgt_layout)) return input;
 
   if (src_layout.rank() != tgt_layout.rank()) {
     return errors::InvalidArgument(
@@ -73,7 +87,7 @@ StatusOr<mlir::Value> EmitAllGather(
   // For convenience, operate on explicit input shapes. This isn't necessary,
   // as we could instead generate operations on top of the dynamic shape.
   const mlir::TensorType input_type =
-      input.getType().dyn_cast<mlir::TensorType>();
+      mlir::dyn_cast<mlir::TensorType>(input.getType());
   if (!input_type) {
     return errors::Internal(
         llvm::formatv(
@@ -89,27 +103,32 @@ StatusOr<mlir::Value> EmitAllGather(
   TF_ASSIGN_OR_RETURN(mlir::TensorType output_type,
                       LocalTypeFromGlobalType(tgt_layout, global_type));
 
+  mlir::Location loc = DT_LOC2(input.getLoc(), "DTensorAllGatherOp");
   mlir::TF::DTensorAllGatherOp all_gather =
       builder.create<mlir::TF::DTensorAllGatherOp>(
-          input.getLoc(), output_type, input,
+          loc, output_type, input,
           mlir::dtensor::LayoutAttr::get(builder.getContext(), src_layout),
           mlir::dtensor::LayoutAttr::get(builder.getContext(), tgt_layout));
   SetSingleLayoutOnOp(all_gather, tgt_layout);
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_gather);
 
-  return all_gather.output();
+  return all_gather.getOutput();
 }
 
 StatusOr<const mlir::Value> EmitAllScatter(
     mlir::OpBuilder& builder, const mlir::Value& original_value,
     const Layout& original_layout, const Layout& desired_layout,
     llvm::SmallPtrSet<mlir::Operation*, 4>* newly_created_ops) {
-  if (original_layout == desired_layout) return original_value;
+  if (original_layout.IsEquivalent(desired_layout)) return original_value;
 
   // Have an early return if desired layout is not more sharded then the
   // original_layout.
-  assert(original_layout.rank() == desired_layout.rank());
+  if (original_layout.rank() != desired_layout.rank()) {
+    return errors::InvalidArgument(absl::StrCat(
+        "Rank mismatch for original layout (", original_layout.ToString(),
+        ") and desired layout (", desired_layout.ToString(), ")"));
+  }
   for (int i = 0; i < original_layout.rank(); ++i) {
     if (original_layout.sharding_spec(i) != desired_layout.sharding_spec(i) &&
         Layout::IsShardedDimension(original_layout.sharding_spec(i))) {
@@ -122,7 +141,7 @@ StatusOr<const mlir::Value> EmitAllScatter(
   }
 
   const mlir::TensorType input_type =
-      original_value.getType().dyn_cast<mlir::TensorType>();
+      mlir::dyn_cast<mlir::TensorType>(original_value.getType());
   if (!input_type)
     return errors::InvalidArgument(
         "input to EmitAllScatter does not have a TensorType");
@@ -132,16 +151,89 @@ StatusOr<const mlir::Value> EmitAllScatter(
   TF_ASSIGN_OR_RETURN(const mlir::TensorType output_type,
                       LocalTypeFromGlobalType(desired_layout, global_type));
 
+  mlir::Location loc = DT_LOC2(original_value.getLoc(), "DTensorAllScatterOp");
   mlir::TF::DTensorAllScatterOp all_scatter =
       builder.create<mlir::TF::DTensorAllScatterOp>(
-          original_value.getLoc(), output_type, original_value,
+          loc, output_type, original_value,
           mlir::dtensor::LayoutAttr::get(builder.getContext(), original_layout),
           mlir::dtensor::LayoutAttr::get(builder.getContext(), desired_layout));
   SetSingleLayoutOnOp(all_scatter, desired_layout);
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_scatter);
 
-  return all_scatter.output();
+  return all_scatter.getOutput();
+}
+
+bool CanUseAllToAll(const dtensor::Layout& src_layout,
+                    const dtensor::Layout& tgt_layout) {
+  // All-to-all can be used for relayout if one dimension is becoming more
+  // sharded while another is becoming less sharded, for example x,unsharded ->
+  // unsharded,x.
+  // TODO(trevor-m): There may be more types of relayouts which can utilize
+  // all-to-all in addition to these which can be supported later.
+  int num_split_dims = 0;
+  int num_concat_dims = 0;
+  std::string split_spec;
+  std::string concat_spec;
+  for (int i = 0; i < src_layout.rank(); ++i) {
+    if (src_layout.sharding_spec(i) == tgt_layout.sharding_spec(i)) continue;
+    if (Layout::IsUnshardedDimension(src_layout.sharding_spec(i)) &&
+        Layout::IsShardedDimension(tgt_layout.sharding_spec(i))) {
+      num_split_dims++;
+      split_spec = tgt_layout.sharding_spec(i);
+    } else if (Layout::IsShardedDimension(src_layout.sharding_spec(i)) &&
+               Layout::IsUnshardedDimension(tgt_layout.sharding_spec(i))) {
+      num_concat_dims++;
+      concat_spec = src_layout.sharding_spec(i);
+    }
+  }
+  return num_split_dims == 1 && num_concat_dims == 1 &&
+         split_spec == concat_spec;
+}
+
+StatusOr<mlir::Value> EmitAllToAll(
+    mlir::OpBuilder& builder, mlir::Value input,
+    const dtensor::Layout& src_layout, const dtensor::Layout& tgt_layout,
+    llvm::SmallPtrSet<mlir::Operation*, 4>* newly_created_ops) {
+  if (src_layout.IsEquivalent(tgt_layout)) return input;
+
+  if (src_layout.rank() != tgt_layout.rank()) {
+    return errors::InvalidArgument(
+        "Expected source and target layout to have the same rank, got ",
+        src_layout.rank(), " vs ", tgt_layout.rank());
+  }
+  // Assume valid because CanUseAllToAll returned true.
+
+  // For convenience, operate on explicit input shapes. This isn't necessary,
+  // as we could instead generate operations on top of the dynamic shape.
+  const mlir::TensorType input_type =
+      mlir::dyn_cast<mlir::TensorType>(input.getType());
+  if (!input_type) {
+    return errors::Internal(
+        llvm::formatv(
+            "Cannot cast input_type : {0} to TensorType. Shape must be "
+            " statically known before emitting AllToAll. This should not "
+            "happen as we already cast it when getting its shape.",
+            input.getType())
+            .str());
+  }
+
+  TF_ASSIGN_OR_RETURN(mlir::TensorType global_type,
+                      GlobalTypeFromLocalType(src_layout, input_type));
+  TF_ASSIGN_OR_RETURN(mlir::TensorType output_type,
+                      LocalTypeFromGlobalType(tgt_layout, global_type));
+
+  mlir::Location loc = DT_LOC2(input.getLoc(), "DTensorAllToAllOp");
+  mlir::TF::DTensorAllToAllOp all_to_all =
+      builder.create<mlir::TF::DTensorAllToAllOp>(
+          loc, output_type, input,
+          mlir::dtensor::LayoutAttr::get(builder.getContext(), src_layout),
+          mlir::dtensor::LayoutAttr::get(builder.getContext(), tgt_layout));
+  SetSingleLayoutOnOp(all_to_all, tgt_layout);
+
+  if (newly_created_ops != nullptr) newly_created_ops->insert(all_to_all);
+
+  return all_to_all.getOutput();
 }
 
 StatusOr<mlir::Value> EmitDenseToSparseToDense(
@@ -161,7 +253,7 @@ StatusOr<mlir::Value> EmitDenseToSparseToDense(
 
   mlir::TF::WhereOp indices = builder.create<mlir::TF::WhereOp>(
       not_equal.getLoc(),
-      mlir::RankedTensorType::get(GetShapeOfValue(not_equal).ValueOrDie(),
+      mlir::RankedTensorType::get(GetShapeOfValue(not_equal).value(),
                                   builder.getI64Type()),
       not_equal);
 
@@ -172,15 +264,15 @@ StatusOr<mlir::Value> EmitDenseToSparseToDense(
 
   // Emit a SparseToDenseOp and replace the SparseTensor with the result of
   // this new op.
-  auto zero_scalar = CreateZeroScalarConst(
-      builder, input.getLoc(),
-      input.getType().cast<mlir::TensorType>().getElementType());
-  if (!zero_scalar.has_value())
-    return errors::Internal("Failure in creating a zero scalar const");
+  TF_ASSIGN_OR_RETURN(
+      mlir::Value zero_scalar,
+      CreateZeroScalarConst(
+          builder, input.getLoc(),
+          mlir::cast<mlir::TensorType>(input.getType()).getElementType()));
 
   auto dense = builder.create<mlir::TF::SparseToDenseOp>(
       input.getLoc(), input.getType(),
-      mlir::ValueRange({indices, shape, values, zero_scalar.value()}));
+      mlir::ValueRange({indices, shape, values, zero_scalar}));
 
   if (newly_created_ops != nullptr) {
     for (auto new_op : {dense.getOperation(), shape.getOperation(),
@@ -209,58 +301,83 @@ StatusOr<mlir::Value> EmitRelayout(
   // This produces intermediate layout 2.
   // A split is performed from intermediate layout 2 to the tgt layout.
 
+  if (src_layout == tgt_layout) {
+    return input;
+  }
+
+  mlir::OpBuilder builder(input.getContext());
+  TF_RETURN_IF_ERROR(SetBuilderInsertionAfterValue(input, builder));
+  // If two layouts are the same, or the only difference is layout type, then
+  // there is no need to actually relayout data.
+  if (src_layout.IsEquivalentIgnoringType(tgt_layout)) {
+    mlir::TF::IdentityOp op = builder.create<mlir::TF::IdentityOp>(
+        input.getLoc(), input.getType(), input);
+    if (newly_created_ops != nullptr) newly_created_ops->insert(op);
+    return op.getOutput();
+  }
+
   // Save whether the input is from a SparseToDenseOp. If it is, then we will
   // emit a DenseToSparse and a SparseToDense op.
   bool is_sparse = IsSparseValue(input);
-  if (!input.getType().isa<mlir::RankedTensorType>())
+  if (!mlir::isa<mlir::RankedTensorType>(input.getType()))
     return errors::Internal(
         "attempting to relayout a tensor that does not "
         "have a rank");
 
   if (src_layout.mesh() != tgt_layout.mesh()) {
-    return errors::Internal("Attempted to relayout to a different mesh.");
+    return errors::Internal(
+        absl::StrCat("Attempted to relayout to a different "
+                     " mesh. Source Mesh = (",
+                     src_layout.mesh().ToString(),
+                     "). Target Mesh = ", tgt_layout.mesh().ToString(), ")."));
   }
   if (src_layout.rank() != tgt_layout.rank()) {
     return errors::Internal(
         "Attempted to relayout to a different global shape.");
   }
 
+  if (EnableAllToAllForRelayout() && !is_sparse &&
+      CanUseAllToAll(src_layout, tgt_layout)) {
+    // TODO(tmorris): support sparse case
+    TF_ASSIGN_OR_RETURN(mlir::Value all_to_all_result,
+                        EmitAllToAll(builder, input, src_layout, tgt_layout,
+                                     newly_created_ops));
+    return all_to_all_result;
+  }
+
   absl::flat_hash_set<std::string> src_sharding_dims;
   for (int i = 0; i < src_layout.rank(); ++i)
     src_sharding_dims.emplace(src_layout.sharding_spec(i));
 
-  std::vector<ShardingSpec> intermediate_specs_1(src_layout.rank());
+  std::vector<std::string> intermediate_specs_1(src_layout.rank());
   for (int i = 0; i < src_layout.rank(); ++i) {
-    if (Layout::IsShardedSpec(tgt_layout.dim(i)) &&
-        !Layout::IsShardedSpec(src_layout.dim(i)) &&
+    if (Layout::IsShardedDimension(tgt_layout.sharding_spec(i)) &&
+        !Layout::IsShardedDimension(src_layout.sharding_spec(i)) &&
         !src_sharding_dims.contains(tgt_layout.sharding_spec(i)))
-      intermediate_specs_1[i] = tgt_layout.dim(i);
+      intermediate_specs_1[i] = tgt_layout.sharding_spec(i);
     else
-      intermediate_specs_1[i] = src_layout.dim(i);
+      intermediate_specs_1[i] = src_layout.sharding_spec(i);
   }
-  TF_ASSIGN_OR_RETURN(
-      Layout intermediate_layout_1,
-      Layout::GetLayout(intermediate_specs_1, src_layout.mesh()));
-
-  mlir::OpBuilder builder(input.getContext());
-  TF_RETURN_IF_ERROR(SetBuilderInsertionAfterValue(input, builder));
+  TF_ASSIGN_OR_RETURN(Layout intermediate_layout_1,
+                      Layout::GetLayout(tgt_layout.type(), intermediate_specs_1,
+                                        src_layout.mesh()));
 
   llvm::SmallPtrSet<mlir::Operation*, 4> local_newly_created_ops;
   TF_ASSIGN_OR_RETURN(mlir::Value split_result,
                       EmitAllScatter(builder, input, src_layout,
                                      intermediate_layout_1, newly_created_ops));
 
-  std::vector<ShardingSpec> intermediate_specs_2(src_layout.rank());
+  std::vector<std::string> intermediate_specs_2(src_layout.rank());
   for (int i = 0; i < src_layout.rank(); ++i) {
-    if (Layout::IsShardedSpec(intermediate_specs_1[i]) &&
-        intermediate_specs_1[i].sharding_spec() != tgt_layout.sharding_spec(i))
-      intermediate_specs_2[i].set_sharding_spec(Layout::kUnshardedDim);
+    if (Layout::IsShardedDimension(intermediate_specs_1[i]) &&
+        intermediate_specs_1[i] != tgt_layout.sharding_spec(i))
+      intermediate_specs_2[i] = Layout::kUnshardedDim;
     else
       intermediate_specs_2[i] = intermediate_specs_1[i];
   }
-  TF_ASSIGN_OR_RETURN(
-      Layout intermediate_layout_2,
-      Layout::GetLayout(intermediate_specs_2, src_layout.mesh()));
+  TF_ASSIGN_OR_RETURN(Layout intermediate_layout_2,
+                      Layout::GetLayout(tgt_layout.type(), intermediate_specs_2,
+                                        src_layout.mesh()));
 
   TF_ASSIGN_OR_RETURN(
       mlir::Value concat_result,
@@ -273,8 +390,46 @@ StatusOr<mlir::Value> EmitRelayout(
 
   if (!is_sparse) return all_scatter;
   if (!all_scatter.ok()) return all_scatter;
-  return EmitDenseToSparseToDense(builder, all_scatter.ValueOrDie(),
+  return EmitDenseToSparseToDense(builder, all_scatter.value(),
                                   newly_created_ops);
+}
+
+mlir::Operation* EmitTransposeOp(mlir::OpBuilder& builder,
+                                 const mlir::Location& loc, mlir::Value input,
+                                 std::vector<int64_t>& perm_arr) {
+  auto tr_input_type = mlir::cast<mlir::ShapedType>(input.getType());
+  auto shape = tr_input_type.getShape();
+
+  auto perm_type = mlir::RankedTensorType::get(
+      {static_cast<int64_t>(perm_arr.size())}, builder.getIntegerType(64));
+
+  auto constant_attr = builder.getI64TensorAttr(perm_arr);
+  auto perm_op =
+      builder.create<mlir::TF::ConstOp>(loc, perm_type, constant_attr);
+
+  std::vector<int64_t> transposed_shape(shape.begin(), shape.end());
+  for (int i = 0; i < shape.size(); i++) {
+    transposed_shape[i] = shape[perm_arr[i]];
+  }
+  auto transposed_type = mlir::RankedTensorType::get(
+      transposed_shape, tr_input_type.getElementType());
+
+  return builder.create<mlir::TF::TransposeOp>(loc, transposed_type, input,
+                                               perm_op);
+}
+
+StatusOr<mlir::Operation*> EmitBarrierWithConstValue(mlir::OpBuilder& builder,
+                                                     mlir::Location loc,
+                                                     const Mesh& mesh,
+                                                     int32 value) {
+  absl::flat_hash_set<std::string> reduce_dims;
+  for (const MeshDimension& mesh_dim : mesh.dims()) {
+    reduce_dims.insert(mesh_dim.name);
+  }
+  return EmitAllReduce(
+      builder, Layout::ReplicatedOnMesh(mesh, /*rank=*/1), reduce_dims,
+      IntConst(builder, loc, std::vector<int32>{value}).getDefiningOp(),
+      kReduceOpAdd);
 }
 
 StatusOr<mlir::Operation*> EmitAllReduce(
@@ -314,10 +469,11 @@ StatusOr<mlir::Operation*> EmitAllReduce(
   TF_ASSIGN_OR_RETURN(std::string device_type,
                       DeviceTypeFromMesh(output_layout.mesh()));
 
-  mlir::Location loc = DT_LOC(input);
+  mlir::Location loc = DT_LOC2(input->getLoc(), "DTensorAllReduceOp");
   auto all_reduce = builder.create<mlir::TF::DTensorAllReduceOp>(
       loc, input->getResultTypes()[0], input->getOpResult(0),
-      builder.create<mlir::TF::ConstOp>(loc, group_assignment),
+      builder.create<mlir::TF::ConstOp>(DT_LOC2(loc, "group_assignment"),
+                                        group_assignment),
       builder.getStringAttr(std::string(reduce_op)),
       builder.getStringAttr(device_type));
   SetSingleLayoutOnOp(all_reduce, output_layout);
@@ -439,11 +595,12 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
     return errors::InvalidArgument(
         "Requested halo exchange on unknown mesh dim");
 
-  // TODO(hongjunchoi): Add support fof halo exchange for GPU/CPU.
+  // TODO(b/261485237): Add support for halo exchange for GPU/CPU.
   if (!mesh.is_tpu_mesh())
     return errors::InvalidArgument("Halo exchange is only supported on TPU.");
 
-  auto input_tensor_type = tensor.getType().dyn_cast<mlir::RankedTensorType>();
+  auto input_tensor_type =
+      mlir::dyn_cast<mlir::RankedTensorType>(tensor.getType());
   if (!input_tensor_type || !input_tensor_type.hasStaticShape())
     return errors::InvalidArgument(
         "Static shape of input tensor must be known for halo exchange.");

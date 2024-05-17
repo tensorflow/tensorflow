@@ -19,10 +19,10 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "absl/base/prefetch.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/cwise_ops_common.h"
-#include "tensorflow/core/platform/prefetch.h"
 
 namespace tensorflow {
 
@@ -135,7 +135,8 @@ class SelectOp : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SelectOp);
+  SelectOp(const SelectOp&) = delete;
+  void operator=(const SelectOp&) = delete;
 };
 template <typename Device, typename T>
 class SelectV2Op : public OpKernel {
@@ -239,7 +240,8 @@ class SelectV2Op : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SelectV2Op);
+  SelectV2Op(const SelectV2Op&) = delete;
+  void operator=(const SelectV2Op&) = delete;
 };
 
 #define REGISTER_SELECT(type)                                        \
@@ -294,6 +296,13 @@ REGISTER_SELECT_GPU(complex128);
 
 #undef REGISTER_SELECT_GPU
 #endif
+
+REGISTER_KERNEL_BUILDER(
+    Name("Select").Device(DEVICE_GPU).TypeConstraint<bfloat16>("T"),
+    SelectOp<GPUDevice, bfloat16>);
+REGISTER_KERNEL_BUILDER(
+    Name("SelectV2").Device(DEVICE_GPU).TypeConstraint<bfloat16>("T"),
+    SelectV2Op<GPUDevice, bfloat16>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -388,12 +397,11 @@ struct BatchSelectFunctor<CPUDevice, T> {
     auto work = [batch_size, output, c, t, e](int64_t start, int64_t end) {
       for (size_t i = start; i < end; ++i) {
         size_t offset = i * batch_size;
-        port::prefetch<port::PREFETCH_HINT_NTA>(
+        absl::PrefetchToLocalCacheNta(
             reinterpret_cast<const void*>(&t[offset + batch_size]));
-        port::prefetch<port::PREFETCH_HINT_NTA>(
+        absl::PrefetchToLocalCacheNta(
             reinterpret_cast<const void*>(&e[offset + batch_size]));
-        port::prefetch<port::PREFETCH_HINT_NTA>(
-            reinterpret_cast<const void*>(&c[i + 1]));
+        absl::PrefetchToLocalCacheNta(reinterpret_cast<const void*>(&c[i + 1]));
         if (c[i]) {
           for (size_t j = 0; j < batch_size; ++j) {
             output[offset + j] = t[offset + j];

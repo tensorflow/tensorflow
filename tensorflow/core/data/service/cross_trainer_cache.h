@@ -24,7 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/data/service/logging_utils.h"
+#include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -163,7 +163,7 @@ class CrossTrainerCache {
 
   // If `status_` is non-OK, the cache is cancelled, and all method calls will
   // return this status.
-  Status status_ TF_GUARDED_BY(mu_) = OkStatus();
+  Status status_ TF_GUARDED_BY(mu_) = absl::OkStatus();
 
   // `cache_` stores the cached elements.
   std::deque<std::shared_ptr<const ElementType>> cache_ TF_GUARDED_BY(mu_);
@@ -189,7 +189,7 @@ CrossTrainerCache<ElementType>::CrossTrainerCache(
   DCHECK_GT(max_cache_size_bytes, 0)
       << "CrossTrainerCache size must be greater than 0.";
   VLOG(2) << "Initialized tf.data service cross-trainer cache with "
-          << FormatBytes(max_cache_size_bytes) << " of memory.";
+          << ByteSize::Bytes(max_cache_size_bytes) << " of memory.";
 }
 
 template <class ElementType>
@@ -294,7 +294,7 @@ Status CrossTrainerCache<ElementType>::ExtendCache() TF_LOCKS_EXCLUDED(mu_) {
   FreeSpace(new_element_size_bytes);
   cache_.push_back(std::make_shared<ElementType>(std::move(element)));
   cache_size_bytes_ += new_element_size_bytes;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <class ElementType>
@@ -313,7 +313,7 @@ void CrossTrainerCache<ElementType>::FreeSpace(size_t new_element_size_bytes)
 
   VLOG(3) << "Freed " << num_elements_discarded << " element(s) from "
           << "tf.data service cross-trainer cache. Memory usage: "
-          << FormatBytes(cache_size_bytes_) << ".";
+          << ByteSize::Bytes(cache_size_bytes_) << ".";
 }
 
 template <class ElementType>

@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 
+#include <tuple>
+
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "third_party/tensorrt/NvInferPlugin.h"
+
 #endif
 
 namespace tensorflow {
@@ -58,6 +62,8 @@ namespace tensorrt {
 Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
                           const nvinfer1::ICudaEngine* cuda_engine,
                           int* binding_index) {
+  tensorflow::profiler::TraceMe activity(
+      "GetTrtBindingIndex", tensorflow::profiler::TraceMeLevel::kInfo);
   // If the engine has been built for K profiles, the first getNbBindings() / K
   // bindings are used by profile number 0, the following getNbBindings() / K
   // bindings are used by profile number 1 etc.
@@ -76,7 +82,7 @@ Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
   //                               profile_index * bindings_per_profile
   const int bindings_per_profile = cuda_engine->getNbBindings() / n_profiles;
   *binding_index = *binding_index + profile_index * bindings_per_profile;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetTrtBindingIndex(int network_input_index, int profile_index,
@@ -209,6 +215,11 @@ std::ostream& operator<<(std::ostream& os, const nvinfer1::DataType& v) {
     case nvinfer1::DataType::kHALF:
       os << "kHalf";
       break;
+#if IS_TRT_VERSION_GE(8, 6, 0, 0)
+    case nvinfer1::DataType::kFP8:
+      os << "kFP8";
+      break;
+#endif
     case nvinfer1::DataType::kINT8:
       os << "kINT8";
       break;
@@ -218,6 +229,11 @@ std::ostream& operator<<(std::ostream& os, const nvinfer1::DataType& v) {
     case nvinfer1::DataType::kBOOL:
       os << "kBOOL";
       break;
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case nvinfer1::DataType::kUINT8:
+      os << "kUINT8";
+      break;
+#endif
   }
   return os;
 }

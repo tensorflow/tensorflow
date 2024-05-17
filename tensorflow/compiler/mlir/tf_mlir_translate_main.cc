@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "llvm/Support/InitLLVM.h"
@@ -88,7 +91,7 @@ int main(int argc, char** argv) {
   tensorflow::InitMlir y(&argc, &argv);
 
   // Add flags for all the registered translations.
-  llvm::cl::opt<const mlir::TranslateFunction*, false, mlir::TranslationParser>
+  llvm::cl::opt<const mlir::Translation*, false, mlir::TranslationParser>
       requested_translation("", llvm::cl::desc("Translation to perform"));
   mlir::registerAsmPrinterCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF MLIR translation driver\n");
@@ -155,10 +158,10 @@ int main(int argc, char** argv) {
     // Processes the memory buffer with a new MLIRContext.
     auto processBuffer = [&](std::unique_ptr<llvm::MemoryBuffer> ownedBuffer,
                              llvm::raw_ostream& os) {
-      llvm::SourceMgr sourceMgr;
-      sourceMgr.AddNewSourceBuffer(std::move(ownedBuffer), llvm::SMLoc());
+      auto sourceMgr = std::make_shared<llvm::SourceMgr>();
+      sourceMgr->AddNewSourceBuffer(std::move(ownedBuffer), llvm::SMLoc());
       mlir::MLIRContext context;
-      mlir::SourceMgrDiagnosticHandler diagnostic_handler(sourceMgr, &context);
+      mlir::SourceMgrDiagnosticHandler diagnostic_handler(*sourceMgr, &context);
       return (*requested_translation)(sourceMgr, os, &context);
     };
 

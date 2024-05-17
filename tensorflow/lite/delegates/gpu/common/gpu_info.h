@@ -21,6 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 
 namespace tflite {
@@ -48,6 +50,8 @@ enum class GpuApi {
 
 enum class AdrenoGpu {
   // Adreno 7xx series
+  kAdreno750,
+  kAdreno740,
   kAdreno730,
   // Adreno 6xx series
   kAdreno685,
@@ -126,6 +130,7 @@ struct AdrenoInfo {
   bool IsAdreno6xx() const;
   bool IsAdreno7xx() const;
   bool IsAdreno6xxOrHigher() const;
+  bool IsBetterThan(AdrenoGpu gpu) const;
 
   // This function returns some not very documented physical parameter of
   // Adreno6xx GPU.
@@ -168,21 +173,49 @@ enum class AppleGpu {
   kA13,
   kA14,
   kA15,
+  kA16,
+  kA17Pro,
   kM1,
   kM1Pro,
   kM1Max,
+  kM1Ultra,
+  kM2,
 };
 
 struct AppleInfo {
+  // https://developer.apple.com/documentation/metal/mtlgpufamily
+  enum class Family {
+    kApple9 = 9,
+    kApple8 = 8,
+    kApple7 = 7,
+    kApple6 = 6,
+    kApple5 = 5,
+    kApple4 = 4,
+    kApple3 = 3,
+    kApple2 = 2,
+    kApple1 = 1,
+  };
   AppleInfo() = default;
   explicit AppleInfo(const std::string& gpu_description);
   AppleGpu gpu_type;
+  Family gpu_family;
 
-  bool IsA7GenerationGpu() const;
-  bool IsA8GenerationGpu() const;
+  bool IsFamilyApple1() const;
+  bool IsFamilyApple2() const;
+  bool IsFamilyApple3() const;
+  bool IsFamilyApple4() const;
+  bool IsFamilyApple5() const;
+  bool IsFamilyApple6() const;
+  bool IsFamilyApple7() const;
+  bool IsFamilyApple8() const;
+  bool IsFamilyApple9() const;
+
+  bool IsFamilyOrLower(Family family) const;
+
   bool IsLocalMemoryPreferredOverGlobal() const;
 
   bool IsBionic() const;
+  bool IsM1Series() const;
 
   bool IsSIMDMatMulSupported() const;
   // Often, fp32 alu performance is 1/2 of fp16 alu performance
@@ -200,6 +233,7 @@ struct AppleInfo {
   void SetComputeUnits(int compute_units_count);
 
  private:
+  Family GetGpuFamily() const;
   int compute_units = -1;
 };
 
@@ -231,6 +265,7 @@ enum class MaliGpu {
   kG510,
   kG610,
   kG710,
+  kG715,
 };
 
 struct MaliInfo {
@@ -249,10 +284,51 @@ struct MaliInfo {
   bool IsValhallGen1() const;
   bool IsValhallGen2() const;
   bool IsValhallGen3() const;
+  bool IsValhallGen4() const;
   bool IsValhall() const;
 
   // returns approximate compute units count using GPU name
   int GetApproximateComputeUnitsCount() const;
+};
+
+enum class PowerVRGpu {
+  kUnknown,
+  // Newer generation of IMG gpus
+  // Starting with B-series - all RTE with the exception of BXM:
+  kDXT,
+  kCXT,
+  kBXT,
+  kBXS,
+  kBXM,
+  kBXE,
+  // RTZ
+  kAXT,
+  kAXM,
+  kAXE,
+  // Older generation of rogue IMG gpus - all RTZ:
+  kRogue,
+  kRogueGm9xxx,
+  kRogueGe8xxx,
+};
+
+struct PowerVRInfo {
+  struct DriverVersion {
+    int branch_main = 0;
+    int branch_minor = 0;
+    int id = 0;
+  };
+  PowerVRInfo() = default;
+  explicit PowerVRInfo(const std::string& gpu_description);
+  PowerVRGpu gpu_version;
+  DriverVersion driver_version;
+
+  bool IsRogue() const;
+  bool IsImgAxx() const;
+  bool IsImgBxx() const;
+  bool IsImgCxx() const;
+  bool IsImgDxx() const;
+
+  bool IsBetterThan(PowerVRGpu gpu) const;
 };
 
 struct OpenGlInfo {
@@ -354,6 +430,8 @@ struct OpenClInfo {
   int max_work_group_size_y;
   int max_work_group_size_z;
   int max_work_group_total_size;
+  int preferred_work_group_size_multiple;
+  bool dedicated_local_memory;
 
   // The row pitch alignment size in pixels for 2D images created from a buffer.
   // The value must be a power of 2.
@@ -382,6 +460,8 @@ struct OpenClInfo {
   SupportedImage2dTypes supported_images_2d;
 
   bool IsImage2dFromBufferSupported() const;
+
+  bool IsCLVK() const { return absl::StrContains(platform_version, "clvk"); }
 };
 
 enum class MetalLanguageVersion {
@@ -445,6 +525,7 @@ struct GpuInfo {
   // returns true if device have fixed wave size equal to 32
   bool IsWaveSizeEqualTo32() const;
   bool SupportsSubGroupWithSize(int sub_group_size) const;
+  absl::Status GetMinSubGroupSize(int& min_sub_group_size) const;
 
   bool SupportsFloatImage2D(DataType data_type, int channels) const;
   bool SupportsExtension(const std::string& extension) const;
@@ -480,6 +561,7 @@ struct GpuInfo {
   AMDInfo amd_info;
   AppleInfo apple_info;
   MaliInfo mali_info;
+  PowerVRInfo powervr_info;
 
   // OpenGL specific, gpu_api should be kOpenGl
   OpenGlInfo opengl_info;
@@ -505,6 +587,7 @@ struct GpuInfo {
 // AdrenoInfo if vendor is kQualcomm
 // AppleInfo if vendor is kApple
 // MaliInfo if vendor is kMali
+// PowerVRInfo if vendor is kPowerVR
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
                                      GpuApi gpu_api, GpuInfo* gpu_info);
 

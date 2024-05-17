@@ -17,6 +17,9 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
@@ -28,22 +31,23 @@ TfLiteStatus MinMax::Update(const float* values, size_t tensor_size,
   if (tensor_size <= 0) return kTfLiteOk;
 
   // TODO(shashishekhar): Make it possible to use weighted/moving average.
+  bool has_nan_value = false;
   for (size_t i = 0; i < tensor_size; ++i) {
-    if (std::isnan(values[i])) {
-      TF_LITE_REPORT_ERROR(
-          error_reporter,
-          "Model resulted in Nan value during calibration. Please "
-          "make sure model results in all real-values during "
-          "inference with provided dataset.");
-      return kTfLiteError;
+    const float value = values[i];
+    if (std::isnan(value)) {
+      has_nan_value = true;
+      continue;
     }
+    has_values_ = true;
+    min_ = std::min<float>(min_, value);
+    max_ = std::max<float>(max_, value);
   }
-  // We are only logging absolute min/max here.
-  const auto minmax = std::minmax_element(values, values + tensor_size);
-  min_ = std::min<float>(min_, *minmax.first);
-  max_ = std::max<float>(max_, *minmax.second);
-
-  if (!has_values_) has_values_ = true;
+  if (has_nan_value) {
+    TFLITE_LOG(TFLITE_LOG_WARNING,
+               "Model resulted in Nan value during calibration. Please "
+               "consider making sure that model results in all real-values "
+               "during inference with provided dataset.");
+  }
   return kTfLiteOk;
 }
 

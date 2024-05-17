@@ -27,7 +27,7 @@ namespace functor {
 template <typename Device, typename T /* rate */, typename U /* output */>
 struct PoissonFunctor {
   void operator()(OpKernelContext* ctx, const Device& d, const T* rate_flat,
-                  int num_rate, int num_samples,
+                  int64_t num_rate, int64_t num_samples,
                   const random::PhiloxRandom& rng, U* samples_flat);
 };
 

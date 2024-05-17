@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
@@ -5,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/distribute/experimental/rpc:__subpackages__",
         "//tensorflow/python/distribute/experimental/rpc:__subpackages__",

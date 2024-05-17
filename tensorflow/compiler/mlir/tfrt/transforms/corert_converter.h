@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_CORERT_CONVERTER_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_CORERT_CONVERTER_H_
 
+#include <array>
 #include <memory>
+#include <optional>
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -24,7 +26,6 @@ limitations under the License.
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/core_runtime.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
-#include "tfrt/distributed_runtime/opdefs/types.h"  // from @tf_runtime
 
 namespace tensorflow {
 
@@ -44,26 +45,26 @@ class CoreRTConverter : public mlir::TypeConverter {
   // CoreRT ops and fallback ops.
   void MaterializeDerivedAttributes(mlir::Operation *op);
 
-  bool IsSupportedNumericDType(mlir::Type type) const;
-
-  // Create a single attribute that contains the named attribute lists. It is an
-  // array of pairs. The key must be a string attribute, and the value can be
-  // any attribute that is supported by CoreRuntime.
-  mlir::ArrayAttr CreateOpAttrs(llvm::ArrayRef<mlir::NamedAttribute> attrs);
-
   // Similar to CreateOpAttrs, create a single attribute that contains the
   // named attribute lists, which is an array of pairs, with keys and values
   // both being string attributes. The values represent function names.
   // This method also populates a vector of attribute keys to be removed.
+  // If `use_mlir_func_name` is true, the function name given by MLIR will be
+  // used, which could be different from the original function name in the graph
+  // function library. This is used when the original function has been changed
+  // by lowering passes, and hence it needs to be exported to function library
+  // for runtime to use.
   mlir::ArrayAttr CreateOpFuncAttrs(
+      const mlir::SymbolTable &symbol_table,
       llvm::ArrayRef<mlir::NamedAttribute> attrs,
-      llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys);
+      llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys,
+      bool use_mlir_func_name = false);
 
   // Parse the device name of `op` to TFRT's device name. For example, "/CPU:0"
   // will be parsed as "cpu". Return None if no device is assigned.
-  llvm::Optional<ParseDeviceNameResult> ParseDeviceName(
+  std::optional<ParseDeviceNameResult> ParseDeviceName(
       llvm::StringRef device_name) const;
-  llvm::Optional<ParseDeviceNameResult> ParseDeviceName(
+  std::optional<ParseDeviceNameResult> ParseDeviceName(
       mlir::Operation *op) const;
 
   // Convert the device name in a TF op to a op_handler value produced by the
@@ -75,24 +76,19 @@ class CoreRTConverter : public mlir::TypeConverter {
 
   // Get a DistributedContext value to be used by the given op. The
   // DistributedContext value should be shared by all operations in the body
-  // of the same FuncOp. If there does not exist one, insert a
-  // GetDistributedContext op right before the given op and return the result
-  // value.
+  // of the same FuncOp. If there does not exist one, return a null Value.
   mlir::Value GetDistributedContext(mlir::Operation *op,
                                     mlir::ConversionPatternRewriter *rewriter);
 
   // Get a RemoteChainManager value to be used by the given op. The
   // RemoteChainManager value should be shared by all operations in the body
-  // of the same FuncOp. If there does not exist one, insert a
-  // tfrt_dist.test_create_remote_chain_manager op right before the given op and
-  // return the result value.
+  // of the same FuncOp. If there does not exist one, return a null Value.
   mlir::Value GetRemoteChainManager(mlir::Operation *op,
                                     mlir::ConversionPatternRewriter *rewriter);
 
   // Get a TaskHandle value with the given task name. If the TaskHandle value
   // has already been created for the given task name within the same FuncOp,
-  // return this TaskHandle value. Otherwise, insert a tfrt_dist.get_task_handle
-  // op right before the given op and return the result value.
+  // return this TaskHandle value. Otherwise, return a null Value.
   mlir::Value GetTaskHandle(mlir::Operation *op, StringRef task_name,
                             mlir::ConversionPatternRewriter *rewriter);
 
@@ -108,11 +104,6 @@ class CoreRTConverter : public mlir::TypeConverter {
   mlir::Value GetLocalSideEffectChain(
       mlir::Operation *op, mlir::ConversionPatternRewriter *rewriter);
 
-  // Return a remote chain for side effects for `op`.
-  mlir::Value GetRemoteSideEffectChain(
-      mlir::Operation *op, StringRef remote_host,
-      mlir::ConversionPatternRewriter *rewriter);
-
   mlir::Type op_handler_type() {
     return builder_.getType<::tfrt::corert::OpHandlerType>();
   }
@@ -123,10 +114,6 @@ class CoreRTConverter : public mlir::TypeConverter {
 
   mlir::Type chain_type() {
     return builder_.getType<::tfrt::compiler::ChainType>();
-  }
-
-  mlir::Type distributed_context_type() {
-    return builder_.getType<::tfrt::dist::DistributedContextType>();
   }
 
   mlir::Builder &builder() { return builder_; }
@@ -140,7 +127,19 @@ class CoreRTConverter : public mlir::TypeConverter {
     // are added during importing graph to MLIR TF Executor dialect. These
     // attributes are not actually used by TF ops with function attributes.
     // TODO(b/180399811): Re-evaluate the usage of these attributes.
-    return name == "_output_shapes" || name.contains("f.");
+    static const char *const kUnusedAttributes[] = {
+        "_output_shapes",
+        "result_segment_sizes",
+        "operand_segment_sizes",
+    };
+
+    for (auto attr : kUnusedAttributes) {
+      if (name == attr) {
+        return true;
+      }
+    }
+
+    return name.contains("f.");
   }
 
   // Returns the converted attribute in TFRT dialect. If the conversion fails,
@@ -148,9 +147,6 @@ class CoreRTConverter : public mlir::TypeConverter {
   mlir::Attribute ConvertAttribute(mlir::Attribute attr);
 
   mlir::TypeAttr ConvertTypeAttribute(mlir::TypeAttr type_attr);
-
-  mlir::StringAttr ConvertSymbolAttrToStringAttr(
-      mlir::FlatSymbolRefAttr symbol_attr);
 
   mlir::Builder builder_;
 

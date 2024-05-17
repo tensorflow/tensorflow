@@ -19,13 +19,16 @@ API calls.
 """
 
 import os
-import shutil
 
+from google.protobuf import json_format
+
+from tensorflow.python.checkpoint.sharding import sharding_policies
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import builder_impl
+from tensorflow.python.saved_model import fingerprinting
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
@@ -40,7 +43,6 @@ class MetricsTests(test.TestCase):
     root = autotrackable.AutoTrackable()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(root, save_dir)
-    self.addCleanup(shutil.rmtree, save_dir)
     return save_dir
 
   def _create_save_v1_model(self):
@@ -52,7 +54,6 @@ class MetricsTests(test.TestCase):
         constant_op.constant(5.0)
         builder_.add_meta_graph_and_variables(sess, ["foo"])
       builder_.save()
-    self.addCleanup(shutil.rmtree, save_dir)
     return save_dir
 
   def test_python_save(self):
@@ -75,22 +76,21 @@ class MetricsTests(test.TestCase):
     self.assertEqual(metrics.GetWrite(write_version="1"), write_count + 1)
 
   def test_load_v2(self):
+    save_dir = self._create_save_v2_model()
+
     read_count = metrics.GetRead(write_version="2")
     load_v2_count = metrics.GetReadApi(load._LOAD_V2_LABEL)
-
-    save_dir = self._create_save_v2_model()
     load.load(save_dir)
 
     self.assertEqual(metrics.GetReadApi(load._LOAD_V2_LABEL), load_v2_count + 1)
     self.assertEqual(metrics.GetRead(write_version="2"), read_count + 1)
 
   def test_load_v1_in_v2(self):
+    save_dir = self._create_save_v1_model()
     read_v1_count = metrics.GetRead(write_version="1")
     read_v2_count = metrics.GetRead(write_version="2")
     load_v2_count = metrics.GetReadApi(load._LOAD_V2_LABEL)
     load_v1_v2_count = metrics.GetReadApi(load_v1_in_v2._LOAD_V1_V2_LABEL)
-
-    save_dir = self._create_save_v1_model()
     load.load(save_dir)
 
     # Check that `load_v2` was *not* incremented.
@@ -103,9 +103,10 @@ class MetricsTests(test.TestCase):
     self.assertEqual(metrics.GetRead(write_version="1"), read_v1_count + 1)
 
   def test_loader_v1(self):
-    read_count = metrics.GetRead(write_version="1")
     ops.disable_eager_execution()
     save_dir = self._create_save_v1_model()
+
+    read_count = metrics.GetRead(write_version="1")
     loader = loader_impl.SavedModelLoader(save_dir)
     with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["foo"])
@@ -113,6 +114,63 @@ class MetricsTests(test.TestCase):
 
     self.assertEqual(metrics.GetReadApi(loader_impl._LOADER_LABEL), 1)
     self.assertEqual(metrics.GetRead(write_version="1"), read_count + 1)
+
+  def test_save_sets_write_fingerprint_metric(self):
+    exported_dir = self._create_save_v2_model()
+    fingerprint = fingerprinting.read_fingerprint(exported_dir)
+    fingerprint_metric = fingerprinting.Fingerprint.from_proto(
+        json_format.Parse(metrics.GetWriteFingerprint(),
+                          fingerprinting.fingerprint_pb2.FingerprintDef()))
+    self.assertEqual(fingerprint, fingerprint_metric)
+
+  def test_load_sets_read_fingerprint_metric(self):
+    exported_dir = self._create_save_v2_model()
+    load.load(exported_dir)
+    fingerprint = fingerprinting.read_fingerprint(exported_dir)
+    fingerprint_metric = fingerprinting.Fingerprint.from_proto(
+        json_format.Parse(metrics.GetReadFingerprint(),
+                          fingerprinting.fingerprint_pb2.FingerprintDef()))
+    self.assertEqual(fingerprint, fingerprint_metric)
+
+  def test_save_sets_write_path_metric(self):
+    exported_dir = self._create_save_v2_model()
+
+    self.assertEqual(metrics.GetWritePath(), exported_dir)
+
+  def test_load_sets_read_path_metric(self):
+    exported_dir = self._create_save_v2_model()
+    load.load(exported_dir)
+
+    self.assertEqual(metrics.GetReadPath(), exported_dir)
+
+  def test_save_sets_write_path_and_singleprint_metric(self):
+    exported_dir = self._create_save_v2_model()
+    singleprint = fingerprinting.read_fingerprint(exported_dir).singleprint()
+    path_and_singleprint_metric = metrics.GetWritePathAndSingleprint()
+    self.assertEqual(path_and_singleprint_metric, (exported_dir, singleprint))
+
+  def test_save_sets_read_path_and_singleprint_metric(self):
+    exported_dir = self._create_save_v2_model()
+    load.load(exported_dir)
+    singleprint = fingerprinting.read_fingerprint(exported_dir).singleprint()
+    path_and_singleprint_metric = metrics.GetReadPathAndSingleprint()
+    self.assertEqual(path_and_singleprint_metric, (exported_dir, singleprint))
+
+  def test_save_sets_sharding_callback_duration_metric(self):
+    self._create_save_v2_model()
+    sharding_callback_duration_metric = metrics.GetShardingCallbackDuration()
+    self.assertGreater(sharding_callback_duration_metric, 0)
+
+  def test_save_sets_num_checkpoint_shards_written_metric(self):
+    self._create_save_v2_model()
+    num_shards_written_metric = metrics.GetNumCheckpointShardsWritten()
+    self.assertGreater(num_shards_written_metric, 0)
+
+  def test_save_sets_sharding_callback_description_metric(self):
+    self._create_save_v2_model()
+    callback_description_metric = metrics.GetShardingCallbackDescription()
+    self.assertEqual(callback_description_metric,
+                     sharding_policies.ShardByTaskPolicy().description)
 
 
 if __name__ == "__main__":

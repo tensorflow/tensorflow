@@ -15,7 +15,7 @@ func.func @check_enqueue_ops_update_for_eval(%arg0: tensor<?x2xi32>, %arg1: tens
   // CHECK: %[[CONST_0:.*]] = "tf.Const"()
   %0 = "tf.Const"() {value = dense<[]> : tensor<0xf32>} : () -> tensor<0xf32>
 
-  // CHECK: %[[CONST_MODE:.*]] = "tf.Const"() {_xla_outside_compilation = "0", value = dense<"inference"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
+  // CHECK: %[[CONST_MODE:.*]] = "tf.Const"() <{value = dense<"inference"> : tensor<!tf_type.string>}> {_xla_outside_compilation = "0"} : () -> tensor<!tf_type.string>
   // CHECK: "tf.EnqueueTPUEmbeddingSparseTensorBatch"(%[[ARG_0]], %[[ARG_1]], %[[ARG_2]], %[[ARG_3]], %[[ARG_4]], %[[ARG_5]], %[[CONST_0]], %[[CONST_0]], %[[CONST_0]], %[[CONST_MODE]])
   "tf.EnqueueTPUEmbeddingSparseTensorBatch"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %0, %0, %0, %arg7) {_tpu_embedding_layer = "call1", _xla_outside_compilation = "0", combiners = ["mean", "sum"], device_ordinal = -1 : i64, max_sequence_lengths = [0, 0, 0], table_ids = [1, 1, 0]} : (tensor<?x2xi32>, tensor<?x2xi32>, tensor<?x2xi32>, tensor<?xi32>, tensor<?xi32>, tensor<?xi32>, tensor<0xf32>, tensor<0xf32>, tensor<0xf32>, tensor<!tf_type.string>) -> ()
   %2:2 = "tf.RecvTPUEmbeddingActivations"() {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D"} : () -> (tensor<2x2xf32>, tensor<4x4xf32>)
@@ -41,9 +41,9 @@ func.func @check_enqueue_ops_update_for_training(%arg0: tensor<?x2xi32>, %arg1: 
 
   %2 = "tf.Const"() {value = dense<0.0> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
   %3 = "tf.Const"() {value = dense<0.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
-  "tf.SendTPUEmbeddingGradients"(%2, %3) {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D", operand_segment_sizes = dense<[2, 0]> : vector<2xi32>} : (tensor<2x2xf32>, tensor<4x4xf32>) -> ()
+  "tf.SendTPUEmbeddingGradients"(%2, %3) {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D", operandSegmentSizes = array<i32: 2, 0>} : (tensor<2x2xf32>, tensor<4x4xf32>) -> ()
 
-  // CHECK: %[[CONST_MODE:.*]] = "tf.Const"() {_xla_outside_compilation = "0", value = dense<"train"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
+  // CHECK: %[[CONST_MODE:.*]] = "tf.Const"() <{value = dense<"train"> : tensor<!tf_type.string>}> {_xla_outside_compilation = "0"} : () -> tensor<!tf_type.string>
   // CHECK: "tf.EnqueueTPUEmbeddingSparseTensorBatch"(%[[ARG_0]], %[[ARG_1]], %[[ARG_2]], %[[ARG_3]], %[[ARG_4]], %[[ARG_5]], %[[CONST_0]], %[[CONST_0]], %[[CONST_0]], %[[CONST_MODE]])
   "tf.EnqueueTPUEmbeddingSparseTensorBatch"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %0, %0, %0, %arg7) {_tpu_embedding_layer = "call1", _xla_outside_compilation = "0", combiners = ["mean", "sum"], device_ordinal = -1 : i64, max_sequence_lengths = [0, 0, 0], table_ids = [1, 1, 0]} : (tensor<?x2xi32>, tensor<?x2xi32>, tensor<?x2xi32>, tensor<?xi32>, tensor<?xi32>, tensor<?xi32>, tensor<0xf32>, tensor<0xf32>, tensor<0xf32>, tensor<!tf_type.string>) -> ()
   %4:2 = "tf.RecvTPUEmbeddingActivations"() {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D"} : () -> (tensor<2x2xf32>, tensor<4x4xf32>)

@@ -13,17 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstddef>
+#include <cstdint>
+#include <set>
+#include <string>
+#include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "absl/strings/str_join.h"
+#include "xla/service/shape_inference.h"
+#include "xla/shape.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 // Note: Most of the operators defined in this module are used by the jax2tf
 // converter (see go/jax2tf for details) and are used in SavedModel produced
@@ -41,7 +55,7 @@ Status UnchangedRank(shape_inference::InferenceContext* c) {
   } else {
     c->set_output(0, c->input(0));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("XlaBroadcastHelper")
@@ -293,7 +307,7 @@ static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
   }
 
   c->set_output(0, c->MakeShape(output_dims));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("XlaDot")
@@ -397,7 +411,7 @@ REGISTER_OP("XlaDynamicSlice")
         return UnchangedRank(c);
       }
       c->set_output(0, size_indices_value);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA DynamicSlice operator, documented at
@@ -555,7 +569,7 @@ REGISTER_OP("XlaPad")
       }
 
       c->set_output(0, c->MakeShape(output_dims));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Pad operator, documented at
@@ -586,7 +600,7 @@ REGISTER_OP("XlaRecv")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Receives the named tensor from another XLA computation. Wraps the XLA Recv
@@ -629,7 +643,7 @@ REGISTER_OP("XlaReduce")
       } else {
         c->set_output(0, c->input(0));
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Reduce operator, documented at
@@ -683,7 +697,7 @@ REGISTER_OP("XlaVariadicReduce")
           c->set_output(i, c->input(i));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the variadic XLA Reduce operator.
@@ -767,7 +781,7 @@ REGISTER_OP("XlaVariadicReduceV2")
       for (int i = 0; i < nr_inputs; ++i) {
         c->set_output(i, output_shape);
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the variadic XLA Reduce operator.
@@ -815,7 +829,7 @@ REGISTER_OP("XlaRngBitGenerator")
     .Input("shape: Tshape")
     .Output("output_key: uint64")
     .Output("output: dtype")
-    .Attr("dtype: {int32, int64, uint32, uint64} = DT_UINT64")
+    .Attr("dtype: {uint8, int8, int32, int64, uint32, uint64} = DT_UINT64")
     .Attr("Tshape: {int32, int64} = DT_INT32")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle algorithm;
@@ -827,7 +841,7 @@ REGISTER_OP("XlaRngBitGenerator")
       shape_inference::ShapeHandle output;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output));
       c->set_output(1, output);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Stateless PRNG bit generator.
@@ -911,7 +925,7 @@ REGISTER_OP("XlaKeyValueSort")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(1));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Sort operator, documented at
@@ -937,7 +951,7 @@ REGISTER_OP("XlaVariadicSort")
       std::vector<shape_inference::ShapeHandle> input_shapes;
       TF_RETURN_IF_ERROR(c->input("inputs", &input_shapes));
       TF_RETURN_IF_ERROR(c->set_output("outputs", input_shapes));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Sort operator, documented at
@@ -996,7 +1010,7 @@ Takes the packed uint32 input and unpacks the input to uint8 to do
 Dequantization on device.
 
 input: Input tensors whose types is uint32, shape is [d0, ..., dn].
-output: Output tensors whose types is bloat16. If transpose_output is true,
+output: Output tensors whose types is bfloat16. If transpose_output is true,
      output shape is [dn * 4, dn-1, ..., d1, d0]. If transpose_output
      is false, output shape is [d0,..., dn * 4].
 min_range: The minimum scalar value possibly produced for the input.
@@ -1065,7 +1079,7 @@ REGISTER_OP("XlaSpmdFullToShardShape")
         dims.push_back(c->MakeDim(dim));
       }
       c->set_output(0, c->MakeShape(dims));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 An op used by XLA SPMD partitioner to switch from automatic partitioning to
@@ -1091,7 +1105,7 @@ REGISTER_OP("XlaSpmdShardToFullShape")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 An op used by XLA SPMD partitioner to switch from manual partitioning to
@@ -1118,9 +1132,29 @@ REGISTER_OP("XlaReplicaId")
     .Output("id: int32")
     .SetShapeFn([](shape_inference::InferenceContext* context) {
       context->set_output(0, context->MakeShape({}));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc("Replica ID.");
+
+xla::Shape GetShape(shape_inference::ShapeHandle shape_handle,
+                    shape_inference::InferenceContext* c) {
+  if (!c->RankKnown(shape_handle)) {
+    return xla::Shape();
+  }
+  std::vector<int64_t> dims;
+  std::vector<bool> dynamic_dims;
+  for (int i = 0, rank = c->Rank(shape_handle); i < rank; ++i) {
+    bool is_dynamic = !c->ValueKnown(c->Dim(shape_handle, i));
+    dynamic_dims.push_back(is_dynamic);
+    dims.push_back(is_dynamic ? xla::Shape::kUnboundedSize
+                              : c->Value(c->Dim(shape_handle, i)));
+  }
+  return xla::Shape(
+      // Type matters only for indices. S64 is the widest possible type.
+      xla::PrimitiveType::S64, dims,
+      absl::InlinedVector<bool, 4>(dynamic_dims.begin(), dynamic_dims.end()),
+      /*tuple_shapes=*/{});
+}
 
 REGISTER_OP("XlaGather")
     .Input("operand: T")
@@ -1131,7 +1165,63 @@ REGISTER_OP("XlaGather")
     .Attr("T: {numbertype, bool}")
     .Attr("Tindices: {int32, int64}")
     .Output("output: T")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      std::string dimension_numbers;
+      TF_RETURN_IF_ERROR(c->GetAttr("dimension_numbers", &dimension_numbers));
+      xla::GatherDimensionNumbers gather_dim_numbers;
+      if (!gather_dim_numbers.ParseFromString(dimension_numbers)) {
+        return absl::InvalidArgumentError("Failed to parse dimension_numbers.");
+      }
+      VLOG(3) << c->DebugString();
+      VLOG(3) << "dim_numbers: " << gather_dim_numbers.DebugString();
+      VLOG(3) << "Shapes: operand: " << c->DebugString(c->input(0))
+              << ", start_indices: " << c->DebugString(c->input(1))
+              << ", slice_sizes: " << c->DebugString(c->input(2));
+
+      xla::Shape input_shape = GetShape(c->input(0), c);
+      xla::Shape start_indices_shape = GetShape(c->input(1), c);
+      xla::Shape slice_sizes_shape = GetShape(c->input(2), c);
+
+      const Tensor* slice_sizes_tensor = c->input_tensor(2);
+      if (input_shape == xla::Shape() || input_shape.is_unbounded_dynamic() ||
+          start_indices_shape == xla::Shape() ||
+          slice_sizes_shape == xla::Shape()) {
+        VLOG(3) << "output will be unranked due to unknown or dynamic input "
+                   "shapes.";
+        return shape_inference::UnknownShape(c);
+      }
+      if (slice_sizes_tensor == nullptr ||
+          slice_sizes_tensor->NumElements() == -1) {
+        VLOG(3) << "output will be unranked due to non-constant slice_sizes.";
+        return shape_inference::UnknownShape(c);
+      }
+      std::vector<int64_t> slice_sizes;
+      if (slice_sizes_tensor->dtype() == DT_INT32) {
+        for (int i = 0; i < slice_sizes_tensor->NumElements(); ++i) {
+          slice_sizes.push_back(slice_sizes_tensor->flat<int32_t>()(i));
+        }
+      } else if (slice_sizes_tensor->dtype() == DT_INT64) {
+        for (int i = 0; i < slice_sizes_tensor->NumElements(); ++i) {
+          slice_sizes.push_back(slice_sizes_tensor->flat<int64_t>()(i));
+        }
+      }
+      VLOG(3) << "slice_sizes [val]: " << absl::StrJoin(slice_sizes, ",");
+      TF_ASSIGN_OR_RETURN(xla::Shape output_shape,
+                          xla::ShapeInference::InferGatherShape(
+                              input_shape, start_indices_shape,
+                              gather_dim_numbers, slice_sizes));
+      std::vector<shape_inference::DimensionHandle> dims;
+      for (int64_t i = 0; i < output_shape.rank(); ++i) {
+        if (output_shape.is_unbounded_dynamic_dimension(i)) {
+          dims.push_back(c->UnknownDim());
+        } else {
+          dims.push_back(c->MakeDim(output_shape.dimensions(i)));
+        }
+      }
+      c->set_output(0, c->MakeShape(dims));
+      VLOG(3) << "output: " << c->DebugString(c->output(0));
+      return absl::OkStatus();
+    })
     .Doc(R"doc(
 Wraps the XLA Gather operator documented at
   https://www.tensorflow.org/xla/operation_semantics#gather
@@ -1211,7 +1301,7 @@ Status OptimizationBarrierShape(shape_inference::InferenceContext* c) {
   for (int i = 0; i < c->num_inputs(); ++i) {
     c->set_output(i, c->input(i));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("XlaOptimizationBarrier")
@@ -1225,6 +1315,22 @@ Wraps the XLA OptimizationBarrier operator.
 Documented at https://www.tensorflow.org/xla/operation_semantics#optimizationbarrier.
 
 input: A Tuple of Arrays of any type.
+)doc");
+
+REGISTER_OP("XlaReducePrecision")
+    .Input("operand: T")
+    .Output("output: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .Attr("exponent_bits: int")
+    .Attr("mantissa_bits: int")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Wraps the XLA ReducePrecision operator
+  documented at https://www.tensorflow.org/xla/operation_semantics#reduceprecision.
+
+operand: array of floating-point type.
+exponent_bits: number of exponent bits in lower-precision format
+mantissa_bits: number of mantissa bits in lower-precision format
 )doc");
 
 REGISTER_OP("XlaCustomCall")
@@ -1241,7 +1347,7 @@ REGISTER_OP("XlaCustomCall")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA CustomCall operator
@@ -1253,6 +1359,139 @@ target_name: Name of the function. A call instruction will be emitted which
 backend_config: String, used to encode serialized metadata to the backend.
 dtype: Output tensor data type.
 shape: Output tensor shape.
+)doc");
+
+REGISTER_OP("XlaCustomCallV2")
+    .Input("operands: operand_dtypes")
+    .Output("results: result_dtypes")
+    .Attr("call_target_name: string")
+    .Attr("backend_config: string")
+    .Attr("has_side_effect: bool")
+    .Attr("operand_dtypes: list(type) >= 0")
+    .Attr("result_dtypes: list(type) >= 0")
+    .Attr("result_shapes: list(shape) >= 0")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<TensorShape> shapes;
+      TF_RETURN_IF_ERROR(c->GetAttr("result_shapes", &shapes));
+      if (shapes.size() != c->num_outputs()) {
+        return errors::InvalidArgument("Unexpected number of result shapes: ",
+                                       shapes.size(), " != ", c->num_outputs());
+      }
+      for (int i = 0; i < c->num_outputs(); ++i) {
+        shape_inference::ShapeHandle shape;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shapes[i], &shape));
+        c->set_output(i, shape);
+      }
+      return absl::OkStatus();
+    })
+    .Doc(R"doc(
+Emits an HLO `CustomCall` operation with multiple outputs.
+
+As opposed to `XlaCustomCall`, this operation supports multiple outputs.
+
+See `CustomCall` specification at
+  https://tensorflow.org/xla/operation_semantics#customcall,
+and `mhlo.custom_call` specification at
+  https://tensorflow.org/mlir/hlo_ops#mhlocustom_call_mlirmhlocustomcallop.
+
+operands: A sequence of tensors with possibly different types.
+call_target_name: Name of the user function. The function signature must conform
+  to version 3 of the API, see `API_VERSION_STATUS_RETURNING_UNIFIED`. All
+  operands and results assumed to be in the default layout.
+backend_config: A string that encodes a metadata for the backend.
+has_side_effect: Indicates whether the custom call has side effects.
+result_dtypes: Types of all results.
+result_shapes: Shapes of all results.
+)doc");
+
+REGISTER_OP("XlaCallModule")
+    .Input("args: Tin")
+    .Output("output: Tout")
+    .Attr("version: int")
+    .Attr("module: string")
+    .Attr("Sout: list(shape) >= 0")
+    .Attr("Tout: list(type) >= 0")
+    .Attr("Tin: list(type) >= 0")
+    .Attr("dim_args_spec: list(string) = []")
+    .Attr("platforms: list(string) = []")
+    .Attr("function_list: list(func) = []")
+    .Attr("has_token_input_output: bool = false")
+    .Attr("disabled_checks: list(string) = []")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<shape_inference::ShapeHandle> args_shapes;
+      TF_RETURN_IF_ERROR(c->input("args", &args_shapes));
+      for (int i = 0; i < args_shapes.size(); ++i) {
+        VLOG(3) << "XlaCallModule.shape_inference args[" << i
+                << "] : " << c->DebugString(args_shapes[i]);
+      }
+      std::vector<PartialTensorShape> shapes_attr;
+      TF_RETURN_IF_ERROR(c->GetAttr("Sout", &shapes_attr));
+      for (int i = 0; i < shapes_attr.size(); ++i) {
+        shape_inference::ShapeHandle s;
+        TF_RETURN_IF_ERROR(
+            c->MakeShapeFromPartialTensorShape(shapes_attr[i], &s));
+        VLOG(3) << "XlaCallModule.shape_inference out[" << i
+                << "] : " << c->DebugString(s);
+        c->set_output(i, s);
+      }
+      return absl::OkStatus();
+    })
+    .Doc(R"doc(
+Invokes a StableHLO module.
+
+This op is used with JAX native serialization in a TensorFlow context with
+stability guarantees.
+
+args: A list of `Tensor` with possibly different types to be passed as arguments
+  to the `module`. These are the actual arguments and do not include the
+  platform argument (see `platforms`) nor the dimension arguments (see
+  `dim_args_spec`).
+version: Tracks changes the semantics of the op, to support backwards
+  compatibility. Minimum supported version is 2. From
+  version 2, the op carries a StableHLO text or bytecode `module`. From
+  version 3, the op also supports the `platforms` attribute. From version 4,
+  the op carries a StableHLO module with compatibility guarantees. From version
+  5, XLACallModule can include `stablehlo.custom_call` op to execute tf
+  functions. From version 6 the op supports the `disabled_checks` attribute.
+  See more versioning details at https://github.com/search?q=repo%3Atensorflow%2Ftensorflow+path%3Axla_call_module+%22int+kVersionMaximumSupported%22&type=code.
+module: A serialized computation, a text or bytecode representation of
+  an mlir.Module. The return type must be a tuple if and only if the `Sout` is
+  a list with 0 or more than 1 elements. The length of `Tout` and
+  `Sout` must match. This op always returns a tuple of results, even if the
+  module returns a single result.
+Tout: List of output tensor data types.
+Sout: List of output tensor shapes.
+platforms: the list of platforms supported by `module`. The list can contain
+  the strings "CPU", "CUDA", "ROCM", or "TPU". It is an error to compile
+  this op for a platform that does not appear in the list. This check can be
+  disabled using `disabled_checks`. If the list contains more than
+  one platform, then the `module` takes one additional 0-dimensional
+  integer-tensor parameter in the first position, encoding the index in
+  `platforms` of the current compilation platform. This parameter has value 0
+  if the plaform is not among `platforms` and the check has been disabled.
+  The list can be empty in old versions (earlier than 6) to denote that no
+  platform checking must be performed at loading time.
+dim_args_spec: this attribute is not supported anymore.
+function_list: This list contains the TensorFlow FunctionDefs that are used by
+  the XLACallModule. If the XLACallModule contains `stablehlo.custom_call`
+  operations, they can call TensorFlow graph functions outside of the
+  XLACallModule. This `function_list` attribute registers the dependency of the
+  XLACallModule on those functions. This attribute was added in version 5.
+has_token_input_output: If true, the embedded StableHLO module's main function
+  must take a `!stablehlo.token` as its first argument and returns a token as
+  its first result. This can be used in conjunction with the TF2XLA's side
+  effect mechanism in order to model side effects. This is used only in versions
+  prior to version 9. After that, the number and position of tokens among
+  the arguments and results are obtained from the main function type. This
+  allows us to support more than one token and not necessarily at the start.
+disabled_checks: A list of strings describing the safety checks that were
+  disabled at serialization time. This attribute was added in version 6.
+  For more details see
+  https://github.com/search?q=repo%3Agoogle%2Fjax+path%3Ajax_export+%22class+DisabledSafetyCheck%22&type=code.
+  This list, supplemented with a comma-separate list of directives specified
+  using the flag --tf_xla_call_module_disabled_checks,
+  is used at module loading time to skip the corresponding checks.
 )doc");
 
 }  // namespace

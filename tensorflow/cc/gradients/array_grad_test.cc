@@ -174,6 +174,14 @@ TEST_F(ArrayGradTest, GatherNdGrad_SliceIndexing) {
   RunTest(x, shape, y, shape);
 }
 
+TEST_F(ArrayGradTest, GatherNdGrad_SliceIndexing_Int64) {
+  TensorShape shape({2, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto indices = Cast(scope_, Const(scope_, {{1}, {0}}), DT_INT64);
+  auto y = GatherNd(scope_, x, indices);
+  RunTest(x, shape, y, shape);
+}
+
 TEST_F(ArrayGradTest, CheckNumericsGrad) {
   TensorShape shape({5, 2});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));

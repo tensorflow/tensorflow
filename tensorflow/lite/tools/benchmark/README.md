@@ -25,6 +25,13 @@ The binary takes the following required parameters:
 
 and the following optional parameters:
 
+*   `signature_to_run_for`: `string` (default="") \
+    If the model contains multiple signatures, use this flag to specify the
+    signature to benchmark.
+    - If multiple signatures are present and this flag is not specified, the
+    benchmark will throw an error.
+    - If only one signature is present and this flag is not specified, the
+    default signature will be used.
 *   `num_threads`: `int` (default=-1) \
     The number of threads to use for running TFLite interpreter. By default,
     this is set to the platform default value -1.
@@ -32,6 +39,9 @@ and the following optional parameters:
     The number of warmup runs to do before starting the benchmark.
 *   `num_runs`: `int` (default=50) \
     The number of runs. Increase this to reduce variance.
+*   `max_secs` : float (default=150.0) \
+    The maximum number of seconds the benchmark will run before being
+    terminated.
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
@@ -46,55 +56,74 @@ and the following optional parameters:
 *   `max_profiling_buffer_entries`: `int` (default=1024) \
     The initial max number of profiling events that will be stored during each
     inference run. It is only meaningful when `enable_op_profiling` is set to
-     `true`. Note, the actual value of this parameter will be adjusted if the
-     model has more nodes than the specified value of this parameter. Also, when
-     `allow_dynamic_profiling_buffer_increase` is set to `true`, the number of
-     profiling buffer entries will be increased dynamically.
+    `true`. Note, the actual value of this parameter will be adjusted if the
+    model has more nodes than the specified value of this parameter. Also, when
+    `allow_dynamic_profiling_buffer_increase` is set to `true`, the number of
+    profiling buffer entries will be increased dynamically.
 *   `allow_dynamic_profiling_buffer_increase`: `bool` (default=false) \
     Whether allowing dynamic increase on the number of profiling buffer entries.
-    It is only meaningful when `enable_op_profiling` is set to `true`.
-    Note, allowing dynamic buffer size increase may cause more profiling
-    overhead, thus it is preferred to set `max_profiling_buffer_entries` to a
-    large-enough value.
+    It is only meaningful when `enable_op_profiling` is set to `true`. Note,
+    allowing dynamic buffer size increase may cause more profiling overhead,
+    thus it is preferred to set `max_profiling_buffer_entries` to a large-enough
+    value.
 
 *   `profiling_output_csv_file`: `str` (default="") \
     File path to export profile data to as CSV. The results are printed to
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
     and the path to include the name of the output CSV; otherwise results are
     printed to `stdout`.
-*  `print_preinvoke_state`: `bool` (default=false) \
+
+*   `print_preinvoke_state`: `bool` (default=false) \
     Whether to print out the TfLite interpreter internals just before calling
     tflite::Interpreter::Invoke. The internals will include allocated memory
     size of each tensor etc. Enabling this could help understand TfLite graph
     and memory usage.
-*  `print_postinvoke_state`: `bool` (default=false) \
+
+*   `print_postinvoke_state`: `bool` (default=false) \
     Whether to print out the TfLite interpreter internals just before benchmark
     completes (i.e. after all repeated Invoke calls complete). The internals
     will include allocated memory size of each tensor etc. Enabling this could
     help understand TfLite graph and memory usage, particularly when there are
     dynamic-shaped tensors in the graph.
-*  `report_peak_memory_footprint`: `bool` (default=false) \
+
+*   `report_peak_memory_footprint`: `bool` (default=false) \
     Whether to report the peak memory footprint by periodically checking the
     memory footprint. Internally, a separate thread will be spawned for this
     periodic check. Therefore, the performance benchmark result could be
     affected.
-*  `memory_footprint_check_interval_ms`: `int` (default=50) \
-   The interval in millisecond between two consecutive memory footprint checks.
-   This is only used when --report_peak_memory_footprint is set to true.
 
-*  `dry_run`: `bool` (default=false) \
+*   `memory_footprint_check_interval_ms`: `int` (default=50) \
+    The interval in millisecond between two consecutive memory footprint checks.
+    This is only used when --report_peak_memory_footprint is set to true.
+
+*   `dry_run`: `bool` (default=false) \
     Whether to run the tool just with simply loading the model, allocating
     tensors etc. but without actually invoking any op kernels.
-*  `verbose`: `bool` (default=false) \
+
+*   `verbose`: `bool` (default=false) \
     Whether to log parameters whose values are not set. By default, only log
     those parameters that are set by parsing their values from the commandline
     flags.
-*  `release_dynamic_tensors`: `bool` (default=false) \
+
+*   `release_dynamic_tensors`: `bool` (default=false) \
     Whether to configure the Interpreter to immediately release the memory of
     dynamic tensors in the graph once they are not used.
-*  `optimize_memory_for_large_tensors`: `int` (default=0) \
+
+*   `optimize_memory_for_large_tensors`: `int` (default=0) \
     Whether to optimize memory usage for large tensors with sacrificing latency.
     When the feature is enabled, `release_dynamic_tensors` is also enabled.
+
+*   `enable_builtin_cast_constant_cache`: `bool` (default=false) \
+    Configure the builtin TFLite CAST operation to cache its output if its input
+    is a constant tensor.
+
+    WARNING: This is an experimental option that may be removed at any time.
+
+This list of parameters is not exhaustive. See
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/benchmark/benchmark_model.cc)
+and
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/benchmark/benchmark_tflite_model.cc)
+for all parameters that the binary takes.
 
 ### Model input parameters
 By default, the tool will use randomized data for model inputs. The following
@@ -125,8 +154,8 @@ running the benchmark tool:
     item is separated by ',', and the item value consists of input layer name
     and the file path separated by ':',
     e.g. 'input1:file_path1,input2:file_path2'. In case the input layer name
-    contains ':' e.g. "input:0", escape it with "\:" literal,
-    e.g. `input\:0:file_path1`. If a input name appears in both
+    contains ':' e.g. "input:0", escape it with "::" literal,
+    e.g. `input::0:file_path1`. If a input name appears in both
     `input_layer_value_range` and `input_layer_value_files`, the corresponding
     input value range specified by`input_layer_value_range` will be ignored.
     The file format is binary, and the content should be either a byte array or
@@ -184,13 +213,16 @@ For libhexagon_interface.so it needs to be on a path that can be loaded from
 example: put it in LD_LIBRARY_PATH.
 
 #### XNNPACK delegate
+
 *   `use_xnnpack`: `bool` (default=false) \
-Note if this option is explicitly set to `false`, the TfLite runtime will use
-its original CPU kernels for model execution. In other words, after enabling
-the feature that the XNNPACK delegate is applied by default in TfLite runtime,
-explictly setting this flag to `false` will cause the benchmark tool to disable
-the feature at runtime, and to use the original non-delegated CPU execution path
-for model benchmarking.
+    Note if this option is explicitly set to `false`, the TfLite runtime will
+    use its original CPU kernels for model execution. In other words, after
+    enabling the feature that the XNNPACK delegate is applied by default in
+    TfLite runtime, explictly setting this flag to `false` will cause the
+    benchmark tool to disable the feature at runtime, and to use the original
+    non-delegated CPU execution path for model benchmarking.
+*   `xnnpack_force_fp16`: `bool` (default=false) \
+    Enforce float16 inference.
 
 #### CoreML delegate
 *   `use_coreml`: `bool` (default=false)
@@ -199,6 +231,10 @@ for model benchmarking.
 #### External delegate
 *   `external_delegate_path`: `string` (default="")
 *   `external_delegate_options`: `string` (default="")
+
+#### Stable delegate [Experimental]
+*   `stable_delegate_loader_settings`: `string` (default="") A path to the
+    JSON-encoded delegate [`TFLiteSettings`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/acceleration/configuration/configuration.proto#L488) file, which is defined in `configuration.proto`.
 
 As some delegates are only available on certain platforms, when running the
 benchmark tool on a particular platform, specifying `--help` will print out all
@@ -213,6 +249,11 @@ In comparison, "--use_gpu=true --use_xnnpack=true" means applying the GPU
 delegate first, and then the XNNPACK delegate secondly.
 
 ## To build/install/run
+
+Note: The benchmarking tool must be compiled with a TFLite runtime that
+supports the ops found in the model to be tested.<br/>
+If Tensorflow Ops ("flex ops")
+or other custom ops are used in the model, please see the section [below](#build-the-benchmark-tool-with-tensorflow-ops-support).
 
 ### On Android:
 
@@ -272,8 +313,8 @@ adb shell /data/local/tmp/benchmark_model \
 bazel build -c opt tensorflow/lite/tools/benchmark:benchmark_model
 ```
 
-(2) Run on your compute graph, similar to the Android case but without the need of adb shell.
-For example:
+(2) Run on your compute graph, similar to the Android case but without the need
+of adb shell. For example:
 
 ```
 bazel-bin/tensorflow/lite/tools/benchmark/benchmark_model \
@@ -406,12 +447,19 @@ some additional parameters as detailed below.
 
 ## Build the benchmark tool with Tensorflow ops support
 
-You can build the benchmark tool with [Tensorflow operators support](https://www.tensorflow.org/lite/guide/ops_select).
+If you see an error that says: `ERROR: Select TensorFlow op(s), included in the
+given model, is(are) not supported by this interpreter.` you will need to
+build with [Tensorflow operators support](https://www.tensorflow.org/lite/guide/ops_select).
+
+Having Tensorflow ops in the TFLite file works when the benchmark tool is built
+with Tensorflow ops support. It doesn't require any additional option to use it.
 
 ### How to build
 
-To build the tool, you need to use 'benchmark_model_plus_flex' target with
-'--config=monolithic' option.
+To build the tool, you need to use the `benchmark_model_plus_flex` target with
+the `--config=monolithic` flag.
+
+**Desktop**
 
 ```
 bazel build -c opt \
@@ -419,12 +467,53 @@ bazel build -c opt \
   tensorflow/lite/tools/benchmark:benchmark_model_plus_flex
 ```
 
+**Android**
+
+```
+bazel build -c opt \
+  --config=monolithic --config=android_arm64 \
+  tensorflow/lite/tools/benchmark:benchmark_model_plus_flex
+```
+
 ### How to benchmark tflite model with Tensorflow ops
 
-Tensorflow ops support just works the benchmark tool is built with Tensorflow
-ops support. It doesn't require any additional option to use it.
+Follow the further instructions [above](#to-buildinstallrun) replacing
+`benchmark_model` with the `benchmark_model_plus_flex` file created here.
+
+For example, on desktop it's very easy:
 
 ```
 bazel-bin/tensorflow/lite/tools/benchmark/benchmark_model_plus_flex \
   --graph=model_converted_with_TF_ops.tflite \
 ```
+
+## Build the benchmark tool with Custom ops support
+
+If you see an error that says `ERROR: Op type not registered 'XXXXXXXX'
+in binary running on localhost.` for custom ops running in your TFLite model,
+you will need to manually build the tool to include your libraries providing
+the custom ops.
+
+### How to build
+
+While possible, this is not necessarily supported.
+
+However, you should be able to create a new `cc_binary` rule that depends on
+`tensorflow/lite/tools/benchmark:benchmark_model_main` along with your custom op
+rules.
+
+```
+cc_binary(
+    name = "benchmark_model_plus_custom_ops",
+    deps = [
+        ":my_custom_ops_provider",
+        "//tensorflow/lite/tools/benchmark:benchmark_model_main",
+    ],
+)
+```
+
+### How to benchmark tflite model with Custom ops
+
+Use the `benchmark_model_plus_custom_ops` (or whatever) file created by your
+custom rule instead of the `benchmark_model` file in the instructions,
+[above](#to-buildinstallrun).

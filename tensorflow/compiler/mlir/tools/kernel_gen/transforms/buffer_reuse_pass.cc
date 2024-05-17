@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
+#include <memory>
+#include <optional>
 #include <vector>
 
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Analysis/BufferViewFlowAnalysis.h"  // from @llvm-project
 #include "mlir/Analysis/Liveness.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/Transforms/BufferViewFlowAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -28,7 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
@@ -51,15 +52,16 @@ class BufferReuseAnalysis {
 
   static constexpr int32_t kIndexAmbiguous = -1;
 
-  Optional<SmallVector<int32_t, 2>> get_reuse_candiates(memref::AllocOp op) {
+  std::optional<SmallVector<int32_t, 2>> get_reuse_candiates(
+      memref::AllocOp op) {
     auto it = reuse_candidates_.find(op);
-    if (it == reuse_candidates_.end()) return llvm::None;
+    if (it == reuse_candidates_.end()) return std::nullopt;
     return it->second;
   }
 
-  Optional<int32_t> get_output_index(memref::AllocOp op) {
+  std::optional<int32_t> get_output_index(memref::AllocOp op) {
     auto it = output_indices_.find(op);
-    if (it == output_indices_.end()) return llvm::None;
+    if (it == output_indices_.end()) return std::nullopt;
     return it->second;
   }
 
@@ -114,7 +116,7 @@ class BufferReuseAnalysis {
       // Find reuse candidates for the regarded allocation.
       SmallVector<int32_t, 2> local_reuse_candidates;
       for (BlockArgument old_buffer : arguments) {
-        if (!old_buffer.getType().isa<BaseMemRefType>()) continue;
+        if (!mlir::isa<BaseMemRefType>(old_buffer.getType())) continue;
 
         // Lifetime criterion: Only reuse buffers that are no longer used on
         // first reuse, i.e. they are no longer alive.
@@ -176,27 +178,27 @@ class BufferReuseAnalysis {
   std::vector<Value> get_buffer_arguments(func::FuncOp &f) {
     std::vector<Value> buffer_arguments;
     for (BlockArgument arg : f.getArguments()) {
-      if (arg.getType().isa<BaseMemRefType>()) buffer_arguments.push_back(arg);
+      if (mlir::isa<BaseMemRefType>(arg.getType()))
+        buffer_arguments.push_back(arg);
     }
     return buffer_arguments;
   }
 
   bool can_reuse_locally(Operation *op, Value old_buffer, Value new_buffer) {
     // For now, we support only memrefs with the same memory layout.
-    auto old_buffer_ty = old_buffer.getType().dyn_cast<MemRefType>();
-    auto new_buffer_ty = old_buffer.getType().dyn_cast<MemRefType>();
+    auto old_buffer_ty = mlir::dyn_cast<MemRefType>(old_buffer.getType());
+    auto new_buffer_ty = mlir::dyn_cast<MemRefType>(old_buffer.getType());
     if (!old_buffer_ty || !new_buffer_ty ||
         old_buffer_ty.getLayout() != new_buffer_ty.getLayout())
       return false;
 
     if (auto generic_op = dyn_cast<linalg::GenericOp>(op)) {
-      SmallVector<OpOperand *> op_operands =
-          generic_op.getInputAndOutputOperands();
-      auto old_it = llvm::find_if(op_operands, [&](OpOperand *op_operand) {
-        return op_operand->get() == old_buffer;
+      auto op_operands = op->getOpOperands();
+      auto old_it = llvm::find_if(op_operands, [&](OpOperand &op_operand) {
+        return op_operand.get() == old_buffer;
       });
-      auto new_it = llvm::find_if(op_operands, [&](OpOperand *op_operand) {
-        return op_operand->get() == new_buffer;
+      auto new_it = llvm::find_if(op_operands, [&](OpOperand &op_operand) {
+        return op_operand.get() == new_buffer;
       });
       assert(old_it != op_operands.end() && new_it != op_operands.end() &&
              "Expect `old/new_buffer` to be operand of `op`.");
@@ -205,7 +207,7 @@ class BufferReuseAnalysis {
         // Allow dropping dimensions but no permutations.
         int64_t i = -1;
         for (AffineExpr expr : map.getResults()) {
-          auto dim_expr = expr.dyn_cast<AffineDimExpr>();
+          auto dim_expr = mlir::dyn_cast<AffineDimExpr>(expr);
           if (!dim_expr || dim_expr.getPosition() <= i) return false;
           i = dim_expr.getPosition();
         }
@@ -218,8 +220,8 @@ class BufferReuseAnalysis {
       // have the same size we also know that when one side has an identity map
       // and the other side only drops dimensions, these dimensions have to be
       // of size 1.
-      AffineMap old_indexing_map = generic_op.getTiedIndexingMap(*old_it);
-      AffineMap new_indexing_map = generic_op.getTiedIndexingMap(*new_it);
+      AffineMap old_indexing_map = generic_op.getMatchingIndexingMap(old_it);
+      AffineMap new_indexing_map = generic_op.getMatchingIndexingMap(new_it);
       return (old_indexing_map == new_indexing_map &&
               old_indexing_map.isProjectedPermutation()) ||
              (old_indexing_map.isIdentity() &&
@@ -233,10 +235,10 @@ class BufferReuseAnalysis {
   DenseMap<Operation *, int32_t> output_indices_;
 };
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_BUFFERREUSEPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
-struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
+struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
   void runOnOperation() override {
     if (!getOperation()->getAttrOfType<UnitAttr>(
             tf_framework::TFFrameworkDialect::kTFEntryAttrName))

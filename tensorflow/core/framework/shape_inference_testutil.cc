@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 
+#include <algorithm>
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -222,7 +226,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // static
@@ -231,7 +235,7 @@ Status ShapeInferenceTestutil::MakeShapeFromString(
     ShapeHandle* output) {
   if (spec == "?") {
     *output = manager->UnknownShape();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<DimensionHandle> dims;
@@ -266,7 +270,7 @@ Status ShapeInferenceTestutil::MakeShapeFromString(
   }
   *output = manager->MakeShape(dims);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace shape_inference

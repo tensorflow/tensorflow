@@ -17,7 +17,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/create_op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"

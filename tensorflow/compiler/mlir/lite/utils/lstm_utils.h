@@ -58,7 +58,7 @@ class ConvertLSTMCellSimpleToFusedLSTM {
       delete;
   ConvertLSTMCellSimpleToFusedLSTM& operator=(
       const ConvertLSTMCellSimpleToFusedLSTM&) = delete;
-  virtual ~ConvertLSTMCellSimpleToFusedLSTM() {}
+  virtual ~ConvertLSTMCellSimpleToFusedLSTM() = default;
 
   virtual llvm::StringRef GetCompositeOpName() { return kLstmCellSimple; }
 
@@ -184,7 +184,7 @@ class ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
       const ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM&) = delete;
   ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM& operator=(
       const ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM&) = delete;
-  ~ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM() override {}
+  ~ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM() override = default;
 
   llvm::StringRef GetCompositeOpName() override {
     return kLayerNormalizedLstmCellSimple;
@@ -210,6 +210,9 @@ class ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
 
 LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
                                     OpBuilder* builder);
+
+LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
+                                    OpBuilder* builder, bool indy);
 
 }  // end namespace TFL
 }  // end namespace mlir

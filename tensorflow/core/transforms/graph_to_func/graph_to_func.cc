@@ -35,12 +35,6 @@ using tensorflow::errors::InvalidArgument;
 namespace mlir {
 namespace tfg {
 
-// TODO(jpienaar): Move to helper header/this shouldn't be needed once we
-// upgrade to C++17.
-static inline absl::string_view ToStringView(llvm::StringRef ref) {
-  return {ref.data(), ref.size()};
-}
-
 static std::string OpResultToSlotName(OpResult value) {
   return (TFOp(*value.getDefiningOp()).name() + "_" +
           Twine(value.getResultNumber()))
@@ -74,28 +68,29 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
   auto loc = graph.getLoc();
   auto func_op = builder.create<GraphFuncOp>(loc, func_name, func_type,
                                              /*generic=*/false);
-  func_op->setAttr("tfg.lifted_graph_version", graph.version());
+  func_op->setAttr("tfg.lifted_graph_version", graph.getVersion());
   func_op.getRegion().takeBody(graph.getRegion());
 
   // Create the returnOp first so that if there are nodes in both feeds and
   // fetches, the fetch value will be replaced with feed argument.
-  OpBuilder body_builder = OpBuilder::atBlockEnd(func_op.getBody());
+  OpBuilder body_builder =
+      OpBuilder::atBlockEnd(func_op.SingleBlock::getBody());
   body_builder.create<ReturnOp>(loc, fetches, control_rets);
 
   StringAttr tfg_name = dialect->getTfgNameAttrIdentifier();
   StringAttr lifted_value_name = builder.getStringAttr("tfg.lifted_value_attr");
 
-  Block *body = func_op.getBody();
+  Block *body = func_op.SingleBlock::getBody();
   llvm::SmallVector<Attribute> args_rets_attrs;
   for (Value feed : feeds) {
     feed.replaceAllUsesWith(body->addArgument(feed.getType(), loc));
     body->addArgument(control_ty, loc);
     llvm::SmallVector<NamedAttribute> arg_attrs;
-    std::string slot = OpResultToSlotName(feed.cast<OpResult>());
+    std::string slot = OpResultToSlotName(mlir::cast<OpResult>(feed));
     arg_attrs.push_back(NamedAttribute(tfg_name, builder.getStringAttr(slot)));
-    arg_attrs.push_back(
-        NamedAttribute(lifted_value_name,
-                       createLiftedValueAttr(builder, feed.cast<OpResult>())));
+    arg_attrs.push_back(NamedAttribute(
+        lifted_value_name,
+        createLiftedValueAttr(builder, mlir::cast<OpResult>(feed))));
     args_rets_attrs.push_back(builder.getDictionaryAttr(arg_attrs));
     args_rets_attrs.push_back(Attribute{});
   }
@@ -104,14 +99,14 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
   args_rets_attrs.clear();
   for (Value fetch : fetches) {
     llvm::SmallVector<NamedAttribute> arg_attrs;
-    std::string slot = OpResultToSlotName(fetch.cast<OpResult>());
+    std::string slot = OpResultToSlotName(mlir::cast<OpResult>(fetch));
     arg_attrs.push_back(NamedAttribute(tfg_name, builder.getStringAttr(slot)));
     args_rets_attrs.push_back(builder.getDictionaryAttr(arg_attrs));
   }
   func_op.setAllResultAttrs(args_rets_attrs);
 
   graph.erase();
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphToFunc(GraphOp graph, ArrayRef<std::string> feeds_names,

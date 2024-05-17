@@ -17,7 +17,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lift_variables.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
 
 namespace mlir {
@@ -25,9 +24,12 @@ namespace tf_saved_model {
 namespace {
 using ::tensorflow::Session;
 
+#define GEN_PASS_DEF_LIFTVARIABLESTESTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
+
 // This pass is only available in the tf-opt binary for testing.
 class LiftVariablesTestPass
-    : public tf_test::LiftVariablesTestPassBase<LiftVariablesTestPass> {
+    : public impl::LiftVariablesTestPassBase<LiftVariablesTestPass> {
  public:
   LiftVariablesTestPass() { session_ = new TF::test_util::FakeSession(); }
 
@@ -43,9 +45,12 @@ class LiftVariablesTestPass
   Session* session_;
 };
 
+#define GEN_PASS_DEF_LIFTVARIABLESINVALIDSESSIONTESTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
+
 // This pass is only available in the tf-opt binary for testing.
 class LiftVariablesInvalidSessionTestPass
-    : public tf_test::LiftVariablesInvalidSessionTestPassBase<
+    : public impl::LiftVariablesInvalidSessionTestPassBase<
           LiftVariablesInvalidSessionTestPass> {
  public:
   void runOnOperation() override {

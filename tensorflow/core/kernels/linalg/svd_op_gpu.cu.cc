@@ -24,13 +24,13 @@ limitations under the License.
 // pass quite as many raw pointers around. Would also be nice to reduce code
 // duplication.
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
 #include <algorithm>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -94,9 +94,6 @@ class SvdOpGpu : public AsyncOpKernel {
   explicit SvdOpGpu(OpKernelConstruction* context) : AsyncOpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("compute_uv", &compute_uv_));
     OP_REQUIRES_OK(context, context->GetAttr("full_matrices", &full_matrices_));
-    OP_REQUIRES(context, !tensorflow::OpDeterminismRequired(),
-                errors::Unimplemented("Determinism is not yet supported "
-                                      "for Svd."));
   }
 
   void RunSVD(OpKernelContext* context, DoneCallback done, int64 m, int64 n,
@@ -120,8 +117,11 @@ class SvdOpGpu : public AsyncOpKernel {
     // TODO(jamessspencer): if not full_matrices, compute full U and V matrices
     // using Gesvdjbatched and return slices.
     const bool batched =
+#if GOOGLE_CUDA
         m <= 32 && n <= 32 && batch_size > 1 && (full_matrices_ || m == n);
-
+#else
+        false;
+#endif
     // Copies of U and V if required so can take transposes after SVD.
     Tensor u_copy, v_copy;
     Scalar* outputU_ptr = NULL;
@@ -188,6 +188,7 @@ class SvdOpGpu : public AsyncOpKernel {
     }
 
     if (batched) {
+#if GOOGLE_CUDA
       cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_NOVECTOR;
       if (compute_uv_) jobz = CUSOLVER_EIG_MODE_VECTOR;
       OP_REQUIRES_OK_ASYNC(
@@ -196,6 +197,9 @@ class SvdOpGpu : public AsyncOpKernel {
                                 outputU_ptr, m, outputV_ptr, n, dev_info_ptr,
                                 batch_size),
           done);
+#else
+      eigen_assert(false && "not supported");
+#endif
     } else {
       for (int64 batch = 0; batch < batch_size; ++batch) {
         Scalar* input = input_ptr + batch * m * n;
@@ -358,6 +362,14 @@ class SvdOpGpu : public AsyncOpKernel {
     const int64 n = input.dim_size(ndims - 1);
     const int64 p = std::min(m, n);
 
+    if (n == 1) {
+      OP_REQUIRES_ASYNC(
+          context, !tensorflow::OpDeterminismRequired(),
+          errors::Unimplemented("Determinism is not yet supported for SVD of "
+                                "matrices with 1 column."),
+          done);
+    }
+
     // output tensors.
     Tensor* outputU = NULL;
     Tensor* outputS = NULL;
@@ -394,6 +406,12 @@ class SvdOpGpu : public AsyncOpKernel {
                          done);
     OP_REQUIRES_OK_ASYNC(context, context->allocate_output(2, shapeV, &outputV),
                          done);
+
+    // If there are zero batches, we are done.
+    if (shapeRaw.num_elements() == 0) {
+      done();
+      return;
+    }
 
     if (n == 0 || m == 0) {
       if (n == m || !compute_uv_ || !full_matrices_) {
@@ -441,4 +459,4 @@ REGISTER_LINALG_OP_GPU("BatchSvd", (SvdOpGpu<double>), double);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

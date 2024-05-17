@@ -311,14 +311,14 @@ void PickSubgraphsPass::BuildSubgraphs(
   fn.walk([&](func::CallOp call_op) {
     auto interface_name = GetInterFaceName(call_op);
     // we only need to care about the call ops those have interface_name.
-    if (!interface_name.hasValue()) return;
+    if (!interface_name.has_value()) return;
 
     unprocessed_subgraphs->insert(call_op);
 
     // Build the subgraph.
     Subgraph subgraph;
     subgraph.call = call_op;
-    auto impl_iter = func_impls.find(interface_name.getValue());
+    auto impl_iter = func_impls.find(*interface_name);
     if (impl_iter == func_impls.end()) {
       call_op.emitError(
           "we cannot find corresponding implementation for this call op");
@@ -327,12 +327,11 @@ void PickSubgraphsPass::BuildSubgraphs(
 
     for (auto impl : impl_iter->second) {
       auto inference_device_type = GetInferenceDeviceTypeForOp(impl);
-      if (!inference_device_type.hasValue()) {
+      if (!inference_device_type.has_value()) {
         impl.emitError("we cannot find inference device type for this func");
         signalPassFailure();
       }
-      subgraph.available_choices.emplace(inference_device_type.getValue(),
-                                         impl);
+      subgraph.available_choices.emplace(*inference_device_type, impl);
     }
 
     // Insert in the subgraphs.
@@ -351,12 +350,11 @@ PickSubgraphsPass::CollectSubgraphFuncs(ModuleOp module) {
   std::unordered_map<std::string, std::vector<func::FuncOp>> func_impls;
   for (auto func : module.getOps<func::FuncOp>()) {
     auto interface_name = GetInterFaceName(func);
-    if (interface_name.hasValue()) {
-      auto impls_iter = func_impls.find(interface_name.getValue());
+    if (interface_name.has_value()) {
+      auto impls_iter = func_impls.find(*interface_name);
       if (impls_iter == func_impls.end())
         impls_iter =
-            func_impls
-                .emplace(interface_name.getValue(), std::vector<func::FuncOp>())
+            func_impls.emplace(*interface_name, std::vector<func::FuncOp>())
                 .first;
       impls_iter->second.push_back(func);
     }
@@ -424,12 +422,11 @@ void PickSubgraphsPass::RewireSubgraphs(
     const InferenceDeviceType& preferred_inference_device_type = kv.second;
 
     // We need to rewire the call.
-    std::string interface_name = GetInterFaceName(call).getValue();
+    std::string interface_name = *GetInterFaceName(call);
     for (auto impl : collected_impl_funcs.find(interface_name)->second) {
       const auto& impl_inference_device_type =
           GetInferenceDeviceTypeForOp(impl);
-      if (impl_inference_device_type.getValue() ==
-          preferred_inference_device_type) {
+      if (*impl_inference_device_type == preferred_inference_device_type) {
         if (call.getCallee() != impl.getName()) {
           // We need to rebuild the call op. :(
           builder->setInsertionPoint(call);

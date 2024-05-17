@@ -1,0 +1,22 @@
+path: "tensorflow.data.NumpyIterator"
+tf_class {
+  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.NumpyIterator\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'dataset\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "next"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "restore"
+    argspec: "args=[\'self\', \'state\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

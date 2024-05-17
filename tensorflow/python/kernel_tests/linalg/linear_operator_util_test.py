@@ -17,10 +17,12 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import test
 
@@ -96,7 +98,7 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
   def test_one_batch_matrix_returned_after_tensor_conversion(self):
     arr = rng.rand(2, 3, 4)
     tensor, = linear_operator_util.broadcast_matrix_batch_dims([arr])
-    self.assertTrue(isinstance(tensor, ops.Tensor))
+    self.assertTrue(isinstance(tensor, tensor_lib.Tensor))
 
     self.assertAllClose(arr, self.evaluate(tensor))
 
@@ -296,6 +298,64 @@ class AssertCompatibleMatrixDimensionsTest(test.TestCase):
       self.evaluate(
           linear_operator_util.assert_compatible_matrix_dimensions(operator, x))
     # pylint: enable=g-error-prone-assert-raises
+
+
+class IsAdjointPairTest(test.TestCase):
+
+  def test_one_is_explicitly_adjoint_of_other_returns_true(self):
+    x = linalg_lib.LinearOperatorFullMatrix(
+        [[1., 2.], [3., 4.]], is_self_adjoint=False)
+    self.assertTrue(linear_operator_util.is_adjoint_pair(x, x.H))
+    self.assertTrue(linear_operator_util.is_adjoint_pair(x.H, x))
+
+  def test_repeated_non_self_adjoint_operator_returns_false(self):
+    x = linalg_lib.LinearOperatorFullMatrix(
+        [[1., 2.], [3., 4.]], is_self_adjoint=False)
+    self.assertFalse(linear_operator_util.is_adjoint_pair(x, x))
+
+  def test_repeated_self_adjoint_operator_returns_true(self):
+    x = linalg_lib.LinearOperatorFullMatrix(
+        [[1., 2.], [2., 1.]], is_self_adjoint=True)
+    self.assertTrue(linear_operator_util.is_adjoint_pair(x, x))
+
+  def test_pair_of_non_self_adjoint_operator_returns_false(self):
+    x = linalg_lib.LinearOperatorFullMatrix(
+        [[1., 2.], [3., 4.]], is_self_adjoint=False)
+    y = linalg_lib.LinearOperatorFullMatrix(
+        [[10., 20.], [3., 4.]], is_self_adjoint=False)
+    self.assertFalse(linear_operator_util.is_adjoint_pair(x, y))
+
+
+class IsAATFormTest(test.TestCase):
+  # Careful when writing tests to avoid LinearOperatorDiag, since D.H is D for
+  # real D and this will be confusing.
+
+  def test_empty_operators_raises(self):
+    with self.assertRaisesRegex(ValueError, "empty operators"):
+      linear_operator_util.is_aat_form(operators=[])
+
+  def test_odd_length_returns_false(self):
+    x = linalg_lib.LinearOperatorFullMatrix([[1., 2.], [2., 1]],
+                                            is_self_adjoint=True)
+    self.assertFalse(linear_operator_util.is_aat_form([x]))
+    self.assertFalse(linear_operator_util.is_aat_form([x, x, x.H]))
+
+  def test_length_2_aat_form_with_sa_x(self):
+    x = linalg_lib.LinearOperatorFullMatrix([[1., 2.], [2., 1]],
+                                            is_self_adjoint=True)
+    self.assertTrue(linear_operator_util.is_aat_form([x, x.H]))
+
+  def test_length_2_aat_form_with_non_sa_x(self):
+    x = linalg_lib.LinearOperatorFullMatrix([[1., 5.], [2., 1]],
+                                            is_self_adjoint=False)
+    self.assertTrue(linear_operator_util.is_aat_form([x, x.H]))
+
+  def test_length_4_aat_form(self):
+    x = linalg_lib.LinearOperatorFullMatrix([[1., 2.], [5., 1]],
+                                            is_self_adjoint=False)
+    y = linalg_lib.LinearOperatorFullMatrix([[10., 2.], [3., 10]],
+                                            is_self_adjoint=False)
+    self.assertTrue(linear_operator_util.is_aat_form([x, y, y.H, x.H]))
 
 
 class DummyOperatorWithHint(object):

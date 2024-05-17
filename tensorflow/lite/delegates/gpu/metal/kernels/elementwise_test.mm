@@ -221,4 +221,34 @@ limitations under the License.
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
+- (void)testCosBroadcast {
+  auto status = CosBroadcastTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMaximumScalarBroadcastInput {
+  auto status = MaximumScalarBroadcastInputTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMulLinearBroadcastInput {
+  auto status = MulLinearBroadcastInputTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMulBroadcastBothInputs {
+  auto status = MulBroadcastBothInputsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testLogicalAnd {
+  auto status = LogicalAndTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testLogicalAndWithConstant {
+  auto status = LogicalAndWithConstantTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
 @end

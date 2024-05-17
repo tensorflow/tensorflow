@@ -39,6 +39,7 @@ template struct FillProjectiveTransform<CPUDevice, int64_t>;
 template struct FillProjectiveTransform<CPUDevice, Eigen::half>;
 template struct FillProjectiveTransform<CPUDevice, float>;
 template struct FillProjectiveTransform<CPUDevice, double>;
+template struct FillProjectiveTransform<CPUDevice, bfloat16>;
 
 }  // end namespace functor
 
@@ -96,11 +97,12 @@ void DoImageProjectiveTransformOp(OpKernelContext* ctx,
   }
 
   Tensor* output_t;
+  TensorShape output_shape;
   OP_REQUIRES_OK(
-      ctx, ctx->allocate_output(0,
-                                TensorShape({images_t.dim_size(0), out_height,
-                                             out_width, images_t.dim_size(3)}),
-                                &output_t));
+      ctx, TensorShape::BuildTensorShape({images_t.dim_size(0), out_height,
+                                          out_width, images_t.dim_size(3)},
+                                         &output_shape));
+  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_t));
   auto output = output_t->tensor<T, 4>();
   auto images = images_t.tensor<T, 4>();
   auto transform = transform_t.matrix<float>();
@@ -162,6 +164,7 @@ TF_CALL_int64(REGISTER);
 TF_CALL_half(REGISTER);
 TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
+TF_CALL_bfloat16(REGISTER);
 
 #undef REGISTER
 
@@ -185,6 +188,7 @@ TF_CALL_int64(REGISTER);
 TF_CALL_half(REGISTER);
 TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
+TF_CALL_bfloat16(REGISTER);
 
 #undef REGISTER
 

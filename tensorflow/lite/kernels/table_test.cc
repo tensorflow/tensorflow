@@ -79,113 +79,50 @@ inline float GetLUTTolerance(float input_min, float input_max, float output_min,
   }
 }
 
-template <typename InputT, typename OutputT>
-void TableWithExpLUTToInt8Test() {
-  using TableT = OutputT;
-
+template <typename T>
+void TableWithExpLUTTest() {
   float input_min = -0.5f;
   float input_max = 0.8f;
   // Use symmetric inputs for int16 cases, nudge max for null zero-point
-  if (std::is_same<InputT, int16_t>::value) {
+  if (std::is_same<T, int16_t>::value) {
     input_min = -0.8f;
-    input_max = 0.8f * std::numeric_limits<InputT>::max() /
-                static_cast<float>(std::numeric_limits<InputT>::max() + 1);
+    input_max = 0.8f * std::numeric_limits<T>::max() /
+                static_cast<float>(std::numeric_limits<T>::max() + 1);
   }
 
   float output_min = 0.0f;
   float output_max = 2.4f;
   // Use symmetric outputs  for int16 cases, nudge max for null zero-point
-  if (std::is_same<OutputT, int16_t>::value) {
+  if (std::is_same<T, int16_t>::value) {
     output_min = -2.4f;
-    output_max = 2.4f * std::numeric_limits<OutputT>::max() /
-                 static_cast<float>(std::numeric_limits<OutputT>::max() + 1);
+    output_max = 2.4f * std::numeric_limits<T>::max() /
+                 static_cast<float>(std::numeric_limits<T>::max() + 1);
   }
 
   const float kQuantizedTolerance =
-      GetLUTTolerance<TableT>(input_min, input_max, output_min, output_max);
+      GetLUTTolerance<T>(input_min, input_max, output_min, output_max);
 
-  std::vector<TableT> table(lut_size<InputT>());
-  TableOpModel m({GetTensorType<InputT>(), {1, 2, 3, 1}, input_min, input_max},
-                 {GetTensorType<TableT>(), {lut_size<InputT>()}},
-                 {GetTensorType<OutputT>(), {}, output_min, output_max});
+  TableOpModel m({GetTensorType<T>(), {1, 2, 3, 1}, input_min, input_max},
+                 {GetTensorType<T>(), {LUTSize<T>()}},
+                 {GetTensorType<T>(), {}, output_min, output_max});
+  T table[LUTSize<T>()];
+  LUTPopulate<T>(
+      m.GetScale(m.input()), m.GetZeroPoint(m.input()), m.GetScale(m.output()),
+      m.GetZeroPoint(m.output()), [](float v) { return std::exp(v); }, table);
 
-  // -1.204706 = m.GetScale(m.output()) * m.GetZeroPoint(m.output()). It's added
-  // to avoid capture with function pointers.
-  gen_lut<float, InputT, TableT>(
-      [](float v) { return std::exp(v) - 1.204706f; }, input_min, input_max,
-      output_min, output_max, table.data());
-
-  m.QuantizeAndPopulate<InputT>(m.input(),
-                                {-0.5f, -0.2f, 0.0f, 0.1f, 0.3f, 0.8f});
-  m.PopulateTensor<TableT>(m.table(), table);
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetDequantizedOutput<OutputT>(),
+  m.QuantizeAndPopulate<T>(m.input(), {-0.5f, -0.2f, 0.0f, 0.1f, 0.3f, 0.8f});
+  m.PopulateTensor<T>(m.table(), 0, table, table + LUTSize<T>());
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<T>(),
               ElementsAreArray(ArrayFloatNear(
                   {std::exp(-0.5f), std::exp(-0.2f), std::exp(0.0f),
                    std::exp(0.1f), std::exp(0.3f), std::exp(0.8f)},
                   kQuantizedTolerance)));
 }
 
-template <typename InputT, typename OutputT>
-void TableWithExpLUTToInt16Test() {
-  using TableT = OutputT;
+TEST(TableOpTest, Int8ExpLUT) { TableWithExpLUTTest<int8_t>(); }
 
-  float input_min = -0.5f;
-  float input_max = 0.8f;
-  // Use symmetric inputs for int16 cases, nudge max for null zero-point
-  if (std::is_same<InputT, int16_t>::value) {
-    input_min = -0.8f;
-    input_max = 0.8f * std::numeric_limits<InputT>::max() /
-                static_cast<float>(std::numeric_limits<InputT>::max() + 1);
-  }
-
-  float output_min = 0.0f;
-  float output_max = 2.4f;
-  // Use symmetric outputs  for int16 cases, nudge max for null zero-point
-  if (std::is_same<OutputT, int16_t>::value) {
-    output_min = -2.4f;
-    output_max = 2.4f * std::numeric_limits<OutputT>::max() /
-                 static_cast<float>(std::numeric_limits<OutputT>::max() + 1);
-  }
-
-  const float kQuantizedTolerance =
-      GetLUTTolerance<TableT>(input_min, input_max, output_min, output_max);
-
-  std::vector<TableT> table(lut_size<InputT>());
-  TableOpModel m({GetTensorType<InputT>(), {1, 2, 3, 1}, input_min, input_max},
-                 {GetTensorType<TableT>(), {lut_size<InputT>()}},
-                 {GetTensorType<OutputT>(), {}, output_min, output_max});
-
-  gen_lut<float, InputT, TableT>([](float v) { return std::exp(v); }, input_min,
-                                 input_max, output_min, output_max,
-                                 table.data());
-
-  m.QuantizeAndPopulate<InputT>(m.input(),
-                                {-0.5f, -0.2f, 0.0f, 0.1f, 0.3f, 0.8f});
-  m.PopulateTensor<TableT>(m.table(), table);
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetDequantizedOutput<OutputT>(),
-              ElementsAreArray(ArrayFloatNear(
-                  {std::exp(-0.5f), std::exp(-0.2f), std::exp(0.0f),
-                   std::exp(0.1f), std::exp(0.3f), std::exp(0.8f)},
-                  kQuantizedTolerance)));
-}
-
-TEST(TableOpTest, Int8ToInt8WithExpLUT) {
-  TableWithExpLUTToInt8Test<int8_t, int8_t>();
-}
-
-TEST(TableOpTest, Int8ToInt16WithExpLUT) {
-  TableWithExpLUTToInt16Test<int8_t, int16_t>();
-}
-
-TEST(TableOpTest, Int16ToInt16WithExpLUT) {
-  TableWithExpLUTToInt16Test<int16_t, int16_t>();
-}
-
-TEST(TableOpTest, Int16ToInt8WithExpLUT) {
-  TableWithExpLUTToInt8Test<int16_t, int8_t>();
-}
+TEST(TableOpTest, Int16ExpLUT) { TableWithExpLUTTest<int16_t>(); }
 
 }  // namespace
 }  // namespace custom

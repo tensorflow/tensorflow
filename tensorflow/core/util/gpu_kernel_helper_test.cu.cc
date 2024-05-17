@@ -154,7 +154,9 @@ class GpuLaunchConfigTest : public ::testing::Test {
 
   void copyToHost() {
 #if TENSORFLOW_USE_ROCM
-    hipMemcpy(hostbuf, outbuf, sizeof(int) * bufsize, hipMemcpyDeviceToHost);
+    hipError_t err = hipMemcpy(hostbuf, outbuf, sizeof(int) * bufsize,
+                               hipMemcpyDeviceToHost);
+    ASSERT_EQ(cudaSuccess, err) << cudaGetErrorString(err);
 #endif
   }
   virtual void SetUp() {
@@ -162,15 +164,15 @@ class GpuLaunchConfigTest : public ::testing::Test {
     cudaError_t err = cudaMallocManaged(&outbuf, sizeof(int) * bufsize);
     outbuf_host = outbuf;
 #else
-    cudaError_t err = hipMalloc(&outbuf, sizeof(int) * bufsize);
+    hipError_t err = hipMalloc(&outbuf, sizeof(int) * bufsize);
     outbuf_host = hostbuf;
 #endif
     ASSERT_EQ(cudaSuccess, err) << cudaGetErrorString(err);
   }
 
   virtual void TearDown() {
-    gpuDeviceSynchronize();
-    gpuFree(outbuf);
+    ASSERT_EQ(gpuDeviceSynchronize(), cudaSuccess);
+    ASSERT_EQ(gpuFree(outbuf), cudaSuccess);
     outbuf = nullptr;
   }
 };
@@ -322,7 +324,7 @@ TEST(CudaDeviceFunctionsTest, ShuffleGetSrcLane) {
                                nullptr, failure_count));
   ASSERT_EQ(gpuDeviceSynchronize(), cudaSuccess);
   ASSERT_EQ(*failure_count, 0);
-  gpuFree(failure_count);
+  ASSERT_EQ(gpuFree(failure_count), cudaSuccess);
 }
 
 }  // namespace tensorflow

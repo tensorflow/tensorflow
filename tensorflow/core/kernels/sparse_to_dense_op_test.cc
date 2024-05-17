@@ -248,7 +248,7 @@ static void BM_SparseToDense(::testing::benchmark::State& state) {
   OpKernelContext::Params params;
   params.device = device.get();
   params.frame_iter = FrameAndIter(0, 0);
-  params.inputs = &inputs;
+  params.inputs = inputs;
   params.op_kernel = op.get();
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);

@@ -17,14 +17,14 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
-include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
 // Quantize attribute $0 by using quantization parameter from %1.
 def QuantizeByQuantizedType : NativeCodeCall<"quant::Quantize($0, $1.getValue())">;
 def F32ElementsAttr : ElementsAttrBase<
-  CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
+  CPred<"$_self.cast<ElementsAttr>().getShapedType().getElementType().isF32()">, "float constant tensor">;
 
 // Squash tfl.dequantize and tfl.quantize pairs.
 // TODO(fengliuai): Compare the scale of input and output. This can also be

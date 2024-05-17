@@ -16,15 +16,17 @@
 
 import tensorflow  # pylint: disable=unused-import
 
-# pylint: disable=invalid-import-order,g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as stablehlo_quant_config_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import custom_aggregator_op_wrapper
-from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model as quantize_model_wrapper
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
+
+_CalibrationMethod = (
+    stablehlo_quant_config_pb2.CalibrationOptions.CalibrationMethod
+)
 
 
 class CustomAggregatorTest(test.TestCase):
@@ -34,65 +36,112 @@ class CustomAggregatorTest(test.TestCase):
     ops.disable_eager_execution()
 
   def testBypassAndMinMax(self):
-    with self.test_session():
-      quantize_model_wrapper.clear_calibrator()
-      input_tensor = array_ops.constant([1.0, 2.0, 3.0, 4.0, 5.0],
-                                        dtypes.float32)
+    with self.session():
+      input_tensor = array_ops.constant(
+          [1.0, 2.0, 3.0, 4.0, 5.0], dtypes.float32
+      )
+
       aggregator = custom_aggregator_op_wrapper.custom_aggregator(
-          input_tensor, '1')
-      self.assertAllEqual(aggregator.eval(), [1.0, 2.0, 3.0, 4.0, 5.0])
-      min_val = quantize_model_wrapper.get_min_from_calibrator('1')
-      max_val = quantize_model_wrapper.get_max_from_calibrator('1')
-      self.assertAllEqual((min_val, max_val), (1.0, 5.0))
+          input_tensor,
+          id='1',
+          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
+      )
+      aggregator_output = self.evaluate(aggregator)
+      self.assertAllEqual(aggregator_output.output, [1.0, 2.0, 3.0, 4.0, 5.0])
+      self.assertEqual(aggregator_output.min, 1.0)
+      self.assertEqual(aggregator_output.max, 5.0)
+      self.assertEmpty(aggregator_output.histogram)
 
   def testTwoIdentities(self):
-    with self.test_session():
-      quantize_model_wrapper.clear_calibrator()
-      input_tensor1 = array_ops.constant([1.0, 2.0, 3.0, 4.0, 5.0],
-                                         dtypes.float32)
+    with self.session():
+      input_tensor1 = array_ops.constant(
+          [1.0, 2.0, 3.0, 4.0, 5.0], dtypes.float32
+      )
       aggregator1 = custom_aggregator_op_wrapper.custom_aggregator(
-          input_tensor1, '2')
-      self.assertAllEqual(aggregator1.eval(), [1.0, 2.0, 3.0, 4.0, 5.0])
-      input_tensor2 = array_ops.constant([-1.0, -2.0, -3.0, -4.0, -5.0],
-                                         dtypes.float32)
+          input_tensor1,
+          '2',
+          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
+      )
+      aggregator1_output = self.evaluate(aggregator1)
+      self.assertAllEqual(aggregator1_output.output, [1.0, 2.0, 3.0, 4.0, 5.0])
+      self.assertEqual(aggregator1_output.min, 1.0)
+      self.assertEqual(aggregator1_output.max, 5.0)
+      self.assertEmpty(aggregator1_output.histogram)
+
+      input_tensor2 = array_ops.constant(
+          [-1.0, -2.0, -3.0, -4.0, -5.0], dtypes.float32
+      )
       aggregator2 = custom_aggregator_op_wrapper.custom_aggregator(
-          input_tensor2, '3')
-      self.assertAllEqual(aggregator2.eval(), [-1.0, -2.0, -3.0, -4.0, -5.0])
+          input_tensor2,
+          '3',
+          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
+      )
+      aggregator2_output = self.evaluate(aggregator2)
+      self.assertAllEqual(
+          aggregator2_output.output, [-1.0, -2.0, -3.0, -4.0, -5.0]
+      )
+      self.assertEqual(aggregator2_output.min, -5.0)
+      self.assertEqual(aggregator2_output.max, -1.0)
+      self.assertEmpty(aggregator2_output.histogram)
 
-      min_val = quantize_model_wrapper.get_min_from_calibrator('2')
-      max_val = quantize_model_wrapper.get_max_from_calibrator('2')
-      self.assertAllEqual((min_val, max_val), (1.0, 5.0))
-      min_val = quantize_model_wrapper.get_min_from_calibrator('3')
-      max_val = quantize_model_wrapper.get_max_from_calibrator('3')
-      self.assertAllEqual((min_val, max_val), (-5.0, -1.0))
-
-  def testClearData(self):
-    with self.test_session():
-      quantize_model_wrapper.clear_calibrator()
-      input_tensor1 = array_ops.constant([1.0, 2.0, 3.0, 4.0, 5.0],
-                                         dtypes.float32)
+  def testBypassAndAverageMinMax(self):
+    with self.session():
+      input_tensor1 = array_ops.constant(
+          [-50.0, -25.0, 0.0, 25.0, 50.0], dtypes.float32
+      )
       aggregator1 = custom_aggregator_op_wrapper.custom_aggregator(
-          input_tensor1, '4')
-      self.assertAllEqual(aggregator1.eval(), [1.0, 2.0, 3.0, 4.0, 5.0])
-      input_tensor2 = array_ops.constant([-1.0, -2.0, -3.0, -4.0, -5.0],
-                                         dtypes.float32)
+          input_tensor1,
+          '6',
+          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX,
+      )
+      aggregator1_output = self.evaluate(aggregator1)
+      self.assertAllEqual(
+          aggregator1_output.output,
+          [-50.0, -25.0, 0.0, 25.0, 50.0],
+      )
+      self.assertEqual(aggregator1_output.min, -50.0)
+      self.assertEqual(aggregator1_output.max, 50.0)
+      self.assertEmpty(aggregator1_output.histogram)
+
+      input_tensor2 = array_ops.constant(
+          [-100.0, -50.0, 0.0, 50.0, 100.0], dtypes.float32
+      )
       aggregator2 = custom_aggregator_op_wrapper.custom_aggregator(
-          input_tensor2, '5')
-      self.assertAllEqual(aggregator2.eval(), [-1.0, -2.0, -3.0, -4.0, -5.0])
+          input_tensor2,
+          '6',
+          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX,
+      )
+      aggregator2_output = self.evaluate(aggregator2)
+      self.assertAllEqual(
+          aggregator2_output.output, [-100.0, -50.0, 0.0, 50.0, 100.0]
+      )
+      self.assertEqual(aggregator2_output.min, -100.0)
+      self.assertEqual(aggregator2_output.max, 100.0)
+      self.assertEmpty(aggregator2_output.histogram)
 
-      min_val = quantize_model_wrapper.get_min_from_calibrator('4')
-      max_val = quantize_model_wrapper.get_max_from_calibrator('4')
-      self.assertAllEqual((min_val, max_val), (1.0, 5.0))
-      min_val = quantize_model_wrapper.get_min_from_calibrator('5')
-      max_val = quantize_model_wrapper.get_max_from_calibrator('5')
-      self.assertAllEqual((min_val, max_val), (-5.0, -1.0))
+  def testHistogramCalibration(self):
+    with self.session():
+      input_tensor = array_ops.constant(
+          [1.0, 1.0, 3.0, 4.0, 6.0], dtypes.float32
+      )
 
-      quantize_model_wrapper.clear_data_from_calibrator('4')
-      with self.assertRaises(ValueError):
-        quantize_model_wrapper.get_min_from_calibrator('4')
-      min_val = quantize_model_wrapper.get_min_from_calibrator('5')
-      max_val = quantize_model_wrapper.get_max_from_calibrator('5')
-      self.assertAllEqual((min_val, max_val), (-5.0, -1.0))
+      aggregator = custom_aggregator_op_wrapper.custom_aggregator(
+          input_tensor,
+          id='7',
+          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
+          num_bins=512,
+      )
+      aggregator_output = self.evaluate(aggregator)
+      self.assertAllEqual(aggregator_output.output, [1.0, 1.0, 3.0, 4.0, 6.0])
+      self.assertEqual(aggregator_output.min, 1.0)
+      self.assertEqual(aggregator_output.max, 6.0)
+
+      self.assertLen(aggregator_output.histogram, 512)
+      self.assertEqual(sum(aggregator_output.histogram), 5)
+      self.assertEqual(aggregator_output.histogram[0], 2)
+      self.assertEqual(aggregator_output.histogram[128], 1)
+      self.assertEqual(aggregator_output.histogram[192], 1)
+      self.assertEqual(aggregator_output.histogram[320], 1)
 
 
 if __name__ == '__main__':

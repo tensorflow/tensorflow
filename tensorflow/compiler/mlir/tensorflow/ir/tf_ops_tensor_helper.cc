@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {
@@ -33,9 +34,9 @@ class IdentityNOp;
 RankedTensorType GetRankedTensorTypeForOperand(Value operand) {
   DenseElementsAttr attr;
   if (matchPattern(operand, m_Constant(&attr))) {
-    return attr.getType().dyn_cast<RankedTensorType>();
+    return mlir::dyn_cast<RankedTensorType>(attr.getType());
   }
-  return operand.getType().dyn_cast<RankedTensorType>();
+  return mlir::dyn_cast<RankedTensorType>(operand.getType());
 }
 
 // Returns the tf.Equal/tf.NotEqual result type given `x` and `y` and inputs. If
@@ -53,7 +54,7 @@ Type DeduceEqualCmpOpType(Builder *builder, Location loc, Value x, Value y,
     }
   }
 
-  auto ranked_type = result_type.dyn_cast<RankedTensorType>();
+  auto ranked_type = mlir::dyn_cast<RankedTensorType>(result_type);
   if (!ranked_type) return UnrankedTensorType::get(builder->getI1Type());
 
   return RankedTensorType::get(ranked_type.getShape(), builder->getI1Type());
@@ -65,7 +66,7 @@ Type InferReductionOpType(Value input, Value reduction_indices,
   Type element_ty = getElementTypeOrSelf(input_ty);
 
   // Output type is unranked if input type is not ranked.
-  auto ranked_ty = input_ty.dyn_cast<RankedTensorType>();
+  auto ranked_ty = mlir::dyn_cast<RankedTensorType>(input_ty);
   if (!ranked_ty) return UnrankedTensorType::get(element_ty);
   int64_t rank = ranked_ty.getRank();
 
@@ -76,7 +77,8 @@ Type InferReductionOpType(Value input, Value reduction_indices,
     if (!keep_dims.getValue()) return UnrankedTensorType::get(element_ty);
 
     // Otherwise, output type has same rank as the input.
-    return RankedTensorType::get(SmallVector<int64_t, 4>(rank, -1), element_ty);
+    return RankedTensorType::get(
+        SmallVector<int64_t, 4>(rank, ShapedType::kDynamic), element_ty);
   }
 
   int64_t num_reduce_dim = 0;
@@ -111,10 +113,9 @@ Type InferReductionOpType(Value input, Value reduction_indices,
 // rank and match dimension sizes for all but one of the dimensions.
 LogicalResult VerifyTypesCompatibility(Operation::operand_type_range types,
                                        bool mask_one_dim, Operation *op) {
-  constexpr int64_t kUninitialized = -1;
-  int64_t common_rank = kUninitialized;
+  int64_t common_rank = ShapedType::kDynamic;
   llvm::SmallVector<int64_t, 4> common_dims;
-  int64_t dim_to_mask = kUninitialized;
+  int64_t dim_to_mask = ShapedType::kDynamic;
 
   // Initialize common_rank with rank of the first ranked type and verify that
   // following ranked types have the same rank.
@@ -124,13 +125,13 @@ LogicalResult VerifyTypesCompatibility(Operation::operand_type_range types,
   // the dimension index on the first mismatch and ignore dimension at that
   // index in following types.
   for (Type ty : types) {
-    RankedTensorType ranked_ty = ty.dyn_cast<RankedTensorType>();
+    RankedTensorType ranked_ty = mlir::dyn_cast<RankedTensorType>(ty);
     if (!ranked_ty) continue;
 
     int64_t rank = ranked_ty.getRank();
-    if (common_rank == kUninitialized) {
+    if (common_rank == ShapedType::kDynamic) {
       common_rank = rank;
-      common_dims.resize(common_rank, kUninitialized);
+      common_dims.resize(common_rank, ShapedType::kDynamic);
     } else if (common_rank != rank) {
       return op->emitError()
              << "operand type " << ranked_ty
@@ -142,16 +143,16 @@ LogicalResult VerifyTypesCompatibility(Operation::operand_type_range types,
       if (i == dim_to_mask) continue;
 
       int64_t dim = ranked_ty.getDimSize(i);
-      if (dim == kUninitialized) continue;
+      if (dim == ShapedType::kDynamic) continue;
 
       int64_t &common_dim = common_dims[i];
-      if (common_dim == kUninitialized) {
+      if (common_dim == ShapedType::kDynamic) {
         common_dim = dim;
       } else if (common_dim != dim) {
         // If mask_one_dim is true, do not emit an error if this is the only
         // dimension with mismatches. Note down the dimension to mask it from
         // the following types.
-        if (mask_one_dim && dim_to_mask == kUninitialized) {
+        if (mask_one_dim && dim_to_mask == ShapedType::kDynamic) {
           dim_to_mask = i;
           continue;
         }

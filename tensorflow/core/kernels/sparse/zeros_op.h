@@ -22,7 +22,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -74,7 +74,7 @@ struct CSRSparseMatrixZeros {
         dtype, dense_shape_t, batch_ptr_t, csr_row_ptr_t, coo_col_ind_t,
         csr_values_t, matrix));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

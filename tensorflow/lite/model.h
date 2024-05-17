@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,15 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-/// \file
-/// Defines tflite::Interpreter and tflite::InterpreterBuilder.
-///
-#ifndef TENSORFLOW_LITE_MODEL_H_
-#define TENSORFLOW_LITE_MODEL_H_
+#ifndef TENSORFLOW_LITE_CORE_SHIMS_CC_MODEL_H_
+#define TENSORFLOW_LITE_CORE_SHIMS_CC_MODEL_H_
+
+/// For documentation, see third_party/tensorflow/lite/core/model.h.
 
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/model_builder.h"
 
-// TODO(b/168725050): Address the issue of proxy header in this file.
-
-#endif  // TENSORFLOW_LITE_MODEL_H_
+#endif  // TENSORFLOW_LITE_CORE_SHIMS_CC_MODEL_H_

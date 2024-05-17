@@ -1,15 +1,13 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_jni_library")
-load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 # Following targets are using for testing selective-built flex delegate
 # in Java. Please don't use them for other purposes.
 
 package(
-    default_visibility = [
-        "//tensorflow/lite/android:__subpackages__",
-    ],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -51,7 +49,6 @@ java_test(
         "no_cuda_on_cpu_tap",  # CUDA + flex is not officially supported.
         "no_gpu",  # GPU + flex is not officially supported.
         "no_oss",  # Currently requires --config=monolithic, b/118895218.
-        "notsan",  # TODO(b/185859069) Re-enable after fixing race condition.
     ],
     test_class = "org.tensorflow.lite.InterpreterFlexTest",
     visibility = ["//visibility:private"],
@@ -78,7 +75,6 @@ java_test(
         "no_cuda_on_cpu_tap",  # CUDA + flex is not officially supported.
         "no_gpu",  # GPU + flex is not officially supported.
         "no_oss",  # Currently requires --config=monolithic, b/118895218.
-        "notsan",  # TODO(b/185859069) Re-enable after fixing race condition.
     ],
     test_class = "org.tensorflow.lite.InterpreterFlexWithCustomOpsTest",
     visibility = ["//visibility:private"],
@@ -94,9 +90,9 @@ java_test(
 ios_static_framework(
     name = "TestTensorFlowLiteSelectTfOps_framework",
     testonly = 1,
-    avoid_deps = ["//tensorflow/lite/c:common"],
+    avoid_deps = ["//tensorflow/lite/core/c:common"],
     bundle_name = "TestTensorFlowLiteSelectTfOps",
-    minimum_os_version = "9.0",
+    minimum_os_version = "12.0",
     deps = [
         ":test_flex_delegate",
     ],

@@ -21,8 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tsl/util/stats_calculator.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_stage.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
@@ -55,7 +56,7 @@ class ImagePreprocessingStage : public EvaluationStage {
  private:
   std::string* image_path_ = nullptr;
   TfLiteType output_type_;
-  tensorflow::Stat<int64_t> latency_stats_;
+  tsl::Stat<int64_t> latency_stats_;
 
   // One of the following 3 vectors will be populated based on output_type_.
   std::vector<float> float_preprocessed_image_;

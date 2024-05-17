@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPH_COSTMODEL_H_
 #define TENSORFLOW_CORE_GRAPH_COSTMODEL_H_
 
+#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -206,7 +207,7 @@ class CostModel {
   // Cumulative execution time.
   std::vector<Microseconds> time_;
   // Cumulative Bytes output on each channel.
-  std::vector<gtl::InlinedVector<Bytes, 2>> slot_bytes_;
+  std::vector<absl::InlinedVector<Bytes, 2UL>> slot_bytes_;
 
   // Maximum execution time
   std::vector<Microseconds> max_exec_time_;
@@ -219,20 +220,20 @@ class CostModel {
     Bytes temp_memory_size;
     Bytes persistent_memory_size;
 
-    gtl::InlinedVector<Bytes, 2> output_port_mem;
-    gtl::InlinedVector<TensorShapeProto, 2> output_port_shape;
-    gtl::InlinedVector<DataType, 2> output_port_type;
+    absl::InlinedVector<Bytes, 2UL> output_port_mem;
+    absl::InlinedVector<TensorShapeProto, 2UL> output_port_shape;
+    absl::InlinedVector<DataType, 2UL> output_port_type;
   };
   std::vector<MemUsage> max_mem_usage_;
 
-  std::vector<gtl::InlinedVector<int64_t, 2>> output_port_alloc_ids_;
+  std::vector<absl::InlinedVector<int64_t, 2UL>> output_port_alloc_ids_;
 
   std::set<int64_t> persistent_alloc_ids_;
-  std::map<string, std::set<int64_t>> persistent_alloc_ids_by_devices_;
 
   TensorShapeProto unknown_shape_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CostModel);
+  CostModel(const CostModel&) = delete;
+  void operator=(const CostModel&) = delete;
 };
 
 }  // namespace tensorflow

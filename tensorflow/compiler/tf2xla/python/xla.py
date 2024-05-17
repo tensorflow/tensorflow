@@ -25,6 +25,7 @@ operators. Please reach out to the JAX team if you want to make changes.
 """
 
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
+from local_xla.xla import xla_data_pb2
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -35,8 +36,8 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import random_ops_util
 from tensorflow.python.ops import special_math_ops
-from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops.numpy_ops import np_utils
 
 # TODO(phawkins): provide wrappers for all XLA operators. Currently the missing
@@ -101,6 +102,7 @@ real = _unary_op(math_ops.real)
 round = _unary_op(math_ops.round)
 sin = _unary_op(math_ops.sin)
 sign = _unary_op(math_ops.sign)
+tan = _unary_op(math_ops.tan)
 tanh = _unary_op(math_ops.tanh)
 
 # Bessel
@@ -226,9 +228,9 @@ bitcast_convert_type = array_ops.bitcast
 
 def broadcast(x, dims, name=None):
   x = ops.convert_to_tensor(x)
-  shape = array_ops.concat([constant_op.constant(dims),
-                            array_ops.shape(x)],
-                           axis=0)
+  shape = array_ops.concat(
+      [constant_op.constant(dims), array_ops.shape(x)], axis=0
+  )
   return array_ops.broadcast_to(x, shape, name=name)
 
 
@@ -239,19 +241,21 @@ def clamp(a, x, b, name=None):
 concatenate = array_ops.concat
 
 
-def conv(lhs,
-         rhs,
-         window_strides,
-         padding,
-         lhs_dilation,
-         rhs_dilation,
-         dimension_numbers,
-         feature_group_count=1,
-         precision_config=None,
-         preferred_element_type=None,
-         name=None,
-         use_v2=False,
-         batch_group_count=1):
+def conv(
+    lhs,
+    rhs,
+    window_strides,
+    padding,
+    lhs_dilation,
+    rhs_dilation,
+    dimension_numbers,
+    feature_group_count=1,
+    precision_config=None,
+    preferred_element_type=None,
+    name=None,
+    use_v2=False,
+    batch_group_count=1,
+):
   """Wraps the XLA ConvGeneralDilated operator.
 
   ConvGeneralDilated is the most general form of XLA convolution and is
@@ -280,8 +284,10 @@ def conv(lhs,
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
   needs_v2 = (
-      preferred_element_type or (lhs.dtype != rhs.dtype) or
-      batch_group_count > 1)
+      preferred_element_type
+      or (lhs.dtype != rhs.dtype)
+      or batch_group_count > 1
+  )
   if preferred_element_type is None:
     preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
   if needs_v2 or use_v2:
@@ -297,7 +303,8 @@ def conv(lhs,
         dimension_numbers=dimension_numbers.SerializeToString(),
         precision_config=precision_config_proto,
         preferred_element_type=preferred_element_type,
-        name=name)
+        name=name,
+    )
   return gen_xla_ops.xla_conv(
       lhs,
       rhs,
@@ -308,7 +315,8 @@ def conv(lhs,
       feature_group_count=feature_group_count,
       dimension_numbers=dimension_numbers.SerializeToString(),
       precision_config=precision_config_proto,
-      name=name)
+      name=name,
+  )
 
 
 convert_element_type = math_ops.cast
@@ -318,13 +326,19 @@ def dot(lhs, rhs, name=None):
   return math_ops.tensordot(lhs, rhs, axes=1, name=name)
 
 
-def dot_general(lhs,
-                rhs,
-                dimension_numbers,
-                precision_config=None,
-                preferred_element_type=None,
-                name=None,
-                use_v2=False):
+DotDimensionNumbers = xla_data_pb2.DotDimensionNumbers
+PrecisionConfig = xla_data_pb2.PrecisionConfig
+
+
+def dot_general(
+    lhs,
+    rhs,
+    dimension_numbers,
+    precision_config=None,
+    preferred_element_type=None,
+    name=None,
+    use_v2=False,
+):
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
@@ -338,13 +352,15 @@ def dot_general(lhs,
         dimension_numbers=dimension_numbers.SerializeToString(),
         precision_config=precision_config_proto,
         preferred_element_type=preferred_element_type,
-        name=name)
+        name=name,
+    )
   return gen_xla_ops.xla_dot(
       lhs,
       rhs,
       dimension_numbers=dimension_numbers.SerializeToString(),
       precision_config=precision_config_proto,
-      name=name)
+      name=name,
+  )
 
 
 def self_adjoint_eig(a, lower, max_iter, epsilon):
@@ -370,13 +386,15 @@ pad = gen_xla_ops.xla_pad
 def random_normal(mu, sigma, dims, name=None):
   mu = ops.convert_to_tensor(mu)
   return random_ops.random_normal(
-      dims, mean=mu, stddev=sigma, dtype=mu.dtype, name=name)
+      dims, mean=mu, stddev=sigma, dtype=mu.dtype, name=name
+  )
 
 
 def random_uniform(minval, maxval, dims, name=None):
   minval = ops.convert_to_tensor(minval)
   return random_ops.random_uniform(
-      dims, minval, maxval, dtype=minval.dtype, name=name)
+      dims, minval, maxval, dtype=minval.dtype, name=name
+  )
 
 
 def rng_bit_generator(algorithm, initial_state, shape, dtype):
@@ -386,19 +404,20 @@ def rng_bit_generator(algorithm, initial_state, shape, dtype):
     https://www.tensorflow.org/performance/xla/operation_semantics#rngbitgenerator.
 
   Args:
-    algorithm: The PRNG algorithm to use, one of
-      tf.random.Algorithm.{PHILOX, THREEFRY, AUTO_SELECT}.
-    initial_state: Initial state for the PRNG algorithm. For THREEFRY, it
-      should be a u64[2] and for PHILOX a u64[3].
+    algorithm: The PRNG algorithm to use, one of tf.random.Algorithm.{PHILOX,
+      THREEFRY, AUTO_SELECT}.
+    initial_state: Initial state for the PRNG algorithm. For THREEFRY, it should
+      be a u64[2] and for PHILOX a u64[3].
     shape: The output shape of the generated data.
     dtype: The type of the tensor.
 
   Returns:
     a tuple with a new state and generated data of the given shape.
   """
-  alg_int = stateless_random_ops.convert_alg_to_int(algorithm)
-  return gen_xla_ops.xla_rng_bit_generator(alg_int, initial_state, shape,
-                                           dtype=dtype)
+  alg_int = random_ops_util.convert_alg_to_int(algorithm)
+  return gen_xla_ops.xla_rng_bit_generator(
+      alg_int, initial_state, shape, dtype=dtype
+  )
 
 
 recv = gen_xla_ops.xla_recv
@@ -408,15 +427,17 @@ variadic_reduce = gen_xla_ops.xla_variadic_reduce_v2
 ops.no_gradient("XlaVariadicReduce")
 
 
-def reduce_window(operand,
-                  init,
-                  reducer,
-                  window_dimensions,
-                  window_strides=None,
-                  base_dilations=None,
-                  window_dilations=None,
-                  padding=None,
-                  name=None):
+def reduce_window(
+    operand,
+    init,
+    reducer,
+    window_dimensions,
+    window_strides=None,
+    base_dilations=None,
+    window_dilations=None,
+    padding=None,
+    name=None,
+):
   """Wraps the XLA ReduceWindow operator.
 
   ReduceWindow is documented at
@@ -450,7 +471,8 @@ def reduce_window(operand,
       window_dilations=window_dilations,
       padding=padding,
       computation=reducer,
-      name=name)
+      name=name,
+  )
 
 
 replica_id = gen_xla_ops.xla_replica_id
@@ -462,7 +484,6 @@ replica_id = gen_xla_ops.xla_replica_id
 #   p = xla.set_bound(p, 3) # Tells xla the constraint that p <= 3.
 #   return t[:p]            # xla knows the bound of the slice is 3.
 set_bound = gen_xla_ops.xla_set_bound
-
 
 # Make a static dimension into a xla bounded dynamic dimension. The current
 # static dimension size will become the bound and the second operand becomes the
@@ -477,7 +498,6 @@ set_bound = gen_xla_ops.xla_set_bound
 #   p = xla_set_dynamic_dimension_size(array, dim, 3)
 #   assert(reduce_sum(p) == 6) # xla knows only the first 3 elements are valid.
 set_dynamic_dimension_size = gen_xla_ops.xla_set_dynamic_dimension_size
-
 
 # Inverse of xla_set_dynamic_dimension_size. Make an xla bounded dynamic
 # dimension into a static dimension. The bound of the size of dimension
@@ -518,10 +538,12 @@ def _sharding_grad(op, grad):
   grad_sharding = gen_xla_ops.xla_sharding(
       grad,
       sharding=sharding_attr,
-      unspecified_dims=op.get_attr("unspecified_dims"))
+      unspecified_dims=op.get_attr("unspecified_dims"),
+  )
   # pylint: disable=protected-access
-  grad_sharding.op._set_attr("_XlaSharding",
-                             attr_value_pb2.AttrValue(s=sharding_attr))
+  grad_sharding.op._set_attr(
+      "_XlaSharding", attr_value_pb2.AttrValue(s=sharding_attr)
+  )
   return [grad_sharding]
 
 
@@ -536,7 +558,8 @@ def _spmd_full_to_shard_shape_grad(op, grad):
       manual_sharding=op.get_attr("manual_sharding"),
       full_shape=op.inputs[0].shape.as_list(),
       dim=op.get_attr("dim"),
-      unspecified_dims=op.get_attr("unspecified_dims"))
+      unspecified_dims=op.get_attr("unspecified_dims"),
+  )
   return [s2f]
 
 
@@ -546,7 +569,8 @@ def _spmd_shard_to_full_shape_grad(op, grad):
       grad,
       manual_sharding=op.get_attr("manual_sharding"),
       dim=op.get_attr("dim"),
-      unspecified_dims=op.get_attr("unspecified_dims"))
+      unspecified_dims=op.get_attr("unspecified_dims"),
+  )
   return [f2s]
 
 
@@ -558,19 +582,131 @@ dequantize = gen_xla_ops.xla_dequantize
 custom_call = gen_xla_ops.xla_custom_call
 
 
-def gather(operand, start_indices, dimension_numbers, slice_sizes,
-           indices_are_sorted=False, name=None):
+def custom_call_v2(
+    call_target_name,
+    operands,
+    result_specs,
+    backend_config=None,
+    has_side_effect=None,
+    name=None,
+):
+  """Emits an HLO `CustomCall` operation with multiple outputs.
+
+  See `CustomCall` specification at
+    https://tensorflow.org/xla/operation_semantics#customcall,
+  and `mhlo.custom_call` specification at
+    https://tensorflow.org/mlir/hlo_ops#mhlocustom_call_mlirmhlocustomcallop.
+
+  Args:
+    call_target_name: Name of the user function. The function signature must
+      conform to version 3 of the API, see
+      `API_VERSION_STATUS_RETURNING_UNIFIED`. All operands and results assumed
+      to be in the default layout.
+    operands: A sequence of tensors with possibly different types.
+    result_specs: A sequence of tensor specs for all results.
+    backend_config: A string that encodes a metadata for the backend. Empty
+      string by default.
+    has_side_effect: Indicates whether the custom call has side effects. `False`
+      by default.
+    name: Optional name of the operation.
+
+  Returns:
+    A tuple of output tensors.
+  """
+  return gen_xla_ops.xla_custom_call_v2(
+      operands=operands,
+      call_target_name=call_target_name,
+      backend_config="" if backend_config is None else backend_config,
+      has_side_effect=False if has_side_effect is None else has_side_effect,
+      result_dtypes=tuple(spec.dtype for spec in result_specs),
+      result_shapes=tuple(spec.shape for spec in result_specs),
+      name=name,
+  )
+
+
+# pylint: disable=g-doc-args
+# pylint: disable=g-doc-return-or-yield
+def call_module(
+    args,
+    *,
+    version=4,
+    module,
+    Tout,
+    Sout,
+    platforms=(),
+    function_list=(),
+    has_token_input_output=False,
+    disabled_checks=(),
+):
+  """See documentation for the XlaCallModule op.
+
+  https://github.com/search?q=repo%3Atensorflow%2Ftensorflow+path%3Axla_ops.cc+xlacallmodule&type=code
+  """
+  res = gen_xla_ops.xla_call_module(
+      args,
+      version=version,
+      module=module,
+      dim_args_spec=(),
+      Tout=Tout,
+      Sout=Sout,
+      platforms=platforms,
+      function_list=function_list,
+      has_token_input_output=has_token_input_output,
+      disabled_checks=disabled_checks,
+  )
+  # Since XLACallModule op is stateful, zero return function will return the TF
+  # op under tf.function. It creates trouble for downstream codes.
+  # Here we force it return empty tuple to work around it.
+  # TODO(johnqiangzhang): Figure out a better way to handle control dependency.
+  if isinstance(res, ops.Operation):
+    res = ()
+  return res
+
+
+def call_module_maximum_supported_version():
+  """Maximum version of XlaCallModule op supported.
+
+  See versioning details documentation for the XlaCallModule op at:
+  https://github.com/search?q=repo%3Atensorflow%2Ftensorflow+path%3Axla_call_module+%22int+kVersionMaximumSupported%22&type=code
+  """
+  return 9
+
+# pylint: enable=g-doc-args
+# pylint: enable=g-doc-return-or-yield
+
+
+def call_module_disable_check_platform():
+  # For use with xla_call_module.disabled_checks.
+  return "platform"
+
+
+def gather(
+    operand,
+    start_indices,
+    dimension_numbers,
+    slice_sizes,
+    indices_are_sorted=False,
+    name=None,
+):
   return gen_xla_ops.xla_gather(
       operand,
       start_indices,
       slice_sizes=slice_sizes,
       dimension_numbers=dimension_numbers.SerializeToString(),
       indices_are_sorted=indices_are_sorted,
-      name=name)
+      name=name,
+  )
 
 
-def scatter(operand, scatter_indices, updates, update_computation,
-            dimension_numbers, indices_are_sorted=False, name=None):
+def scatter(
+    operand,
+    scatter_indices,
+    updates,
+    update_computation,
+    dimension_numbers,
+    indices_are_sorted=False,
+    name=None,
+):
   return gen_xla_ops.xla_scatter(
       operand,
       scatter_indices,
@@ -578,8 +714,13 @@ def scatter(operand, scatter_indices, updates, update_computation,
       update_computation=update_computation,
       dimension_numbers=dimension_numbers.SerializeToString(),
       indices_are_sorted=indices_are_sorted,
-      name=name)
+      name=name,
+  )
 
 
 def optimization_barrier(*args):
   return gen_xla_ops.xla_optimization_barrier(args)
+
+
+def reduce_precision(operand, exponent_bits, mantissa_bits):
+  return gen_xla_ops.xla_reduce_precision(operand, exponent_bits, mantissa_bits)

@@ -23,10 +23,10 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/recent_request_ids.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
+#include "tensorflow/core/framework/cancellation.h"
 
 namespace tensorflow {
 
-class CancellationManager;
 class Device;
 struct WorkerEnv;
 class WorkerSession;
@@ -134,7 +134,8 @@ class Worker : public WorkerInterface {
                          MutableRunGraphResponseWrapper* response,
                          StatusCallback done);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Worker);
+  Worker(const Worker&) = delete;
+  void operator=(const Worker&) = delete;
 };
 
 }  // namespace tensorflow

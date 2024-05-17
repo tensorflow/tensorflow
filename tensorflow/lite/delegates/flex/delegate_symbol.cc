@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
 namespace tflite {
-// Corresponding weak declaration found in lite/interpreter_builder.cc.
+// Corresponding weak declaration found in lite/core/interpreter_builder.cc.
 #if TFLITE_HAS_ATTRIBUTE_WEAK
 // If weak symbol is not supported (Windows), it can use
 // TF_AcquireFlexDelegate() path instead.
@@ -39,4 +39,4 @@ TFL_CAPI_EXPORT tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
 }
 }  // extern "C"
 #endif  // !defined(__ANDROID__)
-// LINT.ThenChange(//tensorflow/lite/interpreter_builder.cc)
+// LINT.ThenChange(//tensorflow/lite/core/interpreter_builder.cc)

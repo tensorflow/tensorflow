@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
@@ -28,9 +31,9 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/notification.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tfrt/host_context/task_function.h"  // from @tf_runtime
@@ -186,6 +189,7 @@ TEST_P(RunHandlerThreadPoolTest, EnqueueTask) {
   EXPECT_EQ(result, 1);
   tws.PopNonBlockingTask(0, true).f->f();
   EXPECT_EQ(result, 2);
+  EXPECT_TRUE(absl::StrContains(tws.ToString(), "traceme_id = 0"));
 }
 
 TEST_P(RunHandlerThreadPoolTest, FindTask) {
@@ -205,6 +209,9 @@ TEST_P(RunHandlerThreadPoolTest, FindTask) {
           /*sub_thread_request_percentage=*/{1}),
       tensorflow::Env::Default(), tensorflow::ThreadOptions(),
       "tf_run_handler_pool", &waiters_mu, &waiters);
+
+  EXPECT_EQ(run_handler_thread_pool.NumBlockingThreads(), 1);
+  EXPECT_EQ(run_handler_thread_pool.NumNonBlockingThreads(), 0);
 
   Eigen::MaxSizeVector<internal::ThreadWorkSource*> thread_work_sources(5);
   thread_work_sources.resize(5);

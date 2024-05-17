@@ -70,6 +70,13 @@ tf_proto {
       type: TYPE_BYTES
       oneof_index: 0
     }
+    field {
+      name: "source_metadata"
+      number: 10
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.SourceMetadata"
+    }
     oneof_decl {
       name: "what"
     }

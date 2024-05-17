@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TPU_GRAPH_REWRITE_NODEDEF_BUILDER_H_
-#define TENSORFLOW_CORE_TPU_GRAPH_REWRITE_NODEDEF_BUILDER_H_
+#ifndef TENSORFLOW_CORE_TPU_GRAPH_REWRITE_INCOMPLETE_NODEDEF_BUILDER_H_
+#define TENSORFLOW_CORE_TPU_GRAPH_REWRITE_INCOMPLETE_NODEDEF_BUILDER_H_
 
 #include <string>
 
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -55,4 +55,4 @@ class IncompleteNodeDefBuilder {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_TPU_GRAPH_REWRITE_NODEDEF_BUILDER_H_
+#endif  // TENSORFLOW_CORE_TPU_GRAPH_REWRITE_INCOMPLETE_NODEDEF_BUILDER_H_

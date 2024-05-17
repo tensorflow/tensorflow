@@ -17,16 +17,15 @@
 import functools
 import threading
 
+from tensorflow.core.function.polymorphism import function_cache
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
-from tensorflow.python.eager import function
-
+from tensorflow.python.eager.polymorphic_function import tracing_compilation
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
@@ -185,10 +184,20 @@ def _jvp_helper_wrapper(op_name, attr_tuple, inputs, outputs, tangents,
 # eagerly (infinite recursion), and even if it did it would use extra memory and
 # run unnecessary computation. The function does not create variables, so the
 # two symbols are otherwise equivalent.
-_jvp_relaxed_shapes = function.defun(
-    _jvp_helper_wrapper, reduce_retracing=True)
-_jvp_exact_shapes = function.defun(
-    _jvp_helper_wrapper, reduce_retracing=False)
+_jvp_function_cache = function_cache.FunctionCache()
+_jvp_relaxed_config = tracing_compilation.TracingOptions(
+    _jvp_helper_wrapper,
+    name="_jvp_relaxed_shapes",
+    reduce_retracing=True,
+    function_cache=_jvp_function_cache,
+)
+
+_jvp_exact_config = tracing_compilation.TracingOptions(
+    _jvp_helper_wrapper,
+    name="_jvp_exact_shapes",
+    reduce_retracing=False,
+    function_cache=_jvp_function_cache,
+)
 
 # The maximum number of exact-shape traces to perform for a single op before
 # switching to shape relaxation.
@@ -205,10 +214,13 @@ def _jvp_dispatch(op_name,
   # Note that this _TRACE_COUNT read races with writes. That's fine, it just
   # means we may trace a few more exact shapes before moving on to relaxation.
   if _TRACE_COUNT.get(op_name, 0) < _TRACE_COUNT_LIMIT:
-    return _jvp_exact_shapes(op_name, attr_tuple, inputs, outputs, tangents,
-                             use_batch)
-  return _jvp_relaxed_shapes(op_name, attr_tuple, inputs, outputs, tangents,
-                             use_batch)
+    config = _jvp_exact_config
+  else:
+    config = _jvp_relaxed_config
+  return tracing_compilation.call_function(
+      (op_name, attr_tuple, inputs, outputs, tangents, use_batch),
+      tracing_options=config,
+  )
 
 
 pywrap_tfe.TFE_Py_RegisterJVPFunction(_jvp_dispatch)
@@ -408,7 +420,7 @@ class ForwardAccumulator():
       pywrap_tfe.TFE_Py_ForwardAccumulatorWatch(self._accumulator, primal,
                                                 tangent)
 
-    nest.map_structure(_watch, primals, tangents, expand_composites=True)
+    nest.map_structure(_watch, primals, tangents)
 
   def jvp(self, primals, unconnected_gradients=UnconnectedGradients.NONE):
     """Fetches the Jacobian-vector product computed for `primals`.

@@ -17,13 +17,19 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) &&                       \
+    (!defined(TARGET_OS_IOS) || !TARGET_OS_IOS)
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
+
 #include "tensorflow/core/kernels/pad_op.h"
 
 #include <memory>
 #include <string>
 #include <utility>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -287,6 +293,43 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNEL);
 TF_CALL_tstring(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+REGISTER_KERNEL_BUILDER(Name("Pad")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Tpaddings")
+                            .HostMemory("input")
+                            .HostMemory("paddings")
+                            .HostMemory("output"),
+                        PadOp<CPUDevice, int32, int32>);
+REGISTER_KERNEL_BUILDER(Name("Pad")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int64>("Tpaddings")
+                            .HostMemory("input")
+                            .HostMemory("paddings")
+                            .HostMemory("output"),
+                        PadOp<CPUDevice, int32, int64>);
+REGISTER_KERNEL_BUILDER(Name("PadV2")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Tpaddings")
+                            .HostMemory("input")
+                            .HostMemory("paddings")
+                            .HostMemory("constant_values")
+                            .HostMemory("output"),
+                        PadOp<CPUDevice, int32, int32>);
+REGISTER_KERNEL_BUILDER(Name("PadV2")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int64>("Tpaddings")
+                            .HostMemory("input")
+                            .HostMemory("paddings")
+                            .HostMemory("constant_values")
+                            .HostMemory("output"),
+                        PadOp<CPUDevice, int32, int64>);
+#endif
+
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // Forward declarations of the functor specializations for GPU.
@@ -390,6 +433,5 @@ REGISTER_KERNEL_BUILDER(Name("PadV2")
                             .HostMemory("output"),
                         PadOp<CPUDevice, int32, int64>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 
 }  // end namespace tensorflow

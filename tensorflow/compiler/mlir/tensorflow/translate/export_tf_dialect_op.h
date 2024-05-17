@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
@@ -43,7 +42,7 @@ Status GetAttrValuesFromOperation(
 // ShapedType for the leading values with ShapedType in the results of the
 // nodes. Set it to true if the returned NodeDef will be executed by the linked
 // TF Eager runtime.
-StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
+absl::StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
     mlir::Operation* inst, llvm::StringRef name,
     bool ignore_unregistered_attrs);
 

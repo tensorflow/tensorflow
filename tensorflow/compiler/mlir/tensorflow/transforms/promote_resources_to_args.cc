@@ -30,11 +30,11 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -137,16 +137,16 @@ mlir::LogicalResult PromoteVarHandlesToArguments(
     // then we keep them as VarHandleOps.
     if (!VariableIsInitialized(var_handle_op)) continue;
 
-    llvm::StringRef name = var_handle_op.shared_nameAttr().getValue();
+    llvm::StringRef name = var_handle_op.getSharedNameAttr().getValue();
     auto it = var_arg_index_by_name.insert({name, func_arg_types.size()});
     if (it.second) {
       var_handle_shared_names->emplace_back(name);
-      auto resource_type = var_handle_op.resource().getType();
+      auto resource_type = var_handle_op.getResource().getType();
       func_arg_types.push_back(resource_type);
-      var_handle_op.resource().replaceAllUsesWith(
+      var_handle_op.getResource().replaceAllUsesWith(
           block.addArgument(resource_type, var_handle_op.getLoc()));
     } else {
-      var_handle_op.resource().replaceAllUsesWith(
+      var_handle_op.getResource().replaceAllUsesWith(
           block.getArgument(it.first->getSecond()));
     }
     var_handle_op.erase();
@@ -197,8 +197,8 @@ LogicalResult PromoteResourcesToArguments(
   auto func_args = function.getArguments().take_front(
       function.getNumArguments() - var_handle_shared_names.size());
   for (BlockArgument& func_arg : func_args) {
-    auto resource_type =
-        getElementTypeOrSelf(func_arg.getType()).dyn_cast<TF::ResourceType>();
+    auto resource_type = mlir::dyn_cast<TF::ResourceType>(
+        getElementTypeOrSelf(func_arg.getType()));
     if (!resource_type) continue;
     if (failed(ValidateResourceArgument(function, func_arg, resource_type)))
       return failure();
@@ -213,8 +213,8 @@ LogicalResult PromoteResourcesToArguments(
   auto var_handle_args =
       function.getArguments().take_back(var_handle_shared_names.size());
   for (BlockArgument& var_handle_arg : var_handle_args) {
-    auto resource_type =
-        getElementTypeOrSelf(var_handle_arg.getType()).cast<TF::ResourceType>();
+    auto resource_type = mlir::cast<TF::ResourceType>(
+        getElementTypeOrSelf(var_handle_arg.getType()));
     add_resource_argument(var_handle_arg, resource_type);
   }
 
@@ -227,28 +227,30 @@ LogicalResult PromoteResourcesToArguments(
   // live value.
   for (Operation& op : llvm::make_early_inc_range(block)) {
     if (auto read_op = llvm::dyn_cast<TF::ReadVariableOp>(&op)) {
-      if (auto func_arg = read_op.resource().dyn_cast<BlockArgument>()) {
+      if (auto func_arg =
+              mlir::dyn_cast<BlockArgument>(read_op.getResource())) {
         if (func_arg.getOwner() != &block)
           return read_op.emitOpError(kResourceFunctionMsg);
 
         ResourceInfo& resource_info = resources[func_arg.getArgNumber()];
         resource_info.read = true;
-        read_op.value().replaceAllUsesWith(resource_info.live_value);
+        read_op.getValue().replaceAllUsesWith(resource_info.live_value);
       } else {
         return read_op.emitOpError(kInvalidResourceMsg);
       }
 
       read_op.erase();
     } else if (auto write_op = llvm::dyn_cast<TF::AssignVariableOp>(&op)) {
-      if (auto func_arg = write_op.resource().dyn_cast<BlockArgument>()) {
+      if (auto func_arg =
+              mlir::dyn_cast<BlockArgument>(write_op.getResource())) {
         if (func_arg.getOwner() != &block)
           return write_op.emitOpError(kResourceFunctionMsg);
 
         ResourceInfo& resource_info = resources[func_arg.getArgNumber()];
         resource_info.write = true;
-        resource_info.live_value = write_op.value();
+        resource_info.live_value = write_op.getValue();
       } else {
-        return read_op.emitOpError(kInvalidResourceMsg);
+        return write_op.emitOpError(kInvalidResourceMsg);
       }
 
       write_op.erase();
@@ -341,8 +343,11 @@ LogicalResult PromoteResourcesToArguments(
   return success();
 }
 
+#define GEN_PASS_DEF_PROMOTERESOURCESTOARGSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class PromoteResourcesToArgsPass
-    : public PromoteResourcesToArgsPassBase<PromoteResourcesToArgsPass> {
+    : public impl::PromoteResourcesToArgsPassBase<PromoteResourcesToArgsPass> {
  public:
   PromoteResourcesToArgsPass() = default;
   explicit PromoteResourcesToArgsPass(llvm::ArrayRef<std::string> functions);
@@ -378,8 +383,12 @@ void PromoteResourcesToArgsPass::runOnOperation() {
   }
 }
 
+#define GEN_PASS_DEF_PROMOTEVARHANDLESTOARGSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class PromoteVarHandlesToArgsPass
-    : public PromoteVarHandlesToArgsPassBase<PromoteVarHandlesToArgsPass> {
+    : public impl::PromoteVarHandlesToArgsPassBase<
+          PromoteVarHandlesToArgsPass> {
  public:
   void runOnOperation() override;
 };

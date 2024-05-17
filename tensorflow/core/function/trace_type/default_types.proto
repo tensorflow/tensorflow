@@ -46,10 +46,3 @@ message SerializedDict {
   repeated tensorflow.core.function.trace_type.serialization.SerializedTraceType
       values = 2;
 }
-
-// Represents a serialized Reference type.
-message SerializedReference {
-  optional SerializedLiteral identifier = 1;
-  optional tensorflow.core.function.trace_type.serialization.SerializedTraceType
-      base = 2;
-}

@@ -14,21 +14,18 @@
 # ==============================================================================
 """Tests for TPUStrategy."""
 
-from absl import logging
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import composite_tensor
@@ -43,30 +40,52 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import save
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
-from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_hardware_feature
+from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu import tpu_strategy_util
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
-
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")
 flags.DEFINE_string("project", None, "Name of GCP project with TPU.")
 flags.DEFINE_string("zone", None, "Name of GCP zone with TPU.")
+
+
+class TestExportArchive(autotrackable.AutoTrackable):
+
+  def __init__(self, init_value):
+    self._var = variables.Variable(init_value)
+    self._fn = def_function.function(self.update_var)
+    self._packed_var = self._var._packed_var
+
+  @def_function.function
+  def update_var(self):
+    # Use packed variable in function to simulate the error
+    # in b/323080532
+    self._packed_var.assign_add(3.0).assign_sub(1.0)
+
+  def save_function(self, directory):
+    save.save(self, directory)
+
+  @property
+  def packed_var(self):
+    return self._packed_var
 
 
 def get_tpu_cluster_resolver():
@@ -81,7 +100,7 @@ def get_tpu_cluster_resolver():
 def get_tpu_strategy(enable_packed_var=False):
   resolver = get_tpu_cluster_resolver()
   remote.connect_to_cluster(resolver)
-  tpu_strategy_util.initialize_tpu_system(resolver)
+  tpu_cluster_resolver.initialize_tpu_system(resolver)
   strategy = tpu_lib.TPUStrategyV2(resolver)
   strategy._enable_packed_variable_in_eager_mode = enable_packed_var
   return strategy
@@ -110,33 +129,6 @@ class TPUTest(test.TestCase):
     with ops.device("/device:TPU:0"):
       result = foo(a)
     self.assertAllEqual(6, result)
-
-  # In this case, the entire computation in foo is compiled using JIT
-  # compilation and contains unsupported ops that should be outside compiled.
-  def test_single_tpu_jit_compile_with_outside_compilation(self):
-    context.enable_jit_compile_rewrite()
-    get_tpu_strategy(True)
-    config.set_soft_device_placement(True)
-    with ops.device("/device:TPU:0"):
-      a = variables.Variable(1)
-
-    def get_a_plus_one():
-      return a + 1
-
-    @def_function.function(
-        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
-    def foo(x):
-      b = x + get_a_plus_one()
-      my_str = string_ops.as_string(b)
-      new_str = my_str + "0"
-      c = string_ops.string_to_number(new_str, out_type=dtypes.int32)
-      logging_ops.print_v2(c)
-      b = c + get_a_plus_one()
-      return b + 1
-
-    with ops.device("/device:TPU:0"):
-      result = foo(a)
-    self.assertAllEqual(33, result)
 
   # In this case, each of the ops in the TPU device scope are compiled and run
   # individually.
@@ -178,17 +170,35 @@ class TPUTest(test.TestCase):
   def test_multiple_initialize_system(self):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    tpu_strategy_util.initialize_tpu_system(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
 
     with test.mock.patch.object(logging, "warning") as mock_log:
-      tpu_strategy_util.initialize_tpu_system(resolver)
+      tpu_cluster_resolver.initialize_tpu_system(resolver)
       self.assertRegex(str(mock_log.call_args), "already been initialized")
+
+  def test_initialize_tpu_system_impl_input(self):
+    resolver = get_tpu_cluster_resolver()
+    with self.assertRaisesRegex(
+        TypeError,
+        r"tpu_cluster_resolver_cls is not"
+        r" tf.distribute.cluster_resolver.TPUClusterResolver."):
+      tpu_strategy_util.initialize_tpu_system_impl(
+          resolver, tpu_cluster_resolver_cls=None)
+
+  def test_shutdown_tpu_system_impl_input(self):
+    resolver = get_tpu_cluster_resolver()
+    with self.assertRaisesRegex(
+        TypeError,
+        r"tpu_cluster_resolver_cls is not"
+        r" tf.distribute.cluster_resolver.TPUClusterResolver."):
+      tpu_strategy_util.shutdown_tpu_system_impl(
+          resolver, tpu_cluster_resolver_cls=None)
 
   def test_tpu_tf_function_same_device(self):
     with ops.device("/device:TPU:0"):
       a = variables.Variable(1)
 
-    @function.defun_with_attributes(attributes={"_noinline": True})
+    @def_function.function(experimental_attributes={"_noinline": True})
     def get_a_plus_one():
       return a + 1
 
@@ -224,13 +234,14 @@ class TPUTest(test.TestCase):
     def foo():
       return 1 + 1
 
-    func1 = function.defun_with_attributes(
-        foo, attributes={"_XlaMustCompile": False})
-    func2 = function.defun_with_attributes(
-        foo, attributes={
+    func1 = def_function.function(foo, jit_compile=False)
+    func2 = def_function.function(
+        foo,
+        jit_compile=False,
+        experimental_attributes={
             "_OutputsOnOpDevice": True,
-            "_XlaMustCompile": False
-        })
+        },
+    )
 
     with ops.device("/device:TPU:0"):
       ret1 = func1()
@@ -267,6 +278,27 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
     ret = func()
     self.assertAllEqual(ret, 2.0)
+
+  def test_save(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+    with strategy.scope():
+      v = variables.Variable(1.0)
+    export_dir = self.create_tempdir()
+    save.save(v, export_dir)
+    reloaded_var = load.load(export_dir)
+    self.assertAllEqual(reloaded_var, 1.0)
+
+  def test_packed_variable_export(self, enable_packed_var):
+    if not enable_packed_var:
+      self.skipTest("Test for Packed Variables only.")
+    strategy = get_tpu_strategy(enable_packed_var)
+    with strategy.scope():
+      export_dir = self.get_temp_dir()
+      export_archive = TestExportArchive(1.0)
+    export_archive.save_function(export_dir)
+    restored_object = load.load(export_dir)
+    with ops.device("/tpu:0"):
+      self.assertAllEqual(restored_object._packed_var, 1.0)
 
   def testStaticHashTableDatasetFnHostTrainingLoop(self, enable_packed_var):
     self._dataset_fn_tracing_count = 0
@@ -333,7 +365,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
   def test_sequential_runs(self, enable_packed_var):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
     # Computation replicated to all cores.
     device_assignment = device_assignment_lib.DeviceAssignment.build(
         topology, num_replicas=2)
@@ -382,7 +414,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
           1: (lambda: do_inference("/device:TPU:1", inference_fn, 1)),
       }
       branch_index = inference_iteration.assign_add(1, use_locking=True) % 2
-      return control_flow_ops.switch_case(branch_index, branch_fns)
+      return control_flow_switch_case.switch_case(branch_index, branch_fns)
 
     self.assertAllEqual(2., run_inference(1))  # Use TPU core 0.
     self.assertAllEqual(3., run_inference(1))  # Use TPU core 1.
@@ -444,7 +476,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
   def test_computation_on_subset_cores(self, enable_packed_var):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
     all_core_strategy = tpu_lib.TPUStrategyV2(resolver)
     all_core_strategy._enable_packed_variable_in_eager_mode = enable_packed_var
 
@@ -485,7 +517,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
   def test_worker_devices_on_subset_cores(self, enable_packed_var):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
 
     # Strategy for the 1st core.
     device_assignment = device_assignment_lib.DeviceAssignment.build(
@@ -766,6 +798,8 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
           synchronization=variables.VariableSynchronization.ON_READ,
           aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
 
+    self.assertFalse(w._is_mirrored())
+
     @def_function.function
     def run(iterator):
 
@@ -774,7 +808,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
         return w
 
       def all_reduce(x):
-        ctx = distribution_strategy_context.get_replica_context()
+        ctx = distribute_lib.get_replica_context()
         return ctx.all_reduce("SUM", w) + x
 
       outputs = strategy.run(computation, args=(next(iterator),))
@@ -975,7 +1009,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     def sparse_lookup(iterator):
 
       def tpu_function(sparse):
-        lookup = tpu.outside_compilation(
+        lookup = tpu_replication.outside_compilation(
             embedding_ops.safe_embedding_lookup_sparse, table, sparse)
         return math_ops.reduce_sum(lookup, axis=0)
 
@@ -1098,6 +1132,8 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       self.assertLen(strategy.extended.worker_devices, trace_count[0])
 
   def test_tpu_cancellation_does_not_close_chips(self, enable_packed_var):
+    if tpu_lib.enable_batch_variable_initialization():
+      self.skipTest("b/271767559")
     if not FLAGS.tpu_use_tfrt:
       self.skipTest(
           "`tpu_cancellation_closes_chip only applies to TFRT TPU Runtime.")
@@ -1144,6 +1180,58 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
   def test_get_tpu_cluster_resolver(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
     self.assertIsNotNone(strategy.cluster_resolver)
+
+  def test_replica_order_for_distribute_datasets_from_function(
+      self, enable_packed_var
+  ):
+    def _create_dataset(strategy):
+      def dataset_fn(ctx):
+        del ctx
+        return dataset_ops.Dataset.range(2)
+
+      return strategy.distribute_datasets_from_function(dataset_fn)
+
+    values = self._test_replica_order(_create_dataset).values
+
+    self.assertLen(values, 2)
+    self.assertEqual(1, values[0].numpy())
+    self.assertEqual(0, values[1].numpy())
+
+  def test_replica_order_for_experimental_distribute_dataset(
+      self, enable_packed_var
+  ):
+    def _create_dataset(strategy):
+      dataset = dataset_ops.Dataset.range(2).batch(2)
+      return strategy.experimental_distribute_dataset(dataset)
+
+    values = self._test_replica_order(_create_dataset).values
+
+    self.assertLen(values, 2)
+    self.assertEqual(1, values[0].numpy())
+    self.assertEqual(0, values[1].numpy())
+
+  def _test_replica_order(self, create_dist_dataset_fn):
+    tf2.enable()
+
+    resolver = get_tpu_cluster_resolver()
+    remote.connect_to_cluster(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
+    device_assignment = device_assignment_lib.DeviceAssignment(
+        topology, core_assignment=[[[0, 0, 0, 1]], [[0, 0, 0, 0]]]
+    )
+    strategy = tpu_lib.TPUStrategyV2(
+        resolver, experimental_device_assignment=device_assignment
+    )
+    strategy.extended._enable_data_reorder = True
+
+    dist_dataset = create_dist_dataset_fn(strategy)
+    iterator = iter(dist_dataset)
+
+    @def_function.function
+    def test_iterators_order(iterator):
+      return next(iterator)
+
+    return test_iterators_order(iterator)
 
 
 @test_util.with_eager_op_as_function
@@ -1265,7 +1353,7 @@ class TPUStrategyDistributionTest(
   def test_update_config_proto(self):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    tpu_strategy_util.initialize_tpu_system(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
     strategy = tpu_lib.TPUStrategyV2(resolver)
 
     config_proto = config_pb2.ConfigProto()
@@ -1397,7 +1485,7 @@ class DeviceAssignmentTest(test.TestCase):
   def test_core_assignment(self):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
     device_assignment = device_assignment_lib.DeviceAssignment(
         topology, core_assignment=[[[0, 0, 0, 0]]])
     self.assertAllEqual([[[0, 0, 0, 0]]], device_assignment.core_assignment)
@@ -1409,7 +1497,7 @@ class DeviceAssignmentTest(test.TestCase):
   def test_device_assignment_strategy_properties(self):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
     device_assignment = device_assignment_lib.DeviceAssignment(
         topology, core_assignment=[[[0, 0, 0, 0]]])
     strategy = tpu_lib.TPUStrategyV2(
@@ -1422,7 +1510,7 @@ class DeviceAssignmentTest(test.TestCase):
   def test_device_assignment_constants(self):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
     device_assignment = device_assignment_lib.DeviceAssignment(
         topology,
         core_assignment=device_assignment_lib.SINGLE_CORE_ASSIGNMENT)
@@ -1435,7 +1523,7 @@ class DeviceAssignmentTest(test.TestCase):
   def test_variables_mismatched_device_assignment(self):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
 
     strategy0 = tpu_lib.TPUStrategyV2(resolver)
     self.assertEqual(
@@ -1474,5 +1562,27 @@ class DeviceAssignmentTest(test.TestCase):
                               strategy0.experimental_local_results(v_read)))
 
 
+class VariableCreationTest(test.TestCase):
+
+  def test_custom_tpu_variable_creator(self):
+    strategy = get_tpu_strategy()
+
+    def variable_creator(next_creator, **kwargs):
+      def custom_tpu_variable_creator(next_creator, **kwargs):
+        return next_creator(**kwargs)
+      kwargs["custom_tpu_variable_creator"] = custom_tpu_variable_creator
+      return next_creator(**kwargs)
+
+    with strategy.scope():
+      tpu_variable = variables.Variable(1.0)
+
+      self.assertIsInstance(tpu_variable, tpu_values.TPUDistributedVariable)
+
+      with variable_scope.variable_creator_scope(variable_creator):
+        non_tpu_variable = variables.Variable(1.0)
+        self.assertIsInstance(non_tpu_variable, variables.Variable)
+
+
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()

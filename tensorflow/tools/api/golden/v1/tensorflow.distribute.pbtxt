@@ -14,7 +14,7 @@ tf_module {
   }
   member {
     name: "InputReplicationMode"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "MirroredStrategy"
@@ -30,7 +30,7 @@ tf_module {
   }
   member {
     name: "ReduceOp"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "ReductionToOneDevice"

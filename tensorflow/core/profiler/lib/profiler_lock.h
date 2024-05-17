@@ -15,49 +15,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_PROFILER_LOCK_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_LOCK_H_
 
+#include "absl/base/macros.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tsl/profiler/lib/profiler_lock.h"
+
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
 
 namespace tensorflow {
 namespace profiler {
 
-// Handle for the profiler lock. At most one instance of this class, the
-// "active" instance, owns the profiler lock.
-class ProfilerLock {
- public:
-  // Acquires the profiler lock if no other profiler session is currently
-  // active.
-  static StatusOr<ProfilerLock> Acquire();
-
-  // Default constructor creates an inactive instance.
-  ProfilerLock() = default;
-
-  // Non-copyable.
-  ProfilerLock(const ProfilerLock&) = delete;
-  ProfilerLock& operator=(const ProfilerLock&) = delete;
-
-  // Movable.
-  ProfilerLock(ProfilerLock&& other)
-      : active_(std::exchange(other.active_, false)) {}
-  ProfilerLock& operator=(ProfilerLock&& other) {
-    active_ = std::exchange(other.active_, false);
-    return *this;
-  }
-
-  ~ProfilerLock() { ReleaseIfActive(); }
-
-  // Allow creating another active instance.
-  void ReleaseIfActive();
-
-  // Returs true if this is the active instance.
-  bool Active() const { return active_; }
-
- private:
-  // Explicit constructor allows creating an active instance, private so it can
-  // only be called by Acquire.
-  explicit ProfilerLock(bool active) : active_(active) {}
-
-  bool active_ = false;
-};
+using ProfilerLock ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::ProfilerLock;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

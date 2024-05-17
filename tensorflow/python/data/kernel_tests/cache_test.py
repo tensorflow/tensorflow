@@ -18,15 +18,18 @@ import os
 from os import path
 import shutil
 import tempfile
+from typing import Callable, Optional
 
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
@@ -220,6 +223,10 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset_ops.Dataset.range(3).flat_map(
           lambda x: dataset_ops.Dataset.from_tensors(x).repeat(repeat_count))
 
+      options = options_lib.Options()
+      options.experimental_optimization.inject_prefetch = False
+      dataset = dataset.with_options(options)
+
       cached_dataset = dataset.cache().repeat(2)
       uncached_dataset = dataset.repeat(2)
 
@@ -305,6 +312,9 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
       return x
 
     dataset = dataset_ops.Dataset.range(10).map(increment_fn).cache().repeat(2)
+    options = options_lib.Options()
+    options.experimental_optimization.inject_prefetch = False
+    dataset = dataset.with_options(options)
     get_next = self.getNext(dataset, requires_initialization=True)
 
     # first epoch
@@ -328,6 +338,9 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
       return x
 
     dataset = dataset_ops.Dataset.range(10).map(increment_fn).cache()
+    options = options_lib.Options()
+    options.experimental_optimization.inject_prefetch = False
+    dataset = dataset.with_options(options)
 
     # first epoch
     i = 0
@@ -680,6 +693,73 @@ class CacheRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
     # will cache through the requested index. In this case, random access
     # with caching will cache through index 11.
     self.verifyRandomAccessInfiniteCardinality(dataset, expected)
+
+
+class CacheGlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[10],
+              repetitions=[1, 2],
+              seed=[None, 42],
+              reshuffle_each_iteration=[True, False])))
+  def test(
+      self,
+      dataset_range: int,
+      repetitions: int,
+      seed: Optional[int],
+      reshuffle_each_iteration: bool):
+    dataset = dataset_ops.Dataset.range(dataset_range)
+    dataset = dataset.cache()
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    if repetitions > 1:
+      dataset = dataset.repeat(repetitions)
+    dataset = global_shuffle_op._global_shuffle(
+        dataset, seed=seed, reshuffle_each_iteration=reshuffle_each_iteration)
+
+    expected = list(range(0, dataset_range)) * repetitions
+    dataset_output = self.getDatasetOutput(
+        dataset, requires_initialization=True)
+    self.assertCountEqual(dataset_output, expected)
+    self.assertNotEqual(dataset_output, expected)
+    self.assertLen(dataset_output, self.evaluate(dataset.cardinality()))
+
+
+class CacheGlobalShuffleCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[10],
+              repetitions=[1, 2],
+              reshuffle_each_iteration=[True, False])))
+  def test(
+      self,
+      verify_fn: Callable[..., None],
+      dataset_range: int,
+      repetitions: int,
+      reshuffle_each_iteration: bool):
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.range(dataset_range)
+      dataset = dataset.cache()
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+      if repetitions > 1:
+        dataset = dataset.repeat(repetitions)
+      return global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=dataset_range * repetitions,
+        assert_items_equal=reshuffle_each_iteration)
+
 
 if __name__ == "__main__":
   test.main()

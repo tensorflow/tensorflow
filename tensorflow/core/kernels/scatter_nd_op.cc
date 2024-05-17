@@ -313,6 +313,25 @@ class ScatterNdUpdateOp : public OpKernel {
   }
 };
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#define REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(type)                     \
+  template Status functor::DoScatterNd<GPUDevice, type, int64,            \
+                                       scatter_nd_op::UpdateOp::ASSIGN>(  \
+      OpKernelContext*, Tensor const&, Tensor const&, TensorShape const&, \
+      Tensor*, bool);
+
+// Explicitly instantiate DoScatterNd for template arguments which are used
+// by the CSRSparseMatrixToDense op.
+REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(float)
+REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(double)
+REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(complex64)
+REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(complex128)
+
+#undef REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 #define REGISTER_SCATTER_ND_KERNEL_INDEX(type, index_type, dev, name) \
   REGISTER_KERNEL_BUILDER(Name(name)                                  \
                               .Device(DEVICE_##dev)                   \
@@ -664,8 +683,8 @@ TF_CALL_bool(REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU);
 REGISTER_SCATTER_ND_ALL_INT32_GPU();
 REGISTER_SCATTER_ND_MIN_MAX_INT32_GPU();
 
-TF_CALL_int64(REGISTER_SCATTER_ND_ALL_GPU);
-TF_CALL_int64(REGISTER_SCATTER_ND_MIN_MAX_GPU);
+TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_ND_ALL_GPU);
+TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_ND_MIN_MAX_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ND_ALL_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_SCATTER_ND_ALL_GPU);
@@ -844,7 +863,7 @@ Status PrepareAndValidateInputs(const TensorShape& params_shape,
   const int64_t safe_slice_dim = (*slice_dim < 1) ? 1 : *slice_dim;
   *num_updates = indices_shape.num_elements() / safe_slice_dim;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename Device, typename Index>
@@ -858,99 +877,11 @@ class IndexFlattener {
 
 namespace {
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-// Copies inputs to the CPU, runs DoScatterNd on the CPU, then copies output
-// back to GPU. This is useful because the CPU implementation is deterministic
-// and the GPU implementation is not. Tensor inputs to this function must be on
-// the GPU.
-template <typename T, typename Index, scatter_nd_op::UpdateOp Op>
-Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
-                        const Tensor& updates, const TensorShape& shape,
-                        Tensor* out, bool allocate) {
-  AllocatorAttributes alloc_attr;
-  alloc_attr.set_on_host(true);
-  alloc_attr.set_gpu_compatible(true);
-  auto stream = c->op_device_context()->stream();
-
-  // Copy 'indices' to host.
-  Tensor host_indices;
-  TF_RETURN_IF_ERROR(c->allocate_temp(indices.dtype(), indices.shape(),
-                                      &host_indices, alloc_attr));
-  se::DeviceMemoryBase indices_ptr(
-      const_cast<Tensor&>(indices).flat<Index>().data(),
-      indices.flat<Index>().size() * sizeof(Index));
-  stream->ThenMemcpy(host_indices.flat<Index>().data(), indices_ptr,
-                     indices.NumElements() * sizeof(Index));
-  if (!stream) {
-    return errors::Internal("Failed to copy indices to host");
-  }
-
-  // Copy 'updates' to host.
-  Tensor host_updates;
-  TF_RETURN_IF_ERROR(c->allocate_temp(updates.dtype(), updates.shape(),
-                                      &host_updates, alloc_attr));
-  se::DeviceMemoryBase updates_ptr(
-      const_cast<Tensor&>(updates).flat<T>().data(),
-      updates.flat<T>().size() * sizeof(T));
-  stream->ThenMemcpy(host_updates.flat<T>().data(), updates_ptr,
-                     updates.NumElements() * sizeof(T));
-  if (!stream) {
-    return errors::Internal("Failed to copy updates to host");
-  }
-
-  // Create 'out' on host, copying from device if 'allocate' is false.
-  Tensor host_out;
-  TF_RETURN_IF_ERROR(
-      c->allocate_temp(updates.dtype(), shape, &host_out, alloc_attr));
-  if (allocate) {
-    TF_RETURN_IF_ERROR(c->allocate_temp(DataTypeToEnum<T>::value, shape, out));
-    functor::SetZeroFunctor<CPUDevice, T> fill;
-    fill(c->eigen_device<CPUDevice>(), host_out.flat<T>());
-  } else {
-    CHECK_NOTNULL(out);  // Crash OK
-    se::DeviceMemoryBase out_ptr(out->flat<T>().data(),
-                                 out->flat<T>().size() * sizeof(T));
-    stream->ThenMemcpy(host_out.flat<T>().data(), out_ptr,
-                       host_out.NumElements() * sizeof(T));
-    if (!stream) {
-      return errors::Internal("Failed to copy output to host");
-    }
-  }
-
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-  TF_RETURN_IF_ERROR(DoScatterNd<CPUDevice, T, Index, Op>(
-      c, host_indices, host_updates, shape, &host_out, /*allocate=*/false));
-
-  // Copy 'host_out' to device.
-  se::DeviceMemoryBase out_ptr(out->flat<T>().data(),
-                               out->flat<T>().size() * sizeof(T));
-  stream->ThenMemcpy(&out_ptr, host_out.flat<T>().data(),
-                     host_out.NumElements() * sizeof(T));
-  if (!stream) {
-    return errors::Internal("Failed to copy output to device");
-  }
-  // Block host, since 'host_out' cannot be destructed until the copy is done.
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-  return OkStatus();
-}
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-}  // namespace
-
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp Op>
-Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
-                   const Tensor& updates, const TensorShape& shape, Tensor* out,
-                   bool allocate) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  if (std::is_same<Device, GPUDevice>::value &&
-      tensorflow::OpDeterminismRequired()) {
-    return DoScatterNdOnCpu<T, Index, Op>(c, indices, updates, shape, out,
-                                          allocate);
-  }
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
+                       const Tensor& updates, const TensorShape& shape,
+                       Tensor* out, bool allocate) {
   int64_t slice_dim;
   Index num_updates;
   Index slice_size;
@@ -973,7 +904,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
   }
 
   if (shape.num_elements() == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (allocate) {
@@ -1025,7 +956,105 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
             gtl::ArraySlice<Index>(&indices_flat(bad_i, 0), slice_dim), ", "),
         "] does not index into shape ", shape.DebugString());
   }
+  return absl::OkStatus();
+}
+
+template <typename T, typename Index, scatter_nd_op::UpdateOp Op>
+Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
+                        const Tensor& updates, const TensorShape& shape,
+                        Tensor* out, bool allocate);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+// Copies inputs to the CPU, runs DoScatterNd on the CPU, then copies output
+// back to GPU. This is useful because the CPU implementation is deterministic
+// and the GPU implementation is not. Tensor inputs to this function must be on
+// the GPU.
+template <typename T, typename Index, scatter_nd_op::UpdateOp Op>
+Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
+                        const Tensor& updates, const TensorShape& shape,
+                        Tensor* out, bool allocate) {
+  AllocatorAttributes alloc_attr;
+  alloc_attr.set_on_host(true);
+  alloc_attr.set_gpu_compatible(true);
+  auto stream = c->op_device_context()->stream();
+
+  // Copy 'indices' to host.
+  Tensor host_indices;
+  TF_RETURN_IF_ERROR(c->allocate_temp(indices.dtype(), indices.shape(),
+                                      &host_indices, alloc_attr));
+  se::DeviceMemoryBase indices_ptr(
+      const_cast<Tensor&>(indices).flat<Index>().data(),
+      indices.flat<Index>().size() * sizeof(Index));
+  TF_RETURN_IF_ERROR(stream->Memcpy(host_indices.flat<Index>().data(),
+                                    indices_ptr,
+                                    indices.NumElements() * sizeof(Index)));
+  // Copy 'updates' to host.
+  Tensor host_updates;
+  TF_RETURN_IF_ERROR(c->allocate_temp(updates.dtype(), updates.shape(),
+                                      &host_updates, alloc_attr));
+  se::DeviceMemoryBase updates_ptr(
+      const_cast<Tensor&>(updates).flat<T>().data(),
+      updates.flat<T>().size() * sizeof(T));
+  TF_RETURN_IF_ERROR(stream->Memcpy(host_updates.flat<T>().data(), updates_ptr,
+                                    updates.NumElements() * sizeof(T)));
+  // Create 'out' on host, copying from device if 'allocate' is false.
+  Tensor host_out;
+  TF_RETURN_IF_ERROR(
+      c->allocate_temp(updates.dtype(), shape, &host_out, alloc_attr));
+  if (allocate) {
+    TF_RETURN_IF_ERROR(c->allocate_temp(DataTypeToEnum<T>::value, shape, out));
+    functor::SetZeroFunctor<CPUDevice, T> fill;
+    fill(c->eigen_device<CPUDevice>(), host_out.flat<T>());
+  } else {
+    CHECK_NOTNULL(out);  // Crash OK
+    se::DeviceMemoryBase out_ptr(out->flat<T>().data(),
+                                 out->flat<T>().size() * sizeof(T));
+    TF_RETURN_IF_ERROR(stream->Memcpy(host_out.flat<T>().data(), out_ptr,
+                                      host_out.NumElements() * sizeof(T)));
+  }
+
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  TF_RETURN_IF_ERROR(DoScatterNd<CPUDevice, T, Index, Op>(
+      c, host_indices, host_updates, shape, &host_out, /*allocate=*/false));
+
+  // Copy 'host_out' to device.
+  se::DeviceMemoryBase out_ptr(out->flat<T>().data(),
+                               out->flat<T>().size() * sizeof(T));
+  TF_RETURN_IF_ERROR(stream->Memcpy(&out_ptr, host_out.flat<T>().data(),
+                                    host_out.NumElements() * sizeof(T)));
+  // Block host, since 'host_out' cannot be destructed until the copy is done.
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return OkStatus();
+}
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+}  // namespace
+
+template <typename Device, typename T, typename Index,
+          scatter_nd_op::UpdateOp Op>
+Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
+                   const Tensor& updates, const TensorShape& shape, Tensor* out,
+                   bool allocate) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  if (std::is_same<Device, GPUDevice>::value &&
+      tensorflow::OpDeterminismRequired() && !DisableScatterOpDeterminism()) {
+    return DoScatterNdOnCpu<T, Index, Op>(c, indices, updates, shape, out,
+                                          allocate);
+  }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+  // Run on the CPU for integer types, since the GPU implementation uses
+  // atomics, which are not supported for all integer types.
+  if constexpr (std::is_same<Device, GPUDevice>::value &&
+                std::is_integral<T>::value) {
+    return DoScatterNdOnCpu<T, Index, Op>(c, indices, updates, shape, out,
+                                          allocate);
+  } else {
+    return DoScatterNdImpl<Device, T, Index, Op>(c, indices, updates, shape,
+                                                 out, allocate);
+  }
 }
 }  // namespace functor
 

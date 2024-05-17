@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_UNBOUNDED_THREAD_POOL_H_
 
 #include <deque>
+#include <functional>
 #include <memory>
 #include <vector>
 

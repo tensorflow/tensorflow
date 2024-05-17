@@ -21,7 +21,6 @@ from absl import app
 
 from google.protobuf import message
 from google.protobuf import text_format
-from tensorflow.contrib.fused_conv.ops import gen_fused_conv2d_bias_activation_op  # pylint: disable=unused-import
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2

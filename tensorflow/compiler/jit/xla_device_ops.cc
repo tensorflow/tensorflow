@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
 
 namespace tensorflow {
@@ -56,7 +55,7 @@ void XlaAssignVariableOp::Compute(OpKernelContext* context) {
                                 *ptr = new Var(dtype_);
                                 *(*ptr)->tensor() = value;
                                 (*ptr)->is_initialized = true;
-                                return OkStatus();
+                                return absl::OkStatus();
                               }));
   mutex_lock ml(*variable->mu());
   OP_REQUIRES(

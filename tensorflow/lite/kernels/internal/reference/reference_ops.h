@@ -26,10 +26,11 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
@@ -73,6 +74,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/resize_bilinear.h"
 #include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
+#include "tensorflow/lite/kernels/internal/reference/select.h"
 #include "tensorflow/lite/kernels/internal/reference/slice.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/space_to_batch_nd.h"
@@ -85,7 +87,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
-#include "tensorflow/lite/kernels/internal/types.h"
 namespace tflite {
 
 namespace reference_ops {
@@ -150,11 +151,11 @@ inline void ReluX(const tflite::ReluParams& params,
   ruy::profiler::ScopeLabel label("Quantized ReluX (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
-    const int32 val = static_cast<int32_t>(input_data[i]);
-    int32 clamped = params.output_offset +
-                    MultiplyByQuantizedMultiplier(val - params.input_offset,
-                                                  params.output_multiplier,
-                                                  params.output_shift);
+    const int32_t val = static_cast<int32_t>(input_data[i]);
+    int32_t clamped = params.output_offset +
+                      MultiplyByQuantizedMultiplier(val - params.input_offset,
+                                                    params.output_multiplier,
+                                                    params.output_shift);
     clamped = std::max(params.quantized_activation_min, clamped);
     clamped = std::min(params.quantized_activation_max, clamped);
     output_data[i] = static_cast<T>(clamped);
@@ -184,11 +185,11 @@ inline void ReluX(const tflite::ActivationParams& params,
 // generate max(D1, D2) nested for loops.
 inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
                                  const RuntimeShape& unswitched_input1_shape,
-                                 const uint8* unswitched_input1_data,
+                                 const uint8_t* unswitched_input1_data,
                                  const RuntimeShape& unswitched_input2_shape,
-                                 const uint8* unswitched_input2_data,
+                                 const uint8_t* unswitched_input2_data,
                                  const RuntimeShape& output_shape,
-                                 uint8* output_data) {
+                                 uint8_t* output_data) {
   ArithmeticParams switched_params = unswitched_params;
   switched_params.input1_offset = unswitched_params.input2_offset;
   switched_params.input2_offset = unswitched_params.input1_offset;
@@ -199,25 +200,25 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
 
   const ArithmeticParams& params =
       use_unswitched ? unswitched_params : switched_params;
-  const uint8* input1_data =
+  const uint8_t* input1_data =
       use_unswitched ? unswitched_input1_data : unswitched_input2_data;
-  const uint8* input2_data =
+  const uint8_t* input2_data =
       use_unswitched ? unswitched_input2_data : unswitched_input1_data;
 
   // Fivefold nested loops. The second input resets its position for each
   // iteration of the second loop. The first input resets its position at the
   // beginning of the fourth loop. The innermost loop is an elementwise Mul of
   // sections of the arrays.
-  uint8* output_data_ptr = output_data;
-  const uint8* input1_data_ptr = input1_data;
-  const uint8* input2_data_reset = input2_data;
+  uint8_t* output_data_ptr = output_data;
+  const uint8_t* input1_data_ptr = input1_data;
+  const uint8_t* input2_data_reset = input2_data;
   int y0 = params.broadcast_shape[0];
   int y1 = params.broadcast_shape[1];
   int y2 = params.broadcast_shape[2];
   int y3 = params.broadcast_shape[3];
   int y4 = params.broadcast_shape[4];
   for (int i0 = 0; i0 < y0; ++i0) {
-    const uint8* input2_data_ptr;
+    const uint8_t* input2_data_ptr;
     for (int i1 = 0; i1 < y1; ++i1) {
       input2_data_ptr = input2_data_reset;
       for (int i2 = 0; i2 < y2; ++i2) {
@@ -235,9 +236,9 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
 }
 
 inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const int16* input1_data,
-                const RuntimeShape& input2_shape, const int16* input2_data,
-                const RuntimeShape& output_shape, int16* output_data) {
+                const RuntimeShape& input1_shape, const int16_t* input1_data,
+                const RuntimeShape& input2_shape, const int16_t* input2_data,
+                const RuntimeShape& output_shape, int16_t* output_data) {
   ruy::profiler::ScopeLabel label("Mul/Int16");
 
   const int flat_size =
@@ -254,13 +255,13 @@ inline void Mul(const ArithmeticParams& params,
 }
 
 inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const int16* input1_data,
-                const RuntimeShape& input2_shape, const int16* input2_data,
-                const RuntimeShape& output_shape, uint8* output_data) {
+                const RuntimeShape& input1_shape, const int16_t* input1_data,
+                const RuntimeShape& input2_shape, const int16_t* input2_data,
+                const RuntimeShape& output_shape, uint8_t* output_data) {
   ruy::profiler::ScopeLabel label("Mul/Int16Uint8");
-  int32 output_offset = params.output_offset;
-  int32 output_activation_min = params.quantized_activation_min;
-  int32 output_activation_max = params.quantized_activation_max;
+  int32_t output_offset = params.output_offset;
+  int32_t output_activation_min = params.quantized_activation_min;
+  int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   const int flat_size =
@@ -272,12 +273,12 @@ inline void Mul(const ArithmeticParams& params,
 
     F0 unclamped_result =
         F0::FromRaw(input1_data[i]) * F0::FromRaw(input2_data[i]);
-    int16 rescaled_result =
+    int16_t rescaled_result =
         gemmlowp::RoundingDivideByPOT(unclamped_result.raw(), 8);
-    int16 clamped_result =
-        std::min<int16>(output_activation_max - output_offset, rescaled_result);
-    clamped_result =
-        std::max<int16>(output_activation_min - output_offset, clamped_result);
+    int16_t clamped_result = std::min<int16_t>(
+        output_activation_max - output_offset, rescaled_result);
+    clamped_result = std::max<int16_t>(output_activation_min - output_offset,
+                                       clamped_result);
     output_data[i] = output_offset + clamped_result;
   }
 }
@@ -290,14 +291,15 @@ inline void Sub16(const ArithmeticParams& params,
   const int input1_shift = params.input1_shift;
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  const int16 output_activation_min = params.quantized_activation_min;
-  const int16 output_activation_max = params.quantized_activation_max;
+  const int16_t output_activation_min = params.quantized_activation_min;
+  const int16_t output_activation_max = params.quantized_activation_max;
 
   TFLITE_DCHECK(input1_shift == 0 || params.input2_shift == 0);
   TFLITE_DCHECK_LE(input1_shift, 0);
   TFLITE_DCHECK_LE(params.input2_shift, 0);
-  const int16* not_shift_input = input1_shift == 0 ? input1_data : input2_data;
-  const int16* shift_input = input1_shift == 0 ? input2_data : input1_data;
+  const int16_t* not_shift_input =
+      input1_shift == 0 ? input1_data : input2_data;
+  const int16_t* shift_input = input1_shift == 0 ? input2_data : input1_data;
   const int input_right_shift =
       input1_shift == 0 ? -params.input2_shift : -input1_shift;
 
@@ -309,8 +311,8 @@ inline void Sub16(const ArithmeticParams& params,
       F0 scaled_input = F0::FromRaw(
           gemmlowp::RoundingDivideByPOT(shift_input[i], input_right_shift));
       F0 result = SaturatingSub(input_ready_scaled, scaled_input);
-      const int16 raw_output = result.raw();
-      const int16 clamped_output = std::min(
+      const int16_t raw_output = result.raw();
+      const int16_t clamped_output = std::min(
           output_activation_max, std::max(output_activation_min, raw_output));
       output_data[i] = clamped_output;
     }
@@ -322,8 +324,8 @@ inline void Sub16(const ArithmeticParams& params,
       F0 scaled_input = F0::FromRaw(
           gemmlowp::RoundingDivideByPOT(shift_input[i], input_right_shift));
       F0 result = SaturatingSub(scaled_input, input_ready_scaled);
-      const int16 raw_output = result.raw();
-      const int16 clamped_output = std::min(
+      const int16_t raw_output = result.raw();
+      const int16_t clamped_output = std::min(
           output_activation_max, std::max(output_activation_min, raw_output));
       output_data[i] = clamped_output;
     }
@@ -394,15 +396,15 @@ void Unpack(const UnpackParams& params, const RuntimeShape& input_shape,
 template <typename Scalar>
 void PackWithScaling(const PackParams& params,
                      const RuntimeShape* const* input_shapes,
-                     const uint8* const* input_data,
-                     const RuntimeShape& output_shape, uint8* output_data) {
+                     const uint8_t* const* input_data,
+                     const RuntimeShape& output_shape, uint8_t* output_data) {
   ruy::profiler::ScopeLabel label("PackWithScaling");
   const int dimensions = output_shape.DimensionsCount();
   int axis = params.axis;
-  const int32* input_zeropoint = params.input_zeropoint;
+  const int32_t* input_zeropoint = params.input_zeropoint;
   const float* input_scale = params.input_scale;
   int inputs_count = params.inputs_count;
-  const int32 output_zeropoint = params.output_zeropoint;
+  const int32_t output_zeropoint = params.output_zeropoint;
   const float output_scale = params.output_scale;
 
   int outer_size = 1;
@@ -595,56 +597,72 @@ inline GatherNdHelperResult GatherNdHelper(const RuntimeShape& params_shape,
   return ret;
 }
 
-template <typename ParamsT, typename IndicesT = int32>
-inline void GatherNd(const RuntimeShape& params_shape,
-                     const ParamsT* params_data,
-                     const RuntimeShape& indices_shape,
-                     const IndicesT* indices_data,
-                     const RuntimeShape& output_shape, ParamsT* output_data) {
+// Implements GatherNd.
+// Returns an error if any of the indices_data would cause an out of bounds
+// memory read.
+template <typename ParamsT, typename IndicesT = int32_t>
+inline TfLiteStatus GatherNd(const RuntimeShape& params_shape,
+                             const ParamsT* params_data,
+                             const RuntimeShape& indices_shape,
+                             const IndicesT* indices_data,
+                             const RuntimeShape& output_shape,
+                             ParamsT* output_data) {
   ruy::profiler::ScopeLabel label("GatherNd");
 
   const GatherNdHelperResult res = GatherNdHelper(params_shape, indices_shape);
   for (int i = 0; i < res.n_slices; ++i) {
-    int from_pos = 0;
+    int64_t from_pos = 0;
     for (int j = 0; j < res.indices_nd; ++j) {
       from_pos += indices_data[i * res.indices_nd + j] * res.dims_to_count[j];
+    }
+    if (from_pos < 0 || from_pos + res.slice_size > params_shape.FlatSize()) {
+      return kTfLiteError;
     }
     std::memcpy(output_data + i * res.slice_size, params_data + from_pos,
                 sizeof(ParamsT) * res.slice_size);
   }
+  return kTfLiteOk;
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
-template <typename IndicesT = int32>
-inline void GatherNdString(const RuntimeShape& params_shape,
-                           const TfLiteTensor* params_data,
-                           const RuntimeShape& indices_shape,
-                           const IndicesT* indices_data,
-                           const RuntimeShape& output_shape,
-                           TfLiteTensor* output_data) {
+// Implements GatherNd on strings.
+// Returns an error if any of the indices_data would cause an out of bounds
+// memory read.
+template <typename IndicesT = int32_t>
+inline TfLiteStatus GatherNdString(const RuntimeShape& params_shape,
+                                   const TfLiteTensor* params_data,
+                                   const RuntimeShape& indices_shape,
+                                   const IndicesT* indices_data,
+                                   const RuntimeShape& output_shape,
+                                   TfLiteTensor* output_data) {
   ruy::profiler::ScopeLabel label("GatherNdString");
 
   const GatherNdHelperResult res = GatherNdHelper(params_shape, indices_shape);
   DynamicBuffer buffer;
   for (int i = 0; i < res.n_slices; ++i) {
-    int from_pos = 0;
+    int64_t from_pos = 0;
     for (int j = 0; j < res.indices_nd; ++j) {
       from_pos += indices_data[i * res.indices_nd + j] * res.dims_to_count[j];
+    }
+    if (from_pos < 0 || from_pos + res.slice_size > params_shape.FlatSize()) {
+      return kTfLiteError;
     }
     for (int j = 0; j < res.slice_size; ++j) {
       buffer.AddString(GetString(params_data, from_pos + j));
     }
   }
   buffer.WriteToTensor(output_data, /*new_shape=*/nullptr);
+  return kTfLiteOk;
 }
 #endif
 
 template <typename IndicesT, typename UpdatesT>
-inline void ScatterNd(const RuntimeShape& indices_shape,
-                      const IndicesT* indices_data,
-                      const RuntimeShape& updates_shape,
-                      const UpdatesT* updates_data,
-                      const RuntimeShape& output_shape, UpdatesT* output_data) {
+inline TfLiteStatus ScatterNd(const RuntimeShape& indices_shape,
+                              const IndicesT* indices_data,
+                              const RuntimeShape& updates_shape,
+                              const UpdatesT* updates_data,
+                              const RuntimeShape& output_shape,
+                              UpdatesT* output_data) {
   ruy::profiler::ScopeLabel label("ScatterNd");
 
   int n_slices = 1;
@@ -667,18 +685,24 @@ inline void ScatterNd(const RuntimeShape& indices_shape,
     remain_flat_size = dims_to_count[i];
   }
 
+  if (n_slices * slice_size > updates_shape.FlatSize()) {
+    return kTfLiteError;
+  }
   memset(output_data, 0, sizeof(UpdatesT) * output_flat_size);
   for (int i = 0; i < n_slices; ++i) {
     int to_pos = 0;
     for (int j = 0; j < indices_nd; ++j) {
       IndicesT idx = indices_data[i * indices_nd + j];
-      TFLITE_DCHECK(0 <= idx && idx < output_shape.Dims(j));
       to_pos += idx * dims_to_count[j];
+    }
+    if (to_pos < 0 || to_pos + slice_size > output_flat_size) {
+      return kTfLiteError;
     }
     for (int j = 0; j < slice_size; j++) {
       output_data[to_pos + j] += updates_data[i * slice_size + j];
     }
   }
+  return kTfLiteOk;
 }
 
 template <typename T>
@@ -741,127 +765,6 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
                    const RuntimeShape& output_shape, T2* output_data) {
   // Drop shape of second input: not needed.
   ArgMax(input1_shape, input1_data, input2_data, output_shape, output_data);
-}
-
-template <typename D, typename T>
-void Select(const RuntimeShape& input_condition_shape,
-            const D* input_condition_data, const RuntimeShape& input_x_shape,
-            const T* input_x_data, const RuntimeShape& input_y_shape,
-            const T* input_y_data, const RuntimeShape& output_shape,
-            T* output_data) {
-  ruy::profiler::ScopeLabel label("Select");
-  int64_t flatsize;
-  // Allow select operator executions on mixed scalar tensors and one element
-  // tensors.
-  if (input_condition_shape.FlatSize() == 1 && input_x_shape.FlatSize() == 1 &&
-      input_y_shape.FlatSize() == 1 && output_shape.FlatSize() == 1) {
-    flatsize = 1;
-  } else {
-    flatsize = MatchingFlatSize(input_condition_shape, input_x_shape,
-                                input_y_shape, output_shape);
-  }
-  for (int64_t i = 0; i < flatsize; ++i) {
-    output_data[i] =
-        input_condition_data[i] ? input_x_data[i] : input_y_data[i];
-  }
-}
-
-template <typename D, typename T>
-void RankOneSelect(const RuntimeShape& input_condition_shape,
-                   const D* input_condition_data,
-                   const RuntimeShape& input_x_shape, const T* input_x_data,
-                   const RuntimeShape& input_y_shape, const T* input_y_data,
-                   const RuntimeShape& output_shape, T* output_data) {
-  ruy::profiler::ScopeLabel label("Select/RankOneSelect");
-  const int64_t outer_size = input_condition_shape.FlatSize();
-  int64_t inner_size;
-  if (input_condition_shape.DimensionsCount() == 0) {
-    inner_size = MatchingFlatSize(input_x_shape, input_y_shape, output_shape);
-  } else {
-    TFLITE_DCHECK_EQ(
-        MatchingDim(input_x_shape, 0, input_y_shape, 0, output_shape, 0),
-        outer_size);
-    inner_size =
-        MatchingFlatSizeSkipDim(input_x_shape, 0, input_y_shape, output_shape);
-  }
-
-  int64_t offset = 0;
-  for (int64_t i = 0; i < outer_size; i++) {
-    const T* input_data = input_condition_data[i] ? input_x_data : input_y_data;
-    memcpy(output_data + offset, input_data + offset, inner_size * sizeof(T));
-    offset += inner_size;
-  }
-}
-
-template <typename D, typename T>
-void BroadcastSelect5DSlow(const RuntimeShape& input_condition_shape,
-                           const D* input_condition_data,
-                           const RuntimeShape& input_x_shape,
-                           const T* input_x_data,
-                           const RuntimeShape& input_y_shape,
-                           const T* input_y_data,
-                           const RuntimeShape& output_shape, T* output_data) {
-  ruy::profiler::ScopeLabel label("Select/BroadcastSelectSlow");
-  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 5);
-  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 5);
-  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 5);
-  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 5);
-
-  NdArrayDesc<5> desc_condition;
-  NdArrayDesc<5> desc_x;
-  NdArrayDesc<5> desc_y;
-  NdArrayDesc<5> desc_output;
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(5, output_shape);
-  CopyDimsToDesc(extended_output_shape, &desc_output);
-  NdArrayDescsForElementwiseBroadcast(input_condition_shape, input_x_shape,
-                                      input_y_shape, &desc_condition, &desc_x,
-                                      &desc_y);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest
-  // stride, typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for
-  // the best cache behavior.
-  for (int n = 0; n < desc_output.extents[0]; ++n) {
-    int out_idx_n = desc_output.extents[1] * n;
-    int cond_idx_n = desc_condition.strides[0] * n;
-    int in_idx1_n = desc_x.strides[0] * n;
-    int in_idx2_n = desc_y.strides[0] * n;
-    for (int b = 0; b < desc_output.extents[1]; ++b) {
-      int out_idx_b = (out_idx_n + b) * desc_output.extents[2];
-      int cond_idx_b = cond_idx_n + desc_condition.strides[1] * b;
-      int in_idx1_b = in_idx1_n + desc_x.strides[1] * b;
-      int in_idx2_b = in_idx2_n + desc_y.strides[1] * b;
-      for (int y = 0; y < desc_output.extents[2]; ++y) {
-        int out_idx_y = (out_idx_b + y) * desc_output.extents[3];
-        int cond_idx_y = cond_idx_b + desc_condition.strides[2] * y;
-        int in_idx1_y = in_idx1_b + desc_x.strides[2] * y;
-        int in_idx2_y = in_idx2_b + desc_y.strides[2] * y;
-        for (int x = 0; x < desc_output.extents[3]; ++x) {
-          int out_idx = (out_idx_y + x) * desc_output.extents[4];
-          int cond_idx = cond_idx_y + desc_condition.strides[3] * x;
-          int in_idx1 = in_idx1_y + desc_x.strides[3] * x;
-          int in_idx2 = in_idx2_y + desc_y.strides[3] * x;
-          for (int c = 0; c < desc_output.extents[4]; ++c) {
-            output_data[out_idx] = input_condition_data[cond_idx]
-                                       ? input_x_data[in_idx1]
-                                       : input_y_data[in_idx2];
-            out_idx++;
-            cond_idx += desc_condition.strides[4];
-            in_idx1 += desc_x.strides[4];
-            in_idx2 += desc_y.strides[4];
-          }
-        }
-      }
-    }
-  }
 }
 
 template <typename D, typename T>
@@ -983,28 +886,50 @@ inline void BroadcastPow4DSlow(const RuntimeShape& unextended_input1_shape,
 }
 
 template <typename Scalar>
-void Reverse(int axis, const RuntimeShape& input_shape,
-             const Scalar* input_data, const RuntimeShape& output_shape,
+void Reverse(std::array<int32_t, 8>& axes, int num_axes,
+             const RuntimeShape& input_shape, const Scalar* input_data,
              Scalar* output_data) {
   ruy::profiler::ScopeLabel label("Reverse");
+  bool is_upper = (axes[num_axes - 1] == input_shape.DimensionsCount() - 1);
+  bool is_lower = (axes[0] == 0);
+  int rank = input_shape.DimensionsCount();
+  if (is_upper && is_lower) {
+    std::reverse_copy(input_data, input_data + input_shape.FlatSize(),
+                      output_data);
+    return;
+  } else {
+    int32_t min_dim = axes[0];
+    int32_t max_dim = axes[num_axes - 1];
+    int upper_size = 1;
+    for (int i = 0; i < min_dim; ++i) {
+      upper_size *= input_shape.Dims(i);
+    }
+    int lower_size = 1;
+    for (int i = max_dim + 1; i < rank; ++i) {
+      lower_size *= input_shape.Dims(i);
+    }
+    int middle_size = 1;
+    for (int i = min_dim; i <= max_dim; ++i) {
+      middle_size *= input_shape.Dims(i);
+    }
 
-  int outer_size = 1;
-  for (int i = 0; i < axis; ++i) {
-    outer_size *= input_shape.Dims(i);
-  }
-
-  int copy_size = 1;
-  for (int i = axis + 1; i < input_shape.DimensionsCount(); ++i) {
-    copy_size *= input_shape.Dims(i);
-  }
-
-  const int dims_at_axis = input_shape.Dims(axis);
-  for (int i = 0; i < outer_size; ++i) {
-    for (int j = 0; j < dims_at_axis; ++j) {
-      const int start_pos = (i * dims_at_axis + j) * copy_size;
-      Scalar* output_ptr = output_data + start_pos;
-      int loc = (i * dims_at_axis + dims_at_axis - j - 1) * copy_size;
-      memcpy(output_ptr, input_data + loc, copy_size * sizeof(Scalar));
+    if (lower_size > 1) {
+      for (int i = 0; i < upper_size; ++i) {
+        for (int j = 0; j < middle_size; ++j) {
+          Scalar* src =
+              (Scalar*)input_data + (i * (middle_size) + j) * lower_size;
+          Scalar* dst =
+              (Scalar*)output_data +
+              (i * (middle_size) + (middle_size - j - 1)) * lower_size;
+          memcpy(dst, src, lower_size * sizeof(Scalar));
+        }
+      }
+    } else {
+      for (int i = 0; i < upper_size; ++i) {
+        std::reverse_copy(input_data + i * (middle_size),
+                          input_data + i * middle_size + middle_size,
+                          output_data + i * (middle_size));
+      }
     }
   }
 }
@@ -1107,24 +1032,28 @@ inline void SegmentSum(const RuntimeShape& input_shape, const T* input_data,
   }
 }
 
-template <typename T>
-inline void UnsortedSegmentProd(const RuntimeShape& input_shape,
-                                const T* input_data,
-                                const RuntimeShape& segment_ids_shape,
-                                const int32_t* segment_ids_data,
-                                const int32_t num_segments,
-                                const RuntimeShape& output_shape,
-                                T* output_data) {
+template <typename T, template <typename T2> typename Op>
+inline void UnsortedSegmentRef(const RuntimeShape& input_shape,
+                               const T* input_data,
+                               const RuntimeShape& segment_ids_shape,
+                               const int32_t* segment_ids_data,
+                               const RuntimeShape& output_shape,
+                               T* output_data) {
   for (int i = 0; i < output_shape.FlatSize(); ++i) {
-    output_data[i] = 1;
+    output_data[i] = Op<T>::kInitialValue;
   }
-  const int segment_flat_size =
-      MatchingFlatSizeSkipDim(input_shape, 0, output_shape);
-  for (int i = 0; i < input_shape.Dims(0); i++) {
+  Op<T> op;
+  int segment_flat_size = 1;
+  for (int i = 1; i < output_shape.DimensionsCount(); ++i) {
+    segment_flat_size *= output_shape.Dims(i);
+  }
+  for (int i = 0; i < segment_ids_shape.FlatSize(); i++) {
     int output_index = segment_ids_data[i];
+    if (output_index < 0) continue;
     for (int j = 0; j < segment_flat_size; ++j) {
-      output_data[output_index * segment_flat_size + j] *=
-          input_data[i * segment_flat_size + j];
+      output_data[output_index * segment_flat_size + j] =
+          op(output_data[output_index * segment_flat_size + j],
+             input_data[i * segment_flat_size + j]);
     }
   }
 }

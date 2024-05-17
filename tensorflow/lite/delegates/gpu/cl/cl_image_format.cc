@@ -52,6 +52,8 @@ cl_channel_type DataTypeToChannelType(DataType type, bool normalized) {
       return CL_SIGNED_INT32;
     case DataType::UINT32:
       return CL_UNSIGNED_INT32;
+    case DataType::BOOL:
+      return CL_UNSIGNED_INT8;
     default:
       return CL_FLOAT;
   }

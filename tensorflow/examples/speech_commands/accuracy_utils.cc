@@ -19,8 +19,13 @@ limitations under the License.
 #include <iomanip>
 #include <unordered_set>
 
-#include "tensorflow/core/lib/io/path.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -39,7 +44,7 @@ Status ReadGroundTruthFile(const string& file_name,
       continue;
     }
     float timestamp;
-    if (!tensorflow::strings::safe_strtof(pieces[1].c_str(), &timestamp)) {
+    if (!tensorflow::strings::safe_strtof(pieces[1], &timestamp)) {
       return tensorflow::errors::InvalidArgument(
           "Wrong number format at line: ", line);
     }
@@ -52,7 +57,7 @@ Status ReadGroundTruthFile(const string& file_name,
                const std::pair<string, int64>& right) {
               return left.second < right.second;
             });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void CalculateAccuracyStats(

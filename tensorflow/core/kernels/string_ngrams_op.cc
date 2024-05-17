@@ -50,7 +50,8 @@ class StringNGramsOp : public tensorflow::OpKernel {
                     ngram_width - 1);
   }
 
-  StatusOr<int> get_num_ngrams(const int length, const int ngram_width) const {
+  absl::StatusOr<int> get_num_ngrams(const int length,
+                                     const int ngram_width) const {
     int64 limit = kint32max;
     int pad_width = get_pad_width(ngram_width);
     if (pad_width > limit / 2 - length) {
@@ -124,7 +125,7 @@ class StringNGramsOp : public tensorflow::OpKernel {
       for (int ngram_width : ngram_widths_) {
         auto ngrams_or = get_num_ngrams(length, ngram_width);
         OP_REQUIRES_OK(context, ngrams_or.status());
-        num_ngrams += ngrams_or.ValueOrDie();
+        num_ngrams += ngrams_or.value();
       }
       if (preserve_short_ && length > 0 && num_ngrams == 0) {
         num_ngrams = 1;
@@ -147,7 +148,7 @@ class StringNGramsOp : public tensorflow::OpKernel {
         int length = splits_vec(i + 1) - splits_vec(i);
         auto ngrams_or = get_num_ngrams(length, ngram_width);
         OP_REQUIRES_OK(context, ngrams_or.status());
-        int num_ngrams = ngrams_or.ValueOrDie();
+        int num_ngrams = ngrams_or.value();
         CreateNgrams(data_start, output_start, num_ngrams, ngram_width);
         output_start_idx += num_ngrams;
       }

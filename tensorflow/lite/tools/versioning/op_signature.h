@@ -16,9 +16,10 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_VERSIONING_OP_SIGNATURE_H_
 
 #include <string>
+#include <vector>
 
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -28,6 +29,7 @@ typedef struct {
   TfLiteType type;
   std::vector<int32_t> dims;
   bool is_const;
+  bool is_shape_dynamic;
 } OpSignatureTensorSpec;
 
 typedef struct {
@@ -35,6 +37,7 @@ typedef struct {
   std::vector<OpSignatureTensorSpec> inputs;
   std::vector<OpSignatureTensorSpec> outputs;
   void* builtin_data;
+  int version;
   const void* custom_initial_data;
   std::string custom_name;
   union {
@@ -49,11 +52,13 @@ typedef struct {
       // TODO(b/156530611): Make this global when more ops support sparse
       // computation.
       bool sparse_weight;
+      bool is_per_channel_quantized;
     } fully_connected;
     struct {
       float input1_scale;
       float input2_scale;
       float output_scale;
+      bool input_quantized;
     } mul;
     struct {
       int32_t num_dims;
@@ -67,6 +72,9 @@ typedef struct {
     struct {
       bool is_per_channel_quantized;
     } quantize;
+    struct {
+      bool input_quantized;
+    } add;
   } ext_options;
 } OpSignature;
 

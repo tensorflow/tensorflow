@@ -49,13 +49,13 @@ class AssertNextDatasetParams : public DatasetParams {
     input_names->reserve(input_dataset_params_.size() + 1);
     input_names->emplace_back(AssertNextDatasetOp::kInputDataset);
     input_names->emplace_back(AssertNextDatasetOp::kTransformations);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{AssertNextDatasetOp::kOutputShapes, output_shapes_},
                     {AssertNextDatasetOp::kOutputTypes, output_dtypes_}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override {
@@ -210,13 +210,13 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(AssertNextDatasetOpTest,
 TEST_F(AssertNextDatasetOpTest, InvalidArguments) {
   auto dataset_params = InvalidAssertNextDatasetParams();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(AssertNextDatasetOpTest, ShortAssertNext) {
   auto dataset_params = ShortAssertNextDatasetParams();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

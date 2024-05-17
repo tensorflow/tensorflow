@@ -13,13 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.repeat()`."""
+from typing import Callable, Optional
+
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -77,41 +81,83 @@ class RepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
 class RepeatDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                   parameterized.TestCase):
 
-  def _build_repeat_dataset(self, count, take_count=3):
-    components = (np.arange(10),)
-    return dataset_ops.Dataset.from_tensor_slices(components).take(
-        take_count).repeat(count)
+  def _build_repeat_dataset(self,
+                            num_elements,
+                            num_epochs,
+                            num_outputs=None,
+                            options=None):
+    dataset = dataset_ops.Dataset.range(num_elements).repeat(num_epochs)
+    if num_outputs:
+      range_dataset = dataset_ops.Dataset.range(num_outputs)
+      dataset = dataset_ops.Dataset.zip((dataset, range_dataset))
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def testFiniteRepeat(self, verify_fn):
-    count = 10
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def testFiniteRepeat(self, verify_fn, symbolic_checkpoint):
+    num_elements = 10
+    num_epochs = 10
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
     verify_fn(
         self,
-        lambda: self._build_repeat_dataset(count),
-        num_outputs=(3 * count))
+        lambda: self._build_repeat_dataset(
+            num_elements, num_epochs, options=options),
+        num_outputs=(num_elements * num_epochs))
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def testEmptyRepeat(self, verify_fn):
-    verify_fn(self, lambda: self._build_repeat_dataset(0), num_outputs=0)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testInfiniteRepeat(self):
-    self.verify_unused_iterator(
-        lambda: self._build_repeat_dataset(-1), 10, verify_exhausted=False)
-    self.verify_multiple_breaks(
-        lambda: self._build_repeat_dataset(-1), 20, verify_exhausted=False)
-    self.verify_reset_restored_iterator(
-        lambda: self._build_repeat_dataset(-1), 20, verify_exhausted=False)
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def testEmptyRepeat(self, verify_fn, symbolic_checkpoint):
+    num_elements = 10
+    num_epochs = 0
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(
+        self,
+        lambda: self._build_repeat_dataset(
+            num_elements, num_epochs, options=options),
+        num_outputs=0)
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def testInfiniteEmptyRepeat(self, verify_fn):
-    verify_fn(self, lambda: self._build_repeat_dataset(-1, 0), num_outputs=0)
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def testInfiniteRepeat(self, verify_fn, symbolic_checkpoint):
+    num_elements = 10
+    num_epochs = -1
+    num_outputs = 100
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(
+        self,
+        lambda: self._build_repeat_dataset(
+            num_elements, num_epochs, num_outputs=num_outputs, options=options),
+        num_outputs=num_outputs)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def testInfiniteEmptyRepeat(self, verify_fn, symbolic_checkpoint):
+    num_elements = 0
+    num_epochs = -1
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(
+        self,
+        lambda: self._build_repeat_dataset(
+            num_elements, num_epochs, options=options),
+        num_outputs=0)
 
 
 class RepeatRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -174,6 +220,96 @@ class RepeatRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Datasets with infinite cardinality do not support random access.
     with self.assertRaises(errors.FailedPreconditionError):
       self.evaluate(random_access.at(dataset, index=0))
+
+
+class RepeatGlobalShuffleTest(
+    test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[41],
+              repetitions=[1, 27],
+              seed=[None, 19],
+              reshuffle_each_iteration=[True, False])))
+  def testRepeat(
+      self,
+      dataset_range: int,
+      repetitions: int,
+      seed: Optional[int],
+      reshuffle_each_iteration: bool):
+    dataset = dataset_ops.Dataset.range(dataset_range)
+    dataset = dataset.repeat(repetitions)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    dataset = global_shuffle_op._global_shuffle(
+        dataset, seed=seed, reshuffle_each_iteration=reshuffle_each_iteration)
+
+    expected = list(range(dataset_range)) * repetitions
+    dataset_output = self.getDatasetOutput(
+        dataset, requires_initialization=True)
+    self.assertCountEqual(dataset_output, expected)
+    self.assertNotEqual(dataset_output, expected)
+
+    output_per_iteration = [
+        dataset_output[i : i + dataset_range]
+        for i in range(0, len(dataset_output), dataset_range)]
+    # All sub-ranges should be shuffled.
+    for i in range(1, repetitions):
+      self.assertNotEqual(output_per_iteration[i], list(range(dataset_range)))
+      self.assertNotEqual(output_per_iteration[i], output_per_iteration[i - 1])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(repetitions=[None, 0])))
+  def testInvalidDataset(self, repetitions: Optional[int]):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.repeat(repetitions)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError,
+        r"`repeat.*` does not support random access of tf.data datasets."):
+      dataset = global_shuffle_op._global_shuffle(dataset)
+      self.getDatasetOutput(dataset, requires_initialization=True)
+
+
+class RepeatGlobalShuffleCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[41],
+              repetitions=[1, 27],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False])))
+  def testRepeat(
+      self,
+      verify_fn: Callable[..., None],
+      dataset_range: int,
+      repetitions: int,
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool):
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.range(dataset_range)
+      dataset = dataset.repeat(repetitions)
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=dataset_range * repetitions,
+        assert_items_equal=reshuffle_each_iteration)
 
 
 if __name__ == "__main__":

@@ -26,6 +26,9 @@ from tensorflow.python.tpu import tpu_function
 from tensorflow.python.util.tf_export import tf_export
 
 
+ops.NotDifferentiable("TPUReplicatedInput")
+
+
 def _create_default_group_assignment():
   num_shards = tpu_function.get_tpu_context().number_of_shards
   if num_shards is None:
@@ -147,13 +150,10 @@ def _cross_replica_sum_grad(op, grad):
   return [gen_tpu_ops.cross_replica_sum(grad, op.inputs[1]), None]
 
 
-# This extra type checking exists to give a more helpful error message in
-# the common case that uint8 and int64 values are infed. Remove when both
-# types are supported.
-
-_SUPPORTED_INFEED_DTYPES = set([
+# This extra type checking exists to give a more helpful error message.
+_SUPPORTED_INFEED_DTYPES = frozenset([
     dtypes.bool, dtypes.int32, dtypes.int64, dtypes.bfloat16, dtypes.float32,
-    dtypes.complex64, dtypes.uint32
+    dtypes.complex64, dtypes.uint32, dtypes.uint8, dtypes.int8
 ])
 
 
@@ -170,11 +170,7 @@ def _embedding_activations_grad(activations_op, grad_wrt_activations):
     raise RuntimeError(
         "Gradients for TPUEmbedding have been generated in non-training mode."
         "This is not expected. Consider putting your Optimizer.minimize code "
-        "behind the training mode condition check. For Estimator, you can "
-        "do \n\n"
-        "    if mode == tf.estimator.ModeKeys.TRAIN:\n"
-        "        train_op = opt.minimize(loss)\n"
-        "\n")
+        "behind the training mode condition check\n")
 
   if lookup_id < 0 or lookup_id >= len(table_gradients):
     raise RuntimeError(

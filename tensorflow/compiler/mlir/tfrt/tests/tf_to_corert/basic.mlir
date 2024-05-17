@@ -1,9 +1,8 @@
-// RUN: tf-tfrt-opt -pass-pipeline='func.func(tf-tensor-device-copy),tfrt-lower-tf-savedmodel{hoist-invariant-ops=true},tf-to-tfrt{enable-native-ops=false func-use-fallback-tensor=true tfrt-cost-threshold=1024 tfrt-upper-cost-threshold=65536 tfrt-merge-inter-dependent-streams=true}' %s | FileCheck %s --dump-input-filter=all
+// RUN: tf-tfrt-opt -pass-pipeline='builtin.module(func.func(tf-tensor-device-copy),tfrt-lower-tf-savedmodel{hoist-invariant-ops=true},tf-to-tfrt{tfrt-cost-threshold=1024 tfrt-merge-inter-dependent-streams=true})' %s | FileCheck %s --dump-input-filter=all
 
 // CHECK-NOT: tf_saved_model.semantics
 // CHECK: tfrt.cost_threshold = 1024
 // CHECK-SAME: tfrt.merge_inter_dependent_streams = true
-// CHECK-SAME: tfrt.upper_cost_threshold = 65536
 module attributes {tf_saved_model.semantics} {
 
 // CHECK-NOT: "tf_saved_model.session_initializer"

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"

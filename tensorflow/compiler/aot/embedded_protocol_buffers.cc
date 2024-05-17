@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_replace.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/LLVMContext.h"
@@ -29,8 +29,9 @@ limitations under the License.
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "llvm/TargetParser/Triple.h"
+#include "xla/service/llvm_ir/llvm_type_conversion_util.h"
+#include "xla/util.h"
 
 namespace tensorflow {
 namespace tfcompile {
@@ -75,15 +76,15 @@ static string CreateCPPShimExpression(
       });
 }
 
-static StatusOr<string> CodegenModule(llvm::TargetMachine* target_machine,
-                                      std::unique_ptr<llvm::Module> module) {
+static absl::StatusOr<string> CodegenModule(
+    llvm::TargetMachine* target_machine, std::unique_ptr<llvm::Module> module) {
   llvm::SmallVector<char, 0> stream_buffer;
   llvm::raw_svector_ostream ostream(stream_buffer);
   llvm::legacy::PassManager codegen_passes;
 
   if (target_machine->addPassesToEmitFile(codegen_passes, ostream, nullptr,
-                                          llvm::CGFT_ObjectFile)) {
-    return xla::InternalError(
+                                          llvm::CodeGenFileType::ObjectFile)) {
+    return xla::Internal(
         "Could not create pass pipeline to generate object file");
   }
 
@@ -92,7 +93,7 @@ static StatusOr<string> CodegenModule(llvm::TargetMachine* target_machine,
   return string(stream_buffer.begin(), stream_buffer.end());
 }
 
-static StatusOr<std::unique_ptr<llvm::TargetMachine>>
+static absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
 GetTargetMachineFromTriple(absl::string_view target_triple) {
   std::string error;
   std::string normalized_triple =
@@ -100,24 +101,24 @@ GetTargetMachineFromTriple(absl::string_view target_triple) {
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget(normalized_triple, error);
   if (target == nullptr) {
-    return xla::InternalError("TargetRegistry::lookupTarget failed: %s",
-                              error.c_str());
+    return xla::Internal("TargetRegistry::lookupTarget failed: %s",
+                         error.c_str());
   }
 
   return absl::WrapUnique(target->createTargetMachine(
       normalized_triple, /*CPU=*/"",
-      /*Features=*/"", llvm::TargetOptions(), llvm::None));
+      /*Features=*/"", llvm::TargetOptions(), std::nullopt));
 }
 
-StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
+absl::StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
     absl::string_view target_triple,
     absl::Span<const ProtobufToEmbed> protobufs_to_embed) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
                       GetTargetMachineFromTriple(target_triple));
 
   llvm::LLVMContext llvm_context;
-  std::unique_ptr<llvm::Module> module_with_serialized_proto =
-      absl::make_unique<llvm::Module>("embedded_data_module", llvm_context);
+  auto module_with_serialized_proto =
+      std::make_unique<llvm::Module>("embedded_data_module", llvm_context);
 
   EmbeddedProtocolBuffers result;
 

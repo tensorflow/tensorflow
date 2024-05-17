@@ -14,11 +14,12 @@
 # ==============================================================================
 
 """Helpers to manipulate a tensor graph in python.
+
+API docstring: tensorflow.graph_util
 """
 
 
 # pylint: disable=unused-import
-from tensorflow.python.framework.graph_util_impl import convert_variables_to_constants
 from tensorflow.python.framework.graph_util_impl import extract_sub_graph
 from tensorflow.python.framework.graph_util_impl import graph_defs_equal
 from tensorflow.python.framework.graph_util_impl import must_run_on_cpu

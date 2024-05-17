@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_DELEGATES_DELEGATE_PROVIDER_H_
 #define TENSORFLOW_LITE_TOOLS_DELEGATES_DELEGATE_PROVIDER_H_
 
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
@@ -30,7 +32,7 @@ namespace tools {
 // Same w/ Interpreter::TfLiteDelegatePtr to avoid pulling
 // tensorflow/lite/interpreter.h dependency
 using TfLiteDelegatePtr =
-    std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
+    std::unique_ptr<TfLiteOpaqueDelegate, void (*)(TfLiteOpaqueDelegate*)>;
 
 class DelegateProvider {
  public:

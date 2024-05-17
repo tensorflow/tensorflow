@@ -21,17 +21,24 @@ include "tensorflow/core/ir/interfaces.td"
 include "tensorflow/core/ir/types/attributes.td"
 include "tensorflow/core/ir/types/types.td"
 
-include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // TFGraph op definitions
 //===----------------------------------------------------------------------===//
+
+// Custom definition of ReturnLike, because upstream version forces a definition
+// of `getMutableSuccessorOperands` that is not compatible with custom
+// implementations in YieldOp and ConditionOp.
+// TODO: Use upsteam defintion one it's possible to redefine
+// `getMutableSuccessorOperands`.
+def TFGraph_ReturnLike : NativeOpTrait<"ReturnLike">;
 
 // Base class for intrinsic TFG operations. Intrinsic operations exist only in
 // the TFG dialect in MLIR.
@@ -80,7 +87,7 @@ def TFGraph_GraphOp : TFG_IntrinsicOp<"graph",
 
 
 def TFGraph_GraphFuncOp : TFG_IntrinsicOp<"func", [
-    RegionKindInterface, HasOnlyGraphRegion, SingleBlock, CallableOpInterface,
+    RegionKindInterface, HasOnlyGraphRegion, SingleBlock,
     FunctionOpInterface, IsolatedFromAbove, Symbol, OpAsmOpInterface,
     DeclareOpInterfaceMethods<ControlArgumentInterface>]> {
   let summary = "Define a function as modeled by FunctionDef.";
@@ -126,12 +133,12 @@ def TFGraph_GraphFuncOp : TFG_IntrinsicOp<"func", [
     OpBuilder<(ins "const Twine &":$sym_name, "FunctionType":$type,
                    "bool":$generic), [{
       build($_builder, $_state);
-      $_state.addAttribute(GraphFuncOp::sym_nameAttrName($_state.name),
+      $_state.addAttribute(GraphFuncOp::getSymNameAttrName($_state.name),
                            $_builder.getStringAttr(sym_name));
-      $_state.addAttribute(GraphFuncOp::function_typeAttrName($_state.name),
+      $_state.addAttribute(GraphFuncOp::getFunctionTypeAttrName($_state.name),
                            TypeAttr::get(type));
       if (generic) {
-        $_state.addAttribute(GraphFuncOp::genericAttrName($_state.name),
+        $_state.addAttribute(GraphFuncOp::getGenericAttrName($_state.name),
                              $_builder.getUnitAttr());
       }
     }]>
@@ -139,20 +146,8 @@ def TFGraph_GraphFuncOp : TFG_IntrinsicOp<"func", [
 
   let regions = (region AnyRegion:$body);
   let extraClassDeclaration = [{
-    using SingleBlock::getBody;
-
-    FlatSymbolRefAttr getGradient() {
-      return (*this)->getAttrOfType<FlatSymbolRefAttr>("gradient");
-    }
-
     TFGraphDialect *getDialect() {
       return cast<TFGraphDialect>((*this)->getDialect());
-    }
-
-    /// Returns the type of this function.
-    /// FIXME: We should drive this via the ODS `type` param.
-    FunctionType getFunctionType() {
-      return getFunctionTypeAttr().getValue().cast<FunctionType>();
     }
 
     // Returns true if this function is marked for JIT compilation.
@@ -187,19 +182,15 @@ def TFGraph_GraphFuncOp : TFG_IntrinsicOp<"func", [
       return isExternal() ? nullptr : &this->getRegion();
     }
 
-    // Returns the results types that the callable region produces when
-    // executed.
-    ArrayRef<Type> getCallableResults() { return getFunctionType().getResults(); }
-
-    //===------------------------------------------------------------------===//
-    // FunctionOpInterface Methods
-    //===------------------------------------------------------------------===//
-
     /// Returns the argument types of this function.
     ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
 
     /// Returns the result types of this function.
     ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
+
+    //===------------------------------------------------------------------===//
+    // FunctionOpInterface Methods
+    //===------------------------------------------------------------------===//
 
     LogicalResult verifyType();
     LogicalResult verifyBody();
@@ -220,7 +211,7 @@ def TFGraph_DictionaryArrayAttr
     : TypedArrayAttrBase<DictionaryAttr, "an array of dictionaries">;
 
 def TFGraph_ReturnOp : TFG_IntrinsicOp<"return",
-  [NoSideEffect, HasParent<"GraphFuncOp">, ReturnLike, Terminator]> {
+  [Pure, HasParent<"GraphFuncOp">, TFGraph_ReturnLike, Terminator]> {
   let summary = "Return values from a Function.";
   let description = [{
     The `return` operation represents a return operation within a function.
@@ -231,7 +222,7 @@ def TFGraph_ReturnOp : TFG_IntrinsicOp<"return",
     similarly for the function results,
   }];
 
-  let arguments = (ins Variadic<AnyType>:$operands,
+  let arguments = (ins Variadic<AnyType>,
                        TFGraph_DictionaryArrayAttr:$control_ret_attrs);
 
   let builders = [
@@ -243,7 +234,7 @@ def TFGraph_ReturnOp : TFG_IntrinsicOp<"return",
 
 
 def TFGraph_GetResultOp : TFG_IntrinsicOp<"get_result",
-  [NoSideEffect]> {
+  [Pure]> {
   let summary = "Extract a value out of an opaque tensor in a generic Function.";
   let description = [{
     The `get_result` operation exists in generic functions before instantiation,
@@ -502,7 +493,7 @@ class TFGraph_RegionOp<string mnemonic, list<Trait> traits = []>
           ["getDefaultDialect", "getAsmResultNames"]>, TraitList<traits>]>;
 
 def TFGraph_YieldOp : TFG_IntrinsicOp<"yield",
-    [NoSideEffect, ReturnLike, Terminator, AttrSizedOperandSegments,
+    [Pure, TFGraph_ReturnLike, Terminator, AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
   let description = [{
     The `yield` operation is the terminator for control-flow regions. The
@@ -511,7 +502,7 @@ def TFGraph_YieldOp : TFG_IntrinsicOp<"yield",
     data operands matches the number of results of the parent operation.
 
     The semantics of function calls in TensorFlow mean that the region "returns"
-    data operands as they become avaiable so that users can start executing
+    data operands as they become available so that users can start executing
     immediately. All functional control-flow operations behave as multi-device
     function calls, which means that the control result of the parent operation
     depends on the control operands of the `yield`.
@@ -529,7 +520,8 @@ def TFGraph_YieldOp : TFG_IntrinsicOp<"yield",
 class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     mnemonic, [PreservedAttributesInterface,
                DeclareOpInterfaceMethods<RegionBranchOpInterface,
-                                         ["getRegionInvocationBounds"]>,
+                                         ["getRegionInvocationBounds",
+                                          "getEntrySuccessorRegions"]>,
                DeclareOpInterfaceMethods<ControlArgumentInterface,
                                          ["getControlToken"]>]> {
   let description = [{
@@ -561,22 +553,22 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
                         SizedRegion<1>:$else_region);
 
   let extraClassDeclaration = [{
-    Block &then_block() { return then_region().front(); }
-    Block &else_block() { return else_region().front(); }
-    YieldOp then_yield();
-    YieldOp else_yield();
+    Block &getThenBlock() { return getThenRegion().front(); }
+    Block &getElseBlock() { return getElseRegion().front(); }
+    YieldOp getThenYield();
+    YieldOp getElseYield();
 
     bool areTypesCompatible(Type lhs, Type rhs) {
       return tf_type::HasCompatibleElementTypes(lhs, rhs);
     }
 
     RegionAttr getPreservedAttrs(unsigned index) {
-      if (index == 0) return then_region_attrsAttr();
-      return else_region_attrsAttr();
+      if (index == 0) return getThenRegionAttrsAttr();
+      return getElseRegionAttrsAttr();
     }
     void setPreservedAttrs(unsigned index, RegionAttr attrs) {
-      if (index == 0) then_region_attrsAttr(attrs);
-      else else_region_attrsAttr(attrs);
+      if (index == 0) setThenRegionAttrsAttr(attrs);
+      else setElseRegionAttrsAttr(attrs);
     }
   }];
 
@@ -586,17 +578,22 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
       GenericGetAsmResultNames(*this, setNameFn);
     }
 
-    YieldOp $cppClass::then_yield() {
-      return cast<YieldOp>(then_block().getTerminator());
+    YieldOp $cppClass::getThenYield() {
+      return cast<YieldOp>(getThenBlock().getTerminator());
     }
-    YieldOp $cppClass::else_yield() {
-      return cast<YieldOp>(else_block().getTerminator());
+    YieldOp $cppClass::getElseYield() {
+      return cast<YieldOp>(getElseBlock().getTerminator());
     }
 
     void $cppClass::getSuccessorRegions(
-        Optional<unsigned> index, ArrayRef<Attribute> operands,
+         ::mlir::RegionBranchPoint point,
         SmallVectorImpl<RegionSuccessor> &regions) {
-      GetIfLikeRegionOpSuccessorRegions(*this, index, operands, regions);
+      GetIfLikeRegionOpSuccessorRegions(*this, point, regions);
+    }
+    void $cppClass::getEntrySuccessorRegions(
+        ArrayRef<Attribute> operands,
+        SmallVectorImpl<RegionSuccessor> &regions) {
+      GetIfLikeRegionOpEntrySuccessorRegions(*this, operands, regions);
     }
     void $cppClass::getRegionInvocationBounds(
         ArrayRef<Attribute> operands,
@@ -645,7 +642,8 @@ def TFGraph_StatefulIfRegionOp : TFGraph_IfLikeRegionOp<"StatefulIfRegion"> {
 class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     mnemonic, [PreservedAttributesInterface,
                DeclareOpInterfaceMethods<RegionBranchOpInterface,
-                                         ["getRegionInvocationBounds"]>,
+                                         ["getRegionInvocationBounds",
+                                          "getEntrySuccessorRegions"]>,
                DeclareOpInterfaceMethods<ControlArgumentInterface,
                                          ["getControlToken"]>]> {
   let description = [{
@@ -677,7 +675,7 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
   let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
 
   let extraClassDeclaration = [{
-    Block &branch_block(unsigned idx) { return branches()[idx].front(); }
+    Block &getBranchBlock(unsigned idx) { return getBranches()[idx].front(); }
     YieldOp branch_yield(unsigned idx);
 
     bool areTypesCompatible(Type lhs, Type rhs) {
@@ -685,14 +683,14 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     RegionAttr getPreservedAttrs(unsigned index) {
-      if (auto attrs = region_attrsAttr())
+      if (auto attrs = getRegionAttrsAttr())
         return attrs[index].cast<RegionAttr>();
       return {};
     }
     void setPreservedAttrs(unsigned index, RegionAttr attrs) {
-      SmallVector<Attribute> array = llvm::to_vector(region_attrsAttr());
+      SmallVector<Attribute> array = llvm::to_vector(getRegionAttrsAttr());
       array[index] = attrs;
-      region_attrsAttr(ArrayAttr::get(getContext(), array));
+      setRegionAttrsAttr(ArrayAttr::get(getContext(), array));
     }
   }];
 
@@ -703,13 +701,18 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     YieldOp $cppClass::branch_yield(unsigned idx) {
-      return cast<YieldOp>(branch_block(idx).getTerminator());
+      return cast<YieldOp>(getBranchBlock(idx).getTerminator());
     }
 
     void $cppClass::getSuccessorRegions(
-        Optional<unsigned> index, ArrayRef<Attribute> operands,
+        mlir::RegionBranchPoint point,
         SmallVectorImpl<RegionSuccessor> &regions) {
-      GetCaseLikeRegionOpSuccessorRegions(*this, index, operands, regions);
+      GetCaseLikeRegionOpSuccessorRegions(*this, point, regions);
+    }
+    void $cppClass::getEntrySuccessorRegions(
+        ArrayRef<Attribute> operands,
+        SmallVectorImpl<RegionSuccessor> &regions) {
+      GetCaseLikeRegionOpEntrySuccessorRegions(*this, operands, regions);
     }
     void $cppClass::getRegionInvocationBounds(
         ArrayRef<Attribute> operands,
@@ -756,7 +759,7 @@ def TFGraph_StatefulCaseRegionOp :
 
 // Special terminator op for while op condition regions.
 def TFGraph_ConditionOp : TFG_IntrinsicOp<"condition",
-    [NoSideEffect, ReturnLike, Terminator, AttrSizedOperandSegments,
+    [Pure, TFGraph_ReturnLike, Terminator, AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
   let description = [{
     The `condition` operation is a special terminator for the condition region
@@ -787,7 +790,7 @@ def TFGraph_ConditionOp : TFG_IntrinsicOp<"condition",
 class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     mnemonic, [AttrSizedOperandSegments, PreservedAttributesInterface,
                DeclareOpInterfaceMethods<RegionBranchOpInterface,
-                                         ["getSuccessorEntryOperands"]>,
+                                         ["getEntrySuccessorOperands"]>,
                DeclareOpInterfaceMethods<ControlArgumentInterface,
                                          ["getControlToken"]>]> {
   let description = [{
@@ -828,22 +831,22 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
                         SizedRegion<1>:$body_region);
 
   let extraClassDeclaration = [{
-    Block &cond_block() { return cond_region().front(); }
-    Block &body_block() { return body_region().front(); }
-    ConditionOp cond_condition();
-    YieldOp body_yield();
+    Block &getCondBlock() { return getCondRegion().front(); }
+    Block &getBodyBlock() { return getBodyRegion().front(); }
+    ConditionOp getCondCondition();
+    YieldOp getBodyYield();
 
     bool areTypesCompatible(Type lhs, Type rhs) {
       return tf_type::HasCompatibleElementTypes(lhs, rhs);
     }
 
     RegionAttr getPreservedAttrs(unsigned index) {
-      if (index == 0) return cond_region_attrsAttr();
-      return body_region_attrsAttr();
+      if (index == 0) return getCondRegionAttrsAttr();
+      return getBodyRegionAttrsAttr();
     }
     void setPreservedAttrs(unsigned index, RegionAttr attrs) {
-      if (index == 0) cond_region_attrsAttr(attrs);
-      else body_region_attrsAttr(attrs);
+      if (index == 0) setCondRegionAttrsAttr(attrs);
+      else setBodyRegionAttrsAttr(attrs);
     }
   }];
 
@@ -853,22 +856,21 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
       GenericGetAsmResultNames(*this, setNameFn);
     }
 
-    ConditionOp $cppClass::cond_condition() {
-      return cast<ConditionOp>(cond_block().getTerminator());
+    ConditionOp $cppClass::getCondCondition() {
+      return cast<ConditionOp>(getCondBlock().getTerminator());
     }
-    YieldOp $cppClass::body_yield() {
-      return cast<YieldOp>(body_block().getTerminator());
+    YieldOp $cppClass::getBodyYield() {
+      return cast<YieldOp>(getBodyBlock().getTerminator());
     }
 
-    OperandRange $cppClass::getSuccessorEntryOperands(
-        Optional<unsigned> index) {
-      return init();
+    OperandRange $cppClass::getEntrySuccessorOperands(
+         ::mlir::RegionBranchPoint point) {
+      return getInit();
     }
     void $cppClass::getSuccessorRegions(
-        Optional<unsigned> index, ArrayRef<Attribute> operands,
+        ::mlir::RegionBranchPoint point,
         SmallVectorImpl<RegionSuccessor> &regions) {
-      return GetWhileLikeRegionOpSuccessorRegions(*this, index, operands,
-                                                  regions);
+      return GetWhileLikeRegionOpSuccessorRegions(*this, point, regions);
     }
 
     LogicalResult $cppClass::verify() { return VerifyWhileLikeRegionOp(*this); }
@@ -912,7 +914,7 @@ def TFGraph_StatefulWhileRegionOp : TFGraph_WhileLikeRegionOp<"StatefulWhileRegi
 def TFGraph_ForRegionOp : TFGraph_RegionOp<
     "ForRegion", [AttrSizedOperandSegments, PreservedAttributesInterface,
                   DeclareOpInterfaceMethods<RegionBranchOpInterface,
-                                            ["getSuccessorEntryOperands"]>,
+                                            ["getEntrySuccessorOperands"]>,
                   DeclareOpInterfaceMethods<ControlArgumentInterface,
                                             ["getControlToken"]>]> {
   let description = [{
@@ -951,18 +953,18 @@ def TFGraph_ForRegionOp : TFGraph_RegionOp<
   let regions = (region SizedRegion<1>:$body_region);
 
   let extraClassDeclaration = [{
-    Block &body_block() { return body_region().front(); }
-    YieldOp body_yield();
+    Block &getBodyBlock() { return getBodyRegion().front(); }
+    YieldOp getBodyYield();
 
     bool areTypesCompatible(Type lhs, Type rhs) {
       return tf_type::HasCompatibleElementTypes(lhs, rhs);
     }
 
     RegionAttr getPreservedAttrs(unsigned index) {
-      return region_attrsAttr();
+      return getRegionAttrsAttr();
     }
     void setPreservedAttrs(unsigned index, RegionAttr attrs) {
-      region_attrsAttr(attrs);
+      setRegionAttrsAttr(attrs);
     }
   }];
 
@@ -972,8 +974,8 @@ def TFGraph_ForRegionOp : TFGraph_RegionOp<
       GenericGetAsmResultNames(*this, setNameFn);
     }
 
-    YieldOp $cppClass::body_yield() {
-      return cast<YieldOp>(body_block().getTerminator());
+    YieldOp $cppClass::getBodyYield() {
+      return cast<YieldOp>(getBodyBlock().getTerminator());
     }
   }];
 

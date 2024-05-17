@@ -28,32 +28,32 @@ namespace cl {
 
 TEST_F(OpenCLOperationTest, SplitChannels) {
   auto status = SplitChannelsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, SplitChannelsX4) {
   auto status = SplitChannelsX4Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, SplitWidth) {
   auto status = SplitWidthTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, SplitHeight) {
   auto status = SplitHeightTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, SplitBatch) {
   auto status = SplitBatchTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, SplitDepth) {
   auto status = SplitDepthTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace cl

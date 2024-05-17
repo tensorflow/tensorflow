@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
@@ -178,7 +180,7 @@ Status HeapReadyManager::Init(
   // Sets up the comparator for the heap.
   greater_ = Greater();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void HeapReadyManager::AddNode(const NodeDef* node) {
@@ -267,7 +269,7 @@ void PriorityReadyManager::AddNode(const NodeDef* node) {
 Status PriorityReadyManager::SetPriority(
     const std::unordered_map<string, int>& node_priority) {
   node_priority_ = node_priority;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 CompositeNodeManager::CompositeNodeManager()
@@ -279,7 +281,7 @@ Status CompositeNodeManager::Init(
   TF_RETURN_IF_ERROR(send_manager_.Init(node_map));
   TF_RETURN_IF_ERROR(recv_manager_.Init(node_map));
   curr_node_ = nullptr;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void CompositeNodeManager::AddNode(const NodeDef* node) {
@@ -497,9 +499,13 @@ Status SchedulerState::Init(const GrapplerItem* item,
       // Note that input_node_name may be in <prefix><node_name>:<port_num>
       // format, where <prefix> (e.g., "^" for control dependency) and
       // ":<port_num>" may be omitted. NodeName() extracts only the node_name.
-      const NodeDef* input_node = name_to_node[NodeName(input_node_name)];
+      const string node_name = NodeName(input_node_name);
+      const NodeDef* input_node = name_to_node[node_name];
+      if (input_node == nullptr) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unknown node: ", node_name));
+      }
 
-      CHECK(input_node);
       const string in_device = DeviceName(input_node);
       const auto input_node_port_num = NodePosition(input_node_name);
 
@@ -587,7 +593,7 @@ Status SchedulerState::Init(const GrapplerItem* item,
   }
 
   initialized_ = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void SchedulerState::MaybeUpdateInputOutput(const NodeDef* node) {

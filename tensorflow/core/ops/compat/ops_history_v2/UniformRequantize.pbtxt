@@ -1,0 +1,77 @@
+op {
+  name: "UniformRequantize"
+  input_arg {
+    name: "input"
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "input_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "input_zero_points"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "output_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "output_zero_points"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "input_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "input_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "input_quantization_max_val"
+    type: "int"
+  }
+  attr {
+    name: "output_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "output_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "output_quantization_max_val"
+    type: "int"
+  }
+}

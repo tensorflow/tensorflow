@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
@@ -38,10 +39,30 @@ class QuantizedBiasAddOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     const Tensor& bias = context->input(1);
-    const float input_min = context->input(2).flat<float>()(0);
-    const float input_max = context->input(3).flat<float>()(0);
-    const float bias_min = context->input(4).flat<float>()(0);
-    const float bias_max = context->input(5).flat<float>()(0);
+
+    const Tensor& min_input = context->input(2);
+    const Tensor& max_input = context->input(3);
+    const Tensor& min_bias = context->input(4);
+    const Tensor& max_bias = context->input(5);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(min_input.shape()),
+        errors::InvalidArgument("`min_input` must be rank 0 but is rank ",
+                                min_input.dims()));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(max_input.shape()),
+        errors::InvalidArgument("`max_input` must be rank 0 but is rank ",
+                                max_input.dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_bias.shape()),
+                errors::InvalidArgument(
+                    "`min_bias` must be rank 0 but is rank ", min_bias.dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_bias.shape()),
+                errors::InvalidArgument(
+                    "`max_bias` must be rank 0 but is rank ", max_bias.dims()));
+
+    const float input_min = min_input.flat<float>()(0);
+    const float input_max = max_input.flat<float>()(0);
+    const float bias_min = min_bias.flat<float>()(0);
+    const float bias_max = max_bias.flat<float>()(0);
 
     OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input.shape()),
                 errors::InvalidArgument("Input tensor must be at least 2D: ",

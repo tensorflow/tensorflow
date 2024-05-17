@@ -90,7 +90,7 @@ TEST(LabeledCounterTest, SameName) {
   auto* same_counter = Counter<1>::New("/tensorflow/test/counter_with_labels",
                                        "Counter with one label.", "MyLabel");
   EXPECT_TRUE(counter_with_labels->GetStatus().ok());
-  EXPECT_FALSE(same_counter->GetStatus().ok());
+  EXPECT_TRUE(same_counter->GetStatus().ok());
   delete same_counter;
 }
 

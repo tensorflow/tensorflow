@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -197,7 +197,7 @@ TEST(SparseTensorTest, SparseTensorConstruction) {
       "Many sparse ops require sorted indices.\n"
       "    Use `tf.sparse.reorder` to create a correctly ordered copy."
       "\n\n",
-      st_indices_valid.error_message());
+      st_indices_valid.message());
 
   // Regardless of how order is updated; so long as there are no
   // duplicates, the resulting indices are valid.
@@ -298,8 +298,7 @@ TEST(SparseTensorTest, ValidateIndicesFindsInvalid) {
   st.Reorder<tstring>(order);
   Status st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
-  EXPECT_EQ("indices[1] = [0,0,0] is repeated",
-            st_indices_valid.error_message());
+  EXPECT_EQ("indices[1] = [0,0,0] is repeated", st_indices_valid.message());
 
   ix_orig(1, 2) = 1;
   ix_t = ix_orig;
@@ -311,8 +310,7 @@ TEST(SparseTensorTest, ValidateIndicesFindsInvalid) {
   st.Reorder<tstring>(order);
   st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());  // first index now (0, 0, 1)
-  EXPECT_EQ("indices[1] = [0,0,1] is repeated",
-            st_indices_valid.error_message());
+  EXPECT_EQ("indices[1] = [0,0,1] is repeated", st_indices_valid.message());
 }
 
 TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
@@ -343,7 +341,7 @@ TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
   EXPECT_FALSE(st_indices_valid.ok());
   // Error message references index 4 because of the call to Reorder.
   EXPECT_EQ("[11,0,0] is out of bounds: need 0 <= index < [10,10,10]",
-            st_indices_valid.error_message().substr(13));
+            st_indices_valid.message().substr(13));
 
   ix_t(0, 0) = -1;
   ix.matrix<int64_t>() = ix_t;
@@ -351,7 +349,7 @@ TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
   st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
   EXPECT_EQ("[-1,0,0] is out of bounds: need 0 <= index < [10,10,10]",
-            st_indices_valid.error_message().substr(13));
+            st_indices_valid.message().substr(13));
 
   ix_t(0, 0) = 0;
   ix.matrix<int64_t>() = ix_t;
@@ -560,7 +558,7 @@ TEST(SparseTensorTest, Concat) {
 
   SparseTensor concatted = SparseTensor::Concat<tstring>({st, st, st, st});
   EXPECT_EQ(concatted.order(), st.order());
-  gtl::InlinedVector<int64_t, 8> expected_shape{40, 10, 10};
+  absl::InlinedVector<int64_t, 8UL> expected_shape{40, 10, 10};
   EXPECT_EQ(concatted.shape(), expected_shape);
   EXPECT_EQ(concatted.num_entries(), 4 * N);
   TF_EXPECT_OK(concatted.IndicesValid());
@@ -639,7 +637,7 @@ TEST(SparseTensorTest, Split) {
   TF_ASSERT_OK(SparseTensor::Split<int64_t>(st, 0, 2, &st_list));
 
   EXPECT_EQ(st_list.size(), 2);
-  auto expected_shape = gtl::InlinedVector<int64_t, 8>{2, 3};
+  auto expected_shape = absl::InlinedVector<int64_t, 8UL>{2, 3};
 
   EXPECT_EQ(st_list[0].shape(), expected_shape);
   EXPECT_EQ(st_list[0].values().NumElements(), 3);

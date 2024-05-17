@@ -11,6 +11,10 @@ tf_class {
     mtype: "<type \'member_descriptor\'>"
   }
   member {
+    name: "experimental_load_function_aliases"
+    mtype: "<type \'member_descriptor\'>"
+  }
+  member {
     name: "experimental_skip_checkpoint"
     mtype: "<type \'member_descriptor\'>"
   }
@@ -20,6 +24,6 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'allow_partial_checkpoint\', \'experimental_io_device\', \'experimental_skip_checkpoint\', \'experimental_variable_policy\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'False\', \'None\'], "
+    argspec: "args=[\'self\', \'allow_partial_checkpoint\', \'experimental_io_device\', \'experimental_skip_checkpoint\', \'experimental_variable_policy\', \'experimental_load_function_aliases\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'False\', \'None\', \'False\'], "
   }
 }

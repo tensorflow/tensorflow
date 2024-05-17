@@ -18,7 +18,7 @@ limitations under the License.
 
 // Functor definitions for Reduction ops, must be compilable by nvcc.
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
@@ -95,7 +95,7 @@ struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
 };
 
 // Specialization for which we do the reduction in IntermediateType to
-// avoid integer overflow.
+// avoid integer overflow and fix bfloat16 accuracy in some models.
 #define CASTING_SPECIALIZATION(ScalarType, IntermediateType)                  \
   template <typename Device, typename OUT_T, typename IN_T,                   \
             typename ReductionAxes>                                           \
@@ -120,6 +120,7 @@ CASTING_SPECIALIZATION(uint32, uint64);
 CASTING_SPECIALIZATION(int8, int64_t);
 CASTING_SPECIALIZATION(int16, int64_t);
 CASTING_SPECIALIZATION(int32, int64_t);
+CASTING_SPECIALIZATION(bfloat16, float);
 #undef CASTING_SPECIALIZATION
 
 // TODO(rmlarsen): Refactor this such that taking the sqrt can be optional
@@ -175,6 +176,7 @@ struct Identity {
     }                                                   \
   };
 FIX_MEAN_IDENTITY(Eigen::half)
+FIX_MEAN_IDENTITY(Eigen::bfloat16)
 FIX_MEAN_IDENTITY(float)
 FIX_MEAN_IDENTITY(double)
 #undef FIX_MEAN_IDENTITY

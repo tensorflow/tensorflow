@@ -26,10 +26,10 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace {
@@ -56,7 +56,11 @@ class ConvertResultsBroadcastableShapeOp : public RewritePattern {
                                        PatternRewriter& rewriter) const;
 };
 
-class BroadcastFoldPass : public TF::BroadcastFoldPassBase<BroadcastFoldPass> {
+#define GEN_PASS_DEF_BROADCASTFOLDPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+class BroadcastFoldPass
+    : public impl::BroadcastFoldPassBase<BroadcastFoldPass> {
  public:
   void runOnOperation() override;
 };
@@ -99,14 +103,14 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteBatchMatMulV2Op(
         }
 
         const int x_row =
-            matmul_op.adj_x() ? shape_x.back() : *(shape_x.rbegin() + 1);
+            matmul_op.getAdjX() ? shape_x.back() : *(shape_x.rbegin() + 1);
         const int x_col =
-            !matmul_op.adj_x() ? shape_x.back() : *(shape_x.rbegin() + 1);
+            !matmul_op.getAdjX() ? shape_x.back() : *(shape_x.rbegin() + 1);
 
         const int y_row =
-            matmul_op.adj_y() ? shape_y.back() : *(shape_y.rbegin() + 1);
+            matmul_op.getAdjY() ? shape_y.back() : *(shape_y.rbegin() + 1);
         const int y_col =
-            !matmul_op.adj_y() ? shape_y.back() : *(shape_y.rbegin() + 1);
+            !matmul_op.getAdjY() ? shape_y.back() : *(shape_y.rbegin() + 1);
 
         // Checks that matrix multiply can perform a valid contraction.
         if (x_col != y_row) {
@@ -126,7 +130,7 @@ template <typename Op>
 LogicalResult ConvertResultsBroadcastableShapeOp::RewriteEqOp(
     Operation* op, PatternRewriter& rewriter) const {
   auto eq_op = llvm::dyn_cast_or_null<Op>(op);
-  if (eq_op && eq_op.incompatible_shape_error())
+  if (eq_op && eq_op.getIncompatibleShapeError())
     return RewriteOp(op, rewriter, OpTrait::util::getBroadcastedShape);
   return failure();
 }
@@ -141,7 +145,7 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
 
   // Check that the result shape is fully defined.
   auto result_type =
-      op->getResultTypes().front().dyn_cast_or_null<RankedTensorType>();
+      mlir::dyn_cast_or_null<RankedTensorType>(op->getResultTypes().front());
   if (!result_type || !result_type.hasStaticShape()) return failure();
 
   bool changed = false;
@@ -152,15 +156,13 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
     if (!broadcast) continue;
 
     // Check that the operand of the broadcast has fully defined shape.
-    auto broadcast_arg_type =
-        broadcast.input().getType().dyn_cast_or_null<RankedTensorType>();
+    auto broadcast_arg_type = mlir::dyn_cast_or_null<RankedTensorType>(
+        broadcast.getInput().getType());
     if (!broadcast_arg_type || !broadcast_arg_type.hasStaticShape()) continue;
 
     // Check that the other argument has fully defined shape.
-    auto argument_type = op->getOpOperand(1 - i)
-                             .get()
-                             .getType()
-                             .dyn_cast_or_null<RankedTensorType>();
+    auto argument_type = mlir::dyn_cast_or_null<RankedTensorType>(
+        op->getOpOperand(1 - i).get().getType());
     if (!argument_type || !argument_type.hasStaticShape()) continue;
 
     // Get the unbroadcasted shapes in the operand order.
@@ -180,8 +182,8 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
     if (broadcasted_shape != result_type.getShape()) continue;
 
     // Update the operand of the op to be the operand of the broadcast.
-    rewriter.updateRootInPlace(
-        op, [&]() { op->getOpOperand(i).set(broadcast.input()); });
+    rewriter.modifyOpInPlace(
+        op, [&]() { op->getOpOperand(i).set(broadcast.getInput()); });
     changed = true;
   }
   return success(changed);

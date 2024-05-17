@@ -22,15 +22,21 @@ typedef Eigen::GpuDevice GPUDevice;
 
 CastFunctorType GetCpuCastFromDouble(DataType dst_dtype) {
   CURRY_TYPES3(CAST_CASE, CPUDevice, double);
+  CAST_CASE(CPUDevice, double, float8_e5m2);
+  CAST_CASE(CPUDevice, double, float8_e4m3fn);
   return nullptr;
 }
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 CastFunctorType GetGpuCastFromDouble(DataType dst_dtype) {
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-  CURRY_TYPES3_NO_BF16(CAST_CASE, GPUDevice, double);
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+  CAST_CASE(GPUDevice, double, bfloat16);
+#else
+  CURRY_TYPES3(CAST_CASE, GPUDevice, double);
 #endif
+  CAST_CASE(GPUDevice, double, float8_e5m2);
+  CAST_CASE(GPUDevice, double, float8_e4m3fn);
   return nullptr;
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

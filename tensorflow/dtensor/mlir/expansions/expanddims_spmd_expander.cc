@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
@@ -39,22 +40,22 @@ StatusOr<mlir::Operation*> ExpandDimsExpander::ExpandOp(mlir::Operation* op) {
 
   TF_ASSIGN_OR_RETURN(
       llvm::ArrayRef<int64_t> global_output_shape,
-      GetGlobalShapeOfValueFromDTensorLayout(expand_dims_op.output()));
+      GetGlobalShapeOfValueFromDTensorLayout(expand_dims_op.getOutput()));
 
   // Compute current output layout (just input layout with unsharded on the
   // new dim);
   TF_ASSIGN_OR_RETURN(int64_t dim,
-                      ExtractConstIntFromValue(expand_dims_op.dim()));
+                      ExtractConstIntFromValue(expand_dims_op.getDim()));
 
   if (dim < 0) dim += global_output_shape.size();
-  std::vector<ShardingSpec> sharding_specs(global_output_shape.size());
+  std::vector<std::string> sharding_specs(global_output_shape.size());
   for (int i = 0; i < global_output_shape.size(); ++i) {
     if (i < dim)
-      sharding_specs[i] = operand_layout->dim(i);
+      sharding_specs[i] = operand_layout->sharding_spec(i);
     else if (i == dim)
-      sharding_specs[i].set_sharding_spec(Layout::kUnshardedDim);
+      sharding_specs[i] = Layout::kUnshardedDim;
     else
-      sharding_specs[i] = operand_layout->dim(i - 1);
+      sharding_specs[i] = operand_layout->sharding_spec(i - 1);
   }
   TF_ASSIGN_OR_RETURN(const Layout current_output_layout,
                       Layout::GetLayout(sharding_specs, output_layout->mesh()));
@@ -63,10 +64,11 @@ StatusOr<mlir::Operation*> ExpandDimsExpander::ExpandOp(mlir::Operation* op) {
 
   TF_ASSIGN_OR_RETURN(
       mlir::Value output_value,
-      EmitRelayout(expand_dims_op.output(), current_output_layout,
+      EmitRelayout(expand_dims_op.getOutput(), current_output_layout,
                    *output_layout, &newly_created_ops));
 
-  expand_dims_op.output().replaceAllUsesExcept(output_value, newly_created_ops);
+  expand_dims_op.getOutput().replaceAllUsesExcept(output_value,
+                                                  newly_created_ops);
 
   return output_value.getDefiningOp();
 }
@@ -78,7 +80,7 @@ StatusOr<llvm::DenseMap<int, Layout>> ExpandDimsExpander::ComputeLayoutForward(
   auto expand_dims_op = mlir::cast<mlir::TF::ExpandDimsOp>(op);
 
   TF_ASSIGN_OR_RETURN(int64_t dim,
-                      ExtractConstIntFromValue(expand_dims_op.dim()));
+                      ExtractConstIntFromValue(expand_dims_op.getDim()));
 
   // Do not infer any output layout if no operand layout is present.
   if (input_layouts.find(0) == input_layouts.end())
@@ -110,7 +112,7 @@ StatusOr<llvm::DenseMap<int, Layout>> ExpandDimsExpander::ComputeLayoutBackward(
   auto expand_dims_op = mlir::cast<mlir::TF::ExpandDimsOp>(op);
 
   TF_ASSIGN_OR_RETURN(int64_t dim,
-                      ExtractConstIntFromValue(expand_dims_op.dim()));
+                      ExtractConstIntFromValue(expand_dims_op.getDim()));
 
   if (dim < 0) dim += output_layout.rank();
 

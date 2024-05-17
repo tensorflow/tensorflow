@@ -17,40 +17,32 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/base/macros.h"
+#include "tsl/profiler/lib/context_types.h"
+
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
+
 namespace tensorflow {
 namespace profiler {
 
-enum class ContextType : int {
-  kGeneric = 0,
-  kLegacy,
-  kTfExecutor,
-  kTfrtExecutor,
-  kSharedBatchScheduler,
-  kPjRt,
-  kAdaptiveSharedBatchScheduler,
-  kTfrtTpuRuntime,
-  kTpuEmbeddingEngine,
-  kGpuLaunch,
-  kBatcher,
-  kTpuStream,
-  kTpuLaunch,
-  kLastContextType = ContextType::kTpuLaunch,
-};
+using ContextType ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::ContextType;  // NOLINT
 
-// In XFlow we encode context type as flow category as 6 bits.
-static_assert(static_cast<int>(ContextType::kLastContextType) < 64,
-              "Should have less than 64 categories.");
+ABSL_DEPRECATE_AND_INLINE()
+inline const char* GetContextTypeString(
+    tsl::profiler::ContextType context_type) {
+  return tsl::profiler::GetContextTypeString(context_type);
+}
 
-const char* GetContextTypeString(ContextType context_type);
-
-inline ContextType GetSafeContextType(uint32_t context_type) {
-  if (context_type > static_cast<uint32_t>(ContextType::kLastContextType)) {
-    return ContextType::kGeneric;
-  }
-  return static_cast<ContextType>(context_type);
+ABSL_DEPRECATE_AND_INLINE()
+inline tsl::profiler::ContextType GetSafeContextType(uint32_t context_type) {
+  return tsl::profiler::GetSafeContextType(context_type);
 }
 
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_UTILS_CONTEXT_TYPES_H_
+#endif  // TENSORFLOW_CORE_PROFILER_LIB_CONTEXT_TYPES_H_

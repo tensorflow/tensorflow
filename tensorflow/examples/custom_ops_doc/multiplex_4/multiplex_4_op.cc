@@ -29,7 +29,6 @@ namespace tensorflow {
 namespace custom_op_examples {
 
 using ::tensorflow::shape_inference::InferenceContext;
-using ::tensorflow::shape_inference::ShapeHandle;
 
 Status MultiplexShapeFunction(InferenceContext* c) {
   int64_t num_cond_a;
@@ -43,7 +42,7 @@ Status MultiplexShapeFunction(InferenceContext* c) {
     TF_RETURN_IF_ERROR(c->Merge(c->input(i), c->input(last), &unused));
   }
   c->set_output(0, c->input(last));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("Examples>MultiplexDense")

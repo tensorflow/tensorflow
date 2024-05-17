@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for placeholder_with_default."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import MAP_TF_TO_NUMPY_TYPE

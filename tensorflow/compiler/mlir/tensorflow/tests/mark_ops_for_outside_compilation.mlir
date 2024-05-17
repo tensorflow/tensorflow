@@ -74,6 +74,21 @@ func.func @tf2xla_fallback_op() -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
+// -----
+
+// CHECK-LABEL: func @tf2xla_fallback_op_approx_top_k
+func.func @tf2xla_fallback_op_approx_top_k(%arg0: tensor<16xf32>) -> (tensor<?xf32>, tensor<?xi32>) {
+  %0:2 = "tf_device.cluster"() ({
+    // CHECK: tf.ApproxTopK
+    // CHECK-NOT: _xla_outside_compilation
+    %1:2 = "tf.ApproxTopK"(%arg0) {k = 2} : (tensor<16xf32>) -> (tensor<?xf32>, tensor<?xi32>)
+    tf_device.return %1#0, %1#1 : tensor<?xf32>, tensor<?xi32>
+  }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> (tensor<?xf32>, tensor<?xi32>)
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @ignore_embedding_ops
 func.func @ignore_embedding_ops() -> () {
   "tf_device.cluster"() ({
@@ -82,7 +97,7 @@ func.func @ignore_embedding_ops() -> () {
     // CHECK: "tf.SendTPUEmbeddingGradients"
     // CHECK-NOT: _xla_outside_compilation
     %2:2 = "tf.RecvTPUEmbeddingActivations"() {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D"} : () -> (tensor<2x2xf32>, tensor<4x4xf32>)
-    "tf.SendTPUEmbeddingGradients"(%2#0, %2#1) {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D", operand_segment_sizes = dense<[2, 0]> : vector<2xi32>} : (tensor<2x2xf32>, tensor<4x4xf32>) -> ()
+    "tf.SendTPUEmbeddingGradients"(%2#0, %2#1) {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D", operandSegmentSizes = array<i32: 2, 0>} : (tensor<2x2xf32>, tensor<4x4xf32>) -> ()
     tf_device.return
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
   func.return
@@ -116,7 +131,7 @@ func.func @ignore_const_foldable_ops(%arg0: tensor<i32>) -> () {
 // CHECK-LABEL: func @op_string_result
 func.func @op_string_result() -> tensor<i32> {
   %0 = "tf_device.cluster"() ({
-    // CHECK: "tf.Const"() {value = dense<1> : tensor<i32>}
+    // CHECK: "tf.Const"() <{value = dense<1> : tensor<i32>}>
     // CHECK-NOT: _xla_outside_compilation
     // CHECK: "tf.Const"
     // CHECK-SAME: _xla_outside_compilation
@@ -133,7 +148,7 @@ func.func @op_string_result() -> tensor<i32> {
 // CHECK-LABEL: func @op_string_operand
 func.func @op_string_operand(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
   %0 = "tf_device.cluster"() ({
-    // CHECK: "tf.Const"() {value = dense<1> : tensor<i32>}
+    // CHECK: "tf.Const"() <{value = dense<1> : tensor<i32>}>
     // CHECK-NOT: _xla_outside_compilation
     // CHECK: "tf.StringToNumber"
     // CHECK-SAME: _xla_outside_compilation
@@ -151,7 +166,7 @@ func.func @op_string_operand(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
 // CHECK-LABEL: func @op_string_operand_string_result
 func.func @op_string_operand_string_result(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
   %0 = "tf_device.cluster"() ({
-    // CHECK: "tf.Const"() {value = dense<1> : tensor<i32>}
+    // CHECK: "tf.Const"() <{value = dense<1> : tensor<i32>}>
     // CHECK-NOT: _xla_outside_compilation
     // CHECK: "tf.Identity"
     // CHECK-SAME: _xla_outside_compilation
@@ -172,7 +187,7 @@ func.func @op_string_operand_string_result(%arg0: tensor<!tf_type.string>) -> te
 // CHECK-LABEL: func @ops_inside_tf_if_outside_compiled
 func.func @ops_inside_tf_if_outside_compiled(%arg0: tensor<i1>, %arg1: tensor<!tf_type.string>) -> tensor<f32> {
   %0 = "tf_device.cluster"() ({
-    // CHECK:      "tf.Const"() {value = dense<1> : tensor<i32>}
+    // CHECK:      "tf.Const"() <{value = dense<1> : tensor<i32>}>
     // CHECK-NOT:  _xla_outside_compilation
     // CHECK:      "tf.IfRegion"
     // CHECK:        "tf.StringToNumber"
@@ -197,22 +212,22 @@ func.func @ops_inside_tf_if_outside_compiled(%arg0: tensor<i1>, %arg1: tensor<!t
 // CHECK-LABEL: func @if_region_string_op
 func.func @if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> tensor<f32> {
   %0 = "tf_device.cluster"() ({
-    // CHECK: "tf.Const"() {value = dense<1> : tensor<i32>}
+    // CHECK: "tf.Const"() <{value = dense<1> : tensor<i32>}>
     // CHECK-NOT: _xla_outside_compilation
     // CHECK: "tf.IfRegion"
+    // CHECK: <{is_stateless
     // CHECK-NOT: _xla_outside_compilation
     %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %2 = "tf.IfRegion"(%arg0) ({
       %3 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%3) : (tensor<f32>) -> ()
      },  {
-      // CHECK: "tf.Const"() {_xla_outside_compilation = "auto0", value = dense<"1.0"> : tensor<!tf_type.string>}
+      // CHECK: "tf.Const"() <{value = dense<"1.0"> : tensor<!tf_type.string>}> {_xla_outside_compilation = "auto0"}
       // CHECK-NEXT: "tf.StringToNumber"
       // CHECK-SAME: _xla_outside_compilation
       %4 = "tf.Const"() {value = dense<"1.0"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
       %5 = "tf.StringToNumber"(%4) {out_type = f32} : (tensor<!tf_type.string>) -> tensor<f32>
       "tf.Yield"(%5) : (tensor<f32>) -> ()
-    // CHECK: {is_stateless
     }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     %6 = "tf.Identity"(%2) : (tensor<f32>) -> tensor<f32>
     tf_device.return %6: tensor<f32>
@@ -226,34 +241,34 @@ func.func @if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> tenso
 // CHECK-LABEL: func @nested_if_region_string_op
 func.func @nested_if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> tensor<f32> {
   %0 = "tf_device.cluster"() ({
-    // CHECK: "tf.Const"() {value = dense<1> : tensor<i32>}
+    // CHECK: "tf.Const"() <{value = dense<1> : tensor<i32>}>
     // CHECK-NOT: _xla_outside_compilation
     // CHECK: "tf.IfRegion"
+    // CHECK: <{is_stateless
     // CHECK-NOT: _xla_outside_compilation
     %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %2 = "tf.IfRegion"(%arg0) ({
       %3 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%3) : (tensor<f32>) -> ()
       },  {
-       // CHECK: "tf.Const"() {value = dense<true> : tensor<i1>}
+       // CHECK: "tf.Const"() <{value = dense<true> : tensor<i1>}>
+       // CHECK: <{is_stateless
        // CHECK-NOT: _xla_outside_compilation
        %4 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
        %5 = "tf.IfRegion"(%4)({
-         // CHECK: "tf.Const"() {_xla_outside_compilation = "auto0", value = dense<"1.0"> : tensor<!tf_type.string>}
+         // CHECK: "tf.Const"() <{value = dense<"1.0"> : tensor<!tf_type.string>}> {_xla_outside_compilation = "auto0"}
          // CHECK-NEXT: "tf.StringToNumber"
          // CHECK-SAME: _xla_outside_compilation
          %6 = "tf.Const"() {value = dense<"1.0"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
          %7 = "tf.StringToNumber"(%6) {out_type = f32} : (tensor<!tf_type.string>) -> tensor<f32>
          "tf.Yield"(%7) : (tensor<f32>) -> ()
        },  {
-         // CHECK: "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+         // CHECK: "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}>
          // CHECK-NOT: _xla_outside_compilation
          %8 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
          "tf.Yield"(%8) : (tensor<f32>) -> ()
-       // CHECK: {is_stateless
        }){is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
        "tf.Yield"(%5) : (tensor<f32>) -> ()
-    // CHECK: {is_stateless
     }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     %9 = "tf.Identity"(%2) : (tensor<f32>) -> tensor<f32>
     tf_device.return %9: tensor<f32>
@@ -267,7 +282,7 @@ func.func @nested_if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -
 // CHECK-LABEL: func @ops_inside_while_outside_compiled
 func.func @ops_inside_while_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<!tf_type.string>) -> tensor<f32> {
   %0 = "tf_device.cluster"() ({
-    // CHECK:     "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+    // CHECK:     "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}>
     // CHECK-NOT: _xla_outside_compilation
     // CHECK:     "tf.WhileRegion"
     // CHECK:       "tf.StringToNumber"
@@ -298,9 +313,10 @@ func.func @ops_inside_while_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<!
 // CHECK-LABEL: func @while_region_unsupported_op
 func.func @while_region_unsupported_op(%arg0: tensor<i32>, %arg1: tensor<!tf_type.string>) -> tensor<f32> {
   %0 = "tf_device.cluster"() ({
-    // CHECK: "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+    // CHECK: "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}>
     // CHECK-NOT: _xla_outside_compilation
     // CHECK: "tf.WhileRegion"
+    // CHECK: <{is_stateless = true
     %1 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
     %2:2 = "tf.WhileRegion"(%1, %arg0) ({
       ^bb0(%carg0: tensor<f32>, %carg1: tensor<i32>):
@@ -314,10 +330,9 @@ func.func @while_region_unsupported_op(%arg0: tensor<i32>, %arg1: tensor<!tf_typ
         // CHECK: "tf.UnsupportedOp"
         // CHECK-SAME: _xla_outside_compilation
         %3 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-        // CHECK: "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+        // CHECK: "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}>
         %4 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
         "tf.Yield"(%4, %sub) : (tensor<f32>, tensor<i32>) -> ()
-    // CHECK: {is_stateless = true
     }) {is_stateless = true} : (tensor<f32>, tensor<i32>) -> (tensor<f32>, tensor<i32>)
     // CHECK: "tf.Identity"
     // CHECK-NOT: _xla_outside_compilation
@@ -542,4 +557,55 @@ func.func @variant_block_arg(tensor<!tf_type.variant<tensor<f32>>>) -> () {
     }) : () -> ()
     func.return
 }
+
+// CHECK-LABEL: func @set_bound
+func.func @set_bound(%arg0: tensor<i32>) -> tensor<i32> {
+  %bound = "tf.Const"() {value = dense<16> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: tf.XlaSetBound
+  // CHECK-NOT: _xla_outside_compilation
+  %bounded = "tf.XlaSetBound"(%arg0, %bound) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  func.return %bounded : tensor<i32>
+}
+
+
+// CHECK-LABEL: func @unsupported_op_cpu_cluster
+func.func @unsupported_op_cpu_cluster() -> tensor<i32> {
+  %0 = "tf_device.cluster"() ({
+    // CHECK: "tf.UnsupportedOp"
+    // CHECK-SAME: _xla_outside_compilation
+    // CHECK: "tf.Identity"
+    // CHECK-NOT: _xla_outside_compilation
+    %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %2 : tensor<i32>
+  }) {allow_soft_placement = true, _xla_compile_device_type = "CPU"} : () -> tensor<i32>
+  func.return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @unsupported_op_gpu_cluster
+func.func @unsupported_op_gpu_cluster() -> tensor<i32> {
+  %0 = "tf_device.cluster"() ({
+    // CHECK: "tf.UnsupportedOp"
+    // CHECK-SAME: _xla_outside_compilation
+    // CHECK: "tf.Identity"
+    // CHECK-NOT: _xla_outside_compilation
+    %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %2 : tensor<i32>
+  }) {allow_soft_placement = true, _xla_compile_device_type = "GPU"} : () -> tensor<i32>
+  func.return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @xla_host_compute
+func.func @xla_host_compute(%arg0: tensor<i32>) {
+  "tf_device.cluster"() ({
+    %cst = "tf.Const"() {value = dense<16> : tensor<i32>} : () -> tensor<i32>
+    // CHECK:  tf.XlaHostCompute
+    // CHECK-SAME:_xla_original_oc_node_name = "hcb0", _xla_token_input_nodes = ["_xla_token_arg_node"] 
+    "tf.XlaHostCompute"(%cst) <{ancestors = [], cost_estimate_ns = 1000000 : i64, key = "_host_callback", recv_key = "", send_key = "", shapes = [], tpu_core = 0 : i64}> {_xla_original_oc_node_name = "hcb0", _xla_token_input_nodes = ["_xla_token_arg_node"]} : (tensor<i32>) -> ()
+    tf_device.return
+  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
+  func.return
+}
+
 

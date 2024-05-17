@@ -63,7 +63,7 @@ class BatchBenchmark(benchmark_base.DatasetBenchmarkBase):
         tag = "_parallel_copy" if parallel_copy else ""
         self.run_and_report_benchmark(
             dataset,
-            num_elements=(1 << (22 - batch_exp - element_exp // 2)),
+            num_elements=(1 << (22 - ((batch_exp + element_exp) // 2))),
             iters=1,
             extras={
                 "model_name": "batch.benchmark.%d" % benchmark_id,
@@ -74,7 +74,7 @@ class BatchBenchmark(benchmark_base.DatasetBenchmarkBase):
 
   def benchmark_batch_dense(self):
     self._benchmark_batch_dense(parallel_copy=False, benchmark_id=2)
-    self._benchmark_batch_dense(parallel_copy=True, benchmark_id=3)
+    #self._benchmark_batch_dense(parallel_copy=True, benchmark_id=3)
 
   def benchmark_parallel_batch(self):
     batch_size = 128

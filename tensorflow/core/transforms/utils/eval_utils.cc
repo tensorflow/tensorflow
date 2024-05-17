@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/platform/logging.h"
@@ -78,7 +79,7 @@ tensorflow::Status SimpleDevice::MakeTensorFromProto(
 LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
                                 tensorflow::ResourceMgr *resource_mgr, TFOp op,
                                 ArrayRef<ElementsAttr> operands,
-                                SmallVectorImpl<Attribute> &results) {
+                                SmallVectorImpl<TypedAttr> &results) {
   assert(cpu_device && "cpu device can't be null");
   assert(resource_mgr && "ResourceMgr can't be null");
 
@@ -99,7 +100,7 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
   absl::InlinedVector<tensorflow::TensorValue, 4> input_tensor_values(
       operands.size());
   // For each operand, convert its ElementsAttr to a Tensor and the Tensor will
-  // be referenced by a TensorValue. To ensure Tensor/TensorValue have thier
+  // be referenced by a TensorValue. To ensure Tensor/TensorValue have their
   // lifecycle across the later evaluation. They are stored in
   // `input_tensors`\`input_tensor_values` respectively. The following loop zips
   // them together so that the bundled values are related. Note that the
@@ -112,17 +113,17 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
 
   tensorflow::Status status;
   std::unique_ptr<tensorflow::OpKernel> op_kernel = tensorflow::CreateOpKernel(
-      "CPU", cpu_device, cpu_device->GetAllocator({}), node_def,
-      TF_GRAPH_DEF_VERSION, &status);
+      tensorflow::DEVICE_CPU, cpu_device, cpu_device->GetAllocator({}),
+      node_def, TF_GRAPH_DEF_VERSION, &status);
   if (!status.ok()) {
-    VLOG(3) << status.error_message();
+    VLOG(3) << status.message();
     return failure();
   }
 
   tensorflow::OpKernelContext::Params params;
   params.device = cpu_device;
   params.frame_iter = tensorflow::FrameAndIter(0, 0);
-  params.inputs = &input_tensor_values;
+  params.inputs = input_tensor_values;
   params.op_kernel = op_kernel.get();
   params.resource_manager = resource_mgr;
 
@@ -135,7 +136,7 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
   tensorflow::OpKernelContext op_context(&params);
   op_kernel->Compute(&op_context);
   if (!op_context.status().ok()) {
-    VLOG(3) << op_context.status().error_message();
+    VLOG(3) << op_context.status().message();
     return failure();
   }
 
@@ -148,14 +149,13 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
       continue;
     }
 
-    tensorflow::StatusOr<ElementsAttr> attr_or =
-        ConvertTensor(*(op_context.mutable_output(i)), builder,
-                      cast<TFGraphDialect>(op->getDialect()));
+    absl::StatusOr<ElementsAttr> attr_or =
+        ConvertTensor(*(op_context.mutable_output(i)), builder);
     if (!attr_or.status().ok()) {
-      VLOG(3) << attr_or.status().error_message();
+      VLOG(3) << attr_or.status().message();
       return failure();
     }
-    results.push_back(attr_or.ValueOrDie());
+    results.push_back(attr_or.value());
   }
 
   return success();

@@ -38,7 +38,7 @@ StatusOr<mlir::Operation*> TerminatorSPMDExpander::ExpandOp(
   auto output_types = llvm::to_vector<8>(terminator_op.getOperandTypes());
   assert(output_types.size() == parent_op->getNumResults());
 
-  for (auto& output_type_and_index : llvm::enumerate(output_types)) {
+  for (const auto& output_type_and_index : llvm::enumerate(output_types)) {
     const int index = output_type_and_index.index();
     const auto& type = output_type_and_index.value();
     parent_op->getResult(index).setType(type);

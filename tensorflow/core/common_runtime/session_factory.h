@@ -32,7 +32,7 @@ class SessionFactory {
  public:
   // Creates a new session and stores it in *out_session, or fails with an error
   // status if the Session could not be created. Caller takes ownership of
-  // *out_session if this returns Status::OK().
+  // *out_session if this returns OkStatus().
   virtual Status NewSession(const SessionOptions& options,
                             Session** out_session) = 0;
 

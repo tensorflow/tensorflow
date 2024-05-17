@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_H_
 
+#include <optional>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #include "absl/base/macros.h"
 #include "absl/strings/string_view.h"
@@ -27,82 +29,79 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
-using stream_executor::port::Status;
-using stream_executor::port::StatusOr;
+using tsl::Status;
+using tsl::StatusOr;
+
+struct GraphdefToMlirOptions {
+  std::string debug_info_file;
+  std::string xla_compile_device_type;
+  bool prune_unused_nodes;
+  bool convert_legacy_fed_inputs;
+  bool graph_as_function;
+  bool upgrade_legacy;
+  bool enable_shape_inference;
+  bool unconditionally_use_set_output_shapes;
+  bool enable_soft_placement;
+  bool set_original_tf_func_name = false;
+};
 
 // TODO(antiagainst): Directly manipulating files in library functions is not
 // a good idea. We should pass in a string/stream here.
 
 // Converts a TensorFlow GraphDef contained in `input` param into a MLIR module.
 // Creates MLIR entities into the given MLIR `context`.
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirTranslateFunction(
-    llvm::StringRef input, absl::string_view debug_info_file,
-    const std::vector<std::string>& input_arrays,
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+GraphdefToMlirTranslateFunction(
+    llvm::StringRef input, const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
-    const std::vector<llvm::Optional<std::vector<int>>>& input_shapes,
+    const std::vector<std::optional<std::vector<int>>>& input_shapes,
     const std::vector<std::string>& output_arrays,
     const std::vector<std::string>& control_output_arrays,
-    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, bool upgrade_legacy,
-    // TODO(jpienaar): Remove these.
-    bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
-    mlir::MLIRContext* context);
+    const GraphdefToMlirOptions& import_options, mlir::MLIRContext* context);
 
 ABSL_DEPRECATED(
     "Please use the other overload of this function which accepts structured "
     "inputs instead of strings")
 // Converts a TensorFlow GraphDef contained in `input` param into a MLIR module.
 // Creates MLIR entities into the given MLIR `context`.
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirTranslateFunction(
-    llvm::StringRef input, absl::string_view debug_info_file,
-    absl::string_view input_arrays, absl::string_view input_dtypes,
-    absl::string_view input_shapes, absl::string_view output_arrays,
-    absl::string_view control_output_arrays, bool prune_unused_nodes,
-    bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
-    // TODO(jpienaar): Remove these.
-    bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
-    mlir::MLIRContext* context);
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+GraphdefToMlirTranslateFunction(
+    llvm::StringRef input, absl::string_view input_arrays,
+    absl::string_view input_dtypes, absl::string_view input_shapes,
+    absl::string_view output_arrays, absl::string_view control_output_arrays,
+    const GraphdefToMlirOptions& import_options, mlir::MLIRContext* context);
 
 // Similar as the above function, but replaces all constant tensors
 // with randomly generated splat values.
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 GraphdefToSplattedMlirTranslateFunction(
-    llvm::StringRef input, absl::string_view debug_info_file,
-    const std::vector<std::string>& input_arrays,
+    llvm::StringRef input, const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
     const std::vector<std::vector<int>>& input_shapes,
     const std::vector<std::string>& output_arrays,
     const std::vector<std::string>& control_output_arrays,
-    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, bool upgrade_legacy,
-    // TODO(jpienaar): Remove these.
-    bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
-    mlir::MLIRContext* context);
+    const GraphdefToMlirOptions& import_options, mlir::MLIRContext* context);
 
 ABSL_DEPRECATED(
     "Please use the other overload of this function which accepts structured "
     "inputs instead of strings")
 // Similar as the above function, but replaces all constant tensors
 // with randomly generated splat values.
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 GraphdefToSplattedMlirTranslateFunction(
-    llvm::StringRef input, absl::string_view debug_info_file,
-    absl::string_view input_arrays, absl::string_view input_dtypes,
-    absl::string_view input_shapes, absl::string_view output_arrays,
-    absl::string_view control_output_arrays, bool prune_unused_nodes,
-    bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
-    // TODO(jpienaar): Remove these.
-    bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
-    mlir::MLIRContext* context);
+    llvm::StringRef input, absl::string_view input_arrays,
+    absl::string_view input_dtypes, absl::string_view input_shapes,
+    absl::string_view output_arrays, absl::string_view control_output_arrays,
+    const GraphdefToMlirOptions& import_options, mlir::MLIRContext* context);
 
 // Converts a TensorFlow SavedModel stored in the directory with the given
 // `saved_model_dir` into a MLIR module. Creates MLIR entities into the
 // given MLIR `context`.
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SavedModelObjectGraphToMlirImport(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+SavedModelObjectGraphToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
@@ -112,11 +111,12 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SavedModelObjectGraphToMlirImport(
 // `saved_model_dir` into a MLIR module. Creates MLIR entities into the
 // given MLIR `context`.
 // 'saved_model_bundle' if not null, will be initialized with the model bundle.
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SavedModelSignatureDefsToMlirImport(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    MLIRImportOptions options, bool lift_variables = true,
+    MLIRImportOptions options,
     std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle =
         nullptr);
 
@@ -124,7 +124,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SavedModelSignatureDefsToMlirImport(
 // `saved_model_dir` into a MLIR module. Creates MLIR entities into the
 // given MLIR `context`. This does not create session internally so it is faster
 // and does not perform any graph transformation.
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 SavedModelSignatureDefsToMlirImportLite(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,

@@ -57,7 +57,8 @@ class MklSmallSizeAllocator : public Allocator {
   }
   ~MklSmallSizeAllocator() override {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MklSmallSizeAllocator);
+  MklSmallSizeAllocator(const MklSmallSizeAllocator&) = delete;
+  void operator=(const MklSmallSizeAllocator&) = delete;
 
   inline string Name() override { return name_; }
 
@@ -189,7 +190,7 @@ class MklCPUAllocator : public Allocator {
     large_size_allocator_ =
         new BFCAllocator(absl::WrapUnique(sub_allocator_), max_mem_bytes, kName,
                          large_allocator_opts);
-    return Status::OK();
+    return OkStatus();
   }
 
   inline string Name() override { return kName; }
@@ -280,14 +281,14 @@ class MklCPUAllocator : public Allocator {
   }
 
   static inline void* CallocHook(size_t num, size_t size) {
-    Status s = Status(error::Code::UNIMPLEMENTED,
+    Status s = Status(absl::StatusCode::kUnimplemented,
                       "Unimplemented case for hooking MKL function.");
     TF_CHECK_OK(s);  // way to assert with an error message
     return nullptr;  // return a value and make static code analyzers happy
   }
 
   static inline void* ReallocHook(void* ptr, size_t size) {
-    Status s = Status(error::Code::UNIMPLEMENTED,
+    Status s = Status(absl::StatusCode::kUnimplemented,
                       "Unimplemented case for hooking MKL function.");
     TF_CHECK_OK(s);  // way to assert with an error message
     return nullptr;  // return a value and make static code analyzers happy
@@ -316,10 +317,11 @@ class MklCPUAllocator : public Allocator {
 
   // Size in bytes that defines the upper-bound for "small" allocations.
   // Any allocation below this threshold is "small" allocation.
-  static constexpr const size_t kSmallAllocationsThreshold = 4096;
+  static constexpr const size_t kSmallAllocationsThreshold = 262144;
 
   // Prevent copying and assignment
-  TF_DISALLOW_COPY_AND_ASSIGN(MklCPUAllocator);
+  MklCPUAllocator(const MklCPUAllocator&) = delete;
+  void operator=(const MklCPUAllocator&) = delete;
 };
 
 }  // namespace tensorflow

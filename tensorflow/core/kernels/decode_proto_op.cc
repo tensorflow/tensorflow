@@ -33,7 +33,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -43,12 +43,10 @@ limitations under the License.
 #include "tensorflow/core/util/proto/decode.h"
 #include "tensorflow/core/util/proto/descriptors.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
 
-using ::tensorflow::MakeUnique;
 using ::tensorflow::protobuf::Descriptor;
 using ::tensorflow::protobuf::DescriptorPool;
 using ::tensorflow::protobuf::DynamicMessageFactory;
@@ -125,7 +123,7 @@ Status InitDefaultValue(DataType dtype, const T value, DefaultValue* result) {
           "Cannot initialize default value for unsupported type: ",
           DataTypeString(dtype));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
@@ -192,7 +190,7 @@ Status InitDefaultValueFromFieldDescriptor(DataType dtype,
       return InitDefaultValue(dtype, "", result);
       // default: intentionally omitted in order to enable static checking.
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // A FieldInfo holds a handful of information from the FieldDescriptor
@@ -265,14 +263,14 @@ class CountCollector {
     if (!SkipValue(input, field)) {
       return errors::DataLoss("ReadValue: Failed skipping field when counting");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Reads (in this case counts) a length-delimited list of values.
   Status ReadPackedValues(CodedInputStream* input, const FieldInfo& field,
                           size_t buf_size) {
     if (buf_size == 0) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     const void* tmpbuf;
@@ -358,7 +356,7 @@ class CountCollector {
     if (!field.is_repeated && *count_ptr_ > 1) {
       *count_ptr_ = 1;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -397,7 +395,7 @@ class CountCollector {
     }
 
     *count_ptr_ += count;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Counts the number of fixed-size values in a packed field. This can be done
@@ -410,7 +408,7 @@ class CountCollector {
           "Illegal data length for packed fixed-size type: ", len);
     }
     *count_ptr_ += len / sizeof(T);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Skips a single value in the input stream. Dispatches to the appropriately
@@ -580,7 +578,7 @@ class DenseCollector {
     for (int i = next_repeat_index_; i < max_repeat_count_; i++) {
       reinterpret_cast<T*>(datap_)[i] = default_value;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int32 next_repeat_index_ = 0;
@@ -671,8 +669,9 @@ class DecodeProtoOp : public OpKernel {
           // allow conversions here, but tf.cast already exists so we don't
           // duplicate the functionality.
           errors::InvalidArgument("Unexpected output type for ",
-                                  fd->full_name(), ": ", fd->cpp_type(), " to ",
-                                  output_types[field_index]));
+                                  fd->full_name(), ": ", fd->cpp_type_name(),
+                                  " to ",
+                                  DataType_Name(output_types[field_index])));
 
       field_index++;
       field_descs.push_back(fd);
@@ -699,8 +698,8 @@ class DecodeProtoOp : public OpKernel {
       DefaultValue default_value;
       OP_REQUIRES_OK(context, InitDefaultValueFromFieldDescriptor(
                                   dtype, field_descriptor, &default_value));
-      fields_.push_back(
-          MakeUnique<FieldInfo>(field_descriptor, output_index, default_value));
+      fields_.push_back(std::make_unique<FieldInfo>(
+          field_descriptor, output_index, default_value));
     }
 
     message_prototype_ = message_factory_.GetPrototype(message_desc);
@@ -735,7 +734,7 @@ class DecodeProtoOp : public OpKernel {
     const TensorShape& shape_prefix = buf_tensor.shape();
 
     TensorShape sizes_shape = shape_prefix;
-    sizes_shape.AddDim(field_count);
+    OP_REQUIRES_OK(ctx, sizes_shape.AddDimWithStatus(field_count));
     Tensor* sizes_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, sizes_shape, &sizes_tensor));
 
@@ -792,7 +791,7 @@ class DecodeProtoOp : public OpKernel {
       TensorShape flat_shape = {static_cast<int64_t>(message_count),
                                 max_sizes[fi]};
       TensorShape out_shape = shape_prefix;
-      out_shape.AddDim(max_sizes[fi]);
+      OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(max_sizes[fi]));
 
       // Surprisingly we don't specify the types from the output_types
       // attribute: that is done for us based on the Op declaration:
@@ -1034,7 +1033,7 @@ class DecodeProtoOp : public OpKernel {
           *field_info, WireFormatLite::GetTagWireType(tag), input,
           &collectors[expected_field_info_iter - fields_.begin()]));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Collects values for a single field.
@@ -1074,7 +1073,7 @@ class DecodeProtoOp : public OpKernel {
         return errors::DataLoss(
             "CollectField: Failed skipping malformed field");
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
     return collector->ReadValue(input, field);
   }
@@ -1101,7 +1100,8 @@ class DecodeProtoOp : public OpKernel {
   // security review.
   bool sanitize_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DecodeProtoOp);
+  DecodeProtoOp(const DecodeProtoOp&) = delete;
+  void operator=(const DecodeProtoOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DecodeProtoV2").Device(DEVICE_CPU),

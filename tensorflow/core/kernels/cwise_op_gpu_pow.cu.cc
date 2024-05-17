@@ -23,6 +23,7 @@ namespace functor {
 DEFINE_BINARY3(pow, Eigen::half, float, double);
 DEFINE_BINARY1(safe_pow_ignore_error, int64);
 #endif
+DEFINE_BINARY1(pow, bfloat16);
 }  // namespace functor
 }  // namespace tensorflow
 

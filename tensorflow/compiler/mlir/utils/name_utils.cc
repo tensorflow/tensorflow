@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 
 #include <cctype>
+#include <string>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 
@@ -62,21 +64,21 @@ std::string GetNameFromLoc(Location loc) {
   while (!locs.empty()) {
     Location curr_loc = locs.pop_back_val();
 
-    if (auto name_loc = curr_loc.dyn_cast<NameLoc>()) {
+    if (auto name_loc = mlir::dyn_cast<NameLoc>(curr_loc)) {
       // Add name in NameLoc. For NameLoc we also account for names due to ops
       // in functions where the op's name is first.
       auto name = name_loc.getName().strref().split('@').first;
       // Skip if the name is for op type.
-      if (!name.endswith(":")) {
+      if (!name.ends_with(":")) {
         loc_names.push_back(name);
         if (!name.empty()) names_is_nonempty = true;
       }
       continue;
-    } else if (auto call_loc = curr_loc.dyn_cast<CallSiteLoc>()) {
+    } else if (auto call_loc = mlir::dyn_cast<CallSiteLoc>(curr_loc)) {
       // Use location of the Callee to generate the name.
       locs.push_back(call_loc.getCallee());
       continue;
-    } else if (auto fused_loc = curr_loc.dyn_cast<FusedLoc>()) {
+    } else if (auto fused_loc = mlir::dyn_cast<FusedLoc>(curr_loc)) {
       // Push all locations in FusedLoc in reverse order, so locations are
       // visited based on order in FusedLoc.
       auto reversed_fused_locs = llvm::reverse(fused_loc.getLocations());
@@ -90,46 +92,6 @@ std::string GetNameFromLoc(Location loc) {
 
   if (names_is_nonempty)
     return llvm::join(loc_names.begin(), loc_names.end(), ";");
-
-  return "";
-}
-
-std::string GetOpTypeFromLoc(Location loc) {
-  llvm::SmallVector<llvm::StringRef, 1> loc_op_types;
-  llvm::SmallVector<Location, 8> locs;
-  locs.push_back(loc);
-  bool op_types_is_nonempty = false;
-
-  while (!locs.empty()) {
-    Location curr_loc = locs.pop_back_val();
-
-    if (auto name_loc = curr_loc.dyn_cast<NameLoc>()) {
-      // Add name in NameLoc. For NameLoc we also account for names due to ops
-      // in functions where the op's name is first.
-      auto op_type = name_loc.getName().strref().split('@').first;
-      if (op_type.endswith(":")) {
-        op_type = op_type.substr(0, op_type.size() - 1);
-        loc_op_types.push_back(op_type);
-        if (!op_type.empty()) op_types_is_nonempty = true;
-      }
-      continue;
-    } else if (auto call_loc = curr_loc.dyn_cast<CallSiteLoc>()) {
-      // Use location of the Callee to generate the name.
-      locs.push_back(call_loc.getCallee());
-      continue;
-    } else if (auto fused_loc = curr_loc.dyn_cast<FusedLoc>()) {
-      // The first location is reserved for op_type.
-      if (!fused_loc.getLocations().empty())
-        locs.push_back(fused_loc.getLocations()[0]);
-      continue;
-    }
-
-    // Location is not a supported, so an empty StringRef is added.
-    loc_op_types.push_back(llvm::StringRef());
-  }
-
-  if (op_types_is_nonempty)
-    return llvm::join(loc_op_types.begin(), loc_op_types.end(), ";");
 
   return "";
 }

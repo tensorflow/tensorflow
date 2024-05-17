@@ -34,13 +34,13 @@ struct StridedSliceShapeSpec {
   // index in the begin_tensor. If
   // output_to_sparse_mapping[i] is -1, it means the dimension doesn't show up
   // in sparse_mapping.
-  gtl::InlinedVector<int64_t, 4> output_to_sparse_mapping;
+  absl::InlinedVector<int64_t, 4UL> output_to_sparse_mapping;
   // output_to_processing_mapping is similar to output_to_sparse_mapping, but
   // for processing shape.
-  gtl::InlinedVector<int64_t, 4> output_to_processing_mapping;
+  absl::InlinedVector<int64_t, 4UL> output_to_processing_mapping;
   // processing_to_sparse_mapping[i] represents input_shape[i]'s corresponding
   // dim index in the begin_tensor.
-  gtl::InlinedVector<int64_t, 4> processing_to_sparse_mapping;
+  absl::InlinedVector<int64_t, 4UL> processing_to_sparse_mapping;
 };
 
 // Runs validation on the strided slice op parameters.
@@ -53,6 +53,9 @@ struct StridedSliceShapeSpec {
 // <processing_shape> are valid; <is_identity>, <is_simple_slice> and other
 // output parameters will not be accurate.
 //
+// If the rank of <input_shape> is unknown (i.e., "input_shape.unknown_rank()"
+// is true)), the method returns an invalid status.
+//
 // If <begin_tensor> or <end_tensor> are nullptr, <begin> and <end> will not be
 // valid. In this case, <slice_dim0> and <is_identity> will be true only if a
 // determination can be made based on the information given. A best effort is
@@ -64,24 +67,26 @@ struct StridedSliceShapeSpec {
 Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
-    int32_t begin_mask_spec, int32_t end_mask_spec, const int32_t ellipsis_mask,
+    int32_t begin_mask_spec, int32_t end_mask_spec, int32_t ellipsis_mask,
     int32_t new_axis_mask, int32_t shrink_axis_mask,
     PartialTensorShape* processing_shape, PartialTensorShape* final_shape,
     bool* is_identity, bool* is_simple_slice, bool* slice_dim0,
-    gtl::InlinedVector<int64_t, 4>* begin, gtl::InlinedVector<int64_t, 4>* end,
-    gtl::InlinedVector<int64_t, 4>* strides,
+    absl::InlinedVector<int64_t, 4UL>* begin,
+    absl::InlinedVector<int64_t, 4UL>* end,
+    absl::InlinedVector<int64_t, 4UL>* strides,
     StridedSliceShapeSpec* shape_spec = nullptr);
 
 // Same as above, but the outputs are TensorShape, not PartialTensorShape
 Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
-    int32_t begin_mask_spec, int32_t end_mask_spec, const int32_t ellipsis_mask,
+    int32_t begin_mask_spec, int32_t end_mask_spec, int32_t ellipsis_mask,
     int32_t new_axis_mask, int32_t shrink_axis_mask,
     TensorShape* processing_shape, TensorShape* final_shape, bool* is_identity,
     bool* is_simple_slice, bool* slice_dim0,
-    gtl::InlinedVector<int64_t, 4>* begin, gtl::InlinedVector<int64_t, 4>* end,
-    gtl::InlinedVector<int64_t, 4>* strides,
+    absl::InlinedVector<int64_t, 4UL>* begin,
+    absl::InlinedVector<int64_t, 4UL>* end,
+    absl::InlinedVector<int64_t, 4UL>* strides,
     StridedSliceShapeSpec* shape_spec = nullptr);
 
 // Simple class for determining if it is possible to broadcast a tensor to a
@@ -95,7 +100,7 @@ Status ValidateStridedSliceOp(
 //   with correct dimensions in the full (unsliced) destination tensor.
 class StridedSliceAssignBCast {
  public:
-  using Vec = gtl::InlinedVector<int64_t, 4>;
+  using Vec = absl::InlinedVector<int64_t, 4UL>;
 
   StridedSliceAssignBCast(const Vec& input_shape, const Vec& output_shape);
 
@@ -105,7 +110,7 @@ class StridedSliceAssignBCast {
   //
   // This is to support remapping slice -> processing dimensions.  To relate
   // the sliced output dimensions back to processing dimensions (i.e. those
-  // relative to the the original unsliced input), we need to remove any axes
+  // relative to the original unsliced input), we need to remove any axes
   // that were added via the `new_axis_mask`, and add back any axes that were
   // removed via the `shrink_axis_mask`.  For example, an expression like
   //

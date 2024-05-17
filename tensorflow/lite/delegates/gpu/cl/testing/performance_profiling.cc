@@ -17,14 +17,27 @@ limitations under the License.
 #include <chrono>  // NOLINT(build/c++11)
 #include <iostream>
 #include <string>
+#include <vector>
 
+#include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
 #include "absl/time/time.h"
+#include "third_party/opencl_headers/CL/cl.h"
+#include "third_party/opencl_headers/CL/cl_ext.h"
+#include "third_party/opencl_headers/CL/cl_platform.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_command_buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
+#include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/kernels/register.h"
+
+ABSL_FLAG(int, num_tests, 10, "Number of benchmark tests");
+ABSL_FLAG(int, num_runs_per_test, 0,
+          "Number of runs per benchmark test. Use 0 for default");
+ABSL_FLAG(bool, benchmark_command_buffer, true, "Run command buffer benchmark");
 
 namespace tflite {
 namespace gpu {
@@ -95,11 +108,11 @@ absl::Status RunExternalImmutableSample(const std::string& model_name) {
   for (int i = 0; i < graph_cl.outputs().size(); ++i) {
     // Assumed that graph outputs have batch size = 1.
     auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
-    RETURN_IF_ERROR(CreateTensor(
-        env.context(), graph_cl.outputs()[i]->tensor.shape,
-        TensorDescriptor{data_type, TensorStorageType::TEXTURE_ARRAY,
-                         Layout::HWC},
-        &outputs[i]));
+    TensorDescriptor required_tensor_desc = TensorDescriptor{
+        data_type, TensorStorageType::TEXTURE_ARRAY, Layout::HWC};
+    required_tensor_desc.SetBHWCShape(graph_cl.outputs()[i]->tensor.shape);
+    RETURN_IF_ERROR(
+        CreateTensor(env.context(), required_tensor_desc, &outputs[i]));
     create_info.external_immutable_tensors[graph_cl.outputs()[i]->id] =
         &outputs[i];
   }
@@ -116,12 +129,10 @@ absl::Status RunExternalImmutableSample(const std::string& model_name) {
   // syncronization.
   RETURN_IF_ERROR(env.queue()->WaitForCompletion());
 
-  const auto dst_shape = BHWC(outputs[0].Batch(), outputs[0].Height(),
-                              outputs[0].Width(), outputs[0].Channels());
+  TensorDescriptor desc;
+  RETURN_IF_ERROR(outputs[0].ToDescriptor(&desc, env.queue()));
   TensorFloat32 cpu_tensor;
-  cpu_tensor.shape = dst_shape;
-  cpu_tensor.data.resize(dst_shape.DimensionsProduct());
-  RETURN_IF_ERROR(outputs[0].ReadData(env.queue(), &cpu_tensor));
+  desc.DownloadData(&cpu_tensor);
   std::cout << "First tensor data at index 0 - " << cpu_tensor.data[0]
             << std::endl;
 
@@ -226,49 +237,36 @@ absl::Status RunSerializedTest(const std::string& model_name) {
   return absl::OkStatus();
 }
 
-absl::Status RunCommandBufferSample(int num_tests, int num_runs_per_sec,
+absl::Status RunCommandBufferSample(int num_tests, double model_time_ms,
                                     Environment* env,
                                     InferenceContext* context) {
   if (!env->device().GetInfo().SupportsExtension("cl_khr_command_buffer")) {
     return absl::OkStatus();
   }
 
-  cl_command_queue command_queue = env->queue()->queue();
-  cl_int errcode_ret;
-  std::vector<cl_command_buffer_khr> cbs(num_runs_per_sec);
+  int num_cbs = 3;
+  int num_inferences_in_cb = std::max(1.0, 100.0 / model_time_ms);
+  std::vector<CLCommandBuffer> cbs(num_cbs);
   for (auto& cb : cbs) {
-    cb = clCreateCommandBufferKHR(1, &command_queue, nullptr, &errcode_ret);
-    if (errcode_ret != CL_SUCCESS) {
-      return absl::InternalError("Failed clCreateCommandBufferKHR.");
+    RETURN_IF_ERROR(cb.Init(env->queue(), /*simultaneous_use=*/false));
+    for (int i = 0; i < num_inferences_in_cb; ++i) {
+      RETURN_IF_ERROR(context->AddToCommanBuffer(cb.GetCommandBuffer()));
     }
-    RETURN_IF_ERROR(context->AddToCommanBuffer(cb));
-    errcode_ret = clFinalizeCommandBufferKHR(cb);
-    if (errcode_ret != CL_SUCCESS) {
-      return absl::InternalError("Failed clFinalizeCommandBufferKHR.");
-    }
+    RETURN_IF_ERROR(cb.Finalize());
   }
 
   for (int i = 0; i < num_tests; ++i) {
     const auto start = std::chrono::high_resolution_clock::now();
     for (auto& cb : cbs) {
-      cl_int error_code =
-          clEnqueueCommandBufferKHR(1, &command_queue, cb, 0, nullptr, nullptr);
-      if (error_code != CL_SUCCESS) {
-        return absl::UnknownError(
-            absl::StrCat("Failed to clEnqueueCommandBufferKHR - ",
-                         CLErrorCodeToString(error_code)));
-      }
-      clFlush(command_queue);
+      RETURN_IF_ERROR(cb.Enqueue(env->queue()));
     }
-    clFinish(command_queue);
+    clFinish(env->queue()->queue());
     const auto end = std::chrono::high_resolution_clock::now();
     const double total_time_ms = (end - start).count() * 1e-6f;
-    const double average_inference_time = total_time_ms / num_runs_per_sec;
+    const double average_inference_time =
+        total_time_ms / (num_cbs * num_inferences_in_cb);
     std::cout << "Total time CB - " << average_inference_time << "ms"
               << std::endl;
-  }
-  for (auto& cb : cbs) {
-    clReleaseCommandBufferKHR(cb);
   }
   return absl::OkStatus();
 }
@@ -293,8 +291,12 @@ absl::Status RunModelSample(const std::string& model_name) {
   std::cout << "Storage type: " << ToString(create_info.storage_type)
             << std::endl;
   InferenceContext context;
+  const auto start_init = std::chrono::high_resolution_clock::now();
   RETURN_IF_ERROR(
       context.InitFromGraphWithTransforms(create_info, &graph_cl, &env));
+  const auto end_init = std::chrono::high_resolution_clock::now();
+  std::cout << "Graph initialization time: "
+            << (end_init - start_init).count() * 1e-6f << " ms." << std::endl;
 
   auto* queue = env.profiling_queue();
   ProfilingInfo profiling_info;
@@ -311,26 +313,31 @@ absl::Status RunModelSample(const std::string& model_name) {
             << (const_mem_bytes + runtime_mem_bytes) / 1024.0 / 1024.0 << " MB"
             << std::endl;
 
-  const int num_runs_per_sec = std::max(
-      1, static_cast<int>(1000.0f / absl::ToDoubleMilliseconds(
-                                        profiling_info.GetTotalTime())));
+  const int num_tests = absl::GetFlag(FLAGS_num_tests);
+  const double model_time_ms =
+      absl::ToDoubleMilliseconds(profiling_info.GetTotalTime());
+  const int num_runs_per_sec =
+      std::max(1, static_cast<int>(1000.0f / model_time_ms));
+  int num_runs_per_test = absl::GetFlag(FLAGS_num_runs_per_test);
+  if (num_runs_per_test == 0) {
+    num_runs_per_test = num_runs_per_sec;
+  }
 
-  const int kNumRuns = 10;
-  for (int i = 0; i < kNumRuns; ++i) {
+  for (int i = 0; i < num_tests; ++i) {
     const auto start = std::chrono::high_resolution_clock::now();
-    for (int k = 0; k < num_runs_per_sec; ++k) {
+    for (int k = 0; k < num_runs_per_test; ++k) {
       RETURN_IF_ERROR(context.AddToQueue(env.queue()));
     }
     RETURN_IF_ERROR(env.queue()->WaitForCompletion());
     const auto end = std::chrono::high_resolution_clock::now();
     const double total_time_ms = (end - start).count() * 1e-6f;
-    const double average_inference_time = total_time_ms / num_runs_per_sec;
+    const double average_inference_time = total_time_ms / num_runs_per_test;
     std::cout << "Total time - " << average_inference_time << "ms" << std::endl;
   }
-
-  RETURN_IF_ERROR(
-      RunCommandBufferSample(kNumRuns, num_runs_per_sec, &env, &context));
-
+  if (absl::GetFlag(FLAGS_benchmark_command_buffer)) {
+    RETURN_IF_ERROR(
+        RunCommandBufferSample(num_tests, model_time_ms, &env, &context));
+  }
   return absl::OkStatus();
 }
 
@@ -339,6 +346,7 @@ absl::Status RunModelSample(const std::string& model_name) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
+  absl::ParseCommandLine(argc, argv);
   if (argc <= 1) {
     std::cerr << "Expected model path as second argument.";
     return -1;

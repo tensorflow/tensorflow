@@ -2,9 +2,9 @@
 # This example supports GPU (and CPU), in contrast to multiplex_1 which
 # only supports CPU.
 
-load("//tensorflow:tensorflow.bzl", "py_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
 licenses(["notice"])
 
@@ -35,13 +35,12 @@ py_strict_library(
 
 cuda_py_test(
     name = "multiplex_2_test",
-    size = "small",
+    size = "medium",
     srcs = ["multiplex_2_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
         "no_mac",  # TODO(b/216321151): Re-enable this test.
-        "no_pip",
     ],
     deps = [
         ":multiplex_2_op",

@@ -17,7 +17,7 @@ limitations under the License.
 #include <cstdlib>
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
@@ -133,7 +133,8 @@ class SubstrOp : public OpKernel {
       //       this should be parallelized.
 
       // Create BCast helper with shape of input and pos/len
-      BCast bcast(BCast::FromShape(input_shape), BCast::FromShape(pos_shape));
+      BCast bcast(BCast::FromShape(input_shape), BCast::FromShape(pos_shape),
+                  /*fewer_dims_optimization*/ false);
       OP_REQUIRES(context, bcast.IsValid(),
                   errors::InvalidArgument(
                       "Incompatible shapes: ", input_shape.DebugString(),

@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 // This transformation pass applies quantization propagation on TFLite dialect.
+#include <functional>
 #include <iterator>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -28,9 +30,9 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -38,14 +40,15 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_driver.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 
@@ -56,7 +59,7 @@ namespace mlir {
 namespace TFL {
 
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PREPAREQUANTIZEPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 auto* tflite_quantizer_usage_stats = tensorflow::monitoring::Counter<1>::New(
@@ -69,7 +72,7 @@ auto* tflite_quantizer_usage_stats = tensorflow::monitoring::Counter<1>::New(
 // making the quantization rule for some operations in the quantization-aware
 // training quantization simpler.
 class PrepareQuantizePass
-    : public PrepareQuantizePassBase<PrepareQuantizePass> {
+    : public impl::PrepareQuantizePassBase<PrepareQuantizePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareQuantizePass)
 
@@ -109,7 +112,7 @@ class PrepareQuantizePass
   // Get the min and max values from the quantization specification for the
   // current function and argument index. Uses default values if the function
   // is specified in the `quantize_allowlist`.
-  std::pair<llvm::Optional<double>, llvm::Optional<double>>
+  std::pair<std::optional<double>, std::optional<double>>
   GetMinMaxValuesForArgument(llvm::StringRef func_name, int index) {
     if (func_name == quant_specs_.target_func) {
       return quant_specs_.input_ranges[index];
@@ -145,13 +148,13 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
   }
   auto has_quantize_op = [&](const Value arg) {
     return (arg.hasOneUse() &&
-            llvm::isa<quant::QuantizeCastOp>(*arg.user_begin()));
+            llvm::isa<quantfork::QuantizeCastOp>(*arg.user_begin()));
   };
 
   bool need_to_set_input_nodes_quantization_params = false;
   for (const BlockArgument arg : func.getArguments()) {
-    auto shaped = arg.getType().dyn_cast<ShapedType>();
-    if (shaped && shaped.getElementType().isa<FloatType>() &&
+    auto shaped = mlir::dyn_cast<ShapedType>(arg.getType());
+    if (shaped && mlir::isa<FloatType>(shaped.getElementType()) &&
         !has_quantize_op(arg)) {
       need_to_set_input_nodes_quantization_params = true;
       break;
@@ -176,8 +179,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
   auto add_quantize_op = [&](Location loc, Type input_type, Block* block,
                              Block::iterator insertion_point, Value arg,
                              int i) {
-    if (auto shaped = input_type.dyn_cast<ShapedType>()) {
-      if (shaped.getElementType().isa<FloatType>()) {
+    if (auto shaped = mlir::dyn_cast<ShapedType>(input_type)) {
+      if (mlir::isa<FloatType>(shaped.getElementType())) {
         // If there are existing quantize ops, they are from training and we
         // should respect them.
         if (has_quantize_op(arg)) {
@@ -186,18 +189,17 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
 
         auto min_max = GetMinMaxValuesForArgument(func_name, i);
         // The input min/max or mean/std are not specified, then skip.
-        if (!min_max.first.hasValue() || !min_max.second.hasValue()) return;
+        if (!min_max.first.has_value() || !min_max.second.has_value()) return;
 
         TypeAttr params = quant::GetQuantizedTypeAttr(
-            builder, input_type,
-            builder.getF64FloatAttr(min_max.first.getValue()),
-            builder.getF64FloatAttr(min_max.second.getValue()),
+            builder, input_type, builder.getF64FloatAttr(min_max.first.value()),
+            builder.getF64FloatAttr(min_max.second.value()),
             /*quant_dim=*/-1, num_bits, narrow_range, is_signed);
         builder.setInsertionPoint(block, insertion_point);
-        auto q_op =
-            builder.create<quant::QuantizeCastOp>(loc, params.getValue(), arg);
-        auto dq_op = builder.create<quant::DequantizeCastOp>(loc, input_type,
-                                                             q_op.getResult());
+        auto q_op = builder.create<quantfork::QuantizeCastOp>(
+            loc, params.getValue(), arg);
+        auto dq_op = builder.create<quantfork::DequantizeCastOp>(
+            loc, input_type, q_op.getResult());
         arg.replaceAllUsesWith(dq_op.getResult());
         q_op.setOperand(arg);
       }
@@ -217,12 +219,14 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
 
 bool PrepareQuantizePass::RemoveRedundantStats(func::FuncOp func) {
-  return RemoveRedundantStatsOps(func, GetOpQuantSpec);
+  return RemoveRedundantStatsOps(
+      func, std::bind(GetOpQuantSpec, std::placeholders::_1,
+                      quant_specs_.disable_per_channel_for_dense_layers));
 }
 
 static Value Quantized(Operation* user) {
-  if (auto q = llvm::dyn_cast_or_null<quant::QuantizeCastOp>(user)) {
-    if (auto dq = llvm::dyn_cast_or_null<quant::DequantizeCastOp>(
+  if (auto q = llvm::dyn_cast_or_null<quantfork::QuantizeCastOp>(user)) {
+    if (auto dq = llvm::dyn_cast_or_null<quantfork::DequantizeCastOp>(
             *q.getResult().user_begin())) {
       return dq.getResult();
     }
@@ -255,8 +259,8 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(func::FuncOp func) {
   // We prefer to placing quantization emulation ops on the results of the
   // concat ops.
   func.walk([&](ConcatenationOp concat) {
-    if (concat.output().hasOneUse() &&
-        Quantized(*concat.output().user_begin())) {
+    if (concat.getOutput().hasOneUse() &&
+        Quantized(*concat.getOutput().user_begin())) {
       return;
     }
     concat.emitWarning(
@@ -273,12 +277,12 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(func::FuncOp func) {
   // is an minor error in constructing the original network model that
   // introduced back-to-back Fake Quantization operations. Hence: emit a
   // warning. N.b. at this point we're (teporarility) in the quantization
-  // dialect (presumably enable re-use in xla etc) quant::*QuantizeCastOp
+  // dialect (presumably enable re-use in xla etc) quantfork::*QuantizeCastOp
   // we're matching here.
   //
-  func.walk([&](quant::QuantizeCastOp q_op) {
+  func.walk([&](quantfork::QuantizeCastOp q_op) {
     // If up with end up with
-    auto dq_op = dyn_cast_or_null<quant::DequantizeCastOp>(
+    auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
         q_op.getOperand().getDefiningOp());
     if (!dq_op) {
       return;
@@ -294,12 +298,12 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(func::FuncOp func) {
     }
 
     // Invariant:
-    // isa<quant::QuantizeCastOp>(dq_arg.getDefiningOp()) -->
+    // isa<quantfork::QuantizeCastOp>(dq_arg.getDefiningOp()) -->
     // getdq_arg.getType() != q_op.getResult().getType()
     //
     // as otherwise qdq pair would have been optimized away.
     auto qd_arg_def_q_op =
-        dyn_cast_or_null<quant::QuantizeCastOp>(dq_arg.getDefiningOp());
+        dyn_cast_or_null<quantfork::QuantizeCastOp>(dq_arg.getDefiningOp());
     if (!qd_arg_def_q_op) {
       return;
     }
@@ -312,21 +316,28 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(func::FuncOp func) {
 
 bool PrepareQuantizePass::ContainsQuantizeOps(func::FuncOp func) {
   for (const auto& op : func.getOps()) {
-    if (llvm::isa<quant::DequantizeCastOp>(op)) return true;
+    if (llvm::isa<quantfork::DequantizeCastOp>(op)) return true;
   }
   return false;
 }
 
 using PrepareQuantStats =
-    quant::ConvertStatsToQDQs<quant::QuantizeCastOp, quant::DequantizeCastOp>;
+    quant::ConvertStatsToQDQs<quantfork::QuantizeCastOp,
+                              quantfork::DequantizeCastOp>;
 
 void PrepareQuantizePass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
   ScopedTFLQuantOpsToMlirQuantOpsConverter converter(func);
   if (use_quantization_flags_) {
-    quant_specs_.inference_type =
-        this->quantize_signed_ ? tensorflow::DT_QINT8 : tensorflow::DT_QUINT8;
+    quant_specs_.inference_type = GetQuantizedInferenceType(
+        this->quantize_signed_, this->activation_number_of_bits_);
+    if (quant_specs_.inference_type == tensorflow::DT_INVALID) {
+      func.emitError() << "prepare-quantize pass failed: unsupported "
+                          "inference type specification";
+      signalPassFailure();
+      return;
+    }
     quant_specs_.post_training_quantization = post_training_quantize_;
     quant_specs_.legacy_float_scale = legacy_float_scale_;
     quant_specs_.disable_set_input_nodes_quantization_params =
@@ -368,23 +379,26 @@ void PrepareQuantizePass::runOnOperation() {
     patterns_1.add<PrepareLstmOutputScale<LSTMOp>>(ctx);
     patterns_1.add<PrepareLstmOutputScale<UnidirectionalSequenceLSTMOp>>(ctx);
   }
+  if (is_qdq_conversion_ ||
+      quant_specs_.qdq_conversion_mode != quant::QDQConversionMode::kQDQNone) {
+    patterns_1.add<PropagateTransposedPerAxisQuantDim>(ctx);
+  }
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns_1));
 
   // During the legalization, unsigned quantized type is used, so we have to
   // convert all of them to signed.
   RewritePatternSet patterns_2(&getContext());
   if (is_signed) {
-    patterns_2.add<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(ctx);
-    // Convert quant stats to int8 quantization parameters.
-    // Currently, only activation stats are imported, so narrow_range = false.
-    patterns_2.add<PrepareQuantStats>(bit_width, false, true,
-                                      quant_specs_.legacy_float_scale, ctx);
-  } else {
-    // Convert quant stats to uint8 quantization parameters.
-    // Currently, only activation stats are imported, so narrow_range = false.
-    patterns_2.add<PrepareQuantStats>(bit_width, false, false,
-                                      quant_specs_.legacy_float_scale, ctx);
+    patterns_2.add<quant::ConvertUnsignedToSigned<quantfork::QuantizeCastOp>>(
+        ctx);
   }
+  // Convert quant stats to int8, unit8, int16 quantization parameters.
+  // Currently, only activation stats are imported, so narrow_range = false.
+  // TODO(b/266524882): Support narrow_range in TFLite converter(ODML
+  // converter).
+  patterns_2.add<PrepareQuantStats>(bit_width, /*narrow_range=*/false,
+                                    is_signed, quant_specs_.legacy_float_scale,
+                                    ctx);
 
   if (quant_specs_.post_training_quantization) {
     patterns_2.add<ConvertLstmStatsToQDQs<LSTMOp>>(ctx, quant_specs_);
@@ -396,11 +410,21 @@ void PrepareQuantizePass::runOnOperation() {
 
   SanityCheckAndAdjustment(func);
 
+  // Bind the getter with the fixed configuration parameter for the correct
+  // quantization settings of the ops.
+  std::function<std::unique_ptr<quant::OpQuantSpec>(Operation*)>
+      op_quant_spec_getter =
+          std::bind(GetOpQuantSpec, std::placeholders::_1,
+                    quant_specs_.disable_per_channel_for_dense_layers);
+
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
   ApplyQuantizationParamsPropagation(
-      func, is_signed, disable_per_channel_ || quant_specs_.disable_per_channel,
-      GetOpQuantSpec, infer_tensor_range, quant_specs_.legacy_float_scale);
+      func, is_signed, bit_width,
+      disable_per_channel_ || quant_specs_.disable_per_channel,
+      op_quant_spec_getter, infer_tensor_range, quant_specs_.legacy_float_scale,
+      (is_qdq_conversion_ ||
+       quant_specs_.qdq_conversion_mode != quant::QDQConversionMode::kQDQNone));
 }
 
 }  // namespace

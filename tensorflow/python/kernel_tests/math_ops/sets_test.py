@@ -23,6 +23,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_set_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import sparse_ops
@@ -80,6 +81,16 @@ class SetOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         [3, 0], self._set_size(_dense_to_sparse([[1, 9, 2], []], dtype)))
     self.assertAllEqual(
         [0, 3], self._set_size(_dense_to_sparse([[], [1, 9, 2]], dtype)))
+
+  def test_invalid_size(self):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError,
+                                 errors_impl.InternalError),
+                                "Index out of range|expected <"):
+      sparse_data = sparse_tensor_lib.SparseTensor(
+          constant_op.constant([[804, 7450], [48245, 2577]], dtypes.int64),
+          constant_op.constant([1, 1], dtypes.int64),
+          constant_op.constant([812, 390], dtypes.int64))
+      self.evaluate(sets.set_size(sparse_data, validate_indices=False))
 
   @test_util.run_deprecated_v1
   def test_set_size_duplicates_2d(self):
@@ -1302,6 +1313,18 @@ class SetOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(
         result.values,
         _constant([1, 3, 5, 7, 9, 0, 2, 4, 5, 6, 6, 8, 9], dtype))
+
+  def test_raw_ops_setsize_invalid_shape(self):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Shape must be a 1D tensor"):
+      invalid_shape = 1
+      self.evaluate(
+          gen_set_ops.set_size(
+              set_indices=1,
+              set_values=[1, 1],
+              set_shape=invalid_shape,
+              validate_indices=True,
+              name=""))
 
 
 if __name__ == "__main__":

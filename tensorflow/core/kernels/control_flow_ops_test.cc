@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/common_runtime/forward_type_inference.h"
+#include "tensorflow/core/common_runtime/type_inference.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -152,7 +152,7 @@ static Status type_inference(Graph& graph) {
   graph_ptr->Copy(graph);
   opt_options.graph = &graph_ptr;
   opt_options.flib_def = graph.mutable_flib_def();
-  ForwardTypeInferencePass pass;
+  TypeInferencePass pass;
   return pass.Run(opt_options);
 }
 
@@ -207,6 +207,64 @@ TEST(MergeOpTest, TypeInference) {
       << identity_nodes[0]->def().experimental_type().DebugString()
       << "\nexpected\n"
       << input_dataset1->def().experimental_type().DebugString();
+}
+
+// Tests for Enter op.
+class EnterOpTest : public OpsTestBase {
+ protected:
+  void Initialize(DataType dt) {
+    TF_ASSERT_OK(NodeDefBuilder("op", "Enter")
+                     .Input(FakeInput(dt))
+                     .Attr("frame_name", "EnterOp")
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+};
+
+TEST_F(EnterOpTest, QUInt8_Success) {
+  Initialize(DT_QUINT8);
+  AddInputFromArray<quint8>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QUINT8, TensorShape({2, 3}));
+  test::FillValues<quint8>(&expected, {1, 2, 3, 4, 5, 6});
+  test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
+}
+
+TEST_F(EnterOpTest, String_Success) {
+  Initialize(DT_STRING);
+  AddInputFromArray<tstring>(TensorShape({6}), {"A", "b", "C", "d", "E", "f"});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_STRING, TensorShape({6}));
+  test::FillValues<tstring>(&expected, {"A", "b", "C", "d", "E", "f"});
+  test::ExpectTensorEqual<tstring>(expected, *GetOutput(0));
+}
+
+// Tests for Exit op.
+class ExitOpTest : public OpsTestBase {
+ protected:
+  void Initialize(DataType dt) {
+    TF_ASSERT_OK(
+        NodeDefBuilder("op", "Exit").Input(FakeInput(dt)).Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+};
+
+TEST_F(ExitOpTest, QUInt8_Success) {
+  Initialize(DT_QUINT8);
+  AddInputFromArray<quint8>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QUINT8, TensorShape({2, 3}));
+  test::FillValues<quint8>(&expected, {1, 2, 3, 4, 5, 6});
+  test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
+}
+
+TEST_F(ExitOpTest, String_Success) {
+  Initialize(DT_STRING);
+  AddInputFromArray<tstring>(TensorShape({6}), {"A", "b", "C", "d", "E", "f"});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_STRING, TensorShape({6}));
+  test::FillValues<tstring>(&expected, {"A", "b", "C", "d", "E", "f"});
+  test::ExpectTensorEqual<tstring>(expected, *GetOutput(0));
 }
 
 }  // namespace

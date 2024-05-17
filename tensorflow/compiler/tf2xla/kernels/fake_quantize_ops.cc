@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/arithmetic.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
@@ -47,7 +50,7 @@ void CpuNudge(const float min, const float max, const float quant_min,
 
 // An XLA version of CpuNudge().
 void XlaNudge(xla::XlaBuilder* b, const DataType data_type,
-              const xla::XlaOp& min, const xla::XlaOp& max,
+              const xla::XlaOp min, const xla::XlaOp max,
               const float quant_min_value, const float quant_max_value,
               xla::XlaOp* nudged_min, xla::XlaOp* nudged_max,
               xla::XlaOp* scale) {
@@ -67,11 +70,10 @@ void XlaNudge(xla::XlaBuilder* b, const DataType data_type,
   *nudged_max = xla::Mul(xla::Sub(quant_max, nudged_zero_point), *scale);
 }
 
-xla::XlaOp Quantize(xla::XlaBuilder* b, const xla::XlaOp& input,
-                    const DataType data_type,
-                    const xla::XlaOp& nudged_input_min,
-                    const xla::XlaOp& nudged_input_max,
-                    const xla::XlaOp& input_scale) {
+xla::XlaOp Quantize(xla::XlaBuilder* b, const xla::XlaOp input,
+                    const DataType data_type, const xla::XlaOp nudged_input_min,
+                    const xla::XlaOp nudged_input_max,
+                    const xla::XlaOp input_scale) {
   xla::XlaOp one = XlaHelpers::FloatLiteral(b, data_type, 1.0f);
   xla::XlaOp inv_scale = xla::Div(one, input_scale);
   xla::XlaOp half = XlaHelpers::FloatLiteral(b, data_type, 0.5f);
@@ -261,7 +263,7 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public XlaOpKernel {
     xla::XlaOp input_min = ctx->Input(1);
     xla::XlaOp input_max = ctx->Input(2);
 
-    xla::Shape input_shape = b->GetShape(input).ValueOrDie();
+    xla::Shape input_shape = b->GetShape(input).value();
     absl::Span<const int64_t> input_dimensions = input_shape.dimensions();
     auto convert_to_input_shape = [&](const xla::XlaOp op) {
       return xla::BroadcastInDim(op, input_dimensions,
@@ -316,7 +318,7 @@ class FakeQuantWithMinMaxVarsPerChannelGradOp : public XlaOpKernel {
     xla::XlaOp input_max = ctx->Input(3);
 
     xla::XlaBuilder* b = ctx->builder();
-    xla::Shape input_shape = b->GetShape(input).ValueOrDie();
+    xla::Shape input_shape = b->GetShape(input).value();
     absl::Span<const int64_t> input_dimensions = input_shape.dimensions();
 
     std::vector<int64_t> reduce_axes;

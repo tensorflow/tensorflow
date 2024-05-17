@@ -55,7 +55,7 @@ class KernelDefBuilder {
   // what the Op allows).
   // Returns *this.
   KernelDefBuilder& TypeConstraint(const char* attr_name,
-                                   gtl::ArraySlice<DataType> allowed);
+                                   absl::Span<const DataType> allowed);
 
   // Like TypeConstraint but supports just a single type.
   KernelDefBuilder& TypeConstraint(const char* attr_name, DataType allowed);
@@ -63,7 +63,7 @@ class KernelDefBuilder {
   // Like TypeConstraint, but (a) gets the type from a template parameter
   // and (b) only supports a constraint to a single type.
   template <class T>
-  KernelDefBuilder& TypeConstraint(const char* attr_name);
+  KernelDefBuilder& TypeConstraint(const char* attr_name) TF_ATTRIBUTE_NOINLINE;
   // TODO(josh11b): Support other types of attr constraints as needed.
 
   // Specify that this kernel requires/provides an input/output arg
@@ -86,7 +86,8 @@ class KernelDefBuilder {
  private:
   KernelDef* kernel_def_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(KernelDefBuilder);
+  KernelDefBuilder(const KernelDefBuilder&) = delete;
+  void operator=(const KernelDefBuilder&) = delete;
 };
 
 // IMPLEMENTATION

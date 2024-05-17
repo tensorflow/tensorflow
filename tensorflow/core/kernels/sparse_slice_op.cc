@@ -20,8 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/sparse_utils.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -48,15 +50,15 @@ struct SparseSliceFunctor<CPUDevice, T> {
                                 input_indices, input_values,
                                 sparse_tensor_shape, &sparse_tensor));
 
-    const gtl::ArraySlice<int64_t> start(input_start.flat<int64_t>().data(),
+    const absl::Span<const int64_t> start(input_start.flat<int64_t>().data(),
+                                          input_dims);
+    const absl::Span<const int64_t> size(input_size.flat<int64_t>().data(),
                                          input_dims);
-    const gtl::ArraySlice<int64_t> size(input_size.flat<int64_t>().data(),
-                                        input_dims);
 
-    const StatusOr<sparse::SparseTensor> output_or =
+    const absl::StatusOr<sparse::SparseTensor> output_or =
         sparse::SparseTensor::Slice<T>(sparse_tensor, start, size);
     OP_REQUIRES_OK(context, output_or.status());
-    auto output = output_or.ValueOrDie();
+    auto output = output_or.value();
 
     context->set_output(0, output.indices());
     context->set_output(1, output.values());
@@ -97,21 +99,13 @@ void SparseSliceOpImpl(OpKernelContext* context,
   const Tensor& input_start = context->input(3);
   const Tensor& input_size = context->input(4);
 
-  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsMatrix(input_indices.shape()),
-                    errors::InvalidArgument(
-                        "Input indices should be a matrix but received shape ",
-                        input_indices.shape().DebugString()),
-                    done);
-  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(input_values.shape()),
-                    errors::InvalidArgument(
-                        "Input values should be a vector but received shape ",
-                        input_values.shape().DebugString()),
-                    done);
-  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(input_shape.shape()),
-                    errors::InvalidArgument(
-                        "Input shape should be a vector but received shape ",
-                        input_shape.shape().DebugString()),
-                    done);
+  // Indices are not used to index into anything, and some ops rely on -1
+  // as a placeholder for missing values.
+  OP_REQUIRES_OK_ASYNC(context,
+                       sparse_utils::ValidateSparseTensor<int64_t>(
+                           input_indices, input_values, input_shape,
+                           sparse_utils::IndexValidation::kNone),
+                       done);
   OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(input_start.shape()),
                     errors::InvalidArgument(
                         "Input start should be a vector but received shape ",

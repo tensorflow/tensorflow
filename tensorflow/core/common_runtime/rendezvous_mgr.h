@@ -45,6 +45,10 @@ class RefCountedIntraProcessRendezvous : public Rendezvous {
   explicit RefCountedIntraProcessRendezvous(const DeviceMgr* device_mgr);
 
   // Implementation of RendezvousInterface methods.
+  // NOTE: The methods may clear the Item list and destroy 'this' if there are
+  // no other references to the RefCountedIntraProcessRendezvous object.
+  // If the caller intend to keep a longer life time then it shall keep its own
+  // reference to the RefCountedIntraProcessRendezvous.
   Status Send(const ParsedKey& key, const Rendezvous::Args& args,
               const Tensor& val, const bool is_dead) override;
   void RecvAsync(const ParsedKey& key, const Rendezvous::Args& args,
@@ -64,7 +68,9 @@ class RefCountedIntraProcessRendezvous : public Rendezvous {
 
   ~RefCountedIntraProcessRendezvous() override;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RefCountedIntraProcessRendezvous);
+  RefCountedIntraProcessRendezvous(const RefCountedIntraProcessRendezvous&) =
+      delete;
+  void operator=(const RefCountedIntraProcessRendezvous&) = delete;
 };
 
 // RefCountedIntraProcessRendezvous is aliased to IntraProcessRendezvous for
@@ -91,7 +97,8 @@ class PrivateIntraProcessRendezvous : public RendezvousInterface {
   const DeviceMgr* device_mgr_;
   LocalRendezvous local_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PrivateIntraProcessRendezvous);
+  PrivateIntraProcessRendezvous(const PrivateIntraProcessRendezvous&) = delete;
+  void operator=(const PrivateIntraProcessRendezvous&) = delete;
 };
 
 }  // end namespace tensorflow

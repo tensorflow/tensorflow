@@ -26,9 +26,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-DeviceSet::DeviceSet() {}
+DeviceSet::DeviceSet() = default;
 
-DeviceSet::~DeviceSet() {}
+DeviceSet::~DeviceSet() = default;
 
 void DeviceSet::AddDevice(Device* device) {
   mutex_lock l(devices_mu_);
@@ -39,18 +39,27 @@ void DeviceSet::AddDevice(Device* device) {
        DeviceNameUtils::GetNamesForDeviceMappings(device->parsed_name())) {
     device_by_name_.insert({name, device});
   }
+  matching_device_cache_.clear();
 }
 
 void DeviceSet::FindMatchingDevices(const DeviceNameUtils::ParsedName& spec,
                                     std::vector<Device*>* devices) const {
-  // TODO(jeff): If we are going to repeatedly lookup the set of devices
-  // for the same spec, maybe we should have a cache of some sort
+  {
+    mutex_lock l(devices_mu_);
+    auto match = matching_device_cache_.find(spec);
+    if (match != matching_device_cache_.end()) {
+      *devices = match->second;
+    }
+  }
+
   devices->clear();
   for (Device* d : devices_) {
     if (DeviceNameUtils::IsCompleteSpecification(spec, d->parsed_name())) {
       devices->push_back(d);
     }
   }
+  mutex_lock l(devices_mu_);
+  matching_device_cache_.insert({spec, *devices});
 }
 
 Device* DeviceSet::FindDeviceByName(const string& name) const {

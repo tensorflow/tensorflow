@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/sparse_expansions/dynamic_enqueue_sparse_expander.h"
 
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/mlir/sparse_expander_common.h"
-#include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -36,15 +39,16 @@ namespace {
 StatusOr<mlir::Value> ExpandIndices(mlir::OpBuilder& builder,
                                     mlir::Value indices) {
   int64_t num_dim =
-      indices.getType().dyn_cast<mlir::RankedTensorType>().getDimSize(1);
+      mlir::dyn_cast<mlir::RankedTensorType>(indices.getType()).getDimSize(1);
   if (num_dim != 2)
     return errors::Unimplemented(
         "Sparse tensors with dense rank not equal to 2 is not yet supported in "
         "DTensor.");
   mlir::Location loc = indices.getLoc();
   auto indices_padded_type = mlir::RankedTensorType::get(
-      {-1, 3},
-      indices.getType().dyn_cast<mlir::RankedTensorType>().getElementType());
+      {mlir::ShapedType::kDynamic, 3},
+      mlir::dyn_cast<mlir::RankedTensorType>(indices.getType())
+          .getElementType());
   // Little trick to make a rank-2 tensor of [[0,0], [0,1]] using rank 1
   // constants.
   mlir::Value indices_padding = builder.create<mlir::TF::ReshapeOp>(
@@ -69,7 +73,7 @@ StatusOr<mlir::Operation*> DynamicEnqueueSparseExpander::ExpandOp(
   mlir::OpBuilder builder(dense_enqueue_op);
   mlir::Location location = dense_enqueue_op->getLoc();
 
-  mlir::OperandRange feature = dense_enqueue_op.embedding_indices();
+  mlir::OperandRange feature = dense_enqueue_op.getEmbeddingIndices();
   llvm::SmallVector<mlir::Value, 4> indices;
   llvm::SmallVector<mlir::Value, 4> values;
 
@@ -84,11 +88,9 @@ StatusOr<mlir::Operation*> DynamicEnqueueSparseExpander::ExpandOp(
     TF_ASSIGN_OR_RETURN(
         mlir::Value expanded_indices,
         ExpandIndices(
-            builder,
-            GetIndicesFromSparseTensor(sparse_feature_value).ValueOrDie()));
+            builder, GetIndicesFromSparseTensor(sparse_feature_value).value()));
     indices.push_back(expanded_indices);
-    values.push_back(
-        GetValuesFromSparseTensor(sparse_feature_value).ValueOrDie());
+    values.push_back(GetValuesFromSparseTensor(sparse_feature_value).value());
   }
   // Insert a new op with new sparse operands, and delete the old one.
   // This op does not have a return value so we do not need to replace any
@@ -99,11 +101,11 @@ StatusOr<mlir::Operation*> DynamicEnqueueSparseExpander::ExpandOp(
               location,
               /*sample_indices_or_row_splits_list=*/indices,
               /*embedding_indices=*/values,
-              /*aggregation_weights=*/dense_enqueue_op.aggregation_weights(),
+              /*aggregation_weights=*/dense_enqueue_op.getAggregationWeights(),
               /*mode_override=*/
-              dense_enqueue_op.mode_override(),
-              /*device_ordinal=*/dense_enqueue_op.device_ordinal(),
-              /*combiners=*/dense_enqueue_op.combiners());
+              dense_enqueue_op.getModeOverride(),
+              /*device_ordinal=*/dense_enqueue_op.getDeviceOrdinal(),
+              /*combiners=*/dense_enqueue_op.getCombiners());
   dense_enqueue_op.erase();
   return sparse_enqueue_op;
 }

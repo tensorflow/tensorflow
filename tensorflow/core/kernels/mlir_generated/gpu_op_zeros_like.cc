@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
@@ -22,9 +22,8 @@ GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(ZerosLike, DT_INT64);
 GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(ZerosLike, DT_HALF);
 GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(ZerosLike, DT_FLOAT);
 GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(ZerosLike, DT_DOUBLE);
-// TODO(b/190374484): Enable it for complex types once it is supported.
-// GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(ZerosLike, DT_COMPLEX64);
-// GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(ZerosLike, DT_COMPLEX128);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(ZerosLike, DT_COMPLEX64);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(ZerosLike, DT_COMPLEX128);
 
 // These kernels are JIT-compiled.
 GENERATE_AND_REGISTER_UNARY_JIT_GPU_KERNEL(ZerosLike, DT_INT8);

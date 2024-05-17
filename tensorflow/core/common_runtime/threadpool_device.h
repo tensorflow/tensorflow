@@ -43,7 +43,7 @@ class ThreadPoolDevice : public LocalDevice {
                               const DeviceContext* device_context,
                               StatusCallback done) override;
 
-  Status Sync() override { return OkStatus(); }
+  Status Sync() override { return absl::OkStatus(); }
 
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
   void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,

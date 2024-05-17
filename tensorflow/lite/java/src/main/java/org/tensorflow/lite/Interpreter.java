@@ -55,10 +55,25 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  *
  * <pre>{@code
  * String[] input = {"foo", "bar"};  // Input tensor shape is [2].
- * String[] output = new String[3][2];  // Output tensor shape is [3, 2].
+ * String[][] output = new String[3][2];  // Output tensor shape is [3, 2].
  * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(input, output);
  * }
+ * }</pre>
+ *
+ * <p>Note that there's a distinction between shape [] and shape[1]. For scalar string tensor
+ * outputs:
+ *
+ * <pre>{@code
+ * String[] input = {"foo"};  // Input tensor shape is [1].
+ * ByteBuffer outputBuffer = ByteBuffer.allocate(OUTPUT_BYTES_SIZE);  // Output tensor shape is [].
+ * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
+ *   interpreter.runForMultipleInputsOutputs(input, outputBuffer);
+ * }
+ * byte[] outputBytes = new byte[outputBuffer.remaining()];
+ * outputBuffer.get(outputBytes);
+ * // Below, the `charset` can be StandardCharsets.UTF_8.
+ * String output = new String(outputBytes, charset);
  * }</pre>
  *
  * <p>Orders of inputs and outputs are determined when converting TensorFlow model to TensorFlowLite
@@ -81,8 +96,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
 
   /** An options class for controlling runtime interpreter behavior. */
   public static class Options extends InterpreterImpl.Options {
-    public Options() {
-    }
+    public Options() {}
 
     public Options(InterpreterApi.Options options) {
       super(options);
@@ -90,6 +104,12 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
 
     Options(InterpreterImpl.Options options) {
       super(options);
+    }
+
+    @Override
+    public Options setUseXNNPACK(boolean useXNNPACK) {
+      super.setUseXNNPACK(useXNNPACK);
+      return this;
     }
 
     @Override
@@ -124,6 +144,12 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
       return this;
     }
 
+    @Override
+    public Options addDelegateFactory(DelegateFactory delegateFactory) {
+      super.addDelegateFactory(delegateFactory);
+      return this;
+    }
+
     /**
      * Advanced: Set if buffer handle output is allowed.
      *
@@ -143,22 +169,6 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
     @Override
     public Options setCancellable(boolean allow) {
       super.setCancellable(allow);
-      return this;
-    }
-
-    /**
-     * Experimental: Disable an optimized set of CPU kernels (provided by XNNPACK).
-     *
-     * <p>Disabling this flag will disable use of a highly optimized set of CPU kernels provided via
-     * the XNNPACK delegate. Currently, this is restricted to a subset of floating point operations.
-     * See
-     * https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/README.md
-     * for more details.
-     *
-     * <p>WARNING: This is an experimental interface that is subject to change.
-     */
-    public Options setUseXNNPACK(boolean useXNNPACK) {
-      this.useXNNPACK = useXNNPACK;
       return this;
     }
 
@@ -275,7 +285,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
   }
 
   /**
-   * Gets the Tensor associated with the provdied input name and signature method name.
+   * Gets the Tensor associated with the provided input name and signature method name.
    *
    * <p>WARNING: This is an experimental API and subject to change.
    *
@@ -330,7 +340,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
   }
 
   /**
-   * Gets the Tensor associated with the provdied output name in specifc signature method.
+   * Gets the Tensor associated with the provided output name in specific signature method.
    *
    * <p>Note: Output tensor details (e.g., shape) may not be fully populated until after inference
    * is executed. If you need updated details *before* running inference (e.g., after resizing an
@@ -393,6 +403,6 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
     wrapper.setCancelled(cancelled);
   }
 
-  NativeInterpreterWrapperExperimental wrapperExperimental;
-  String[] signatureKeyList;
+  private final NativeInterpreterWrapperExperimental wrapperExperimental;
+  private final String[] signatureKeyList;
 }

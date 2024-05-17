@@ -1347,7 +1347,7 @@ class GlobalStepWaiterHookTest(test.TestCase):
       with session_lib.Session() as sess:
         # Mock out calls to time.sleep() to update the global step.
 
-        class Context(object):
+        class Context:
           counter = 0
 
         def mock_sleep_side_effect(seconds):

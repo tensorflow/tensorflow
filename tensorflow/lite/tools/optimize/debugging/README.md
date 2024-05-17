@@ -189,6 +189,10 @@ import yaml  # used to parse lists
 with open('/path/to/stats.csv', 'w') as f:
   quant_debugger.layer_statistics_dump(f)
 
-data = pd.read_csv('/path/to/stats.csv', converters={
-      'scales': yaml.safe_load, 'zero_points': yaml.safe_load})
+data = pd.read_csv(
+    '/path/to/stats.csv',
+    converters={
+        'scales': yaml.safe_load,
+        'zero_points': yaml.safe_load
+    })
 ```

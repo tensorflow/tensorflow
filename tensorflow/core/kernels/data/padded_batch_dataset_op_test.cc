@@ -76,7 +76,7 @@ class PaddedBatchDatasetParams : public DatasetParams {
           strings::StrCat(PaddedBatchDatasetOp::kPaddingValues, "_", j));
     }
     input_names->push_back(PaddedBatchDatasetOp::kDropRemainder);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -85,7 +85,7 @@ class PaddedBatchDatasetParams : public DatasetParams {
                     {"output_shapes", output_shapes_},
                     {"N", num_padded_shapes_},
                     {"metadata", ""}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override {
@@ -729,7 +729,7 @@ TEST_F(PaddedBatchDatasetOpTest, InvalidPaddedShapes) {
   EXPECT_EQ(
       iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence)
           .code(),
-      tensorflow::error::INVALID_ARGUMENT);
+      absl::StatusCode::kInvalidArgument);
 }
 
 class ParameterizedInvalidArgumentTest
@@ -739,7 +739,7 @@ class ParameterizedInvalidArgumentTest
 TEST_P(ParameterizedInvalidArgumentTest, InvalidPredicateFunc) {
   auto dataset_params = GetParam();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 INSTANTIATE_TEST_SUITE_P(

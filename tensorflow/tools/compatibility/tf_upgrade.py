@@ -16,8 +16,6 @@
 
 import argparse
 
-import six
-
 from tensorflow.tools.compatibility import ast_edits
 
 
@@ -243,7 +241,7 @@ Simple usage:
   else:
     parser.print_help()
   if report_text:
-    open(report_filename, "w").write(six.ensure_str(report_text))
+    open(report_filename, "w").write(report_text)
     print("TensorFlow 1.0 Upgrade Script")
     print("-----------------------------")
     print("Converted %d files\n" % files_processed)

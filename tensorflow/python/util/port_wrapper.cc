@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/core/util/port.h"
 
 PYBIND11_MODULE(_pywrap_util_port, m) {
@@ -22,6 +22,11 @@ PYBIND11_MODULE(_pywrap_util_port, m) {
   m.def("IsBuiltWithROCm", tensorflow::IsBuiltWithROCm);
   m.def("IsBuiltWithXLA", tensorflow::IsBuiltWithXLA);
   m.def("IsBuiltWithNvcc", tensorflow::IsBuiltWithNvcc);
+  m.def("IsAArch32Available", tensorflow::IsAArch32Available);
+  m.def("IsAArch64Available", tensorflow::IsAArch64Available);
+  m.def("IsPowerPCAvailable", tensorflow::IsPowerPCAvailable);
+  m.def("IsSystemZAvailable", tensorflow::IsSystemZAvailable);
+  m.def("IsX86Available", tensorflow::IsX86Available);
   m.def("GpuSupportsHalfMatMulAndConv",
         tensorflow::GpuSupportsHalfMatMulAndConv);
   m.def("IsMklEnabled", tensorflow::IsMklEnabled);

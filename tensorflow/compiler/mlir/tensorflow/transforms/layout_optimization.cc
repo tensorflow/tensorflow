@@ -25,12 +25,12 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_layout_helper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 
 #define DEBUG_TYPE "tf-layout-optimization"
@@ -50,7 +50,7 @@ TransposeOp ReuseExistingTranspose(const OpOperand* operand,
     auto tranpose_op = *it;
     for (auto tranpose_operand : tranpose_op.getOperands()) {
       auto ranked_tranpose_type =
-          tranpose_operand.getType().dyn_cast_or_null<RankedTensorType>();
+          mlir::dyn_cast_or_null<RankedTensorType>(tranpose_operand.getType());
       if (!ranked_tranpose_type) continue;
       if (ranked_tranpose_type.getRank() == permutation.size() &&
           operand->get().getType() ==
@@ -67,10 +67,13 @@ TransposeOp ReuseExistingTranspose(const OpOperand* operand,
   return nullptr;
 }
 
+#define GEN_PASS_DEF_LAYOUTASSIGNMENTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // LayoutAssignmentPass assigns optimal data layout (data format) for all
 // layout sensitive operations.
 class LayoutAssignmentPass
-    : public LayoutAssignmentPassBase<LayoutAssignmentPass> {
+    : public impl::LayoutAssignmentPassBase<LayoutAssignmentPass> {
  public:
   LayoutAssignmentPass() = default;
   explicit LayoutAssignmentPass(const std::string& force_data_format) {
@@ -82,10 +85,14 @@ class LayoutAssignmentPass
   void runOnOperation() final;
 };
 
+#define GEN_PASS_DEF_MOVETRANSPOSESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // MoveTransposesPass moves all Transpose ops to the beginning or to the end of
 // the basic block where they are defined. This will allow canonicalzer to
 // delete redundant transposes.
-class MoveTransposesPass : public MoveTransposesPassBase<MoveTransposesPass> {
+class MoveTransposesPass
+    : public impl::MoveTransposesPassBase<MoveTransposesPass> {
  public:
   MoveTransposesPass() = default;
   explicit MoveTransposesPass(MoveTransposeDirection direction,
@@ -195,13 +202,13 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
       if (!perm) return;
 
       // With the same permutation indices.
-      auto dense_elem_attr = perm.value().dyn_cast<DenseElementsAttr>();
+      auto dense_elem_attr = mlir::dyn_cast<DenseElementsAttr>(perm.getValue());
       if (!dense_elem_attr) return;
 
       if (!permutation_op) permutation_op = perm;
 
       // Check that permutation matches for all result transposes.
-      if (perm.value() != permutation_op.value()) return;
+      if (perm.getValue() != permutation_op.getValue()) return;
 
       // Add a transpose operation for later reuse.
       transpose_ops.push_back(transpose);
@@ -211,7 +218,7 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
   // Nothing to do here.
   if (!permutation_op || transpose_ops.empty()) return;
   SmallVector<int64_t, 4> permutation;
-  auto perm_attr = permutation_op.value().cast<DenseElementsAttr>();
+  auto perm_attr = mlir::cast<DenseElementsAttr>(permutation_op.getValue());
   for (const auto& value : perm_attr.getValues<APInt>())
     permutation.push_back(value.getSExtValue());
 
@@ -221,10 +228,11 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
   if (op->hasTrait<OpTrait::ResultsBroadcastableShape>()) {
     auto transpose_op = *transpose_ops.begin();
     auto result_type =
-        transpose_op.getResult().getType().dyn_cast_or_null<ShapedType>();
+        mlir::dyn_cast_or_null<ShapedType>(transpose_op.getResult().getType());
     auto is_valid_move =
         llvm::all_of(op->getOperands(), [result_type](Value operand) -> bool {
-          auto operand_type = operand.getType().dyn_cast_or_null<ShapedType>();
+          auto operand_type =
+              mlir::dyn_cast_or_null<ShapedType>(operand.getType());
           return result_type && operand_type && result_type.hasRank() &&
                  operand_type.hasRank() &&
                  result_type.getRank() == operand_type.getRank();
@@ -241,7 +249,8 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
 
   // Bypass Transpose nodes for all results.
   for (OpResult result : op->getResults()) {
-    result.setType(cast<TransposeOp>(*result.getUsers().begin()).y().getType());
+    result.setType(
+        cast<TransposeOp>(*result.getUsers().begin()).getY().getType());
     for (Operation* transpose : result.getUsers()) {
       transpose->getResult(0).replaceAllUsesWith(result);
     }
@@ -336,13 +345,13 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
     if (!perm) return;
 
     // With the same permutation indices.
-    auto dense_elem_attr = perm.value().dyn_cast<DenseElementsAttr>();
+    auto dense_elem_attr = mlir::dyn_cast<DenseElementsAttr>(perm.getValue());
     if (!dense_elem_attr) return;
 
     if (!permutation_op) permutation_op = perm;
 
     // Check that permutation matches for all result transposes.
-    if (perm.value() != permutation_op.value()) return;
+    if (perm.getValue() != permutation_op.getValue()) return;
 
     // Add a transpose operation for later reuse only if it's used once.
     if (transpose.getResult().hasOneUse()) transpose_ops.push_back(transpose);
@@ -358,7 +367,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
 
   SmallVector<int64_t, 8> permutation;
 
-  auto attr = permutation_op.value().cast<DenseElementsAttr>();
+  auto attr = mlir::cast<DenseElementsAttr>(permutation_op.getValue());
   for (const auto& value : attr.getValues<APInt>())
     permutation.push_back(value.getSExtValue());
 
@@ -366,7 +375,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
   if (fold_operands && fold_transpose_in_ops) {
     SmallVector<int64_t, 8> permutation;
 
-    auto attr = permutation_op.value().cast<DenseElementsAttr>();
+    auto attr = mlir::cast<DenseElementsAttr>(permutation_op.getValue());
     for (const auto& value : attr.getValues<APInt>())
       permutation.push_back(value.getSExtValue());
 
@@ -401,7 +410,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
     // update the result type in `FoldOperandsPermutation`.
     if (layout_agnostic)
       result.setType(ReversePermuteShapedType(
-          result.getType().cast<ShapedType>(), permutation));
+          mlir::cast<ShapedType>(result.getType()), permutation));
 
     // Try to push transpose further down.
     for (Operation* user : result.getUsers()) {
@@ -415,7 +424,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
       transpose.getOperation()->moveBefore(op->getNextNode());
       transpose.setOperand(0, result);
       transpose.setOperand(1, permutation_op);
-      transpose.getResult().setType(original_type[idx]);
+      transpose.getResult().setType(mlir::cast<TensorType>(original_type[idx]));
     } else {
       transpose = builder.create<TransposeOp>(loc, result, permutation_op);
     }
@@ -445,7 +454,7 @@ void MoveTransposesPass::runOnOperation() {
       }
     } else {
       // Try to push transpose after the user operation.
-      for (Operation* user : transpose.y().getUsers()) {
+      for (Operation* user : transpose.getY().getUsers()) {
         if (!llvm::isa<TransposeOp>(user)) work_list.push_back(user);
       }
     }

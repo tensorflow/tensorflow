@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_support.h"
 
+#include <memory>
+
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/platform/casts.h"
@@ -21,9 +23,9 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
 #endif
 #include "absl/cleanup/cleanup.h"
+#include "xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
-#include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -52,7 +54,7 @@ Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
     });
     // When we lookup from remote cache, we fetch a TPU program for a specific
     // core, hence we allocate TPU program group for a single program.
-    auto tpu_program_group = absl::make_unique<TpuProgramGroup>();
+    auto tpu_program_group = std::make_unique<TpuProgramGroup>();
 
     // TODO(b/166575150): can be optimized by sending the buffer over the gRPC
     // without an extra deserializing.
@@ -62,10 +64,10 @@ Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
     entry.size = entry.tpu_program_group->program_size();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
-xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
+absl::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
     const TpuCompilationCacheEntry& cache_entry) {
   if (cache_entry.tpu_program_group() == nullptr) {
     // It's possible that the sharding/unsharding entry does not exist, but the
@@ -111,7 +113,6 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
     return errors::Internal("Failed to serialize TPU program.");
   }
   header.set_is_empty(false);
-
 
   bool may_modify_variables =
       tpu_program_group->may_modify_variables(cache_entry.core_index());

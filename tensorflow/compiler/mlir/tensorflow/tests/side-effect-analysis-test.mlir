@@ -315,17 +315,15 @@ func.func @if_then(%arg0: tensor<i1>) -> tensor<i1> {
   // expected-remark@above {{ID: 3}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 1}}
-    // expected-remark@above {{Successors: {2}}}
       tf_executor.yield %arg0 : tensor<i1>
       // expected-remark@above {{ID: 0}}
     }
     tf_executor.fetch %island#0 : tensor<i1>
     // expected-remark@above {{ID: 2}}
-    // expected-remark@above {{Predecessors: {1}}}
   }
   func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
-  // expected-remark@above {{Sinks: {3}}}
+  // expected-remark@above {{Sinks: {}}}
 }
 
 // CHECK-LABEL: func @if_else
@@ -335,17 +333,15 @@ func.func @if_else(%arg0: tensor<i1>) -> tensor<i1> {
   // expected-remark@above {{ID: 3}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 1}}
-    // expected-remark@above {{Successors: {2}}}
       tf_executor.yield %arg0 : tensor<i1>
       // expected-remark@above {{ID: 0}}
     }
     tf_executor.fetch %island#0 : tensor<i1>
     // expected-remark@above {{ID: 2}}
-    // expected-remark@above {{Predecessors: {1}}}
   }
   func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
-  // expected-remark@above {{Sinks: {3}}}
+  // expected-remark@above {{Sinks: {}}}
 }
 
 // -----
@@ -377,13 +373,11 @@ func.func @stateless_ifregion_op(
           // expected-remark@above {{ID: 4}}
             %island:2 = tf_executor.island {
             // expected-remark@above {{ID: 2}}
-            // expected-remark@above {{Successors: {3}}}
               tf_executor.yield %arg1 : tensor<i1>
               // expected-remark@above {{ID: 1}}
             }
             tf_executor.fetch %island#0 : tensor<i1>
             // expected-remark@above {{ID: 3}}
-            // expected-remark@above {{Predecessors: {2}}}
           }
           "tf.Yield"(%graph) : (tensor<i1>) -> ()
           // expected-remark@above {{ID: 5}}
@@ -392,13 +386,11 @@ func.func @stateless_ifregion_op(
           // expected-remark@above {{ID: 9}}
             %island:2 = tf_executor.island {
             // expected-remark@above {{ID: 7}}
-            // expected-remark@above {{Successors: {8}}}
               tf_executor.yield %arg1 : tensor<i1>
               // expected-remark@above {{ID: 6}}
             }
             tf_executor.fetch %island#0 : tensor<i1>
             // expected-remark@above {{ID: 8}}
-            // expected-remark@above {{Predecessors: {7}}}
           }
           "tf.Yield"(%graph) : (tensor<i1>) -> ()
           // expected-remark@above {{ID: 10}}
@@ -472,17 +464,15 @@ func.func @while_body(%arg0: tensor<i1>) -> tensor<i1> {
   // expected-remark@above {{ID: 3}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 1}}
-    // expected-remark@above {{Successors: {2}}}
       tf_executor.yield %arg0 : tensor<i1>
       // expected-remark@above {{ID: 0}}
     }
     tf_executor.fetch %island#0 : tensor<i1>
     // expected-remark@above {{ID: 2}}
-    // expected-remark@above {{Predecessors: {1}}}
   }
   func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
-  // expected-remark@above {{Sinks: {3}}}
+  // expected-remark@above {{Sinks: {}}}
 }
 
 // CHECK-LABEL: func @while_cond
@@ -492,17 +482,15 @@ func.func @while_cond(%arg0: tensor<i1>) -> tensor<i1> {
   // expected-remark@above {{ID: 3}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 1}}
-    // expected-remark@above {{Successors: {2}}}
       tf_executor.yield %arg0 : tensor<i1>
       // expected-remark@above {{ID: 0}}
     }
     tf_executor.fetch %island#0 : tensor<i1>
     // expected-remark@above {{ID: 2}}
-    // expected-remark@above {{Predecessors: {1}}}
   }
   func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
-  // expected-remark@above {{Sinks: {3}}}
+  // expected-remark@above {{Sinks: {}}}
 }
 
 // -----
@@ -534,13 +522,11 @@ func.func @stateless_whileregion_op(
             // expected-remark@above {{ID: 4}}
               %island:2 = tf_executor.island {
               // expected-remark@above {{ID: 2}}
-              // expected-remark@above {{Successors: {3}}}
                 tf_executor.yield %carg : tensor<i1>
                 // expected-remark@above {{ID: 1}}
               }
               tf_executor.fetch %island#0 : tensor<i1>
               // expected-remark@above {{ID: 3}}
-              // expected-remark@above {{Predecessors: {2}}}
             }
             "tf.Yield"(%graph) : (tensor<i1>) -> ()
             // expected-remark@above {{ID: 5}}
@@ -550,13 +536,11 @@ func.func @stateless_whileregion_op(
             // expected-remark@above {{ID: 9}}
               %island:2 = tf_executor.island {
               // expected-remark@above {{ID: 7}}
-              // expected-remark@above {{Successors: {8}}}
                 tf_executor.yield %barg : tensor<i1>
                 // expected-remark@above {{ID: 6}}
               }
               tf_executor.fetch %island#0 : tensor<i1>
               // expected-remark@above {{ID: 8}}
-              // expected-remark@above {{Predecessors: {7}}}
             }
             "tf.Yield"(%graph) : (tensor<i1>) -> ()
             // expected-remark@above {{ID: 10}}
@@ -714,7 +698,6 @@ func.func @if_else(
   // expected-remark@above {{ID: 5}}
     %island:4 = tf_executor.island {
     // expected-remark@above {{ID: 3}}
-    // expected-remark@above {{Successors: {4}}}
       %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
       // expected-remark@above {{ID: 0}}
         -> tensor<*x!tf_type.resource<tensor<32xf32>>>
@@ -729,14 +712,13 @@ func.func @if_else(
     }
     tf_executor.fetch %island#0, %island#1, %island#2 :
     // expected-remark@above {{ID: 4}}
-    // expected-remark@above {{Predecessors: {3}}}
       tensor<*x!tf_type.resource<tensor<32xf32>>>,
       tensor<*x!tf_type.resource<tensor<32xf32>>>,
       tensor<*x!tf_type.resource<tensor<32xf32>>>
   }
   func.return %graph#0, %graph#1, %graph#2 :
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Sinks: {5}}}
+  // expected-remark@above {{Sinks: {}}}
     tensor<*x!tf_type.resource<tensor<32xf32>>>,
     tensor<*x!tf_type.resource<tensor<32xf32>>>,
     tensor<*x!tf_type.resource<tensor<32xf32>>>
@@ -803,7 +785,6 @@ func.func @output_of_ifregion_op(
           // expected-remark@above {{ID: 13}}
             %island:4 = tf_executor.island {
             // expected-remark@above {{ID: 11}}
-            // expected-remark@above {{Successors: {12}}}
               %iid0 = "tf.Identity"(%id0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
               // expected-remark@above {{ID: 8}}
                 -> tensor<*x!tf_type.resource<tensor<32xf32>>>
@@ -818,7 +799,6 @@ func.func @output_of_ifregion_op(
             }
             tf_executor.fetch %island#0, %island#1, %island#2 :
             // expected-remark@above {{ID: 12}}
-            // expected-remark@above {{Predecessors: {11}}}
               tensor<*x!tf_type.resource<tensor<32xf32>>>,
               tensor<*x!tf_type.resource<tensor<32xf32>>>,
               tensor<*x!tf_type.resource<tensor<32xf32>>>
@@ -1006,7 +986,6 @@ func.func @while_cond(
   // expected-remark@above {{ID: 5}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 3}}
-    // expected-remark@above {{Successors: {4}}}
       %const = "tf.Const"() { value = dense<0> : tensor<i1> } : () -> tensor<i1>
       // expected-remark@above {{ID: 0}}
       %eq = "tf.Equal"(%pred, %const) : (tensor<i1>, tensor<i1>) -> tensor<i1>
@@ -1016,11 +995,10 @@ func.func @while_cond(
     }
     tf_executor.fetch %island#0 : tensor<i1>
     // expected-remark@above {{ID: 4}}
-    // expected-remark@above {{Predecessors: {3}}}
   }
   func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Sinks: {5}}}
+  // expected-remark@above {{Sinks: {}}}
 }
 
 // -----
@@ -1055,7 +1033,6 @@ func.func @output_of_whileregion_op(
             // expected-remark@above {{ID: 6}}
               %island:2 = tf_executor.island {
               // expected-remark@above {{ID: 4}}
-              // expected-remark@above {{Successors: {5}}}
                 %const = "tf.Const"() { value = dense<0> : tensor<i1> } : () -> tensor<i1>
                 // expected-remark@above {{ID: 1}}
                 %eq = "tf.Equal"(%pred, %const) : (tensor<i1>, tensor<i1>) -> tensor<i1>
@@ -1065,7 +1042,6 @@ func.func @output_of_whileregion_op(
               }
               tf_executor.fetch %island#0 : tensor<i1>
               // expected-remark@above {{ID: 5}}
-              // expected-remark@above {{Predecessors: {4}}}
             }
             "tf.Yield"(%graph) : (tensor<i1>) -> ()
             // expected-remark@above {{ID: 7}}
@@ -1285,13 +1261,13 @@ func.func @value_based_side_effect_non_resource_to_known(
     %island = tf_executor.island {
         // expected-remark@above {{ID: 4}}
         // expected-remark@above {{Successors: {5}}}
-        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operandSegmentSizes = array<i32: 1, 1, 1>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
         // expected-remark@above {{ID: 0}}
         // expected-remark@above {{Successors: {2}}}
         "tf._InternalTestNonResourceValueSideEffects_"(%arg0) : (tensor<!tf_type.string>) -> ()
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Successors: {3}}}
-        %1 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+        %1 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operandSegmentSizes = array<i32: 1, 1, 1>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
         // expected-remark@above {{ID: 2}}
         // expected-remark@above {{Predecessors: {0}}}
         // expected-remark@above {{Successors: {3}}}
@@ -1360,7 +1336,7 @@ func.func @generator_dataset_with_unknown_side_effect_ops(
         "tf._UnknownSideEffectingOp_"() : () -> ()
         // expected-remark@above {{ID: 0}}
         // expected-remark@above {{Successors: {1}}}
-        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operandSegmentSizes = array<i32: 1, 1, 1>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Predecessors: {0}}}
         // expected-remark@above {{Successors: {2}}}
@@ -1557,6 +1533,38 @@ func.func @embedding_effect_different_devices(
 
 // -----
 
+// Tests that we treat different op instances with `TPUEmbeddingSideEffect` as
+// independent if they have different devices (even if device ordinals are
+// equal).
+func.func @embedding_effect_same_ordinal_different_devices(
+  // expected-remark@above {{ID: 7}}
+  %arg0: tensor<!tf_type.string>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0) {table_ids = [1, 2], device_ordinal = 1, device = "/job:tpu_host_worker/replica:0/task:1/device:CPU:0"} : (tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {2}}}
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0) {table_ids = [1, 2], device_ordinal = 1, device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"} : (tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {0,1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
 // Tests that we create dependencies between ops with `TPUEmbeddingSideEffect`
 // and unknown side-effecting ops.
 func.func @mixed_embedding_and_unknown_effects(
@@ -1639,10 +1647,10 @@ func.func @same_op_based_write_effect(
     %island = tf_executor.island {
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Successors: {4}}}
-        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operandSegmentSizes = array<i32: 1, 1, 1>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
         // expected-remark@above {{ID: 0}}
         // expected-remark@above {{Successors: {1}}}
-        %1 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+        %1 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operandSegmentSizes = array<i32: 1, 1, 1>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Predecessors: {0}}}
         // expected-remark@above {{Successors: {2}}}
@@ -1673,7 +1681,7 @@ func.func @different_op_based_side_effects(
         "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0){table_ids = [1, 2], device_ordinal = 1} : (tensor<!tf_type.string>) -> ()
         // expected-remark@above {{ID: 0}}
         // expected-remark@above {{Successors: {3}}}
-        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operandSegmentSizes = array<i32: 1, 1, 1>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Successors: {3}}}
         "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0){table_ids = [1, 2], device_ordinal = 5} : (tensor<!tf_type.string>) -> ()
@@ -1905,7 +1913,6 @@ func.func @tpu_compile_ops(
     // expected-remark@above {{ID: 5}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 3}}
-        // expected-remark@above {{Successors: {4}}}
         %0:2 = "tf._TPUCompileMlir"() { metadata = "...", mlir_module = "..." } : () -> (tensor<!tf_type.string>, tensor<!tf_type.string>)
         // expected-remark@above {{ID: 0}}
         %1:2 = "tf._TPUCompileMlir"() { metadata = "...", mlir_module = "..." } : () -> (tensor<!tf_type.string>, tensor<!tf_type.string>)
@@ -1915,11 +1922,10 @@ func.func @tpu_compile_ops(
     }
     tf_executor.fetch %island : !tf_executor.control
     // expected-remark@above {{ID: 4}}
-    // expected-remark@above {{Predecessors: {3}}}
   }
   func.return
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Sinks: {5}}}
+  // expected-remark@above {{Sinks: {}}}
 }
 
 // -----
@@ -1933,7 +1939,7 @@ func.func @device_ordinal_placeholder_side_effect_free(
     %island = tf_executor.island {
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Successors: {4}}}
-        "tf._TPUDeviceOrdinalPlaceholder"() : () -> tensor<i64>
+        "tf._TPUDeviceOrdinalPlaceholder"() {logical_core = 0} : () -> tensor<i64>
         // expected-remark@above {{ID: 0}}
         "tf._UnknownSideEffectingOp_"() : () -> ()
         // expected-remark@above {{ID: 1}}
@@ -2043,4 +2049,998 @@ func.func @fetch_dependencies(
   func.return
   // expected-remark@above {{ID: 5}}
   // expected-remark@above {{Sinks: {4}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between islands with one stateless op
+// each.
+func.func @single_stateless_op_islands() {
+  // expected-remark@above {{ID: 9}}
+  tf_executor.graph {
+  // expected-remark@above {{ID: 7}}
+    %island1 = tf_executor.island {
+        // expected-remark@above {{ID: 2}}
+        "tf.A"() {is_stateless=true} : () -> ()
+        // expected-remark@above {{ID: 0}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 1}}
+    }
+    %island2 = tf_executor.island {
+        // expected-remark@above {{ID: 5}}
+        "tf.B"() {is_stateless=true} : () -> ()
+        // expected-remark@above {{ID: 3}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 4}}
+    }
+    tf_executor.fetch %island1, %island2 : !tf_executor.control, !tf_executor.control
+    // expected-remark@above {{ID: 6}}
+  }
+  func.return
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+// Tests that we create dependencies between islands with one stateful op each.
+func.func @single_stateful_op_islands() {
+  // expected-remark@above {{ID: 9}}
+  tf_executor.graph {
+  // expected-remark@above {{ID: 7}}
+    %island1 = tf_executor.island {
+    // expected-remark@above {{ID: 2}}
+    // expected-remark@above {{Successors: {5}}}
+        "tf.A"() {is_stateless=false} : () -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+    }
+    %island2 = tf_executor.island {
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Predecessors: {2}}}
+    // expected-remark@above {{Successors: {6}}}
+        "tf.B"() {is_stateless=false} : () -> ()
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Predecessors: {3}}}
+    }
+    tf_executor.fetch %island1, %island2 : !tf_executor.control, !tf_executor.control
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Predecessors: {5}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Sinks: {7}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between islands with multiple
+// stateless ops each.
+func.func @multi_stateless_op_islands() {
+  // expected-remark@above {{ID: 11}}
+  tf_executor.graph {
+  // expected-remark@above {{ID: 9}}
+    %island1 = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        "tf.A"() {is_stateless=true} : () -> ()
+        // expected-remark@above {{ID: 0}}
+        "tf.B"() {is_stateless=true} : () -> ()
+        // expected-remark@above {{ID: 1}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+    }
+    %island2 = tf_executor.island {
+        // expected-remark@above {{ID: 7}}
+        "tf.C"() {is_stateless=true} : () -> ()
+        // expected-remark@above {{ID: 4}}
+        "tf.D"() {is_stateless=true} : () -> ()
+        // expected-remark@above {{ID: 5}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 6}}
+    }
+    tf_executor.fetch %island1, %island2 : !tf_executor.control, !tf_executor.control
+    // expected-remark@above {{ID: 8}}
+  }
+  func.return
+  // expected-remark@above {{ID: 10}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+// Tests that we create dependencies between islands that write to the same
+// resource variable and also have different op-based effects.
+func.func @nontrivial_multi_op_islands(
+  // expected-remark@above {{ID: 11}}
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg1: tensor<32xf32>,
+  %arg2: tensor<!tf_type.string>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 9}}
+    %island1 = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {7,8}}}
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg2) {table_ids = [1, 2], device_ordinal = 1} : (tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {2}}}
+        "tf.AssignVariableOp"(%arg0, %arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {0,1}}}
+    }
+    %island2 = tf_executor.island {
+        // expected-remark@above {{ID: 7}}
+        // expected-remark@above {{Successors: {8}}}
+        // expected-remark@above {{Predecessors: {3}}}
+        %0 = "tf.GeneratorDataset"(%arg2, %arg2, %arg2) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operandSegmentSizes = array<i32: 1, 1, 1>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Successors: {6}}}
+        "tf.AssignVariableOp"(%arg0, %arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        // expected-remark@above {{ID: 5}}
+        // expected-remark@above {{Successors: {6}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 6}}
+        // expected-remark@above {{Predecessors: {4,5}}}
+    }
+    tf_executor.fetch %island1, %island2 : !tf_executor.control, !tf_executor.control
+    // expected-remark@above {{ID: 8}}
+    // expected-remark@above {{Predecessors: {3,7}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 10}}
+  // expected-remark@above {{Sinks: {9}}}
+}
+
+// -----
+
+// Tests that we create dependencies between `CollectiveReduceV2` ops if no
+// ordering tokens are present (TF_CollectiveReduceOrderingEffect).
+func.func @collective_reduce_ordering_effect(
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<f32>,
+  %group_key: tensor<i32>,
+  %group_size: tensor<i32>,
+  %instance_key: tensor<i32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Add", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %1 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Mul", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between `CollectiveReduceV2` ops if
+// the `ordered` attribute is false
+func.func @collective_reduce_not_ordered(
+// expected-remark@above {{ID: 7}}
+  %input: tensor<f32>,
+  %group_key: tensor<i32>,
+  %group_size: tensor<i32>,
+  %instance_key: tensor<i32>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+    // expected-remark@above {{ID: 3}}
+        %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Add", final_op = "Id", is_stateless = true} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        %1 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Mul", final_op = "Id", is_stateless = true} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between `CollectiveReduceV2` ops if
+// ordering tokens are present and independent.
+func.func @collective_reduce_independent_ordering_tokens(
+  // expected-remark@above {{ID: 7}}
+  %arg0: tensor<*x!tf_type.resource<tensor<f32>>> {tf._resource_arg_unique_id = 0 : i64},
+  %arg1: tensor<*x!tf_type.resource<tensor<f32>>> {tf._resource_arg_unique_id = 1 : i64},
+  %input: tensor<f32>,
+  %group_key: tensor<i32>,
+  %group_size: tensor<i32>,
+  %instance_key: tensor<i32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key, %arg0) {merge_op = "Add", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {2}}}
+        %1 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key, %arg1) {merge_op = "Mul", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {0,1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
+// Tests that we do create dependencies between `CollectiveReduceV2` ops if
+// ordering tokens are present and dependent.
+func.func @collective_reduce_dependent_ordering_tokens(
+  // expected-remark@above {{ID: 7}}
+  %arg0: tensor<*x!tf_type.resource<tensor<f32>>> {tf._resource_arg_unique_id = 0 : i64},
+  %arg1: tensor<*x!tf_type.resource<tensor<f32>>> {tf._resource_arg_unique_id = 0 : i64},
+  %input: tensor<f32>,
+  %group_key: tensor<i32>,
+  %group_size: tensor<i32>,
+  %instance_key: tensor<i32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key, %arg0) {merge_op = "Add", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %1 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key, %arg1) {merge_op = "Mul", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {2}}}
+        // expected-remark@above {{Predecessors: {0}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between `CollectiveReduceV2` ops if
+// one has ordering tokens and the other one doesn't.
+func.func @collective_reduce_dependent_ordering_tokens(
+  // expected-remark@above {{ID: 7}}
+  %arg0: tensor<*x!tf_type.resource<tensor<f32>>> {tf._resource_arg_unique_id = 0 : i64},
+  %input: tensor<f32>,
+  %group_key: tensor<i32>,
+  %group_size: tensor<i32>,
+  %instance_key: tensor<i32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key, %arg0) {merge_op = "Add", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {2}}}
+        %1 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Mul", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {0,1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between device launch ops with
+// multiple stateless ops each.
+func.func @multi_stateless_op_launches() {
+  // expected-remark@above {{ID: 13}}
+  tf_executor.graph {
+  // expected-remark@above {{ID: 11}}
+    %island = tf_executor.island {
+      // expected-remark@above {{ID: 9}}
+      "tf_device.launch"() ({
+          // expected-remark@above {{ID: 3}}
+          "tf.A"() {is_stateless=true} : () -> ()
+          // expected-remark@above {{ID: 0}}
+          "tf.B"() {is_stateless=true} : () -> ()
+          // expected-remark@above {{ID: 1}}
+          tf_device.return
+          // expected-remark@above {{ID: 2}}
+      }) {device = "CPU:0"} : () -> ()
+      "tf_device.launch"() ({
+          // expected-remark@above {{ID: 7}}
+          "tf.C"() {is_stateless=true} : () -> ()
+          // expected-remark@above {{ID: 4}}
+          "tf.D"() {is_stateless=true} : () -> ()
+          // expected-remark@above {{ID: 5}}
+          tf_device.return
+          // expected-remark@above {{ID: 6}}
+      }) {device = "CPU:0"} : () -> ()
+      tf_executor.yield
+      // expected-remark@above {{ID: 8}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 10}}
+  }
+  func.return
+  // expected-remark@above {{ID: 12}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+// CHECK-LABEL: func @if_region_with_resource_var
+func.func @if_region_with_resource_var(
+  // expected-remark@above {{ID: 19}}
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg1: tensor<i1>,
+  %arg2: tensor<!tf_type.string>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 17}}
+    // CHECK: tf_executor.island
+    %island = tf_executor.island {
+    // expected-remark@above {{ID: 15}}
+    // expected-remark@above {{Successors: {16}}}
+
+      %r0 = "tf.ReadVariableOp"(%arg0) :
+      // expected-remark@above {{ID: 0}}
+      // expected-remark@above {{Successors: {12}}}
+        (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+
+      %if = "tf.IfRegion"(%arg1) (
+      // expected-remark@above {{ID: 12}}
+      // expected-remark@above {{Successors: {14}}}
+      // expected-remark@above {{Predecessors: {0}}}
+        { // Then region.
+          %graph = tf_executor.graph {
+          // expected-remark@above {{ID: 4}}
+            %island:2 = tf_executor.island {
+            // expected-remark@above {{ID: 2}}
+              tf_executor.yield %arg1 : tensor<i1>
+              // expected-remark@above {{ID: 1}}
+            }
+            tf_executor.fetch %island#0 : tensor<i1>
+            // expected-remark@above {{ID: 3}}
+          }
+          "tf.Yield"(%graph) : (tensor<i1>) -> ()
+          // expected-remark@above {{ID: 5}}
+        }, { // Else region
+          %graph = tf_executor.graph {
+          // expected-remark@above {{ID: 10}}
+            %island:2 = tf_executor.island {
+            // expected-remark@above {{ID: 8}}
+            // expected-remark@above {{Successors: {9}}}
+               "tf.AssignVariableOp"(%arg0, %r0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+              // expected-remark@above {{ID: 6}}
+              // expected-remark@above {{Successors: {7}}}
+              tf_executor.yield %arg1 : tensor<i1>
+              // expected-remark@above {{ID: 7}}
+              // expected-remark@above {{Predecessors: {6}}}
+            }
+            tf_executor.fetch %island#0 : tensor<i1>
+            // expected-remark@above {{ID: 9}}
+            // expected-remark@above {{Predecessors: {8}}}
+          }
+          "tf.Yield"(%graph) : (tensor<i1>) -> ()
+          // expected-remark@above {{ID: 11}}
+        }
+      ) { is_stateless = false} : (tensor<i1>) -> tensor<i1>
+
+      %0 = "tf.GeneratorDataset"(%arg2, %arg2, %arg2) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operandSegmentSizes = array<i32: 1, 1, 1>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+      // expected-remark@above {{ID: 13}}
+      // expected-remark@above {{Successors: {14}}}
+      tf_executor.yield
+      // expected-remark@above {{ID: 14}}
+      // expected-remark@above {{Predecessors: {12,13}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 16}}
+    // expected-remark@above {{Predecessors: {15}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 18}}
+  // expected-remark@above {{Sinks: {17}}}
+}
+
+// -----
+
+// Tests that we create dependencies from ops with resources that only have
+// self-dependency (like `_XlaRecvAtHostV2`) to `fetch`, even if there is an op
+// with unknown side effects in between. See b/253049649.
+func.func @self_dependent_only_feeds_into_fetch(
+  // expected-remark@above {{ID: 9}}
+  %arg0: tensor<!tf_type.string>,
+  %arg1: tensor<i64>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 7}}
+    tf_executor.island {
+    // expected-remark@above {{ID: 2}}
+    // expected-remark@above {{Successors: {6}}}
+      "tf._XlaRecvAtHostV2"(%arg0, %arg1) {_xla_has_host_transfer = true, key = "host_compute_channel_1_args"} : (tensor<!tf_type.string>, tensor<i64>) -> tensor<f32>
+      // expected-remark@above {{ID: 0}}
+      tf_executor.yield
+      // expected-remark@above {{ID: 1}}
+    }
+    tf_executor.island {
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Successors: {6}}}
+      "tf._UnknownSideEffectingOp_"() {is_stateless=false} : () -> ()
+      // expected-remark@above {{ID: 3}}
+      // expected-remark@above {{Successors: {4}}}
+      tf_executor.yield
+      // expected-remark@above {{ID: 4}}
+      // expected-remark@above {{Predecessors: {3}}}
+    }
+    tf_executor.fetch
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Predecessors: {2,5}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Sinks: {7}}}
+}
+
+// -----
+
+// Tests that we create dependencies between `NcclAllReduce` ops on same device.
+func.func @collective_reduce_ordering_effect(
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<f32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.NcclAllReduce"(%input) { reduction = "min", num_devices = 2, shared_name = "name", device = "CPU:0"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %1 = "tf.NcclAllReduce"(%input) { reduction = "min", num_devices = 2, shared_name = "name", device = "CPU:0"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
+// Tests that we create dependencies between `NcclAllReduce` ops for unspecified
+// devices.
+func.func @collective_reduce_ordering_effect(
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<f32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.NcclAllReduce"(%input) { reduction = "min", num_devices = 2, shared_name = "name"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %1 = "tf.NcclAllReduce"(%input) { reduction = "min", num_devices = 2, shared_name = "name"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between `NcclAllReduce` ops on
+// different devices.
+func.func @collective_reduce_ordering_effect(
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<f32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.NcclAllReduce"(%input) { reduction = "min", num_devices = 2, shared_name = "name", device = "CPU:0"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {2}}}
+        %1 = "tf.NcclAllReduce"(%input) { reduction = "min", num_devices = 2, shared_name = "name", device = "CPU:1"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {0,1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
+// Tests that we create dependencies to a fetch op, even if the fetch op has
+// known effects (in this case due to resource operand) and the resources of
+// other side-effecting ops are independent.
+func.func @fetch_with_resource_operand(
+  // expected-remark@above {{ID: 9}}
+  %arg0: tensor<!tf_type.string>,
+  %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg2: tensor<*x!tf_type.resource<tensor<32xf32>>>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 7}}
+    %island1 = tf_executor.island {
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Successors: {6}}}
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0) {table_ids = [1, 2], device_ordinal = 1} : (tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+    }
+    %island2 = tf_executor.island {
+        // expected-remark@above {{ID: 5}}
+        // expected-remark@above {{Successors: {6}}}
+        %read = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Predecessors: {3}}}
+    }
+    tf_executor.fetch %arg2, %island1, %island2 : tensor<*x!tf_type.resource<tensor<32xf32>>>, !tf_executor.control, !tf_executor.control
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Predecessors: {2,5}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Sinks: {7}}}
+}
+
+// -----
+
+// Tests about we create the dependency PwStreamResults `start` and `end`
+// within in XlaCallModule
+func.func @_pws_program(%arg0: tensor<i32> {tf_saved_model.index_path = ["arg0"]}) -> (tensor<i32> {tf_saved_model.index_path = ["result0"]}, tensor<i32> {tf_saved_model.index_path = ["result1"]}) attributes {pws.program_id = 4722582128360897113 : i64, tf.entry_function = {}} {
+  // expected-remark@above {{ID: 7}}
+  "tf.PwStreamResults"(%arg0) {_callback_id = -2694175233261920887 : i64, _controller_address = "[2002:afb:afb::]:10004", _has_manual_control_dependencies = true, _model_name = "test", device = "/device/CPU", names = ["begin"]} : (tensor<i32>) -> ()
+  // expected-remark@above {{ID: 0}}
+  // expected-remark@above {{Successors: {4}}}
+  %0:2 = "tf_device.cluster"() ({
+  // expected-remark@above {{Predecessors: {0}}}
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Successors: {5}}}
+    %1 = "tf.XlaSharding"(%arg0) {_XlaSharding = "", sharding = "", unspecified_dims = []} : (tensor<i32>) -> tensor<i32>
+    // expected-remark@above {{ID: 1}}
+    %2:2 = "tf.XlaCallModule"(%1) {Sout = [#tf_type.shape<>, #tf_type.shape<>], dim_args_spec = [], function_list = [@__inference_callable_flat_tf_150], module = "ML\EFR\00__inference_callable_flat_tf_15\00", platforms = [], version = 5 : i64} : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
+    // expected-remark@above {{ID: 2}}
+    tf_device.return %2#0, %2#1 : tensor<i32>, tensor<i32>
+    // expected-remark@above {{ID: 3}}
+  }) {_tpu_replicate = "cluster_0", allow_soft_placement = false, computation_shape = [], device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, padding_map = [], step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", tpu_compile_options_proto = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> (tensor<i32>, tensor<i32>)
+  "tf.PwStreamResults"(%arg0) {_callback_id = -2694175233261920887 : i64, _controller_address = "[2002:afb:afb::]:10004", _model_name = "test", device = "/device/CPU", names = ["end"]} : (tensor<i32>) -> ()
+  // expected-remark@above {{Predecessors: {4}}}
+  // expected-remark@above {{ID: 5}}
+  return %0#0, %0#1 : tensor<i32>, tensor<i32>
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+// expected-remark@below {{ID: 2}}
+func.func private @__inference_callable_flat_tf_150(%arg0: tensor<i32> {tf._user_specified_name = "args_tf_flat_0"}, %arg1: tensor<i32> {tf._user_specified_name = "args_tf_flat_1"}) attributes {tf._XlaMustCompile = false, tf._construction_context = "kEagerRuntime", tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>], tf._original_func_name = "__inference_callable_flat_tf_15", tf.signature.is_stateful} {
+  "tf.PwStreamResults"(%arg0, %arg1) {_callback_id = -2694175233261920887 : i64, _controller_address = "[2002:afb:afb::]:10004", _model_name = "test", names = ["foo", "bar"]} : (tensor<i32>, tensor<i32>) -> ()
+  // expected-remark@above {{ID: 0}}
+  return
+  // expected-remark@above {{ID: 1}}
+  // expected-remark@above {{Sinks: {0}}}
+}
+
+// -----
+
+// Tests that we create dependencies between `XlaLaunch` ops on same device.
+func.func @xla_launch_ordering_effect (
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<f32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.XlaLaunch"(%input) {function = @func, operandSegmentSizes = array<i32: 0, 1, 0>, device = "CPU:0"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %1 = "tf.XlaLaunch"(%input) {function = @func, operandSegmentSizes = array<i32: 0, 1, 0>, device = "CPU:0"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+func.func @func(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-remark@above {{ID: 1}}
+  func.return %arg0 : tensor<f32>
+  // expected-remark@above {{ID: 0}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+// Tests that we create dependencies between `XlaLaunch` ops for unspecified
+// devices.
+func.func @xla_launch_ordering_effect(
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<f32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.XlaLaunch"(%input) {function = @func, operandSegmentSizes = array<i32: 0, 1, 0>} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %1 = "tf.XlaLaunch"(%input) {function = @func, operandSegmentSizes = array<i32: 0, 1, 0>} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+func.func @func(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-remark@above {{ID: 1}}
+  func.return %arg0 : tensor<f32>
+  // expected-remark@above {{ID: 0}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between `XlaLaunch` ops on
+// different devices.
+func.func @xla_launch_ordering_effect(
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<f32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.XlaLaunch"(%input) {function = @func, operandSegmentSizes = array<i32: 0, 1, 0>, device = "CPU:0"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {2}}}
+        %1 = "tf.XlaLaunch"(%input) {function = @func, operandSegmentSizes = array<i32: 0, 1, 0>, device = "CPU:1"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {0,1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+func.func @func(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-remark@above {{ID: 1}}
+  func.return %arg0 : tensor<f32>
+  // expected-remark@above {{ID: 0}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+// Tests that we create dependencies between `XlaLaunch` ops on different
+// devices that access the same resource.
+func.func @xla_launch_ordering_effect (
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<!tf_type.resource>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.XlaLaunch"(%input) {function = @func, operandSegmentSizes = array<i32: 0, 0, 1>, device = "CPU:0"} : (tensor<!tf_type.resource>) -> tensor<!tf_type.resource>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %1 = "tf.XlaLaunch"(%input) {function = @func, operandSegmentSizes = array<i32: 0, 0, 1>, device = "CPU:0"} : (tensor<!tf_type.resource>) -> tensor<!tf_type.resource>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+func.func @func(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+  // expected-remark@above {{ID: 1}}
+  func.return %arg0 : tensor<!tf_type.resource>
+  // expected-remark@above {{ID: 0}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-remark@above {{ID: 2}}
+  %sum = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  func.return %sum : tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// CHECK-LABEL: func @call_pure_function
+func.func @call_pure_function(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+  // expected-remark@above {{ID: 5}}
+  %one = "tf.Const"() { value = dense<1.0> : tensor<1xf32> } : () -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  %r1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  %two = "tf.StatefulPartitionedCall"(%one, %one) {config="", config_proto="", executor_type="", f=@add} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 2}}
+  %r2 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 3}}
+  func.return %arg0 : tensor<!tf_type.resource>
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Sinks: {1,3}}}
+}
+
+// -----
+
+// Tests that we create a dependency between ops with `TF__XlaRunSideEffect`.
+func.func @tpu_execute_effect(
+  // expected-remark@above {{ID: 7}}
+  %arg0: tensor<!tf_type.string>,
+  %arg1: tensor<!tf_type.string>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        "tf._XlaRun"(%arg0, %arg0) : (tensor<!tf_type.string>, tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        "tf._XlaRun"(%arg1, %arg1) : (tensor<!tf_type.string>, tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between any two `RandomUniform` ops.
+func.func @random_uniform_ordering_effect() -> (tensor<3xf32>) {
+  // expected-remark@above {{ID: 9}}
+  %graph = tf_executor.graph {
+    // expected-remark@above {{ID: 7}}
+    %island:2 = tf_executor.island {
+      // expected-remark@above {{ID: 5}}
+      // expected-remark@above {{Successors: {6}}}
+      %0 = arith.constant dense<[3]> : tensor<1xi32>
+      // expected-remark@above {{ID: 0}}
+      %1 = "tf.RandomUniform"(%0) {device = "", seed = 3 : i64, seed2 = 5 : i64} : (tensor<1xi32>) -> tensor<3xf32>
+      // expected-remark@above {{ID: 1}}
+      // expected-remark@above {{Successors: {4}}}
+      %2 = "tf.RandomUniform"(%0) {device = "", seed = 3 : i64, seed2 = 5 : i64} : (tensor<1xi32>) -> tensor<3xf32>
+      // expected-remark@above {{ID: 2}}
+      // expected-remark@above {{Successors: {4}}}
+      %3 = "tf.RandomUniform"(%0) {device = "CPU:0", seed = 3 : i64, seed2 = 5 : i64} : (tensor<1xi32>) -> tensor<3xf32>
+      // expected-remark@above {{ID: 3}}
+      // expected-remark@above {{Successors: {4}}}
+      tf_executor.yield %3: tensor<3xf32>
+      // expected-remark@above {{ID: 4}}
+      // expected-remark@above {{Predecessors: {1,2,3}}}
+    }
+    tf_executor.fetch %island#0 : tensor<3xf32>
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Predecessors: {5}}}
+  }
+  func.return %graph : tensor<3xf32>
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Sinks: {7}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between `GlobalIterId`s.
+func.func @global_iter_id_effect() -> () {
+  // expected-remark@above {{ID: 7}}
+  tf_executor.graph {
+  // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+    // expected-remark@above {{ID: 3}}
+      %0 = "tf.GlobalIterId"() : () -> tensor<i64>
+      // expected-remark@above {{ID: 0}}
+      %1 = "tf.GlobalIterId"() : () -> tensor<i64>
+      // expected-remark@above {{ID: 1}}
+      tf_executor.yield
+      // expected-remark@above {{ID: 2}}
+    }
+    tf_executor.fetch
+    // expected-remark@above {{ID: 4}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-remark@above {{ID: 2}}
+  %sum = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  func.return %sum : tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+func.func @intermediary(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-remark@above {{ID: 2}}
+  %result = "tf.StatefulPartitionedCall"(%arg0, %arg1) {config="", config_proto="", executor_type="", f=@add} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  func.return %result : tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// CHECK-LABEL: func @call_pure_function
+func.func @call_pure_function(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+  // expected-remark@above {{ID: 5}}
+  %one = "tf.Const"() { value = dense<1.0> : tensor<1xf32> } : () -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  %r1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  %two = "tf.StatefulPartitionedCall"(%one, %one) {config="", config_proto="", executor_type="", f=@intermediary} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 2}}
+  %r2 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 3}}
+  func.return %arg0 : tensor<!tf_type.resource>
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Sinks: {1,3}}}
+}
+
+// -----
+
+func.func @assert(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<i1> {
+  // expected-remark@above {{ID: 3}}
+  %cond = builtin.unrealized_conversion_cast to tensor<i1>
+  // expected-remark@above {{ID: 0}}
+  "tf.Assert"(%cond, %arg1) {device = "/job:localhost/replica:0/task:0/device:CPU:0", summarize = 3 : i64} : (tensor<i1>, tensor<1xf32>) -> ()
+  // expected-remark@above {{ID: 1}}
+  func.return %cond : tensor<i1>
+  // expected-remark@above {{ID: 2}}
+  // expected-remark@above {{Sinks: {1}}}
+}
+
+func.func @intermediary(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-remark@above {{ID: 3}}
+  %cond = builtin.unrealized_conversion_cast to tensor<i1>
+  // expected-remark@above {{ID: 0}}
+  %sum = "tf.If"(%cond, %arg0, %arg1) {
+      then_branch = @assert,
+      else_branch = @assert,
+      is_stateless = false
+  } : (tensor<i1>, tensor<1xf32>, tensor<1xf32>) -> tensor<i1>
+  // expected-remark@-5 {{ID: 1}}
+  func.return %arg0 : tensor<1xf32>
+  // expected-remark@above {{ID: 2}}
+  // expected-remark@above {{Sinks: {1}}}
+}
+
+// CHECK-LABEL: func @assert_within_if
+func.func @assert_within_if(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+  // expected-remark@above {{ID: 5}}
+  %one = "tf.Const"() { value = dense<1.0> : tensor<1xf32> } : () -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  %r1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  %result = "tf.StatefulPartitionedCall"(%one, %one) {config="", config_proto="", executor_type="", f=@intermediary} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 2}}
+  %r2 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 3}}
+  func.return %arg0 : tensor<!tf_type.resource>
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Sinks: {1,3}}}
 }

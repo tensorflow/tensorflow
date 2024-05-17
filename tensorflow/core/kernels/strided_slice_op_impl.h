@@ -18,7 +18,7 @@ limitations under the License.
 
 // Functor definition for StridedSliceOp, must be compilable by nvcc.
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -38,17 +38,17 @@ namespace tensorflow {
 
 template <typename Device, typename T, int NDIM>
 void HandleStridedSliceCase(OpKernelContext* context,
-                            const gtl::ArraySlice<int64_t>& begin,
-                            const gtl::ArraySlice<int64_t>& end,
-                            const gtl::ArraySlice<int64_t>& strides,
+                            const absl::Span<const int64_t>& begin,
+                            const absl::Span<const int64_t>& end,
+                            const absl::Span<const int64_t>& strides,
                             const TensorShape& processing_shape,
                             bool is_simple_slice, Tensor* result);
 
 template <typename Device, typename T, int NDIM>
 void HandleStridedSliceGradCase(OpKernelContext* context,
-                                const gtl::ArraySlice<int64_t>& begin,
-                                const gtl::ArraySlice<int64_t>& end,
-                                const gtl::ArraySlice<int64_t>& strides,
+                                const absl::Span<const int64_t>& begin,
+                                const absl::Span<const int64_t>& end,
+                                const absl::Span<const int64_t>& strides,
                                 const TensorShape& processing_shape,
                                 bool is_simple_slice, Tensor* result);
 
@@ -56,9 +56,9 @@ template <typename Device, typename T, int NDIM>
 class HandleStridedSliceAssignCase {
  public:
   void operator()(OpKernelContext* context,
-                  const gtl::ArraySlice<int64_t>& begin,
-                  const gtl::ArraySlice<int64_t>& end,
-                  const gtl::ArraySlice<int64_t>& strides,
+                  const absl::Span<const int64_t>& begin,
+                  const absl::Span<const int64_t>& end,
+                  const absl::Span<const int64_t>& strides,
                   const StridedSliceAssignBCast& bcast, Tensor* result);
 };
 }  // namespace tensorflow
@@ -76,9 +76,9 @@ namespace tensorflow {
 
 template <typename Device, typename T, int NDIM>
 void HandleStridedSliceCase(OpKernelContext* context,
-                            const gtl::ArraySlice<int64_t>& begin,
-                            const gtl::ArraySlice<int64_t>& end,
-                            const gtl::ArraySlice<int64_t>& strides,
+                            const absl::Span<const int64_t>& begin,
+                            const absl::Span<const int64_t>& end,
+                            const absl::Span<const int64_t>& strides,
                             const TensorShape& processing_shape,
                             bool is_simple_slice, Tensor* result) {
   typedef typename proxy_type<Device, T>::type Proxy;
@@ -114,9 +114,9 @@ void HandleStridedSliceCase(OpKernelContext* context,
 
 template <typename Device, typename T, int NDIM>
 void HandleStridedSliceGradCase(OpKernelContext* context,
-                                const gtl::ArraySlice<int64_t>& begin,
-                                const gtl::ArraySlice<int64_t>& end,
-                                const gtl::ArraySlice<int64_t>& strides,
+                                const absl::Span<const int64_t>& begin,
+                                const absl::Span<const int64_t>& end,
+                                const absl::Span<const int64_t>& strides,
                                 const TensorShape& processing_shape,
                                 bool is_simple_slice, Tensor* result) {
   gtl::InlinedVector<int64_t, 4> processing_dims = processing_shape.dim_sizes();
@@ -139,9 +139,9 @@ void HandleStridedSliceGradCase(OpKernelContext* context,
 
 template <typename Device, typename T, int NDIM>
 void HandleStridedSliceAssignCase<Device, T, NDIM>::operator()(
-    OpKernelContext* context, const gtl::ArraySlice<int64_t>& begin,
-    const gtl::ArraySlice<int64_t>& end,
-    const gtl::ArraySlice<int64_t>& strides,
+    OpKernelContext* context, const absl::Span<const int64_t>& begin,
+    const absl::Span<const int64_t>& end,
+    const absl::Span<const int64_t>& strides,
     const StridedSliceAssignBCast& bcast, Tensor* result) {
   typedef typename proxy_type<Device, T>::type Proxy;
   Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
@@ -166,9 +166,9 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
  public:
   enum { NDIM_PROXY = 1 };
   void operator()(OpKernelContext* context,
-                  const gtl::ArraySlice<int64_t>& begin,
-                  const gtl::ArraySlice<int64_t>& end,
-                  const gtl::ArraySlice<int64_t>& strides,
+                  const absl::Span<const int64_t>& begin,
+                  const absl::Span<const int64_t>& end,
+                  const absl::Span<const int64_t>& strides,
                   const StridedSliceAssignBCast& bcast, Tensor* result) {
     gtl::InlinedVector<int64_t, 1> processing_dims(1);
     processing_dims[0] = 1;
@@ -283,16 +283,14 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
 TF_CALL_GPU_PROXY_TYPES(PREVENT_FOR_N_GPU);
 TF_CALL_COMPLEX_TYPES(PREVENT_FOR_N_GPU);
 
-TF_CALL_uint8(DECLARE_FOR_N_GPU);
-TF_CALL_int8(DECLARE_FOR_N_GPU);
-TF_CALL_int32(DECLARE_FOR_N_GPU);
-TF_CALL_int64(DECLARE_FOR_N_GPU);
-TF_CALL_uint32(DECLARE_FOR_N_GPU);
+TF_CALL_INTEGRAL_TYPES(DECLARE_FOR_N_GPU);
 TF_CALL_GPU_ALL_TYPES(DECLARE_FOR_N_GPU);
 #endif  // END GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TF_CALL_ALL_TYPES(DECLARE_FOR_N_CPU);
 TF_CALL_QUANTIZED_TYPES(DECLARE_FOR_N_CPU);
+TF_CALL_float8_e5m2(DECLARE_FOR_N_CPU);
+TF_CALL_float8_e4m3fn(DECLARE_FOR_N_CPU);
 
 #undef INSTANTIATE
 #undef DECLARE_FOR_N_CPU

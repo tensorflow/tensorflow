@@ -119,6 +119,24 @@ class SquareLinearOperatorCompositionTest(
       linalg.LinearOperatorComposition(
           [operator_1, operator_2], is_non_singular=False)
 
+  def test_is_spd_is_auto_set(self):
+    matrix = [[11., 0.], [1., 8.]]
+    x = linalg.LinearOperatorFullMatrix(matrix, is_non_singular=True)
+    y = linalg.LinearOperatorFullMatrix(matrix, is_non_singular=True)
+
+    operator = linalg.LinearOperatorComposition(
+        [x, y, y.H, x.H], is_non_singular=None)
+
+    self.assertTrue(operator.is_self_adjoint)
+    self.assertTrue(operator.is_positive_definite)
+    self.assertTrue(operator.is_non_singular)
+
+    with self.assertRaisesRegex(ValueError, "self-adjoint"):
+      linalg.LinearOperatorComposition([x, x.H], is_self_adjoint=False)
+
+    with self.assertRaisesRegex(ValueError, "non-singular"):
+      linalg.LinearOperatorComposition([x, x.H], is_non_singular=False)
+
   def test_name(self):
     matrix = [[11., 0.], [1., 8.]]
     operator_1 = linalg.LinearOperatorFullMatrix(matrix, name="left")
@@ -157,6 +175,14 @@ class NonSquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
+  @staticmethod
+  def skip_these_tests():
+    # Testing the condition number fails when using XLA with cuBLASLt
+    # A slight numerical difference between different matmul algorithms
+    # leads to large precision issues
+    return linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest.skip_these_tests(
+    ) + ["cond"]
+
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
@@ -170,10 +196,32 @@ class NonSquareLinearOperatorCompositionTest(
     shape_1 = batch_shape + [shape[-2], k]
     shape_2 = batch_shape + [k, shape[-1]]
 
+    # Ensure that the matrices are well-conditioned by generating
+    # random matrices whose singular values are close to 1.
+    # The reason to do this is because cond(AB) <= cond(A) * cond(B).
+    # By ensuring that each factor has condition number close to 1, we ensure
+    # that the condition number of the product isn't too far away from 1.
+    def generate_well_conditioned(shape, dtype):
+      m, n = shape[-2], shape[-1]
+      min_dim = min(m, n)
+      # Generate singular values that are close to 1.
+      d = linear_operator_test_util.random_normal(
+          shape[:-2] + [min_dim],
+          mean=1.,
+          stddev=0.1,
+          dtype=dtype)
+      zeros = array_ops.zeros(shape=shape[:-2] + [m, n], dtype=dtype)
+      d = linalg_lib.set_diag(zeros, d)
+      u, _ = linalg_lib.qr(linear_operator_test_util.random_normal(
+          shape[:-2] + [m, m], dtype=dtype))
+
+      v, _ = linalg_lib.qr(linear_operator_test_util.random_normal(
+          shape[:-2] + [n, n], dtype=dtype))
+      return math_ops.matmul(u, math_ops.matmul(d, v))
+
     matrices = [
-        linear_operator_test_util.random_normal(
-            shape_1, dtype=dtype), linear_operator_test_util.random_normal(
-                shape_2, dtype=dtype)
+        generate_well_conditioned(shape_1, dtype=dtype),
+        generate_well_conditioned(shape_2, dtype=dtype),
     ]
 
     lin_op_matrices = matrices
@@ -228,6 +276,14 @@ class NonSquareLinearOperatorCompositionTest(
     with self.cached_session():
       self.assertAllEqual(
           (1, 2, 3, 5), operator.shape_tensor().eval(feed_dict=feed_dict))
+
+  @test_util.run_deprecated_v1
+  def test_is_square_set_for_aat_form(self):
+    mat_ph = array_ops.placeholder(dtypes.float64)  # No shape set at all.
+    x = linalg.LinearOperatorFullMatrix(mat_ph, is_square=False)
+
+    operator = linalg.LinearOperatorComposition([x, x.H])
+    self.assertTrue(operator.is_square)
 
 
 if __name__ == "__main__":

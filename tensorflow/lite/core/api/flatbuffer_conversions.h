@@ -23,8 +23,8 @@ limitations under the License.
 #include <new>
 #include <type_traits>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -150,6 +150,11 @@ TfLiteStatus ParseDiv(const Operator* op, ErrorReporter* error_reporter,
 
 TfLiteStatus ParseElu(const Operator* op, ErrorReporter* error_reporter,
                       BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseEmbeddingLookup(const Operator* op,
+                                  ErrorReporter* error_reporter,
+                                  BuiltinDataAllocator* allocator,
+                                  void** builtin_data);
 
 TfLiteStatus ParseEqual(const Operator* op, ErrorReporter* error_reporter,
                         BuiltinDataAllocator* allocator, void** builtin_data);
@@ -319,6 +324,10 @@ TfLiteStatus ParseRound(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseRsqrt(const Operator* op, ErrorReporter* error_reporter,
                         BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseSelectV2(const Operator* op, ErrorReporter* error_reporter,
+                           BuiltinDataAllocator* allocator,
+                           void** builtin_data);
+
 TfLiteStatus ParseShape(const Operator* op, ErrorReporter* error_reporter,
                         BuiltinDataAllocator* allocator, void** builtin_data);
 
@@ -355,6 +364,11 @@ TfLiteStatus ParseSqrt(const Operator* op, ErrorReporter* error_reporter,
 
 TfLiteStatus ParseSquare(const Operator* op, ErrorReporter* error_reporter,
                          BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseSquaredDifference(const Operator* op,
+                                    ErrorReporter* error_reporter,
+                                    BuiltinDataAllocator* allocator,
+                                    void** builtin_data);
 
 TfLiteStatus ParseStridedSlice(const Operator* op,
                                ErrorReporter* error_reporter,
@@ -397,6 +411,44 @@ TfLiteStatus ParseWhile(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseZerosLike(const Operator* op, ErrorReporter* error_reporter,
                             BuiltinDataAllocator* allocator,
                             void** builtin_data);
+
+TfLiteStatus ParseBitwiseXor(const Operator* op, ErrorReporter* error_reporter,
+                             BuiltinDataAllocator* allocator,
+                             void** builtin_data);
+
+TfLiteStatus ParseRightShift(const Operator* op, ErrorReporter* error_reporter,
+                             BuiltinDataAllocator* allocator,
+                             void** builtin_data);
+
+TfLiteStatus ParseStablehloScatter(const Operator* op,
+                                   ErrorReporter* error_reporter,
+                                   BuiltinDataAllocator* allocator,
+                                   void** builtin_data);
+
+TfLiteStatus ParseStablehloRngBitGenerator(const Operator* op,
+                                           ErrorReporter* error_reporter,
+                                           BuiltinDataAllocator* allocator,
+                                           void** builtin_data);
+
+TfLiteStatus ParseStablehloGather(const Operator* op,
+                                  ErrorReporter* error_reporter,
+                                  BuiltinDataAllocator* allocator,
+                                  void** builtin_data);
+
+TfLiteStatus ParseStablehloReduceWindow(const Operator* op,
+                                        ErrorReporter* error_reporter,
+                                        BuiltinDataAllocator* allocator,
+                                        void** builtin_data);
+
+TfLiteStatus ParseStablehloPad(const Operator* op,
+                               ErrorReporter* error_reporter,
+                               BuiltinDataAllocator* allocator,
+                               void** builtin_data);
+
+TfLiteStatus ParseStablehloComposite(const Operator* op,
+                                     ErrorReporter* error_reporter,
+                                     BuiltinDataAllocator* allocator,
+                                     void** builtin_data);
 
 }  // namespace tflite
 

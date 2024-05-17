@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -86,18 +88,18 @@ TEST(DeviceUtilTest, AddDeviceToOp) {
   ASSERT_EQ(devices_attr.size(), 3);
 
   // CPU device added with an empty metadata.
-  auto device_meta_0 = devices_attr.get(cpu0).dyn_cast<mlir::UnitAttr>();
+  auto device_meta_0 = mlir::dyn_cast<mlir::UnitAttr>(devices_attr.get(cpu0));
   ASSERT_NE(device_meta_0, nullptr);
 
   // GPU device successfully parsed compute capability from description.
   auto device_meta_1 =
-      devices_attr.get(gpu0).dyn_cast<mlir::TF::GpuDeviceMetadata>();
+      mlir::dyn_cast<mlir::TF::GpuDeviceMetadata>(devices_attr.get(gpu0));
   ASSERT_NE(device_meta_1, nullptr);
   ASSERT_EQ(device_meta_1.getCcMajor(), 7);
   ASSERT_EQ(device_meta_1.getCcMinor(), 0);
 
   // If description is empty GPU devices added with an empty metadata.
-  auto device_meta_2 = devices_attr.get(gpu1).dyn_cast<mlir::UnitAttr>();
+  auto device_meta_2 = mlir::dyn_cast<mlir::UnitAttr>(devices_attr.get(gpu1));
   ASSERT_NE(device_meta_2, nullptr);
 }
 
@@ -198,13 +200,13 @@ TEST(DeviceUtilTest, GetGpuDeviceMetadata) {
   DeviceNameUtils::ParsedName parsed_name;
   DeviceNameUtils::ParseFullName(gpu0, &parsed_name);
   auto meta_0 = devices.GetGpuDeviceMetadata(parsed_name);
-  ASSERT_TRUE(meta_0.hasValue());
+  ASSERT_TRUE(meta_0.has_value());
   ASSERT_EQ(meta_0->getCcMajor(), 1);
   ASSERT_EQ(meta_0->getCcMinor(), 2);
 
   DeviceNameUtils::ParseFullName(gpu1, &parsed_name);
   auto meta_1 = devices.GetGpuDeviceMetadata(parsed_name);
-  ASSERT_FALSE(meta_1.hasValue());
+  ASSERT_FALSE(meta_1.has_value());
 }
 
 TEST(DeviceUtilTest, GetDeviceOrdinalFromDeviceString) {

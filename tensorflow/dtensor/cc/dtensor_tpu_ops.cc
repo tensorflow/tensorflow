@@ -28,7 +28,6 @@ namespace dtensor {
 
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
-using shape_inference::UnchangedShape;
 
 // Initializes global TPU's for mutli-client execution.
 //
@@ -36,6 +35,7 @@ using shape_inference::UnchangedShape;
 // InitializeHostForDistributedTpuOp, and outputs the latter's result.
 REGISTER_OP("ConfigureAndInitializeGlobalTPU")
     .Output("output: int32")
+    .Attr("use_tfrt_host_runtime: bool = true")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
@@ -44,13 +44,22 @@ REGISTER_OP("ConfigureAndInitializeGlobalTPU")
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &input));
       }
       c->set_output(0, c->Vector(c->UnknownDim()));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("ShutdownTPUSystem")
     .SetIsStateful()
     .Output("success: bool")
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("DTensorSetGlobalTPUArray")
+    .Input("topology: string")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
+      return absl::OkStatus();
+    });
 
 }  // namespace dtensor
 }  // namespace tensorflow

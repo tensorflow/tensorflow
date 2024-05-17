@@ -16,9 +16,11 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -229,24 +231,65 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 class UnbatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                             parameterized.TestCase):
 
-  def build_dataset(self, multiplier=15.0, tensor_slice_len=2, batch_size=2):
+  def build_dataset(self,
+                    multiplier=15.0,
+                    tensor_slice_len=2,
+                    batch_size=2,
+                    options=None):
     components = (np.arange(tensor_slice_len), np.array([[1, 2, 3]]) *
                   np.arange(tensor_slice_len)[:, np.newaxis],
                   np.array(multiplier) * np.arange(tensor_slice_len))
 
-    return dataset_ops.Dataset.from_tensor_slices(components).batch(
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).batch(
         batch_size).unbatch()
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
     tensor_slice_len = 8
     batch_size = 2
     num_outputs = tensor_slice_len
-    verify_fn(self,
-              lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
-              num_outputs)
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(
+        self,
+        lambda: self.build_dataset(15.0, tensor_slice_len, batch_size, options),
+        num_outputs)
+
+
+class UnbatchRandomAccessTest(test_base.DatasetTestBase,
+                              parameterized.TestCase):
+  @combinations.generate(test_base.default_test_combinations())
+  def test(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.batch(4, drop_remainder=True)
+    dataset = dataset.unbatch()
+    for i in range(8):
+      self.assertEqual(self.evaluate(random_access.at(dataset, i)), i)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNotDropRemainder(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.batch(4, drop_remainder=False)
+    dataset = dataset.unbatch()
+    with self.assertRaises(errors.FailedPreconditionError):
+      self.evaluate(random_access.at(dataset, 0))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, 100])))
+  def testInvalidIndex(self, index):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.batch(4, drop_remainder=True)
+    dataset = dataset.unbatch()
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
 
 
 if __name__ == "__main__":

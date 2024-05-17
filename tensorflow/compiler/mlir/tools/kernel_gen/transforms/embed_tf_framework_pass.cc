@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
@@ -29,7 +31,7 @@ namespace kernel_gen {
 namespace tf_framework {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_EMBEDTFFRAMEWORKPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 bool IsNotInsideTfEntryFunction(Operation* op) {
@@ -39,7 +41,7 @@ bool IsNotInsideTfEntryFunction(Operation* op) {
 
 template <typename OpTy>
 bool HasInitializedOpKernelContextOperand(OpTy op) {
-  return op.ctx() != nullptr;
+  return op.getCtx() != nullptr;
 }
 
 // The pass rewrites the function marked with `tf_entry` attribute.
@@ -47,7 +49,7 @@ bool HasInitializedOpKernelContextOperand(OpTy op) {
 // * std.alloc becomes tf_framework.alloc_raw,
 // * std.dealloc becomes tf_framework.dealloc_raw.
 class EmbedTFFrameworkPass
-    : public EmbedTFFrameworkPassBase<EmbedTFFrameworkPass> {
+    : public impl::EmbedTFFrameworkPassBase<EmbedTFFrameworkPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
   }
@@ -70,7 +72,7 @@ class EmbedTFFrameworkPass
       }
       FunctionType func_type = op.getFunctionType();
       return func_type.getNumInputs() > 0 &&
-             func_type.getInput(0).isa<OpKernelContextType>();
+             mlir::isa<OpKernelContextType>(func_type.getInput(0));
     });
     target.addDynamicallyLegalOp<cf::AssertOp, memref::AllocOp,
                                  memref::DeallocOp>(IsNotInsideTfEntryFunction);

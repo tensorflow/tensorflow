@@ -15,7 +15,6 @@
 """Print an AST tree in a form more readable than ast.dump."""
 
 import gast
-import six
 import termcolor
 
 
@@ -109,10 +108,10 @@ class PrettyPrinter(gast.NodeVisitor):
           self._print('%s%s=()' % (self._indent(), self._field(f)))
       elif isinstance(v, gast.AST):
         self.generic_visit(v, f)
-      elif isinstance(v, six.binary_type):
+      elif isinstance(v, bytes):
         self._print('%s%s=%s' % (self._indent(), self._field(f),
                                  self._value('b"%s"' % v)))
-      elif isinstance(v, six.text_type):
+      elif isinstance(v, str):
         self._print('%s%s=%s' % (self._indent(), self._field(f),
                                  self._value('u"%s"' % v)))
       else:

@@ -15,6 +15,7 @@
 """Tests for `tf.data.Dataset.interleave()`."""
 import multiprocessing
 import os
+import sys
 
 from absl.testing import parameterized
 import numpy as np
@@ -30,6 +31,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import test
 
 
@@ -56,12 +58,18 @@ def _interleave(lists, cycle_length, block_length, num_parallel_calls=None):
   open_iterators = []
   if cycle_length is None:
     # The logic here needs to match interleave C++ kernels.
+    cpu_count = multiprocessing.cpu_count()
+    if hasattr(os, "sched_getaffinity"):
+      try:
+        cpu_count = len(os.sched_getaffinity(0))
+      except NotImplementedError:
+        pass
     if num_parallel_calls is None:
-      cycle_length = multiprocessing.cpu_count()
+      cycle_length = cpu_count
     elif num_parallel_calls == dataset_ops.AUTOTUNE:
-      cycle_length = (multiprocessing.cpu_count() + 2) // 3
+      cycle_length = (cpu_count + 2) // 3
     else:
-      cycle_length = min(num_parallel_calls, multiprocessing.cpu_count())
+      cycle_length = min(num_parallel_calls, cpu_count)
 
   for i in range(cycle_length):
     if all_iterators:
@@ -378,36 +386,242 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset_ops.Dataset.from_tensors(42).interleave(
           map_fn, num_parallel_calls=num_parallel_calls)
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 1])))
+  def testMapFuncFailWithErrorContext(self, num_parallel_calls):
 
-class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                      parameterized.TestCase):
+    def fn(x):
+      return dataset_ops.Dataset.from_tensors(x // 0)
+
+    dataset = dataset_ops.Dataset.from_tensors(42).interleave(
+        fn, num_parallel_calls=num_parallel_calls, name="interleave")
+    get_next = self.getNext(dataset)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r".*Error in user-defined function passed to .* transformation with "
+        r"iterator: Iterator::Root::.*"):
+      self.evaluate(get_next())
+
+  @combinations.generate(test_base.v2_eager_only_combinations())
+  def testSymbolicCheckpointSize(self):
+    if sys.platform == "darwin":
+      self.skipTest(
+          "MacOS does not support symbolic checkpointing."
+      )  # b/284304023
+
+    dataset = dataset_ops.Dataset.range(10)
+    # Each input element to `.interleave` is > 1MB
+    dataset = dataset.map(
+        # Create a huge input element
+        lambda x: stateless_random_ops.stateless_random_uniform(
+            [1_000_000], seed=(42, 42)
+        )
+    )
+    dataset = dataset.interleave(
+        lambda x: dataset_ops.Dataset.range(200),
+        cycle_length=5,
+        num_parallel_calls=None,
+    )
+
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = True
+    dataset = dataset.with_options(options)
+
+    it = dataset.as_numpy_iterator()
+    for _ in range(5):
+      next(it)
+
+    checkpoint = it.save().numpy()
+    self.assertLess(
+        len(checkpoint),
+        5_000,
+        f"The checkpoint should be small enough. Got {len(checkpoint)} bytes",
+    )
+
+
+class InterleaveCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase
+):
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
           combinations.combine(
+              symbolic_checkpoint=[False, True],
               cycle_length=2,
               block_length=[1, 3],
               num_parallel_calls=[None, 1, 2])))
-  def test(self, verify_fn, cycle_length, block_length, num_parallel_calls):
+  def test(self, verify_fn, symbolic_checkpoint, cycle_length, block_length,
+           num_parallel_calls):
 
     num_repeats = 2
     input_values = np.array([2, 3], dtype=np.int64)
 
     def _build_dataset():
-      return dataset_ops.Dataset.from_tensor_slices(input_values).repeat(
-          num_repeats).interleave(
-              lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x),
-              cycle_length, block_length, num_parallel_calls)
+      dataset = dataset_ops.Dataset.from_tensor_slices(input_values)
+      dataset = dataset.repeat(num_repeats)
+      dataset = dataset.interleave(
+          lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x), cycle_length,
+          block_length, num_parallel_calls)
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      dataset = dataset.with_options(options)
+      return dataset
 
     num_outputs = np.sum(input_values) * num_repeats
     verify_fn(self, _build_dataset, num_outputs)
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations(),
-                         combinations.combine(num_parallel_calls=[None, 2])))
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              skip=[0, 1, 2, 3],
+          ),
+      )
+  )
+  def testWithSkip(self, verify_fn, skip):
+    def _build_dataset():
+      dataset = dataset_ops.Dataset.range(4)
+
+      dataset = dataset.interleave(
+          lambda x: dataset_ops.Dataset.from_tensors(x).repeat(3),
+          cycle_length=2,
+          block_length=1,
+          num_parallel_calls=None,
+      )
+      dataset = dataset.skip(skip)
+      return dataset
+
+    num_outputs = 4 * 3 - skip
+    verify_fn(self, _build_dataset, num_outputs)
+
+  @combinations.generate(test_base.v2_eager_only_combinations())
+  def testDelayedPurgeCheckpointAtTheSameCycleIdx(self):
+    """Tests delayed checkpoint purging at the same cycle index works correctly.
+
+    This would crash if we were to use`cycle_index_` as part
+    of the prefix:
+           [0]                                 [1]
+            1(prefix: ::Interleave[0]           2(prefix: ::Interleave[1])
+           EOF(delete ::Interleave[0])         EOF(delete ::Interleave[1])
+            3(prefix  ::Interleave[2])          4
+                                   ^
+                                  (should be 2 instead of 0)
+           EOF                                 EOF
+
+    If we checkpoint at the point right after 3 is generated and
+    restore it, restore would crash because the sub iterator
+    for generating 3 is incorrectly deleted due to delayed checkpoint purging.
+    """
+
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = True
+    options.experimental_optimization.inject_prefetch = False
+    options.experimental_optimization.apply_default_optimizations = False
+
+    def _build_dataset():
+      dataset = dataset_ops.Dataset.range(4)
+
+      dataset = dataset.interleave(
+          lambda x: dataset_ops.Dataset.from_tensor_slices([x]),
+          cycle_length=2,
+          block_length=1,
+          num_parallel_calls=None,
+      )
+      dataset = dataset.with_options(options)
+      return dataset
+
+    dataset = _build_dataset().with_options(options)
+
+    it = dataset.as_numpy_iterator()
+
+    for _ in range(3):
+      next(it)
+
+    checkpoint = it.save().numpy()
+
+    expected = next(it)
+
+    restored_it = dataset.as_numpy_iterator()
+    restored_it.restore(checkpoint)
+
+    actual = next(restored_it)
+
+    self.assertEqual(expected, actual)
+
+  @combinations.generate(test_base.v2_eager_only_combinations())
+  def testWithInputThatPurgeCheckpoint(self):
+    """Tests underlying `expired_prefixes` are handled correctly.
+
+    Explanation:
+        The input for `interleave` looks like (created by `.repeat`):
+        [0, |1, |2]
+            ^   ^
+            |   |
+            |   expired_prefixes=["FiniteRepeat[1]"]
+            expired_prefixes=["FiniteRepeat[0]"]
+
+        [0]   [1]
+         0     1    <--- expired_prefixes=["...FiniteRepeat[0]"]
+        EOF   EOF
+         2 <----- Tests the previous checkpoint stored at this index
+                  should not have an effect on the new checkpoint.
+
+        EOF
+    """
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = True
+    options.experimental_optimization.inject_prefetch = False
+    options.experimental_optimization.apply_default_optimizations = False
+
+    def carefully_designed_map(x):
+      if x == 0:
+        return dataset_ops.Dataset.from_tensor_slices([0])
+      elif x == 1:
+        return dataset_ops.Dataset.from_tensor_slices([1])
+      else:
+        return dataset_ops.Dataset.from_tensor_slices([2])
+
+    def _build_dataset():
+      dataset = dataset_ops.Dataset.from_tensor_slices(["does not matter"])
+
+      # Create [0, 1, 2] using repeat+enumerate+map
+      dataset = dataset.repeat(3)
+      dataset = dataset.enumerate()
+      dataset = dataset.map(lambda idx, x: idx)
+
+      dataset = dataset.interleave(
+          carefully_designed_map,
+          cycle_length=2,
+          block_length=1,
+          num_parallel_calls=None,
+      )
+      dataset = dataset.with_options(options)
+      return dataset
+
+    dataset = _build_dataset().with_options(options)
+
+    it = dataset.as_numpy_iterator()
+
+    try:
+      for _ in range(4):
+        next(it)
+    except StopIteration:
+      pass
+
+    # should not crash
+    it.save().numpy()
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(num_parallel_calls=[None, 2]),
+      )
+  )
   def testNested(self, verify_fn, num_parallel_calls):
 
     def build_ds():
@@ -437,6 +651,44 @@ class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           _interleave_fn, cycle_length=1)
 
     verify_fn(self, _build_dataset, num_outputs=20)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(num_parallel_calls=[None, 2]),
+      )
+  )
+  def testSymbolicUnimplemented(self, verify_fn, num_parallel_calls):
+    if sys.platform == "darwin":
+      self.skipTest(
+          "MacOS does not support symbolic checkpointing."
+      )  # b/284304023
+
+    def fn(x):
+      del x
+      dataset = dataset_ops.Dataset.range(7)
+      dataset = dataset.window(3, shift=1, drop_remainder=True)
+      dataset = dataset.flat_map(lambda x: x)
+      return dataset
+
+    def build_ds():
+      dataset = dataset_ops.Dataset.range(2)
+      dataset = dataset.interleave(
+          fn,
+          cycle_length=3,
+          num_parallel_calls=num_parallel_calls,
+      )
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = True
+      dataset = dataset.with_options(options)
+      return dataset
+
+    with self.assertRaisesRegex(
+        errors.UnimplementedError,
+        "WindowOp does not support symbolic checkpointing.",
+    ):
+      verify_fn(self, build_ds, num_outputs=30)
 
 
 if __name__ == "__main__":

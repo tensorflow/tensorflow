@@ -1,38 +1,58 @@
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-)
+# Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
     "tf_cc_test",
     "tf_copts",
 )
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 
+# OSS only: This target is header-only. Link `types_proto_cc_impl` only to
+# `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link `types_flags_proto_cc_impl`
+# directly unless the target does not link `libtensorflow_framework.so`.
 tf_proto_library(
     name = "types_proto",
     srcs = ["types.proto"],
     cc_api_version = 2,
+    make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
 
+# OSS only: This target is header-only. Link `toco_flags_proto_cc_impl` only to
+# `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link `toco_flags_proto_cc_impl`
+# directly unless the target does not link `libtensorflow_framework.so`.
 tf_proto_library(
     name = "toco_flags_proto",
     srcs = ["toco_flags.proto"],
     cc_api_version = 2,
-    protodeps = [":types_proto"],
+    make_default_target_header_only = True,
+    protodeps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto",
+        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto",
+        ":types_proto",
+    ],
     visibility = ["//visibility:public"],
 )
 
+# OSS only: This target is header-only. Link `model_flags_proto_cc_impl` only to
+# `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link `model_flags_proto_cc_impl`
+# directly unless the target does not link `libtensorflow_framework.so`.
 tf_proto_library(
     name = "model_flags_proto",
     srcs = ["model_flags.proto"],
     cc_api_version = 2,
+    make_default_target_header_only = True,
     protodeps = [":types_proto"],
     visibility = ["//visibility:public"],
 )
@@ -48,6 +68,7 @@ cc_library(
         "runtime/common.h",
         "runtime/types.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
@@ -498,6 +519,13 @@ tf_cc_test(
 #
 # py_proto_library(
 #     name = "toco_flags_proto_py",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":toco_flags_proto"],
+# )
+#
+# py_proto_library(
+#     name = "types_proto_py",
 #     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":toco_flags_proto"],

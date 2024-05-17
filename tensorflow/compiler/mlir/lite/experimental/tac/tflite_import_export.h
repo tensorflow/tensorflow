@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TFLITE_IMPORT_EXPORT_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TFLITE_IMPORT_EXPORT_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 

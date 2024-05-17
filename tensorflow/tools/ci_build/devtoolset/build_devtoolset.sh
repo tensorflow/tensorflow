@@ -185,7 +185,7 @@ esac
 # TODO(klimek): Automate linking in all non-gcc / non-kernel include
 # directories.
 mkdir -p "/${TARGET}/usr/include/x86_64-linux-gnu"
-PYTHON_VERSIONS=("python3.7m" "python3.8" "python3.9" "python3.10")
+PYTHON_VERSIONS=("python3.7m" "python3.8" "python3.9" "python3.10" "python3.11")
 for v in "${PYTHON_VERSIONS[@]}"; do
   ln -s "/usr/local/include/${v}" "/${TARGET}/usr/include/x86_64-linux-gnu/${v}"
 done

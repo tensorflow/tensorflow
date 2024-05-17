@@ -7,6 +7,7 @@ load("//tensorflow/lite:special_rules.bzl", "nnapi_native_srcs_visibility_allowl
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )

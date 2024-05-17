@@ -91,12 +91,12 @@ class SampleCopier<int32, 4> {
   inline __device__ void operator()(
       int32* __restrict__ buf,
       const tensorflow::random::Array<int32, 4>& array) const {
-    int4 vec;
+    ::int4 vec;
     vec.x = array[0];
     vec.y = array[1];
     vec.z = array[2];
     vec.w = array[3];
-    int4* buf_vector = reinterpret_cast<int4*>(buf);
+    ::int4* buf_vector = reinterpret_cast<::int4*>(buf);
     *buf_vector = vec;
   }
 };
@@ -176,6 +176,10 @@ template <class Distribution>
 PHILOX_DEVICE_INLINE void FillPhiloxRandomKernel<Distribution, true>::Run(
     const uint64* key, const uint64* counter, random::PhiloxRandom base_gen,
     T* data, int64 size, Distribution dist) {
+  if (key != nullptr && counter != nullptr) {
+    base_gen = GetPhiloxRandomFromCounterKeyMem(counter, key);
+  }
+
   using random::PhiloxRandom;
   using random::SingleSampleAdapter;
 
@@ -190,9 +194,6 @@ PHILOX_DEVICE_INLINE void FillPhiloxRandomKernel<Distribution, true>::Run(
   int64 group_index = thread_id;
   int64 offset = group_index * kGroupSize;
 
-  if (key != nullptr && counter != nullptr) {
-    base_gen = GetPhiloxRandomFromCounterKeyMem(counter, key);
-  }
   while (offset < size) {
     // Since each output takes a variable number of samples, we need to
     // realign the generator to the beginning for the current output group

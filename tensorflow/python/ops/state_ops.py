@@ -24,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_state_ops
+from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_state_ops import *

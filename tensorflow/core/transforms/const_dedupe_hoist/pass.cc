@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <forward_list>
 #include <memory>
+#include <vector>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -28,19 +29,21 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/utility.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
-
 namespace {
 
+#define GEN_PASS_DEF_DEDUPEANDHOISTCONSTANT
+#include "tensorflow/core/transforms/passes.h.inc"
+
 struct DedupeAndHoistConstantPass
-    : DedupeAndHoistConstantBase<DedupeAndHoistConstantPass> {
+    : impl::DedupeAndHoistConstantBase<DedupeAndHoistConstantPass> {
   LogicalResult initialize(MLIRContext* context) override {
     dtype_id = StringAttr::get(context, "dtype");
     name_id = StringAttr::get(context, TFGraphDialect::getNameAttrKey());
@@ -187,7 +190,7 @@ void DedupeAndHoistConstantPass::RunOnGraphOrFuncOp(Operation* op) {
   op->walk([&](Operation* inner_op) {
     if (inner_op->getName().getIdentifier() != tfg_const) return;
 
-    ElementsAttr val = inner_op->getAttr(value_id).cast<ElementsAttr>();
+    ElementsAttr val = mlir::cast<ElementsAttr>(inner_op->getAttr(value_id));
     if (val.getNumElements() > max_size_) return;
     constant_ops[inner_op].push_back(inner_op);
   });

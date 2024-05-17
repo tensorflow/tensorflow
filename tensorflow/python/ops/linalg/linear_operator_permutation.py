@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -207,7 +208,7 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
     return array_ops.shape(perm)[-1]
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
-    perm = ops.convert_to_tensor_v2_with_dispatch(self.perm)
+    perm = tensor_conversion.convert_to_tensor_v2_with_dispatch(self.perm)
     if adjoint and not self.is_self_adjoint:
       # TODO(srvasude): invert_permutation doesn't work on batches so we use
       # argsort.
@@ -242,13 +243,13 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
     return self._matmul(rhs, adjoint=(not adjoint), adjoint_arg=adjoint_arg)
 
   def _to_dense(self):
-    perm = ops.convert_to_tensor_v2_with_dispatch(self.perm)
+    perm = tensor_conversion.convert_to_tensor_v2_with_dispatch(self.perm)
     return math_ops.cast(math_ops.equal(
         math_ops.range(0, self._domain_dimension_tensor(perm)),
         perm[..., array_ops.newaxis]), self.dtype)
 
   def _diag_part(self):
-    perm = ops.convert_to_tensor_v2_with_dispatch(self.perm)
+    perm = tensor_conversion.convert_to_tensor_v2_with_dispatch(self.perm)
     return math_ops.cast(math_ops.equal(
         math_ops.range(0, self._domain_dimension_tensor(perm)),
         perm), self.dtype)

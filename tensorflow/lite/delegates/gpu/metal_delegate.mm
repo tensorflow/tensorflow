@@ -30,8 +30,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -109,7 +109,6 @@ class GpuAlarmClock {
       command_queue_ = command_queue;
       device_ = [command_queue_ device];
       total_alarms_ = 1;
-      NSString* error;
       id<MTLComputePipelineState> program;
       // TODO(impjdi): Properly handle returned status.
       CreateComputeProgram(device_,
@@ -189,7 +188,6 @@ class Delegate {
             output_buffer[0] = value;
           }
         )";
-      NSString* error;
       id<MTLComputePipelineState> signal_program;
       // TODO(impjdi): Properly handle returned status.
       CreateComputeProgram(metal_device_, code, "ComputeFunction", {}, &signal_program)
@@ -339,7 +337,8 @@ class Delegate {
       tensor->delegate = &delegate_;
     }
 
-    std::string device_name = std::string([[metal_device_ name] UTF8String]);
+    auto utf8_name = [[metal_device_ name] UTF8String];
+    const std::string device_name = utf8_name != nil ? utf8_name : "";
     GpuInfo gpu_info;
     GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
     size_t storage_type_size;
@@ -404,10 +403,11 @@ class Delegate {
       id<MTLBuffer> bphwc4_buffer =
           [metal_device_ newBufferWithLength:bphwc4_length options:MTLResourceStorageModeShared];
       MetalSpatialTensor metal_tensor;
-      RETURN_IF_ERROR(CreateSharedBufferTensor(bphwc4_buffer, input_tensor.shape,
-                                               create_info.external_mutable_tensors[input],
-                                               &metal_tensor));
-      in_out_tensors_[input] = absl::make_unique<MetalSpatialTensor>(std::move(metal_tensor));
+      TensorDescriptor descriptor_with_shape = create_info.external_mutable_tensors[input];
+      descriptor_with_shape.SetBHWCShape(input_tensor.shape);
+      RETURN_IF_ERROR(
+          CreateTensorSharedBuffer(bphwc4_buffer, descriptor_with_shape, &metal_tensor));
+      in_out_tensors_[input] = std::make_unique<MetalSpatialTensor>(std::move(metal_tensor));
     }
 
     std::vector<::tflite::gpu::ValueId> output_ids;
@@ -435,10 +435,11 @@ class Delegate {
       id<MTLBuffer> bphwc4_buffer =
           [metal_device_ newBufferWithLength:bphwc4_length options:MTLResourceStorageModeShared];
       MetalSpatialTensor metal_tensor;
-      RETURN_IF_ERROR(CreateSharedBufferTensor(bphwc4_buffer, output_tensor.shape,
-                                               create_info.external_mutable_tensors[output],
-                                               &metal_tensor));
-      in_out_tensors_[output] = absl::make_unique<MetalSpatialTensor>(std::move(metal_tensor));
+      TensorDescriptor descriptor_with_shape = create_info.external_mutable_tensors[output];
+      descriptor_with_shape.SetBHWCShape(output_tensor.shape);
+      RETURN_IF_ERROR(
+          CreateTensorSharedBuffer(bphwc4_buffer, descriptor_with_shape, &metal_tensor));
+      in_out_tensors_[output] = std::make_unique<MetalSpatialTensor>(std::move(metal_tensor));
     }
 
     // allocate converter bhwc->bphwc4

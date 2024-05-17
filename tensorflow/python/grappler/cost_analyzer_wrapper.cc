@@ -17,7 +17,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"

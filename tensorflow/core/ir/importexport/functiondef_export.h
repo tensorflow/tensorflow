@@ -19,15 +19,15 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/ir/ops.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace mlir {
 namespace tfg {
 
 // Export a generic GraphFuncOp into a FunctionDef. This is intended to be a
 // straight serialization, an error is returned in case of failure.
-tensorflow::StatusOr<tensorflow::FunctionDef>
-ConvertGenericFunctionToFunctionDef(GraphFuncOp func);
+absl::StatusOr<tensorflow::FunctionDef> ConvertGenericFunctionToFunctionDef(
+    GraphFuncOp func);
 
 }  // namespace tfg
 }  // namespace mlir

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tfrt/core_runtime/opdefs/attributes.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/core_runtime.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
+#include "tfrt/tensor/opdefs/tensor.h"  // from @tf_runtime
 
 namespace tfrt {
 namespace fallback_sync {
@@ -50,37 +51,7 @@ FallbackSyncDialect::FallbackSyncDialect(MLIRContext *context)
 }
 
 static Type GetTensorType(Builder *builder) {
-  return tfrt::t::TensorType::get(builder->getContext());
-}
-
-LogicalResult ExecuteOp::verify() {
-  return fallback_common::VerifyExecuteOpCommon(*this);
-}
-
-ParseResult ExecuteOp::parse(OpAsmParser &parser, OperationState &result) {
-  fallback_common::ParseExecuteOpOptions parse_options;
-  parse_options.has_chain = false;
-  parse_options.has_key = false;
-  parse_options.has_device = false;
-  parse_options.has_func_attr = false;
-  parse_options.has_cost = false;
-
-  auto &builder = parser.getBuilder();
-  return fallback_common::ParseExecuteOpCommon(
-      parser, builder, result, GetTensorType(&builder), parse_options);
-}
-
-void ExecuteOp::print(OpAsmPrinter &p) {
-  p << " " << (*this)->getAttr("op_name") << '(' << operands() << ')';
-
-  fallback_common::PrintExecuteOpCommon(p, *this);
-  if (!results().empty()) p << " : " << results().size();
-}
-
-void ExecuteOp::getOpAttrs(
-    SmallVectorImpl<std::pair<StringRef, Attribute>> *op_attrs) {
-  fallback_common::GetExecuteOpAttrsCommon(
-      this->getContext(), this->op_attrs().getValue(), op_attrs);
+  return tfrt::tfrt_tensor::TensorType::get(builder->getContext());
 }
 
 }  // namespace fallback_sync

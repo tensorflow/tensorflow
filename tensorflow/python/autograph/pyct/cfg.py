@@ -340,7 +340,7 @@ class GraphBuilder(object):
 
   def _add_new_node(self, ast_node):
     """Grows the graph by adding a CFG node following the current leaves."""
-    if ast_node is self.node_index:
+    if ast_node in self.node_index:
       raise ValueError('%s added twice' % ast_node)
     # Assumption: All CFG nodes have identical life spans, because the graph
     # owns them. Nodes should never be used outside the context of an existing
@@ -778,6 +778,11 @@ class AstToCfg(gast.NodeVisitor):
     self._process_basic_statement(node)
 
   def visit_Expr(self, node):
+    self._process_basic_statement(node)
+
+  def visit_NamedExpr(self, node):
+    # TODO(yileiyang): Add a test case once we have a newer astunparse version.
+    # NamedExpr was introduced in Python 3.8 and supported in gast 0.5.1+.
     self._process_basic_statement(node)
 
   def visit_Assign(self, node):

@@ -1,0 +1,12 @@
+op {
+  name: "ExecuteTPUEmbeddingPartitioner"
+  output_arg {
+    name: "common_config"
+    type: DT_STRING
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}

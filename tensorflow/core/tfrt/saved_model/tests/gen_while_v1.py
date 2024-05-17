@@ -21,8 +21,8 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
@@ -43,8 +43,8 @@ def main(argv):
   ten = constant_op.constant(10)
   one = constant_op.constant(1)
   x = array_ops.placeholder(dtypes.int32, shape=(), name='input')
-  r = control_flow_ops.while_loop(lambda a: a < ten,
-                                  lambda a: math_ops.add(a, one), [x])
+  r = while_loop.while_loop(lambda a: a < ten, lambda a: math_ops.add(a, one),
+                            [x])
 
   sess = session.Session()
 

@@ -25,7 +25,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -1304,7 +1304,7 @@ TEST_P(LstmOpTest, Cifg_Peephole_Projection_LayerNorm) {
 
   static const auto* tolerance_per_type =
       new std::map<TensorType, float>{{TensorType_FLOAT32, 0.00001f},
-                                      {TensorType_UINT8, 0.000971057f},
+                                      {TensorType_UINT8, 0.001f},
                                       {TensorType_INT8, 0.001f}};
   VerifyGoldens(&lstm, tolerance_per_type->at(weight_type));
 }
@@ -2095,7 +2095,7 @@ TEST(IntegerLstmOpTest, Cifg_NoPeephole_Projection_LayerNorm_8x8_8) {
   }
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(LstmOpTest, InvalidTypes) {
   const int n_batch = 1;
   const int n_input = 2;

@@ -96,7 +96,7 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
   def testBasicComplexDtypes(self):
 
     if xla_test.test.is_built_with_rocm():
-      # The folowing subtest invokes the call to "BlasTrsm"
+      # The following subtest invokes the call to "BlasTrsm"
       # That operation is currently not supported on the ROCm platform
       self.skipTest("BlasTrsm op for complex types is not supported in ROCm")
 

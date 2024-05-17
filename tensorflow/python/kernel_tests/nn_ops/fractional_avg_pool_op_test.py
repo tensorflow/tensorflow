@@ -333,6 +333,51 @@ class FractionalAvgTest(test.TestCase):
 
         self.evaluate(z)
 
+  def testPoolingRatioHasMoreDimThanInput(self):
+    with self.cached_session() as _:
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r"Pooling ratio is higher than input dimension size for dimension 1.*"
+      ):
+        result = nn_ops.gen_nn_ops.fractional_avg_pool(
+            value=constant_op.constant(
+                value=[[[[1, 4, 2, 3]]]], dtype=dtypes.int64),
+            pooling_ratio=[1.0, 1.44, 1.73, 1.0],
+            pseudo_random=False,
+            overlapping=False,
+            deterministic=False,
+            seed=0,
+            seed2=0,
+            name=None)
+        self.evaluate(result)
+
+  def testPoolingRatioIllegalSmallValue(self):
+    with self.cached_session() as _:
+      # Whether turn on `TF2_BEHAVIOR` generates different error messages
+      with self.assertRaisesRegex(
+          (errors.InvalidArgumentError, ValueError),
+          r"(pooling_ratio cannot be smaller than 1, got: .*)|(is negative)"):
+        result = nn_ops.gen_nn_ops.fractional_avg_pool(
+            value=np.zeros([3, 30, 30, 3]),
+            pooling_ratio=[1, -1, 3, 1],
+            pseudo_random=False,
+            overlapping=False,
+            deterministic=False,
+            seed=0,
+            seed2=0,
+        )
+        self.evaluate(result)
+
+  def testPoolingIllegalRatioForBatch(self):
+    with self.cached_session() as _:
+      with self.assertRaises(errors.UnimplementedError):
+        result = nn_ops.gen_nn_ops.fractional_avg_pool(
+            np.zeros([3, 30, 50, 3]),
+            [2, 3, 1.5, 1],
+            True,
+            True)
+        self.evaluate(result)
+
 
 class FractionalAvgPoolGradTest(test.TestCase):
   """Tests for FractionalAvgPoolGrad.
@@ -540,6 +585,27 @@ class FractionalAvgPoolGradTest(test.TestCase):
           x_init_value=input_data.reshape(input_shape),
           delta=1e-2)
       self.assertLess(gradient_error, error_margin)
+
+  def testInvalidSeqRaiseErrorForFractionalAvgPoolGrad(self):
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      with self.cached_session() as _:
+        overlapping = True
+        orig_input_tensor_shape = constant_op.constant(
+            -1879048192, shape=[4], dtype=dtypes.int64)
+        out_backprop = constant_op.constant([],
+                                            shape=[0, 0, 0, 0],
+                                            dtype=dtypes.float64)
+        row_pooling_sequence = constant_op.constant(
+            1, shape=[4], dtype=dtypes.int64)
+        col_pooling_sequence = constant_op.constant(
+            1, shape=[4], dtype=dtypes.int64)
+        t = gen_nn_ops.fractional_avg_pool_grad(
+            orig_input_tensor_shape=orig_input_tensor_shape,
+            out_backprop=out_backprop,
+            row_pooling_sequence=row_pooling_sequence,
+            col_pooling_sequence=col_pooling_sequence,
+            overlapping=overlapping)
+        self.evaluate(t)
 
 
 if __name__ == "__main__":

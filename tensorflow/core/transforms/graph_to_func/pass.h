@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_MLIR_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
-#define TENSORFLOW_CORE_MLIR_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
+#ifndef TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
+#define TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
 
 #include <memory>
 #include <string>
@@ -24,6 +24,9 @@ limitations under the License.
 
 namespace mlir {
 namespace tfg {
+
+#define GEN_PASS_DECL_GRAPHTOFUNC
+#include "tensorflow/core/transforms/passes.h.inc"
 
 // Returns a pass that runs on a Module and expects to find a single GraphOp
 // to transform into a function. The provided feeds and fetches are used to form
@@ -35,4 +38,4 @@ std::unique_ptr<Pass> CreateGraphToFuncPass(
 }  // namespace tfg
 }  // namespace mlir
 
-#endif  // TENSORFLOW_CORE_MLIR_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
+#endif  // TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_

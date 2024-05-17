@@ -65,7 +65,7 @@ class ConvertBinaryImpl {
       const std::vector<string>& implicit_batch_not_supported_ops = {},
       bool both_tensors = false) {
     const auto& node_def = params.node_def;
-    const auto op = node_def.op();
+    const auto& op = node_def.op();
     const auto op_pair = pOperMap_->find(op);
     if (op_pair == pOperMap_->end()) {
       return errors::Unimplemented("Binary op: ", op, " not supported");
@@ -82,7 +82,7 @@ class ConvertBinaryImpl {
     if ((convertToBool_ = find_name(op, implicit_batch_not_supported_ops))) {
       if (params.use_implicit_batch) {
         return errors::Unimplemented(
-            "Binary op: '", op, "' is not supported in implicit batch mode");
+            convert_not_supported_implicit(op, node_def.name(), "Binary"));
       }
     }
 
@@ -107,7 +107,7 @@ class ConvertBinaryImpl {
           params.validation_only, &tensor_[i], node_def, i));
     }
     operation_ = op_pair->second;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ConvertImpl(const OpConverterParams& params,
@@ -133,12 +133,12 @@ class ConvertBinaryImpl {
         TFTRT_RETURN_ERROR_IF_NULLPTR(unary_layer, node_def.name());
         params.outputs->push_back(
             TRT_TensorOrWeights(unary_layer->getOutput(0)));
-        return Status::OK();
+        return OkStatus();
       }
     }
 
     params.outputs->push_back(TRT_TensorOrWeights(output));
-    return Status::OK();
+    return OkStatus();
   }
 
   static constexpr std::array<InputArgSpec, 2> InputSpec() {
@@ -157,13 +157,11 @@ class ConvertBinaryImpl {
 class ConvertBinary : public OpConverterBase<ConvertBinary>,
                       protected ConvertBinaryImpl {
  public:
-  explicit ConvertBinary(OpConverterParams* params)
-      : OpConverterBase<ConvertBinary>(params),
+  explicit ConvertBinary(const OpConverterParams* params)
+      : OpConverterBase<ConvertBinary>(
+            params,
+            {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}),
         ConvertBinaryImpl(BinaryOperationMap()) {}
-
-  static constexpr std::array<DataType, 3> AllowedDataTypes() {
-    return {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32};
-  }
 
   static constexpr std::array<InputArgSpec, 2> InputSpec() {
     return ConvertBinaryImpl::InputSpec();
@@ -190,19 +188,29 @@ class ConvertBinary : public OpConverterBase<ConvertBinary>,
 class ConvertBooleanBinary : public OpConverterBase<ConvertBooleanBinary>,
                              public ConvertBinaryImpl {
  public:
-  explicit ConvertBooleanBinary(OpConverterParams* params)
-      : OpConverterBase<ConvertBooleanBinary>(params),
+  explicit ConvertBooleanBinary(const OpConverterParams* params)
+      : OpConverterBase<ConvertBooleanBinary>(params, {DataType::DT_BOOL}),
         ConvertBinaryImpl(BinaryBooleanOperationMap()) {}
-
-  static constexpr std::array<DataType, 1> AllowedDataTypes() {
-    return {DataType::DT_BOOL};
-  }
 
   static constexpr std::array<InputArgSpec, 2> InputSpec() {
     return ConvertBinaryImpl::InputSpec();
   }
 
-  static constexpr const char* NodeDefDataTypeAttributeName() { return ""; }
+  static constexpr const char* NodeDefDataTypeAttributeName() {
+    /*
+    node {
+      name: "..."
+      op: "LogicalOr"
+      input: "..."
+      input: "..."
+      attr {
+        key: "_output_shapes"
+        ...
+      }
+    }
+    */
+    return "";
+  }
   Status Validate() {
 #if IS_TRT_VERSION_GE(8, 2, 0, 0)
     return ValidateImpl(*params_, {"LogicalOr", "LogicalAnd"}, true);

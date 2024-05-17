@@ -314,6 +314,7 @@ std::string ToBufferType(DataType data_type) {
       return "i64vec4_not_available_in_glsl";
     case DataType::FLOAT16:
       return "uvec2";
+    case DataType::BOOL:
     case DataType::FLOAT32:
       return "vec4";
     case DataType::FLOAT64:

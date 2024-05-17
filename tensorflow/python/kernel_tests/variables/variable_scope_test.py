@@ -20,21 +20,22 @@ import threading
 import numpy
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import resource_variables_toggle
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -180,12 +181,12 @@ class VariableScopeTest(test.TestCase):
   def testGetVariableInGraphNestedUnderEagerContext(self):
     with context.eager_mode():
 
-      @function.defun
-      def f():
-        v = variable_scope.get_variable("should_be_resource", [])
+      @def_function.function
+      def f(v):
         self.assertEqual(type(v), resource_variable_ops.ResourceVariable)
 
-      f()
+      var = variable_scope.get_variable("should_be_resource", [])
+      f(var)
 
   def testEagerVariableStore(self):
     with context.eager_mode():
@@ -225,30 +226,6 @@ class VariableScopeTest(test.TestCase):
       for v in new_store.variables():
         self.assertEqual(v.numpy(), 1)
 
-  def testEagerVariableStoreWithEagerDefun(self):
-    with context.eager_mode():
-
-      @function.defun
-      def f():
-        x = constant_op.constant([[2.0]])
-        d1 = core_layers.Dense(
-            1, name="my_dense", kernel_initializer=init_ops.ones_initializer())
-        _ = d1(x)  # create variables
-        self.assertEqual(len(d1.variables), 2)
-        v1, v2 = d1.variables
-        d2 = core_layers.Dense(
-            1,
-            name="my_dense",
-            kernel_initializer=init_ops.ones_initializer(),
-            _reuse=True)
-        _ = d2(x)
-        self.assertEqual(len(d2.variables), 2)
-        v3, v4 = d2.variables
-        self.assertIs(v1, v3)
-        self.assertIs(v2, v4)
-
-      f()
-
   # Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
   @test_util.run_in_graph_and_eager_modes
@@ -274,21 +251,6 @@ class VariableScopeTest(test.TestCase):
       variable_scope.get_variable("v2", [], trainable=False)
       self.assertFalse(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
       self.assertFalse(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
-
-  def testEagerVariableStoreWithFunctionalLayer(self):
-    with context.eager_mode():
-      container = variable_scope.EagerVariableStore()
-      x = constant_op.constant([[2.0]])
-      with container.as_default():
-        y = core_layers.dense(x, 1, name="my_dense",
-                              kernel_initializer=init_ops.ones_initializer())
-      self.assertAllEqual(y, [[2.0]])
-      self.assertEqual(len(container.variables()), 2)
-      # Recreate the layer to test reuse.
-      with container.as_default():
-        core_layers.dense(x, 1, name="my_dense",
-                          kernel_initializer=init_ops.ones_initializer())
-      self.assertEqual(len(container.variables()), 2)
 
   # Not converted to use wrap_function because of
   # TypeError: Expected tf.group() expected Tensor arguments not 'None' with
@@ -479,16 +441,18 @@ class VariableScopeTest(test.TestCase):
   # AssertionError: True is not false (last assertFalse)
   @test_util.run_deprecated_v1
   def testEnableResourceVariables(self):
-    old = variable_scope._DEFAULT_USE_RESOURCE
+    old = resource_variables_toggle._DEFAULT_USE_RESOURCE
     try:
-      variable_scope.enable_resource_variables()
-      self.assertTrue(isinstance(variables_lib.VariableV1(1.0),
-                                 resource_variable_ops.ResourceVariable))
-      variable_scope.disable_resource_variables()
-      self.assertFalse(isinstance(variables_lib.VariableV1(1.0),
-                                  resource_variable_ops.ResourceVariable))
+      resource_variables_toggle.enable_resource_variables()
+      self.assertIsInstance(
+          variable_v1.VariableV1(1.0),
+          resource_variable_ops.ResourceVariable)
+      resource_variables_toggle.disable_resource_variables()
+      self.assertNotIsInstance(
+          variable_v1.VariableV1(1.0),
+          resource_variable_ops.ResourceVariable)
     finally:
-      variable_scope._DEFAULT_USE_RESOURCE = old
+      resource_variables_toggle._DEFAULT_USE_RESOURCE = old
 
   # Not converted to use wrap_function because of
   # TypeError: Fetch argument None has invalid type <type 'NoneType'>
@@ -512,7 +476,7 @@ class VariableScopeTest(test.TestCase):
         var_dict["v2"] = v2
         return v2 + v0
 
-      add = control_flow_ops.cond(
+      add = cond.cond(
           math_ops.less(v0, 10), var_in_then_clause, var_in_else_clause)
       v1 = var_dict["v1"]
       v2 = var_dict["v2"]
@@ -1276,15 +1240,15 @@ class VariableScopeTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testGetTrainableVariablesWithVariable(self):
     with self.cached_session():
-      _ = variable_scope.variable(1.0, name="testGetTrainableVariables_a")
+      _ = variable_v1.VariableV1(1.0, name="testGetTrainableVariables_a")
       with variable_scope.variable_scope(
           "testGetTrainableVariables_foo") as scope:
-        _ = variable_scope.variable(1.0, name="testGetTrainableVariables_b")
-        _ = variable_scope.variable(
+        _ = variable_v1.VariableV1(1.0, name="testGetTrainableVariables_b")
+        _ = variable_v1.VariableV1(
             1.0, name="testGetTrainableVariables_c", trainable=False)
 
         # sync `ON_READ` sets trainable=False
-        _ = variable_scope.variable(
+        _ = variable_v1.VariableV1(
             1.0,
             name="testGetTrainableVariables_d",
             synchronization=variable_scope.VariableSynchronization.ON_READ)
@@ -1292,7 +1256,7 @@ class VariableScopeTest(test.TestCase):
             [v.name for v in scope.trainable_variables()],
             ["testGetTrainableVariables_foo/testGetTrainableVariables_b:0"])
 
-        _ = variable_scope.variable(
+        _ = variable_v1.VariableV1(
             1.0,
             name="testGetTrainableVariables_e",
             synchronization=variable_scope.VariableSynchronization.ON_READ,
@@ -1303,7 +1267,7 @@ class VariableScopeTest(test.TestCase):
         ])
 
         # All other sync values sets trainable=True
-        _ = variable_scope.variable(
+        _ = variable_v1.VariableV1(
             1.0,
             name="testGetTrainableVariables_f",
             synchronization=variable_scope.VariableSynchronization.ON_WRITE)
@@ -1705,7 +1669,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
 
     with variable_scope.variable_creator_scope(creator_a):
       with variable_scope.variable_creator_scope(creator_b):
-        variable_scope.variable(1.0, name="one_name")
+        variable_v1.VariableV1(1.0, name="one_name")
 
     self.assertEqual(variable_names[0], "forced_name")
 

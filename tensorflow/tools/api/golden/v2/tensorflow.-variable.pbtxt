@@ -57,7 +57,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'initial_value\', \'trainable\', \'validate_shape\', \'caching_device\', \'name\', \'variable_def\', \'dtype\', \'import_scope\', \'constraint\', \'synchronization\', \'aggregation\', \'shape\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\', \'None\'], "
+    argspec: "args=[\'self\', \'initial_value\', \'trainable\', \'validate_shape\', \'caching_device\', \'name\', \'variable_def\', \'dtype\', \'import_scope\', \'constraint\', \'synchronization\', \'aggregation\', \'shape\', \'experimental_enable_variable_lifting\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\', \'None\', \'True\'], "
   }
   member_method {
     name: "assign"

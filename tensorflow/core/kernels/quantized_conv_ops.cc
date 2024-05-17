@@ -21,6 +21,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #define GEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
+#include "absl/status/status.h"
 #include "public/gemmlowp.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -284,7 +285,7 @@ class Im2ColConvFunctor {
               (kMaxChunkSize + (sizeof(T1) - 1)) / sizeof(T1);
 #endif
           *resource = new Im2ColBufferResource<T1, chunk_value_count>();
-          return OkStatus();
+          return absl::OkStatus();
         };
     OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
                                 "Conv2d", "im2col_buffer",
@@ -492,6 +493,14 @@ class QuantizedConv2DOp : public OpKernel {
     // [ batch, in_rows, in_cols, in_depth ]
     const Tensor& input = context->input(0);
 
+    // validate for non zero dimensions of input.
+    int input_dims = input.shape().dims();
+    for (int i = 0; i < input_dims; ++i) {
+      OP_REQUIRES(context, input.shape().dim_size(i) != 0,
+                  absl::InvalidArgumentError(
+                      "Invalid input: Shapes dimension cannot be 0."));
+    }
+
     // Input filter is of the following dimensions:
     // [ filter_rows, filter_cols, in_depth, out_depth]
     const Tensor& filter = context->input(1);
@@ -561,12 +570,12 @@ class QuantizedConv2DOp : public OpKernel {
     const int stride = strides_[1];
 
     int64_t out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(input_rows, filter_rows, stride,
-                                         padding_, &out_rows, &pad_rows));
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(input_cols, filter_cols, stride,
-                                         padding_, &out_cols, &pad_cols));
+    OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                                input_rows, filter_rows, /*dilation_rate=*/1,
+                                stride, padding_, &out_rows, &pad_rows));
+    OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                                input_cols, filter_cols, /*dilation_rate=*/1,
+                                stride, padding_, &out_cols, &pad_cols));
     CHECK_GT(batch, 0);
     CHECK_GT(out_rows, 0);
     CHECK_GT(out_cols, 0);

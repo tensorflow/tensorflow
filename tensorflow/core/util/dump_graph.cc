@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/dump_graph.h"
 
+#include <functional>
 #include <memory>
 #include <unordered_map>
 
@@ -94,26 +95,26 @@ GraphDumperConfig& GetGraphDumperConfig() {
 // WritableFile that simply prints to stderr.
 class StderrWritableFile : public WritableFile {
  public:
-  StderrWritableFile() {}
+  StderrWritableFile() = default;
 
   Status Append(StringPiece data) override {
     fprintf(stderr, "%.*s", static_cast<int>(data.size()), data.data());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Close() override { return OkStatus(); }
+  Status Close() override { return absl::OkStatus(); }
 
   Status Flush() override {
     fflush(stderr);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Name(StringPiece* result) const override {
     *result = "stderr";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Sync() override { return OkStatus(); }
+  Status Sync() override { return absl::OkStatus(); }
 
   Status Tell(int64_t* position) override {
     return errors::Unimplemented("Stream not seekable");
@@ -151,7 +152,7 @@ Status CreateWritableFile(Env* env, const string& dirname, const string& name,
   if (dir == "-") {
     *file = std::make_unique<StderrWritableFile>();
     *filepath = "(stderr)";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
@@ -187,6 +188,8 @@ Status WriteTextProtoToUniqueFile(
   return file->Close();
 }
 
+}  // anonymous namespace
+
 string DumpToFile(const string& name, const string& dirname,
                   const string& suffix, const string& type_name,
                   std::function<Status(WritableFile*)> dumper) {
@@ -206,8 +209,6 @@ string DumpToFile(const string& name, const string& dirname,
   LOG(INFO) << "Dumped " << type_name << " to " << filepath;
   return filepath;
 }
-
-}  // anonymous namespace
 
 void SetGraphDumper(
     std::function<Status(const Graph& graph,
@@ -266,6 +267,15 @@ string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef,
   return DumpToFile(name, dirname, ".pbtxt", "FunctionDef",
                     [&](WritableFile* file) {
                       return WriteTextProtoToUniqueFile(fdef, file);
+                    });
+}
+
+string DumpProtoToFile(const string& name,
+                       tensorflow::protobuf::Message const& proto,
+                       const string& dirname) {
+  return DumpToFile(name, dirname, ".pbtxt", proto.GetTypeName(),
+                    [&](WritableFile* file) {
+                      return WriteTextProtoToUniqueFile(proto, file);
                     });
 }
 

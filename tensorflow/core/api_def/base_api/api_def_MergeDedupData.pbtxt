@@ -1,0 +1,56 @@
+# proto-file: tensorflow/core/api_def/base_api/api_def_MergeDedupData.pbtxt
+# proto-message: MergeDedupData reference proto
+
+op {
+  graph_op_name: "MergeDedupData"
+  visibility: HIDDEN
+  in_arg {
+    name: "integer_tensor"
+    description: <<END
+A 1-D integer tensor, includes integer elements of deduplication data tuple.
+END
+  }
+  in_arg {
+    name: "float_tensor"
+    description: <<END
+A 1-D float tensor, includes float elements of deduplication data tuple.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+An XLA tuple merging integer and float elements as deduplication data tuple.
+END
+  }
+  attr {
+    name: "tuple_mask"
+    description: <<END
+A serialized TensorProto string of output tuple mask. This mask is a 2-D tensor,
+with first column as tuple element type, and second column as span of this type.
+For example, an output tuple of (1, 2, 0.1, 3), its mask is [[0, 2], [1, 1], [0,
+1]]. We expect only two types of elements: integer(0) and float(1).
+END
+  }
+  attr {
+    name: "integer_type"
+    description: <<END
+integer_tensor type. Allowed types: {int32, int64, uint32, uint64}.
+END
+  }
+  attr {
+    name: "float_type"
+    description: <<END
+float_tensor type. Allowed types: {half, bfloat16, float}.
+END
+  }
+  summary: <<END
+An op merges elements of integer and float tensors into deduplication data as
+XLA tuple.
+END
+  description: <<END
+This op merges outputs of SplitDedupDataOp, which gives two 1-D tensors, integer
+and floating point. With respect to tuple_mask, this op merges values of these
+two tensors into an XLA tuple, which should be as same as input to
+SplitDedupDataOp.
+END
+}

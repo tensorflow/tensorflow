@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
 
@@ -53,6 +53,15 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ModelT* input_model, const TensorType& input_type,
                            const TensorType& output_type, bool allow_float,
+                           ErrorReporter* error_reporter);
+
+// Same as above but with added option of disabling per channel quantization
+//
+// Note: This is a private API, subject to change.
+TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
+                           ModelT* input_model, const TensorType& input_type,
+                           const TensorType& output_type, bool allow_float,
+                           bool disable_per_channel,
                            ErrorReporter* error_reporter);
 
 // Same as above, but enables only quantizing an allowlist of operations,

@@ -14,14 +14,13 @@
 
 #include <cmath>
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/custom_ops_register.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 namespace atan2 {
 
 TfLiteStatus EnsureSameShape(
@@ -83,11 +82,13 @@ TfLiteStatus Atan2Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat64:
       TF_LITE_ENSURE_OK(context, Atan2<double>(input_y, input_x, output));
       break;
-    default:
+    default: {
       TF_LITE_KERNEL_LOG(
           context,
           "Unsupported datatype for atan2 output: %s",
           TfLiteTypeGetName(output->type));
+      return TfLiteStatus::kTfLiteError;
+    }
   }
 
   return TfLiteStatus::kTfLiteOk;
@@ -101,6 +102,6 @@ TfLiteRegistration* Register_ATAN2() {
   return &r;
 }
 
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

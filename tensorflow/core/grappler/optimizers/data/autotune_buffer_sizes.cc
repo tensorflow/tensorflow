@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/autotune_buffer_sizes.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -54,7 +56,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
   if (!autotune_) {
     VLOG(1) << "The optimization autotune_buffer_sizes is not applied if "
                "autotune is off.";
-    return OkStatus();
+    return absl::OkStatus();
   }
   MutableGraphView graph(output);
 
@@ -81,7 +83,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
           stats->num_changes++;
         }
       } else {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             "The autotune_buffer_sizes rewrite does not currently support "
             "non-constant buffer_size input.");
       }
@@ -108,7 +110,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
     }
   }
 
-  if (async_datasets.empty()) return OkStatus();
+  if (async_datasets.empty()) return absl::OkStatus();
 
   for (const NodeDef* async_dataset_node : async_datasets) {
     NodeDef prefetch_node;
@@ -128,7 +130,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
         graph.UpdateFanouts(async_dataset_node->name(), added_node->name()));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(AutotuneBufferSizes, "autotune_buffer_sizes");

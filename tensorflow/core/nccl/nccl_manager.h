@@ -30,7 +30,12 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
 #elif TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rccl/rccl.h"
+#else
+#include "rocm/include/rccl.h"
+#endif
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #endif
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -170,6 +175,10 @@ class NcclManager {
   void AddToAllGather(std::unique_ptr<Participant> participant,
                       const Context& context);
 
+  // Adds one participant to a reduce-scatter.
+  void AddToReduceScatter(std::unique_ptr<Participant> participant,
+                          const Context& context, ncclRedOp_t reduction_op);
+
   // AddBroadcastSend and AddBroadcastRecv combine to send data from one sender
   // to all receivers.
   void AddBroadcastSend(std::unique_ptr<Participant> participant,
@@ -183,6 +192,10 @@ class NcclManager {
                      const Context& context, ncclRedOp_t reduction_op);
   void AddReduceRecv(std::unique_ptr<Participant> participant,
                      const Context& context, ncclRedOp_t reduction_op);
+
+  // Adds one participant to an all-to-all.
+  void AddToAllToAll(std::unique_ptr<Participant> participant,
+                     const Context& context);
 
   // Signals that the `Collective` corresponding to `key` is ready to launch
   // across all nodes participating in this multi-node collective operation.
@@ -206,6 +219,8 @@ class NcclManager {
     kBroadcast = 2,
     kReduce = 3,
     kAllGather = 4,
+    kReduceScatter = 5,
+    kAllToAll = 6,
   };
   struct Collective;
   struct Communicator;
@@ -257,7 +272,8 @@ class NcclManager {
 
   Status status_ TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(NcclManager);
+  NcclManager(const NcclManager&) = delete;
+  void operator=(const NcclManager&) = delete;
 };
 
 }  // namespace tensorflow

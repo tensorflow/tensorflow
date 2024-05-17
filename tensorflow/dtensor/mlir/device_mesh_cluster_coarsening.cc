@@ -13,30 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iterator>
+#include <memory>
+#include <optional>
+#include <utility>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/dtensor/cc/constants.h"
-#include "tensorflow/dtensor/cc/tensor_layout.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
-#include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORDEVICEMESHCLUSTERCOARSENING
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kMissingMeshAttributeErrorMessage[] =
     "failed to merge mesh cluster as cluster does not have mesh attribute. "
@@ -53,14 +58,16 @@ mlir::LogicalResult ShouldMergeClusters(mlir::tf_device::ClusterOp cluster_a,
 
   auto mesh_a_or_status = ExtractDeviceMeshFromOp(cluster_a.getOperation());
   if (!mesh_a_or_status.ok())
-    return cluster_a.emitOpError(mesh_a_or_status.status().error_message());
+    return cluster_a.emitOpError(
+        absl::StatusMessageAsCStr(mesh_a_or_status.status()));
 
   auto mesh_b_or_status = ExtractDeviceMeshFromOp(cluster_b.getOperation());
   if (!mesh_b_or_status.ok())
-    return cluster_b.emitOpError(mesh_b_or_status.status().error_message());
+    return cluster_b.emitOpError(
+        absl::StatusMessageAsCStr(mesh_b_or_status.status()));
 
-  auto mesh_a = mesh_a_or_status.ValueOrDie();
-  auto mesh_b = mesh_b_or_status.ValueOrDie();
+  auto mesh_a = mesh_a_or_status.value();
+  auto mesh_b = mesh_b_or_status.value();
   if (!mesh_a || !mesh_b) {
     return !mesh_a ? cluster_a.emitOpError(kMissingMeshAttributeErrorMessage)
                    : cluster_b.emitOpError(kMissingMeshAttributeErrorMessage);
@@ -156,7 +163,7 @@ GetMergedMeshClusterResults(mlir::tf_device::ClusterOp current_cluster,
 // Updates the users of `merging_cluster` so that they use values
 // from `merged_cluster` instead.
 void ReplaceOperandUsagesWithMergedClusterOutputs(
-    const llvm::SmallVectorImpl<mlir::Value>& values_to_replace,
+    mlir::ValueRange values_to_replace,
     mlir::tf_device::ClusterOp merged_cluster) {
   for (auto result :
        llvm::zip(values_to_replace, merged_cluster.getResults())) {
@@ -196,7 +203,7 @@ mlir::LogicalResult CreateMergedMeshCluster(
 
   // Create a terminator op that returns all return values from
   // `current_cluster` and `merging_cluster`.
-  merged_cluster->body().push_back(new mlir::Block);
+  merged_cluster->getBody().push_back(new mlir::Block);
   builder->setInsertionPointToEnd(&merged_cluster->GetBody());
   builder->create<mlir::tf_device::ReturnOp>(merged_cluster->getLoc(),
                                              merged_cluster_output_values);
@@ -244,10 +251,10 @@ mlir::LogicalResult ClusterDeviceClusterOpsInBlock(mlir::OpBuilder* builder,
       block_ops.emplace_back(cluster);
   });
 
-  llvm::Optional<mlir::tf_device::ClusterOp> current_cluster;
+  std::optional<mlir::tf_device::ClusterOp> current_cluster;
   for (mlir::tf_device::ClusterOp cluster :
        llvm::make_early_inc_range(block_ops)) {
-    if (!current_cluster.hasValue()) {
+    if (!current_cluster.has_value()) {
       current_cluster = cluster;
       continue;
     }
@@ -273,7 +280,7 @@ mlir::LogicalResult ClusterDeviceClusterOpsInBlock(mlir::OpBuilder* builder,
 
 // MLIR pass that merges cluster ops with the same mesh attribute.
 struct DTensorDeviceMeshClusterCoarsening
-    : public DTensorDeviceMeshClusterCoarseningBase<
+    : public impl::DTensorDeviceMeshClusterCoarseningBase<
           DTensorDeviceMeshClusterCoarsening> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();

@@ -15,94 +15,186 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_TRANSPOSE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_TRANSPOSE_H_
 
-#include "tensorflow/lite/kernels/internal/common.h"
+#include <array>
+
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 
 namespace reference_ops {
 
-template <typename T, int N>
-void TransposeImpl(const TransposeParams& params,
-                   const RuntimeShape& unextended_input_shape,
-                   const T* input_data,
-                   const RuntimeShape& unextended_output_shape,
-                   T* output_data) {
-  const int unextended_input_size = unextended_input_shape.DimensionsCount();
-  const int unextended_output_size = unextended_output_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(unextended_input_size, N);
-  TFLITE_DCHECK_LE(unextended_output_size, N);
-  TFLITE_DCHECK_EQ(unextended_output_size, params.perm_count);
-  const int input_ext_size = N - unextended_input_size;
-  const int output_ext_size = N - unextended_output_size;
-  NdArrayDesc<N> input_desc;
-  NdArrayDesc<N> output_desc;
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_input_shape),
-                 &input_desc);
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_output_shape),
-                 &output_desc);
+namespace transpose_internal {
 
-  // The perm data is extended to match the output, each index incremented by
-  // the amount of front padding of the input shape.
-  int extended_perm[N];
-  for (int i = 0; i < N; ++i) {
-    extended_perm[i] = i < output_ext_size
-                           ? i
-                           : params.perm[i - output_ext_size] + input_ext_size;
+// Recursively explores all the dimensions of the output tensor and writes the
+// corresponding input tensor data.
+//
+// - depth: the current depth of the recursion.
+// - dims: tensor dimension count, also `perm` size.
+// - perm: permutation array.
+// - input_data: Running input data pointer. If depth == num_dims-1, this points
+//               to the first element of the last dimension to traverse.
+// - input_stride: Reverse partial product of input shapes.
+// - output_data: Running output data pointer. If depth == num_dims-1, this
+//                points to the first element of the last dimension to traverse.
+// - output_stride: Reverse partial product of output shapes.
+// - output_shape: Shape of the output tensor.
+//
+// ## Algorithm explanation
+//
+// Assume a 3D tensor T with a shape of [I, J, K] stored in row major order.
+// T[i, j, k] is at position `i*J*K + j*K + k` in the tensor buffer.
+//
+// If we want to go through the whole tensor iteratively, we can use loops.
+//
+// ```
+// for(i = 0; i < I; ++i) {
+//   for(j = 0; j < J; ++j) {
+//     for(k = 0; k < K; ++k) {
+//        T.data[i*J*K + j*K + k] = ...
+//     }
+//   }
+// }
+// ```
+//
+// We can also compute the offset as we go through the loops.
+//
+// ```
+// stride_i = K * J;
+// stride_j = K;
+// stride_k = 1;
+// for(i = 0; i < I; ++i) {
+//   offset_i = i * stride_i;
+//   offset_j = 0;
+//   for(j = 0; j < J; ++j) {
+//     offset_j += stride_j;
+//     offset_k = 0;
+//     for(k = 0; k < K; ++k) {
+//        offset_k += stride_k;
+//        T.data[offset_i + offset_j + offset_k] = ...
+//     }
+//   }
+// }
+// ```
+//
+// This nicely extends to a recursive version which is the base of this
+// algorithm and supports any number of dimensions.
+//
+// ```
+// shape = [I, J, K]
+// strides = [K*J, K, 1]
+// void recurse(T* data, shape, strides, depth = 0) {
+//   if(depth == shape.size) {
+//     *data = ...
+//   } else {
+//     for(a = 0; a < shape[depth]; ++a) {
+//       recurse(data, shape, strides, depth+1);
+//       data += strides[depth];
+//     }
+//   }
+// }
+// ```
+template <typename T>
+void TransposeImpl(const int depth, const int dims, const int32_t* perm,
+                   const T* input_data, const int* input_stride, T* output_data,
+                   const int* output_stride, const int32_t* output_shape) {
+  const int dimension_size = output_shape[depth];
+  if (depth == dims - 1) {
+    const int loop_stride = input_stride[perm[depth]];
+    for (int i = 0; i < dimension_size; ++i) {
+      output_data[i] = *input_data;
+      input_data += loop_stride;
+    }
+  } else {
+    for (int i = 0; i < dimension_size; ++i) {
+      TransposeImpl(depth + 1, dims, perm, input_data, input_stride,
+                    output_data, output_stride, output_shape);
+
+      input_data += input_stride[perm[depth]];
+      output_data += output_stride[depth];
+    }
   }
-
-  // Permutes the input shape so we don't need to permute the indexes inside
-  // the loop. Check to make sure output_dims is matching input_dims.
-  NdArrayDesc<N> perm_input_desc;
-  for (int k = 0; k < N; ++k) {
-    TFLITE_DCHECK_EQ(input_desc.extents[extended_perm[k]],
-                     output_desc.extents[k]);
-    perm_input_desc.extents[k] = input_desc.extents[extended_perm[k]];
-    perm_input_desc.strides[k] = input_desc.strides[extended_perm[k]];
-  }
-
-  // Naive transpose loop (iterate on output index and compute input index).
-  auto tranpose_func = [&](int indexes[N]) {
-    output_data[SubscriptToIndex(output_desc, indexes)] =
-        input_data[SubscriptToIndex(perm_input_desc, indexes)];
-  };
-  NDOpsHelper<N>(output_desc, tranpose_func);
 }
 
-template <typename T, int N = 5>
-void Transpose(const TransposeParams& params,
-               const RuntimeShape& unextended_input_shape, const T* input_data,
-               const RuntimeShape& unextended_output_shape, T* output_data) {
+// Compile-time switch to get the storage type of the transposition.
+template <int Size>
+struct TransposeStorageType;
+
+template <>
+struct TransposeStorageType<1> {
+  using type = int8_t;
+};
+
+template <>
+struct TransposeStorageType<2> {
+  using type = int16_t;
+};
+
+template <>
+struct TransposeStorageType<4> {
+  using type = int32_t;
+};
+
+template <>
+struct TransposeStorageType<8> {
+  using type = int64_t;
+};
+
+// Sets up the stride arrays for the recursive transpose algorithm.
+//
+// Implementation notes:
+//
+// This is a reverse partial product. We could use standard algorithms to
+// implement this but the result is not a readable and is tricky to get right
+// because the first element must be set to 1, which leads to offset
+// shenanigans:
+//
+// ```
+//   stride[dims - 1] = 1;
+//   std::partial_sum(std::make_reverse_iterator(shape + dims),
+//                    std::make_reverse_iterator(shape + 1),
+//                    stride.rend() - input_rank + 1, std::multiplies());
+// ```
+//
+// Note that Abseil isn't used in kernels implementation. That would make the
+// above solution more readable.
+inline void SetupTransposeStrides(
+    std::array<int, kTransposeMaxDimensions>& stride, const int32_t* shape,
+    const int dims) {
+  stride[dims - 1] = 1;
+  for (int i = dims - 2; i >= 0; --i) {
+    stride[i] = stride[i + 1] * shape[i + 1];
+  }
+}
+
+}  // namespace transpose_internal
+
+// Copies a tensor to an other buffer and permutes its dimensions.
+//
+// Note: template parameter N is not used anymore. It is kept for API
+// compatibility with TFLite micro.
+template <typename T, int N = kTransposeMaxDimensions>
+void Transpose(const TransposeParams& params, const RuntimeShape& input_shape,
+               const T* input_data, const RuntimeShape& output_shape,
+               T* output_data) {
+  using transpose_internal::SetupTransposeStrides;
+  using transpose_internal::TransposeImpl;
+  using transpose_internal::TransposeStorageType;
   // Transpose kernel only does rearranging values not numeric evaluations on
   // each cell. It's safe to implement per size of scalar type and this trick
   // keeps the total code size in a reasonable range.
-  switch (sizeof(T)) {
-    case 1:
-      TransposeImpl<int8_t, N>(params, unextended_input_shape,
-                               reinterpret_cast<const int8_t*>(input_data),
-                               unextended_output_shape,
-                               reinterpret_cast<int8_t*>(output_data));
-      break;
-    case 2:
-      TransposeImpl<int16_t, N>(params, unextended_input_shape,
-                                reinterpret_cast<const int16_t*>(input_data),
-                                unextended_output_shape,
-                                reinterpret_cast<int16_t*>(output_data));
-      break;
+  using StorageType = typename TransposeStorageType<sizeof(T)>::type;
+  const StorageType* const input_data_storage =
+      reinterpret_cast<const StorageType*>(input_data);
+  StorageType* const output_data_storage =
+      reinterpret_cast<StorageType*>(output_data);
 
-    case 4:
-      TransposeImpl<int32_t, N>(params, unextended_input_shape,
-                                reinterpret_cast<const int32_t*>(input_data),
-                                unextended_output_shape,
-                                reinterpret_cast<int32_t*>(output_data));
-      break;
-    case 8:
-      TransposeImpl<int64_t, N>(params, unextended_input_shape,
-                                reinterpret_cast<const int64_t*>(input_data),
-                                unextended_output_shape,
-                                reinterpret_cast<int64_t*>(output_data));
-      break;
-  }
+  const int dims = input_shape.DimensionsCount();
+  std::array<int, kTransposeMaxDimensions> input_stride, output_stride;
+  SetupTransposeStrides(input_stride, input_shape.DimsData(), dims);
+  SetupTransposeStrides(output_stride, output_shape.DimsData(), dims);
+  TransposeImpl(0, dims, &params.perm[0], input_data_storage,
+                input_stride.data(), output_data_storage, output_stride.data(),
+                output_shape.DimsData());
 }
 
 }  // namespace reference_ops

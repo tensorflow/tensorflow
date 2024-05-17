@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 
@@ -25,7 +26,8 @@ bool TFGraphDialect::IsAdd(TFOp op) const {
   StringAttr op_name = op->getName().getIdentifier();
 
   if (op_name == add_v2_) return true;
-  if (op_name == add_) return !op->getAttrOfType<StringAttr>("T");
+  if (op_name == add_)
+    return !mlir::isa<StringType>(op->getAttrOfType<TypeAttr>("T").getValue());
   return false;
 }
 
@@ -720,6 +722,11 @@ bool TFGraphDialect::IsRestore(TFOp op) const {
          op_name == restore_slice_;
 }
 
+bool TFGraphDialect::IsReturn(TFOp op) const {
+  StringAttr op_name = op->getName().getIdentifier();
+  return op_name == return_;
+}
+
 bool TFGraphDialect::IsRetval(TFOp op) const {
   StringAttr op_name = op->getName().getIdentifier();
   return op_name == retval_ || op_name == device_retval_;
@@ -803,6 +810,11 @@ bool TFGraphDialect::IsSnapshot(TFOp op) const {
 bool TFGraphDialect::IsSoftmax(TFOp op) const {
   StringAttr op_name = op->getName().getIdentifier();
   return op_name == softmax_;
+}
+
+bool TFGraphDialect::IsSoftplus(TFOp op) const {
+  StringAttr op_name = op->getName().getIdentifier();
+  return op_name == softplus_;
 }
 
 bool TFGraphDialect::IsSoftplusGrad(TFOp op) const {

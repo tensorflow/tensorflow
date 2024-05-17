@@ -88,7 +88,7 @@ library {
 # CHECK:    tf_executor.graph
 # CHECK:      "tf.VarHandleOp"()
 # CHECK:      "tf.LegacyCall"
-# CHECK-SAME:   {_disable_call_shape_inference = true, device = "", f = @test_func_name0}
+# CHECK-SAME:   <{_disable_call_shape_inference = true, f = @test_func_name0}> {device = ""}
 # CHECK:      tf_executor.fetch
 # CHECK:    return
 # CHECK:  func private @test_func_name0

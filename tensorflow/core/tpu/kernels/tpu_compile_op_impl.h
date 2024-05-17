@@ -16,15 +16,18 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_IMPL_H_
 
 #include <string>
+#include <variant>
 #include <vector>
 
-#include "absl/types/variant.h"
-#include "tensorflow/compiler/jit/shape_inference.h"
-#include "tensorflow/core/framework/function.h"
+#include "absl/status/status.h"
+#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_common.h"
+#include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -51,13 +54,14 @@ class TpuCompileOpKernelImpl : public TpuCompileOpKernelCommon {
             function, metadata, num_computations, return_hlo_protos,
             unload_cache_on_session_close, /*persistent_cache=*/nullptr) {}
 
-  Status Compile(
-      const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+  absl::Status Compile(
+      const std::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
       const XLA_TpuMeshState* mesh_state,
       const std::vector<TensorShape>& arg_shapes,
       const TpuCompilationCacheKey* key,
       TpuProgramGroupInterface* tpu_program_group) override;
 };
+
 }  // namespace tpu
 }  // namespace tensorflow
 

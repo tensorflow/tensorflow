@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <utility>
 
-#include "llvm/ADT/None.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -38,7 +39,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LEGALIZEVARIABLESPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Attribute name to identify whether variables should be legalized to TFLite or
@@ -58,7 +59,7 @@ bool IsSupportedElementType(ShapedType type) {
 // Pass which legalizes TF variables which are already passed as bounded
 // arguments to functions, to TFLite variables.
 class LegalizeVariablesPass
-    : public LegalizeVariablesPassBase<LegalizeVariablesPass> {
+    : public impl::LegalizeVariablesPassBase<LegalizeVariablesPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeVariablesPass)
 
@@ -67,7 +68,7 @@ class LegalizeVariablesPass
     // If TFLite variable legalization is not allowed, then we skip this pass.
     if (auto legalize_tfl_variables_attr =
             module->getAttr(kLegalizeTflVariables)) {
-      if (!legalize_tfl_variables_attr.cast<BoolAttr>().getValue()) return;
+      if (!mlir::cast<BoolAttr>(legalize_tfl_variables_attr).getValue()) return;
     }
 
     RewritePatternSet patterns(&getContext());

@@ -1,16 +1,17 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
 load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
+load(
     "//tensorflow/lite:special_rules.bzl",
     "tflite_ios_lab_runner",
     "tflite_ios_per_kernel_test",
     "tflite_portable_test_suite",
 )
-load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
-)
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -29,7 +30,7 @@ objc_library(
 ios_unit_test(
     name = "add_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -45,6 +46,7 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:cast_test_util",
     ],
 )
@@ -52,7 +54,7 @@ objc_library(
 ios_unit_test(
     name = "cast_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -75,7 +77,7 @@ objc_library(
 ios_unit_test(
     name = "concat_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -96,22 +98,20 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic_test_util",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal_simd",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
         "//tensorflow/lite/delegates/gpu/metal:compute_task",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
 ios_unit_test(
     name = "conv_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -134,7 +134,7 @@ objc_library(
 ios_unit_test(
     name = "conv_weights_converter_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -152,14 +152,13 @@ objc_library(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:cumsum_test_util",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
 ios_unit_test(
     name = "cumsum_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -184,7 +183,7 @@ objc_library(
 ios_unit_test(
     name = "depthwise_conv_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -200,6 +199,7 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise_test_util",
     ],
 )
@@ -207,7 +207,7 @@ objc_library(
 ios_unit_test(
     name = "elementwise_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -230,7 +230,7 @@ objc_library(
 ios_unit_test(
     name = "fully_connected_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -253,7 +253,7 @@ objc_library(
 ios_unit_test(
     name = "gather_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -276,7 +276,7 @@ objc_library(
 ios_unit_test(
     name = "lstm_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -299,7 +299,7 @@ objc_library(
 ios_unit_test(
     name = "max_unpooling_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -322,7 +322,7 @@ objc_library(
 ios_unit_test(
     name = "mean_stddev_normalization_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -340,14 +340,13 @@ objc_library(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:one_hot_test_util",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
 ios_unit_test(
     name = "one_hot_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -370,7 +369,7 @@ objc_library(
 ios_unit_test(
     name = "padding_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -393,7 +392,7 @@ objc_library(
 ios_unit_test(
     name = "pooling_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -416,7 +415,7 @@ objc_library(
 ios_unit_test(
     name = "prelu_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -444,7 +443,7 @@ objc_library(
 ios_unit_test(
     name = "quantize_and_dequantize_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -467,7 +466,7 @@ objc_library(
 ios_unit_test(
     name = "reduce_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -490,7 +489,7 @@ objc_library(
 ios_unit_test(
     name = "relu_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -515,7 +514,7 @@ objc_library(
 ios_unit_test(
     name = "resampler_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = [
         "no_mac",  # TODO(b/183905399)
@@ -540,7 +539,7 @@ objc_library(
 ios_unit_test(
     name = "resize_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -563,7 +562,7 @@ objc_library(
 ios_unit_test(
     name = "reshape_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -580,14 +579,13 @@ objc_library(
     deps = [
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:select_v2_test_util",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
 ios_unit_test(
     name = "select_v2_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -610,7 +608,7 @@ objc_library(
 ios_unit_test(
     name = "slice_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -633,7 +631,7 @@ objc_library(
 ios_unit_test(
     name = "softmax_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -649,6 +647,7 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
     ],
 )
@@ -656,7 +655,7 @@ objc_library(
 ios_unit_test(
     name = "space_to_depth_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -679,7 +678,7 @@ objc_library(
 ios_unit_test(
     name = "split_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -702,7 +701,7 @@ objc_library(
 ios_unit_test(
     name = "tile_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -729,7 +728,7 @@ objc_library(
 ios_unit_test(
     name = "transpose_conv_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -752,7 +751,7 @@ objc_library(
 ios_unit_test(
     name = "transpose_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -771,13 +770,10 @@ objc_library(
     copts = [
         "-ObjC++",
     ],
-    sdk_frameworks = [
-        "Metal",
-    ],
+    sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -786,12 +782,9 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
-        "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:compute_task",
         "//tensorflow/lite/delegates/gpu/metal:metal_device",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
-        "@FP16",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -811,7 +804,7 @@ objc_library(
 ios_unit_test(
     name = "winograd_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -870,10 +863,9 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:cast_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic_test_util",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal_simd",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_test_util",
@@ -912,7 +904,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
-        "//third_party/apple_frameworks:XCTest",
     ],
 )
 

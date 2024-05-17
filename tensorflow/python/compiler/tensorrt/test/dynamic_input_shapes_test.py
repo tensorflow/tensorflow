@@ -77,7 +77,7 @@ class DynamicInputShapesTest(trt_test.TfTrtIntegrationTestBase):
         expected_output_dims=expected_output_dims)
 
   def setUp(self):
-    super(trt_test.TfTrtIntegrationTestBase, self).setUp()  # pylint: disable=bad-super-call
+    super().setUp()
     # Disable layout optimizer, since it will convert BiasAdd with NHWC
     # format to NCHW format under four dimentional input.
     self.DisableNonTrtOptimizers()

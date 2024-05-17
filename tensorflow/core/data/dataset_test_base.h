@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -132,7 +133,7 @@ class DatasetParams {
                 std::vector<PartialTensorShape> output_shapes,
                 string node_name);
 
-  virtual ~DatasetParams() {}
+  virtual ~DatasetParams() = default;
 
   // Returns the inputs (except the input datasets) as a tensor vector.
   virtual std::vector<Tensor> GetInputTensors() const = 0;
@@ -687,6 +688,64 @@ class DatasetOpsTestBase : public ::testing::Test {
       const std::vector<Tensor>& expected_outputs,
       const std::vector<int>& breakpoints, bool compare_order);
 
+  // A class for testing variant tensors.
+  class TestVariant {
+   public:
+    TestVariant() = default;
+    explicit TestVariant(const std::vector<Tensor>& tensors)
+        : tensors_(tensors) {}
+
+    bool operator!=(const TestVariant& rhs) const {
+      return !ExpectEqual(tensors_, rhs.tensors_, /*compare_order=*/true).ok();
+    }
+
+    constexpr static const char kTypeName[] = "tensorflow::data::TestVariant";
+
+    string TypeName() const { return kTypeName; }
+
+    // Encodes the contents of this object into `data`.  This function signature
+    // is required for objects to be stored in `tensorflow::Variant`s.  See the
+    // docs for `tensorflow::Variant` for more information and see
+    // `tensorflow::Variant::Encode` for how this is used.
+    void Encode(VariantTensorData* data) const {
+      data->set_type_name(TypeName());
+      for (const auto& tensor : tensors_) {
+        data->add_tensor(tensor);
+      }
+    }
+
+    // Decodes `data` and updates the contents of this object.  This function
+    // signature is required for objects to be stored in `tensorflow::Variant`s.
+    // See the docs for `tensorflow::Variant` for more information and see
+    // `tensorflow::Variant::Decode` for how this is used.
+    bool Decode(VariantTensorData data) {
+      tensors_ = data.tensors();
+      return true;
+    }
+
+    string DebugString() const {
+      string result = "TestVariant([";
+      for (const auto& tensor : tensors_) {
+        if (&tensor != &tensors_[0]) result += ", ";
+        result += tensor.DebugString();
+      }
+      result += "])";
+      return result;
+    }
+
+   private:
+    std::vector<Tensor> tensors_;
+  };
+
+  // Returns a scalar variant tensor containing a `TestVariant` object
+  // containing `tensors`.
+  static Tensor CreateTestVariantTensor(const std::vector<Tensor>& tensors) {
+    Tensor tensor{DT_VARIANT, TensorShape({})};
+    TestVariant test_variant{tensors};
+    tensor.scalar<Variant>()() = test_variant;
+    return tensor;
+  }
+
  protected:
   // Make destructor protected so that DatasetOpsTestBase objects cannot
   // be instantiated directly. Only subclasses can be instantiated.
@@ -707,14 +766,13 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   // Creates a new op kernel context.
   Status CreateDatasetContext(
-      OpKernel* const dateset_kernel,
-      gtl::InlinedVector<TensorValue, 4>* const inputs,
+      OpKernel* dateset_kernel, gtl::InlinedVector<TensorValue, 4>* inputs,
       std::unique_ptr<OpKernelContext::Params>* dataset_context_params,
       std::unique_ptr<OpKernelContext>* dataset_context);
 
   // Creates a new dataset.
   Status CreateDataset(OpKernel* kernel, OpKernelContext* context,
-                       DatasetBase** const dataset);
+                       DatasetBase** dataset);
 
   // Restores the state of the input iterator. It resets the iterator before
   // restoring it to make sure the input iterator does not hold any
@@ -727,7 +785,7 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   // Fetches the dataset from the operation context.
   Status GetDatasetFromContext(OpKernelContext* context, int output_index,
-                               DatasetBase** const dataset);
+                               DatasetBase** dataset);
 
   // Runs an operation producing outputs.
   Status RunOpKernel(OpKernel* op_kernel, OpKernelContext* context);
@@ -755,7 +813,7 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   // Creates a new iterator context for iterating the dataset.
   Status CreateIteratorContext(
-      OpKernelContext* const op_context,
+      OpKernelContext* op_context,
       std::unique_ptr<IteratorContext>* iterator_context);
 
   // Creates a new iterator context for iterating the dataset.

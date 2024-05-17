@@ -26,6 +26,7 @@ REGISTER6(BinaryOp, GPU, "Greater", functor::greater, float, Eigen::half,
 REGISTER4(BinaryOp, GPU, "Greater", functor::greater, uint8, uint16, uint32,
           uint64);
 #endif
+REGISTER(BinaryOp, GPU, "Greater", functor::greater, bfloat16);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

@@ -14,10 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -30,7 +35,7 @@ std::string ProtoKeyForComputation(const std::string& key, int core) {
   return absl::StrCat(key, ":", core);
 }
 
-xla::StatusOr<TpuCompilationCacheKey> ParseCompilationCacheKey(
+absl::StatusOr<TpuCompilationCacheKey> ParseCompilationCacheKey(
     const std::string& key) {
   const std::vector<std::string> splits = absl::StrSplit(key, '|');
   if (splits.size() == 1) {
@@ -83,7 +88,7 @@ Status DynamicShapesToTensorShapes(const OpInputList& dynamic_shapes,
     TF_RETURN_IF_ERROR(
         ShapeTensorToTensorShape(dynamic_shapes[i], &(*shapes)[i]));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
@@ -95,12 +100,12 @@ Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
         ShapeTensorToTensorShape(dynamic_shape.tensor(), &(*shapes)[i]));
     ++i;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-xla::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> CreateServerBuilder(
+absl::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> CreateServerBuilder(
     int serving_port) {
-  auto server_builder = absl::make_unique<::grpc::ServerBuilder>();
+  auto server_builder = std::make_unique<::grpc::ServerBuilder>();
   server_builder->AddListeningPort(
       absl::StrFormat("[::]:%d", serving_port),
       ::grpc::InsecureServerCredentials());  // NOLINT

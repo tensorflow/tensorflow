@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "pybind11/cast.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -581,8 +581,8 @@ void ExtractOutputStructure(const std::string& op_type_name,
                                             arg.number_attr(), op_type_name);
       output_structure.append(value.i());
     } else if (!arg.type_attr().empty()) {
-      const auto& _ = MaybeGetAttrValue(attr_protos, attr_protos_map,
-                                        arg.type_attr(), op_type_name);
+      MaybeGetAttrValue(attr_protos, attr_protos_map, arg.type_attr(),
+                        op_type_name);
       output_structure.append(py::none());
     } else if (!arg.type_list_attr().empty()) {
       const auto& value = MaybeGetAttrValue(attr_protos, attr_protos_map,

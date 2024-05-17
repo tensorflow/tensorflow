@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SymbolicTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "autograph"
     mtype: "<type \'module\'>"
   }
@@ -111,6 +115,10 @@ tf_module {
   member_method {
     name: "lift_to_graph"
     argspec: "args=[\'tensors\', \'graph\', \'sources\', \'disallowed_placeholders\', \'add_sources\', \'handle_captures\', \'base_graph\', \'op_map\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "load_context"
+    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
   }
   member_method {
     name: "record_gradient"

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_op_profile.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "tensorflow/core/platform/logging.h"
@@ -31,24 +32,23 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-using ::tensorflow::profiler::GigaToGibi;
 using ::tensorflow::profiler::IsIdleOp;
 using ::tensorflow::profiler::OpMetrics;
 using ::tensorflow::profiler::OpProfileBuilder;
 using ::tensorflow::profiler::OpProfileOptions;
 using ::tensorflow::profiler::OpStats;
-using ::tensorflow::profiler::TeraToGiga;
 using ::tensorflow::profiler::TotalTimePs;
 using ::tensorflow::profiler::op_profile::Node;
 
 void BuildOpProfileNodeTree(const OpStats& op_stats, bool group_by_program,
-                            bool exclude_idle_ops, Node* root) {
+                            bool exclude_idle_ops, int op_profile_limit,
+                            Node* root) {
   const auto& metrics_db = op_stats.device_op_metrics_db();
   if (metrics_db.metrics_db().empty()) return;
 
   OpProfileOptions options = {group_by_program,
                               /*group_by_deduplicated_name=*/true,
-                              /*children_per_node=*/100};
+                              /*children_per_node=*/op_profile_limit};
   OpProfileBuilder builder(options, root, &op_stats.program_id_to_name_map());
 
   for (const OpMetrics& op_metrics : metrics_db.metrics_db()) {
@@ -61,11 +61,12 @@ void BuildOpProfileNodeTree(const OpStats& op_stats, bool group_by_program,
 
   const auto& perf_env = op_stats.perf_env();
   double max_gigaflops_per_second_per_core =
-      TeraToGiga(perf_env.peak_tera_flops_per_second());
-  double max_gibibytes_per_second_per_core =
-      GigaToGibi(perf_env.peak_hbm_bw_giga_bytes_per_second());
-  builder.Finalize(max_gigaflops_per_second_per_core,
-                   max_gibibytes_per_second_per_core,
+      tsl::profiler::TeraToGiga(perf_env.peak_tera_flops_per_second());
+  std::vector<double> peak_bws;
+  for (auto bw : perf_env.peak_bws_giga_bytes_per_second()) {
+    peak_bws.push_back(tsl::profiler::GigaToGibi(bw));
+  }
+  builder.Finalize(max_gigaflops_per_second_per_core, peak_bws,
                    TotalTimePs(metrics_db, exclude_idle_ops));
 }
 
@@ -73,30 +74,27 @@ void BuildOpProfileNodeTree(const OpStats& op_stats, bool group_by_program,
 
 void ConvertOpStatsToOpProfile(
     const OpStats& op_stats, tensorflow::profiler::HardwareType hardware_type,
-    tensorflow::profiler::op_profile::Profile& profile) {
+    tensorflow::profiler::op_profile::Profile& profile, int op_profile_limit) {
   profile.set_device_type(HardwareType_Name(hardware_type));
   BuildOpProfileNodeTree(op_stats,
                          /*group_by_program=*/false,
-                         /*exclude_idle_ops=*/false,
+                         /*exclude_idle_ops=*/false, op_profile_limit,
                          profile.mutable_by_category());
 
   BuildOpProfileNodeTree(op_stats,
                          /*group_by_program=*/false,
-                         /*exclude_idle_ops=*/true,
+                         /*exclude_idle_ops=*/true, op_profile_limit,
                          profile.mutable_by_category_exclude_idle());
 
-  // Don't generate per program profile if there's only a single program.
-  if (op_stats.program_id_to_name_map_size() > 1) {
-    BuildOpProfileNodeTree(op_stats,
-                           /*group_by_program=*/true,
-                           /*exclude_idle_ops=*/false,
-                           profile.mutable_by_program());
+  BuildOpProfileNodeTree(op_stats,
+                         /*group_by_program=*/true,
+                         /*exclude_idle_ops=*/false, op_profile_limit,
+                         profile.mutable_by_program());
 
-    BuildOpProfileNodeTree(op_stats,
-                           /*group_by_program=*/true,
-                           /*exclude_idle_ops=*/true,
-                           profile.mutable_by_program_exclude_idle());
-  }
+  BuildOpProfileNodeTree(op_stats,
+                         /*group_by_program=*/true,
+                         /*exclude_idle_ops=*/true, op_profile_limit,
+                         profile.mutable_by_program_exclude_idle());
 }
 
 }  // namespace profiler

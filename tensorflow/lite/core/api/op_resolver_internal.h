@@ -16,8 +16,12 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_API_OP_RESOLVER_INTERNAL_H_
 
 /// \file
+///
 /// This header op_resolver_internal.h exists so that we can have fine-grained
-/// access control on the MayContainUserDefinedOps method.
+/// access control on the MayContainUserDefinedOps method
+/// and registration_externals_cache_ member.
+
+#include <memory>
 
 #include "tensorflow/lite/core/api/op_resolver.h"
 
@@ -25,8 +29,19 @@ namespace tflite {
 
 class OpResolverInternal {
  public:
-  static bool MayContainUserDefinedOps(const OpResolver &op_resolver) {
+  OpResolverInternal() = delete;
+
+  static bool MayContainUserDefinedOps(const OpResolver& op_resolver) {
     return op_resolver.MayContainUserDefinedOps();
+  }
+
+  // Get a shared_ptr to the OperatorsCache from an OpResolver.
+  // This is used to allow the InterpreterBuilder and OpResolver to share
+  // the same OperatorsCache, so that the Operator objects in it can persist
+  // for the lifetimes of both the InterpreterBuilder and OpResolver.
+  static std::shared_ptr<::tflite::internal::OperatorsCache> GetSharedCache(
+      const ::tflite::OpResolver& op_resolver) {
+    return op_resolver.registration_externals_cache_;
   }
 };
 

@@ -10,10 +10,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/tensor_to_hash_bucket_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
@@ -65,8 +65,9 @@ __device__ __forceinline__ int IntegerToString(T val, char* buf) {
 }
 
 template <typename T>
-__global__ void ComputeHashes(const T* __restrict__ vals, int vals_size,
-                              int64 num_buckets, int64* __restrict__ hashes) {
+__global__ __launch_bounds__(1024) void ComputeHashes(
+    const T* __restrict__ vals, int vals_size, int64 num_buckets,
+    int64* __restrict__ hashes) {
   extern __shared__ char s[];
 
   GPU_1D_KERNEL_LOOP(tid, vals_size) {
@@ -118,4 +119,4 @@ TF_CALL_INTEGRAL_TYPES(REGISTER_FUNCTORS);
 #undef REGISTER_FUNCTORS
 
 }  // namespace tensorflow
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

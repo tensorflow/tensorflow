@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tsl/protobuf/coordination_config.pb.h"
 
 namespace {
 
@@ -272,8 +272,9 @@ TEST_P(MultiClientSendRecvTest, TestMultiClientSendRecv) {
               tensorflow::OperationFromInterface(tensorflow::unwrap(send_func));
           EXPECT_TRUE(op->Reset("SendFunction", send_device.c_str(),
                                 /*remote=*/false, /*executor=*/nullptr,
-                                tensorflow::EagerFunctionParams{/*op_id=*/s,
-                                                                /*step_id=*/s})
+                                tensorflow::EagerFunctionParams{
+                                    /*op_id=*/s, /*is_component_function=*/true,
+                                    /*step_id=*/s})
                           .ok());
         }
 
@@ -314,8 +315,10 @@ TEST_P(MultiClientSendRecvTest, TestMultiClientSendRecv) {
               tensorflow::OperationFromInterface(tensorflow::unwrap(recv_func));
           EXPECT_TRUE(op->Reset("RecvFunction", recv_device.c_str(),
                                 /*remote=*/false, /*executor=*/nullptr,
-                                tensorflow::EagerFunctionParams{/*op_id=*/s,
-                                                                /*step_id=*/s})
+                                tensorflow::EagerFunctionParams{
+                                    /*op_id=*/s,
+                                    /*is_component_function=*/true,
+                                    /*step_id=*/s})
                           .ok());
         }
 
@@ -343,7 +346,7 @@ TEST_P(MultiClientSendRecvTest, TestMultiClientSendRecv) {
     // To make sure the sender won't delete the data it sent before the receiver
     // retrieves it, we need to do the following steps:
     // 1. Since we created async EagerContext, we need to force each worker to
-    //    wait until all pening operations finish before deleting the context.
+    //    wait until all pending operations finish before deleting the context.
     // 2. In addition, use the blocking counter to notify the 2 workers when
     //    it is safe to clean up all the data.
     TFE_ContextAsyncWait(ctx, status);
@@ -372,10 +375,6 @@ INSTANTIATE_TEST_SUITE_P(
         {"MultiClientMultiStepFunction", false, 3, 0, 0},
         {"MultiClientMultiStepFunctionWithRecvDelay", false, 5, 2, 0},
         {"MultiClientMultiStepFunctionWithSendDelay", false, 5, 0, 2},
-        {"MultiClientSingleStepFunctionTfrt", true, 1, 0, 0},
-        {"MultiClientMultiStepFunctionTfrt", true, 3, 0, 0},
-        {"MultiClientMultiStepFunctionWithRecvDelayTfrt", true, 5, 2, 0},
-        {"MultiClientMultiStepFunctionWithSendDelayTfrt", true, 5, 0, 2},
     }),
     [](const testing::TestParamInfo<MultiClientSendRecvTest::ParamType>& info) {
       return info.param.test_name;

@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package xla.gpu;
+
+import "xla/service/hlo.proto";
+
+message HloInstructionProfile {
+  xla.HloInstructionProto instruction = 1;
+  int64 clock_cycles = 2;
+}
+
+message HloInstructionProfileList {
+  repeated HloInstructionProfile entries = 1;
+}
+
+message DeviceHloInstructionProfiles {
+  map<string, HloInstructionProfileList> entries = 2;
+}

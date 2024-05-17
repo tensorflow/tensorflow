@@ -21,7 +21,7 @@ limitations under the License.
 namespace tflite {
 
 // The following GetBuiltinCode methods are the utility methods for reading
-// builtin operatore code, ensuring compatibility issues between v3 and v3a
+// builtin operator code, ensuring compatibility issues between v3 and v3a
 // schema. Always the maximum value of the two fields always will be the correct
 // value as follows:
 //
@@ -29,7 +29,7 @@ namespace tflite {
 //
 // The `builtin_code` field is not available in the v3 models. Flatbuffer
 // library will feed zero value, which is the default value in the v3a schema.
-// The actual builtin operatore code value will exist in the
+// The actual builtin operator code value will exist in the
 // `deprecated_builtin_code` field. At the same time, it implies that
 // `deprecated_builtin_code` >= `builtin_code` and the maximum value of the two
 // fields will be same with `deprecated_builtin_code'.

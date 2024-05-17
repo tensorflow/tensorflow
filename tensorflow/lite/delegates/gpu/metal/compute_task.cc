@@ -35,27 +35,6 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
-bool IsWordSymbol(char symbol) {
-  return absl::ascii_isalnum(symbol) || symbol == '_';
-}
-
-void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
-                     std::string* str) {
-  size_t position = str->find(old_word);
-  while (position != std::string::npos) {
-    const char prev = position == 0 ? ' ' : (*str)[position - 1];
-    const char next = position + old_word.size() < str->size()
-                          ? (*str)[position + old_word.size()]
-                          : ' ';
-    if (IsWordSymbol(prev) || IsWordSymbol(next)) {
-      position = str->find(old_word, position + 1);
-      continue;
-    }
-    str->replace(position, old_word.size(), new_word);
-    position = str->find(old_word, position + new_word.size());
-  }
-}
-
 std::map<std::string, std::string> GetMetalDefines(
     MetalDevice* device, CalculationsPrecision precision) {
   std::string simdgroup_barrier;
@@ -82,10 +61,6 @@ std::map<std::string, std::string> GetMetalDefines(
     }
   }
   return {
-      {"FLT16_0123(V)", "V[0]"},
-      {"FLT16_4567(V)", "V[1]"},
-      {"FLT16_89ab(V)", "V[2]"},
-      {"FLT16_cdef(V)", "V[3]"},
       {"FLT", storage_type},
       {"FLT2", storage_type + "2"},
       {"FLT3", storage_type + "3"},
@@ -185,28 +160,12 @@ void ComputeTask::Init(std::unique_ptr<GPUOperation>&& operation) {
   operation_ = std::move(operation);
 }
 
-const OperationDef& ComputeTask::GetDefinition() const {
-  return operation_->GetDefinition();
-}
-
-bool ComputeTask::IsLinkable() const { return operation_->IsLinkable(); }
-
-absl::Status ComputeTask::AddTask(ComputeTask* task) {
-  return operation_->AddOperation(task->operation_.get());
-}
-
 absl::Status ComputeTask::Compile(MetalDevice* device) {
   RETURN_IF_ERROR(metal_args_.Init(use_arguments_buffer_, device,
                                    &operation_->args_, &operation_->code_));
 
   operation_->args_.ReleaseCPURepresentation();
-
-  // manually resolving this defines, so as Metal has reserved words for them
-  ReplaceAllWords("float16", "float4x4", &operation_->code_);
-  ReplaceAllWords("half16", "half4x4", &operation_->code_);
-  ReplaceAllWords("float8", "float2x4", &operation_->code_);
-  ReplaceAllWords("half8", "half2x4", &operation_->code_);
-  defines_ = GetMetalDefines(device, operation_->GetDefinition().precision);
+  defines_ = GetMetalDefines(device, operation_->GetPrecision());
   return CompileProgram(device, operation_->code_, defines_);
 }
 

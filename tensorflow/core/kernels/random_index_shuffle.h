@@ -30,10 +30,14 @@ namespace random {
 // The returned index will also be in [0, ..., max_index]. For a fixed `key`
 // and `max_index` the all possible `index` values and the returned values
 // form a bijection.
+// Rounds must be a positive even integer >= 4. Larger values increase improve
+// 'randomness' of permutations for small `max_index` values. The time to
+// compute the result scales linear with the number of rounds. We recommend 8
+// rounds for a good treat off.
 //
 // For more details on the algorithm see the top of the cc file.
 uint64_t index_shuffle(const uint64_t index, const std::array<uint32_t, 3>& key,
-                       const uint64_t max_index);
+                       const uint64_t max_index, const int32_t rounds);
 
 }  // namespace random
 }  // namespace tensorflow

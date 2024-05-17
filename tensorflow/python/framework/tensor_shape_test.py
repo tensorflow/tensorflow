@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Functional tests for shape inference helper classes."""
 from absl.testing import parameterized
 
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.core.function import trace_type
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -30,14 +30,14 @@ class DimensionTest(test_util.TensorFlowTestCase):
     self.assertEqual(12, dim.value)
     self.assertEqual(12, int(dim))
     self.assertEqual(dim, tensor_shape.Dimension(12))
-    self.assertEqual(tensor_shape.Dimension(15),
-                     dim + tensor_shape.Dimension(3))
+    self.assertEqual(
+        tensor_shape.Dimension(15), dim + tensor_shape.Dimension(3))
     self.assertEqual(tensor_shape.Dimension(15), dim + 3)
     self.assertEqual(tensor_shape.Dimension(15), 3 + dim)
     self.assertEqual(tensor_shape.Dimension(9), dim - 3)
     self.assertEqual(tensor_shape.Dimension(1), 13 - dim)
-    self.assertEqual(tensor_shape.Dimension(24),
-                     dim * tensor_shape.Dimension(2))
+    self.assertEqual(
+        tensor_shape.Dimension(24), dim * tensor_shape.Dimension(2))
     self.assertEqual(tensor_shape.Dimension(24), dim * 2)
     self.assertEqual(tensor_shape.Dimension(24), 2 * dim)
     self.assertEqual([4] * 12, [4] * dim)
@@ -47,18 +47,18 @@ class DimensionTest(test_util.TensorFlowTestCase):
         tensor_shape.Dimension(6), dim // tensor_shape.Dimension(2))
     self.assertEqual(tensor_shape.Dimension(6), dim // 2)
     self.assertEqual(tensor_shape.Dimension(0), 2 // dim)
-    self.assertEqual(tensor_shape.Dimension(12),
-                     dim.merge_with(tensor_shape.Dimension(12)))
+    self.assertEqual(
+        tensor_shape.Dimension(12), dim.merge_with(tensor_shape.Dimension(12)))
     self.assertEqual(tensor_shape.Dimension(12), dim.merge_with(12))
     self.assertLess(tensor_shape.Dimension(12), tensor_shape.Dimension(13))
     self.assertGreater(tensor_shape.Dimension(13), tensor_shape.Dimension(12))
     self.assertLessEqual(tensor_shape.Dimension(12), tensor_shape.Dimension(12))
     self.assertLessEqual(tensor_shape.Dimension(12), tensor_shape.Dimension(13))
     self.assertGreater(tensor_shape.Dimension(13), tensor_shape.Dimension(12))
-    self.assertGreaterEqual(tensor_shape.Dimension(12),
-                            tensor_shape.Dimension(12))
-    self.assertGreaterEqual(tensor_shape.Dimension(13),
-                            tensor_shape.Dimension(12))
+    self.assertGreaterEqual(
+        tensor_shape.Dimension(12), tensor_shape.Dimension(12))
+    self.assertGreaterEqual(
+        tensor_shape.Dimension(13), tensor_shape.Dimension(12))
     self.assertNotEqual(dim, (12,))
     with self.assertRaises(ValueError):
       dim.merge_with(tensor_shape.Dimension(13))
@@ -67,15 +67,18 @@ class DimensionTest(test_util.TensorFlowTestCase):
     dim = tensor_shape.Dimension(None)
     self.assertIsNone(dim.value)
     self.assertEqual(dim.value, tensor_shape.Dimension(None).value)
-    self.assertEqual(tensor_shape.Dimension(None).value,
-                     (dim + tensor_shape.Dimension(None)).value)
-    self.assertEqual(tensor_shape.Dimension(None).value,
-                     (dim * tensor_shape.Dimension(None)).value)
+    self.assertEqual(
+        tensor_shape.Dimension(None).value,
+        (dim + tensor_shape.Dimension(None)).value)
+    self.assertEqual(
+        tensor_shape.Dimension(None).value,
+        (dim * tensor_shape.Dimension(None)).value)
     self.assertEqual(
         tensor_shape.Dimension(None).value,
         (dim // tensor_shape.Dimension(None)).value)
-    self.assertEqual(tensor_shape.Dimension(None).value,
-                     dim.merge_with(tensor_shape.Dimension(None)).value)
+    self.assertEqual(
+        tensor_shape.Dimension(None).value,
+        dim.merge_with(tensor_shape.Dimension(None)).value)
     self.assertIsNone(
         tensor_shape.Dimension(None) < tensor_shape.Dimension(None))
     self.assertIsNone(
@@ -100,10 +103,8 @@ class DimensionTest(test_util.TensorFlowTestCase):
         tensor_shape.Dimension(None).value, (known // unknown).value)
     self.assertEqual(
         tensor_shape.Dimension(None).value, (unknown // known).value)
-    self.assertEqual(
-        tensor_shape.Dimension(12), known.merge_with(unknown))
-    self.assertEqual(
-        tensor_shape.Dimension(12), unknown.merge_with(known))
+    self.assertEqual(tensor_shape.Dimension(12), known.merge_with(unknown))
+    self.assertEqual(tensor_shape.Dimension(12), unknown.merge_with(known))
     self.assertIsNone(tensor_shape.Dimension(12) < tensor_shape.Dimension(None))
     self.assertIsNone(
         tensor_shape.Dimension(12) <= tensor_shape.Dimension(None))
@@ -118,14 +119,16 @@ class DimensionTest(test_util.TensorFlowTestCase):
         tensor_shape.Dimension(None) >= tensor_shape.Dimension(12))
 
   def testAsDimension(self):
-    self.assertEqual(tensor_shape.Dimension(12),
-                     tensor_shape.as_dimension(tensor_shape.Dimension(12)))
+    self.assertEqual(
+        tensor_shape.Dimension(12),
+        tensor_shape.as_dimension(tensor_shape.Dimension(12)))
     self.assertEqual(tensor_shape.Dimension(12), tensor_shape.as_dimension(12))
     self.assertEqual(
         tensor_shape.Dimension(None).value,
         tensor_shape.as_dimension(tensor_shape.Dimension(None)).value)
-    self.assertEqual(tensor_shape.Dimension(None).value,
-                     tensor_shape.as_dimension(None).value)
+    self.assertEqual(
+        tensor_shape.Dimension(None).value,
+        tensor_shape.as_dimension(None).value)
 
   def testEquality(self):
     self.assertEqual(tensor_shape.Dimension(12), tensor_shape.Dimension(12))
@@ -233,6 +236,21 @@ class DimensionTest(test_util.TensorFlowTestCase):
       _ = 6 / two
 
 
+class SerilizationTest(test_util.TensorFlowTestCase):
+
+  def testSerialization(self):
+    shape_1 = tensor_shape.TensorShape([1, 2, 3])
+    shape_2 = tensor_shape.TensorShape([None, 2, None])
+    shape_3 = tensor_shape.TensorShape(None)
+
+    self.assertEqual(
+        trace_type.deserialize(trace_type.serialize(shape_1)), shape_1)
+    self.assertEqual(
+        trace_type.deserialize(trace_type.serialize(shape_2)), shape_2)
+    self.assertEqual(
+        trace_type.deserialize(trace_type.serialize(shape_3)), shape_3)
+
+
 class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testUnknownShape(self):
@@ -253,16 +271,21 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         pass
 
   def testFullyDefinedShape(self):
-    s = tensor_shape.TensorShape([tensor_shape.Dimension(
-        3), tensor_shape.Dimension(4), tensor_shape.Dimension(7)])
+    s = tensor_shape.TensorShape([
+        tensor_shape.Dimension(3),
+        tensor_shape.Dimension(4),
+        tensor_shape.Dimension(7)
+    ])
     s.assert_is_fully_defined()
     self.assertEqual(s.rank, 3)
     self.assertLen(s, 3)
     self.assertTrue(s)
     s.assert_has_rank(3)
-    self.assertEqual([tensor_shape.Dimension(3),
-                      tensor_shape.Dimension(4),
-                      tensor_shape.Dimension(7)], s.dims)
+    self.assertEqual([
+        tensor_shape.Dimension(3),
+        tensor_shape.Dimension(4),
+        tensor_shape.Dimension(7)
+    ], s.dims)
     self.assertEqual(tensor_shape.Dimension(3), s[0])
     self.assertEqual(tensor_shape.Dimension(4), s[1])
     self.assertEqual(tensor_shape.Dimension(7), s[2])
@@ -273,8 +296,11 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       assert tensor_shape.dimension_value(d1) == d2
 
   def testPartiallyDefinedShape(self):
-    s = tensor_shape.TensorShape([tensor_shape.Dimension(
-        3), tensor_shape.Dimension(None), tensor_shape.Dimension(7)])
+    s = tensor_shape.TensorShape([
+        tensor_shape.Dimension(3),
+        tensor_shape.Dimension(None),
+        tensor_shape.Dimension(7)
+    ])
     # pylint: disable=g-error-prone-assert-raises
     with self.assertRaisesRegex(ValueError, "Shape .+ is not fully defined"):
       s.assert_is_fully_defined()
@@ -299,10 +325,16 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           tensor_shape.TensorShape([6, 3, 7]))
 
   def testMergePartialShapes(self):
-    s1 = tensor_shape.TensorShape([tensor_shape.Dimension(
-        3), tensor_shape.Dimension(None), tensor_shape.Dimension(7)])
-    s2 = tensor_shape.TensorShape([tensor_shape.Dimension(
-        None), tensor_shape.Dimension(4), tensor_shape.Dimension(7)])
+    s1 = tensor_shape.TensorShape([
+        tensor_shape.Dimension(3),
+        tensor_shape.Dimension(None),
+        tensor_shape.Dimension(7)
+    ])
+    s2 = tensor_shape.TensorShape([
+        tensor_shape.Dimension(None),
+        tensor_shape.Dimension(4),
+        tensor_shape.Dimension(7)
+    ])
     self.assertEqual([3, 4, 7], s1.merge_with(s2).as_list())
 
   def testMergeFullAndUnknownShape(self):
@@ -319,30 +351,25 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(
         tensor_shape.Dimension(None).value,
         tensor_shape.dimension_value(unknown[2]))
-    tensor_shape.TensorShape(
-        [None, None, None]).assert_is_compatible_with(unknown[1:4])
+    tensor_shape.TensorShape([None, None,
+                              None]).assert_is_compatible_with(unknown[1:4])
 
   @parameterized.named_parameters(
       ("Concatenate", lambda x, y: x.concatenate(y)),
-      ("Add", lambda x, y: x + y),
-      ("RAdd", lambda x, y: y.__radd__(x)))
+      ("Add", lambda x, y: x + y), ("RAdd", lambda x, y: y.__radd__(x)))
   def testConcatenate(self, concatenate_fn):
     tensor_shape.TensorShape([1, 2, 3, 4]).assert_is_compatible_with(
         concatenate_fn(
-            tensor_shape.TensorShape([1, 2]),
-            tensor_shape.TensorShape([3, 4])))
+            tensor_shape.TensorShape([1, 2]), tensor_shape.TensorShape([3, 4])))
     tensor_shape.TensorShape([1, 2, 3, 4]).assert_is_compatible_with(
         concatenate_fn(
-            tensor_shape.TensorShape([1, 2]),
-            tensor_shape.TensorShape(None)))
+            tensor_shape.TensorShape([1, 2]), tensor_shape.TensorShape(None)))
     tensor_shape.TensorShape([1, 2, 3, 4]).assert_is_compatible_with(
         concatenate_fn(
-            tensor_shape.TensorShape(None),
-            tensor_shape.TensorShape([3, 4])))
+            tensor_shape.TensorShape(None), tensor_shape.TensorShape([3, 4])))
     tensor_shape.TensorShape([1, 2, 3, 4]).assert_is_compatible_with(
         concatenate_fn(
-            tensor_shape.TensorShape(None),
-            tensor_shape.TensorShape(None)))
+            tensor_shape.TensorShape(None), tensor_shape.TensorShape(None)))
 
   @parameterized.named_parameters(
       ("Concatenate", lambda x, y: x.concatenate(y)),
@@ -350,21 +377,16 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testConcatenateWithDimension(self, concatenate_fn):
     tensor_shape.TensorShape([1, 2, 3]).assert_is_compatible_with(
         concatenate_fn(
-            tensor_shape.TensorShape([1, 2]),
-            tensor_shape.Dimension(3)))
+            tensor_shape.TensorShape([1, 2]), tensor_shape.Dimension(3)))
 
-  @parameterized.named_parameters(
-      ("List", [3, 4, 5]),
-      ("Tuple", (3, 4, 5)))
+  @parameterized.named_parameters(("List", [3, 4, 5]), ("Tuple", (3, 4, 5)))
   def testAdd_nonTensorShape(self, addend):
     two = tensor_shape.TensorShape([2])
     result = two + addend
     self.assertIsInstance(result, tensor_shape.TensorShape)
     tensor_shape.TensorShape([2, 3, 4, 5]).assert_is_compatible_with(result)
 
-  @parameterized.named_parameters(
-      ("List", [2, 3, 4]),
-      ("Tuple", (2, 3, 4)))
+  @parameterized.named_parameters(("List", [2, 3, 4]), ("Tuple", (2, 3, 4)))
   def testRAdd_nonTensorShape(self, addend):
     five = tensor_shape.TensorShape([5])
     result = addend + five
@@ -398,20 +420,21 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       unknown / unknown  # pylint: disable=pointless-statement
 
   def testConvertFromProto(self):
+
     def make_tensor_shape_proto(shape):
       return tensor_shape_pb2.TensorShapeProto(
           dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=x) for x in shape])
+
     proto = make_tensor_shape_proto([])
-    self.assertEqual(tensor_shape.TensorShape([]),
-                     tensor_shape.TensorShape(proto))
-    self.assertEqual(tensor_shape.TensorShape([]),
-                     tensor_shape.as_shape(proto))
+    self.assertEqual(
+        tensor_shape.TensorShape([]), tensor_shape.TensorShape(proto))
+    self.assertEqual(tensor_shape.TensorShape([]), tensor_shape.as_shape(proto))
 
     proto = make_tensor_shape_proto([1, 37, 42])
-    self.assertEqual(tensor_shape.TensorShape([1, 37, 42]),
-                     tensor_shape.TensorShape(proto))
-    self.assertEqual(tensor_shape.TensorShape([1, 37, 42]),
-                     tensor_shape.as_shape(proto))
+    self.assertEqual(
+        tensor_shape.TensorShape([1, 37, 42]), tensor_shape.TensorShape(proto))
+    self.assertEqual(
+        tensor_shape.TensorShape([1, 37, 42]), tensor_shape.as_shape(proto))
 
     partial_proto_shape = tensor_shape.as_shape(
         make_tensor_shape_proto([-1, 37, 42]))
@@ -443,20 +466,26 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testAsProto(self):
     self.assertTrue(tensor_shape.unknown_shape().as_proto().unknown_rank)
-    self.assertFalse(
-        tensor_shape.unknown_shape(rank=3).as_proto().unknown_rank)
+    self.assertFalse(tensor_shape.unknown_shape(rank=3).as_proto().unknown_rank)
     self.assertFalse(
         tensor_shape.TensorShape([1, 2, 3]).as_proto().unknown_rank)
     self.assertFalse(
         tensor_shape.TensorShape([1, None, 3]).as_proto().unknown_rank)
 
   def testEquality(self):
-    s1 = tensor_shape.TensorShape([tensor_shape.Dimension(
-        3), tensor_shape.Dimension(4), tensor_shape.Dimension(7)])
-    s2 = tensor_shape.TensorShape([tensor_shape.Dimension(
-        3), tensor_shape.Dimension(4), tensor_shape.Dimension(7)])
-    s3 = tensor_shape.TensorShape([tensor_shape.Dimension(3),
-                                   tensor_shape.Dimension(4), None])
+    s1 = tensor_shape.TensorShape([
+        tensor_shape.Dimension(3),
+        tensor_shape.Dimension(4),
+        tensor_shape.Dimension(7)
+    ])
+    s2 = tensor_shape.TensorShape([
+        tensor_shape.Dimension(3),
+        tensor_shape.Dimension(4),
+        tensor_shape.Dimension(7)
+    ])
+    s3 = tensor_shape.TensorShape(
+        [tensor_shape.Dimension(3),
+         tensor_shape.Dimension(4), None])
 
     self.assertEqual(s1, s2)
     self.assertEqual(s1, s2)
@@ -479,8 +508,8 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                 "not defined on an unknown TensorShape"):
       tensor_shape.unknown_shape().as_list()
     self.assertAllEqual([None, None], tensor_shape.unknown_shape(2).as_list())
-    self.assertAllEqual([2, None, 4], tensor_shape.TensorShape(
-        (2, None, 4)).as_list())
+    self.assertAllEqual([2, None, 4],
+                        tensor_shape.TensorShape((2, None, 4)).as_list())
 
   def testReduce(self):
     shape = tensor_shape.TensorShape([2, 3])

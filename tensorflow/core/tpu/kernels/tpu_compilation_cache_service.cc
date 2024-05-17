@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_service.h"
 
 #include <chrono>  // NOLINT
+#include <memory>
+#include <vector>
 
 #include "grpcpp/support/byte_buffer.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -36,7 +38,7 @@ TpuCompilationCacheService::TpuCompilationCacheService(
       cache_(cache),
       server_builder_(server_builder),
       cq_(server_builder_->AddCompletionQueue()),
-      thread_pool_(absl::make_unique<thread::ThreadPool>(
+      thread_pool_(std::make_unique<thread::ThreadPool>(
           Env::Default(), "TpuCompilationCacheService",
           kGetTpuProgramServingThreads)) {
   cache_->Ref();
@@ -117,7 +119,7 @@ void TpuCompilationCacheService::GetTpuProgram(GetTpuProgramCall* call) {
         absl::StrCat(
             "Error getting the fetching target ",
             CompilationCacheFetchTarget_Name(call->request.fetch_target())),
-        s.error_message()));
+        std::string(s.message())));
   }
 
   TpuCompilationCacheEntry cache_entry = entry->get();
@@ -128,7 +130,7 @@ void TpuCompilationCacheService::GetTpuProgram(GetTpuProgramCall* call) {
              tpu::CompilationCacheFetchTarget::MAIN);
   }
 
-  xla::StatusOr<std::vector<::grpc::Slice>> buffer_slices =
+  absl::StatusOr<std::vector<::grpc::Slice>> buffer_slices =
       tpu::SerializeCacheEntryToBufferSlices(cache_entry);
 
   if (!buffer_slices.ok()) {
@@ -136,7 +138,7 @@ void TpuCompilationCacheService::GetTpuProgram(GetTpuProgramCall* call) {
   }
 
   call->response =
-      ::grpc::ByteBuffer{&buffer_slices.ValueOrDie()[0], buffer_slices->size()};
+      ::grpc::ByteBuffer{&buffer_slices.value()[0], buffer_slices->size()};
   return call->SendResponse(::grpc::Status());
 }
 
@@ -165,8 +167,8 @@ void TpuCompilationCacheService::HandleRPCsLoop() {
 
   while (cq_->Next(&tag, &ok)) {
     VLOG(2) << "HandleRPCS: " << tag;
-    UntypedCall<TpuCompilationCacheService>::Tag* callback_tag =
-        static_cast<UntypedCall<TpuCompilationCacheService>::Tag*>(tag);
+    tsl::UntypedCall<TpuCompilationCacheService>::Tag* callback_tag =
+        static_cast<tsl::UntypedCall<TpuCompilationCacheService>::Tag*>(tag);
     callback_tag->OnCompleted(this, ok);
   }
 

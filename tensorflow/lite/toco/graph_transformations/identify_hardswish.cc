@@ -43,7 +43,7 @@ using util::IsBinaryOp;
   const auto add_with_relu6_op = add_with_relu6_op_it->get();
   if (!util::IsBinaryOp(add_with_relu6_op, OperatorType::kAdd,
                         FusedActivationFunctionType::kRelu6)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   std::vector<const Operator*> ops;
   ops.push_back(add_with_relu6_op);
@@ -55,7 +55,7 @@ using util::IsBinaryOp;
     ops.push_back(mul_op);
   }
   if (!IsBinaryOp(mul_op, OperatorType::kMul)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   const auto* output_op = GetOpWithInput(*model, mul_op->outputs[0]);
@@ -65,13 +65,13 @@ using util::IsBinaryOp;
     ops.push_back(output_op);
   }
   if (!IsBinaryOp(output_op, OperatorType::kMul)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const auto add_3_tensor =
       util::GetSingleScalarInputIndexOfBinaryOp(model, add_with_relu6_op, 3.0f);
   if (add_3_tensor < 0) {
     // Expected 3.0f got something else.;
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const auto input_tensor_name = add_with_relu6_op->inputs[1 - add_3_tensor];
 
@@ -87,7 +87,7 @@ using util::IsBinaryOp;
   if (std::find(mul_inputs.begin(), mul_inputs.end(), input_tensor_name) ==
       mul_inputs.end()) {
     // Input tensor not found! << input_tensor_name << std::endl;
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   // 2. Find 1/6
   bool found = false;
@@ -96,7 +96,7 @@ using util::IsBinaryOp;
   }
   if (!found) {
     // Input tensor is not divided by 6!.";
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   //  Success! Now delete the subgraph and instert new one
   const auto output_tensor_name = output_op->outputs[0];
@@ -111,7 +111,7 @@ using util::IsBinaryOp;
     ops.pop_back();
   }
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

@@ -28,10 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/union_find.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/service/graphcycles/graphcycles.h"
+#include "xla/statusor.h"
+#include "xla/union_find.h"
+#include "xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -135,6 +135,9 @@ class RecursiveCompilabilityChecker {
 
     // Whether to allow the compilation of CollectiveReduceV2Op.
     bool allow_collective_reduce_v2 = true;
+
+    // Whether to allow the compilation of WhereOp.
+    bool allow_where_op = true;
 
     // Whether to allow the compilation of UniqueOp. Compilation of the UniqueOp
     // generates output with bounded dynamic shape that may cause failures with

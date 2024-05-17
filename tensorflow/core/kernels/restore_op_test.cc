@@ -85,7 +85,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
-    gtl::InlinedVector<TensorValue, 4> inputs;
+    absl::InlinedVector<TensorValue, 4> inputs;
 
     Status status;
     std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
@@ -174,7 +174,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     OpKernelContext::Params params;
     params.device = device.get();
     params.frame_iter = FrameAndIter(0, 0);
-    params.inputs = &inputs;
+    params.inputs = inputs;
     params.op_kernel = op.get();
     std::vector<AllocatorAttributes> attrs;
     test::SetOutputAttrs(&params, &attrs);
@@ -389,7 +389,7 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
-    gtl::InlinedVector<TensorValue, 4> inputs;
+    absl::InlinedVector<TensorValue, 4> inputs;
 
     Status status;
     std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
@@ -419,7 +419,7 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
     OpKernelContext::Params params;
     params.device = device.get();
     params.frame_iter = FrameAndIter(0, 0);
-    params.inputs = &inputs;
+    params.inputs = inputs;
     params.op_kernel = op.get();
     std::vector<AllocatorAttributes> attrs;
     test::SetOutputAttrs(&params, &attrs);

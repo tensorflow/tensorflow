@@ -21,18 +21,18 @@
 
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_solvers.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 
 // The CUDA cublas_api.h API contains const-correctness errors. Instead of
 // casting away constness on our data, we instead reinterpret the CuBLAS
@@ -104,7 +104,7 @@ inline bool CopyHostToDevice(OpKernelContext* context, void* dst,
                              const void* src, uint64 bytes) {
   auto stream = context->op_device_context()->stream();
   se::DeviceMemoryBase wrapped_dst(dst);
-  return stream->ThenMemcpy(&wrapped_dst, src, bytes).ok();
+  return stream->Memcpy(&wrapped_dst, src, bytes).ok();
 }
 
 // A set of initialized handles to the underlying Cuda libraries used by
@@ -167,12 +167,11 @@ HandleMap* GetHandleMapSingleton() {
 
 GpuSolver::GpuSolver(OpKernelContext* context) : context_(context) {
   mutex_lock lock(handle_map_mutex);
-  const cudaStream_t* cu_stream_ptr = CHECK_NOTNULL(
-      reinterpret_cast<const cudaStream_t*>(context->op_device_context()
-                                                ->stream()
-                                                ->implementation()
-                                                ->GpuStreamMemberHack()));
-  cuda_stream_ = *cu_stream_ptr;
+  cuda_stream_ = reinterpret_cast<cudaStream_t>(
+      CHECK_NOTNULL(context->op_device_context()
+                        ->stream()
+                        ->platform_specific_handle()
+                        .stream));
   HandleMap* handle_map = CHECK_NOTNULL(GetHandleMapSingleton());
   auto it = handle_map->find(cuda_stream_);
   if (it == handle_map->end()) {
@@ -406,7 +405,6 @@ static inline Status PotrfImpl(BufSizeFnT bufsize, SolverFnT solver,
 
 TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
 
-#if CUDA_VERSION >= 9020
 template <typename Scalar, typename SolverFnT>
 static inline Status PotrfBatchedImpl(
     SolverFnT solver, GpuSolver* cuda_solver, OpKernelContext* context,
@@ -441,7 +439,6 @@ static inline Status PotrfBatchedImpl(
   }
 
 TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
-#endif  // CUDA_VERSION >= 9020
 
 template <typename Scalar, typename BufSizeFnT, typename SolverFnT>
 static inline Status GetrfImpl(BufSizeFnT bufsize, SolverFnT solver,
@@ -490,6 +487,17 @@ static inline Status GetrsImpl(SolverFnT solver, OpKernelContext* context,
   return OkStatus();
 }
 
+#if TENSORFLOW_USE_ROCM
+#define GETRS_INSTANCE(Scalar, type_prefix)                                  \
+  template <>                                                                \
+  Status GpuSolver::Getrs<Scalar>(                                           \
+      cublasOperation_t trans, int n, int nrhs, const Scalar* A, int lda,    \
+      int* pivots, Scalar* B, int ldb, int* dev_lapack_info) const {         \
+    return GetrsImpl(DN_SOLVER_FN(getrs, type_prefix), context_,             \
+                     cusolver_dn_handle_, trans, n, nrhs, A, lda, pivots, B, \
+                     ldb, dev_lapack_info);                                  \
+  }
+#else
 #define GETRS_INSTANCE(Scalar, type_prefix)                                  \
   template <>                                                                \
   Status GpuSolver::Getrs<Scalar>(                                           \
@@ -499,6 +507,7 @@ static inline Status GetrsImpl(SolverFnT solver, OpKernelContext* context,
                      cusolver_dn_handle_, trans, n, nrhs, A, lda, pivots, B, \
                      ldb, dev_lapack_info);                                  \
   }
+#endif
 
 TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
 
@@ -644,7 +653,7 @@ static inline Status HeevdImpl(BufSizeFnT bufsize, SolverFnT solver,
   uint64_t work_size_in_bytes = static_cast<uint64_t>(lwork) * sizeof(Scalar);
   se::DeviceMemoryBase dev_workspace_ptr(dev_workspace.mutable_data(),
                                          work_size_in_bytes);
-  stream->ThenMemZero(&dev_workspace_ptr, work_size_in_bytes);
+  TF_RETURN_IF_ERROR(stream->MemZero(&dev_workspace_ptr, work_size_in_bytes));
 #endif
   /* Launch the solver kernel. */
   TF_RETURN_IF_CUSOLVER_ERROR(

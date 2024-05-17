@@ -31,6 +31,7 @@ Usage:
         ::tflite::TfLiteHexagonDelegateDelete(delegate);
       });
   interpreter->ModifyGraphWithDelegate(delegate.get());
+  // IMPORTANT: AllocateTensors can be called only after ModifyGraphWithDelegate
   TfLiteHexagonTearDown();  // Needed once at end of app/DSP usage.
 ```
 
@@ -72,7 +73,7 @@ are verified in `IsNodeSupportedByHexagon`:
 * DepthToSpace
 * DepthwiseConv2D:
   * Constraints:
-      - Filter width == 3
+      - Filter height >= 2
       - depth_multiplier == 1
       - dilation only supported when stride == 1
       - Otherwise, stride height/width <= 3

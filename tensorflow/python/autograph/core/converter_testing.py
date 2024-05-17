@@ -15,11 +15,10 @@
 """Base class for tests in this module."""
 
 import contextlib
-import imp
 import inspect
+import io
 import sys
-
-import six
+import types
 
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
@@ -31,7 +30,7 @@ from tensorflow.python.platform import test
 def allowlist(f):
   """Helper that marks a callable as whtelitisted."""
   if 'allowlisted_module_for_testing' not in sys.modules:
-    allowlisted_mod = imp.new_module('allowlisted_module_for_testing')
+    allowlisted_mod = types.ModuleType('allowlisted_module_for_testing')
     sys.modules['allowlisted_module_for_testing'] = allowlisted_mod
     config.CONVERSION_RULES = (
         (config.DoNotConvert('allowlisted_module_for_testing'),) +
@@ -74,7 +73,7 @@ class TestingTranspiler(api.PyToTF):
   def get_extra_locals(self):
     retval = super(TestingTranspiler, self).get_extra_locals()
     if self._ag_overrides:
-      modified_ag = imp.new_module('fake_autograph')
+      modified_ag = types.ModuleType('fake_autograph')
       modified_ag.__dict__.update(retval['ag__'].__dict__)
       modified_ag.__dict__.update(self._ag_overrides)
       retval['ag__'] = modified_ag
@@ -105,7 +104,7 @@ class TestCase(test.TestCase):
   @contextlib.contextmanager
   def assertPrints(self, expected_result):
     try:
-      out_capturer = six.StringIO()
+      out_capturer = io.StringIO()
       sys.stdout = out_capturer
       yield
       self.assertEqual(out_capturer.getvalue(), expected_result)

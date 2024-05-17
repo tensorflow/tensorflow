@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
+#include <cstdint>
+
+#ifdef __linux__
+#include <unistd.h>
+#endif  // __linux__
+
 #include <iostream>
 #include <memory>
 #include <sstream>
@@ -30,6 +36,23 @@ namespace benchmark {
 using tensorflow::Stat;
 
 constexpr int kMemoryCheckIntervalMs = 50;
+
+#ifdef __linux__
+void GetRssStats(size_t* vsize, size_t* rss, size_t* shared, size_t* code) {
+  FILE* fp = fopen("/proc/self/statm", "rt");
+  *vsize = 0;
+  *rss = 0;
+  *shared = 0;
+  *code = 0;
+  if (fp == nullptr) return;
+  (void)!fscanf(fp, "%zu %zu %zu %zu", vsize, rss, shared, code);
+  fclose(fp);
+  *vsize = *vsize * getpagesize() >> 20;
+  *rss = *rss * getpagesize() >> 20;
+  *shared = *shared * getpagesize() >> 20;
+  *code = *code * getpagesize() >> 20;
+}
+#endif  // __linux__
 
 BenchmarkParams BenchmarkModel::DefaultParams() {
   BenchmarkParams params;
@@ -50,6 +73,7 @@ BenchmarkParams BenchmarkModel::DefaultParams() {
                   BenchmarkParam::Create<bool>(false));
   params.AddParam("memory_footprint_check_interval_ms",
                   BenchmarkParam::Create<int32_t>(kMemoryCheckIntervalMs));
+  params.AddParam("gpu_invoke_loop_times", BenchmarkParam::Create<int32_t>(1));
   return params;
 }
 
@@ -73,14 +97,23 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
          "following is only APPROXIMATE to the actual memory footprint of the "
          "model at runtime. Take the information at your discretion.";
   TFLITE_LOG(INFO) << "Memory footprint delta from the start of the tool (MB): "
-                   << "init=" << init_mem_usage.max_rss_kb / 1024.0
-                   << " overall=" << overall_mem_usage.max_rss_kb / 1024.0;
+                   << "init=" << init_mem_usage.mem_footprint_kb / 1024.0
+                   << " overall="
+                   << overall_mem_usage.mem_footprint_kb / 1024.0;
 
   auto peak_mem_mb = results.peak_mem_mb();
   if (peak_mem_mb > 0) {
     TFLITE_LOG(INFO)
         << "Overall peak memory footprint (MB) via periodic monitoring: "
         << peak_mem_mb;
+#ifdef __linux__
+    size_t vsize, rss, shared, code;
+    GetRssStats(&vsize, &rss, &shared, &code);
+    TFLITE_LOG(INFO) << "Memory status at the end of exeution:";
+    TFLITE_LOG(INFO) << "- VmRSS              : " << rss << " MB";
+    TFLITE_LOG(INFO) << "+ RssAnnon           : " << rss - shared << " MB";
+    TFLITE_LOG(INFO) << "+ RssFile + RssShmem : " << shared << " MB";
+#endif  // __linux_
   }
 }
 
@@ -141,7 +174,12 @@ std::vector<Flag> BenchmarkModel::GetFlags() {
       CreateFlag<int32_t>("memory_footprint_check_interval_ms", &params_,
                           "The interval in millisecond between two consecutive "
                           "memory footprint checks. This is only used when "
-                          "--report_peak_memory_footprint is set to true.")};
+                          "--report_peak_memory_footprint is set to true."),
+      CreateFlag<int32_t>(
+          "gpu_invoke_loop_times", &params_,
+          "Number of GPU delegate invoke loop iterations. If > 0 then reported "
+          "latency is divided by this number. Used only when "
+          "TFLITE_GPU_ENABLE_INVOKE_LOOP is defined.")};
 }
 
 void BenchmarkModel::LogParams() {
@@ -168,6 +206,12 @@ void BenchmarkModel::LogParams() {
                       "Report the peak memory footprint", verbose);
   LOG_BENCHMARK_PARAM(int32_t, "memory_footprint_check_interval_ms",
                       "Memory footprint check interval (ms)", verbose);
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+  LOG_BENCHMARK_PARAM(int32_t, "gpu_invoke_loop_times",
+                      "Number of GPU delegate invoke loop iterations. Latency "
+                      "will be divided by it.",
+                      verbose);
+#endif
 }
 
 TfLiteStatus BenchmarkModel::PrepareInputData() { return kTfLiteOk; }
@@ -200,8 +244,15 @@ Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
     TfLiteStatus status = RunImpl();
     int64_t end_us = profiling::time::NowMicros();
     listeners_.OnSingleRunEnd();
-
-    run_stats.UpdateStat(end_us - start_us);
+    int64_t run_duration_us = end_us - start_us;
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+    int32_t gpu_invoke_loop_times = params_.Get<int>("gpu_invoke_loop_times");
+    if (gpu_invoke_loop_times > 0) {
+      run_duration_us = static_cast<int64_t>(
+          static_cast<double>(run_duration_us) / gpu_invoke_loop_times);
+    }
+#endif
+    run_stats.UpdateStat(run_duration_us);
     if (run_frequency > 0) {
       inter_run_sleep_time =
           next_run_finish_time - profiling::time::NowMicros() * 1e-6;
@@ -264,6 +315,8 @@ TfLiteStatus BenchmarkModel::Run() {
 
   if (model_size_mb > 0) {
     TFLITE_LOG(INFO) << "The input model file size (MB): " << model_size_mb;
+  } else {
+    TFLITE_LOG(WARN) << "Failed to get the input model file size.";
   }
   TFLITE_LOG(INFO) << "Initialized session in " << startup_latency_us / 1e3
                    << "ms.";

@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -55,8 +55,8 @@ constexpr int kBatchSize = 1;
 constexpr int kNumDetectionsPerClass = 100;
 
 // Object Detection model produces axis-aligned boxes in two formats:
-// BoxCorner represents the lower left corner (xmin, ymin) and
-// the upper right corner (xmax, ymax).
+// BoxCorner represents the upper left corner (xmin, ymin) and
+// the lower right corner (xmax, ymax).
 // CenterSize represents the center (xcenter, ycenter), height and width.
 // BoxCornerEncoding and CenterSizeEncoding are related as follows:
 // ycenter = y / y_scale * anchor.h + anchor.y;

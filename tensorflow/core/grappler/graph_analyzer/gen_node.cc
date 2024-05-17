@@ -32,7 +32,7 @@ Status GenNode::BuildGraphInMap(const GraphDef& source, GenNodeMap* map) {
     const string& name = n.name();
     if (map->find(name) != map->end()) {
       // This error code looks more meaningful than ALREADY_EXISTS.
-      return Status(error::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     "Duplicate node name '" + name + "'.");
     }
     (*map)[name] = std::make_unique<GenNode>(&n);
@@ -44,7 +44,7 @@ Status GenNode::BuildGraphInMap(const GraphDef& source, GenNodeMap* map) {
       return st;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GenNode::ParseInputs(const GenNodeMap* map) {
@@ -52,9 +52,9 @@ Status GenNode::ParseInputs(const GenNodeMap* map) {
   Status st = OpRegistry::Global()->LookUpOpDef(opcode(), &op_);
   if (!st.ok()) {
     return Status(
-        error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrFormat("Node '%s' contains an undefined operation '%s': %s",
-                        name(), opcode(), st.error_message()));
+                        name(), opcode(), st.message()));
   }
 
   int n_inputs = node_->input_size();
@@ -94,7 +94,7 @@ Status GenNode::ParseInputs(const GenNodeMap* map) {
     auto other_it = map->find(other_name);
     if (other_it == map->end()) {
       return Status(
-          error::INVALID_ARGUMENT,
+          absl::StatusCode::kInvalidArgument,
           absl::StrFormat(
               "Node '%s' input %d refers to a non-existing node '%s'.", name(),
               i, other_name));
@@ -106,7 +106,7 @@ Status GenNode::ParseInputs(const GenNodeMap* map) {
     if (this_position >= 0 && n_multi_inputs == 0 &&
         this_position >= n_named_inputs) {
       return Status(
-          error::INVALID_ARGUMENT,
+          absl::StatusCode::kInvalidArgument,
           absl::StrFormat(
               "Node '%s' has a non-control input from '%s' at index %d but its "
               "operation '%s' defines only %d inputs.",
@@ -119,7 +119,7 @@ Status GenNode::ParseInputs(const GenNodeMap* map) {
     links_[this_port].emplace_back(LinkTarget(other_node, other_port));
     other_node->links_[other_port].emplace_back(LinkTarget(this, this_port));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool GenNode::IsMultiInput(Port port) const {

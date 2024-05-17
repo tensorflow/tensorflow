@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_TOOLS_SIGNATURE_DEF_UTIL_H_
-#define TENSORFLOW_LITE_TOOLS_SIGNATURE_DEF_UTIL_H_
+#ifndef TENSORFLOW_LITE_TOOLS_SIGNATURE_SIGNATURE_DEF_UTIL_H_
+#define TENSORFLOW_LITE_TOOLS_SIGNATURE_SIGNATURE_DEF_UTIL_H_
 
 #include <string>
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -40,7 +40,7 @@ constexpr char kSignatureDefsMetadataName[] = "signature_defs_metadata";
 // Returns error if `model_data_with_signature_defs` is null or
 //   `signature_def_map` is empty.
 //
-// On success, returns tensorflow::Status::OK() or error otherwise.
+// On success, returns tensorflow::OkStatus() or error otherwise.
 // On error, `model_data_with_signature_defs` is unchanged.
 tensorflow::Status SetSignatureDefMap(
     const Model* model,
@@ -70,4 +70,4 @@ tensorflow::Status ClearSignatureDefMap(const Model* model,
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_TOOLS_SIGNATURE_DEF_UTIL_H_
+#endif  // TENSORFLOW_LITE_TOOLS_SIGNATURE_SIGNATURE_DEF_UTIL_H_

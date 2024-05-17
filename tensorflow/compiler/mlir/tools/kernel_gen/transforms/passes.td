@@ -34,20 +34,24 @@ def EmbedTFFrameworkPass
 }
 
 def RewriteTFFrameworkAssert : Pass<"rewrite-tf-framework-assert", "ModuleOp"> {
+  let dependentDialects = ["cf::ControlFlowDialect"];
   let summary = "Pass to rewrite TFAssertOps to CondBranchOp";
   let constructor = "tf_framework::CreateRewriteTFFrameworkAssert()";
 }
 
-def TFToJITInvocationPass : Pass<"tf-to-jit-invocation", "mlir::func::FuncOp"> {
-  let summary = "Pass to rewrite all TF operations to JIT invocations";
-  let constructor = "transforms::CreateTFToJITInvocationPass()";
+def FuncToJITInvocationPass : Pass<"func-to-jit-invocation", "mlir::func::FuncOp"> {
+  let dependentDialects = [
+      "mlir::kernel_gen::tf_framework::TFFrameworkDialect",
+      "scf::SCFDialect",
+      "shape::ShapeDialect"
+  ];
+  let summary = "Pass to rewrite a function to JIT invocations";
+  let constructor = "transforms::CreateFuncToJITInvocationPass()";
   let options = [
       ListOption<"tile_sizes_", "tile-sizes", "int64_t", "Tiling sizes",
                  "llvm::cl::ZeroOrMore">,
       ListOption<"unroll_factors_", "unroll-factors", "int64_t",
                  "Unrolling in each tile dimension", "llvm::cl::ZeroOrMore">,
-      Option<"max_supported_rank_", "max-supported-rank", "int64_t",
-             /*default=*/"", "Max rank that this kernel supports">,
       Option<"enable_ftz_", "enable-ftz", "bool", /*default=*/"",
              "Enable the denormal flush to zero mode when generating code">,
       Option<"index_64bit_", "index_64bit", "bool", /*default=*/"",
@@ -111,12 +115,6 @@ def PropagateShapeKnowledgeToKernels
   let constructor = "transforms::CreatePropagateShapeKnowledgeToKernels()";
 }
 
-def EmbedMemRefPrintsPass : Pass<"embed-memref-prints", "mlir::ModuleOp"> {
-  let summary = "Pass to print content of memrefs";
-  let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
-  let dependentDialects = ["LLVM::LLVMDialect"];
-}
-
 def FuseInnerParallelLoopsPass
     : Pass<"fuse-inner-parallel-loops", "mlir::func::FuncOp"> {
   let summary = "Limited pass to forward stores to loads.";
@@ -125,25 +123,6 @@ def FuseInnerParallelLoopsPass
     Directs parallel loop fusion to the inner loops. This cannot be done with
     a passmanager alone ATM, as nested pass managers require operations to
     be closed from above.
-  }];
-}
-
-def VectorizationPass : Pass<"vectorization", "mlir::func::FuncOp"> {
-  let summary = "Pass to create vectorized operations for CPU.";
-  let constructor = "transforms::CreateVectorizationPass()";
-  let description = [{
-    Takes linalg loops on buffers and vectorizes the loads/stores and operations
-    in between. This is intended for the CPU backend.
-  }];
-}
-
-def VectorizationCleanupPass : Pass<"vectorization-cleanup", "mlir::func::FuncOp"> {
-  let summary = "Pass to remove dead code in VectorizationPass.";
-  let constructor = "transforms::CreateVectorizationCleanupPass()";
-  let description = [{
-    VectorizationPass creates some memory transfers that are unneeded but cannot
-    be safely removed by current generic infrastructure. This removes the
-    specific operations.
   }];
 }
 

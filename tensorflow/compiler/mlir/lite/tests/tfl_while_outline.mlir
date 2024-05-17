@@ -191,32 +191,26 @@ func.func @whileDifferentResultShapes(%arg0: tensor<i32>) -> tensor<?xf32>
   func.return %0#1 : tensor<?xf32>
 }
 
-// -----
-
-func.func @unsupportedCast(%arg0: tensor<4x4x3xf32>) -> tensor<*xf32> {
-  %cst = arith.constant dense<0.000000e+00> : tensor<4x2xf32>
-  %cst_0 = arith.constant dense<0.000000e+00> : tensor<4x4x3xf64>
-  %cst_1 = arith.constant dense<[1, 0, 2]> : tensor<3xi32>
-  %cst_2 = arith.constant dense<0.000000e+00> : tensor<4x4x2xf32>
-  %cst_3 = arith.constant dense<4> : tensor<i32>
-  %cst_4 = arith.constant dense<0> : tensor<i32>
-  %cst_5 = arith.constant dense<0.000000e+00> : tensor<4x2xf64>
-  %0 = "tfl.transpose"(%arg0, %cst_1) : (tensor<4x4x3xf32>, tensor<3xi32>) -> tensor<4x4x3xf32>
-  %1:6 = "tfl.while"(%cst_4, %cst_4, %cst_2, %cst, %cst_5, %cst_0) ({
-  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<*xf32>, %arg4: tensor<4x2xf32>, %arg5: tensor<4x2xf64>, %arg6: tensor<*xf64>):
-    %5 = "tfl.less"(%arg2, %cst_3) : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    %6 = "tfl.less"(%arg1, %cst_3) : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    %7 = tfl.logical_and %6, %5 : tensor<i1>
-    "tfl.yield"(%7) : (tensor<i1>) -> ()
-  },  {
-  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<*xf32>, %arg4: tensor<4x2xf32>, %arg5: tensor<4x2xf64>, %arg6: tensor<*xf64>):
-    "tfl.yield"(%arg1, %arg2, %arg3, %arg4, %arg5, %cst_0) : (tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf64>, tensor<4x4x3xf64>) -> ()
-  }) {is_stateless = true} : (tensor<i32>, tensor<i32>, tensor<4x4x2xf32>, tensor<4x2xf32>, tensor<4x2xf64>, tensor<4x4x3xf64>) -> (tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf64>, tensor<*xf32>)
-  func.return %1#2 : tensor<*xf32>
-}
-
-// CHECK-LABEL:  func @unsupportedCast(
-
-// CHECK-LABEL:  func private @tfl.while_body(
-// CHECK-SAME:     %arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<*xf32>, %arg3: tensor<4x2xf32>, %arg4: tensor<4x2xf64>, %arg5: tensor<*xf64>) -> (tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf64>, tensor<*xf64>)
-// CHECK:           [[VAL:%.*]] = "tf.Cast"
+func.func @whileSinkConstant(%arg0: tensor<1x256xf32>) -> tensor<1x256xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "prefix", outputs = "Identity_1"}} {
+    %cst_0 = arith.constant dense<1> : tensor<256x256xi8>
+    %cst_1 = "tfl.pseudo_qconst"() {qtype = tensor<256x256x!quant.uniform<i8:f32, 1.000000e+00>>, value = dense<1>  : tensor<256x256xi8>} : () -> tensor<256x256x!quant.uniform<i8:f32, 1.000000e+00>>
+    %cst_2 = arith.constant dense<0> : tensor<i32>
+    %0 = "tfl.batch_matmul"(%arg0, %cst_0) {adj_x = false, adj_y = false} : (tensor<1x256xf32>, tensor<256x256xi8>) -> tensor<1x256xf32>
+    %1 = "tfl.batch_matmul"(%0, %cst_1) {adj_x = false, adj_y = false} : (tensor<1x256xf32>, tensor<256x256x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x256xf32>
+    %2:2 = "tfl.while"(%cst_2, %1) ({
+    ^bb0(%arg1: tensor<i32>,  %arg2: tensor<1x256xf32>):
+      %cst_3 = arith.constant dense<10> : tensor<i32>
+      %3 = tfl.less(%arg1, %cst_3) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tfl.yield"(%3) : (tensor<i1>) -> ()
+    }, {
+    ^bb0(%arg1: tensor<i32>, %arg2: tensor<1x256xf32>):
+     // CHECK: %[[QCONST:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<256x256x!quant.uniform<i8:f32, 1.000000e+00>>, value = dense<1> : tensor<256x256xi8>}> : () -> tensor<256x256x!quant.uniform<i8:f32, 1.000000e+00>>
+     // CHECK: %[[CONST:.*]] = arith.constant dense<1> : tensor<256x256xi8>
+     %4 = "tfl.batch_matmul"(%arg2, %cst_0) {adj_x = false, adj_y = false} : (tensor<1x256xf32>, tensor<256x256xi8>) -> tensor<1x256xf32>
+     // CHECK-NEXT: %[[BMM_0:.*]] = "tfl.batch_matmul"(%arg1, %[[CONST]])
+     %5 = "tfl.batch_matmul"(%4, %cst_1) {adj_x = false, adj_y = false} : (tensor<1x256xf32>, tensor<256x256x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x256xf32>
+     // CHECK-NEXT: %[[BMM_1:.*]] = "tfl.batch_matmul"(%[[BMM_0]], %[[QCONST]])
+     "tfl.yield"(%arg1, %5) : (tensor<i32>, tensor<1x256xf32>) -> ()
+    }) {is_stateless = false} : (tensor<i32>, tensor<1x256xf32>) -> (tensor<i32>, tensor<1x256xf32>)
+    return %2#1 : tensor<1x256xf32>
+  }

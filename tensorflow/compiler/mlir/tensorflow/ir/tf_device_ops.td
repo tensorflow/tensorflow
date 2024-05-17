@@ -19,8 +19,10 @@ limitations under the License.
 #define TF_DEVICE_DIALECT
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // TensorFlow Device Dialect definitions
@@ -36,8 +38,6 @@ def TfDevice_Dialect : Dialect {
     These operations do not map 1-1 to TensorFlow ops and requires a lowering
     pass later to transform them into Compile/Run op pairs, like XlaCompile and
     XlaRun.
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }];
 
   let cppNamespace = "::mlir::tf_device";
@@ -73,7 +73,6 @@ This op captures all needed live-in values.
 
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
-    StringRef getDevice() { return device(); }
     bool WrapsSingleOp();
   }];
 
@@ -89,7 +88,7 @@ This op captures all needed live-in values.
   let hasCanonicalizer = 1;
 }
 
-def TfDevice_ReturnOp : TfDevice_Op<"return", [NoSideEffect, ReturnLike, Terminator]> {
+def TfDevice_ReturnOp : TfDevice_Op<"return", [Pure, ReturnLike, Terminator]> {
   let summary = [{
 The `tf_device.return` operation terminates and returns values from a
 `tf_device` dialect operation.
@@ -117,16 +116,11 @@ def TfDevice_LaunchFuncOp : TfDevice_Op<"launch_func", []> {
   let arguments = (ins
     StrAttr:$device,
     FlatSymbolRefAttr:$func,
-    Variadic<AnyType>:$operands);
+    Variadic<AnyType>);
 
   let results = (outs
     Variadic<AnyType>:$results
   );
-
-  let extraClassDeclaration = [{
-    StringRef getFunc() { return func(); }
-    StringRef getDevice() { return device(); }
-  }];
 }
 
 def TfDevice_ParallelExecuteOp : TfDevice_Op<"parallel_execute",
@@ -270,8 +264,7 @@ For example:
     Variadic<AnyType>:$replicated_inputs,
     Variadic<AnyType>:$packed_inputs,
 
-    I32ElementsAttr:$operand_segment_sizes,
-    Confined<I32Attr, [IntMinValue<2>]>:$n,
+    ConfinedAttr<I32Attr, [IntMinValue<2>]>:$n,
     OptionalAttr<DictionaryAttr>:$devices
   );
 
@@ -300,7 +293,7 @@ For example:
       "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&":$devices,
       "llvm::ArrayRef<std::pair<ValueRange, Type>>":$replicated_inputs,
       "ValueRange":$packed_inputs, "TypeRange":$replica_output_types)>,
-    OpBuilder<(ins "int":$n, "llvm::Optional<DictionaryAttr>":$devices,
+    OpBuilder<(ins "int":$n, "std::optional<DictionaryAttr>":$devices,
       "llvm::ArrayRef<std::pair<ValueRange, Type>>":$replicated_inputs,
       "ValueRange":$packed_inputs, "TypeRange":$replica_output_types)>,
   ];
@@ -344,7 +337,8 @@ used to form the cluster.
   let hasCanonicalizer = 1;
 }
 
-def TfDevice_ClusterFuncOp : TfDevice_Op<"cluster_func", []> {
+def TfDevice_ClusterFuncOp : TfDevice_Op<"cluster_func",
+    [CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = [{
 The `tf_device.cluster_func` launches a function containing the body of a
 cluster.
@@ -356,7 +350,7 @@ This op is used for outlining a cluster.
 
   let arguments = (ins
     FlatSymbolRefAttr:$func,
-    Variadic<AnyType>:$operands
+    Variadic<AnyType>:$args
   );
 
   let results = (outs
@@ -364,10 +358,19 @@ This op is used for outlining a cluster.
   );
 
   let extraClassDeclaration = [{
-    // returns the function that this operation will launch.
-    func::FuncOp getFunc() {
-      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, funcAttr());
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() { return getArgs(); }
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
     }
+    // returns the function that this operation will launch.
+    func::FuncOp getFuncOp() {
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getFuncAttr());
+    }
+    CallInterfaceCallable getCallableForCallee() {
+      return getFuncAttr();
+    }
+    void setCalleeFromCallable(::mlir::CallInterfaceCallable callee);
   }];
 }
 

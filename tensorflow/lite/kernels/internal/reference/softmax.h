@@ -115,6 +115,9 @@ inline void Softmax(const SoftmaxParams& params,
     FixedPoint0 shifted_scale = FixedPoint0::FromRaw(GetReciprocal(
         sum_of_exps.raw(), kAccumulationIntegerBits, &num_bits_over_unit));
 
+    const int exponent = num_bits_over_unit + 31 - (sizeof(OutputT) * 8);
+    TFLITE_CHECK(0 <= exponent && exponent <= 31);
+
     for (int c = 0; c < depth; ++c) {
       int32_t input_diff =
           static_cast<int32_t>(input_data[i * depth + c]) - max_in_row;
@@ -127,8 +130,7 @@ inline void Softmax(const SoftmaxParams& params,
 
         FixedPoint0 exp_in_0 = exp_on_negative_values(scaled_diff_f8);
         int32_t unsat_output = gemmlowp::RoundingDivideByPOT(
-            (shifted_scale * exp_in_0).raw(),
-            num_bits_over_unit + 31 - (sizeof(OutputT) * 8));
+            (shifted_scale * exp_in_0).raw(), exponent);
 
         const int32_t shifted_output =
             unsat_output +
@@ -160,7 +162,7 @@ inline int16_t SoftMaxCalculateExp(const SoftmaxParams& params,
       std::min(std::max(sym_scaled_diff, static_cast<int32_t>(-32768)),
                static_cast<int32_t>(32767));
   // apply the exp() LUT activation function
-  return lut_lookup(sat_sym_scaled_diff, params.exp_lut);
+  return LUTLookup(sat_sym_scaled_diff, params.exp_lut);
 }
 // Quantized softmax with int16_t input and int16_t output.
 inline void SoftmaxInt16(const SoftmaxParams& params,
@@ -209,7 +211,7 @@ inline void SoftmaxInt16(const SoftmaxParams& params,
                  static_cast<int32_t>(32767)));
     // apply 1/(1 + x) LUT activation function
     int16_t reciprocal_scale_Q015 =
-        lut_lookup(sat_sym_shifted_sum, params.one_over_one_plus_x_lut);
+        LUTLookup(sat_sym_shifted_sum, params.one_over_one_plus_x_lut);
 
     // Rescale the exp_result with reciprocal
     // range of output is [0, 32767] correspond to [0.0, 1.0]

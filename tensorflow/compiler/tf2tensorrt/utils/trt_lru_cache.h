@@ -149,7 +149,7 @@ struct EngineContext {
     }
     *exec_ctx = execution_contexts[idx].get();
     *has_device_memory = execution_contexts[idx].HasDeviceMemory();
-    return Status::OK();
+    return OkStatus();
   }
 
   int GetNumContexts() {
@@ -172,7 +172,7 @@ struct EngineContext {
   // - To switch profiles (from TRT 7), one must first ensure that all inference
   //   calls in that context are finished. This would require an additional
   //   synchronization before we call setOptimizationProfile. To avoid this
-  //   extra sync call, we mantain separate execution context for each profile.
+  //   extra sync call, we maintain separate execution context for each profile.
   // IExecutionContext object is not thread safe: only one thread should use it
   // for inference at a time therefore we need a mutex. More details at
   // https://docs.nvidia.com/deeplearning/sdk/tensorrt-best-practices/index.html#thread-safety
@@ -185,7 +185,6 @@ struct EngineContext {
   // latency. Since its value remains constant, we can cache it.
   size_t device_memory_size_;
 };
-
 // Contains the context required to build the calibration data.
 class CalibrationContext {
  public:

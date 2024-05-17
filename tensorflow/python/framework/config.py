@@ -37,31 +37,37 @@ def tensor_float_32_execution_enabled():
   return _pywrap_tensor_float_32_execution.is_enabled()
 
 
+# TODO(b/280688352): Rename or rework this function to make it appear less
+# specific to GPUs. TPUs use bfloat16 instead of TensorFloat-32 by default for
+# matmuls, yet on TPUs this function also can used to increase the precision of
+# matmuls to FP32 by passing enabled=False. It is misleading how the words
+# "tensor_float_32" appear in the API name, yet this API affects TPUs which do
+# not use TensorFloat-32.
 @tf_export('config.experimental.enable_tensor_float_32_execution')
 def enable_tensor_float_32_execution(enabled):
   """Enable or disable the use of TensorFloat-32 on supported hardware.
 
   [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format),
-  or TF32 for short, is a math mode for NVIDIA Ampere GPUs. TensorFloat-32
-  execution causes certain float32 ops, such as matrix multiplications and
-  convolutions, to run much faster on Ampere GPUs but with reduced precision.
-  This reduced precision should not impact convergence of deep learning models
-  in practice.
+  or TF32 for short, is a math mode for NVIDIA Ampere GPUs and above.
+  TensorFloat-32 execution causes certain float32 ops, such as matrix
+  multiplications and convolutions, to run much faster on such GPUs but with
+  reduced precision. This reduced precision should not impact convergence of
+  deep learning models in practice.
 
   TensorFloat-32 is enabled by default. TensorFloat-32 is only supported on
-  Ampere GPUs, so all other hardware will use the full float32 precision
-  regardless of whether TensorFloat-32 is enabled or not. If you want to use the
-  full float32 precision on Ampere, you can disable TensorFloat-32 execution
-  with this function. For example:
+  NVIDIA GPUs starting with the Ampere generation, so older NVIDIA GPUs will use
+  the full float32 precision regardless of whether TensorFloat-32 is enabled or
+  not. If you want to use the full float32 precision on all GPUs, you can
+  disable TensorFloat-32 execution with this function. For example:
 
   ```python
-  x = tf.fill((2, 2), 1.0001)
-  y = tf.fill((2, 2), 1.)
+  x = tf.fill((1024, 1024), 1.0001)
+  y = tf.fill((1024, 1024), 1.)
   # TensorFloat-32 is enabled, so matmul is run with reduced precision
-  print(tf.linalg.matmul(x, y))  # [[2., 2.], [2., 2.]]
+  print(tf.linalg.matmul(x, y)[0, 0])  # 1024.0
   tf.config.experimental.enable_tensor_float_32_execution(False)
   # Matmul is run with full precision
-  print(tf.linalg.matmul(x, y))  # [[2.0002, 2.0002], [2.0002, 2.0002]]
+  print(tf.linalg.matmul(x, y)[0, 0])  # ~1024.1
   ```
 
   To check whether TensorFloat-32 execution is currently enabled, use
@@ -73,8 +79,7 @@ def enable_tensor_float_32_execution(enabled):
   utilizing the GPU's tensor cores. TensorFloat-32 has the same dynamic range as
   float32, meaning it is no more likely to underflow or overflow than float32.
   Ops still use float32 accumulation when TensorFloat-32 is enabled. Enabling or
-  disabling TensorFloat-32 only affects Ampere GPUs and subsequent GPUs that
-  support TensorFloat-32.
+  disabling TensorFloat-32 only affects Ampere GPUs and above.
 
   Note TensorFloat-32 is not always used in supported ops, as only inputs of
   certain shapes are supported. Support for more input shapes and more ops may
@@ -83,6 +88,12 @@ def enable_tensor_float_32_execution(enabled):
 
   TensorFloat-32 is also used for some complex64 ops. Currently, TensorFloat-32
   is used in fewer cases for complex64 as it is for float32.
+
+  Simiarly to GPUs, TPUs also run certain float32 ops, like matrix
+  multiplications and convolutions, with lower precision by default. Unlike
+  GPUs, TPUs use bfloat16 precision instead of TensorFloat-32 precision for such
+  ops. Disabling TensorFloat-32 with this function also causes TPUs to run
+  float32 ops with the full float32 precision but with lower performance.
 
   Args:
     enabled: Bool indicating whether to enable TensorFloat-32 execution.
@@ -231,12 +242,14 @@ def set_optimizer_experimental_options(options):
       - implementation_selector: Enable the swap of kernel implementations based
         on the device placement.
       - auto_mixed_precision: Change certain float32 ops to float16 on Volta
-        GPUs and above. Without the use of loss scaling, this can cause
-        numerical underflow (see
+        GPUs and above; and on CPUs with AMX FP16 support. Without the use of
+        loss scaling, this can cause numerical underflow (see
         `keras.mixed_precision.experimental.LossScaleOptimizer`).
       - disable_meta_optimizer: Disable the entire meta optimizer.
       - min_graph_nodes: The minimum number of nodes in a graph to optimizer.
         For smaller graphs, optimization is skipped.
+      - auto_parallel: Automatically parallelizes graphs by splitting along
+        the batch dimension
   """
   context.context().set_optimizer_experimental_options(options)
 
@@ -245,13 +258,21 @@ def set_optimizer_experimental_options(options):
 def get_soft_device_placement():
   """Return status of soft device placement flag.
 
-  If enabled, an op will be placed on CPU if any of the following are true
-    1. there's no GPU implementation for the OP
+  If enabled, ops can be placed on different devices than the device explicitly
+  assigned by the user. This potentially has a large performance cost due to an
+  increase in data communication between devices.
+
+  Some cases where soft_device_placement would modify device assignment are:
+    1. no GPU/TPU implementation for the OP
     2. no GPU devices are known or registered
     3. need to co-locate with reftype input(s) which are from CPU
+    4. an OP can not be compiled by XLA.  Common for TPU which always requires
+         the XLA compiler.
 
-  If disabled, the placement is strict and CPU fallback is not allowed.
-  An error is raised when an Op cannot be placed onto its intended device.
+  For TPUs, if this option is true, a feature called automatic outside
+  compilation is enabled. Automatic outside compilation will move uncompilable
+  ops within a TPU program to instead run on the host. This can be used when
+  encountering compilation failures due to unsupported ops.
 
   Returns:
    A boolean indicating if soft placement is enabled.
@@ -263,10 +284,21 @@ def get_soft_device_placement():
 def set_soft_device_placement(enabled):
   """Enable or disable soft device placement.
 
-  If enabled, an op will be placed on CPU if any of the following are true
-    1. there's no GPU implementation for the OP
+  If enabled, ops can be placed on different devices than the device explicitly
+  assigned by the user. This potentially has a large performance cost due to an
+  increase in data communication between devices.
+
+  Some cases where soft_device_placement would modify device assignment are:
+    1. no GPU/TPU implementation for the OP
     2. no GPU devices are known or registered
     3. need to co-locate with reftype input(s) which are from CPU
+    4. an OP can not be compiled by XLA.  Common for TPU which always requires
+         the XLA compiler.
+
+  For TPUs, if this option is true, a feature called automatic outside
+  compilation is enabled. Automatic outside compilation will move uncompilable
+  ops within a TPU program to instead run on the host. This can be used when
+  encountering compilation failures due to unsupported ops.
 
   Note: by default soft device placement is enabled when running in eager mode
   (for convenience) and disabled in graph mode (for performance).
@@ -416,6 +448,9 @@ def list_physical_devices(device_type=None):
   Args:
     device_type: (optional string) Only include devices matching this device
       type. For example "CPU" or "GPU".
+    Notes: 1. If provided with any numerical values or any string other than
+      supported device type such as 'CPU' it returns an empty list instead of
+      raising error. 2. For default value it returns all physical devices
 
   Returns:
     List of discovered `tf.config.PhysicalDevice` objects
@@ -452,6 +487,9 @@ def list_logical_devices(device_type=None):
   Args:
     device_type: (optional string) Only include devices matching this device
       type. For example "CPU" or "GPU".
+    Notes: 1. If provided with any numerical values or any string other than
+      supported device type such as 'CPU' it returns an empty list instead of
+      raising error. 2. For default value it returns all logical devices
 
   Returns:
     List of initialized `LogicalDevice`s
@@ -878,12 +916,6 @@ def set_logical_device_configuration(device, logical_devices):
 def enable_mlir_bridge():
   """Enables experimental MLIR-Based TensorFlow Compiler Bridge.
 
-  DO NOT USE, DEV AND TESTING ONLY AT THE MOMENT.
-
-  NOTE: MLIR-Based TensorFlow Compiler is under active development and has
-  missing features, please refrain from using. This API exists for development
-  and testing only.
-
   TensorFlow Compiler Bridge (TF Bridge) is responsible for translating parts
   of TensorFlow graph into a form that can be accepted as an input by a backend
   compiler such as XLA.
@@ -891,33 +923,10 @@ def enable_mlir_bridge():
   context.context().enable_mlir_bridge = True
 
 
-@tf_export('config.experimental.enable_mlir_graph_optimization')
-def enable_mlir_graph_optimization():
-  """Enables experimental MLIR-Based TensorFlow Compiler Optimizations.
-
-  DO NOT USE, DEV AND TESTING ONLY AT THE MOMENT.
-
-  NOTE: MLIR-Based TensorFlow Compiler is under active development and has
-  missing features, please refrain from using. This API exists for development
-  and testing only.
-
-  TensorFlow Compiler Optimizations are responsible general graph level
-  optimizations that in the current stack mostly done by Grappler graph
-  optimizers.
-  """
-  context.context().enable_mlir_graph_optimization = True
-
-
 @tf_export('config.experimental.disable_mlir_bridge')
 def disable_mlir_bridge():
   """Disables experimental MLIR-Based TensorFlow Compiler Bridge."""
   context.context().enable_mlir_bridge = False
-
-
-@tf_export('config.experimental.disable_mlir_graph_optimization')
-def disable_mlir_graph_optimization():
-  """Disables experimental MLIR-Based TensorFlow Compiler Optimizations."""
-  context.context().enable_mlir_graph_optimization = False
 
 
 @tf_export('config.experimental.enable_op_determinism', v1=[])

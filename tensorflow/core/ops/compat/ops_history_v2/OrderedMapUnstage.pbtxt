@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "OrderedMapUnstage"
   input_arg {
     name: "key"

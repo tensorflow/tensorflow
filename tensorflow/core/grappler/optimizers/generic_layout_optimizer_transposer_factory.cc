@@ -74,6 +74,9 @@ std::shared_ptr<Transposer> TransposerFactory::GetTransposer(
   if (IsMaxPoolGradV2(node) || IsMaxPoolGradGradV2(node)) {
     return GetOrCreateIfNotFound<MaxPoolGradV2Transposer>("MaxPoolGradV2");
   }
+  if (IsMaxPool3D(node)) {
+    return GetOrCreateIfNotFound<MaxPool3DTransposer>("MaxPool3D");
+  }
   // Check layout agnostic ops.
   if (IsDefaultLayoutAgnosticOp(node)) {
     return GetOrCreateIfNotFound<DefaultLayoutAgnosticOpTransposer>(

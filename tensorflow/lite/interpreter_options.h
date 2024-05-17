@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// Provides options to an interpreter.
 ///
 #ifndef TENSORFLOW_LITE_INTERPRETER_OPTIONS_H_
@@ -24,11 +25,6 @@ namespace tflite {
 /// WARNING: This is an experimental API and subject to change.
 class InterpreterOptions {
  public:
-  InterpreterOptions()
-      : experimental_preserve_all_tensors_(false),
-        experimental_ensure_dynamic_tensors_are_released_(false),
-        experimental_optimize_memory_for_large_tensors_(0) {}
-
   /// Preserving all intermediates tensors for debugging.
   /// WARNING: This is an experimental API and subject to change.
   void SetPreserveAllTensors(bool value = true) {
@@ -76,10 +72,43 @@ class InterpreterOptions {
     return experimental_optimize_memory_for_large_tensors_;
   }
 
+  // Returns true iff delegate clustering (i.e., reordering execution such that
+  // the number of switches between non-delegated and delegated execution of
+  // nodes is minimized) is disabled.
+  // WARNING: This is an experimental API and subject to change.
+  bool GetDisableDelegateClustering() {
+    return experimental_disable_delegate_clustering_;
+  }
+
+  // If value == true, disable delegate clustering (see above), otherwise,
+  // enable it.
+  // WARNING: This is an experimental API and subject to change.
+  void SetDisableDelegateClustering(bool value = true) {
+    experimental_disable_delegate_clustering_ = value;
+  }
+
+  // If set to `true`, the CAST op will cache its output when its input is a
+  // constant tensor.
+  //
+  // WARNING: This is an experimental API and subject to change.
+  void SetCacheConstantCastOp(bool value) {
+    experimental_cache_constant_cast_op_ = value;
+  }
+
+  // If `true`, the CAST op will cache its output when its input is a constant
+  // tensor.
+  //
+  // WARNING: This is an experimental API and subject to change.
+  bool GetCacheConstantCastOp() const {
+    return experimental_cache_constant_cast_op_;
+  }
+
  private:
-  bool experimental_preserve_all_tensors_;
-  bool experimental_ensure_dynamic_tensors_are_released_;
-  int experimental_optimize_memory_for_large_tensors_;
+  bool experimental_preserve_all_tensors_ = false;
+  bool experimental_ensure_dynamic_tensors_are_released_ = false;
+  int experimental_optimize_memory_for_large_tensors_ = 0;
+  bool experimental_disable_delegate_clustering_ = false;
+  bool experimental_cache_constant_cast_op_ = false;
 };
 
 }  // namespace tflite

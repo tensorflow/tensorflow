@@ -59,11 +59,16 @@ class Device : public DeviceBase {
   Device(Env* env, const DeviceAttributes& device_attributes);
   ~Device() override;
 
+  // A compare function that orders devices by their parsed name.
+  static bool LessByParsedName(const Device& a, const Device& b) {
+    return a.parsed_name() < b.parsed_name();
+  }
+
   // Full name of this device (see top comment).
   const std::string& name() const override { return device_attributes_.name(); }
 
   // Parsed name of this device
-  const DeviceNameUtils::ParsedName& parsed_name() const {
+  const DeviceNameUtils::ParsedName& parsed_name() const override {
     return parsed_name_;
   }
 
@@ -71,7 +76,7 @@ class Device : public DeviceBase {
   // human-readable and not computer-parsed, except that two devices
   // with the same device_type() are expected to perform similarly
   // (both from a computation and communication perspective).
-  const std::string& device_type() const {
+  const std::string& device_type() const override {
     return device_attributes_.device_type();
   }
 
@@ -188,6 +193,18 @@ class Device : public DeviceBase {
   // Informs if this Device can be used as a caller in RemoteCall operation.
   virtual bool IsRemoteCallAllowed() const;
 
+  // Whether to merge the host_to_device copy stream with the compute stream.
+  // Only useful for GPU devices.
+  virtual bool merge_host_to_device_stream() const { return false; }
+
+  // Whether to merge the device_to_host copy stream with the compute stream.
+  // Only useful for GPU devices.
+  virtual bool merge_device_to_host_stream() const { return false; }
+
+  // Whether to merge the device_to_device copy streams with the compute stream.
+  // Only useful for GPU devices.
+  virtual bool merge_device_to_device_stream() const { return false; }
+
  protected:
   void DeleteResourceMgr() {
     delete rmgr_;
@@ -204,7 +221,8 @@ class Device : public DeviceBase {
   // Resources associated w/ this device. E.g., shared variables, etc.
   ResourceMgr* rmgr_ = nullptr;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Device);
+  Device(const Device&) = delete;
+  void operator=(const Device&) = delete;
 };
 
 }  // namespace tensorflow

@@ -13,12 +13,16 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.shard()`."""
+from typing import Callable, Optional
+
 from absl.testing import parameterized
 
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -101,19 +105,25 @@ class ShardTest(test_base.DatasetTestBase, parameterized.TestCase):
 class ShardCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                           parameterized.TestCase):
 
-  def _build_dataset(self, num_elements, num_shards, index):
-    return dataset_ops.Dataset.range(num_elements).shard(num_shards, index)
+  def _build_dataset(self, num_elements, num_shards, index, options=None):
+    dataset = dataset_ops.Dataset.range(num_elements).shard(num_shards, index)
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True]),
           combinations.combine(
               elems=[10, 100], num_shards=[2, 5], index=[0, 1])))
-  def test(self, verify_fn, elems, num_shards, index):
+  def test(self, verify_fn, symbolic_checkpoint, elems, num_shards, index):
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
     verify_fn(
         self,
-        lambda: self._build_dataset(elems, num_shards, index),
+        lambda: self._build_dataset(elems, num_shards, index, options),
         num_outputs=elems // num_shards)
 
 
@@ -173,6 +183,83 @@ class ShardRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
                           self.evaluate(random_access.at(dataset, i)))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(random_access.at(dataset, index=len_dataset))
+
+
+class ShardGlobalShuffleTest(
+    test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[100],
+              num_shards=[1, 3, 5],
+              shard_index=[0, 1, 2, 4],
+              seed=[None, 42],
+              reshuffle_each_iteration=[True, False])))
+  def testShard(
+      self,
+      dataset_range: int,
+      num_shards: int,
+      shard_index: int,
+      seed: Optional[int],
+      reshuffle_each_iteration: bool):
+    if shard_index >= num_shards:
+      return
+
+    dataset = dataset_ops.Dataset.range(dataset_range)
+    dataset = dataset.shard(num_shards, shard_index)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    dataset = global_shuffle_op._global_shuffle(
+        dataset, seed=seed, reshuffle_each_iteration=reshuffle_each_iteration)
+
+    expected = list(range(shard_index, dataset_range, num_shards))
+    dataset_output = self.getDatasetOutput(
+        dataset, requires_initialization=True)
+    self.assertCountEqual(dataset_output, expected)
+    self.assertNotEqual(dataset_output, expected)
+
+
+class ShardGlobalShuffleCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[10],
+              num_shards=[1, 3],
+              shard_index=[0, 1, 2],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False])))
+  def testShard(
+      self,
+      verify_fn: Callable[..., None],
+      dataset_range: int,
+      num_shards: int,
+      shard_index: int,
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool):
+
+    if shard_index >= num_shards:
+      return
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.range(dataset_range)
+      dataset = dataset.shard(num_shards, shard_index)
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=len(range(shard_index, dataset_range, num_shards)),
+        assert_items_equal=reshuffle_each_iteration)
 
 
 if __name__ == "__main__":

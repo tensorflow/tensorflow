@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 
+#include <cstdint>
+#include <memory>
 #include <numeric>
 
 #include "tensorflow/core/platform/bfloat16.h"
@@ -177,22 +179,30 @@ class BaseDebugOp : public OpKernel {
 
   // Publish a tensor to all debug URLs of the debug op.
   // Log an error if the publishing failed.
-  Status PublishTensor(const Tensor& tensor) {
+  Status PublishTensor(const Tensor& tensor, int64_t step_id = -1) {
     if (debug_urls_.empty()) {
-      return OkStatus();
+      return absl::OkStatus();
     } else {
-      Status status = DebugIO::PublishDebugTensor(*debug_watch_key_, tensor,
-                                                  Env::Default()->NowMicros(),
-                                                  debug_urls_, gated_grpc_);
+      Status status = DebugIO::PublishDebugTensor(
+          *debug_watch_key_, tensor, Env::Default()->NowMicros(), debug_urls_,
+          gated_grpc_, step_id);
       if (!status.ok()) {
         LOG(ERROR) << "Debug node of watch key "
                    << debug_watch_key_->debug_node_name
                    << " failed to publish debug tensor data to all URLs "
                    << str_util::Join(debug_urls_, ", ")
-                   << ", due to: " << status.error_message();
+                   << ", due to: " << status.message();
       }
       return status;
     }
+  }
+
+  void CompleteDebugNodeKey(const string& io_of_node, bool is_input,
+                            int io_index) {
+    debug_watch_key_ = std::make_unique<DebugNodeKey>(
+        debug_watch_key_->device_name, debug_watch_key_->node_name,
+        debug_watch_key_->output_slot, debug_op_name_, io_of_node, is_input,
+        io_index);
   }
 
  private:
@@ -217,6 +227,36 @@ class DebugIdentityOp : public BaseDebugOp {
     }
 
     OP_REQUIRES_OK(context, PublishTensor(context->input(0)));
+    context->set_output(0, context->input(0));
+  }
+};
+
+// Identity op for debugging.
+//   Output slot 0 carries the debug signal and is always allocated on the
+//   host (CPU) as a non-Ref tensor. In the case of DebugIdentityOp,
+//   the debug signal is equal to the input tensor.
+class DebugIdentityV3Op : public BaseDebugOp {
+ public:
+  explicit DebugIdentityV3Op(OpKernelConstruction* context)
+      : BaseDebugOp("DebugIdentityV3", context) {
+    string io_of_node;
+    bool is_input;
+    int io_index;
+    OP_REQUIRES_OK(context, context->GetAttr("io_of_node", &io_of_node));
+    OP_REQUIRES_OK(context, context->GetAttr("is_input", &is_input));
+    OP_REQUIRES_OK(context, context->GetAttr("io_index", &io_index));
+    if (!io_of_node.empty()) {
+      CompleteDebugNodeKey(io_of_node, is_input, io_index);
+    }
+  }
+
+  void Compute(OpKernelContext* context) override {
+    if (!ApplyGrpcGating(context)) {
+      return;
+    }
+
+    OP_REQUIRES_OK(context,
+                   PublishTensor(context->input(0), context->step_id()));
     context->set_output(0, context->input(0));
   }
 };
@@ -738,9 +778,11 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       se::DeviceMemoryBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
           output_tensor->flat<Tout>().size());
-      stream->ThenMemZero(&output_tensor_ptr, 2 * sizeof(Tout));
+      OP_REQUIRES_OK(context,
+                     stream->MemZero(&output_tensor_ptr, 2 * sizeof(Tout)));
       // Copy tensor_id to slot zero
-      stream->ThenMemcpy(&output_tensor_ptr, &tensor_id, sizeof(Tout));
+      OP_REQUIRES_OK(context, stream->Memcpy(&output_tensor_ptr, &tensor_id,
+                                             sizeof(Tout)));
       if (num_elem == 0) {
         done();
         return;
@@ -772,9 +814,11 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       se::DeviceMemoryBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
           output_tensor->flat<Tout>().size());
-      stream->ThenMemset32(&output_tensor_ptr, 0, 5 * sizeof(Tout));
+      OP_REQUIRES_OK(context,
+                     stream->Memset32(&output_tensor_ptr, 0, 5 * sizeof(Tout)));
       const Tout static_output[] = {tensor_id, num_elem};
-      stream->ThenMemcpy(&output_tensor_ptr, &static_output, 2 * sizeof(Tout));
+      OP_REQUIRES_OK(context, stream->Memcpy(&output_tensor_ptr, &static_output,
+                                             2 * sizeof(Tout)));
       if (num_elem == 0) {
         done();
         return;
@@ -806,14 +850,16 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       se::DeviceMemoryBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
           output_tensor->flat<Tout>().size());
-      stream->ThenMemset32(&output_tensor_ptr, 0, 11 * sizeof(Tout));
+      OP_REQUIRES_OK(
+          context, stream->Memset32(&output_tensor_ptr, 0, 11 * sizeof(Tout)));
 
       int num_dims = tensor.dims();
       const Tout static_output[] = {tensor_id,
                                     -1.0,  // TODO(144919262): Device ID
                                     static_cast<Tout>(tensor.dtype()),
                                     static_cast<Tout>(num_dims), num_elem};
-      stream->ThenMemcpy(&output_tensor_ptr, &static_output, 5 * sizeof(Tout));
+      OP_REQUIRES_OK(context, stream->Memcpy(&output_tensor_ptr, &static_output,
+                                             5 * sizeof(Tout)));
       if (num_elem == 0) {
         done();
         return;
@@ -857,7 +903,8 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
         static_output[dim_idx++] = static_cast<Tout>(tensor.dim_size(i));
       }
       // Write to device stream
-      stream->ThenMemcpy(&output_tensor_ptr, &static_output, sizeof(Tout) * 10);
+      OP_REQUIRES_OK(context, stream->Memcpy(&output_tensor_ptr, &static_output,
+                                             sizeof(Tout) * 10));
       context->device()
           ->tensorflow_accelerator_device_info()
           ->event_mgr->ThenExecute(stream, std::move(check_cb));
@@ -873,8 +920,10 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       se::DeviceMemoryBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
           output_tensor->flat<Tout>().size());
-      stream->ThenMemset32(&output_tensor_ptr, 0,
-                           output_tensor->flat<Tout>().size() * sizeof(Tout));
+      OP_REQUIRES_OK(
+          context,
+          stream->Memset32(&output_tensor_ptr, 0,
+                           output_tensor->flat<Tout>().size() * sizeof(Tout)));
       if (num_elem == 0) {
         done();
         return;

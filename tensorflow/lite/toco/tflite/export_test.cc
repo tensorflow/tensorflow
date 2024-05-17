@@ -21,14 +21,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "absl/log/log.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tflite/builtin_operator.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace toco {
 namespace tflite {
@@ -170,7 +174,7 @@ class ExportTest : public ::testing::Test {
     std::string result;
     auto status = Export(input_model_, &result, params);
     if (!status.ok()) {
-      LOG(INFO) << status.error_message();
+      LOG(INFO) << status.message();
       return names;
     }
 
@@ -240,7 +244,7 @@ TEST_F(ExportTest, UnsupportedFunctionality) {
   params.allow_dynamic_tensors = false;
   auto status = ExportAndReturnStatus(params);
   EXPECT_EQ(status.code(), ::tensorflow::error::UNIMPLEMENTED);
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Unsupported flag: allow_dynamic_tensors."));
 }
 
@@ -306,7 +310,7 @@ TEST_F(ExportTest, UnsupportedControlFlowErrors) {
   std::string output;
   const auto ops_by_type = BuildOperatorByTypeMap();
   auto status = Export(input_model_, &output, params, ops_by_type);
-  EXPECT_EQ(status.error_message(),
+  EXPECT_EQ(status.message(),
             "We are continually in the process of adding support to TensorFlow "
             "Lite for more ops. It would be helpful if you could inform us of "
             "how this conversion went by opening a github issue at "
@@ -329,7 +333,7 @@ TEST_F(ExportTest, UnsupportedOpsAndNeedEnableFlex) {
   const auto ops_by_type = BuildOperatorByTypeMap();
   auto status = Export(input_model_, &output, params, ops_by_type);
   EXPECT_EQ(
-      status.error_message(),
+      status.message(),
       "We are continually in the process of adding support to TensorFlow Lite "
       "for more ops. It would be helpful if you could inform us of how this "
       "conversion went by opening a github issue at "
@@ -359,7 +363,7 @@ TEST_F(ExportTest, UnsupportedOpsNeedCustomImplementation) {
   const auto ops_by_type = BuildOperatorByTypeMap();
   auto status = Export(input_model_, &output, params, ops_by_type);
   EXPECT_EQ(
-      status.error_message(),
+      status.message(),
       "We are continually in the process of adding support to TensorFlow Lite "
       "for more ops. It would be helpful if you could inform us of how this "
       "conversion went by opening a github issue at "
@@ -389,7 +393,7 @@ TEST_F(ExportTest, UnsupportedControlFlowAndCustomOpsErrors) {
   const auto ops_by_type = BuildOperatorByTypeMap();
   auto status = Export(input_model_, &output, params, ops_by_type);
   EXPECT_EQ(
-      status.error_message(),
+      status.message(),
       "We are continually in the process of adding support to TensorFlow Lite "
       "for more ops. It would be helpful if you could inform us of how this "
       "conversion went by opening a github issue at "
@@ -803,8 +807,6 @@ TEST(OperatorKeyTest, TestFlexWithUnsupportedOp) {
 TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
   // Test Toco-supported/TFLite-unsupported operators.
   Model model;
-  // TODO(ycling): The test will be broken if TensorFlowAssert is implemented in
-  // TFLite. Find a more robust way to test the fallback logic.
   auto op = std::make_unique<TensorFlowAssertOperator>();
 
   const auto ops_by_type = BuildOperatorByTypeMap();

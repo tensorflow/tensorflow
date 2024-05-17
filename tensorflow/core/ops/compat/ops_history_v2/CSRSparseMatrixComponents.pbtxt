@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "CSRSparseMatrixComponents"
   input_arg {
     name: "csr_sparse_matrix"

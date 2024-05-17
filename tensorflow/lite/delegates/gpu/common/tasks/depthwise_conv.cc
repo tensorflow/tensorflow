@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
@@ -102,11 +101,9 @@ std::string GetSrcXYCheck(const GpuInfo& gpu_info,
 }
 
 bool UseBuffersForWeights(const GpuInfo& gpu_info) {
-  if (gpu_info.IsApple()) {
-    if (gpu_info.apple_info.IsA7GenerationGpu() ||
-        gpu_info.apple_info.IsA8GenerationGpu()) {
-      return false;
-    }
+  if (gpu_info.IsApple() &&
+      gpu_info.apple_info.IsFamilyOrLower(AppleInfo::Family::kApple2)) {
+    return false;
   }
   return !gpu_info.SupportsImages() || gpu_info.IsMali() ||
          gpu_info.IsApple() || gpu_info.IsAMD();
@@ -422,13 +419,10 @@ DepthwiseConv CreateDepthwiseConvolution2D(
   op.UploadWeightsForDWConv2D(attr.weights, weights_are_buffer);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = weights_are_buffer ? LinearStorageType::BUFFER
-                                         : LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  op.args_.AddObject("biases",
-                     std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  op.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                   std::move(bias_tensor_desc)));
   return op;
 }
 
@@ -447,15 +441,10 @@ DepthwiseConv CreateDepthwiseConvolution2DDynamicWeights(
   op.code_ = op.GenerateCode(gpu_info);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
 
-  TensorLinearDescriptor desc;
-  desc.storage_type =
-      !gpu_info.SupportsImages() || gpu_info.IsMali() || gpu_info.IsApple()
-          ? LinearStorageType::BUFFER
-          : LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  op.args_.AddObject("biases",
-                     std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  op.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                   std::move(bias_tensor_desc)));
   return op;
 }
 
@@ -488,13 +477,10 @@ DepthwiseConv CreateDepthwiseConvolution3D(
   op.UploadWeightsForDWConv3D(attr.weights, weights_are_buffer);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = weights_are_buffer ? LinearStorageType::BUFFER
-                                         : LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  op.args_.AddObject("biases",
-                     std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  op.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                   std::move(bias_tensor_desc)));
   return op;
 }
 

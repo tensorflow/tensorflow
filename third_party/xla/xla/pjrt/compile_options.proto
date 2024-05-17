@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+package xla;
+
+import "xla/stream_executor/device_description.proto";
+import "xla/xla.proto";
+import "xla/xla_data.proto";
+
+// A serialization of xla::ExecutableBuildOptions.
+// Next id: 19.
+message ExecutableBuildOptionsProto {
+  // If set, this is the device to build the computation for. Valid
+  // device_ordinal values are: 0 to # of devices - 1. These values are
+  // identical to the device ordinal values used by StreamExecutor. The built
+  // executable will be executable on any device equivalent to the specified
+  // device as determined by Backend::devices_equivalent(). A value of -1
+  // indicates this option has not been set.
+  int64 device_ordinal = 1;
+
+  // If set, this specifies the layout of the result of the computation. If not
+  // set, the service will chose the layout of the result. A Shape is used to
+  // store the layout to accommodate tuple result shapes. A value of nullptr
+  // indicates the option has not been set.
+  xla.ShapeProto result_layout = 2;
+
+  // Expose access to the XLA compilation environments, which will be passed to
+  // the compilation process.
+  xla.CompilationEnvironmentsProto comp_envs = 13;
+
+  // Expose access to the XLA debug options which will be passed to the
+  // compilation process.
+  xla.DebugOptions debug_options = 3;
+
+  // The number of replicas of this computation that are to be executed.
+  // Defaults to 1.
+  int64 num_replicas = 4;
+
+  // The number of partitions in this computation. Defaults to 1.
+  int64 num_partitions = 5;
+
+  // Indicates whether to use SPMD (true) or MPMD (false) partitioning when
+  // num_partitions > 1 and XLA is requested to partition the input program.
+  bool use_spmd_partitioning = 6;
+
+  // Whether to automatically generate XLA shardings for SPMD partitioner.
+  bool use_auto_spmd_partitioning = 7;
+
+  // Whether HLOs should be deduplicated.
+  bool deduplicate_hlo = 8;
+
+  // If set, this specifies a static device assignment for the computation.
+  // Otherwise, the computation will be compiled generically and can be run with
+  // any device assignment compatible with the computation's replica and
+  // partition counts.
+  xla.DeviceAssignmentProto device_assignment = 9;
+
+  // Whether input and output buffers are aliased if the associated parameter is
+  // passed-through XLA modules without being changed.
+  bool alias_passthrough_params = 10;
+
+  // By default, XLA builds an executable by invoking standard compilation, i.e.
+  // running Compiler::Compile, or both Compiler::RunHloPasses and
+  // Compiler::RunBackend. When run_backend_only is set to true, XLA builds an
+  // executable by invoking only RunBackend and skip invoking RunHloPasses,
+  // which can be used to compile post-optimizations HLO modules.
+  bool run_backend_only = 11;
+
+  // Allows sharding propagation to propagate to the parameters. This changes
+  // the input shape of the computation (which is undesirable), but it can be
+  // used to allow to run partial compilation to determine what would be the
+  // input sharding of a computation if XLA would be allowed to propagate the
+  // sharding which can be used by higher level framework as a way to query
+  // intermediate sharding of operations when multiple computation would be
+  // chained and merged together.
+  // This is a vector of bool, because the user can control which parameters can
+  // have the sharding substituted. If only one boolean value is passed in the
+  // vector that is interpreted as the value to be applied for every parameter.
+  repeated bool allow_spmd_sharding_propagation_to_parameters = 18;
+
+  // Allows sharding propagation to propagate to the outputs. This changes the
+  // output shape of the computation (which is undesirable), but it can be used
+  // to allow to run partial compilation to determine what would be the output
+  // sharding of a computation if XLA would be allowed to propagate the sharding
+  // which can be used by higher level framework as a way to query intermediate
+  // sharding of operations when multiple computation would be chained and
+  // merged together.
+  // This is a vector of bool, because the user can control (if the output of
+  // the computation is a tuple) which elements of the tuple can have the
+  // sharding substituted and which don't. If only one boolean value is passed
+  // in the vector that's interpreted as the value to be applied for every
+  // single element of the output tuple. One value per element of the tuple
+  // means that each value is attached to one of the output elements.
+  repeated bool allow_spmd_sharding_propagation_to_output = 12;
+
+  // Opaque profile data for any feedback directed optimizations.
+  bytes fdo_profile = 14;
+
+  int64 device_memory_size = 15;
+
+  // Mesh shape in auto sharding options.
+  repeated int64 auto_spmd_partitioning_mesh_shape = 16;
+
+  // Mesh ids in auto sharding options.
+  repeated int64 auto_spmd_partitioning_mesh_ids = 17;
+}
+
+message OptionOverrideProto {
+  oneof value {
+    string string_field = 1;
+    bool bool_field = 2;
+    int64 int_field = 3;
+    double double_field = 4;
+  }
+}
+
+message CompileOptionsProto {
+  // Refer CompileOptions for documentation of fields.
+  repeated ShapeProto argument_layouts = 1;
+  bool parameter_is_tupled_arguments = 2;
+  ExecutableBuildOptionsProto executable_build_options = 3;
+  bool compile_portable_executable = 4;
+  int64 profile_version = 5;
+  bytes serialized_multi_slice_config = 6;
+  map<string, OptionOverrideProto> env_option_overrides = 7;
+
+  stream_executor.GpuTargetConfigProto target_config = 8;
+}
+
+// Helper for serializing opaque executables alongside CompileOptions.
+message ExecutableAndOptionsProto {
+  bytes serialized_executable = 1;
+  CompileOptionsProto compile_options = 2;
+}

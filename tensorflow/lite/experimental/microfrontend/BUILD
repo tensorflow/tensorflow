@@ -1,5 +1,6 @@
 # TensorFlow ops for audio front-end processing.
 
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
@@ -7,11 +8,11 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
     "tf_opts_nortti_if_android",
-    "tf_py_test",
 )
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_strict_library", "tf_py_strict_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -22,8 +23,11 @@ cc_library(
     hdrs = ["audio_microfrontend.h"],
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/microfrontend/lib:frontend",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:reference",
         "@flatbuffers",
     ],
@@ -68,7 +72,9 @@ cc_test(
     deps = [
         ":audio_microfrontend",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
@@ -94,10 +100,17 @@ tf_gen_op_libs(
 
 tf_gen_op_wrapper_py(
     name = "audio_microfrontend_op",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+    py_lib_rule = py_strict_library,
     deps = [":audio_microfrontend_op_op_lib"],
 )
 
-tf_custom_op_py_library(
+tf_custom_op_py_strict_library(
     name = "audio_microfrontend_py",
     srcs = [
         "python/ops/audio_microfrontend_op.py",
@@ -109,25 +122,25 @@ tf_custom_op_py_library(
     srcs_version = "PY3",
     deps = [
         ":audio_microfrontend_op",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:load_library",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:linalg_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "audio_microfrontend_op_test",
     size = "small",
     srcs = ["python/kernel_tests/audio_microfrontend_op_test.py"],
-    tags = ["no_pip"],
     deps = [
         ":audio_microfrontend_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/framework:ops",
     ],
 )

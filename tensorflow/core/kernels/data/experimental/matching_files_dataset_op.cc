@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -84,10 +84,10 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status CheckExternalState() const override { return OkStatus(); }
+    Status CheckExternalState() const override { return absl::OkStatus(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -96,7 +96,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       Node* patterns_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddVector(patterns_, &patterns_node));
       TF_RETURN_IF_ERROR(b->AddDataset(this, {patterns_node}, output));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -139,7 +139,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
               out_tensors->emplace_back(std::move(filepath_tensor));
               *end_of_sequence = false;
               hasMatch_ = true;
-              return OkStatus();
+              return absl::OkStatus();
             }
 
             // In this case, current_path is a directory. Then continue the
@@ -185,7 +185,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
         *end_of_sequence = true;
         if (hasMatch_) {
-          return OkStatus();
+          return absl::OkStatus();
         } else {
           return errors::NotFound("Don't find any matched files");
         }
@@ -226,7 +226,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           }
         }
 
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -268,7 +268,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           }
         }
 
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:
@@ -289,7 +289,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           // All the files in the heap are matched with the pattern, so finish
           // the search if current_path is a file.
           if (!current_path.second) {
-            return OkStatus();
+            return absl::OkStatus();
           }
 
           filepath_queue_.pop();

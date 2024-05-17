@@ -14,25 +14,29 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.dtypes."""
 
+from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.core.framework import types_pb2
+# pylint: disable=g-bad-import-order
 from tensorflow.python.framework import _dtypes
+# pylint: enable=g-bad-import-order
+
+from tensorflow.core.framework import types_pb2
+from tensorflow.core.function import trace_type
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
 
 def _is_numeric_dtype_enum(datatype_enum):
-  non_numeric_dtypes = [types_pb2.DT_VARIANT,
-                        types_pb2.DT_VARIANT_REF,
-                        types_pb2.DT_INVALID,
-                        types_pb2.DT_RESOURCE,
-                        types_pb2.DT_RESOURCE_REF]
+  non_numeric_dtypes = [
+      types_pb2.DT_VARIANT, types_pb2.DT_VARIANT_REF, types_pb2.DT_INVALID,
+      types_pb2.DT_RESOURCE, types_pb2.DT_RESOURCE_REF
+  ]
   return datatype_enum not in non_numeric_dtypes
 
 
-class TypesTest(test_util.TensorFlowTestCase):
+class TypesTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testAllTypesConstructible(self):
     for datatype_enum in types_pb2.DataType.values():
@@ -89,6 +93,9 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertIs(dtypes.string,
                   dtypes.as_dtype(np.array(["foo", "bar"]).dtype))
     self.assertIs(dtypes.bool, dtypes.as_dtype(np.bool_))
+    self.assertIs(dtypes.float8_e5m2, dtypes.as_dtype(dtypes._np_float8_e5m2))
+    self.assertIs(dtypes.float8_e4m3fn,
+                  dtypes.as_dtype(dtypes._np_float8_e4m3fn))
     with self.assertRaises(TypeError):
       dtypes.as_dtype(np.dtype([("f1", np.uint), ("f2", np.int32)]))
 
@@ -104,8 +111,18 @@ class TypesTest(test_util.TensorFlowTestCase):
 
   def testRealDtype(self):
     for dtype in [
-        dtypes.float32, dtypes.float64, dtypes.bool, dtypes.uint8, dtypes.int8,
-        dtypes.int16, dtypes.int32, dtypes.int64
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.bool,
+        dtypes.uint8,
+        dtypes.int8,
+        dtypes.int16,
+        dtypes.int32,
+        dtypes.int64,
+        dtypes.float8_e5m2,
+        dtypes.float8_e4m3fn,
+        dtypes.int4,
+        dtypes.uint4,
     ]:
       self.assertIs(dtype.real_dtype, dtype)
     self.assertIs(dtypes.complex64.real_dtype, dtypes.float32)
@@ -128,6 +145,10 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertIs(dtypes.quint8, dtypes.as_dtype("quint8"))
     self.assertIs(dtypes.qint32, dtypes.as_dtype("qint32"))
     self.assertIs(dtypes.bfloat16, dtypes.as_dtype("bfloat16"))
+    self.assertIs(dtypes.float8_e5m2, dtypes.as_dtype("float8_e5m2"))
+    self.assertIs(dtypes.float8_e4m3fn, dtypes.as_dtype("float8_e4m3fn"))
+    self.assertIs(dtypes.int4, dtypes.as_dtype("int4"))
+    self.assertIs(dtypes.uint4, dtypes.as_dtype("uint4"))
     self.assertIs(dtypes.float32_ref, dtypes.as_dtype("float32_ref"))
     self.assertIs(dtypes.float64_ref, dtypes.as_dtype("float64_ref"))
     self.assertIs(dtypes.int32_ref, dtypes.as_dtype("int32_ref"))
@@ -143,6 +164,11 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertIs(dtypes.quint8_ref, dtypes.as_dtype("quint8_ref"))
     self.assertIs(dtypes.qint32_ref, dtypes.as_dtype("qint32_ref"))
     self.assertIs(dtypes.bfloat16_ref, dtypes.as_dtype("bfloat16_ref"))
+    self.assertIs(dtypes.float8_e5m2_ref, dtypes.as_dtype("float8_e5m2_ref"))
+    self.assertIs(dtypes.float8_e4m3fn_ref,
+                  dtypes.as_dtype("float8_e4m3fn_ref"))
+    self.assertIs(dtypes.int4_ref, dtypes.as_dtype("int4_ref"))
+    self.assertIs(dtypes.uint4_ref, dtypes.as_dtype("uint4_ref"))
     with self.assertRaises(TypeError):
       dtypes.as_dtype("not_a_type")
 
@@ -171,6 +197,10 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.as_dtype("string").is_integer, False)
     self.assertEqual(dtypes.as_dtype("bool").is_integer, False)
     self.assertEqual(dtypes.as_dtype("bfloat16").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("float8_e5m2").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("float8_e4m3fn").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("int4").is_integer, True)
+    self.assertEqual(dtypes.as_dtype("uint4").is_integer, True)
     self.assertEqual(dtypes.as_dtype("qint8").is_integer, False)
     self.assertEqual(dtypes.as_dtype("qint16").is_integer, False)
     self.assertEqual(dtypes.as_dtype("qint32").is_integer, False)
@@ -191,6 +221,10 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.as_dtype("string").is_floating, False)
     self.assertEqual(dtypes.as_dtype("bool").is_floating, False)
     self.assertEqual(dtypes.as_dtype("bfloat16").is_floating, True)
+    self.assertEqual(dtypes.as_dtype("float8_e5m2").is_floating, True)
+    self.assertEqual(dtypes.as_dtype("float8_e4m3fn").is_floating, True)
+    self.assertEqual(dtypes.as_dtype("int4").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("uint4").is_floating, False)
     self.assertEqual(dtypes.as_dtype("qint8").is_floating, False)
     self.assertEqual(dtypes.as_dtype("qint16").is_floating, False)
     self.assertEqual(dtypes.as_dtype("qint32").is_floating, False)
@@ -211,6 +245,10 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.as_dtype("string").is_complex, False)
     self.assertEqual(dtypes.as_dtype("bool").is_complex, False)
     self.assertEqual(dtypes.as_dtype("bfloat16").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("float8_e5m2").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("float8_e4m3fn").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("int4").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("uint4").is_complex, False)
     self.assertEqual(dtypes.as_dtype("qint8").is_complex, False)
     self.assertEqual(dtypes.as_dtype("qint16").is_complex, False)
     self.assertEqual(dtypes.as_dtype("qint32").is_complex, False)
@@ -231,6 +269,10 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.as_dtype("complex64").is_unsigned, False)
     self.assertEqual(dtypes.as_dtype("complex128").is_unsigned, False)
     self.assertEqual(dtypes.as_dtype("bfloat16").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("float8_e5m2").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("float8_e4m3fn").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("int4").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("uint4").is_unsigned, True)
     self.assertEqual(dtypes.as_dtype("qint8").is_unsigned, False)
     self.assertEqual(dtypes.as_dtype("qint16").is_unsigned, False)
     self.assertEqual(dtypes.as_dtype("qint32").is_unsigned, False)
@@ -293,6 +335,22 @@ class TypesTest(test_util.TensorFlowTestCase):
       if numpy_dtype == dtypes.bfloat16.as_numpy_dtype:
         self.assertEqual(dtype.min, float.fromhex("-0x1.FEp127"))
         self.assertEqual(dtype.max, float.fromhex("0x1.FEp127"))
+      if numpy_dtype == dtypes.float8_e5m2.as_numpy_dtype:
+        self.assertEqual(dtype.min, -57344.0)
+        self.assertEqual(dtype.max, 57344.0)
+      if numpy_dtype == dtypes.float8_e4m3fn.as_numpy_dtype:
+        self.assertEqual(dtype.min, -448.0)
+        self.assertEqual(dtype.max, 448.0)
+      if numpy_dtype == dtypes.int4.as_numpy_dtype:
+        self.assertEqual(dtype.min, -8)
+        self.assertEqual(dtype.max, 7)
+      if numpy_dtype == dtypes.uint4.as_numpy_dtype:
+        self.assertEqual(dtype.min, 0)
+        self.assertEqual(dtype.max, 15)
+
+  def testLimitsUndefinedError(self):
+    with self.assertRaises(ValueError):
+      dtypes.string.limits()
 
   def testRepr(self):
     self.skipTest("b/142725777")
@@ -333,6 +391,24 @@ class TypesTest(test_util.TensorFlowTestCase):
   def testAsDtypeReturnsInternedVersion(self):
     dt = dtypes.DType(types_pb2.DT_VARIANT)
     self.assertIs(dtypes.as_dtype(dt), dtypes.variant)
+
+  def testDTypeSubtypes(self):
+    self.assertTrue(dtypes.string.is_subtype_of(dtypes.string))
+    self.assertFalse(dtypes.string.is_subtype_of(dtypes.uint32))
+    self.assertTrue(dtypes.uint64.is_subtype_of(dtypes.uint64))
+
+  def testDTypeSupertypes(self):
+    self.assertEqual(dtypes.string,
+                     dtypes.string.most_specific_common_supertype([]))
+    self.assertEqual(
+        dtypes.string,
+        dtypes.string.most_specific_common_supertype([dtypes.string]))
+    self.assertIsNone(
+        dtypes.string.most_specific_common_supertype([dtypes.uint32]))
+
+  @parameterized.parameters(*tuple(dtype for dtype in dtypes.TF_VALUE_DTYPES))
+  def testDTypeSerialization(self, dtype):
+    self.assertEqual(trace_type.deserialize(trace_type.serialize(dtype)), dtype)
 
 
 if __name__ == "__main__":

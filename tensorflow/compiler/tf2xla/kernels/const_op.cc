@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -134,7 +134,8 @@ class ConstOp : public XlaOpKernel {
 
  private:
   TensorProto proto_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ConstOp);
+  ConstOp(const ConstOp&) = delete;
+  void operator=(const ConstOp&) = delete;
 };
 
 // XLA_* devices also register a "real" Const operator so we suppress the

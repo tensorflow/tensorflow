@@ -18,13 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/kernels/shim/op_kernel.h"
 #include "tensorflow/lite/kernels/shim/status_macros.h"
-#include "tensorflow/lite/kernels/shim/tensor_view.h"
 
 namespace tflite {
 namespace shim {
@@ -41,7 +41,7 @@ class SimpleOp : public OpKernelShim<SimpleOp, Rt> {
   std::string output2_suffix_;
   int64_t n_;
   static constexpr int kOutput0Size = 5;
-  static const char kOutput1SizeAttr[];
+  static constexpr char kOutput1SizeAttr[] = "output1_size";
 
  public:
   using typename OpKernelShim<SimpleOp, Rt>::InitContext;
@@ -49,8 +49,27 @@ class SimpleOp : public OpKernelShim<SimpleOp, Rt> {
   using typename OpKernelShim<SimpleOp, Rt>::ShapeInferenceContext;
 
   SimpleOp() = default;
-  static const char kOpName[];
-  static const char kDoc[];
+  static constexpr char kOpName[] = "SimpleOperation";
+  static constexpr char kDoc[] = R"doc(
+Description:
+  Simple example op for testing and demonstration purposes.
+
+Attrs
+  output1_size: int - the size of the second output
+  output2_suffix: string - the string value to be appended to the end of out2
+  N: int - the number of tensors for the second input and last output
+Inputs
+  in0: str, shape=[] - A scalar input
+  in1: int64, list<shape=?> - A list of tensors as input
+Outputs
+  out0: int, shape=[5] - first output
+  out1: float, shape=[?] - second output
+  out2: string, shape=[?] - third output
+  out3: int64, list<shape=?> - fourth output that is in1 but incremented.
+)doc";
+
+  static const char* OpName() { return kOpName; }
+  static const char* Doc() { return kDoc; }
 
   // Attributes declaration (syntax: https://www.tensorflow.org/guide/create_op)
   static std::vector<std::string> Attrs() {
@@ -167,33 +186,6 @@ class SimpleOp : public OpKernelShim<SimpleOp, Rt> {
   }
 };
 
-// Static member definitions.
-// These can be inlined once the toolchain is bumped up to C++17
-
-template <Runtime Rt>
-const char SimpleOp<Rt>::kOutput1SizeAttr[] = "output1_size";
-
-template <Runtime Rt>
-const char SimpleOp<Rt>::kOpName[] = "SimpleOperation";
-
-template <Runtime Rt>
-const char SimpleOp<Rt>::kDoc[] = R"doc(
-Description:
-  Simple example op for testing and demonstration purposes.
-
-Attrs
-  output1_size: int - the size of the second output
-  output2_suffix: string - the string value to be appended to the end of out2
-  N: int - the number of tensors for the second input and last output
-Inputs
-  in0: str, shape=[] - A scalar input
-  in1: int64, list<shape=?> - A list of tensors as input
-Outputs
-  out0: int, shape=[5] - first output
-  out1: float, shape=[?] - second output
-  out2: string, shape=[?] - third output
-  out3: int64, list<shape=?> - fourth output that is in1 but incremented.
-)doc";
 
 }  // namespace shim
 }  // namespace tflite

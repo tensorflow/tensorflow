@@ -17,7 +17,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 namespace grappler {

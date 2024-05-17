@@ -19,9 +19,14 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.ops.linalg import linear_operator_lower_triangular
+from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperatorComposition"]
@@ -173,6 +178,29 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
             "The composition of non-singular operators is always non-singular.")
       is_non_singular = True
 
+    if _composition_must_be_self_adjoint(operators):
+      if is_self_adjoint is False:  # pylint:disable=g-bool-id-comparison
+        raise ValueError(
+            "The composition was determined to be self-adjoint but user "
+            "provided incorrect `False` hint.")
+      is_self_adjoint = True
+
+    if linear_operator_util.is_aat_form(operators):
+      if is_square is False:  # pylint:disable=g-bool-id-comparison
+        raise ValueError(
+            "The composition was determined have the form "
+            "A @ A.H, hence it must be square. The user "
+            "provided an incorrect `False` hint.")
+      is_square = True
+
+    if linear_operator_util.is_aat_form(operators) and is_non_singular:
+      if is_positive_definite is False:  # pylint:disable=g-bool-id-comparison
+        raise ValueError(
+            "The composition was determined to be non-singular and have the "
+            "form A @ A.H, hence it must be positive-definite. The user "
+            "provided an incorrect `False` hint.")
+      is_positive_definite = True
+
     # Initialization.
 
     if name is None:
@@ -220,7 +248,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     # Don't check the matrix dimensions.  That would add unnecessary Asserts to
     # the graph.  Things will fail at runtime naturally if shapes are
     # incompatible.
-    matrix_shape = array_ops.stack([
+    matrix_shape = array_ops_stack.stack([
         self.operators[0].range_dimension_tensor(),
         self.operators[-1].domain_dimension_tensor()
     ])
@@ -232,6 +260,66 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     batch_shape = array_ops.shape(zeros)
 
     return array_ops.concat((batch_shape, matrix_shape), 0)
+
+  def _linop_cholesky(self) -> linear_operator.LinearOperator:
+    """Computes Cholesky(LinearOperatorComposition)."""
+    # L @ L.H will be handled with special code below. Why is L @ L.H the most
+    # important special case?
+    # Note that Diag @ Diag.H  and Diag @ TriL and TriL @ Diag are already
+    # compressed to Diag or TriL by diag matmul
+    # registration. Similarly for Identity and ScaledIdentity.
+    # So these would not appear in a LinearOperatorComposition unless explicitly
+    # constructed as such. So the most important thing to check is L @ L.H.
+    def _is_llt_product(self):
+      """Determines if linop = L @ L.H for L = LinearOperatorLowerTriangular."""
+      if len(self.operators) != 2:
+        return False
+      if not linear_operator_util.is_aat_form(self.operators):
+        return False
+      return isinstance(
+          self.operators[0],
+          linear_operator_lower_triangular.LinearOperatorLowerTriangular)
+
+    if not _is_llt_product(self):
+      return linear_operator_lower_triangular.LinearOperatorLowerTriangular(
+          linalg_ops.cholesky(self.to_dense()),
+          is_non_singular=True,
+          is_self_adjoint=False,
+          is_square=True)
+
+    left_op = self.operators[0]
+
+    # left_op.is_positive_definite ==> op already has positive diag,return it.
+    if left_op.is_positive_definite:
+      return left_op
+
+    # Recall that the base class has already verified
+    # linop.is_positive_definite, else linop.cholesky() would have raised.
+    # So in particular, we know the diagonal has nonzero entries.
+    # In the generic case, we make op have positive diag by dividing each row
+    # by the sign of the diag. This is equivalent to setting A = L @ D where
+    # D is diag(sign(1 / L.diag_part())). Then A is lower triangular with
+    # positive diag and A @ A^H = L @ D @ D^H @ L^H = L @ L^H = linop.
+    # This also works for complex L,
+    # since sign(x + iy) = exp(i * angle(x + iy)).
+    diag_sign = array_ops.expand_dims(
+        math_ops.sign(left_op.diag_part()), axis=-2)
+    return linear_operator_lower_triangular.LinearOperatorLowerTriangular(
+        tril=left_op.tril / diag_sign,
+        is_non_singular=left_op.is_non_singular,
+        # L.is_self_adjoint ==> L is diagonal ==> L @ D is diagonal ==> SA
+        # L.is_self_adjoint is False ==> L not diagonal ==> L @ D not diag ...
+        is_self_adjoint=left_op.is_self_adjoint,
+        # L.is_positive_definite ==> L has positive diag ==> L = L @ D
+        #   ==> (L @ D).is_positive_definite.
+        # L.is_positive_definite is False could result
+        # in L @ D being PD or not.
+        # Consider L = [[1, 0], [-2, 1]] and quadratic form with x = [1, 1].
+        # Note we will already return left_op if left_op.is_positive_definite
+        # above, but to be explicit write this below.
+        is_positive_definite=True if left_op.is_positive_definite else None,
+        is_square=True,
+    )
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     # If self.operators = [A, B], and not adjoint, then
@@ -292,3 +380,25 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
   @property
   def _experimental_parameter_ndims_to_matrix_ndims(self):
     return {"operators": [0] * len(self.operators)}
+
+
+def _composition_must_be_self_adjoint(operators):
+  """Runs some checks to see if composition operators must be SA.
+
+  Args:
+    operators: List of LinearOperators.
+
+  Returns:
+    True if the composition must be SA. False if it is not SA OR if we did not
+      determine whether the composition is SA.
+  """
+  if len(operators) == 1 and operators[0].is_self_adjoint:
+    return True
+
+  # Check for forms like A @ A.H or (A1 @ A2) @ (A2.H @ A1.H) or ...
+  if linear_operator_util.is_aat_form(operators):
+    return True
+
+  # Done checking...could still be SA.
+  # We may not catch some cases. E.g. (A @ I) @ A.H is SA, but is not AAT form.
+  return False

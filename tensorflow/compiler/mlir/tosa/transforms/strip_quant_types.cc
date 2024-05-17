@@ -27,9 +27,10 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <numeric>
+#include <utility>
 
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -37,8 +38,10 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
@@ -50,16 +53,20 @@ namespace mlir {
 namespace tosa {
 namespace {
 
-class StripQuantTypes : public TosaStripQuantTypesPassBase<StripQuantTypes> {
+#define GEN_PASS_DEF_TOSASTRIPQUANTTYPESPASS
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
+class StripQuantTypes
+    : public impl::TosaStripQuantTypesPassBase<StripQuantTypes> {
  public:
-  explicit StripQuantTypes() {}
+  explicit StripQuantTypes() = default;
   void runOnOperation() override;
 };
 
 class QuantTypeConverter : public TypeConverter {
  public:
   static Type convertType(Type type) {
-    if (auto qType = type.dyn_cast<quant::QuantizedType>()) {
+    if (auto qType = dyn_cast<quant::QuantizedType>(type)) {
       if (qType.isSigned() || qType.getStorageTypeIntegralWidth() != 8) {
         return IntegerType::get(type.getContext(),
                                 qType.getStorageTypeIntegralWidth());
@@ -115,8 +122,8 @@ class GenericTypeConvert : public ConversionPattern {
 };
 
 static bool isIllegalType(Type type) {
-  if (type.isa<quant::QuantizedType>()) return true;
-  if (auto shapedType = type.dyn_cast<ShapedType>()) {
+  if (mlir::isa<quant::QuantizedType>(type)) return true;
+  if (auto shapedType = dyn_cast<ShapedType>(type)) {
     return isIllegalType(shapedType.getElementType());
   }
   return false;
@@ -126,7 +133,7 @@ void StripQuantTypes::runOnOperation() {
   QuantTypeConverter converter;
   ConversionTarget target(getContext());
 
-  target.addIllegalDialect<quant::QuantizationDialect>();
+  target.addIllegalDialect<quantfork::QuantizationForkDialect>();
   // Operations are legal if they don't contain any illegal type.
   target.markUnknownOpDynamicallyLegal([](Operation* op) {
     if (auto funcOp = dyn_cast<func::FuncOp>(op)) {

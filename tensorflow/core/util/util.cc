@@ -15,16 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/util/util.h"
 
-#include <string>
-#include <vector>
-
-#include "absl/base/call_once.h"
-#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/port.h"
 
 namespace tensorflow {
 
@@ -110,7 +105,7 @@ string SliceDebugString(const TensorShape& shape, const int64_t flat) {
   if (dims == 1) return strings::StrCat("[", flat, "]");
 
   // Compute strides
-  gtl::InlinedVector<int64_t, 32> strides(dims);
+  absl::InlinedVector<int64_t, 32UL> strides(dims);
   strides.back() = 1;
   for (int i = dims - 2; i >= 0; i--) {
     strides[i] = strides[i + 1] * shape.dim_size(i + 1);
@@ -127,59 +122,69 @@ string SliceDebugString(const TensorShape& shape, const int64_t flat) {
   return result;
 }
 
-bool IsMKLEnabled() {
-#ifndef INTEL_MKL
-  return false;
-#endif  // !INTEL_MKL
-  static absl::once_flag once;
-#ifdef ENABLE_MKL
-  // Keeping TF_DISABLE_MKL env variable for legacy reasons.
-  static bool oneDNN_disabled = false;
-  absl::call_once(once, [&] {
-    TF_CHECK_OK(ReadBoolFromEnvVar("TF_DISABLE_MKL", false, &oneDNN_disabled));
-    if (oneDNN_disabled) VLOG(2) << "TF-MKL: Disabling oneDNN";
+// TODO(penporn): Remove this function from util.cc
+bool IsMKLEnabled() { return IsMklEnabled(); }
+
+void DataTypeUnsupportedWarning(const DataType& dt) {
+  static absl::once_flag cpu_dt_warn_once_flag;
+  absl::call_once(cpu_dt_warn_once_flag, [dt] {
+    LOG(ERROR) << "oneDNN supports " << DataType_Name(dt) << " only on "
+               << "platforms with AVX-512. Falling back to the default "
+               << "Eigen-based implementation if present.";
   });
-  return (!oneDNN_disabled);
-#else
-  // Linux: Turn oneDNN on by default for CPUs with neural network features.
-  // Windows: oneDNN is off by default.
-  // No need to guard for other platforms here because INTEL_MKL is only defined
-  // for non-mobile Linux or Windows.
-  static bool oneDNN_enabled =
-#ifdef __linux__
-      port::TestCPUFeature(port::CPUFeature::AVX512_VNNI) ||
-      port::TestCPUFeature(port::CPUFeature::AVX512_BF16) ||
-      port::TestCPUFeature(port::CPUFeature::AVX_VNNI) ||
-      port::TestCPUFeature(port::CPUFeature::AMX_TILE) ||
-      port::TestCPUFeature(port::CPUFeature::AMX_INT8) ||
-      port::TestCPUFeature(port::CPUFeature::AMX_BF16);
-#else
-      false;
-#endif  // __linux__
-  absl::call_once(once, [&] {
-    auto status = ReadBoolFromEnvVar("TF_ENABLE_ONEDNN_OPTS", oneDNN_enabled,
-                                     &oneDNN_enabled);
-    if (!status.ok()) {
-      LOG(WARNING) << "TF_ENABLE_ONEDNN_OPTS is not set to either '0', 'false',"
-                   << " '1', or 'true'. Using the default setting: "
-                   << oneDNN_enabled;
-    }
-    if (oneDNN_enabled) {
-#ifndef DNNL_AARCH64_USE_ACL
-      LOG(INFO) << "oneDNN custom operations are on. "
-                << "You may see slightly different numerical results due to "
-                << "floating-point round-off errors from different computation "
-                << "orders. To turn them off, set the environment variable "
-                << "`TF_ENABLE_ONEDNN_OPTS=0`.";
-#else
-      LOG(INFO) << "Experimental oneDNN custom operations are on. "
-                << "If you experience issues, please turn them off by setting "
-                << "the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.";
-#endif  // !DNNL_AARCH64_USE_ACL
-    }
-  });
-  return oneDNN_enabled;
-#endif  // ENABLE_MKL
+}
+
+bool IsDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt) {
+  bool result = false;
+#ifdef INTEL_MKL
+  using port::TestCPUFeature;
+  if (dt == DT_FLOAT) {
+    result = true;
+  } else if (dt == DT_BFLOAT16) {
+    result = (TestCPUFeature(port::CPUFeature::AVX512F) ||
+              TestCPUFeature(port::CPUFeature::AVX_NE_CONVERT));
+    if (result) VLOG(2) << "CPU supports " << DataType_Name(dt);
+  } else if (DataTypeIsQuantized(dt)) {
+    result = (TestCPUFeature(port::CPUFeature::AVX512F) ||
+              TestCPUFeature(port::CPUFeature::AVX_VNNI_INT8));
+    if (result) VLOG(2) << "CPU supports " << DataType_Name(dt);
+  } else if (dt == DT_HALF) {
+    // Float16 is not supported in oneDNN v2.x
+#ifdef ENABLE_ONEDNN_V3
+    result = (TestCPUFeature(port::CPUFeature::AVX512BW) &&
+              (TestCPUFeature(port::CPUFeature::AVX512_FP16) ||
+               TestCPUFeature(port::CPUFeature::AMX_FP16) ||
+               TestCPUFeature(port::CPUFeature::AVX_NE_CONVERT)));
+    if (result) VLOG(2) << "CPU supports " << DataType_Name(dt);
+#endif  // ENABLE_ONEDNN_V3
+  } else {
+    LOG(WARNING) << "Not handling type " << DataType_Name(dt);
+  }
+#endif  // INTEL_MKL
+  return result;
+}
+
+bool IsAMXDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt) {
+  bool result = false;
+#ifdef INTEL_MKL
+  using port::TestCPUFeature;
+  if (dt == DT_BFLOAT16) {
+    result = TestCPUFeature(port::CPUFeature::AMX_BF16);
+    if (result) VLOG(2) << "CPU supports AMX " << DataType_Name(dt);
+  } else if (dt == DT_HALF) {
+    // Float16 is not supported in oneDNN v2.x
+#ifdef ENABLE_ONEDNN_V3
+    result = TestCPUFeature(port::CPUFeature::AMX_FP16);
+    if (result) VLOG(2) << "CPU supports AMX " << DataType_Name(dt);
+#endif  // ENABLE_ONEDNN_V3
+  } else if (DataTypeIsQuantized(dt)) {
+    result = TestCPUFeature(port::CPUFeature::AMX_INT8);
+    if (result) VLOG(2) << "CPU supports AMX " << DataType_Name(dt);
+  } else {
+    LOG(WARNING) << "Not handling type " << DataType_Name(dt);
+  }
+#endif  // INTEL_MKL
+  return result;
 }
 
 }  // namespace tensorflow

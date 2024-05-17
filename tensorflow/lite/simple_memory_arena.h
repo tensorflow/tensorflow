@@ -15,14 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 #define TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 
-#include <stddef.h>
-
+#include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 
@@ -55,6 +53,53 @@ struct ArenaAllocWithUsageInterval {
   }
 };
 
+struct PointerAlignedPointerPair {
+  char* pointer;
+  char* aligned_pointer;
+};
+
+class ResizableAlignedBuffer {
+ public:
+  ResizableAlignedBuffer(size_t alignment, int subgraph_index)
+      : buffer_{nullptr, nullptr},
+        data_size_(0),
+        alignment_(alignment),
+        subgraph_index_(subgraph_index) {
+    // To silence unused private member warning, only used with
+    // TF_LITE_TENSORFLOW_PROFILER
+    (void)subgraph_index_;
+  }
+
+  ~ResizableAlignedBuffer() { Release(); }
+
+  // Resizes the buffer to make sure new_size bytes fit in the buffer. Keeps
+  // alignment and any existing the data. Returns true when any external
+  // pointers into the data array need to be adjusted (the buffer was moved).
+  bool Resize(size_t new_size);
+  // Releases any allocated memory.
+  void Release();
+
+  // Pointer to the data array.
+  char* GetPtr() const { return buffer_.aligned_pointer; }
+  // Size of the data array. Note: the allocated memory block might be larger
+  // due to excess alignment requirements.
+  size_t GetSize() const { return data_size_; }
+  // Alignment of the data array.
+  size_t GetAlignment() const { return alignment_; }
+
+ private:
+  ResizableAlignedBuffer(const ResizableAlignedBuffer&) = delete;
+  ResizableAlignedBuffer& operator=(const ResizableAlignedBuffer&) = delete;
+  ResizableAlignedBuffer(ResizableAlignedBuffer&&) = delete;
+  ResizableAlignedBuffer& operator=(ResizableAlignedBuffer&&) = delete;
+
+  PointerAlignedPointerPair buffer_;
+  size_t data_size_;
+  size_t alignment_;
+
+  int subgraph_index_;
+};
+
 // This small class is responsible for allocating, deallocating and reusing
 // dynamic memory from a common underlying buffer. The arena can be used in
 // scenarios when the pattern of memory allocations and deallocations is
@@ -62,12 +107,33 @@ struct ArenaAllocWithUsageInterval {
 // zero-sized allocations are explicitly allowed, and will resolve to null.
 class SimpleMemoryArena {
  public:
-  explicit SimpleMemoryArena(size_t arena_alignment)
+  explicit SimpleMemoryArena(size_t arena_alignment, int subgraph_index = 0)
       : committed_(false),
-        arena_alignment_(arena_alignment),
         high_water_mark_(0),
-        underlying_buffer_size_(0),
-        ordered_allocs_() {}
+        underlying_buffer_(arena_alignment, subgraph_index),
+        active_allocs_() {}
+
+  // Delete all allocs. This should be called when allocating the first node of
+  // a subgraph.
+  void ResetAllocs();
+
+  // Delete all allocs which are deallocated before `node`. This should be
+  // called before allocating tensors associated with a series of nodes. It
+  // deletes allocs which are no longer required for allocating the next batch
+  // of tensors. Not calling it will have no impact on the result but it may be
+  // much slower.
+  void PurgeActiveAllocs(int32_t node);
+
+  // Delete all allocs which are allocated after `node`. This should be
+  // called when resetting allocs after `node`. It  deletes allocs which are no
+  // longer required for allocating the next batch of tensors. Not calling it
+  // will have no impact on the result but it may be much slower.
+  void PurgeAfter(int32_t node);
+
+  // Calculate the active allocs at `node`. Call this if the active allocs at
+  // `node` are unknown.
+  void CalculateActiveAllocs(
+      const std::vector<ArenaAllocWithUsageInterval>& allocs, int32_t node);
 
   // Schedule memory allocation for a tensor with a given size, assuming that it
   // needs to be allocated before the execution of first_node, and deallocated
@@ -76,17 +142,7 @@ class SimpleMemoryArena {
                         int32_t tensor, int32_t first_node, int32_t last_node,
                         ArenaAllocWithUsageInterval* new_alloc);
 
-  TfLiteStatus Deallocate(TfLiteContext* context,
-                          const ArenaAllocWithUsageInterval& alloc);
-
-  inline size_t RequiredBufferSize() {
-    // Add in a small amount of padding to reduce the chance of resize events
-    // for small allocations.
-    size_t padding = arena_alignment_;
-    return arena_alignment_ + high_water_mark_ + padding;
-  }
-
-  TfLiteStatus Commit(TfLiteContext* context);
+  TfLiteStatus Commit(bool* arena_reallocated);
 
   TfLiteStatus ResolveAlloc(TfLiteContext* context,
                             const ArenaAllocWithUsageInterval& alloc,
@@ -102,10 +158,10 @@ class SimpleMemoryArena {
   // again until Commit() is called & tensor allocations are resolved.
   TfLiteStatus ReleaseBuffer();
 
-  size_t GetBufferSize() { return underlying_buffer_size_; }
+  size_t GetBufferSize() const { return underlying_buffer_.GetSize(); }
 
   std::intptr_t BasePointer() const {
-    return reinterpret_cast<std::intptr_t>(underlying_buffer_aligned_ptr_);
+    return reinterpret_cast<std::intptr_t>(underlying_buffer_.GetPtr());
   }
 
   // Dumps the memory allocation information of this memory arena (which could
@@ -127,12 +183,9 @@ class SimpleMemoryArena {
 
  private:
   bool committed_;
-  size_t arena_alignment_;
   size_t high_water_mark_;
-  std::unique_ptr<char[]> underlying_buffer_;
-  size_t underlying_buffer_size_;
-  char* underlying_buffer_aligned_ptr_;
-  std::vector<ArenaAllocWithUsageInterval> ordered_allocs_;
+  ResizableAlignedBuffer underlying_buffer_;
+  std::vector<ArenaAllocWithUsageInterval> active_allocs_;
 };
 
 }  // namespace tflite

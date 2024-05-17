@@ -58,7 +58,7 @@ class TFStats {
   TFStats(const string& filename,
           std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader);
 
-  ~TFStats() {}
+  ~TFStats() = default;
 
   const std::map<string, std::unique_ptr<TFGraphNode>>& nodes() const {
     return nodes_map_;

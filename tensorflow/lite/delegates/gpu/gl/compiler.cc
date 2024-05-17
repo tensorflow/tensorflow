@@ -40,6 +40,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/compiler/shader_codegen.h"
 #include "tensorflow/lite/delegates/gpu/gl/float16_conversions.h"
 
+#ifdef __ANDROID__
+#include <sys/system_properties.h>
+#endif  // __ANDROID__
+
 namespace tflite {
 namespace gpu {
 namespace gl {
@@ -104,6 +108,15 @@ class CompilerImpl : public Compiler {
     if (options_.ref_obj_type == ObjectType::UNKNOWN) {
       options_.ref_obj_type = ChooseFastestRefObjectType(*gpu_info, options);
     }
+#ifdef __ANDROID__
+    // Circumvent FP16 bug with Adreno 660 on Android SDK 30.
+    if (gpu_info_.IsAdreno() &&
+        gpu_info_.adreno_info.adreno_gpu == AdrenoGpu::kAdreno660) {
+      char sdk_version[PROP_VALUE_MAX];
+      __system_property_get("ro.build.version.sdk", sdk_version);
+      if (!strcmp(sdk_version, "30")) options_.allow_precision_loss = false;
+    }
+#endif  // __ANDROID__
   }
 
   absl::Status Compile(

@@ -20,7 +20,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/tensor_list.h"
+#include "tensorflow/core/kernels/tensor_list_util.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -38,17 +39,17 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_ops_util.h"
 #include "tensorflow/core/util/util.h"
 
-// stream.h isn't available in some platforms such as Android, iOS, and
-// ChromiumOS. Only include it for platforms that PluggableDevice is tested on.
+// stream.h isn't available in some platforms such as Android, iOS, ChromiumOS,
+// and Fuchsia. Only include it for platforms that PluggableDevice is tested on.
 #if !defined(PLUGGABLE_DEVICE_SUPPORTED) &&                              \
     (__x86_64__ || __i386__ || defined(__APPLE__) || defined(_WIN32)) && \
     !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS &&      \
-    !defined(PLATFORM_CHROMIUMOS)
+    !defined(PLATFORM_CHROMIUMOS) && !defined(__Fuchsia__)
 #define PLUGGABLE_DEVICE_SUPPORTED
 #endif
 
 #ifdef PLUGGABLE_DEVICE_SUPPORTED
-#include "tensorflow/stream_executor/stream.h"
+#include "xla/stream_executor/stream.h"
 #endif
 
 namespace tensorflow {
@@ -80,7 +81,7 @@ inline void SetZero(OpKernelContext* ctx, Tensor& tensor) {
     auto ptr =
         se::DeviceMemoryBase(tensor.flat<T>().data(), tensor.TotalBytes());
     auto stream = ctx->op_device_context()->stream();
-    auto result = stream->ThenMemZero(&ptr, tensor.TotalBytes()).ok();
+    auto result = stream->MemZero(&ptr, tensor.TotalBytes()).ok();
     DCHECK_EQ(true, result);
   } else {
 #endif  // PLUGGABLE_DEVICE_SUPPORTED
@@ -101,7 +102,7 @@ inline void CopyTensorPluggableDevice(OpKernelContext* ctx, Tensor& src,
   auto src_ptr = se::DeviceMemoryBase(src_t.data(), src.TotalBytes());
   auto dst_ptr = se::DeviceMemoryBase(dst_t.data(), dst.TotalBytes());
   auto stream = ctx->op_device_context()->stream();
-  auto result = stream->ThenMemcpy(&dst_ptr, src_ptr, src.TotalBytes()).ok();
+  auto result = stream->Memcpy(&dst_ptr, src_ptr, src.TotalBytes()).ok();
   DCHECK_EQ(true, result);
 #else
   LOG(FATAL)  // Crash OK.
@@ -148,7 +149,8 @@ void ConcatPluggableDevice(
       auto size = sizes[j];
       se::DeviceMemoryBase out_base{out, size * sizeof(T)};
       se::DeviceMemoryBase inp_base{const_cast<T*>(inp[j]), size * sizeof(T)};
-      stream->ThenMemcpy(&out_base, inp_base, size * sizeof(T));
+      OP_REQUIRES_OK(context,
+                     stream->Memcpy(&out_base, inp_base, size * sizeof(T)));
       out += size;
       inp[j] += size;
     }
@@ -394,8 +396,11 @@ class TensorListConcat : public OpKernel {
   void Compute(OpKernelContext* c) override {
     PartialTensorShape element_shape_except_first_dim;
     if (!element_shape_.unknown_rank()) {
-      element_shape_except_first_dim = PartialTensorShape(
-          gtl::ArraySlice<int64_t>(element_shape_.dim_sizes()).subspan(1));
+      auto dim_sizes = element_shape_.dim_sizes();
+      OP_REQUIRES(c, !dim_sizes.empty(),
+                  errors::InvalidArgument("element_shape must not be empty"));
+      element_shape_except_first_dim =
+          PartialTensorShape(absl::Span<const int64_t>(dim_sizes).subspan(1));
     }
     // Check that the input Variant tensor is indeed a TensorList and has the
     // correct element type.
@@ -454,7 +459,7 @@ class TensorListConcat : public OpKernel {
               errors::InvalidArgument("Concat saw a scalar shape at index ", i,
                                       " but requires at least vectors."));
           TensorShape shape_except_first_dim = TensorShape(
-              gtl::ArraySlice<int64_t>(t.shape().dim_sizes()).subspan(1));
+              absl::Span<const int64_t>(t.shape().dim_sizes()).subspan(1));
           OP_REQUIRES_OK(c, tmp.MergeWith(shape_except_first_dim,
                                           &element_shape_except_first_dim));
           OP_REQUIRES(c, first_dim == -1 || first_dim == t.shape().dim_size(0),
@@ -687,6 +692,12 @@ class TensorListGather : public OpKernel {
     if (!tensor_list->element_shape.IsFullyDefined()) {
       for (int index = 0; index < indices.NumElements(); ++index) {
         const int i = indices.flat<int32>()(index);
+
+        OP_REQUIRES(c, 0 <= i && i < tensor_list->tensors().size(),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Trying to gather element ", i, " in a list with ",
+                        tensor_list->tensors().size(), " elements.")));
+
         const Tensor& t = tensor_list->tensors()[i];
         if (t.dtype() != DT_INVALID) {
           PartialTensorShape tmp = partial_element_shape;
@@ -769,6 +780,11 @@ class TensorListFromTensor : public OpKernel {
     attr.set_on_host(true);
     OP_REQUIRES_OK(c, c->allocate_output(0, {}, &output_tensor, attr));
     PartialTensorShape element_shape;
+    OP_REQUIRES(
+        c, !TensorShapeUtils::IsMatrixOrHigher(c->input(1).shape()),
+        errors::InvalidArgument(
+            "TensorListFromTensor: element_shape must be at most rank 1 but ",
+            "has the shape of ", c->input(1).shape().DebugString()));
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(1), &element_shape));
     TensorList output_list;
     const Tensor& t = c->input(0);
@@ -830,7 +846,7 @@ Status Scatter(OpKernelContext* c, const Tensor& value, const Tensor& indices,
     copy_tensor(c, tmp, aligned);
     std::swap(list->tensors()[i], aligned);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename Device, typename T>
@@ -895,10 +911,20 @@ class TensorListScatter : public OpKernel {
     OP_REQUIRES_OK(c, c->allocate_output(0, {}, &output_tensor, attr));
     Tensor indices = c->input(1);
     PartialTensorShape element_shape;
+    OP_REQUIRES(
+        c, !TensorShapeUtils::IsMatrixOrHigher(c->input(2).shape()),
+        errors::InvalidArgument(
+            "TensorListScatter: element_shape must be at most rank 1 but has ",
+            "the shape of ", c->input(2).shape().DebugString()));
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(2), &element_shape));
     // TensorListScatterV2 passes the num_elements input, TensorListScatter does
     // not.
-    int num_elements = c->num_inputs() >= 4 ? c->input(3).scalar<int>()() : -1;
+    int num_elements = -1;
+    if (c->num_inputs() >= 4) {
+      OP_REQUIRES(c, TensorShapeUtils::IsScalar(c->input(3).shape()),
+                  errors::InvalidArgument("num_elements must be a scalar"));
+      num_elements = c->input(3).scalar<int>()();
+    }
     OP_REQUIRES(c, num_elements >= -1,
                 errors::InvalidArgument(
                     "TensorListScatter expects num_elements >= -1, found: ",
@@ -954,52 +980,13 @@ class TensorListScatter : public OpKernel {
 template <typename Device>
 Status TensorListBinaryAdd(OpKernelContext* c, const TensorList& a,
                            const TensorList& b, TensorList* out) {
-  if (a.element_dtype != b.element_dtype) {
-    return errors::InvalidArgument(
-        "Trying to add two lists of tensors of different dtypes. One is ",
-        DataTypeString(a.element_dtype), " and the other is ",
-        DataTypeString(b.element_dtype));
-  }
-  out->element_dtype = a.element_dtype;
-  if (!a.element_shape.IsCompatibleWith(b.element_shape)) {
-    return errors::InvalidArgument(
-        "Trying to add two lists of tensors with incompatible element shapes. "
-        "One is ",
-        a.element_shape.DebugString(), " and the other is ",
-        b.element_shape.DebugString());
-  }
-
-  TF_RETURN_IF_ERROR(
-      a.element_shape.MergeWith(b.element_shape, &out->element_shape));
-  if (a.tensors().size() != b.tensors().size()) {
-    return errors::InvalidArgument(
-        "Trying to add two lists of tensors with different lengths. One is ",
-        a.tensors().size(), " and the other is ", b.tensors().size());
-  }
-  out->tensors().reserve(a.tensors().size());
-  for (int i = 0; i < a.tensors().size(); ++i) {
-    const Tensor& a_tensor = a.tensors()[i];
-    const Tensor& b_tensor = b.tensors()[i];
-    Tensor out_tensor;
-    TF_RETURN_IF_ERROR(
-        BinaryAddTensors<Device>(c, a_tensor, b_tensor, &out_tensor));
-    out->tensors().push_back(out_tensor);
-  }
-  return OkStatus();
+  return TensorListBinaryAdd(c, a, b, out, BinaryAddTensors<Device>);
 }
 
 template <typename Device>
 Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
                            TensorList* y) {
-  y->element_dtype = x.element_dtype;
-  y->element_shape = x.element_shape;
-  y->tensors().reserve(x.tensors().size());
-  for (const Tensor& t : x.tensors()) {
-    Tensor out_tensor;
-    TF_RETURN_IF_ERROR(ZerosLikeTensor<Device>(c, t, &out_tensor));
-    y->tensors().emplace_back(out_tensor);
-  }
-  return OkStatus();
+  return TensorListZerosLike(c, x, y, ZerosLikeTensor<Device>);
 }
 
 template <typename Device, typename T>

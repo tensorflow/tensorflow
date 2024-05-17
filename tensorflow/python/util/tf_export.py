@@ -37,69 +37,59 @@ foo = 1
 tf_export('consts.foo').export_constant(__name__, 'foo')
 ```
 """
-import collections
+from collections.abc import Sequence
 import functools
 import sys
+from typing import Any, NamedTuple, Optional, Protocol, TypeVar
 
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
-ESTIMATOR_API_NAME = 'estimator'
 KERAS_API_NAME = 'keras'
 TENSORFLOW_API_NAME = 'tensorflow'
 
 # List of subpackage names used by TensorFlow components. Have to check that
 # TensorFlow core repo does not export any symbols under these names.
-SUBPACKAGE_NAMESPACES = [ESTIMATOR_API_NAME]
+SUBPACKAGE_NAMESPACES = []
 
-_Attributes = collections.namedtuple(
-    'ExportedApiAttributes', ['names', 'constants'])
+
+class _Attributes(NamedTuple):
+  names: str
+  constants: str
+
 
 # Attribute values must be unique to each API.
 API_ATTRS = {
-    TENSORFLOW_API_NAME: _Attributes(
-        '_tf_api_names',
-        '_tf_api_constants'),
-    ESTIMATOR_API_NAME: _Attributes(
-        '_estimator_api_names',
-        '_estimator_api_constants'),
-    KERAS_API_NAME: _Attributes(
-        '_keras_api_names',
-        '_keras_api_constants')
+    TENSORFLOW_API_NAME: _Attributes('_tf_api_names', '_tf_api_constants'),
+    KERAS_API_NAME: _Attributes('_keras_api_names', '_keras_api_constants'),
 }
 
 API_ATTRS_V1 = {
     TENSORFLOW_API_NAME: _Attributes(
-        '_tf_api_names_v1',
-        '_tf_api_constants_v1'),
-    ESTIMATOR_API_NAME: _Attributes(
-        '_estimator_api_names_v1',
-        '_estimator_api_constants_v1'),
+        '_tf_api_names_v1', '_tf_api_constants_v1'
+    ),
     KERAS_API_NAME: _Attributes(
-        '_keras_api_names_v1',
-        '_keras_api_constants_v1')
+        '_keras_api_names_v1', '_keras_api_constants_v1'
+    ),
 }
-
-
-class SymbolAlreadyExposedError(Exception):
-  """Raised when adding API names to symbol that already has API names."""
-  pass
 
 
 class InvalidSymbolNameError(Exception):
   """Raised when trying to export symbol as an invalid or unallowed name."""
-  pass
-
-_NAME_TO_SYMBOL_MAPPING = dict()
 
 
-def get_symbol_from_name(name):
+_NAME_TO_SYMBOL_MAPPING: dict[str, Any] = dict()
+
+
+def get_symbol_from_name(name: str) -> Optional[Any]:
   return _NAME_TO_SYMBOL_MAPPING.get(name)
 
 
 def get_canonical_name_for_symbol(
-    symbol, api_name=TENSORFLOW_API_NAME,
-    add_prefix_to_v1_names=False):
+    symbol: Any,
+    api_name: str = TENSORFLOW_API_NAME,
+    add_prefix_to_v1_names: bool = False,
+) -> Optional[str]:
   """Get canonical name for the API symbol.
 
   Example:
@@ -116,9 +106,9 @@ def get_canonical_name_for_symbol(
 
   Args:
     symbol: API function or class.
-    api_name: API name (tensorflow or estimator).
-    add_prefix_to_v1_names: Specifies whether a name available only in V1
-      should be prefixed with compat.v1.
+    api_name: API name. Currently, only `tensorflow`.
+    add_prefix_to_v1_names: Specifies whether a name available only in V1 should
+      be prefixed with compat.v1.
 
   Returns:
     Canonical name for the API symbol (for e.g. initializers.zeros) if
@@ -132,7 +122,8 @@ def get_canonical_name_for_symbol(
     return None
   api_names = getattr(undecorated_symbol, api_names_attr)
   deprecated_api_names = undecorated_symbol.__dict__.get(
-      '_tf_deprecated_api_names', [])
+      '_tf_deprecated_api_names', []
+  )
 
   canonical_name = get_canonical_name(api_names, deprecated_api_names)
   if canonical_name:
@@ -147,12 +138,15 @@ def get_canonical_name_for_symbol(
   return v1_canonical_name
 
 
-def get_canonical_name(api_names, deprecated_api_names):
+def get_canonical_name(
+    api_names: Sequence[str], deprecated_api_names: Sequence[str]
+) -> Optional[str]:
   """Get preferred endpoint name.
 
   Args:
     api_names: API names iterable.
     deprecated_api_names: Deprecated API names iterable.
+
   Returns:
     Returns one of the following in decreasing preference:
     - first non-deprecated endpoint
@@ -160,8 +154,8 @@ def get_canonical_name(api_names, deprecated_api_names):
     - None
   """
   non_deprecated_name = next(
-      (name for name in api_names if name not in deprecated_api_names),
-      None)
+      (name for name in api_names if name not in deprecated_api_names), None
+  )
   if non_deprecated_name:
     return non_deprecated_name
   if api_names:
@@ -169,139 +163,124 @@ def get_canonical_name(api_names, deprecated_api_names):
   return None
 
 
-def get_v1_names(symbol):
+def get_v1_names(symbol: Any) -> Sequence[str]:
   """Get a list of TF 1.* names for this symbol.
 
   Args:
     symbol: symbol to get API names for.
 
   Returns:
-    List of all API names for this symbol including TensorFlow and
-    Estimator names.
+    List of all API names for this symbol.
   """
   names_v1 = []
   tensorflow_api_attr_v1 = API_ATTRS_V1[TENSORFLOW_API_NAME].names
-  estimator_api_attr_v1 = API_ATTRS_V1[ESTIMATOR_API_NAME].names
   keras_api_attr_v1 = API_ATTRS_V1[KERAS_API_NAME].names
 
   if not hasattr(symbol, '__dict__'):
     return names_v1
   if tensorflow_api_attr_v1 in symbol.__dict__:
     names_v1.extend(getattr(symbol, tensorflow_api_attr_v1))
-  if estimator_api_attr_v1 in symbol.__dict__:
-    names_v1.extend(getattr(symbol, estimator_api_attr_v1))
   if keras_api_attr_v1 in symbol.__dict__:
     names_v1.extend(getattr(symbol, keras_api_attr_v1))
   return names_v1
 
 
-def get_v2_names(symbol):
+def get_v2_names(symbol: Any) -> Sequence[str]:
   """Get a list of TF 2.0 names for this symbol.
 
   Args:
     symbol: symbol to get API names for.
 
   Returns:
-    List of all API names for this symbol including TensorFlow and
-    Estimator names.
+    List of all API names for this symbol.
   """
   names_v2 = []
   tensorflow_api_attr = API_ATTRS[TENSORFLOW_API_NAME].names
-  estimator_api_attr = API_ATTRS[ESTIMATOR_API_NAME].names
   keras_api_attr = API_ATTRS[KERAS_API_NAME].names
 
   if not hasattr(symbol, '__dict__'):
     return names_v2
   if tensorflow_api_attr in symbol.__dict__:
     names_v2.extend(getattr(symbol, tensorflow_api_attr))
-  if estimator_api_attr in symbol.__dict__:
-    names_v2.extend(getattr(symbol, estimator_api_attr))
   if keras_api_attr in symbol.__dict__:
     names_v2.extend(getattr(symbol, keras_api_attr))
   return names_v2
 
 
-def get_v1_constants(module):
+def get_v1_constants(module: Any) -> Sequence[str]:
   """Get a list of TF 1.* constants in this module.
 
   Args:
     module: TensorFlow module.
 
   Returns:
-    List of all API constants under the given module including TensorFlow and
-    Estimator constants.
+    List of all API constants under the given module.
   """
   constants_v1 = []
   tensorflow_constants_attr_v1 = API_ATTRS_V1[TENSORFLOW_API_NAME].constants
-  estimator_constants_attr_v1 = API_ATTRS_V1[ESTIMATOR_API_NAME].constants
 
   if hasattr(module, tensorflow_constants_attr_v1):
     constants_v1.extend(getattr(module, tensorflow_constants_attr_v1))
-  if hasattr(module, estimator_constants_attr_v1):
-    constants_v1.extend(getattr(module, estimator_constants_attr_v1))
   return constants_v1
 
 
-def get_v2_constants(module):
+def get_v2_constants(module: Any) -> Sequence[str]:
   """Get a list of TF 2.0 constants in this module.
 
   Args:
     module: TensorFlow module.
 
   Returns:
-    List of all API constants under the given module including TensorFlow and
-    Estimator constants.
+    List of all API constants under the given module.
   """
   constants_v2 = []
   tensorflow_constants_attr = API_ATTRS[TENSORFLOW_API_NAME].constants
-  estimator_constants_attr = API_ATTRS[ESTIMATOR_API_NAME].constants
 
   if hasattr(module, tensorflow_constants_attr):
     constants_v2.extend(getattr(module, tensorflow_constants_attr))
-  if hasattr(module, estimator_constants_attr):
-    constants_v2.extend(getattr(module, estimator_constants_attr))
   return constants_v2
+
+
+T = TypeVar('T')
 
 
 class api_export(object):  # pylint: disable=invalid-name
   """Provides ways to export symbols to the TensorFlow API."""
 
-  def __init__(self, *args, **kwargs):  # pylint: disable=g-doc-args
+  _names: Sequence[str]
+  _names_v1: Sequence[str]
+  _api_name: str
+
+  def __init__(
+      self,
+      *args: str,
+      api_name: str = TENSORFLOW_API_NAME,
+      v1: Optional[Sequence[str]] = None,
+      allow_multiple_exports: bool = True,  # pylint: disable=unused-argument
+  ):
     """Export under the names *args (first one is considered canonical).
 
     Args:
       *args: API names in dot delimited format.
-      **kwargs: Optional keyed arguments.
-        v1: Names for the TensorFlow V1 API. If not set, we will use V2 API
-          names both for TensorFlow V1 and V2 APIs.
-        overrides: List of symbols that this is overriding
-          (those overrided api exports will be removed). Note: passing overrides
-          has no effect on exporting a constant.
-        api_name: Name of the API you want to generate (e.g. `tensorflow` or
-          `estimator`). Default is `tensorflow`.
-        allow_multiple_exports: Allow symbol to be exported multiple time under
-          different names.
+      api_name: API you want to generate Currently, only `tensorflow`.
+      v1: Names for the TensorFlow V1 API. If not set, we will use V2 API names
+        both for TensorFlow V1 and V2 APIs.
+      allow_multiple_exports: Deprecated.
     """
     self._names = args
-    self._names_v1 = kwargs.get('v1', args)
-    if 'v2' in kwargs:
-      raise ValueError('You passed a "v2" argument to tf_export. This is not '
-                       'what you want. Pass v2 names directly as positional '
-                       'arguments instead.')
-    self._api_name = kwargs.get('api_name', TENSORFLOW_API_NAME)
-    self._overrides = kwargs.get('overrides', [])
-    self._allow_multiple_exports = kwargs.get('allow_multiple_exports', False)
+    self._names_v1 = v1 if v1 is not None else args
+    self._api_name = api_name
 
     self._validate_symbol_names()
 
-  def _validate_symbol_names(self):
+  def _validate_symbol_names(self) -> None:
     """Validate you are exporting symbols under an allowed package.
 
-    We need to ensure things exported by tf_export, estimator_export, etc.
+    We need to ensure things exported by tf_export, etc.
     export symbols under disjoint top-level package names.
 
     For TensorFlow, we check that it does not export anything under subpackage
-    names used by components (estimator, keras, etc.).
+    names used by components (keras, etc.).
 
     For each component, we check that it exports everything under its own
     subpackage.
@@ -314,16 +293,16 @@ class api_export(object):  # pylint: disable=invalid-name
       for subpackage in SUBPACKAGE_NAMESPACES:
         if any(n.startswith(subpackage) for n in all_symbol_names):
           raise InvalidSymbolNameError(
-              '@tf_export is not allowed to export symbols under %s.*' % (
-                  subpackage))
+              '@tf_export is not allowed to export symbols under %s.*'
+              % (subpackage)
+          )
     else:
       if not all(n.startswith(self._api_name) for n in all_symbol_names):
         raise InvalidSymbolNameError(
-            'Can only export symbols under package name of component. '
-            'e.g. tensorflow_estimator must export all symbols under '
-            'tf.estimator')
+            'Can only export symbols under package name of component.'
+        )
 
-  def __call__(self, func):
+  def __call__(self, func: T) -> T:
     """Calls this decorator.
 
     Args:
@@ -331,18 +310,9 @@ class api_export(object):  # pylint: disable=invalid-name
 
     Returns:
       The input function with _tf_api_names attribute set.
-
-    Raises:
-      SymbolAlreadyExposedError: Raised when a symbol already has API names
-        and kwarg `allow_multiple_exports` not set.
     """
     api_names_attr = API_ATTRS[self._api_name].names
     api_names_attr_v1 = API_ATTRS_V1[self._api_name].names
-    # Undecorate overridden names
-    for f in self._overrides:
-      _, undecorated_f = tf_decorator.unwrap(f)
-      delattr(undecorated_f, api_names_attr)
-      delattr(undecorated_f, api_names_attr_v1)
 
     _, undecorated_func = tf_decorator.unwrap(func)
     self.set_attr(undecorated_func, api_names_attr, self._names)
@@ -352,20 +322,15 @@ class api_export(object):  # pylint: disable=invalid-name
       _NAME_TO_SYMBOL_MAPPING[name] = func
     for name_v1 in self._names_v1:
       _NAME_TO_SYMBOL_MAPPING['compat.v1.%s' % name_v1] = func
+
     return func
 
-  def set_attr(self, func, api_names_attr, names):
-    # Check for an existing api. We check if attribute name is in
-    # __dict__ instead of using hasattr to verify that subclasses have
-    # their own _tf_api_names as opposed to just inheriting it.
-    if api_names_attr in func.__dict__:
-      if not self._allow_multiple_exports:
-        raise SymbolAlreadyExposedError(
-            'Symbol %s is already exposed as %s.' %
-            (func.__name__, getattr(func, api_names_attr)))  # pylint: disable=protected-access
+  def set_attr(
+      self, func: Any, api_names_attr: str, names: Sequence[str]
+  ) -> None:
     setattr(func, api_names_attr, names)
 
-  def export_constant(self, module_name, name):
+  def export_constant(self, module_name: str, name: str) -> None:
     """Store export information for constants/string literals.
 
     Export information is stored in the module where constants/string literals
@@ -390,30 +355,44 @@ class api_export(object):  # pylint: disable=invalid-name
     if not hasattr(module, api_constants_attr):
       setattr(module, api_constants_attr, [])
     # pylint: disable=protected-access
-    getattr(module, api_constants_attr).append(
-        (self._names, name))
+    getattr(module, api_constants_attr).append((self._names, name))
 
     if not hasattr(module, api_constants_attr_v1):
       setattr(module, api_constants_attr_v1, [])
-    getattr(module, api_constants_attr_v1).append(
-        (self._names_v1, name))
+    getattr(module, api_constants_attr_v1).append((self._names_v1, name))
 
 
-def kwarg_only(f):
+def kwarg_only(f: Any) -> Any:
   """A wrapper that throws away all non-kwarg arguments."""
-  f_argspec = tf_inspect.getargspec(f)
+  f_argspec = tf_inspect.getfullargspec(f)
 
   def wrapper(*args, **kwargs):
     if args:
       raise TypeError(
           '{f} only takes keyword args (possible keys: {kwargs}). '
-          'Please pass these args as kwargs instead.'
-          .format(f=f.__name__, kwargs=f_argspec.args))
+          'Please pass these args as kwargs instead.'.format(
+              f=f.__name__, kwargs=f_argspec.args
+          )
+      )
     return f(**kwargs)
 
   return tf_decorator.make_decorator(f, wrapper, decorator_argspec=f_argspec)
 
 
-tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)
-estimator_export = functools.partial(api_export, api_name=ESTIMATOR_API_NAME)
-keras_export = functools.partial(api_export, api_name=KERAS_API_NAME)
+class ExportType(Protocol):
+
+  def __call__(
+      self,
+      *v2: str,
+      v1: Optional[Sequence[str]] = None,
+      allow_multiple_exports: bool = True,  # Deprecated, no-op
+  ) -> api_export:
+    ...
+
+
+tf_export: ExportType = functools.partial(
+    api_export, api_name=TENSORFLOW_API_NAME
+)
+keras_export: ExportType = functools.partial(
+    api_export, api_name=KERAS_API_NAME
+)

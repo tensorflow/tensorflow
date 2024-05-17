@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 
+#include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/PointerUnion.h"
@@ -88,32 +91,33 @@ class GraphDefExporter {
 
   // Export a TFG graph function to a FunctionDef. If the function has a
   // gradient, add it to the graph afterwards to preserve thread-safety.
-  StatusOr<Optional<GradientDef>> ExportFunction(GraphFuncOp func,
-                                                 FunctionDef *def);
+  absl::StatusOr<std::optional<GradientDef>> ExportFunction(GraphFuncOp func,
+                                                            FunctionDef *def);
 
  private:
   // Export just the input and outputs of a function signature. When
   // fully-qualifying result names, this must be done before any nodes are
   // Convert argument attributes to an ArgDef.
-  StatusOr<OpDef::ArgDef> ConvertArgumentAttributes(DictionaryAttr attrs);
+  absl::StatusOr<OpDef::ArgDef> ConvertArgumentAttributes(DictionaryAttr attrs);
 
   // Convert a TFG op to a node. When converting a function, fully-qualified
   // result names must be used.
   Status ConvertOperation(Operation *op, NodeDef *node, bool is_func);
 
   // Get the name associated with a value.
-  StatusOr<std::string> GetEdgeName(Value value, bool is_func);
+  absl::StatusOr<std::string> GetEdgeName(Value value, bool is_func);
 
   // Get the name and index of an output segment to fully qualify result names.
   // This requires querying the op registry.
-  StatusOr<std::pair<StringRef, unsigned>> GetOutputSegment(OpResult result);
+  absl::StatusOr<std::pair<StringRef, unsigned int>> GetOutputSegment(
+      OpResult result);
 
   // Get the name of a function argument from a function in the symbol table.
-  StatusOr<StringRef> GetFunctionOutputName(unsigned result_idx,
-                                            const std::string &op_name,
-                                            SymbolTable &table);
+  absl::StatusOr<StringRef> GetFunctionOutputName(unsigned result_idx,
+                                                  const std::string &op_name,
+                                                  SymbolTable &table);
   // Get the name of a function argument from a function in the library.
-  static StatusOr<StringRef> GetFunctionOutputName(
+  static absl::StatusOr<StringRef> GetFunctionOutputName(
       unsigned result_idx, const std::string &op_name,
       const FunctionLibraryDefinition &library);
 
@@ -132,7 +136,7 @@ class GraphDefExporter {
 // Returns a validated graph to export. A TFG module is valid for export if it
 // contains at most one graph operation and any number of graph functions.
 // Otherwise, returns an error.
-static StatusOr<GraphOp> ValidateModuleForExport(ModuleOp module) {
+static absl::StatusOr<GraphOp> ValidateModuleForExport(ModuleOp module) {
   GraphOp graph_op;
   for (Operation &op : *module.getBody()) {
     if (isa<GraphFuncOp>(op)) continue;
@@ -162,7 +166,7 @@ static void ExportVersionAttr(VersionAttr attr, VersionDef *version) {
 Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
   TF_ASSIGN_OR_RETURN(GraphOp graph_op, ValidateModuleForExport(module));
   if (graph_op) {
-    ExportVersionAttr(graph_op.version(), graph->mutable_versions());
+    ExportVersionAttr(graph_op.getVersion(), graph->mutable_versions());
     for (Operation &op : *graph_op.getBody()) {
       TF_RETURN_IF_ERROR(ConvertOperation(&op, graph->mutable_node()->Add(),
                                           /*is_func=*/false));
@@ -170,15 +174,15 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
   }
 
   const auto convert_func = [this](GraphFuncOp func, FunctionDef *def,
-                                   Optional<GradientDef> &gradient) {
+                                   std::optional<GradientDef> &gradient) {
     // Generic functions are not on the hot path and skip the conversion to
     // Graph so just call the existing exporter.
-    if (func.generic()) {
+    if (func.getGeneric()) {
       TF_ASSIGN_OR_RETURN(*def, ConvertGenericFunctionToFunctionDef(func));
     } else {
       TF_ASSIGN_OR_RETURN(gradient, ExportFunction(func, def));
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   };
 
   // TODO(jeffniu): Don't export functions in parallel if there are too few or
@@ -193,7 +197,7 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
       GraphFuncOp func;
       FunctionDef *def;
       Status status;
-      Optional<GradientDef> gradient;
+      std::optional<GradientDef> gradient;
     };
     std::vector<Argument> args;
     for (auto func : module.getOps<GraphFuncOp>())
@@ -213,7 +217,7 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
     }
   } else {
     for (auto func : module.getOps<GraphFuncOp>()) {
-      Optional<GradientDef> gradient;
+      std::optional<GradientDef> gradient;
       TF_RETURN_IF_ERROR(convert_func(
           func, graph->mutable_library()->add_function(), gradient));
       if (gradient)
@@ -221,13 +225,13 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
     }
   }
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // The only dialect attributes allowed have the "tf." prefix. This is a slightly
 // faster check that an attribute is a dialect attribute.
 static bool IsDialectAttr(const NamedAttribute &attr) {
-  return attr.getName().getValue().startswith("tf.");
+  return attr.getName().getValue().starts_with("tf.");
 }
 
 // Export the given attribute list.
@@ -239,18 +243,18 @@ static Status ConvertAttributes(
     StringRef name = attr.getName().strref().drop_front(/*strlen("tf.")=*/3);
     TF_ASSIGN_OR_RETURN((*map)[name.str()], ConvertAttribute(attr.getValue()));
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
+absl::StatusOr<std::optional<GradientDef>> GraphDefExporter::ExportFunction(
     GraphFuncOp func, FunctionDef *def) {
-  std::string func_name = func.sym_name().str();
+  std::string func_name = func.getSymName().str();
 
   // TODO(jeffniu): Exploit the sorted order of the function attributes.
 
   // Get a gradient, if there is one.
-  Optional<GradientDef> gradient;
-  if (Optional<StringRef> gradient_name = func.gradient()) {
+  std::optional<GradientDef> gradient;
+  if (std::optional<StringRef> gradient_name = func.getGradient()) {
     gradient.emplace();
     gradient->set_gradient_func(gradient_name->str());
     gradient->set_function_name(func_name);
@@ -259,12 +263,12 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
   // Convert the first-class attributes.
   OpDef *signature = def->mutable_signature();
   signature->set_name(func_name);
-  if (Optional<StringRef> description = func.description())
+  if (std::optional<StringRef> description = func.getDescription())
     signature->set_description(description->str());
-  signature->set_is_stateful(func.is_stateful());
+  signature->set_is_stateful(func.getIsStateful());
 
-  if (DenseIntElementsAttr keys = func.resource_arg_unique_ids_keysAttr()) {
-    DenseIntElementsAttr values = func.resource_arg_unique_ids_valuesAttr();
+  if (DenseIntElementsAttr keys = func.getResourceArgUniqueIdsKeysAttr()) {
+    DenseIntElementsAttr values = func.getResourceArgUniqueIdsValuesAttr();
     if (!values) {
       return InvalidArgument(
           "'resource_arg_unique_ids_keys' is present but "
@@ -286,12 +290,12 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
 
   // Convert the arguments.
   for (int i = 0, e = func.getNumArguments(); i < e; i += 2) {
-    auto attrs = func.arg_attrs().getValue()[i].cast<DictionaryAttr>();
+    auto attrs = mlir::cast<DictionaryAttr>(func.getArgAttrs().value()[i]);
     TF_ASSIGN_OR_RETURN(OpDef::ArgDef &arg = *signature->add_input_arg(),
                         ConvertArgumentAttributes(attrs));
     DataType dtype;
     TF_RETURN_IF_ERROR(ConvertToDataType(
-        func.getArgument(i).getType().cast<TensorType>().getElementType(),
+        mlir::cast<TensorType>(func.getArgument(i).getType()).getElementType(),
         &dtype));
     arg.set_type(dtype);
     // Convert the attributes.
@@ -304,7 +308,7 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
   }
 
   // Convert the results.
-  auto return_op = cast<ReturnOp>(func.getBody()->getTerminator());
+  auto return_op = cast<ReturnOp>(func.SingleBlock::getBody()->getTerminator());
   for (auto it :
        llvm::zip(func.getResultTypes(),
                  func.getAllResultAttrs().getAsRange<DictionaryAttr>(),
@@ -313,7 +317,7 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
                         ConvertArgumentAttributes(std::get<1>(it)));
     DataType dtype;
     TF_RETURN_IF_ERROR(ConvertToDataType(
-        std::get<0>(it).cast<TensorType>().getElementType(), &dtype));
+        mlir::cast<TensorType>(std::get<0>(it)).getElementType(), &dtype));
     arg.set_type(dtype);
     // Map the result.
     TF_ASSIGN_OR_RETURN((*def->mutable_ret())[arg.name()],
@@ -322,14 +326,14 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
 
   // Convert the control results.
   for (auto it :
-       llvm::zip(return_op.control_ret_attrs().getAsRange<DictionaryAttr>(),
+       llvm::zip(return_op.getControlRetAttrs().getAsRange<DictionaryAttr>(),
                  TFOp(return_op).getControlOperands())) {
     // The control result attributes contain only the name.
     DictionaryAttr attrs = std::get<0>(it);
     if (attrs.empty())
       return InvalidArgument("Control result is missing 'tfg.name'");
     assert(attrs.begin()->getName() == dialect_->getTfgNameAttrIdentifier());
-    std::string name = attrs.begin()->getValue().cast<StringAttr>().str();
+    std::string name = mlir::cast<StringAttr>(attrs.begin()->getValue()).str();
     signature->add_control_output(name);
     // Map the control result.
     TF_ASSIGN_OR_RETURN(std::string value_name,
@@ -339,14 +343,14 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
   }
 
   // Convert the body.
-  for (Operation &op : func.getBody()->without_terminator())
+  for (Operation &op : func.SingleBlock::getBody()->without_terminator())
     TF_RETURN_IF_ERROR(
         ConvertOperation(&op, def->add_node_def(), /*is_func=*/true));
 
   return gradient;
 }
 
-StatusOr<OpDef::ArgDef> GraphDefExporter::ConvertArgumentAttributes(
+absl::StatusOr<OpDef::ArgDef> GraphDefExporter::ConvertArgumentAttributes(
     DictionaryAttr attrs) {
   OpDef::ArgDef arg;
   auto name = attrs.getAs<StringAttr>(dialect_->getTfgNameAttrIdentifier());
@@ -379,18 +383,19 @@ static void ExtractExperimentalDebugInfoFromLocation(
     debug_info->add_original_node_names(node.str());
     if (!func.empty()) debug_info->add_original_func_names(func.str());
   };
-  if (auto fused = inst_loc.dyn_cast<mlir::FusedLoc>()) {
+  if (auto fused = mlir::dyn_cast<mlir::FusedLoc>(inst_loc)) {
     for (Location loc : fused.getLocations())
-      if (auto name_loc = loc.dyn_cast<mlir::NameLoc>()) add_name_loc(name_loc);
+      if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc))
+        add_name_loc(name_loc);
     return;
   }
-  if (auto name_loc = inst_loc.dyn_cast<mlir::NameLoc>())
+  if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(inst_loc))
     add_name_loc(name_loc);
 }
 
 Status ConvertToNodeDef(
     Operation *op, NodeDef *node, TFGraphDialect *dialect,
-    function_ref<StatusOr<std::string>(Value)> get_value_name) {
+    function_ref<absl::StatusOr<std::string>(Value)> get_value_name) {
   // Convert first-class attributes.
   if (auto name =
           op->getAttrOfType<StringAttr>(dialect->getNameAttrIdentifier()))
@@ -433,14 +438,14 @@ Status ConvertToNodeDef(
   }
 
   // Export the location as debug info.
-  if (!op->getLoc().isa<UnknownLoc>()) {
+  if (!mlir::isa<UnknownLoc>(op->getLoc())) {
     ExtractExperimentalDebugInfoFromLocation(
         op->getLoc(), node->mutable_experimental_debug_info());
     if (node->experimental_debug_info().original_node_names().empty())
       node->clear_experimental_debug_info();
   }
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphDefExporter::ConvertOperation(Operation *op, NodeDef *node,
@@ -453,22 +458,21 @@ Status GraphDefExporter::ConvertOperation(Operation *op, NodeDef *node,
 // Get the edge name of a value. If `get_output_segment` is specified, it means
 // the name should be fully qualified if it is an operation result for exporting
 // a function.
-static StatusOr<std::string> GetValueName(
+static absl::StatusOr<std::string> GetValueName(
     Value value, TFGraphDialect *dialect,
-    function_ref<StatusOr<std::pair<StringRef, unsigned>>(OpResult)>
+    function_ref<absl::StatusOr<std::pair<StringRef, unsigned int>>(OpResult)>
         get_output_segment) {
   std::string name;
   bool is_control = value.getType() == dialect->getControlType();
 
-  if (auto arg = value.dyn_cast<BlockArgument>()) {
+  if (auto arg = mlir::dyn_cast<BlockArgument>(value)) {
     auto func = dyn_cast<GraphFuncOp>(arg.getOwner()->getParentOp());
     if (!func)
       return InvalidArgument("Expected block argument owner to be tfg.func");
     // If the block argument is a control token, use the attributes of the
     // associated data argument (which preceeds it).
-    auto attrs = func.arg_attrs()
-                     .getValue()[arg.getArgNumber() - is_control]
-                     .cast<DictionaryAttr>();
+    auto attrs = mlir::cast<DictionaryAttr>(
+        func.getArgAttrs().value()[arg.getArgNumber() - is_control]);
     auto name_attr =
         attrs.getAs<StringAttr>(dialect->getTfgNameAttrIdentifier());
     if (!name_attr) {
@@ -482,7 +486,7 @@ static StatusOr<std::string> GetValueName(
     return name;
   }
 
-  auto result = value.cast<OpResult>();
+  auto result = mlir::cast<OpResult>(value);
   auto name_attr = result.getOwner()->getAttrOfType<StringAttr>(
       dialect->getNameAttrIdentifier());
   if (!name_attr)
@@ -515,11 +519,12 @@ static StatusOr<std::string> GetValueName(
   return name;
 }
 
-StatusOr<std::string> GetValueName(Value value, TFGraphDialect *dialect) {
+absl::StatusOr<std::string> GetValueName(Value value, TFGraphDialect *dialect) {
   return GetValueName(value, dialect, /*get_output_segment=*/nullptr);
 }
 
-StatusOr<std::string> GraphDefExporter::GetEdgeName(Value value, bool is_func) {
+absl::StatusOr<std::string> GraphDefExporter::GetEdgeName(Value value,
+                                                          bool is_func) {
   if (!is_func) return GetValueName(value, dialect_);
   return GetValueName(value, dialect_, [&](OpResult result) {
     return GetOutputSegment(result);
@@ -527,20 +532,20 @@ StatusOr<std::string> GraphDefExporter::GetEdgeName(Value value, bool is_func) {
 }
 
 // Get the segment size of an op's output.
-static StatusOr<unsigned> GetOutputSegmentSize(Operation *op,
-                                               const OpDef::ArgDef &arg) {
+static absl::StatusOr<unsigned int> GetOutputSegmentSize(
+    Operation *op, const OpDef::ArgDef &arg) {
   if (!arg.type_list_attr().empty()) {
-    if (auto v = op->getAttr(arg.type_list_attr()).dyn_cast<ArrayAttr>())
+    if (auto v = mlir::dyn_cast<ArrayAttr>(op->getAttr(arg.type_list_attr())))
       return v.size();
     return InvalidArgument("Type attr not found: ", arg.type_list_attr());
   }
   if (arg.number_attr().empty()) return 1;
-  if (auto v = op->getAttr(arg.number_attr()).dyn_cast<IntegerAttr>())
+  if (auto v = mlir::dyn_cast<IntegerAttr>(op->getAttr(arg.number_attr())))
     return v.getValue().getZExtValue();
   return InvalidArgument("Type attr not found: ", arg.number_attr());
 }
 
-StatusOr<StringRef> GraphDefExporter::GetFunctionOutputName(
+absl::StatusOr<StringRef> GraphDefExporter::GetFunctionOutputName(
     unsigned result_idx, const std::string &op_name, SymbolTable &table) {
   if (auto func = table.lookup<GraphFuncOp>(op_name)) {
     if (result_idx >= func.getNumResults()) {
@@ -559,7 +564,7 @@ StatusOr<StringRef> GraphDefExporter::GetFunctionOutputName(
 }
 
 // Get the name of a function argument from a function in the library.
-StatusOr<StringRef> GraphDefExporter::GetFunctionOutputName(
+absl::StatusOr<StringRef> GraphDefExporter::GetFunctionOutputName(
     unsigned result_idx, const std::string &op_name,
     const FunctionLibraryDefinition &library) {
   if (const FunctionDef *function = library.Find(op_name)) {
@@ -573,8 +578,8 @@ StatusOr<StringRef> GraphDefExporter::GetFunctionOutputName(
                          "' is neither registered nor a function");
 }
 
-StatusOr<std::pair<StringRef, unsigned>> GraphDefExporter::GetOutputSegment(
-    OpResult result) {
+absl::StatusOr<std::pair<StringRef, unsigned int>>
+GraphDefExporter::GetOutputSegment(OpResult result) {
   // TODO(jeffniu): OpRegistry::LookUp should accept `string_view`.
   Operation *op = result.getOwner();
   std::string op_name = op->getName().stripDialect().str();
@@ -624,7 +629,7 @@ Status ConvertToFunctionDef(GraphFuncOp func,
                             FunctionLibraryDefinition &library) {
   GraphDefExporter exporter(func.getDialect(), *OpRegistry::Global(), &library);
   FunctionDef def;
-  TF_ASSIGN_OR_RETURN(Optional<GradientDef> gradient,
+  TF_ASSIGN_OR_RETURN(std::optional<GradientDef> gradient,
                       exporter.ExportFunction(func, &def));
   const std::string &name = def.signature().name();
   if (library.Contains(name)) {
@@ -639,7 +644,7 @@ Status ConvertToFunctionDef(GraphFuncOp func,
       TF_RETURN_IF_ERROR(library.ReplaceGradient(*gradient));
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tfg

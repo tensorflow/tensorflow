@@ -24,8 +24,10 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import data_flow_ops
@@ -61,7 +63,7 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(
           array_ops.shape(x.flat_values), array_ops.shape(y.flat_values))
     else:
-      self.assertIsInstance(y, ops.Tensor)
+      self.assertIsInstance(y, tensor.Tensor)
       self.assertAllEqual(array_ops.shape(x), array_ops.shape(y))
 
   @parameterized.parameters(
@@ -153,6 +155,11 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
            'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
            'rate': 0.5,
            'seed': 1},
+          {'op': nn_ops.stateless_dropout,
+           'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+           'rate': 0.5,
+           'seed': [1, 0],
+           'rng_alg': 'auto_select'},
           {'op': math_ops.nextafter,
            'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
            'x2': 0},
@@ -763,7 +770,7 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               [[[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], [[1, 0, 0, 0]]],
               ragged_rank=1)),
       dict(
-          op=array_ops.stack,
+          op=array_ops_stack.stack,
           args=([
               ragged_factory_ops.constant_value([[1, 2, 3], [4]],
                                                 dtype=np.int32),

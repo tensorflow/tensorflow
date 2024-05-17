@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -37,7 +38,7 @@ class ReverseOpModel : public SingleOpModel {
 
     SetBuiltinOp(BuiltinOperator_REVERSE_V2, BuiltinOptions_ReverseV2Options,
                  CreateReverseV2Options(builder_).Union());
-    BuildInterpreter({GetShape(input_)});
+    BuildInterpreter({GetShape(input_), GetShape(axis_)});
   }
 
   int input() { return input_; }
@@ -107,6 +108,138 @@ TEST(ReverseOpTest, Int32MultiDimensions) {
       ElementsAreArray({5,  6,  3,  4,  1,  2,  11, 12, 9,  10, 7,  8,
                         17, 18, 15, 16, 13, 14, 23, 24, 21, 22, 19, 20}));
 }
+
+TEST(ReverseOpTest, Int32MultiDimensionsFirst) {
+  ReverseOpModel<int32_t> model({TensorType_INT32, {3, 3, 3}},
+                                {TensorType_INT32, {1}});
+  model.PopulateTensor<int32_t>(
+      model.input(), {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14,
+                      15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27});
+  model.PopulateTensor<int32_t>(model.axis(), {0});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 3, 3));
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({19, 20, 21, 22, 23, 24, 25, 26, 27, 10, 11, 12, 13, 14,
+                        15, 16, 17, 18, 1,  2,  3,  4,  5,  6,  7,  8,  9}));
+}
+
+TEST(ReverseOpTest, Int32MultiDimensionsSecond) {
+  ReverseOpModel<int32_t> model({TensorType_INT32, {3, 3, 3}},
+                                {TensorType_INT32, {1}});
+  model.PopulateTensor<int32_t>(
+      model.input(), {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14,
+                      15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27});
+  model.PopulateTensor<int32_t>(model.axis(), {1});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 3, 3));
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({7,  8,  9,  4,  5,  6,  1,  2,  3,  16, 17, 18, 13, 14,
+                        15, 10, 11, 12, 25, 26, 27, 22, 23, 24, 19, 20, 21}));
+}
+
+TEST(ReverseOpTest, Int32MultiDimensionsThird) {
+  ReverseOpModel<int32_t> model({TensorType_INT32, {3, 3, 3}},
+                                {TensorType_INT32, {1}});
+  model.PopulateTensor<int32_t>(
+      model.input(), {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14,
+                      15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27});
+  model.PopulateTensor<int32_t>(model.axis(), {2});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 3, 3));
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({3,  2,  1,  6,  5,  4,  9,  8,  7,  12, 11, 10, 15, 14,
+                        13, 18, 17, 16, 21, 20, 19, 24, 23, 22, 27, 26, 25}));
+}
+
+TEST(ReverseOpTest, Int32MultiDimensionsFirstSecond) {
+  ReverseOpModel<int32_t> model({TensorType_INT32, {3, 3, 3}},
+                                {TensorType_INT32, {2}});
+  model.PopulateTensor<int32_t>(
+      model.input(), {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14,
+                      15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27});
+  model.PopulateTensor<int32_t>(model.axis(), {0, 1});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 3, 3));
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({25, 26, 27, 22, 23, 24, 19, 20, 21, 16, 17, 18, 13, 14,
+                        15, 10, 11, 12, 7,  8,  9,  4,  5,  6,  1,  2,  3}));
+}
+
+TEST(ReverseOpTest, Int32MultiDimensionsSecondThird) {
+  ReverseOpModel<int32_t> model({TensorType_INT32, {3, 3, 3}},
+                                {TensorType_INT32, {2}});
+  model.PopulateTensor<int32_t>(
+      model.input(), {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14,
+                      15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27});
+  model.PopulateTensor<int32_t>(model.axis(), {1, 2});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 3, 3));
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({9,  8,  7,  6,  5,  4,  3,  2,  1,  18, 17, 16, 15, 14,
+                        13, 12, 11, 10, 27, 26, 25, 24, 23, 22, 21, 20, 19}));
+}
+
+TEST(ReverseOpTest, Int32MultiDimensionsSecondFirst) {
+  ReverseOpModel<int32_t> model({TensorType_INT32, {3, 3, 3}},
+                                {TensorType_INT32, {2}});
+  model.PopulateTensor<int32_t>(
+      model.input(), {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14,
+                      15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27});
+  model.PopulateTensor<int32_t>(model.axis(), {1, 0});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 3, 3));
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({25, 26, 27, 22, 23, 24, 19, 20, 21, 16, 17, 18, 13, 14,
+                        15, 10, 11, 12, 7,  8,  9,  4,  5,  6,  1,  2,  3}));
+}
+
+TEST(ReverseOpTest, Int32MultiDimensionsAll) {
+  ReverseOpModel<int32_t> model({TensorType_INT32, {3, 3, 3}},
+                                {TensorType_INT32, {3}});
+  model.PopulateTensor<int32_t>(
+      model.input(), {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14,
+                      15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27});
+  model.PopulateTensor<int32_t>(model.axis(), {0, 1, 2});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 3, 3));
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14,
+                        13, 12, 11, 10, 9,  8,  7,  6,  5,  4,  3,  2,  1}));
+}
+
+TEST(ReverseOpTest, Int32MultiDimensions8D) {
+  ReverseOpModel<int32_t> model({TensorType_INT32, {1, 1, 1, 1, 1, 1, 1, 3}},
+                                {TensorType_INT32, {8}});
+  model.PopulateTensor<int32_t>(model.input(), {1, 2, 3});
+  model.PopulateTensor<int32_t>(model.axis(), {7, 6, 5, 4, 3, 2, 1, 0});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 1, 1, 1, 1, 3));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({3, 2, 1}));
+}
+
+#if GTEST_HAS_DEATH_TEST
+TEST(ReverseOpTest, Int32MultiDimensions9D) {
+  EXPECT_DEATH(
+      ReverseOpModel<int32_t>({TensorType_INT32, {1, 1, 1, 1, 1, 1, 1, 1, 3}},
+                              {TensorType_INT32, {9}}),
+      "Cannot allocate tensors");
+}
+#endif  // GTEST_HAS_DEATH_TEST
 
 // int64 tests
 TEST(ReverseOpTest, Int64OneDimension) {

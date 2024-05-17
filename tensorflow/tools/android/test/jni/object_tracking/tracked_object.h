@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_TRACKED_OBJECT_H_
-#define TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_TRACKED_OBJECT_H_
+#ifndef TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_TRACKED_OBJECT_H_
+#define TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_TRACKED_OBJECT_H_
 
 #ifdef __RENDER_OPENGL__
 #include "tensorflow/tools/android/test/jni/object_tracking/gl_utils.h"
@@ -167,7 +167,8 @@ class TrackedObject {
   friend std::ostream& operator<<(std::ostream& stream,
                                   const TrackedObject& tracked_object);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TrackedObject);
+  TrackedObject(const TrackedObject&) = delete;
+  void operator=(const TrackedObject&) = delete;
 };
 
 inline std::ostream& operator<<(std::ostream& stream,
@@ -183,4 +184,4 @@ inline std::ostream& operator<<(std::ostream& stream,
 
 }  // namespace tf_tracking
 
-#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_TRACKED_OBJECT_H_
+#endif  // TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_TRACKED_OBJECT_H_

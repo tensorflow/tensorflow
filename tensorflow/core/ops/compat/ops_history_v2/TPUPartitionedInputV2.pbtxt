@@ -1,0 +1,33 @@
+op {
+  name: "TPUPartitionedInputV2"
+  input_arg {
+    name: "inputs"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "partition_dims"
+    type: "list(int)"
+  }
+  attr {
+    name: "is_packed"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}

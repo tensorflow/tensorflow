@@ -1,11 +1,12 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
-    default_compatible_with = get_compatible_with_cloud(),
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_compatible_with = get_compatible_with_portable(),
     default_visibility = [
-        "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
+        "//learning/brain/contrib/tpu_modeling/inference_converter_v2:__subpackages__",
         "//tensorflow/core:__subpackages__",
         "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
     ],
@@ -28,17 +29,6 @@ gentbl_cc_library(
     td_file = "passes.td",
     deps = [
         "@llvm-project//mlir:PassBaseTdFiles",
-    ],
-)
-
-cc_library(
-    name = "PassDetail",
-    hdrs = ["pass_detail.h"],
-    deps = [
-        ":PassIncGen",
-        "//tensorflow/core/ir:Dialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -99,7 +89,7 @@ cc_library(
     deps = [
         ":PDLLUtilsIncGen",
         ":utils",
-        "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core:framework_types_hdr",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -114,6 +104,7 @@ cc_library(
         "//tensorflow/core/ir:Dialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -148,11 +139,11 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/framework:graph_debug_info_proto_cc",
         "//tensorflow/core/ir/importexport:graphdef_export",
         "//tensorflow/core/ir/importexport:graphdef_import",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -206,7 +197,9 @@ tf_cc_binary(
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir:tf_op_registry",
         "//tensorflow/core/ir/types:Dialect",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
 )

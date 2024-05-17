@@ -17,6 +17,7 @@
 from tensorflow.python.distribute import device_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 
@@ -87,6 +88,10 @@ class PackedDistributedVariable(resource_variable_ops.BaseResourceVariable):
     for i, d in enumerate(self._devices):
       if d == device:
         return self._distributed_variables[i]
+    # Device didn't match, check if device on same host as a fallback.
+    for i, d in enumerate(self._devices):
+      if device_util.get_host_for_device(d) == device:
+        return self._distributed_variables[i]
     raise ValueError("Device %s is not found" % device)
 
   def get_var_on_current_device(self):
@@ -108,11 +113,11 @@ class PackedDistributedVariable(resource_variable_ops.BaseResourceVariable):
   def packed_handle(self):
     return self._handle
 
-  def _read_variable_op(self):
+  def _read_variable_op(self, no_copy=False):
     if context.executing_eagerly():
       return self.get_var_on_current_device().value()
     else:
-      return super(PackedDistributedVariable, self)._read_variable_op()
+      return super()._read_variable_op(no_copy)
 
   def value(self):
     return self._read_variable_op()
@@ -299,7 +304,7 @@ class PackedVarAndDevice(object):
       return self._var.get_var_on_current_device().handle
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     with ops.device(self._device):
       return self._var.op
 
@@ -361,5 +366,5 @@ def _tensor_conversion_packed_var_and_device(var,
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     PackedVarAndDevice, _tensor_conversion_packed_var_and_device)

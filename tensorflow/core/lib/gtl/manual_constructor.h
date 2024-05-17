@@ -22,8 +22,8 @@ limitations under the License.
 // (When I say ManualConstructor statically allocates space, I mean that
 // the ManualConstructor object itself is forced to be the right size.)
 
-#ifndef TENSORFLOW_LIB_GTL_MANUAL_CONSTRUCTOR_H_
-#define TENSORFLOW_LIB_GTL_MANUAL_CONSTRUCTOR_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_MANUAL_CONSTRUCTOR_H_
+#define TENSORFLOW_CORE_LIB_GTL_MANUAL_CONSTRUCTOR_H_
 
 #include <stddef.h>
 #include <new>
@@ -56,8 +56,7 @@ struct AlignType<0, size> {
 #if defined(_MSC_VER)
 #define TF_LIB_GTL_ALIGN_ATTRIBUTE(X) __declspec(align(X))
 #define TF_LIB_GTL_ALIGN_OF(T) __alignof(T)
-#elif defined(COMPILER_GCC3) || __GNUC__ >= 3 || defined(__APPLE__) || \
-    defined(COMPILER_ICC) || defined(OS_NACL) || defined(__clang__)
+#else
 #define TF_LIB_GTL_ALIGN_ATTRIBUTE(X) __attribute__((aligned(X)))
 #define TF_LIB_GTL_ALIGN_OF(T) __alignof__(T)
 #endif
@@ -243,4 +242,4 @@ class ManualConstructor {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_GTL_MANUAL_CONSTRUCTOR_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_MANUAL_CONSTRUCTOR_H_

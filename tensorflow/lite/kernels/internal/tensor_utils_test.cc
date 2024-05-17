@@ -19,7 +19,7 @@ limitations under the License.
 #include <algorithm>
 
 #include <gmock/gmock.h>
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -464,7 +464,7 @@ TEST(uKernels, HybridMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
       input_offsets.data(), scratch.data(), row_sums, &compute_row_sums,
       &context);
 
-  const std::vector<float_t> expected_output = {
+  const std::vector<float> expected_output = {
       -228, 1548,  937, -166, -1164, -1578, -278,  303, 839,  -820,  132,
       1733, -1858, 58,  -425, -587,  -228,  1548,  937, -166, -1164, -1578,
       -278, 303,   839, -820, 132,   1733,  -1858, 58,  -425, -587,
@@ -960,9 +960,9 @@ TEST(uKernels, QuantMul8bitArbitrarySclaeTest) {
   CwiseMul(input1.data(), input2.data(), multiplier, shift, 2, 15, 3,
            output.data());
   const std::vector<int8_t> expected_output = {
-      -84,  127, 127, -128, -128, 127,  56,   -128, 127,  -128,
-      -126, 127, -7,  127,  127,  -128, -128, 127,  -128, 127,
-      127,  -33, -20, 127,  -128, -128, -128, -128, 127,  -128,
+      -78,  127, 127, -128, -128, 127,  62,   -128, 127,  -128,
+      -120, 127, -1,  127,  127,  -128, -128, 127,  -128, 127,
+      127,  -27, -14, 127,  -128, -128, -128, -128, 127,  -128,
   };
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
 }
@@ -1079,7 +1079,10 @@ MatrixVectorData SetupMatrixVectorData(int rows, int cols, int batch,
     if ((i % 5) == 0 && negative) sign = -1;
     data.vectors.push_back(sign * (i % 50));
   }
-  data.scale_factors = {1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8};
+  for (int i = 0; i < batch; i++) {
+    data.scale_factors.insert(data.scale_factors.end(),
+                              {1, 2, 3, 4, 5, 6, 7, 8});
+  }
   data.results.resize(rows * batch, init_to_one ? 1 : 0);
 
   data.zeroed_matrix = data.matrix;
@@ -2103,6 +2106,27 @@ TEST(uKernels, MeanStddevNormalizationLargeVector) {
   EXPECT_THAT(output, testing::Pointwise(testing::FloatEq(), expected_output));
 }
 
+TEST(uKernels, UnpackInt4Basic) {
+  // INT4 ranges from [-8,7], so 0x8 or b'1000 is mapped to -8 in two's
+  // complement. 0xB or b'1011 is mapped to -5. 0xE or b'1110 is mapped to -2.
+  const int8_t input[2] = {0x38, static_cast<int8_t>(0xBE)};
+  const int8_t expected_output[4] = {-8, 3, -2, -5};
+  int8_t actual_output[4];
+  UnpackDenseInt4IntoInt8(input, 4, actual_output);
+  EXPECT_THAT(actual_output,
+              testing::Pointwise(testing::Eq(), expected_output));
+}
+
+TEST(uKernels, UnpackInt4OddLength) {
+  // `num_elements` is odd, so the last element 0x4 should be ignored
+  const int8_t input[2] = {0x21, 0x43};
+  const int8_t expected_output[3] = {1, 2, 3};
+  int8_t actual_output[3];
+  UnpackDenseInt4IntoInt8(input, 3, actual_output);
+  EXPECT_THAT(actual_output,
+              testing::Pointwise(testing::Eq(), expected_output));
+}
+
 }  // namespace tensor_utils
 }  // namespace tflite
 
@@ -2110,7 +2134,7 @@ TEST(uKernels, MeanStddevNormalizationLargeVector) {
 
 // Compile with --copt="-DGOOGLE_COMMANDLINEFLAGS_FULL_API=1" and
 // --copt="-DDOTPROD_BENCHMARKS"
-// Run with --benchmarks=all
+// Run with --benchmark_filter=all
 void BM_DotprodBatchOneMultiply(benchmark::State& state) {
   const int rows = state.range(0);
   const int cols = state.range(1);
@@ -2161,7 +2185,13 @@ BENCHMARK(BM_DotprodBatchOneMultiply)
     ->Args({640, 2048, 8, 8})
     ->Args({2048, 2048, 1, 1})
     ->Args({2048, 2048, 1, 8})
-    ->Args({2048, 2048, 8, 1});
+    ->Args({2048, 2048, 8, 1})
+    ->Args({4096, 4096, 8, 1})
+    ->Args({4096, 4096, 1, 8})
+    ->Args({8192, 8192, 8, 1})
+    ->Args({8192, 8192, 1, 8})
+    ->Args({16384, 16384, 8, 1})
+    ->Args({16384, 16384, 1, 8});
 
 void BM_DotprodBatchFourMultiply(benchmark::State& state) {
   const int rows = state.range(0);
@@ -2218,7 +2248,14 @@ BENCHMARK(BM_DotprodBatchFourMultiply)
     ->Args({2048, 2048, 4, 1})
     ->Args({2048, 2048, 4, 8})
     ->Args({2048, 2048, 5, 1})
-    ->Args({2048, 2048, 8, 1});
+    ->Args({2048, 2048, 8, 1})
+    ->Args({2048, 2048, 64, 1})
+    ->Args({2048, 2048, 1024, 1})
+    ->Args({4096, 4096, 1024, 1})
+    ->Args({8192, 8192, 1024, 1})
+    ->Args({8192, 8192, 1024, 8})
+    ->Args({16384, 16384, 1024, 1})
+    ->Args({16384, 8192, 1024, 1});
 
 void BM_DotprodSparseMultiply(benchmark::State& state) {
   const int rows = state.range(0);

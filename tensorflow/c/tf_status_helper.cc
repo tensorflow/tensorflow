@@ -15,77 +15,36 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status_helper.h"
 
-#include "tensorflow/c/tf_status_internal.h"
-#include "tensorflow/core/platform/errors.h"
+#include <string>
 
-namespace tensorflow {
+#include "tensorflow/c/tf_status.h"
+#include "xla/tsl/c/tsl_status_helper.h"
 
-void Set_TF_Status_from_Status(TF_Status* tf_status, const Status& status) {
-  tensorflow::error::Code code = status.code();
-  const char* message(status.error_message().c_str());
+namespace tsl {
 
-  switch (code) {
-    case tensorflow::error::OK:
-      assert(TF_GetCode(tf_status) == TF_OK);
-      break;
-    case tensorflow::error::CANCELLED:
-      TF_SetStatus(tf_status, TF_CANCELLED, message);
-      break;
-    case tensorflow::error::UNKNOWN:
-      TF_SetStatus(tf_status, TF_UNKNOWN, message);
-      break;
-    case tensorflow::error::INVALID_ARGUMENT:
-      TF_SetStatus(tf_status, TF_INVALID_ARGUMENT, message);
-      break;
-    case tensorflow::error::DEADLINE_EXCEEDED:
-      TF_SetStatus(tf_status, TF_DEADLINE_EXCEEDED, message);
-      break;
-    case tensorflow::error::NOT_FOUND:
-      TF_SetStatus(tf_status, TF_NOT_FOUND, message);
-      break;
-    case tensorflow::error::ALREADY_EXISTS:
-      TF_SetStatus(tf_status, TF_ALREADY_EXISTS, message);
-      break;
-    case tensorflow::error::PERMISSION_DENIED:
-      TF_SetStatus(tf_status, TF_PERMISSION_DENIED, message);
-      break;
-    case tensorflow::error::UNAUTHENTICATED:
-      TF_SetStatus(tf_status, TF_UNAUTHENTICATED, message);
-      break;
-    case tensorflow::error::RESOURCE_EXHAUSTED:
-      TF_SetStatus(tf_status, TF_RESOURCE_EXHAUSTED, message);
-      break;
-    case tensorflow::error::FAILED_PRECONDITION:
-      TF_SetStatus(tf_status, TF_FAILED_PRECONDITION, message);
-      break;
-    case tensorflow::error::ABORTED:
-      TF_SetStatus(tf_status, TF_ABORTED, message);
-      break;
-    case tensorflow::error::OUT_OF_RANGE:
-      TF_SetStatus(tf_status, TF_OUT_OF_RANGE, message);
-      break;
-    case tensorflow::error::UNIMPLEMENTED:
-      TF_SetStatus(tf_status, TF_UNIMPLEMENTED, message);
-      break;
-    case tensorflow::error::INTERNAL:
-      TF_SetStatus(tf_status, TF_INTERNAL, message);
-      break;
-    case tensorflow::error::UNAVAILABLE:
-      TF_SetStatus(tf_status, TF_UNAVAILABLE, message);
-      break;
-    case tensorflow::error::DATA_LOSS:
-      TF_SetStatus(tf_status, TF_DATA_LOSS, message);
-      break;
-    default:
-      assert(0);
-      break;
-  }
-
-  errors::CopyPayloads(status, tf_status->status);
+void Set_TF_Status_from_Status(TF_Status* tf_status,
+                               const absl::Status& status) {
+  TF_SetStatus(tf_status, TSLCodeFromStatusCode(status.code()),
+               absl::StatusMessageAsCStr(status));
+  status.ForEachPayload(
+      [tf_status](absl::string_view key, const absl::Cord& value) {
+        std::string key_str(key);
+        std::string value_str(value);
+        TF_SetPayload(tf_status, key_str.c_str(), value_str.c_str());
+      });
 }
 
-Status StatusFromTF_Status(const TF_Status* tf_status) {
-  return tf_status->status;
+absl::Status StatusFromTF_Status(const TF_Status* tf_status) {
+  absl::Status status(StatusCodeFromTSLCode(TF_GetCode(tf_status)),
+                      TF_Message(tf_status));
+  TF_ForEachPayload(
+      tf_status,
+      [](const char* key, const char* value, void* capture) {
+        absl::Status* status = static_cast<absl::Status*>(capture);
+        status->SetPayload(key, absl::Cord(absl::string_view(value)));
+      },
+      &status);
+  return status;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

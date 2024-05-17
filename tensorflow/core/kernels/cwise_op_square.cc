@@ -17,11 +17,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if !defined(MLIR_GENERATED_CPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER7(UnaryOp, CPU, "Square", functor::square, float, Eigen::half, double,
           int32, int64_t, complex64, complex128);
-#endif
 REGISTER7(UnaryOp, CPU, "Square", functor::square, bfloat16, int8, int16, uint8,
           uint16, uint32, uint64);
 
@@ -30,6 +27,8 @@ REGISTER7(UnaryOp, CPU, "Square", functor::square, bfloat16, int8, int16, uint8,
 REGISTER4(UnaryOp, GPU, "Square", functor::square, float, Eigen::half, double,
           int64);
 #endif
+
+REGISTER(UnaryOp, GPU, "Square", functor::square, bfloat16);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

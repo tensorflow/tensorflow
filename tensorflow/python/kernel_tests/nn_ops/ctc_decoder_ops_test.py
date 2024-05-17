@@ -17,12 +17,11 @@
 import itertools
 
 import numpy as np
-from six.moves import zip_longest
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import ctc_ops
 from tensorflow.python.platform import test
 
@@ -31,7 +30,7 @@ def grouper(iterable, n, fillvalue=None):
   """Collect data into fixed-length chunks or blocks."""
   # grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx
   args = [iter(iterable)] * n
-  return zip_longest(fillvalue=fillvalue, *args)
+  return itertools.zip_longest(fillvalue=fillvalue, *args)
 
 
 def flatten(list_of_lists):
@@ -52,7 +51,7 @@ class CTCGreedyDecoderTest(test.TestCase):
     inputs_t = [ops.convert_to_tensor(x) for x in inputs]
     # convert inputs_t into a [max_time x batch_size x depth] tensor
     # from a len time python list of [batch_size x depth] tensors
-    inputs_t = array_ops.stack(inputs_t)
+    inputs_t = array_ops_stack.stack(inputs_t)
 
     with self.cached_session(use_gpu=False) as sess:
       decoded_list, log_probability = decoder(

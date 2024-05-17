@@ -23,8 +23,8 @@ builtin.module {
   }
 }
 
-// CHECK: #[[$MAP0:.*]] = affine_map<(d0)[s0] -> (d0 * s0)>
-// CHECK: #[[$MAP1:.*]] = affine_map<(d0) -> (d0)>
+// CHECK-DAG: #[[$MAP0:.*]] = affine_map<(d0)[s0] -> (d0 * s0)>
+// CHECK-DAG: #[[$MAP1:.*]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func @Copy(
 // CHECK-SAME:              %[[LHS:.*]]: memref<?xi16>, %[[RHS:.*]]: memref<?xi16>) {
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
@@ -32,7 +32,7 @@ builtin.module {
 // CHECK: %[[SIZE:.*]] = memref.dim %[[RHS]], %[[C0]] : memref<?xi16>
 // CHECK: %[[LHS_CASTED:.*]] = memref.reinterpret_cast %[[LHS]] to offset: [0], sizes: [%[[SIZE]]], strides: [%[[C0]]] : memref<?xi16> to memref<?xi16, #[[$MAP0]]>
 // CHECK: %[[RHS_CASTED:.*]] = memref.reinterpret_cast %[[RHS]] to offset: [0], sizes: [%[[SIZE]]], strides: [%[[C1]]] : memref<?xi16> to memref<?xi16, #[[$MAP0]]>
-// CHECK: %[[OUTPUT:.*]] = memref.alloc(%0) : memref<?xi16>
+// CHECK: %[[OUTPUT:.*]] = memref.alloc(%[[SIZE]]) : memref<?xi16>
 // CHECK: linalg.generic {indexing_maps = [#[[$MAP1]], #[[$MAP1]], #[[$MAP1]]], iterator_types = ["parallel"]} ins(%[[LHS_CASTED]], %[[RHS_CASTED]] : memref<?xi16, #[[$MAP0]]>, memref<?xi16, #[[$MAP0]]>) outs(%{{.*}} : memref<?xi16>) {
 // CHECK: ^bb0(%[[ARG1:.*]]: i16, %[[ARG2:.*]]: i16, %[[ARG3:.*]]: i16):
 // CHECK:   %[[AND:.*]] = arith.andi %[[ARG1]], %[[ARG2]] : i16
@@ -64,8 +64,8 @@ builtin.module {
   }
 }
 
-// CHECK: #[[$MAP0:.*]] = affine_map<(d0)[s0] -> (d0 * s0)>
-// CHECK: #[[$MAP1:.*]] = affine_map<(d0) -> (d0)>
+// CHECK-DAG: #[[$MAP0:.*]] = affine_map<(d0)[s0] -> (d0 * s0)>
+// CHECK-DAG: #[[$MAP1:.*]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func @CopyWithWrite(
 // CHECK-SAME:              %[[LHS:.*]]: memref<?xi16>, %[[RHS:.*]]: memref<?xi16>) {
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
@@ -73,7 +73,7 @@ builtin.module {
 // CHECK: %[[SIZE:.*]] = memref.dim %[[RHS]], %[[C0]] : memref<?xi16>
 // CHECK: %[[LHS_CASTED:.*]] = memref.reinterpret_cast %[[LHS]] to offset: [0], sizes: [%[[SIZE]]], strides: [%[[C0]]] : memref<?xi16> to memref<?xi16, #[[$MAP0]]>
 // CHECK: %[[RHS_CASTED:.*]] = memref.reinterpret_cast %[[RHS]] to offset: [0], sizes: [%[[SIZE]]], strides: [%[[C1]]] : memref<?xi16> to memref<?xi16, #[[$MAP0]]>
-// CHECK: %[[RHS_ALLOC:.*]] = memref.alloc(%0) : memref<?xi16>
+// CHECK: %[[RHS_ALLOC:.*]] = memref.alloc(%[[SIZE]]) : memref<?xi16>
 // CHECK: memref.copy %[[RHS_CASTED]], %[[RHS_ALLOC]]
 // CHECK: linalg.generic {indexing_maps = [#[[$MAP1]], #[[$MAP1]], #[[$MAP1]]], iterator_types = ["parallel"]} ins(%[[LHS_CASTED]], %[[RHS_ALLOC]] : memref<?xi16, #[[$MAP0]]>, memref<?xi16>) outs(%[[RHS_ALLOC]] : memref<?xi16>) {
 // CHECK: ^bb0(%[[ARG1:.*]]: i16, %[[ARG2:.*]]: i16, %[[ARG3:.*]]: i16):
@@ -109,20 +109,20 @@ builtin.module {
   }
 }
 
-// CHECK: #[[$MAP0:.*]] = affine_map<(d0)[s0] -> (d0 * s0)>
-// CHECK: #[[$MAP1:.*]] = affine_map<(d0) -> (d0)>
+// CHECK-DAG: #[[$MAP0:.*]] = affine_map<(d0)[s0] -> (d0 * s0)>
+// CHECK-DAG: #[[$MAP1:.*]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func @CopyWithMutation(
 // CHECK-SAME:              %[[LHS:.*]]: memref<?xi16>, %[[RHS:.*]]: memref<?xi16>) {
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
 // CHECK: %[[SIZE:.*]] = memref.dim %[[RHS]], %[[C0]] : memref<?xi16>
 // CHECK: %[[LHS_CASTED:.*]] = memref.reinterpret_cast %[[LHS]] to offset: [0], sizes: [%[[SIZE]]], strides: [%[[C0]]] : memref<?xi16> to memref<?xi16, #[[$MAP0]]>
-// CHECK: %[[LHS_ALLOC:.*]] = memref.alloc(%0) : memref<?xi16>
+// CHECK: %[[LHS_ALLOC:.*]] = memref.alloc(%[[SIZE]]) : memref<?xi16>
 // CHECK: memref.copy %[[LHS_CASTED]], %[[LHS_ALLOC]]
 // CHECK: %[[RHS_CASTED:.*]] = memref.reinterpret_cast %[[RHS]] to offset: [0], sizes: [%[[SIZE]]], strides: [%[[C1]]] : memref<?xi16> to memref<?xi16, #[[$MAP0]]>
-// CHECK: %[[RHS_ALLOC:.*]] = memref.alloc(%0) : memref<?xi16>
+// CHECK: %[[RHS_ALLOC:.*]] = memref.alloc(%[[SIZE]]) : memref<?xi16>
 // CHECK: memref.copy %[[RHS_CASTED]], %[[RHS_ALLOC]]
-// CHECK: %[[OUTPUT_ALLOC:.*]] = memref.alloc(%0) : memref<?xi16>
+// CHECK: %[[OUTPUT_ALLOC:.*]] = memref.alloc(%[[SIZE]]) : memref<?xi16>
 // CHECK: linalg.generic {indexing_maps = [#[[$MAP1]], #[[$MAP1]], #[[$MAP1]]], iterator_types = ["parallel"]} ins(%[[LHS_ALLOC]], %[[RHS_ALLOC]] : memref<?xi16>, memref<?xi16>) outs(%[[OUTPUT_ALLOC]] : memref<?xi16>) {
 // CHECK: ^bb0(%[[ARG1:.*]]: i16, %[[ARG2:.*]]: i16, %[[ARG3:.*]]: i16):
 // CHECK:   %[[AND:.*]] = arith.andi %[[ARG1]], %[[ARG2]] : i16

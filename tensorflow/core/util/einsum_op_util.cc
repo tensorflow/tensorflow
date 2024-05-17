@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/util/einsum_op_util.h"
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_split.h"
@@ -25,10 +27,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ValidateEinsumEquation(const string& equation,
-                              gtl::InlinedVector<string, 2>* input_subscripts,
-                              string* output_subscript) {
-  gtl::InlinedVector<string, 2> inputs_and_output_subscripts =
+Status ValidateEinsumEquation(
+    const string& equation, absl::InlinedVector<string, 2UL>* input_subscripts,
+    string* output_subscript) {
+  absl::InlinedVector<string, 2UL> inputs_and_output_subscripts =
       absl::StrSplit(equation, "->");
   if (inputs_and_output_subscripts.size() != 2) {
     return errors::InvalidArgument(
@@ -42,7 +44,7 @@ Status ValidateEinsumEquation(const string& equation,
         "Expecting 1 or 2 input subscripts in equation '", equation,
         "' but got: ", input_subscripts->size());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns the EinsumDimensionType given whether the corresponding label is
@@ -84,9 +86,9 @@ Status ParseEinsumEquation(const string& equation, OperandLabels* input_labels,
                            std::vector<EinsumDimensionType>* label_types,
                            OperandLabelCounts* input_label_counts,
                            LabelCounts* output_label_counts,
-                           gtl::InlinedVector<bool, 2>* input_has_ellipsis,
+                           absl::InlinedVector<bool, 2UL>* input_has_ellipsis,
                            bool* output_has_ellipsis) {
-  gtl::InlinedVector<string, 2> input_str;
+  absl::InlinedVector<string, 2UL> input_str;
   string output_str;
   TF_RETURN_IF_ERROR(ValidateEinsumEquation(equation, &input_str, &output_str));
 
@@ -133,7 +135,7 @@ Status ParseEinsumEquation(const string& equation, OperandLabels* input_labels,
                   (*input_label_counts)[1][label] == 0;
     (*label_types)[label] = GetDimensionType(removed, unique);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

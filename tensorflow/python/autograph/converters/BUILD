@@ -1,224 +1,400 @@
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//visibility:private"],
-)
-
-py_library(
-    name = "converters",
-    srcs = [
-        "asserts.py",
-        "break_statements.py",
-        "call_trees.py",
-        "conditional_expressions.py",
-        "continue_statements.py",
-        "control_flow.py",
-        "control_flow_deprecated_py2.py",
-        "directives.py",
-        "functions.py",
-        "list_comprehensions.py",
-        "lists.py",
-        "logical_expressions.py",
-        "return_statements.py",
-        "slices.py",
-        "variables.py",
-    ],
-    srcs_version = "PY3",
+py_strict_library(
+    name = "slices",
+    srcs = ["slices.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python:util",
-        "//tensorflow/python/autograph/core",
-        "//tensorflow/python/autograph/lang",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
-        "//tensorflow/python/autograph/utils",
-        "@gast_archive//:gast",
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/pyct:templates",
+        "@pypi_gast//:pkg",
     ],
 )
 
-py_test(
+py_strict_library(
+    name = "continue_statements",
+    srcs = ["continue_statements.py"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
+    ],
+)
+
+py_strict_library(
+    name = "logical_expressions",
+    srcs = ["logical_expressions.py"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:templates",
+        "@pypi_gast//:pkg",
+    ],
+)
+
+py_strict_library(
+    name = "break_statements",
+    srcs = ["break_statements.py"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
+    ],
+)
+
+py_strict_library(
+    name = "conditional_expressions",
+    srcs = ["conditional_expressions.py"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:templates",
+        "@pypi_gast//:pkg",
+    ],
+)
+
+py_strict_library(
+    name = "call_trees",
+    srcs = ["call_trees.py"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/utils:ag_logging",
+        "@pypi_gast//:pkg",
+    ],
+)
+
+py_strict_library(
+    name = "directives",
+    srcs = ["directives.py"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/util:tf_inspect",
+        "@pypi_gast//:pkg",
+    ],
+)
+
+py_strict_library(
+    name = "variables",
+    srcs = ["variables.py"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:templates",
+        "@pypi_gast//:pkg",
+    ],
+)
+
+py_strict_library(
+    name = "control_flow",
+    srcs = ["control_flow.py"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:cfg",
+        "//tensorflow/python/autograph/pyct:origin_info",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
+        "//tensorflow/python/autograph/pyct/static_analysis:liveness",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_definitions",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
+        "@pypi_gast//:pkg",
+    ],
+)
+
+py_strict_library(
+    name = "functions",
+    srcs = ["functions.py"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
+        "@pypi_gast//:pkg",
+    ],
+)
+
+py_strict_library(
+    name = "lists",
+    srcs = ["lists.py"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
+        "@pypi_gast//:pkg",
+    ],
+)
+
+py_strict_library(
+    name = "return_statements",
+    srcs = ["return_statements.py"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
+        "@pypi_gast//:pkg",
+    ],
+)
+
+py_strict_library(
+    name = "asserts",
+    srcs = ["asserts.py"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/pyct:templates",
+        "@pypi_gast//:pkg",
+    ],
+)
+
+py_strict_test(
     name = "asserts_test",
     srcs = ["asserts_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
+        ":asserts",
+        ":functions",
+        ":return_statements",
+        #internal proto upb dep
         "//tensorflow/python/autograph/core:test_lib",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "break_statements_test",
     srcs = ["break_statements_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
+        ":break_statements",
+        #internal proto upb dep
         "//tensorflow/python/autograph/core:test_lib",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "call_trees_test",
     srcs = ["call_trees_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
+        ":call_trees",
+        ":functions",
+        #internal proto upb dep
         "//tensorflow/python/autograph/core:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "conditional_expressions_test",
     srcs = ["conditional_expressions_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
+        ":conditional_expressions",
+        #internal proto upb dep
         "//tensorflow/python/autograph/core:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "continue_statements_test",
     srcs = ["continue_statements_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
+        ":continue_statements",
+        #internal proto upb dep
         "//tensorflow/python/autograph/core:test_lib",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "control_flow_test",
     srcs = ["control_flow_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
+        ":break_statements",
+        ":continue_statements",
+        ":control_flow",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow/python/autograph/core:test_lib",
-        # TOODO(b/145618471): Remove this transitive dependency.
-        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:nest",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "directives_test",
     srcs = ["directives_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
+        ":directives",
+        #internal proto upb dep
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/lang",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "functions_test",
     srcs = ["functions_test.py"],
     python_version = "PY3",
     deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
+        ":functions",
+        ":return_statements",
+        #internal proto upb dep
+        "//tensorflow/python/autograph/core:ag_ctx",
+        "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/impl:api",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_test(
-    name = "list_comprehensions_test",
-    srcs = ["list_comprehensions_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:test_lib",
-    ],
-)
-
-py_test(
+py_strict_test(
     name = "lists_test",
     srcs = ["lists_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
+        ":directives",
+        ":lists",
+        #internal proto upb dep
         "//tensorflow/python/autograph/core:test_lib",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/lang:special_functions",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:list_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "logical_expressions_test",
     srcs = ["logical_expressions_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["notsan"],  # b/163218460
     deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
+        ":logical_expressions",
+        #internal proto upb dep
         "//tensorflow/python/autograph/core:test_lib",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "return_statements_test",
     srcs = ["return_statements_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
+        ":functions",
+        ":return_statements",
+        #internal proto upb dep
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "slices_test",
     srcs = ["slices_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
+        ":directives",
+        ":slices",
+        #internal proto upb dep
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:list_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "variables_test",
     srcs = ["variables_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
+        ":variables",
+        #internal proto upb dep
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

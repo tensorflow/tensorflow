@@ -1,7 +1,8 @@
-load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -11,7 +12,7 @@ exports_files(
     visibility = ["//tensorflow/python:__pkg__"],
 )
 
-py_library(
+py_strict_library(
     name = "parallel_device",
     srcs = ["parallel_device.py"],
     srcs_version = "PY3",
@@ -22,11 +23,20 @@ py_library(
     deps = [
         "//tensorflow/python:_pywrap_parallel_device",
         "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/tpu/ops",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:variable_utils",
     ],
 )
 
-distribute_py_test(
+distribute_py_strict_test(
     name = "parallel_device_test",
     srcs = ["parallel_device_test.py"],
     # We don't only use TPU Runtime on parallel device, we use c_api_tfrt instead.
@@ -39,10 +49,29 @@ distribute_py_test(
     ],
     deps = [
         ":parallel_device",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:collective_ops",
-        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_management",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/module",
-        "//tensorflow/python/tpu",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:collective_ops",
+        "//tensorflow/python/ops:control_flow_switch_case",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:stateful_random_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/util:nest",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

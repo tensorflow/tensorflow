@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -248,7 +248,7 @@ struct SparseConcatFunctor<GPUDevice, T> {
     TF_RETURN_IF_ERROR(
         context->allocate_output(1, TensorShape({output_nnz}), &output_vals));
     *output_vals_ptr = output_vals->vec<T>().data();
-    return Status::OK();
+    return OkStatus();
   }
 };
 

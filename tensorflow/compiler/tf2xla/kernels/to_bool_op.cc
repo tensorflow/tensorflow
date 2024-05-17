@@ -18,8 +18,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
@@ -42,7 +42,7 @@ class ToBoolOp : public XlaOpKernel {
     if (shape.rank() == 0) {
       auto result = xla::Ne(ctx->Input(0), xla::ZerosLike(input));
       ctx->SetOutput(0, result);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Otherwise, any input tensor with elements returns True. Input tensor
@@ -54,7 +54,7 @@ class ToBoolOp : public XlaOpKernel {
     auto result = xla::Ne(num_elements, xla::ZerosLike(num_elements));
     ctx->SetOutput(0, result);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

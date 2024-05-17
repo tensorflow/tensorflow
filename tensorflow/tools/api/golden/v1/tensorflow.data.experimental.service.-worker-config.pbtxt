@@ -4,6 +4,14 @@ tf_class {
   is_instance: "<class \'tensorflow.python.data.experimental.service.server_lib.WorkerConfig\'>"
   is_instance: "<type \'tuple\'>"
   member {
+    name: "data_transfer_address"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "data_transfer_protocol"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "dispatcher_address"
     mtype: "<type \'property\'>"
   }

@@ -187,8 +187,6 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
                    &gen, &output](int64_t start_output, int64_t limit_output) {
       // Vectorized intermediate calculations for uniform rejection sampling.
       // We always generate at most 4 samples.
-      Eigen::array<T, 4> z;
-      Eigen::array<T, 4> g;
       const bool should_bcast = bcast.IsBroadcastingRequired();
       const auto& counts_batch_indices = bcast.x_batch_indices();
       const auto& probs_batch_indices = bcast.y_batch_indices();
@@ -433,7 +431,8 @@ class RandomBinomialOp : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomBinomialOp);
+  RandomBinomialOp(const RandomBinomialOp&) = delete;
+  void operator=(const RandomBinomialOp&) = delete;
 };
 
 // Samples from a binomial distribution, using the given parameters.
@@ -494,11 +493,15 @@ class StatelessRandomBinomialOp : public OpKernel {
     const int64_t num_sample_dims =
         (shape_tensor.dim_size(0) - bcast.output_shape().size());
     for (int64_t i = 0; i < num_sample_dims; ++i) {
-      samples_per_batch *= shape_tensor.flat<int32>()(i);
+      samples_per_batch *= shape_tensor.dtype() == DataType::DT_INT32
+                               ? shape_tensor.flat<int32>()(i)
+                               : shape_tensor.flat<int64>()(i);
     }
     int64_t num_batches = 1;
     for (int64_t i = num_sample_dims; i < shape_tensor.dim_size(0); ++i) {
-      num_batches *= shape_tensor.flat<int32>()(i);
+      num_batches *= shape_tensor.dtype() == DataType::DT_INT32
+                         ? shape_tensor.flat<int32>()(i)
+                         : shape_tensor.flat<int64>()(i);
     }
     const int64_t num_elements = num_batches * samples_per_batch;
 
@@ -519,7 +522,8 @@ class StatelessRandomBinomialOp : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomBinomialOp);
+  StatelessRandomBinomialOp(const StatelessRandomBinomialOp&) = delete;
+  void operator=(const StatelessRandomBinomialOp&) = delete;
 };
 
 }  // namespace

@@ -30,9 +30,9 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/lite/delegates/flex/util.h"
@@ -85,7 +85,7 @@ class OpInputs {
     }
     forwardable_.resize(inputs_.size());
   }
-  ~OpInputs() {}
+  ~OpInputs() = default;
 
   int Size() const { return inputs_.size(); }
 
@@ -155,14 +155,14 @@ class OpOutputs {
 
   int TfLiteIndex(int i) const { return outputs_[i]; }
 
-  tensorflow::gtl::InlinedVector<tensorflow::Tensor, 2>* GetTensors() {
+  absl::InlinedVector<tensorflow::Tensor, 2UL>* GetTensors() {
     return &vector_;
   }
 
  private:
   std::vector<int> outputs_;
   std::vector<bool> subgraph_outputs_;
-  tensorflow::gtl::InlinedVector<tensorflow::Tensor, 2> vector_;
+  absl::InlinedVector<tensorflow::Tensor, 2UL> vector_;
 };
 
 // This struct holds information such as tensor lifecycle and BufferMap which
@@ -237,7 +237,17 @@ class OpNode {
         tensorflow::OpRegistry::Global()->LookUp(nodedef_.op(), &op_reg_data_));
     AddDefaultsToNodeDef(op_reg_data_->op_def, &nodedef_);
 
-    return ::tensorflow::OkStatus();
+    // Force disable the use of inter op parallelism to prevent deadlocks in
+    // Tensorflow Function Library Runtime when only one thread is allowed.
+    // This changes the threadpool that is used by TF's data ops by passing it
+    // to the CapturedFunction instantiate function.
+    //
+    // It should be ok to remove this when/if the tensorflow::Executor::Run
+    // function is changed not to call the RunAsync function and wait on its
+    // completion. See b/304799442 for more context.
+    (*nodedef_.mutable_attr())["use_inter_op_parallelism"].set_b(false);
+
+    return absl::OkStatus();
   }
 
   tensorflow::Status BuildOpKernelRunner(
@@ -248,12 +258,12 @@ class OpNode {
                             name_, inputs_.Size(), /*attr_builder=*/
                             [this](tensorflow::AttrValueMap* attr_value_map) {
                               *attr_value_map = nodedef_.attr();
-                              return ::tensorflow::OkStatus();
+                              return absl::OkStatus();
                             },
                             *eager_context->pflr(),
                             eager_context->local_device_mgr()->HostCPU()));
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   tensorflow::Status BuildOpKernelInputs(
@@ -288,7 +298,7 @@ class OpNode {
       run_state->input_tf_tensor_values[i].tensor =
           &run_state->input_tf_tensors[i];
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns whether an output tensor should be preserved in the buffer map by
@@ -356,7 +366,7 @@ class OpNode {
                                            node_index)) {
           if (CopyToTfLiteTensor(context, shared_info, tensor, &tf_tensor,
                                  tflite_index) != kTfLiteOk) {
-            return tensorflow::Status(tensorflow::error::INTERNAL,
+            return tensorflow::Status(absl::StatusCode::kInternal,
                                       "failed to copy data from TF tensor");
           }
         } else {
@@ -365,7 +375,7 @@ class OpNode {
         }
       }
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -415,9 +425,9 @@ tensorflow::Status DelegateKernel::ExecuteOpKernelRunner(
   TF_RETURN_IF_ERROR(node_data->BuildOpKernelInputs(
       op_data_->shared_info.buffer_map, run_state));
 
-  run_state->params.inputs = &run_state->input_tf_tensor_values;
+  run_state->params.inputs = run_state->input_tf_tensor_values;
   run_state->params.op_kernel = op_kernel_runner.op_kernel();
-  run_state->params.input_alloc_attrs = &op_kernel_runner.input_alloc_attrs();
+  run_state->params.input_alloc_attrs = op_kernel_runner.input_alloc_attrs();
   run_state->params.output_attr_array =
       op_kernel_runner.output_alloc_attrs().data();
   run_state->params.function_library =
@@ -438,7 +448,7 @@ tensorflow::Status DelegateKernel::ExecuteOpKernelRunner(
 }
 
 DelegateKernel::DelegateKernel() : op_data_(new OpData) {}
-DelegateKernel::~DelegateKernel() {}
+DelegateKernel::~DelegateKernel() = default;
 
 TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
                                   const TfLiteDelegateParams* params) {
@@ -471,9 +481,15 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
 
   // Now we explicitly disable reusing TFLite tensor buffers for certain TF ops,
   // since those ops might produce results which keep reference of the input
-  // tensors.
+  // tensors (buffer forwarding).
   auto check_if_op_reuses_input = [](const string& op_name) {
-    return op_name == "TensorListPushBack" || op_name == "TensorListSetItem";
+    return op_name == "TensorListPushBack" || op_name == "TensorListSetItem" ||
+           op_name == "SparseReshape" || op_name == "StridedSlice" ||
+           op_name == "RaggedTensorToVariant" || op_name == "TensorMapInsert";
+    // TensorMapInsert hashes a tensor using a string_view of the key tensor.
+    // If the key tensor is shared with TfLite, the memory be reused. The string
+    // view will also change - it stores a ptr and a size, not the data so the
+    // data must be conserved or a false collision will be detected.
   };
 
   for (auto node_index : TfLiteIntArrayView(params->nodes_to_replace)) {
@@ -501,11 +517,10 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
     // last node that needs this tensor.
     for (auto tensor_index : TfLiteIntArrayView(node->inputs)) {
       int node_id = node_index;
-      if (op_data_->shared_info.tensor_release_map->find(tensor_index) !=
-          op_data_->shared_info.tensor_release_map->end()) {
-        node_id =
-            std::max(op_data_->shared_info.tensor_release_map->at(tensor_index),
-                     node_index);
+      if (const std::map<int, int>::iterator it =
+              op_data_->shared_info.tensor_release_map->find(tensor_index);
+          it != op_data_->shared_info.tensor_release_map->end()) {
+        node_id = std::max(it->second, node_index);
       }
       (*op_data_->shared_info.tensor_release_map)[tensor_index] = node_id;
 
@@ -567,20 +582,24 @@ TfLiteStatus DelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* node) {
     tensor_ref_count[tensor_index] += 2;
   }
 
-  const bool shapes_are_valid =
-      (ValidateOutputTensorShapeConsistency(context) == kTfLiteOk);
-  if (shapes_are_valid) {
-    TFLITE_LOG(tflite::TFLITE_LOG_INFO,
-               "FlexDelegate: All tensor shapes are consistent.");
-  } else {
-    TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
-               "FlexDelegate: Some tensor shapes are inconsistent.");
+  // Output shapes which may have initially been inferable may no longer be
+  // after ResizeInputTensor has been called, so it must be checked again.
+  if (shapes_are_valid_) {
+    shapes_are_valid_ =
+        (ValidateOutputTensorShapeConsistency(context) == kTfLiteOk);
+    if (shapes_are_valid_) {
+      TFLITE_LOG(tflite::TFLITE_LOG_INFO,
+                 "FlexDelegate: All tensor shapes are consistent.");
+    } else {
+      TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
+                 "FlexDelegate: Some tensor shapes are inconsistent.");
+    }
   }
 
   // All output tensors are allocated by TensorFlow, so we mark them as
   // kTfLiteDynamic.
   for (auto tensor_index : op_data_->subgraph_outputs) {
-    if (!shapes_are_valid) {
+    if (!shapes_are_valid_) {
       SetTensorToDynamic(&context->tensors[tensor_index]);
     }
     ++tensor_ref_count[tensor_index];
@@ -742,7 +761,7 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
 
     // Execute the TensorFlow Ops sequentially.
     for (auto& node_data : op_data_->nodes) {
-      TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(
+      TFLITE_SCOPED_DELEGATE_PROFILED_OPERATOR_PROFILE(
           reinterpret_cast<Profiler*>(context->profiler),
           node_data->name().c_str(), node_data->index());
 

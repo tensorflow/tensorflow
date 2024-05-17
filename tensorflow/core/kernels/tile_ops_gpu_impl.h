@@ -42,18 +42,19 @@ limitations under the License.
   template struct TileGrad<Eigen::GpuDevice, T, NDIM>; \
   template struct ReduceAndReshape<Eigen::GpuDevice, T, NDIM, 1>;
 
-#define DEFINE_TILE_OPS(NDIM)   \
-  namespace tensorflow {        \
-  namespace functor {           \
-  DEFINE_DIM(int16, NDIM)       \
-  DEFINE_DIM(int32, NDIM)       \
-  DEFINE_DIM(int64, NDIM)       \
-  DEFINE_DIM(Eigen::half, NDIM) \
-  DEFINE_DIM(float, NDIM)       \
-  DEFINE_DIM(double, NDIM)      \
-  DEFINE_DIM(complex64, NDIM)   \
-  DEFINE_DIM(complex128, NDIM)  \
-  }                             \
+#define DEFINE_TILE_OPS(NDIM)       \
+  namespace tensorflow {            \
+  namespace functor {               \
+  DEFINE_DIM(int16, NDIM)           \
+  DEFINE_DIM(int32, NDIM)           \
+  DEFINE_DIM(int64, NDIM)           \
+  DEFINE_DIM(Eigen::half, NDIM)     \
+  DEFINE_DIM(Eigen::bfloat16, NDIM) \
+  DEFINE_DIM(float, NDIM)           \
+  DEFINE_DIM(double, NDIM)          \
+  DEFINE_DIM(complex64, NDIM)       \
+  DEFINE_DIM(complex128, NDIM)      \
+  }                                 \
   }
 
 #endif  // TENSORFLOW_CORE_KERNELS_TILE_OPS_GPU_IMPL_H_

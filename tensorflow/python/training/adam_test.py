@@ -16,8 +16,8 @@
 
 import numpy as np
 
-from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.python.client import session
+from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -66,8 +67,8 @@ class AdamOptimizerTest(test.TestCase):
           var0 = resource_variable_ops.ResourceVariable(var0_np)
           var1 = resource_variable_ops.ResourceVariable(var1_np)
         else:
-          var0 = variables.RefVariable(var0_np)
-          var1 = variables.RefVariable(var1_np)
+          var0 = ref_variable.RefVariable(var0_np)
+          var1 = ref_variable.RefVariable(var1_np)
         grads0_np_indices = np.array([0, 1], dtype=np.int32)
         grads0 = indexed_slices.IndexedSlices(
             constant_op.constant(grads0_np),
@@ -172,8 +173,8 @@ class AdamOptimizerTest(test.TestCase):
           var1 = resource_variable_ops.ResourceVariable(
               var1_np, name="var1_%d" % i)
         else:
-          var0 = variables.RefVariable(var0_np)
-          var1 = variables.RefVariable(var1_np)
+          var0 = ref_variable.RefVariable(var0_np)
+          var1 = ref_variable.RefVariable(var1_np)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
 

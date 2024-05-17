@@ -29,9 +29,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 #define DEBUG_TYPE "tf-executor-tpu-v1-island-inlining"
@@ -42,8 +40,11 @@ namespace tf_executor {
 namespace {
 constexpr llvm::StringRef kNestedModule = "_tpu_v1_compat_outlined";
 
+#define GEN_PASS_DEF_EXECUTORTPUV1ISLANDINLININGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ExecutorTPUV1IslandInliningPass
-    : public TF::ExecutorTPUV1IslandInliningPassBase<
+    : public impl::ExecutorTPUV1IslandInliningPassBase<
           ExecutorTPUV1IslandInliningPass> {
   void runOnOperation() override;
 };
@@ -55,7 +56,8 @@ void ExecutorTPUV1IslandInliningPass::runOnOperation() {
 
   InlinerInterface inliner(&getContext());
   auto walk_result = getOperation().walk([&](TF::PartitionedCallOp call_op) {
-    if (!call_op.f().getRootReference().getValue().startswith(kNestedModule))
+    if (!call_op.getF().getRootReference().getValue().starts_with(
+            kNestedModule))
       return WalkResult::advance();
     // This is a call we need to inline!
     LLVM_DEBUG(llvm::dbgs()

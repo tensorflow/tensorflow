@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/split.h"
 
+#include <map>
 #include <string>
-
+#include <vector>
 
 namespace tflite {
 namespace gpu {
@@ -162,7 +163,7 @@ std::string Split::GetSplitChannelsCode(const GpuInfo& gpu_info,
     c += "  if (" + std::to_string(s) + " < args.src_tensor.Slices()) {\n";
     c += "    args.src_tensor::type src_val = args.src_tensor.Read(" + coords +
          ", " + std::to_string(s) + batch_coord + ");\n";
-    for (int k = 0; k < 4; ++k) {
+    for (int k = 0; k < 4 && s * 4 + k < src_channels; ++k) {
       c += "    dst_val" + postfix[dst_ch % 4] + " = src_val" + postfix[k] +
            ";\n";
       dst_ch++;

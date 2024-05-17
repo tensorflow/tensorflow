@@ -13,13 +13,12 @@
 # limitations under the License.
 """Tests for structured_array_ops."""
 
-
 from absl.testing import parameterized
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -28,6 +27,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
+from tensorflow.python.ops.ragged.dynamic_ragged_shape import DynamicRaggedShape
 from tensorflow.python.ops.structured import structured_array_ops
 from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
@@ -55,10 +55,14 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
       nest.assert_same_structure(a, b, expand_composites=True)
     except (TypeError, ValueError) as e:
       self.assertIsNone(e, (msg + ": " if msg else "") + str(e))
-    a_tensors = [x for x in nest.flatten(a, expand_composites=True)
-                 if isinstance(x, ops.Tensor)]
-    b_tensors = [x for x in nest.flatten(b, expand_composites=True)
-                 if isinstance(x, ops.Tensor)]
+    a_tensors = [
+        x for x in nest.flatten(a, expand_composites=True)
+        if isinstance(x, tensor.Tensor)
+    ]
+    b_tensors = [
+        x for x in nest.flatten(b, expand_composites=True)
+        if isinstance(x, tensor.Tensor)
+    ]
     self.assertLen(a_tensors, len(b_tensors))
     a_arrays, b_arrays = self.evaluate((a_tensors, b_tensors))
     for a_array, b_array in zip(a_arrays, b_arrays):
@@ -262,6 +266,22 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
 
     actual2 = array_ops.size_v2(st, out_type=dtype)
     self.assertAllEqual(actual2, expected)
+
+  def test_shape_v2(self):
+    rt = ragged_tensor.RaggedTensor.from_row_lengths(["a", "b", "c"], [1, 2])
+    st = StructuredTensor.from_fields_and_rank({"r": rt}, rank=2)
+    actual = array_ops.shape_v2(st, out_type=dtypes.int64)
+    actual_static_lengths = actual.static_lengths()
+    self.assertAllEqual([2, (1, 2)], actual_static_lengths)
+
+  def test_shape(self):
+    rt = ragged_tensor.RaggedTensor.from_row_lengths(["a", "b", "c"], [1, 2])
+    st = StructuredTensor.from_fields_and_rank({"r": rt}, rank=2)
+    actual = array_ops.shape(st, out_type=dtypes.int64).static_lengths()
+    actual_v2 = array_ops.shape_v2(st, out_type=dtypes.int64).static_lengths()
+    expected = [2, (1, 2)]
+    self.assertAllEqual(expected, actual)
+    self.assertAllEqual(expected, actual_v2)
 
   @parameterized.named_parameters([
       dict(
@@ -767,8 +787,11 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(actual, expected)
 
   def testConcatTuple(self):
-    values = (StructuredTensor.from_pyval([{"a": 3}]),
-              StructuredTensor.from_pyval([{"a": 4}]))
+    values = (StructuredTensor.from_pyval([{
+        "a": 3
+    }]), StructuredTensor.from_pyval([{
+        "a": 4
+    }]))
     actual = array_ops.concat(values, axis=0)
     self.assertAllEqual(actual, [{"a": 3}, {"a": 4}])
 
@@ -837,26 +860,29 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
 
   def testConcatNotAList(self):
     values = StructuredTensor.from_pyval({})
-    with self.assertRaisesRegex(
-        ValueError, "values must be a list of StructuredTensors"):
+    with self.assertRaisesRegex(ValueError,
+                                "values must be a list of StructuredTensors"):
       structured_array_ops.concat(values, 0)
 
   def testConcatEmptyList(self):
-    with self.assertRaisesRegex(ValueError,
-                                "values must not be an empty list"):
+    with self.assertRaisesRegex(ValueError, "values must not be an empty list"):
       structured_array_ops.concat([], 0)
 
   def testExtendOpErrorNotList(self):
     # Should be a list.
     values = StructuredTensor.from_pyval({})
+
     def leaf_op(values):
       return values[0]
+
     with self.assertRaisesRegex(ValueError, "Expected a list"):
       structured_array_ops._extend_op(values, leaf_op)
 
   def testExtendOpErrorEmptyList(self):
+
     def leaf_op(values):
       return values[0]
+
     with self.assertRaisesRegex(ValueError, "List cannot be empty"):
       structured_array_ops._extend_op([], leaf_op)
 
@@ -903,6 +929,7 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
 
   def testStructuredTensorArrayLikeNoRank(self):
     """Test when the rank is unknown."""
+
     @def_function.function
     def my_fun(foo):
       bar_shape = math_ops.range(foo)
@@ -919,17 +946,24 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
     result = structured_array_ops._structured_tensor_like(foo)
     self.assertAllEqual([{}, {}, {}, {}], result)
 
+  # Note that we have to be careful about whether the indices are int32
+  # or int64.
   def testStructuredTensorArrayRankOneUnknownShape(self):
     """Fully test structured_tensor_array_like."""
+
     @def_function.function
     def my_fun(my_shape):
       my_zeros = array_ops.zeros(my_shape)
       return structured_array_ops._structured_tensor_like(my_zeros)
+
     result = my_fun(array_ops.constant(4))
-    self.assertAllEqual([{}, {}, {}, {}], result)
+    shape = DynamicRaggedShape._from_inner_shape([4], dtype=dtypes.int32)
+    expected = StructuredTensor.from_shape(shape)
+    self.assertAllEqual(expected, result)
 
   def testStructuredTensorArrayRankTwoUnknownShape(self):
     """Fully test structured_tensor_array_like."""
+
     @def_function.function
     def my_fun(my_shape):
       my_zeros = array_ops.zeros(my_shape)
@@ -1173,10 +1207,7 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
            error_regex="batch_dims=1 out of bounds",
           ),
   ])  # pyformat: disable
-  def testGatherError(self,
-                      params,
-                      indices, axis, batch_dims,
-                      error_type,
+  def testGatherError(self, params, indices, axis, batch_dims, error_type,
                       error_regex):
     params = StructuredTensor.from_pyval(params)
     with self.assertRaisesRegex(error_type, error_regex):

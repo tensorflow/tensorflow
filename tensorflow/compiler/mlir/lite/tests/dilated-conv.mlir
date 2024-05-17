@@ -10,7 +10,7 @@ func.func @testDilatedConv(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8
 
   // CHECK-LABEL: testDilatedConv
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>)
-  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32>
+  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x120x120x8xf32>
 }
 
@@ -24,7 +24,7 @@ func.func @testDilatedConvWithNonConstantPadAndCrops(%arg0: tensor<1x128x128x3xf
 
   // CHECK-LABEL: testDilatedConvWithNonConstantPadAndCrops
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>)
-  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32>
+  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x120x120x8xf32>
 }
 
@@ -39,8 +39,23 @@ func.func @testDilatedConvWithNonZeroBasePadding(%arg0: tensor<1x128x128x3xf32>,
 
   // CHECK-LABEL: testDilatedConvWithNonZeroBasePadding
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>)
-  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32>
+  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128x8xf32>
+}
+
+func.func @testDilatedConvWithFp16(%arg0 : tensor<1x20x30x40xf16>, %arg1: tensor<5x5x40x32xf16>) -> tensor<1x20x30x32xf16> {
+  %block_shape = arith.constant dense<2> : tensor<2xi32>
+  %paddings = arith.constant dense<4> : tensor<2x2xi32>
+  %crops = arith.constant dense<0> : tensor<2x2xi32>
+  %0 = "tf.SpaceToBatchND"(%arg0, %block_shape, %paddings) : (tensor<1x20x30x40xf16>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x14x19x40xf16>
+  %1 = "tf.Conv2D"(%0, %arg1) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<4x14x19x40xf16>, tensor<5x5x40x32xf16>) -> tensor<4x10x15x32xf16>
+  %2 = "tf.BatchToSpaceND"(%1, %block_shape, %crops) : (tensor<4x10x15x32xf16>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<1x20x30x32xf16>
+  func.return %2 : tensor<1x20x30x32xf16>
+
+  // CHECK-LABEL: testDilatedConvWithFp16
+  // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x20x30x40xf16>, [[FILTER:%.*]]: tensor<5x5x40x32xf16>)
+  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) <{data_format = "NHWC", dilations = [1, 2, 2, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x20x30x40xf16>, tensor<5x5x40x32xf16>) -> tensor<1x20x30x32xf16>
+  // CHECK-NEXT: return [[RESULT]] : tensor<1x20x30x32xf16>
 }
 
 func.func @testDilatedConvWithNonTrivialDilations(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32> {
@@ -70,7 +85,7 @@ func.func @testDilatedDepthWiseConv(%arg0: tensor<1x128x128x3xf32>, %arg1: tenso
 
   // CHECK-LABEL: testDilatedDepthWiseConv
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>)
-  // CHECK-NEXT: [[RESULT:%.*]] = "tf.DepthwiseConv2dNative"([[INPUT]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32>
+  // CHECK-NEXT: [[RESULT:%.*]] = "tf.DepthwiseConv2dNative"([[INPUT]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128x8xf32>
 }
 
@@ -88,7 +103,7 @@ func.func @testDilatedConvWithPad(%arg0: tensor<1x128x128x3xf32>, %arg1: tensor<
 
   // CHECK-LABEL: testDilatedConvWithPad
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>, [[BIAS:%.*]]: tensor<8xf32>)
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32>
   // CHECK-NEXT: [[RESULT:%.*]] = "tf.BiasAdd"([[CONV]], [[BIAS]]) : (tensor<1x128x128x8xf32>, tensor<8xf32>) -> tensor<1x128x128x8xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128x8xf32>
 }
@@ -107,7 +122,7 @@ func.func @testDilatedDepthWiseConvWithPad(%arg0: tensor<1x128x128x3xf32>, %arg1
 
   // CHECK-LABEL: testDilatedDepthWiseConvWithPad
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>, [[BIAS:%.*]]: tensor<8xf32>)
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.DepthwiseConv2dNative"([[INPUT]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.DepthwiseConv2dNative"([[INPUT]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32>
   // CHECK-NEXT: [[RESULT:%.*]] = "tf.BiasAdd"([[CONV]], [[BIAS]]) : (tensor<1x128x128x8xf32>, tensor<8xf32>) -> tensor<1x128x128x8xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128x8xf32>
 }
@@ -124,7 +139,7 @@ func.func @testDilatedConvWithBiasAdd(%arg0: tensor<1x128x128x3xf32>, %arg1: ten
 
   // CHECK-LABEL: testDilatedConvWithBiasAdd
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>, [[BIAS:%.*]]: tensor<8xf32>)
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32>
   // CHECK-NEXT: [[RESULT:%.*]] = "tf.BiasAdd"([[CONV]], [[BIAS]]) : (tensor<1x128x128x8xf32>, tensor<8xf32>) -> tensor<1x128x128x8xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128x8xf32>
 }
@@ -141,7 +156,7 @@ func.func @testDilatedDepthWiseConvWithBiasAdd(%arg0: tensor<1x128x128x3xf32>, %
 
   // CHECK-LABEL: testDilatedDepthWiseConvWithBiasAdd
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>, [[BIAS:%.*]]: tensor<8xf32>)
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.DepthwiseConv2dNative"([[INPUT]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.DepthwiseConv2dNative"([[INPUT]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x128x128x8xf32>
   // CHECK-NEXT: [[RESULT:%.*]] = "tf.BiasAdd"([[CONV]], [[BIAS]]) : (tensor<1x128x128x8xf32>, tensor<8xf32>) -> tensor<1x128x128x8xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128x8xf32>
 }
@@ -161,10 +176,10 @@ func.func @testDilatedConvWithExpandSqueeze1(%arg0: tensor<1x128x128xf32>, %arg1
 
   // CHECK-LABEL: testDilatedConvWithExpandSqueeze1
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128xf32>, [[FILTER:%.*]]: tensor<5x5x1x1xf32>, [[BIAS:%.*]]: tensor<128xf32>)
-  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() <{value = dense<3> : tensor<i32>}> : () -> tensor<i32>
   // CHECK-NEXT: [[EXPAND:%.*]] = "tf.ExpandDims"([[INPUT]], [[AXIS]]) : (tensor<1x128x128xf32>, tensor<i32>) -> tensor<1x128x128x1xf32>
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x128x128x1xf32>, tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32>
-  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) {squeeze_dims = [3]} : (tensor<1x128x128x1xf32>) -> tensor<1x128x128xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x1xf32>, tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32>
+  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) <{squeeze_dims = [3]}> : (tensor<1x128x128x1xf32>) -> tensor<1x128x128xf32>
   // CHECK-NEXT: [[RESULT:%.*]] = "tf.BiasAdd"([[SQUEEZE]], [[BIAS]]) : (tensor<1x128x128xf32>, tensor<128xf32>) -> tensor<1x128x128xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128xf32>
 }
@@ -184,10 +199,10 @@ func.func @testDilatedDepthWiseConvWithExpandSqueeze1(%arg0: tensor<1x128x128xf3
 
   // CHECK-LABEL: testDilatedDepthWiseConvWithExpandSqueeze1
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128xf32>, [[FILTER:%.*]]: tensor<5x5x1x1xf32>, [[BIAS:%.*]]: tensor<128xf32>)
-  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() <{value = dense<3> : tensor<i32>}> : () -> tensor<i32>
   // CHECK-NEXT: [[EXPAND:%.*]] = "tf.ExpandDims"([[INPUT]], [[AXIS]]) : (tensor<1x128x128xf32>, tensor<i32>) -> tensor<1x128x128x1xf32>
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.DepthwiseConv2dNative"([[EXPAND]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x128x128x1xf32>, tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32>
-  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) {squeeze_dims = [3]} : (tensor<1x128x128x1xf32>) -> tensor<1x128x128xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.DepthwiseConv2dNative"([[EXPAND]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x1xf32>, tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32>
+  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) <{squeeze_dims = [3]}> : (tensor<1x128x128x1xf32>) -> tensor<1x128x128xf32>
   // CHECK-NEXT: [[RESULT:%.*]] = "tf.BiasAdd"([[SQUEEZE]], [[BIAS]]) : (tensor<1x128x128xf32>, tensor<128xf32>) -> tensor<1x128x128xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128xf32>
 }
@@ -207,10 +222,10 @@ func.func @testDilatedConvWithExpandSqueeze2(%arg0: tensor<1x128x128xf32>, %arg1
 
   // CHECK-LABEL: testDilatedConvWithExpandSqueeze2
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128xf32>, [[FILTER:%.*]]: tensor<5x5x1x1xf32>, [[BIAS:%.*]]: tensor<?xf32>)
-  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() <{value = dense<3> : tensor<i32>}> : () -> tensor<i32>
   // CHECK-NEXT: [[EXPAND:%.*]] = "tf.ExpandDims"([[INPUT]], [[AXIS]]) : (tensor<1x128x128xf32>, tensor<i32>) -> tensor<1x128x128x1xf32>
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x128x128x1xf32>, tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32>
-  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) {squeeze_dims = [3]} : (tensor<1x128x128x1xf32>) -> tensor<1x128x128xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x1xf32>, tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32>
+  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) <{squeeze_dims = [3]}> : (tensor<1x128x128x1xf32>) -> tensor<1x128x128xf32>
   // CHECK-NEXT: [[RESULT:%.*]] = "tf.BiasAdd"([[SQUEEZE]], [[BIAS]]) : (tensor<1x128x128xf32>, tensor<?xf32>) -> tensor<1x128x128xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128xf32>
 }
@@ -230,10 +245,10 @@ func.func @testDilatedDepthWiseConvWithExpandSqueeze2(%arg0: tensor<1x128x128xf3
 
   // CHECK-LABEL: testDilatedDepthWiseConvWithExpandSqueeze2
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128xf32>, [[FILTER:%.*]]: tensor<5x5x1x1xf32>, [[BIAS:%.*]]: tensor<?xf32>)
-  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() <{value = dense<3> : tensor<i32>}> : () -> tensor<i32>
   // CHECK-NEXT: [[EXPAND:%.*]] = "tf.ExpandDims"([[INPUT]], [[AXIS]]) : (tensor<1x128x128xf32>, tensor<i32>) -> tensor<1x128x128x1xf32>
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.DepthwiseConv2dNative"([[EXPAND]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x128x128x1xf32>, tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32>
-  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) {squeeze_dims = [3]} : (tensor<1x128x128x1xf32>) -> tensor<1x128x128xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.DepthwiseConv2dNative"([[EXPAND]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x1xf32>, tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32>
+  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) <{squeeze_dims = [3]}> : (tensor<1x128x128x1xf32>) -> tensor<1x128x128xf32>
   // CHECK-NEXT: [[RESULT:%.*]] = "tf.BiasAdd"([[SQUEEZE]], [[BIAS]]) : (tensor<1x128x128xf32>, tensor<?xf32>) -> tensor<1x128x128xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128xf32>
 }
@@ -255,10 +270,10 @@ func.func @testDilatedConvWithExpandSqueeze3(%arg0: tensor<1x128x128xf32>, %arg1
 
   // CHECK-LABEL: testDilatedConvWithExpandSqueeze3
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128xf32>, [[FILTER:%.*]]: tensor<5x5x1x1xf32>, [[BIAS:%.*]]: tensor<128xf32>)
-  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() <{value = dense<3> : tensor<i32>}> : () -> tensor<i32>
   // CHECK-NEXT: [[EXPAND:%.*]] = "tf.ExpandDims"([[INPUT]], [[AXIS]]) : (tensor<1x128x128xf32>, tensor<i32>) -> tensor<1x128x128x1xf32>
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x128x128x1xf32>, tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32>
-  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) {squeeze_dims = [3]} : (tensor<1x128x128x1xf32>) -> tensor<1x128x128xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x1xf32>, tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32>
+  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) <{squeeze_dims = [3]}> : (tensor<1x128x128x1xf32>) -> tensor<1x128x128xf32>
   // CHECK-NEXT: [[RESULT:%.*]] = "tf.BiasAdd"([[SQUEEZE]], [[BIAS]]) : (tensor<1x128x128xf32>, tensor<128xf32>) -> tensor<1x128x128xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128xf32>
 }
@@ -280,10 +295,10 @@ func.func @testDilatedDepthWiseConvWithExpandSqueeze3(%arg0: tensor<1x128x128xf3
 
   // CHECK-LABEL: testDilatedDepthWiseConvWithExpandSqueeze3
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128xf32>, [[FILTER:%.*]]: tensor<5x5x1x1xf32>, [[BIAS:%.*]]: tensor<128xf32>)
-  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() <{value = dense<3> : tensor<i32>}> : () -> tensor<i32>
   // CHECK-NEXT: [[EXPAND:%.*]] = "tf.ExpandDims"([[INPUT]], [[AXIS]]) : (tensor<1x128x128xf32>, tensor<i32>) -> tensor<1x128x128x1xf32>
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.DepthwiseConv2dNative"([[EXPAND]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x128x128x1xf32>, tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32>
-  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) {squeeze_dims = [3]} : (tensor<1x128x128x1xf32>) -> tensor<1x128x128xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.DepthwiseConv2dNative"([[EXPAND]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x1xf32>, tensor<5x5x1x1xf32>) -> tensor<1x128x128x1xf32>
+  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) <{squeeze_dims = [3]}> : (tensor<1x128x128x1xf32>) -> tensor<1x128x128xf32>
   // CHECK-NEXT: [[RESULT:%.*]] = "tf.BiasAdd"([[SQUEEZE]], [[BIAS]]) : (tensor<1x128x128xf32>, tensor<128xf32>) -> tensor<1x128x128xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x128xf32>
 }
@@ -392,10 +407,10 @@ func.func @testDilatedConv1DExpandH(%arg0: tensor<1x128x3xf32>, %arg1: tensor<1x
 
   // CHECK-LABEL: testDilatedConv1DExpandH
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x3xf32>, [[FILTER:%.*]]: tensor<1x5x3x8xf32>)
-  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() {value = dense<-3> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() <{value = dense<-3> : tensor<i32>}> : () -> tensor<i32>
   // CHECK-NEXT: [[EXPAND:%.*]] = "tf.ExpandDims"([[INPUT]], [[AXIS]]) : (tensor<1x128x3xf32>, tensor<i32>) -> tensor<1x1x128x3xf32>
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) {dilations = [1, 1, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x1x128x3xf32>, tensor<1x5x3x8xf32>) -> tensor<1x1x128x8xf32>
-  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Squeeze"([[CONV]]) {squeeze_dims = [-3]} : (tensor<1x1x128x8xf32>) -> tensor<1x128x8xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) <{dilations = [1, 1, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x1x128x3xf32>, tensor<1x5x3x8xf32>) -> tensor<1x1x128x8xf32>
+  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Squeeze"([[CONV]]) <{squeeze_dims = [-3]}> : (tensor<1x1x128x8xf32>) -> tensor<1x128x8xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x8xf32>
 }
 
@@ -414,10 +429,10 @@ func.func @testDilatedConv1DExpandHWithBiasAdd(%arg0: tensor<1x128x3xf32>, %arg1
 
   // CHECK-LABEL: testDilatedConv1DExpandHWithBiasAdd
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x3xf32>, [[FILTER:%.*]]: tensor<1x5x3x8xf32>, [[BIAS:%.*]]: tensor<8xf32>)
-  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() {value = dense<-3> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() <{value = dense<-3> : tensor<i32>}> : () -> tensor<i32>
   // CHECK-NEXT: [[EXPAND:%.*]] = "tf.ExpandDims"([[INPUT]], [[AXIS]]) : (tensor<1x128x3xf32>, tensor<i32>) -> tensor<1x1x128x3xf32>
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) {dilations = [1, 1, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x1x128x3xf32>, tensor<1x5x3x8xf32>) -> tensor<1x1x128x8xf32>
-  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) {squeeze_dims = [-3]} : (tensor<1x1x128x8xf32>) -> tensor<1x128x8xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) <{dilations = [1, 1, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x1x128x3xf32>, tensor<1x5x3x8xf32>) -> tensor<1x1x128x8xf32>
+  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) <{squeeze_dims = [-3]}> : (tensor<1x1x128x8xf32>) -> tensor<1x128x8xf32>
   // CHECK-NEXT: [[RESULT:%.*]] = "tf.BiasAdd"([[SQUEEZE]], [[BIAS]]) : (tensor<1x128x8xf32>, tensor<8xf32>) -> tensor<1x128x8xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x8xf32>
 }
@@ -436,10 +451,10 @@ func.func @testDilatedConv1DExpandW(%arg0: tensor<1x128x3xf32>, %arg1: tensor<5x
 
   // CHECK-LABEL: testDilatedConv1DExpandW
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x3xf32>, [[FILTER:%.*]]: tensor<5x1x3x8xf32>)
-  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() {value = dense<-2> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() <{value = dense<-2> : tensor<i32>}> : () -> tensor<i32>
   // CHECK-NEXT: [[EXPAND:%.*]] = "tf.ExpandDims"([[INPUT]], [[AXIS]]) : (tensor<1x128x3xf32>, tensor<i32>) -> tensor<1x128x1x3xf32>
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) {dilations = [1, 2, 1, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x128x1x3xf32>, tensor<5x1x3x8xf32>) -> tensor<1x128x1x8xf32>
-  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Squeeze"([[CONV]]) {squeeze_dims = [-2]} : (tensor<1x128x1x8xf32>) -> tensor<1x128x8xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) <{dilations = [1, 2, 1, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x128x1x3xf32>, tensor<5x1x3x8xf32>) -> tensor<1x128x1x8xf32>
+  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Squeeze"([[CONV]]) <{squeeze_dims = [-2]}> : (tensor<1x128x1x8xf32>) -> tensor<1x128x8xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x8xf32>
 }
 
@@ -458,10 +473,10 @@ func.func @testDilatedConv1DExpandWWithBiasAdd(%arg0: tensor<1x128x3xf32>, %arg1
 
   // CHECK-LABEL: testDilatedConv1DExpandWWithBiasAdd
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x3xf32>, [[FILTER:%.*]]: tensor<5x1x3x8xf32>, [[BIAS:%.*]]: tensor<8xf32>)
-  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() {value = dense<-2> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() <{value = dense<-2> : tensor<i32>}> : () -> tensor<i32>
   // CHECK-NEXT: [[EXPAND:%.*]] = "tf.ExpandDims"([[INPUT]], [[AXIS]]) : (tensor<1x128x3xf32>, tensor<i32>) -> tensor<1x128x1x3xf32>
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) {dilations = [1, 2, 1, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x128x1x3xf32>, tensor<5x1x3x8xf32>) -> tensor<1x128x1x8xf32>
-  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) {squeeze_dims = [-2]} : (tensor<1x128x1x8xf32>) -> tensor<1x128x8xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) <{dilations = [1, 2, 1, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x128x1x3xf32>, tensor<5x1x3x8xf32>) -> tensor<1x128x1x8xf32>
+  // CHECK-NEXT: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONV]]) <{squeeze_dims = [-2]}> : (tensor<1x128x1x8xf32>) -> tensor<1x128x8xf32>
   // CHECK-NEXT: [[RESULT:%.*]] = "tf.BiasAdd"([[SQUEEZE]], [[BIAS]]) : (tensor<1x128x8xf32>, tensor<8xf32>) -> tensor<1x128x8xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x8xf32>
 }
@@ -480,10 +495,10 @@ func.func @testDilatedConv1DWithMixedPostiveAndNegativeAxis(%arg0: tensor<1x128x
 
   // CHECK-LABEL: testDilatedConv1DWithMixedPostiveAndNegativeAxis
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x3xf32>, [[FILTER:%.*]]: tensor<1x5x3x8xf32>)
-  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
   // CHECK-NEXT: [[EXPAND:%.*]] = "tf.ExpandDims"([[INPUT]], [[AXIS]]) : (tensor<1x128x3xf32>, tensor<i32>) -> tensor<1x1x128x3xf32>
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) {dilations = [1, 1, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x1x128x3xf32>, tensor<1x5x3x8xf32>) -> tensor<1x1x128x8xf32>
-  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Squeeze"([[CONV]]) {squeeze_dims = [-3]} : (tensor<1x1x128x8xf32>) -> tensor<1x128x8xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) <{dilations = [1, 1, 2, 1], padding = "SAME", strides = [1, 1, 1, 1]}> : (tensor<1x1x128x3xf32>, tensor<1x5x3x8xf32>) -> tensor<1x1x128x8xf32>
+  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Squeeze"([[CONV]]) <{squeeze_dims = [-3]}> : (tensor<1x1x128x8xf32>) -> tensor<1x128x8xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<1x128x8xf32>
 }
 
@@ -503,11 +518,11 @@ func.func @testPaddedDilatedConv(%arg0 : tensor<2x1920x64xf32>) ->  tensor<2x192
 
   // CHECK-LABEL: testPaddedDilatedConv
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<2x1920x64xf32>)
-  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
-  // CHECK-NEXT: [[FILTER:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<3x1x64x128xf32>} : () -> tensor<3x1x64x128xf32>
+  // CHECK-NEXT: [[AXIS:%.*]] = "tf.Const"() <{value = dense<2> : tensor<i32>}> : () -> tensor<i32>
+  // CHECK-NEXT: [[FILTER:%.*]] = "tf.Const"() <{value = dense<0.000000e+00> : tensor<3x1x64x128xf32>}> : () -> tensor<3x1x64x128xf32>
   // CHECK-NEXT: [[EXPAND:%.*]] = "tf.ExpandDims"([[INPUT]], [[AXIS]]) {device = ""} : (tensor<2x1920x64xf32>, tensor<i32>) -> tensor<2x1920x1x64xf32>
-  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) {data_format = "NHWC", device = "", dilations = [1, 2, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<2x1920x1x64xf32>, tensor<3x1x64x128xf32>) -> tensor<2x1920x1x128xf32>
-  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Squeeze"([[CONV]]) {device = "", squeeze_dims = [2]} : (tensor<2x1920x1x128xf32>) -> tensor<2x1920x128xf32>
+  // CHECK-NEXT: [[CONV:%.*]] = "tf.Conv2D"([[EXPAND]], [[FILTER]]) <{data_format = "NHWC", dilations = [1, 2, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true}> {device = ""} : (tensor<2x1920x1x64xf32>, tensor<3x1x64x128xf32>) -> tensor<2x1920x1x128xf32>
+  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Squeeze"([[CONV]]) <{squeeze_dims = [2]}> {device = ""} : (tensor<2x1920x1x128xf32>) -> tensor<2x1920x128xf32>
   // CHECK-NEXT: return [[RESULT]] : tensor<2x1920x128xf32>
 }
 
@@ -524,7 +539,7 @@ func.func @testDilatedConvInterleaved(%arg0: tensor<1x128x128x3xf32>, %arg1: ten
 
   // CHECK-LABEL: testDilatedConvInterleaved
   // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x128x128x3xf32>, [[FILTER:%.*]]: tensor<5x5x3x8xf32>)
-  // CHECK-NEXT: [[RESULT0:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32>
-  // CHECK-NEXT: [[RESULT1:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) {dilations = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32>
+  // CHECK-NEXT: [[RESULT0:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32>
+  // CHECK-NEXT: [[RESULT1:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32>
   // CHECK-NEXT: return [[RESULT0]], [[RESULT1]] : tensor<1x120x120x8xf32>, tensor<1x120x120x8xf32>
 }

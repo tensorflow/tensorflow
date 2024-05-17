@@ -89,7 +89,7 @@ class TRTNetworkBuilder {
   };
 
   // Adds an absolute value operation to the network. Note that this unary
-  // operation will do an implict float conversion. For int32 tensors, use
+  // operation will do an implicit float conversion. For int32 tensors, use
   // "AbsInt".
   StatusOr<nvinfer1::IUnaryLayer*> AbsFloat(nvinfer1::ITensor* input) noexcept {
     TRT_ENSURE(input);
@@ -101,7 +101,7 @@ class TRTNetworkBuilder {
     return layer;
   }
 
-  // Performs Abs without implict float conversion. The input should be of type
+  // Performs Abs without implicit float conversion. The input should be of type
   // kInt32. For float datatypes, use "Abs".
   StatusOr<nvinfer1::IElementWiseLayer*> AbsInt(
       nvinfer1::ITensor* input) noexcept {
@@ -339,6 +339,19 @@ class TRTNetworkBuilder {
         network_->addConstant(*trt_dims, weights);
     TRT_ENSURE(const_layer);
     return const_layer;
+  }
+
+  Status get_tensor4TensorOrWeights(const TRT_TensorOrWeights& input,
+                                    ITensorProxyPtr* pTensor) {
+    if (input.is_weights()) {
+      StatusOr<nvinfer1::IConstantLayer*> const_layer = WeightsToConstant(
+          input.weights().GetTrtWeights(), input.GetTrtDims());
+      if (!const_layer.status().ok()) return const_layer.status();
+      *pTensor = (*const_layer)->getOutput(0);
+    } else {
+      *pTensor = input.tensor();
+    }
+    return OkStatus();
   }
 
   // Creates a nvinfer1::Weights object containing a single scalar.
@@ -644,8 +657,8 @@ class TRTNetworkBuilder {
   nvinfer1::INetworkDefinition* Network() { return network_; }
 
  private:
-  nvinfer1::INetworkDefinition* const network_;
-  TrtWeightStore* const weight_store_;
+  nvinfer1::INetworkDefinition* network_;
+  TrtWeightStore* weight_store_;
 };
 
 class ShuffleBuilder {

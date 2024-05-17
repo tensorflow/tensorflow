@@ -2,6 +2,7 @@ load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -10,10 +11,11 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
+        # copybara:uncomment "//learning/infra/mira/...",
         # copybara:uncomment "//learning/serving/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
-        # copybara:uncomment "//learning/brain/tfrt/tfrt_session/...",
-        # copybara:uncomment "//third_party/auroraml/...",
+        # copybara:uncomment "//learning/brain/tfrt/cpp_tests/tpu_model/...",
+        # copybara:uncomment "//learning/brain/tfrt/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/runtime/...",
         "//tensorflow_serving/...",
@@ -37,7 +39,6 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -47,7 +48,6 @@ cc_library(
     hdrs = ["run_handler.h"],
     deps = [
         ":run_handler_util",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -56,7 +56,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@tf_runtime//:hostcontext",
     ],
 )
@@ -75,10 +75,11 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:matmul_op",
-        "//third_party/eigen3",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
         "@tf_runtime//:hostcontext",
     ],
 )
@@ -96,6 +97,7 @@ cc_library(
         ":run_handler",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",

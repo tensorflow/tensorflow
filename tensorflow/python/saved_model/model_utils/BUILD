@@ -16,13 +16,10 @@
 # Description:
 #   Keras saving and loading libraries.
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "py_strict_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],
 )
@@ -43,12 +40,12 @@ py_strict_library(
     srcs = ["export_output.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tensor_util",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/saved_model:signature_def_utils",
-        "@six_archive//:six",
     ],
 )
 
@@ -60,16 +57,16 @@ py_strict_test(
     deps = [
         ":export_output",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:metrics",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:metrics",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model:signature_constants",
     ],
 )
@@ -81,15 +78,17 @@ py_strict_library(
     deps = [
         ":export_output",
         ":mode_keys",
-        "//tensorflow/python:op_selector",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:util",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
+        "//tensorflow/python/ops:op_selector",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
-        "@six_archive//:six",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:object_identity",
     ],
 )
 
@@ -102,13 +101,13 @@ py_strict_test(
         ":export_output",
         ":export_utils",
         ":mode_keys",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
     ],
@@ -118,7 +117,7 @@ py_strict_library(
     name = "mode_keys",
     srcs = ["mode_keys.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/python:util"],
+    deps = ["//tensorflow/python/util:compat"],
 )
 
 py_strict_test(
@@ -128,6 +127,6 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":mode_keys",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

@@ -28,13 +28,15 @@ class LoadOptions(object):
 
   # Define object attributes in __slots__ for improved memory and performance.
   __slots__ = ("allow_partial_checkpoint", "experimental_io_device",
-               "experimental_skip_checkpoint", "experimental_variable_policy")
+               "experimental_skip_checkpoint", "experimental_variable_policy",
+               "experimental_load_function_aliases")
 
   def __init__(self,
                allow_partial_checkpoint=False,
                experimental_io_device=None,
                experimental_skip_checkpoint=False,
-               experimental_variable_policy=None):
+               experimental_variable_policy=None,
+               experimental_load_function_aliases=False):
     """Creates an object that stores options for SavedModel loading.
 
     *When to set `allow_partial_checkpoint=True`?*
@@ -103,6 +105,9 @@ class LoadOptions(object):
         enum instance or one of its value strings (case is not important). See
         that enum documentation for details. A value of `None` corresponds to
         the default policy.
+      experimental_load_function_aliases: bool. Defaults to `False`. If set to
+        `True`, a `function_aliases` attribute will be added to the loaded
+        SavedModel object.
 
     Example:
 
@@ -117,3 +122,4 @@ class LoadOptions(object):
     self.experimental_skip_checkpoint = experimental_skip_checkpoint
     self.experimental_variable_policy = (
         save_options.VariablePolicy.from_obj(experimental_variable_policy))
+    self.experimental_load_function_aliases = experimental_load_function_aliases

@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -86,9 +85,9 @@ NodeDef* AddScalarConstNodeHelper(
 
   (*node.mutable_attr())["dtype"].set_type(dtype);
   std::unique_ptr<tensorflow::TensorProto> tensor =
-      tensorflow::MakeUnique<tensorflow::TensorProto>();
+      std::make_unique<tensorflow::TensorProto>();
   std::unique_ptr<tensorflow::TensorShapeProto> tensor_shape =
-      tensorflow::MakeUnique<tensorflow::TensorShapeProto>();
+      std::make_unique<tensorflow::TensorShapeProto>();
   tensor->set_allocated_tensor_shape(tensor_shape.release());
   tensor->set_dtype(dtype);
   add_value(tensor.get());
@@ -190,7 +189,7 @@ Status GetScalarConstNodeValueHelper(
 
   get_value(tensor);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
@@ -361,7 +360,7 @@ Status EnsureNodeNamesUnique(Graph* g) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
@@ -374,7 +373,7 @@ Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
 
   *fetch_node = graph.GetNode(item.fetch.at(0));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool IsItemDerivedFromFunctionDef(const GrapplerItem& item,
@@ -467,7 +466,7 @@ Status SetMetadataName(const std::string& name, NodeDef* node) {
   }
   *metadata.mutable_name() = name;
   metadata.SerializeToString((*node->mutable_attr())["metadata"].mutable_s());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace graph_utils

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -40,25 +42,22 @@ StatusOr<Layout> MergeLayoutsForSplitOutput(
     int64_t split_dim, const llvm::DenseMap<int, Layout>& layouts) {
   assert(!layouts.empty());
   const Layout& first_layout = layouts.begin()->getSecond();
-  std::vector<ShardingSpec> sharding_specs(
-      first_layout.sharding_specs().begin(),
-      first_layout.sharding_specs().end());
+  std::vector<std::string> sharding_specs = first_layout.sharding_spec_strs();
 
   // Merge remaining layouts. If there is a conflicting sharding, then set the
   // dim to replicated.
   for (auto it = layouts.begin(); it != layouts.end(); ++it) {
     const Layout& output_layout = it->getSecond();
     for (int dim = 0; dim < output_layout.rank(); ++dim) {
-      if (Layout::IsShardedDimension(output_layout.dim(dim).sharding_spec()) &&
-          Layout::IsShardedDimension(sharding_specs[dim].sharding_spec()) &&
-          output_layout.dim(dim).sharding_spec() !=
-              sharding_specs[dim].sharding_spec()) {
-        sharding_specs[dim].set_sharding_spec(Layout::kUnshardedDim);
+      if (Layout::IsShardedDimension(output_layout.sharding_spec(dim)) &&
+          Layout::IsShardedDimension(sharding_specs[dim]) &&
+          output_layout.sharding_spec(dim) != sharding_specs[dim]) {
+        sharding_specs[dim] = Layout::kUnshardedDim;
       }
     }
   }
   // Force the split_dim to be unsharded.
-  sharding_specs[split_dim].set_sharding_spec(Layout::kUnshardedDim);
+  sharding_specs[split_dim] = Layout::kUnshardedDim;
   return Layout::GetLayout(sharding_specs, first_layout.mesh());
 }
 
@@ -84,12 +83,12 @@ StatusOr<int64_t> GetAdjustedSplitDim(mlir::Value split_dim_value,
 StatusOr<mlir::Operation*> SplitSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto split_op = mlir::cast<mlir::TF::SplitOp>(op);
   TF_ASSIGN_OR_RETURN(const Layout input_layout,
-                      ExtractRequiredLayoutFromOperand(split_op.value()));
+                      ExtractRequiredLayoutFromOperand(split_op.getValue()));
   TF_ASSIGN_OR_RETURN(
       const int64_t split_dim,
-      GetAdjustedSplitDim(split_op.split_dim(), split_op.value()));
+      GetAdjustedSplitDim(split_op.getSplitDim(), split_op.getValue()));
 
-  if (Layout::IsShardedDimension(input_layout.dim(split_dim).sharding_spec())) {
+  if (Layout::IsShardedDimension(input_layout.sharding_spec(split_dim))) {
     return errors::InvalidArgument(
         "Spliting over sharded dimension is not supported.");
   }
@@ -124,7 +123,7 @@ StatusOr<llvm::DenseMap<int, Layout>> SplitSPMDExpander::ComputeLayoutBackward(
     // we can use for passing backwards.
     TF_ASSIGN_OR_RETURN(
         const int64_t split_dim,
-        GetAdjustedSplitDim(split_op.split_dim(), split_op.value()));
+        GetAdjustedSplitDim(split_op.getSplitDim(), split_op.getValue()));
     TF_ASSIGN_OR_RETURN(const Layout common_output_layout,
                         MergeLayoutsForSplitOutput(split_dim, output_layouts));
     // value
@@ -137,12 +136,12 @@ StatusOr<llvm::DenseMap<int, Layout>> SplitSPMDExpander::ComputeLayoutBackward(
 StatusOr<mlir::Operation*> SplitVSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto split_v_op = mlir::cast<mlir::TF::SplitVOp>(op);
   TF_ASSIGN_OR_RETURN(const Layout input_layout,
-                      ExtractRequiredLayoutFromOperand(split_v_op.value()));
+                      ExtractRequiredLayoutFromOperand(split_v_op.getValue()));
   TF_ASSIGN_OR_RETURN(
       const int64_t split_dim,
-      GetAdjustedSplitDim(split_v_op.split_dim(), split_v_op.value()));
+      GetAdjustedSplitDim(split_v_op.getSplitDim(), split_v_op.getValue()));
 
-  if (Layout::IsShardedDimension(input_layout.dim(split_dim).sharding_spec())) {
+  if (Layout::IsShardedDimension(input_layout.sharding_spec(split_dim))) {
     return errors::InvalidArgument(
         "Spliting over sharded dimension is not supported.");
   }
@@ -179,7 +178,7 @@ StatusOr<llvm::DenseMap<int, Layout>> SplitVSPMDExpander::ComputeLayoutBackward(
     // we can use for passing backwards.
     TF_ASSIGN_OR_RETURN(
         const int64_t split_dim,
-        GetAdjustedSplitDim(split_v_op.split_dim(), split_v_op.value()));
+        GetAdjustedSplitDim(split_v_op.getSplitDim(), split_v_op.getValue()));
     TF_ASSIGN_OR_RETURN(const Layout common_output_layout,
                         MergeLayoutsForSplitOutput(split_dim, output_layouts));
     // value

@@ -14,19 +14,33 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_impl.h"
 
-#include "tensorflow/compiler/xla/status.h"
+#include <memory>
+#include <string>
+#include <variant>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/stream_executor/platform/initialize.h"
+#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compile_op_common.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
-Status TpuCompileOpKernelImpl::Compile(
-    const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+absl::Status TpuCompileOpKernelImpl::Compile(
+    const std::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
     const XLA_TpuMeshState* mesh_state,
     const std::vector<TensorShape>& arg_shapes,
     const TpuCompilationCacheKey* key,
@@ -35,8 +49,8 @@ Status TpuCompileOpKernelImpl::Compile(
       TpuCompilationRequestProto compilation_request,
       CreateTpuCompilationRequest(computation, metadata_, arg_shapes));
 
-  Status s = TpuProgramGroup::CompileAndBuild(compilation_request, mesh_state,
-                                              tpu_program_group);
+  absl::Status s = TpuProgramGroup::CompileAndBuild(
+      compilation_request, mesh_state, tpu_program_group);
   TF_RETURN_IF_ERROR(RegisterXLAFingerprints(
       arg_shapes, tpu_program_group,
       computation.index() == 0
@@ -47,7 +61,7 @@ Status TpuCompileOpKernelImpl::Compile(
 
 class TpuCompileOpImplFactory : public CompileOpImplFactory {
  public:
-  StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> CreateNonMlirImpl(
+  absl::StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> CreateNonMlirImpl(
       OpKernelConstruction* ctx) override {
     NameAttrList function_name;
     TPUCompileMetadataProto metadata;
@@ -61,7 +75,7 @@ class TpuCompileOpImplFactory : public CompileOpImplFactory {
         /*unload_cache_on_session_close=*/false)};
   }
 
-  StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> CreateMlirImpl(
+  absl::StatusOr<std::unique_ptr<TpuCompileOpKernelCommon>> CreateMlirImpl(
       OpKernelConstruction* ctx) override {
     TPUCompileMetadataProto metadata;
     std::string mlir_module;
@@ -76,10 +90,11 @@ class TpuCompileOpImplFactory : public CompileOpImplFactory {
 };
 
 #if defined(LIBTPU_ON_GCE)
-REGISTER_MODULE_INITIALIZER(tpu_compile_op_impl_factory, {
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(tpu_compile_op_impl_factory, {
   VLOG(1) << "register TpuCompileOpImplFactory()";
   CompileOpImplFactory::Register(new TpuCompileOpImplFactory());
 });
 #endif  // LIBTPU_ON_GCE
+
 }  // namespace tpu
 }  // namespace tensorflow

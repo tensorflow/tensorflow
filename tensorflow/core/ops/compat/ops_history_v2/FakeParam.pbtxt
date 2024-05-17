@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "FakeParam"
   output_arg {
     name: "output"

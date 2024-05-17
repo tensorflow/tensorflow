@@ -14,7 +14,7 @@
 # ==============================================================================
 """Dynamic shape for structured Tensors."""
 
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import dynamic_ragged_shape
@@ -26,7 +26,7 @@ def _dynamic_ragged_shape_init(fields, shape, nrows, row_partitions):
   """Produce a DynamicRaggedShape for StructuredTensor."""
   assert isinstance(fields, dict), fields
   assert isinstance(shape, tensor_shape.TensorShape), shape
-  assert nrows is None or isinstance(nrows, ops.Tensor), nrows
+  assert nrows is None or isinstance(nrows, tensor.Tensor), nrows
   assert isinstance(row_partitions, tuple), row_partitions
 
   rank = shape.rank

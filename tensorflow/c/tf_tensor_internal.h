@@ -16,14 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_TENSOR_INTERNAL_H_
 #define TENSORFLOW_C_TF_TENSOR_INTERNAL_H_
 
-#include <memory>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <utility>
 
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/c/tf_tensor_helper.h"  // IWYU pragma: export
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/status.h"
 
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
@@ -106,6 +112,7 @@ class TensorInterface : public AbstractTensorInterface {
   bool CanMove() const override;
   std::string SummarizeValue() const override;
 
+  void SetShape(const int64_t* dims, int num_dims);
   Status ToTensor(tensorflow::Tensor* dst) const;
   Status BitcastFrom(const TensorInterface& from, DataType type,
                      const int64_t* new_dims, int num_new_dims);
@@ -121,9 +128,8 @@ inline Tensor& TensorFromInterface(AbstractTensorInterface* tensor) {
   return down_cast<TensorInterface*>(tensor)->Tensor();
 }
 
-Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
-
-TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
+AbstractTensorInterface* TensorInterfaceFromTensor(const Tensor& src,
+                                                   Status* status);
 
 }  // namespace tensorflow
 

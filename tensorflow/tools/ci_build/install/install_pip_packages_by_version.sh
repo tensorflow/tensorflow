@@ -26,6 +26,28 @@ rm "get-pip.py"
 
 PYTHON_VERSION=$(echo ${PIP##*.})  # only the last number, eg. 10
 
+JAX_PACKAGES=(
+  "setuptools"
+  "wheel"
+  "cloudpickle"
+  "colorama>=0.4.4"
+  # TODO(phawkins): reenable matplotlib once it makes a NumPy 2.0 compatible
+  # release.
+  # "matplotlib"
+  "pillow>=9.1.0"
+  "rich"
+  "absl-py"
+  "portpicker"
+  "six"
+  "opt-einsum"
+  "auditwheel"
+  "typing_extensions"
+  "ml_dtypes>=0.4.0"
+  "importlib_metadata>=4.6"
+  "flatbuffers"
+  "build"
+)
+
 PACKAGES=(
   "absl-py"
   "argparse"
@@ -39,12 +61,12 @@ PACKAGES=(
   "grpcio"
   "h5py"
   "keras-nightly"
-  "keras_preprocessing"
   "libclang"
   "markdown"
   "pandas"
+  "packaging"
   "portpicker"
-  "protobuf"
+  "protobuf==3.20.3"
   "psutil"
   "py-cpuinfo"
   "pybind11"
@@ -56,7 +78,6 @@ PACKAGES=(
   "tb-nightly"
   "tblib"
   "termcolor"
-  "tf-estimator-nightly"
   "werkzeug"
   "wheel"
 )
@@ -65,13 +86,25 @@ PACKAGES=(
 "${PIP}" "install" "--upgrade" "pip"
 "${PIP}" "install" "--upgrade" "setuptools" "virtualenv"
 
-"${PIP_INSTALL[@]}" "${PACKAGES[@]}"
-
-# Special casing by version of Python
-# E.g., numpy supports py3.10 only from 1.21.3
-if [[ ${PYTHON_VERSION} -eq 10 ]]; then
-  "${PIP_INSTALL[@]}" "numpy==1.21.3"
+if [[ "$2" == "jax" ]]; then
+  "${PIP_INSTALL[@]}" "${JAX_PACKAGES[@]}"
 else
-  "${PIP_INSTALL[@]}" "numpy==1.19"
+  "${PIP_INSTALL[@]}" "${PACKAGES[@]}"
+fi
+
+if [[ "$2" == "jax" ]]; then
+  # As of NumPy 2.0, wheels must be built against NumPy 2.0, even if we intend
+  # to deploy them against Numpy 1.
+  "${PIP_INSTALL[@]}" --pre "numpy==2.0.0rc1" "scipy==1.13.0rc1"
+else
+  # Special casing by version of Python
+  # E.g., numpy supports py3.10 only from 1.21.3
+  if [[ ${PYTHON_VERSION} -eq 10 ]]; then
+    "${PIP_INSTALL[@]}" "numpy==1.21.3"
+  elif [[ ${PYTHON_VERSION} -eq 11 ]]; then
+    "${PIP_INSTALL[@]}" "numpy==1.23.4"
+  else
+    "${PIP_INSTALL[@]}" "numpy==1.19"
+  fi
 fi
 

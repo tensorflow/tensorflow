@@ -101,33 +101,33 @@ void AddNodeAttr(StringPiece name, const Tensor& value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, const TensorProto& value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, const NameAttrList& value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<StringPiece> value,
+void AddNodeAttr(StringPiece name, absl::Span<const StringPiece> value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<const char*> value,
+void AddNodeAttr(StringPiece name, absl::Span<const char* const> value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<string> value,
+void AddNodeAttr(StringPiece name, absl::Span<const string> value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<int32> value,
+void AddNodeAttr(StringPiece name, absl::Span<const int32> value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<int64_t> value,
+void AddNodeAttr(StringPiece name, absl::Span<const int64_t> value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<float> value,
+void AddNodeAttr(StringPiece name, absl::Span<const float> value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<bool> value,
+void AddNodeAttr(StringPiece name, absl::Span<const bool> value,
                  NodeDef* node_def);
 void AddNodeAttr(StringPiece name, const std::vector<bool>& value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<DataType> value,
+void AddNodeAttr(StringPiece name, absl::Span<const DataType> value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<TensorShape> value,
+void AddNodeAttr(StringPiece name, absl::Span<const TensorShape> value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<PartialTensorShape> value,
+void AddNodeAttr(StringPiece name, absl::Span<const PartialTensorShape> value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<TensorShapeProto> value,
+void AddNodeAttr(StringPiece name, absl::Span<const TensorShapeProto> value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<Tensor> value,
+void AddNodeAttr(StringPiece name, absl::Span<const Tensor> value,
                  NodeDef* node_def);
-void AddNodeAttr(StringPiece name, gtl::ArraySlice<NameAttrList> value,
+void AddNodeAttr(StringPiece name, absl::Span<const NameAttrList> value,
                  NodeDef* node_def);
 
 // Version to workaround C++'s "perfect" forwarding not being able to
@@ -439,6 +439,12 @@ Status MaybeAddPrefixToColocationConstraints(
 Status MaybeUpdateColocationConstraintsWithMap(
     const std::map<absl::string_view, absl::string_view>& node_name_map,
     NodeDef* node_def);
+
+// For replacing a existing node with a NoOp, change the op and clear full type
+// information (since a NoOp has no output). Note that (duplicate control or
+// all) inputs, (regular, output or all) attributes and output properperties are
+// NOT cleared (and should be cleared if appropriate elsewhere).
+void ChangeToNoOp(NodeDef* node_def);
 
 }  // namespace tensorflow
 

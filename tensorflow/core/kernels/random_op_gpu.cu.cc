@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/random_op_gpu.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
@@ -40,6 +40,8 @@ typedef Eigen::GpuDevice GPUDevice;
 // NVCC cannot handle ">>" properly
 template struct FillPhiloxRandom<
     GPUDevice, random::UniformDistribution<random::PhiloxRandom, Eigen::half> >;
+template struct FillPhiloxRandom<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, Eigen::bfloat16> >;
 template struct FillPhiloxRandom<
     GPUDevice, random::UniformDistribution<random::PhiloxRandom, float> >;
 template struct FillPhiloxRandom<
@@ -63,12 +65,17 @@ template struct FillPhiloxRandom<
 template struct FillPhiloxRandom<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, Eigen::half> >;
 template struct FillPhiloxRandom<
+    GPUDevice, random::NormalDistribution<random::PhiloxRandom, Eigen::bfloat16> >;
+template struct FillPhiloxRandom<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, float> >;
 template struct FillPhiloxRandom<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, double> >;
 template struct FillPhiloxRandom<
     GPUDevice, random::TruncatedNormalDistribution<
         random::SingleSampleAdapter<random::PhiloxRandom>, Eigen::half> >;
+template struct FillPhiloxRandom<
+    GPUDevice, random::TruncatedNormalDistribution<
+        random::SingleSampleAdapter<random::PhiloxRandom>, Eigen::bfloat16> >;
 template struct FillPhiloxRandom<
     GPUDevice, random::TruncatedNormalDistribution<
                    random::SingleSampleAdapter<random::PhiloxRandom>, float> >;

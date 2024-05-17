@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -68,8 +68,8 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
 
   // To avoid out-of-bounds access in the case that the block_shape and/or
   // paddings tensors are concurrently modified, we must copy the values.
-  gtl::InlinedVector<int64_t, 4> block_shape;
-  gtl::InlinedVector<int64_t, 8> paddings;
+  absl::InlinedVector<int64_t, 4> block_shape;
+  absl::InlinedVector<int64_t, 8> paddings;
   internal::spacetobatch::SubtleMustCopyFlat(orig_block_shape, &block_shape);
   internal::spacetobatch::SubtleMustCopyFlat(orig_paddings, &paddings);
 
@@ -123,7 +123,7 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
 
   if (internal_block_dims == 0) {
     context->set_output(0, orig_input_tensor);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // For the purpose of computing the result, the input will be treated as
@@ -144,16 +144,17 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
         "Negative output dimension size caused by overflow when multiplying ",
         orig_input_tensor.dim_size(0), " and ", block_shape_product);
   }
-  external_output_shape.AddDim(output_shape);
+  TF_RETURN_IF_ERROR(external_output_shape.AddDimWithStatus(output_shape));
 
   int64_t input_batch_size = orig_input_tensor.dim_size(0);
   for (int block_dim = 0; block_dim < removed_prefix_block_dims; ++block_dim) {
     const int64_t size = orig_input_tensor.dim_size(block_dim + 1);
     input_batch_size *= size;
-    external_output_shape.AddDim(size);
+    TF_RETURN_IF_ERROR(external_output_shape.AddDimWithStatus(size));
   }
-  internal_input_shape.AddDim(input_batch_size);
-  internal_output_shape.AddDim(input_batch_size * block_shape_product);
+  TF_RETURN_IF_ERROR(internal_input_shape.AddDimWithStatus(input_batch_size));
+  TF_RETURN_IF_ERROR(internal_output_shape.AddDimWithStatus(
+      input_batch_size * block_shape_product));
 
   for (int block_dim = removed_prefix_block_dims;
        block_dim < block_dims - removed_suffix_block_dims; ++block_dim) {
@@ -171,21 +172,21 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
                                      " is not divisible by block_shape[",
                                      block_dim, "]=", block_shape_value);
     }
-    internal_input_shape.AddDim(input_size);
+    TF_RETURN_IF_ERROR(internal_input_shape.AddDimWithStatus(input_size));
     const int64_t output_size = padded_size / block_shape_value;
-    internal_output_shape.AddDim(output_size);
-    external_output_shape.AddDim(output_size);
+    TF_RETURN_IF_ERROR(internal_output_shape.AddDimWithStatus(output_size));
+    TF_RETURN_IF_ERROR(external_output_shape.AddDimWithStatus(output_size));
   }
 
   int64_t depth = 1;
   for (int dim = block_dims - removed_suffix_block_dims + 1; dim < input_dims;
        ++dim) {
     const int64_t size = orig_input_tensor.dim_size(dim);
-    external_output_shape.AddDim(size);
+    TF_RETURN_IF_ERROR(external_output_shape.AddDimWithStatus(size));
     depth *= size;
   }
-  internal_input_shape.AddDim(depth);
-  internal_output_shape.AddDim(depth);
+  TF_RETURN_IF_ERROR(internal_input_shape.AddDimWithStatus(depth));
+  TF_RETURN_IF_ERROR(internal_output_shape.AddDimWithStatus(depth));
 
   // Allocate output tensor.
   Tensor* output_tensor = nullptr;
@@ -211,7 +212,7 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
     TF_SPACETOBATCH_FOR_EACH_NUM_BLOCK_DIMS(TF_SPACETOBATCH_BLOCK_DIMS_CASE)
 #undef TF_SPACETOBATCH_BLOCK_DIMS_CASE
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

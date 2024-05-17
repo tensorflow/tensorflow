@@ -75,12 +75,17 @@ class RootProfiler : public Profiler {
   void EndEvent(uint32_t event_handle) override;
 
   /// Appends an event of type 'event_type' with 'tag' and 'event_metadata'
-  /// which ran for elapsed_time.
-  /// The `tag`, `event_metadata1` and `event_metadata2` arguments have
-  /// different interpretations based on the actual Profiler instance
-  /// and the `event_type`.
-  void AddEvent(const char* tag, EventType event_type, uint64_t elapsed_time,
+  /// The `tag`, `metric`, `event_metadata1` and `event_metadata2` arguments
+  /// have different interpretations based on the actual Profiler instance and
+  /// the `event_type`.
+  void AddEvent(const char* tag, EventType event_type, uint64_t metric,
                 int64_t event_metadata1, int64_t event_metadata2) override;
+
+  // Adds a profiler event with data.
+  // Data will be a const TelemetrySettings* for TELEMETRY_REPORT_SETTINGS
+  // and TELEMETRY_DELEGATE_REPORT_SETTINGS.
+  void AddEventWithData(const char* tag, EventType event_type,
+                        const void* data) override;
 
   /// Removes all child profilers and releases the child profiler if it's owned
   /// by the root profiler. Also invalidates all event handles generated

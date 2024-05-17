@@ -26,7 +26,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 // We only really care about Android, but we want the code to be portable for
 // ease of testing. See also discussion in cl/224174491.

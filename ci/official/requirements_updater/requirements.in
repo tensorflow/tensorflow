@@ -1,0 +1,31 @@
+# TODO(b/304751256): Adjust the numpy pin to a single version, when ready
+numpy ~= 1.23.5 ; python_version <= "3.11"
+numpy ~= 1.26.0 ; python_version >= "3.12"
+wheel ~= 0.41.2
+h5py >= 3.10.0
+lit ~= 17.0.2
+opt_einsum == 3.3.0
+astunparse == 1.6.3
+dill == 0.3.7
+astor == 0.7.1
+typing_extensions == 4.8.0
+gast == 0.4.0
+termcolor == 2.3.0
+wrapt == 1.16.0
+tblib == 2.0.0
+
+# Install tensorboard, and keras
+# Note that here we want the latest version that matches TF major.minor version
+# Note that we must use nightly here as these are used in nightly jobs
+# For release jobs, we will pin these on the release branch
+keras-nightly ~= 3.0.0.dev
+tb-nightly ~= 2.17.0.a
+
+# Test dependencies
+grpcio >= 1.24.3, < 2.0
+portpicker == 1.6.0
+scipy == 1.11.3
+requests == 2.31.0
+packaging==23.2
+setuptools==68.2.2
+jax==0.4.7

@@ -70,7 +70,7 @@ class BasicTrainLoopTest(test.TestCase):
   def testBasicTrainLoopRetryOnAborted(self):
     logdir = _test_dir("basic_train_loop_exception_aborts")
 
-    class AbortAndRetry(object):
+    class AbortAndRetry:
 
       def __init__(self):
         self.num_calls = 0

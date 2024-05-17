@@ -27,6 +27,8 @@ namespace functor {
 DECLARE_FUNCTOR_GPU_SPEC(Eigen::half);
 }  // namespace functor
 
+TF_CALL_half(REGISTER_FUSED_GPU_CONV2D);
+
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
-include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
+include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 // Converts reamaining arith.constant ops from quantization passes back to
 // tf.Const ops.
 def ConvertArithConstToTfConst : Pat<
-  (Arith_ConstantOp:$res NonOpaqueElementsAttr:$value),
+  (Arith_ConstantOp:$res DenseElementsAttr:$value),
   (TF_ConstOp $value),
-  [(AnyStaticShapeTensor $res)], (addBenefit 20)>;
+  [(AnyStaticShapeTensor $res)], [], (addBenefit 20)>;

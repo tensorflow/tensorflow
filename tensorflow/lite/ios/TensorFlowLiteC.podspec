@@ -1,10 +1,10 @@
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteC'
-  s.version          = '2.9.1'
+  s.version          = '2.14.0'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :http => "https://dl.google.com/tflite-release/ios/prod/tensorflow/lite/release/ios/release/17/20220523-193421/TensorFlowLiteC/2.9.1/6f82a8ae452ae95b/TensorFlowLiteC-2.9.1.tar.gz" }
+  s.source           = { :http => "https://dl.google.com/tflite-release/ios/prod/tensorflow/lite/release/ios/release/30/20231002-210715/TensorFlowLiteC/2.14.0/883c6fc838e0354b/TensorFlowLiteC-2.14.0.tar.gz" }
   s.summary          = 'TensorFlow Lite'
   s.description      = <<-DESC
 
@@ -16,7 +16,7 @@ Pod::Spec.new do |s|
                        DESC
 
   s.cocoapods_version = '>= 1.9.0'
-  s.ios.deployment_target = '9.0'
+  s.ios.deployment_target = '12.0'
 
   s.module_name = 'TensorFlowLiteC'
   s.library = 'c++'

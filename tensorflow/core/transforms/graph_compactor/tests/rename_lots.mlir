@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt -pass-pipeline='tfg.func(tfg-name-compress)' %s | FileCheck %s
+// RUN: tfg-transforms-opt -pass-pipeline='builtin.module(tfg.func(tfg-name-compress))' %s | FileCheck %s
 
 // CHECK-LABEL: tfg.func @foo
 // CHECK-SAME: {tfg.name = "A"}

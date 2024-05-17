@@ -16,7 +16,8 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -41,7 +42,7 @@ REGISTER_OP("_TPUCompileMlir")
       for (int i = 0; i < num_computations; ++i) {
         c->set_output(i + 1, c->Vector(3));
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(
         R"(
@@ -59,21 +60,21 @@ topology.
 look up the program in the compilation cache.
 )");
 
-REGISTER_OP("_TPUCompileMlirPlaceholderProgramKey")
+REGISTER_OP("_XlaCompileMlirPlaceholderProgramKey")
     .SetIsStateful()
     .Output("program: string")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Vector(3));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .SetIsStateful()
     .Doc(
         R"(
-Placeholder program key (compilation cache key) of a _TPUCompileMlir `program`.
+Placeholder program key (compilation cache key) of a XLA `program`.
 
 This op can be used when certain rewrite passes materialize ops that require a
-program key but the _TPUCompileMlir op has not been added yet. Subsequent
-rewrite passes must replace this op with a _TPUCompileMlir op `program` output.
+program key but the _TPUCompileMlir or _XlaCompile op has not been added yet.
+Subsequent rewrite passes must replace this op with `program` output.
 )");
 
 REGISTER_OP("TPUCompile")
@@ -104,7 +105,7 @@ REGISTER_OP("TPUCompile")
       for (int i = 0; i < num_computations; ++i) {
         c->set_output(num_computations + i + 1, c->Scalar());
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TPUCompileSucceededAssert")

@@ -84,7 +84,7 @@ TEST(BucketizeOpTest, Int32) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({0, 3, 3, 2, 1, 3}));
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(BucketizeOpTest, UnsortedBuckets) {
   EXPECT_DEATH(BucketizeOpModel<float>(
                    /*input=*/{/*type=*/TensorType_INT32, /*shape=*/{3, 2}},

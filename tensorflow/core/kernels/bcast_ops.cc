@@ -63,7 +63,8 @@ class BCastArgsOp : public OpKernel {
     }
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BCastArgsOp);
+  BCastArgsOp(const BCastArgsOp&) = delete;
+  void operator=(const BCastArgsOp&) = delete;
 };
 
 // Given shapes of two tensors, computes the reduction indices for the
@@ -113,7 +114,8 @@ class BCastGradArgsOp : public OpKernel {
     }
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BCastGradArgsOp);
+  BCastGradArgsOp(const BCastGradArgsOp&) = delete;
+  void operator=(const BCastGradArgsOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")

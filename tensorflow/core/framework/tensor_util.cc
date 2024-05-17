@@ -56,7 +56,7 @@ void DeepCopy(const Tensor& input, Tensor* output) {
   }
 }
 
-Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
+Status Concat(const absl::Span<const Tensor>& tensors, Tensor* result) {
   if (tensors.empty()) {
     return errors::InvalidArgument("Cannot concatenate zero tensors");
   }
@@ -116,10 +116,10 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
+Status Split(const Tensor& tensor, const absl::Span<const int64_t>& sizes,
              std::vector<Tensor>* result) {
   if (tensor.dims() == 0) {
     return errors::InvalidArgument("Cannot split a zero-dimensional tensor");
@@ -178,11 +178,11 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace internal {
-void SetTensorProtoShape(std::vector<size_t> shape,
+void SetTensorProtoShape(const absl::Span<const size_t> shape,
                          TensorShapeProto* shape_proto) {
   for (auto dim : shape) {
     shape_proto->mutable_dim()->Add()->set_size(dim);
@@ -232,23 +232,24 @@ bool CompressTensorContent(float min_compression_ratio,
     return false;
   }
   // Copy values to truncated repeated field.
-  if (sizeof(FieldType) == sizeof(T)) {
+  if constexpr (sizeof(FieldType) == sizeof(T)) {
     FieldType* dst_ptr =
         TypeHelper::AppendUninitialized(new_num_values, tensor);
     port::CopySubrangeToArray(tensor->tensor_content(), 0,
                               new_num_values * sizeof(T),
                               reinterpret_cast<char*>(dst_ptr));
     tensor->clear_tensor_content();
-  } else if (sizeof(T) > 1) {
+  } else if constexpr (sizeof(T) > 1) {
     // Copy raw bytes to temp array first, then cast.
-    gtl::InlinedVector<T, 64> tmp(new_num_values);
+    gtl::InlinedVector<T, 64> tmp;
+    if (new_num_values >= tmp.max_size()) return false;
+    tmp.resize(new_num_values);
+
     port::CopySubrangeToArray(tensor->tensor_content(), 0,
                               new_num_values * sizeof(T),
                               reinterpret_cast<char*>(tmp.data()));
     tensor->clear_tensor_content();
-    const T* begin = tmp.begin();
-    const T* end = tmp.end();
-    TypeHelper::AddValues(begin, end, tensor);
+    TypeHelper::AddValues(tmp.begin(), tmp.end(), tensor);
   } else {
     // Copy and cast, one byte at a time.
     for (int64_t i = 0; i < new_num_values; ++i) {
@@ -303,10 +304,10 @@ static bool IsNegativeZero(Eigen::QUInt16 value) { return false; }
 static bool IsNegativeZero(Eigen::QInt16 value) { return false; }
 static bool IsNegativeZero(Eigen::QInt32 value) { return false; }
 static bool IsNegativeZero(Eigen::half value) {
-  return IsNegativeZero<float>(value);
+  return IsNegativeZero<float>(static_cast<float>(value));
 }
 static bool IsNegativeZero(Eigen::bfloat16 value) {
-  return IsNegativeZero<float>(value);
+  return IsNegativeZero<float>(static_cast<float>(value));
 }
 
 template <typename T>

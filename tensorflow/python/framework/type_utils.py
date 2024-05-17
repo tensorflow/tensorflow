@@ -20,7 +20,7 @@ from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensorSpec
-from tensorflow.python.ops.structured.structured_tensor import StructuredTensorSpec
+from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -114,7 +114,7 @@ def _specs_for_flat_tensors(element_spec):
     datasets and map_fn for ELEMENT_SPEC. The items
     in this list correspond to the items in `_flat_tensor_specs`.
   """
-  if isinstance(element_spec, StructuredTensorSpec):
+  if isinstance(element_spec, StructuredTensor.Spec):
     specs = []
     for _, field_spec in sorted(
         element_spec._field_specs.items(), key=lambda t: t[0]):  # pylint: disable=protected-access
@@ -162,5 +162,33 @@ def fulltypes_for_flat_tensors(element_spec):
   specs = _specs_for_flat_tensors(element_spec)
   full_types_lists = [_translate_to_fulltype_for_flat_tensors(s) for s in specs]
   rval = nest.flatten(full_types_lists)  # flattens list-of-list to flat list.
-  assert len(rval) == len(element_spec._flat_tensor_specs)  # pylint: disable=protected-access
   return rval
+
+
+def fulltype_list_to_product(fulltype_list):
+  """Convert a list of FullType Def into a single FullType Def."""
+  return full_type_pb2.FullTypeDef(
+      type_id=full_type_pb2.TFT_PRODUCT, args=fulltype_list)
+
+
+def iterator_full_type_from_spec(element_spec):
+  """Returns a FullTypeDef for an iterator for the elements.
+
+  Args:
+     element_spec: A nested structure of `tf.TypeSpec` objects representing the
+       element type specification.
+
+  Returns:
+    A FullTypeDef for an iterator for the element tensor representation.
+  """
+  args = fulltypes_for_flat_tensors(element_spec)
+  return full_type_pb2.FullTypeDef(
+      type_id=full_type_pb2.TFT_PRODUCT,
+      args=[
+          full_type_pb2.FullTypeDef(
+              type_id=full_type_pb2.TFT_ITERATOR,
+              args=[
+                  full_type_pb2.FullTypeDef(
+                      type_id=full_type_pb2.TFT_PRODUCT, args=args)
+              ])
+      ])

@@ -23,7 +23,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -49,6 +48,9 @@ LogicalResult CheckNoRecursion(ModuleOp module, CallGraph &call_graph) {
   return success();
 }
 
+#define GEN_PASS_DEF_GUARANTEEALLFUNCSONEUSEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Clones FuncOp's until they have a single use only (or no users).
 //
 // The tf-shape-inference pass doesn't support functions that have more than
@@ -71,7 +73,7 @@ LogicalResult CheckNoRecursion(ModuleOp module, CallGraph &call_graph) {
 // inlining does). In fact, tf-shape-inference attempts to do specialization
 // of callees which is difficult if callees have multiple uses.
 class GuaranteeAllFuncsOneUse
-    : public GuaranteeAllFuncsOneUsePassBase<GuaranteeAllFuncsOneUse> {
+    : public impl::GuaranteeAllFuncsOneUsePassBase<GuaranteeAllFuncsOneUse> {
  public:
   void runOnOperation() override {
     if (failed(Run())) {

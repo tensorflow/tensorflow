@@ -2,8 +2,13 @@
 """
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
+)
+
+exports_files(
+    srcs = glob(["*.sh"]),
+    visibility = ["//visibility:public"],
 )
 
 sh_binary(

@@ -21,11 +21,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // Converts the TensorFlow DataType 'dtype' into an MLIR (scalar) type.
 Status ConvertDataType(DataType dtype, mlir::Builder builder, mlir::Type* type);
@@ -46,9 +45,8 @@ Status ConvertToMlirShape(const TensorShapeProto& input_shape,
                           llvm::SmallVectorImpl<int64_t>* shape);
 
 // Given a tensor shape and dtype, get the corresponding MLIR tensor type.
-StatusOr<mlir::Type> ConvertToMlirTensorType(const TensorShapeProto& shape,
-                                             DataType dtype,
-                                             mlir::Builder* builder);
+absl::StatusOr<mlir::Type> ConvertToMlirTensorType(
+    const TensorShapeProto& shape, DataType dtype, mlir::Builder* builder);
 
 }  // namespace tensorflow
 

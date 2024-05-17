@@ -410,7 +410,7 @@ def add_imports_for_symbol(module_code_builder,
     symbol: A symbol.
     source_module_name: Module that we can import the symbol from.
     source_name: Name we can import the symbol with.
-    api_name: API name. Currently, must be either `tensorflow` or `estimator`.
+    api_name: API name. Currently, must be `tensorflow`.
     api_version: API version.
     output_module_prefix: Prefix to prepend to destination module.
   """
@@ -458,7 +458,7 @@ def get_api_init_text(packages,
       tf_export decorators.
     output_package: Base output python package where generated API will be
       added.
-    api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
+    api_name: API you want to generate Currently, only `tensorflow`.
     api_version: API version you want to generate (1 or 2).
     compat_api_versions: Additional API versions to generate under compat/
       directory.
@@ -552,7 +552,7 @@ def get_module_docstring(module_name, package, api_name):
       prefix) to get a docstring for.
     package: Base python package containing python with target tf_export
       decorators.
-    api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
+    api_name: API you want to generate Currently, only `tensorflow`.
 
   Returns:
     One-line docstring to describe the module.
@@ -576,7 +576,7 @@ def get_module_docstring(module_name, package, api_name):
     if docsrc.docstring_module_name:
       docstring_module_name = docsrc.docstring_module_name
 
-  if package != 'keras':
+  if package != 'tf_keras':
     docstring_module_name = package + '.' + docstring_module_name
   if (docstring_module_name in sys.modules and
       sys.modules[docstring_module_name].__doc__):
@@ -585,18 +585,18 @@ def get_module_docstring(module_name, package, api_name):
   return 'Public API for tf.%s namespace.' % module_name
 
 
-def create_api_files(output_files,
-                     packages,
-                     packages_to_ignore,
-                     root_init_template,
-                     output_dir,
-                     output_package,
-                     api_name,
-                     api_version,
-                     compat_api_versions,
-                     compat_init_templates,
-                     lazy_loading=_LAZY_LOADING,
-                     use_relative_imports=False):
+def create_primary_api_files(output_files,
+                             packages,
+                             packages_to_ignore,
+                             root_init_template,
+                             output_dir,
+                             output_package,
+                             api_name,
+                             api_version,
+                             compat_api_versions,
+                             compat_init_templates,
+                             lazy_loading=_LAZY_LOADING,
+                             use_relative_imports=False):
   """Creates __init__.py files for the Python API.
 
   Args:
@@ -609,7 +609,7 @@ def create_api_files(output_files,
       PLACEHOLDER" comment in the template file will be replaced with imports.
     output_dir: output API root directory.
     output_package: Base output package where generated API will be added.
-    api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
+    api_name: API you want to generate Currently, only `tensorflow`.
     api_version: API version to generate (`v1` or `v2`).
     compat_api_versions: Additional API versions to generate in compat/
       subdirectory.
@@ -695,9 +695,28 @@ def create_api_files(output_files,
         f'Missing outputs for genrule:\n{missing_files}. Be sure to add these '
         'targets to tensorflow/python/tools/api/generator/api_init_files_v1.bzl'
         ' and tensorflow/python/tools/api/generator/api_init_files.bzl '
-        '(tensorflow repo), keras/api/api_init_files.bzl (keras repo), or '
-        'tensorflow_estimator/python/estimator/api/api_gen.bzl (estimator '
-        'repo)')
+        '(tensorflow repo), or tf_keras/api/api_init_files.bzl (tf_keras repo)')
+
+
+def create_proxy_api_files(output_files,
+                           proxy_module_root,
+                           output_dir):
+  """Creates __init__.py files in proxy format for the Python API.
+
+  Args:
+    output_files: List of __init__.py file paths to create.
+    proxy_module_root: Module root for proxy-import format. If specified, proxy
+      files with content like `from proxy_module_root.proxy_module import *`
+      will be created to enable import resolution under TensorFlow.
+    output_dir: output API root directory.
+  """
+  for file_path in output_files:
+    module = get_module(os.path.dirname(file_path), output_dir)
+    if not os.path.isdir(os.path.dirname(file_path)):
+      os.makedirs(os.path.dirname(file_path))
+    contents = f'from {proxy_module_root}.{module} import *'
+    with open(file_path, 'w') as fp:
+      fp.write(contents)
 
 
 def main():
@@ -723,7 +742,7 @@ def main():
       type=str,
       help='Packages to exclude from the api generation. This is used to hide '
       'certain packages from this script when multiple copy of code exists, '
-      'eg Keras. It is useful to avoid the SymbolExposedTwiceError.'
+      'eg tf_keras. It is useful to avoid the SymbolExposedTwiceError.'
       )
   parser.add_argument(
       '--root_init_template',
@@ -786,6 +805,13 @@ def main():
       type=bool,
       help='Whether to import submodules using relative imports or absolute '
       'imports')
+  parser.add_argument(
+      '--proxy_module_root',
+      default=None,
+      type=str,
+      help='Module root for proxy-import format. If specified, proxy files with '
+      'content like `from proxy_module_root.proxy_module import *` will be '
+      'created to enable import resolution under TensorFlow.')
   args = parser.parse_args()
 
   if len(args.outputs) == 1:
@@ -813,12 +839,15 @@ def main():
     # This should never happen (tm).
     raise ValueError(f'Invalid value for --loading flag: {args.loading}. Must '
                      'be one of lazy, static, default.')
-
-  create_api_files(outputs, packages, packages_to_ignore,
-                   args.root_init_template, args.apidir,
-                   args.output_package, args.apiname, args.apiversion,
-                   args.compat_apiversions, args.compat_init_templates,
-                   lazy_loading, args.use_relative_imports)
+  if args.proxy_module_root is None:
+    create_primary_api_files(outputs, packages, packages_to_ignore,
+                             args.root_init_template, args.apidir,
+                             args.output_package, args.apiname, args.apiversion,
+                             args.compat_apiversions,
+                             args.compat_init_templates, lazy_loading,
+                             args.use_relative_imports)
+  else:
+    create_proxy_api_files(outputs, args.proxy_module_root, args.apidir)
 
 
 if __name__ == '__main__':

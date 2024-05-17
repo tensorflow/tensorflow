@@ -82,10 +82,13 @@ function generate_tflite_framework {
   # Generate the BUILD file.
   message=(
     'load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")'
-    'load("//tensorflow/lite:build_def.bzl", "tflite_custom_c_library")'
+    'load("//tensorflow/lite:build_def.bzl", "tflite_custom_cc_library")'
     'load("//tensorflow/lite/ios:ios.bzl", "TFL_MINIMUM_OS_VERSION")'
-    'tflite_custom_c_library('
+    'tflite_custom_cc_library('
     '    name = "custom_c_api",'
+    '    deps = ['
+    '        "//tensorflow/lite/kernels:builtin_ops_list",'
+    '    ],'
     '    '"$(generate_list_field "models" "$MODEL_NAMES")"
     ')'
     'ios_static_framework('

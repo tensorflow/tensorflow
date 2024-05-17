@@ -24,9 +24,9 @@ import weakref
 from absl import logging
 import numpy as np
 
-from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
+from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -39,12 +39,13 @@ from tensorflow.python.distribute import tpu_replicated_variable
 from tensorflow.python.distribute import tpu_util
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values
-from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as tpu_cluster_resolver_lib
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import device_spec
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -58,19 +59,29 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.saved_model import save_context
 from tensorflow.python.tpu import device_assignment as device_assignment_lib  # pylint: disable=unused-import
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_hardware_feature
-from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.tf_export import tf_export
-
 
 _XLA_OP_BY_OP_INPUTS_LIMIT = 200
+
+_EXPERIMENTAL_TPU_BATCH_VARIABLE_INITIALIZATION = False
+
+
+def enable_batch_variable_initialization():
+  """Whether to batch variable initialization in tf.function."""
+  return (
+      _EXPERIMENTAL_TPU_BATCH_VARIABLE_INITIALIZATION
+      and context.executing_eagerly()
+      and not save_context.in_save_context()
+  )
 
 
 @contextlib.contextmanager
@@ -95,10 +106,12 @@ def validate_run_function(fn):
   # Otherwise we return an error, because we don't support eagerly running
   # run in TPUStrategy.
 
-  if context.executing_eagerly() \
-      and not isinstance(fn, def_function.Function) \
-      and not isinstance(fn, function.ConcreteFunction) \
-      and not (callable(fn) and isinstance(fn.__call__, def_function.Function)):
+  if (context.executing_eagerly()
+      and not isinstance(fn, def_function.Function)
+      and not isinstance(fn, function.ConcreteFunction)
+      and not (
+          callable(fn) and isinstance(fn.__call__, def_function.Function))
+      ):
     raise NotImplementedError(
         "TPUStrategy.run(fn, ...) does not support pure eager "
         "execution. please make sure the function passed into "
@@ -226,7 +239,7 @@ def _maybe_partial_apply_variables(fn, args, kwargs):
   return fn, args, kwargs
 
 
-@tf_export("distribute.TPUStrategy", v1=[])
+@tf_export.tf_export("distribute.TPUStrategy", v1=[])
 class TPUStrategyV2(distribute_lib.Strategy):
   """Synchronous training on TPUs and TPU Pods.
 
@@ -350,12 +363,14 @@ class TPUStrategyV2(distribute_lib.Strategy):
         `tf.distribute.TPUStrategy.experimental_assign_to_logical_device` will
         result in a ValueError.
     """
-    super(TPUStrategyV2, self).__init__(
+    super().__init__(
         TPUExtended(
             self,
             tpu_cluster_resolver,
             device_assignment=experimental_device_assignment,
-            use_spmd_for_xla_partitioning=experimental_spmd_xla_partitioning))
+            use_spmd_for_xla_partitioning=experimental_spmd_xla_partitioning,
+        )
+    )
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set("TPUStrategy")
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
         "num_workers").set(self.extended.num_hosts)
@@ -364,10 +379,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
     # function graph. It's only supported in eager mode.
-    # Packed variable is currently not supported when SPMD is enabled.
-    # TODO(b/202047549): enable Packed variable in SPMD mode.
-    self._enable_packed_variable_in_eager_mode = (
-        not experimental_spmd_xla_partitioning)
+    self._enable_packed_variable_in_eager_mode = True
 
   def run(self, fn, args=(), kwargs=None, options=None):
     """Run the computation defined by `fn` on each TPU replica.
@@ -651,7 +663,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
     return xla_sharding.replicate(tensor, use_sharding_op=True)
 
 
-@tf_export("distribute.experimental.TPUStrategy", v1=[])
+@tf_export.tf_export("distribute.experimental.TPUStrategy", v1=[])
 @deprecation.deprecated_endpoints("distribute.experimental.TPUStrategy")
 class TPUStrategy(distribute_lib.Strategy):
   """Synchronous training on TPUs and TPU Pods.
@@ -690,11 +702,15 @@ class TPUStrategy(distribute_lib.Strategy):
     """
     logging.warning(
         "`tf.distribute.experimental.TPUStrategy` is deprecated, please use "
-        " the non experimental symbol `tf.distribute.TPUStrategy` instead.")
+        "the non-experimental symbol `tf.distribute.TPUStrategy` instead.")
 
-    super(TPUStrategy, self).__init__(
+    super().__init__(
         TPUExtended(
-            self, tpu_cluster_resolver, device_assignment=device_assignment))
+            self,
+            tpu_cluster_resolver,
+            device_assignment=device_assignment,
+        )
+    )
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set("TPUStrategy")
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
         "num_workers").set(self.extended.num_hosts)
@@ -733,7 +749,7 @@ class TPUStrategy(distribute_lib.Strategy):
     return self.extended._tpu_cluster_resolver  # pylint: disable=protected-access
 
 
-@tf_export(v1=["distribute.experimental.TPUStrategy"])
+@tf_export.tf_export(v1=["distribute.experimental.TPUStrategy"])
 class TPUStrategyV1(distribute_lib.StrategyV1):
   """TPU distribution strategy implementation."""
 
@@ -750,12 +766,12 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
           host. Note that this can have side-effects on performance, hooks,
           metrics, summaries etc.
           This parameter is only used when Distribution Strategy is used with
-          estimator or keras.
+          Keras.
       device_assignment: Optional `tf.tpu.experimental.DeviceAssignment` to
           specify the placement of replicas on the TPU cluster. Currently only
           supports the usecase of using a single core within a TPU cluster.
     """
-    super(TPUStrategyV1, self).__init__(TPUExtended(
+    super().__init__(TPUExtended(
         self, tpu_cluster_resolver, steps_per_run, device_assignment))
     distribute_lib.distribution_strategy_gauge.get_cell("V1").set("TPUStrategy")
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
@@ -839,16 +855,18 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
 class TPUExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of TPUStrategy."""
 
-  def __init__(self,
-               container_strategy,
-               tpu_cluster_resolver=None,
-               steps_per_run=None,
-               device_assignment=None,
-               use_spmd_for_xla_partitioning=False):
-    super(TPUExtended, self).__init__(container_strategy)
+  def __init__(
+      self,
+      container_strategy,
+      tpu_cluster_resolver=None,
+      steps_per_run=None,
+      device_assignment=None,
+      use_spmd_for_xla_partitioning=False,
+  ):
+    super().__init__(container_strategy)
 
     if tpu_cluster_resolver is None:
-      tpu_cluster_resolver = TPUClusterResolver("")
+      tpu_cluster_resolver = tpu_cluster_resolver_lib.TPUClusterResolver("")
 
     if steps_per_run is None:
       # TODO(frankchn): Warn when we are being used by DS/Keras and this is
@@ -928,8 +946,62 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # Flag to enable XLA SPMD partitioning.
     self._use_spmd_for_xla_partitioning = use_spmd_for_xla_partitioning
 
+    self._using_custom_device = False
+    devices = self._tpu_devices[:, self._logical_device_stack[-1]]
+    for d in devices:
+      if context.is_custom_device(d):
+        self._using_custom_device = True
+        break
+
+    # This is a flag to enable data reorder which is used
+    # to match IteratorGetNext's device with the TPUExecute device.
+    self._enable_data_reorder = False
+
+  def _get_replica_order(self):
+    """Get the replica order based on the tpu device order.
+
+    For example, if the tpu_devices are:
+    '/job:worker/replica:0/task:0/device:TPU:0',
+    '/job:worker/replica:0/task:0/device:TPU:2',
+    '/job:worker/replica:0/task:1/device:TPU:0',
+    '/job:worker/replica:0/task:1/device:TPU:2',
+    '/job:worker/replica:0/task:1/device:TPU:6',
+    '/job:worker/replica:0/task:1/device:TPU:4',
+    '/job:worker/replica:0/task:0/device:TPU:6',
+    '/job:worker/replica:0/task:0/device:TPU:4',
+
+    the returned replica order will be:
+    [0, 1, 7, 6, 2, 3, 5, 4]
+
+    This replica order will be used to reorder the data returned by the
+    iterators,
+    so that they can be placed on the same node as their computation graphs.
+
+    Returns:
+      A list containing the order ids of corresponding TPU devices.
+    """
+    if not self._enable_data_reorder:
+      return None
+
+    tpu_devices = self._tpu_devices[:, 0]
+
+    devices_with_ids = []
+    for i, tpu_device in enumerate(tpu_devices):
+      spec = tf_device.DeviceSpec.from_string(tpu_device)
+      devices_with_ids.append((
+          (
+              spec.job,
+              spec.replica,
+              spec.device_type,
+              spec.task,
+              spec.device_index,
+          ),
+          i,
+      ))
+    return [i for _, i in sorted(devices_with_ids)]
+
   def _validate_colocate_with_variable(self, colocate_with_variable):
-    distribute_utils. validate_colocate(colocate_with_variable, self)
+    distribute_utils.validate_colocate(colocate_with_variable, self)
 
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
@@ -1003,7 +1075,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         self._get_input_workers(options),
         self._container_strategy(),
         num_replicas_in_sync=self._num_replicas_in_sync,
-        options=options)
+        options=options,
+        replica_order=self._get_replica_order(),
+    )
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     if (options and options.experimental_replication_mode ==
@@ -1027,7 +1101,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         input_workers,
         input_contexts,
         self._container_strategy(),
-        options=options)
+        options=options,
+        replica_order=self._get_replica_order(),
+    )
 
     # We can only check after the dataset_fn is called.
     if options is None or options.experimental_fetch_to_device:
@@ -1173,12 +1249,20 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     This is a private method only to be used by Estimator. Other frameworks
     should directly be calling `tf.tpu.experimental.initialize_tpu_system`
     """
-    tpu_strategy_util.initialize_tpu_system(self._tpu_cluster_resolver)
+    tpu_cluster_resolver_lib.initialize_tpu_system(self._tpu_cluster_resolver)
 
   def _create_variable(self, next_creator, **kwargs):
     """Create a TPUMirroredVariable. See `DistributionStrategy.scope`."""
+    # TODO(bfontain): Replace all uses of skip_mirrored_creator with
+    # a trivial custom_tpu_variable_creator.
     if kwargs.pop("skip_mirrored_creator", False):
       return next_creator(**kwargs)
+
+    custom_tpu_variable_creator = kwargs.pop(
+        "custom_tpu_variable_creator", None
+    )
+    if custom_tpu_variable_creator is not None:
+      return custom_tpu_variable_creator(next_creator, **kwargs)
 
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
@@ -1262,15 +1346,153 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         mirrored_replicated_var_list.append(tpu_replicated_var)
       return mirrored_replicated_var_list
 
-    if self._use_spmd_for_xla_partitioning and num_cores_per_replica > 1:
-      real_creator = _create_mirrored_tpu_replicated_variables
-    else:
-      real_creator = _create_mirrored_tpu_variables
+    # TODO(b/271767559): Consider either changing the innermost default_creator
+    # to uninitialized_variable_creator or only swapping the next_creator with
+    # uninitialized_variable_creator if the next_creator is the default_creator.
 
-    return distribute_utils.create_mirrored_variable(
-        self._container_strategy(), real_creator,
+    def uninitialized_variable_creator(**kwargs):
+      uninitialized_variable = tpu_util.TPUUninitializedVariable(**kwargs)
+
+      self.lazy_variable_tracker.add_uninitialized_var(
+          uninitialized_variable
+      )
+      setattr(uninitialized_variable, "_lazy_scope", self.lazy_variable_tracker)
+      return uninitialized_variable
+
+    def _create_uninitialized_mirrored_tpu_variables(**kwargs):
+      """Returns a list of `tf.Variable`s.
+
+      The list contains `number_replicas` `tf.Variable`s and can be used to
+      initialize a `TPUMirroredVariable`.
+
+      Args:
+        **kwargs: the keyword arguments for creating a variable
+      """
+      if kwargs.get("initial_value", None) is None:
+        return _create_mirrored_tpu_variables(**kwargs)
+
+      value_list = []
+      initial_value = None
+
+      for i, d in enumerate(devices):
+        with ops.device(d):
+          if i == 0:
+            initial_value = kwargs.get("initial_value", None)
+
+            with maybe_init_scope():
+              if initial_value is not None:
+                if callable(initial_value):
+                  initial_value = initial_value()
+
+                initial_value = ops.convert_to_tensor(
+                    initial_value, dtype=kwargs.get("dtype", None)
+                )
+
+          if i > 0:
+            # Give replicas meaningful distinct names:
+            var0name = value_list[0].name.split(":")[0]
+            # We append a / to variable names created on replicas with id > 0 to
+            # ensure that we ignore the name scope and instead use the given
+            # name as the absolute name of the variable.
+            kwargs["name"] = "%s/replica_%d/" % (var0name, i)
+
+          kwargs["initial_value"] = initial_value
+
+          if kwargs.get("dtype", None) is None:
+            kwargs["dtype"] = kwargs["initial_value"].dtype
+
+          if kwargs.get("shape", None) is None:
+            kwargs["shape"] = kwargs["initial_value"].shape
+
+          with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
+            v = uninitialized_variable_creator(**kwargs)
+
+          assert not isinstance(v, tpu_values.TPUMirroredVariable)
+          value_list.append(v)
+      return value_list
+
+    def _create_uninitialized_mirrored_tpu_replicated_variables(**kwargs):
+      """Returns a list of `TPUReplicatedVariable`s.
+
+      The list consists of `num_replicas` `TPUReplicatedVariable`s and can be
+      used to initialize a `TPUMirroredVariable`. Each `TPUReplicatedVariable`
+      contains a list of `tf.Variable`s which are replicated to
+      `num_cores_per_replica` logical cores to enable XLA SPMD compilation.
+
+      Args:
+        **kwargs: the keyword arguments for creating a variable
+      """
+      dtype = kwargs.get("dtype", None)
+      shape = kwargs.get("shape", None)
+      initial_value = kwargs.get("initial_value", None)
+
+      if initial_value is None:
+        return _create_mirrored_tpu_replicated_variables(**kwargs)
+
+      with maybe_init_scope():
+        if initial_value is not None:
+          if callable(initial_value):
+            initial_value = initial_value()
+
+          initial_value = ops.convert_to_tensor(
+              initial_value, dtype=dtype
+          )
+
+          kwargs["initial_value"] = initial_value
+
+          if dtype is None:
+            kwargs["dtype"] = kwargs["initial_value"].dtype
+          if shape is None:
+            kwargs["shape"] = kwargs["initial_value"].shape
+
+      mirrored_replicated_var_list = []
+
+      for replica_id in range(num_replicas):
+        replicated_var_list = []
+        for logic_core_id in range(num_cores_per_replica):
+          with ops.device(self._tpu_devices[replica_id][logic_core_id]):
+            v = uninitialized_variable_creator(**kwargs)
+          replicated_var_list.append(v)
+        replica_name = "{}/r:{}".format(kwargs["name"], replica_id)
+        tpu_replicated_var = tpu_replicated_variable.TPUReplicatedVariable(
+            variables=replicated_var_list, name=replica_name
+        )
+
+        mirrored_replicated_var_list.append(tpu_replicated_var)
+      return mirrored_replicated_var_list
+
+    if not self._using_custom_device and enable_batch_variable_initialization():
+      if self._use_spmd_for_xla_partitioning and num_cores_per_replica > 1:
+        real_creator = _create_uninitialized_mirrored_tpu_replicated_variables
+      else:
+        real_creator = _create_uninitialized_mirrored_tpu_variables
+
+      kwargs["experimental_batch_initialization"] = True
+
+    else:
+      if self._use_spmd_for_xla_partitioning and num_cores_per_replica > 1:
+        real_creator = _create_mirrored_tpu_replicated_variables
+      else:
+        real_creator = _create_mirrored_tpu_variables
+
+    mirrored_variable = distribute_utils.create_mirrored_variable(
+        self._container_strategy(),
+        real_creator,
         distribute_utils.TPU_VARIABLE_CLASS_MAPPING,
-        distribute_utils.TPU_VARIABLE_POLICY_MAPPING, **kwargs)
+        distribute_utils.TPU_VARIABLE_POLICY_MAPPING,
+        **kwargs,
+    )
+
+    if not self._using_custom_device and enable_batch_variable_initialization():
+      setattr(mirrored_variable, "_lazy_scope", self.lazy_variable_tracker)
+
+    return mirrored_variable
+
+  @property
+  def lazy_variable_tracker(self):
+    if not getattr(self, "_lazy_variable_tracker", None):
+      self._lazy_variable_tracker = tpu_util.LazyVariableTracker()
+    return self._lazy_variable_tracker
 
   def _resource_creator_scope(self):
 

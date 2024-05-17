@@ -1,6 +1,7 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -20,7 +21,7 @@ cc_library(
     deps = [
         ":top_n",
         "//tensorflow/lite/kernels/internal:compatibility",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -51,7 +52,7 @@ cc_library(
     deps = [
         ":ctc_utils",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal:optimized_base",
@@ -68,7 +69,8 @@ cc_test(
     deps = [
         ":ctc_beam_search_decoder_op",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",

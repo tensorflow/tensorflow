@@ -25,10 +25,10 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -38,10 +38,13 @@ namespace {
 constexpr char kReplicationAttr[] = "mhlo.is_same_data_across_replicas";
 constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
 
+#define GEN_PASS_DEF_ANNOTATEPARAMETERREPLICATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 // Analyzes the inputs to ClusterFuncOps in the module, and annotates their
 // invoked functions whether each input has the same data across replicas.
 struct AnnotateParameterReplicationPass
-    : public AnnotateParameterReplicationPassBase<
+    : public impl::AnnotateParameterReplicationPassBase<
           AnnotateParameterReplicationPass> {
   void runOnOperation() override;
 };
@@ -68,24 +71,26 @@ void AnnotateParameterReplicationPass::runOnOperation() {
     if (mirrored_variable_indices_attr) {
       for (const auto& mirrored_index : mirrored_variable_indices_attr) {
         mirrored_replicate_args.insert(
-            mirrored_index.cast<IntegerAttr>().getInt());
+            mlir::cast<IntegerAttr>(mirrored_index).getInt());
       }
     }
-    auto func = llvm::cast<func::FuncOp>(m.lookupSymbol(cluster_func.func()));
+    auto func =
+        llvm::cast<func::FuncOp>(m.lookupSymbol(cluster_func.getFunc()));
     for (auto entry : llvm::enumerate(cluster_func.getOperands())) {
       auto operand = SkipIdentityAndReadVariable(entry.value());
-      auto block_arg = operand.dyn_cast<BlockArgument>();
+      auto block_arg = mlir::dyn_cast<BlockArgument>(operand);
       if (block_arg && block_arg.getOwner() == &replicate.GetBody()) {
         // Only mirrored args of ReplicateOp can be annotated.
         if (mirrored_replicate_args.count(block_arg.getArgNumber()) == 0) {
           continue;
         }
       } else if (!operand.getParentRegion()->isProperAncestor(
-                     &replicate.body())) {
+                     &replicate.getBody())) {
         // Not a replication-invariant operand.
         continue;
       }
-      func.setArgAttr(entry.index(), kReplicationAttr, builder.getUnitAttr());
+      func.setArgAttr(entry.index(), kReplicationAttr,
+                      builder.getBoolAttr(true));
     }
   });
 }

@@ -20,11 +20,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_SAVED_MODEL_BUNDLE_V2_H_
 #define TENSORFLOW_CC_SAVED_MODEL_BUNDLE_V2_H_
 
+#include <functional>
+#include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"

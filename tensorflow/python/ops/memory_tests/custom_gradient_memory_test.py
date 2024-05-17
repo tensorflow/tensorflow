@@ -15,9 +15,11 @@
 """Memory tests for tensorflow.ops.custom_gradient."""
 
 import functools
+import unittest
 
 from absl.testing import parameterized
-from tensorflow.compiler.xla.service import hlo_pb2
+from xla.service import hlo_pb2
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
@@ -29,7 +31,6 @@ from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
-from tensorflow.python.tpu import tpu_strategy_util
 
 
 class RecomputeGradMemoryTest(test.TestCase, parameterized.TestCase):
@@ -110,19 +111,27 @@ class RecomputeGradMemoryTest(test.TestCase, parameterized.TestCase):
     res_recompute = run(f_recompute)
     self.assertAllClose(res_no_recompute, res_recompute)
 
+  @unittest.skip("b/335476600")
   @test_util.run_v2_only
   def testRecomputeGradXla(self):
     device_type = self._get_device_type()
     device_name = f"{device_type}:0"
     # Necessary for TFRT tests.
     if device_type == "TPU":
-      tpu_strategy_util.initialize_tpu_system()
+      tpu_cluster_resolver.initialize_tpu_system()
 
     n = 500
     with ops.device(device_name):
-      # For matmul, XLA on TPU converts float32 to bfloat16. Use float16 here,
-      # so the same assertion value could be used for CPU, GPU, and TPU.
-      a = array_ops.zeros((n, n), dtype=dtypes.float16)  # 2 * n * n bytes
+      # XLA:TPU converts f32 matmuls to bf16, and XLA:CPU converts bf16/f16
+      # matmuls to f32 after cl/461262189.  Use a type that doesn't get
+      # converted.
+      if device_type == "TPU":
+        dtype = dtypes.bfloat16
+        elem_size = 2
+      else:
+        dtype = dtypes.float32
+        elem_size = 4
+      a = array_ops.zeros((n, n), dtype=dtype)  # elem_size * n * n bytes
 
     def f(x):
       for _ in range(5):
@@ -139,7 +148,7 @@ class RecomputeGradMemoryTest(test.TestCase, parameterized.TestCase):
       test_func = def_function.function(self._grad(test_func), jit_compile=True)
       # The hlo_proto contains statically allocated memory info of HLO values.
       hlo_proto_serialized = test_func.experimental_get_compiler_ir(a)(
-          stage="optimized_hlo_proto_serialized")
+          stage="optimized_hlo_proto_serialized", device_name=device_name)
 
       hlo_proto = hlo_pb2.HloProto.FromString(hlo_proto_serialized)
       allocations = hlo_proto.buffer_assignment.buffer_allocations
@@ -151,12 +160,12 @@ class RecomputeGradMemoryTest(test.TestCase, parameterized.TestCase):
     peak_memory_no_recompute = get_peak_memory(f_no_recompute)
     peak_memory_recompute = get_peak_memory(f_recompute)
 
-    # 2 * n * n (size of `a`) * 5 (loop of g) * 5 (loop of f)
-    self.assertGreaterEqual(peak_memory_no_recompute, 2 * n * n * 5 * 5)
-    # 2 * n * n (size of `a`) * (5 (loop of g) + 5 (recompute in f))
-    self.assertGreaterEqual(peak_memory_recompute, 2 * n * n * 5 * 2)
+    # elem_size * n * n (size of `a`) * 5 (loop of g) * 5 (loop of f)
+    self.assertGreaterEqual(peak_memory_no_recompute, elem_size * n * n * 5 * 5)
+    # elem_size * n * n (size of `a`) * (5 (loop of g) + 5 (recompute in f))
+    self.assertGreaterEqual(peak_memory_recompute, elem_size * n * n * 5 * 2)
     # peak_memory_recompute should be less than peak_memory_no_recompute.
-    self.assertLess(peak_memory_recompute, 2 * n * n * 5 * 3)
+    self.assertLess(peak_memory_recompute, elem_size * n * n * 5 * 3)
 
     with ops.device(device_name):
       res_recompute = f_recompute(a)

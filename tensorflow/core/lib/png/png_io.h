@@ -28,8 +28,8 @@ limitations under the License.
 // only when they're flat, though) or protocol buffer fields typed to either of
 // these can be decoded without copying the data into a C++ string.
 
-#ifndef TENSORFLOW_LIB_PNG_PNG_IO_H_
-#define TENSORFLOW_LIB_PNG_PNG_IO_H_
+#ifndef TENSORFLOW_CORE_LIB_PNG_PNG_IO_H_
+#define TENSORFLOW_CORE_LIB_PNG_PNG_IO_H_
 
 #include <string>
 #include <utility>
@@ -43,7 +43,7 @@ limitations under the License.
 namespace tensorflow {
 namespace png {
 
-// Handy container for decoding informations and struct pointers
+// Handy container for decoding information and struct pointers
 struct DecodeContext {
   const uint8* data;
   int data_left;
@@ -113,4 +113,4 @@ extern template bool WriteImageToBuffer<tstring>(
 }  // namespace png
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_PNG_PNG_IO_H_
+#endif  // TENSORFLOW_CORE_LIB_PNG_PNG_IO_H_

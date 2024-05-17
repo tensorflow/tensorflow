@@ -120,14 +120,6 @@ class DelegatingTrackableMixin(object):
   def _handle_deferred_dependencies(self, name, trackable):  # pylint: disable=redefined-outer-name
     return self._trackable._handle_deferred_dependencies(name, trackable)
 
-  def _restore_from_checkpoint_position(self, checkpoint_position):
-    return self._trackable._restore_from_checkpoint_position(
-        checkpoint_position)
-
-  def _single_restoration_from_checkpoint_position(self, *args, **kwargs):
-    return self._trackable._single_restoration_from_checkpoint_position(
-        *args, **kwargs)
-
   def _gather_saveables_for_checkpoint(self, *args, **kwargs):
     return self._trackable._gather_saveables_for_checkpoint(*args, **kwargs)
 
@@ -139,5 +131,16 @@ class DelegatingTrackableMixin(object):
 
   def _export_to_saved_model_graph(self, *args, **kwargs):
     return self._trackable._export_to_saved_model_graph(*args, **kwargs)
+
+  def _serialize_to_tensors(self, *args, **kwargs):
+    return self._trackable._serialize_to_tensors(*args, **kwargs)
+
+  def _restore_from_tensors(self, *args, **kwargs):
+    return self._trackable._restore_from_tensors(*args, **kwargs)
+
+  def _copy_trackable_to_cpu(self, object_map):
+    self._trackable._copy_trackable_to_cpu(object_map)
+    if self not in object_map:
+      object_map[self] = DelegatingTrackableMixin(object_map[self._trackable])
   # pylint: enable=protected-access
 

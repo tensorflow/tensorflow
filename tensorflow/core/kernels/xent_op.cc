@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/xent_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -87,6 +87,7 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
     // Try to reuse the logits_in buffer for the backprop output.
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 1, shape_in, &back_out));
+
     if (shape_in.dim_size(0) > 0) {
       functor::XentFunctor<Device, T> functor;
       functor(context->eigen_device<Device>(), shape_in.AsEigenDSizes<2>(),
@@ -113,8 +114,11 @@ struct XentFunctorBase {
                   typename TTypes<T>::Matrix scratch,
                   typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop) {
-    XentEigenImpl<Device, T>::Compute(d, shape, logits_bcast, labels_bcast,
-                                      logits, labels, scratch, loss, backprop);
+    if (shape[0] > 0) {
+      XentEigenImpl<Device, T>::Compute(d, shape, logits_bcast, labels_bcast,
+                                        logits, labels, scratch, loss,
+                                        backprop);
+    }
   }
 };
 
@@ -135,18 +139,15 @@ TF_CALL_bfloat16(REGISTER_CPU);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Eigen::half>("T"),
-                        SoftmaxXentWithLogitsOp<GPUDevice, Eigen::half>);
-REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T"),
-                        SoftmaxXentWithLogitsOp<GPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<double>("T"),
-                        SoftmaxXentWithLogitsOp<GPUDevice, double>);
+
+#define REGISTER_GPU(T)                                         \
+  REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits") \
+                              .Device(DEVICE_GPU)               \
+                              .TypeConstraint<T>("T"),          \
+                          SoftmaxXentWithLogitsOp<GPUDevice, T>);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

@@ -1,17 +1,17 @@
 # Description:
 #   Doc generator
 
-load("//tensorflow:tensorflow.bzl", "py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load("//tensorflow:py.default.bzl", "py_library")
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],
 )
@@ -33,7 +33,7 @@ distribute_module = [
     "distribute.",
 ]
 
-py_library(
+py_strict_library(
     name = "tf_doctest_lib",
     srcs = ["tf_doctest_lib.py"],
     srcs_version = "PY3",
@@ -46,33 +46,31 @@ py_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "tf_doctest",
     srcs = ["tf_doctest.py"],
     args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module + keras_module)],
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "no_oss_py2",
+        "no_oss",  # b/275546007
         "no_pip",
         "no_rocm",  # No need to rerun this test for ROCm config.
         "no_windows",  # numpy prints differently on windows.
         "noasan",
-        "nomsan",
-        "notsan",
     ],
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:logging_ops",
-        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops:logging_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
     ],
 )
 
-tpu_py_test(
+tpu_py_strict_test(
     name = "tf_doctest_tpu",
     srcs = ["tf_doctest.py"],
     args = ["--module=" + ",".join(tpu_module)],
@@ -81,20 +79,19 @@ tpu_py_test(
     disable_v3 = True,
     main = "tf_doctest.py",
     python_version = "PY3",
-    tags = [
-        "no_oss",
-        "noasan",
-        "nomsan",
-        "notsan",
-    ],
+    tags = ["no_oss"],
     deps = [
         ":tf_doctest_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops:logging_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/testing:absltest",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "tf_doctest_gpu",
     srcs = ["tf_doctest.py"],
     args = [
@@ -105,7 +102,6 @@ py_test(
     main = "tf_doctest.py",
     python_version = "PY3",
     tags = [
-        "no_oss_py2",
         "no_pip",
         "no_rocm",
         "no_windows",  # numpy prints differently on windows.
@@ -116,25 +112,19 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:logging_ops",
-        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops:logging_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "tf_doctest_test",
     srcs = ["tf_doctest_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_oss_py2",
-        "no_pip",
-        "noasan",
-        "nomsan",
-        "notsan",
-    ],
+    tags = ["no_pip"],
     deps = [
         ":tf_doctest_lib",
         "@absl_py//absl/testing:absltest",
@@ -142,25 +132,21 @@ py_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "fenced_doctest_lib",
     srcs = ["fenced_doctest_lib.py"],
     deps = [
         ":tf_doctest_lib",
-        "@astor_archive//:astor",
+        "@pypi_astor//:pkg",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "fenced_doctest_test",
     srcs = ["fenced_doctest_test.py"],
-    data = glob(["**/create_model.md"]),
     tags = [
         "no_oss",
         "no_pip",
-        "noasan",
-        "nomsan",
-        "notsan",
     ],
     deps = [
         ":fenced_doctest_lib",
@@ -169,7 +155,7 @@ py_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "doc_controls",
     srcs = ["doc_controls.py"],
     compatible_with = get_compatible_with_portable(),
@@ -177,7 +163,7 @@ py_library(
     visibility = ["//visibility:public"],
 )
 
-py_test(
+py_strict_test(
     name = "generate2_test",
     size = "medium",
     srcs = ["generate2_test.py"],
@@ -185,21 +171,17 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "manual",
-        # No reason to run sanitizers or fastbuild for this test.
-        "noasan",
-        "nomsan",
-        "notsan",
         "optonly",
     ],
     deps = [
         ":generate2_lib",
-        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
+        "@pypi_packaging//:pkg",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "generate2",
     srcs = ["generate2.py"],
     python_version = "PY3",
@@ -217,23 +199,24 @@ py_library(
     deps = [],
 )
 
-py_library(
+py_strict_library(
     name = "generate2_lib",
     srcs = ["generate2.py"],
     srcs_version = "PY3",
     deps = [
         ":base_dir_oss",
-        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:pywrap_xla_ops",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
+        "@pypi_packaging//:pkg",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "build_cc_api_headers",
     srcs = ["build_cc_api_headers.py"],
     deps = [
@@ -242,7 +225,7 @@ py_binary(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "build_java_api_docs",
     srcs = ["build_java_api_docs.py"],
     python_version = "PY3",

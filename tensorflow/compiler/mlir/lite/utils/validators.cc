@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {
@@ -35,30 +37,45 @@ bool TFIntListIs1XY1(Operation *op, StringRef name, IntegerAttr *x,
   auto elements = attr.getValue();
   if (elements.size() != 4 ||
       std::any_of(elements.begin(), elements.end(),
-                  [](Attribute e) { return !e.isa<IntegerAttr>(); }))
+                  [](Attribute e) { return !mlir::isa<IntegerAttr>(e); }))
     return false;
 
-  if (elements.front().cast<IntegerAttr>().getInt() != 1 ||
-      elements.back().cast<IntegerAttr>().getInt() != 1)
+  if (mlir::cast<IntegerAttr>(elements.front()).getInt() != 1 ||
+      mlir::cast<IntegerAttr>(elements.back()).getInt() != 1)
     return false;
 
   Builder b(op->getContext());
-  *x = b.getI32IntegerAttr(elements[1].cast<IntegerAttr>().getInt());
-  *y = b.getI32IntegerAttr(elements[2].cast<IntegerAttr>().getInt());
+  *x = b.getI32IntegerAttr(mlir::cast<IntegerAttr>(elements[1]).getInt());
+  *y = b.getI32IntegerAttr(mlir::cast<IntegerAttr>(elements[2]).getInt());
 
   return true;
 }
 
-// Returns true if the attribute is an integer list of the form [1, X, Y, 1],
+// Returns true if the attribute is an integer list of the form [1, X, Y, 1].
 bool TFIntListIs1XY1(const Attribute attr) {
-  const auto &elements = attr.cast<ArrayAttr>().getValue();
+  const auto &elements = mlir::cast<ArrayAttr>(attr).getValue();
   if (elements.size() != 4 ||
       std::any_of(elements.begin(), elements.end(),
-                  [](Attribute e) { return !e.isa<IntegerAttr>(); }))
+                  [](Attribute e) { return !mlir::isa<IntegerAttr>(e); }))
     return false;
 
-  if (elements.front().cast<IntegerAttr>().getValue() != 1 ||
-      elements.back().cast<IntegerAttr>().getValue() != 1)
+  if (mlir::cast<IntegerAttr>(elements.front()).getValue() != 1 ||
+      mlir::cast<IntegerAttr>(elements.back()).getValue() != 1)
+    return false;
+  return true;
+}
+
+// Returns true if the attribute is an integer list of the form [1, 1, X, Y].
+bool TFIntListIs11XY(const Attribute attr) {
+  const auto &elements = mlir::cast<ArrayAttr>(attr).getValue();
+  if (elements.size() != 4 ||
+      std::any_of(elements.begin(), elements.end(),
+                  [](Attribute e) { return !mlir::isa<IntegerAttr>(e); }))
+    return false;
+
+  const Attribute *data = elements.data();
+  if (mlir::cast<IntegerAttr>(data[0]).getValue() != 1 ||
+      mlir::cast<IntegerAttr>(data[1]).getValue() != 1)
     return false;
   return true;
 }
@@ -75,17 +92,17 @@ bool TFIntListIs1XYZ1(Operation *op, StringRef name, IntegerAttr *x,
   auto elements = attr.getValue();
   if (elements.size() != 5 ||
       std::any_of(elements.begin(), elements.end(),
-                  [](Attribute e) { return !e.isa<IntegerAttr>(); }))
+                  [](Attribute e) { return !mlir::isa<IntegerAttr>(e); }))
     return false;
 
-  if (elements.front().cast<IntegerAttr>().getInt() != 1 ||
-      elements.back().cast<IntegerAttr>().getInt() != 1)
+  if (mlir::cast<IntegerAttr>(elements.front()).getInt() != 1 ||
+      mlir::cast<IntegerAttr>(elements.back()).getInt() != 1)
     return false;
 
   Builder b(op->getContext());
-  *x = b.getI32IntegerAttr(elements[1].cast<IntegerAttr>().getInt());
-  *y = b.getI32IntegerAttr(elements[2].cast<IntegerAttr>().getInt());
-  *z = b.getI32IntegerAttr(elements[3].cast<IntegerAttr>().getInt());
+  *x = b.getI32IntegerAttr(mlir::cast<IntegerAttr>(elements[1]).getInt());
+  *y = b.getI32IntegerAttr(mlir::cast<IntegerAttr>(elements[2]).getInt());
+  *z = b.getI32IntegerAttr(mlir::cast<IntegerAttr>(elements[3]).getInt());
 
   return true;
 }
@@ -93,14 +110,14 @@ bool TFIntListIs1XYZ1(Operation *op, StringRef name, IntegerAttr *x,
 // Returns true if every element of the attribute is 1. All elements of `attr`
 // must be `IntegerAttr`.
 bool TFIntListIsAllOnes(const Attribute attr) {
-  const auto &elements = attr.cast<ArrayAttr>().getValue();
+  const auto &elements = mlir::cast<ArrayAttr>(attr).getValue();
 
   return !std::any_of(elements.begin(), elements.end(), [](Attribute e) {
-    return e.cast<IntegerAttr>().getValue() != 1;
+    return mlir::cast<IntegerAttr>(e).getValue() != 1;
   });
 }
 
-bool IsBroadcastableElementsAttrs(mlir::Attribute a, mlir::Attribute b) {
+bool IsBroadcastableElementsAttrs(mlir::TypedAttr a, mlir::TypedAttr b) {
   // This would return false if we had unranked tensors (where they should
   // probably be considered as broadcastable), but given we are working with
   // attributes here that shouldn't be an issue,
@@ -116,8 +133,8 @@ bool IsDimensionsDegenerateExceptLastOne(ArrayRef<int64_t> elements_shape) {
   return true;
 }
 
-bool IsDimensionsDegenerateExceptLastOne(Attribute val) {
-  if (auto ranked_type = val.getType().dyn_cast<RankedTensorType>()) {
+bool IsDimensionsDegenerateExceptLastOne(TypedAttr val) {
+  if (auto ranked_type = mlir::dyn_cast<RankedTensorType>(val.getType())) {
     return IsDimensionsDegenerateExceptLastOne(ranked_type.getShape());
   }
   return false;

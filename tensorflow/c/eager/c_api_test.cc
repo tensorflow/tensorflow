@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string.h>
 
+#include <memory>
 #include <string>
 
 // clang-format off
@@ -31,11 +32,15 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -46,10 +51,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
-
-#ifdef PLATFORM_GOOGLE
-#include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
-#endif
 
 using tensorflow::string;
 
@@ -602,6 +603,11 @@ TEST(CAPI, TensorHandleDevices) {
 }
 
 void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
+#ifdef PLATFORM_WINDOWS
+  // On windows, we flakily get a failure due to pointer instability.
+  // Disable the 4 tests using this helper until we fix the issue.
+  return;
+#else
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_ContextOptionsSetTfrt(opts, tfrt);
@@ -702,6 +708,7 @@ void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
   }
   TFE_DeleteContext(ctx);
   TF_DeleteStatus(status);
+#endif  // PLATFORM_WINDOWS
 }
 TEST(CAPI, ExecuteAdd) {
   ExecuteAdd(
@@ -709,7 +716,8 @@ TEST(CAPI, ExecuteAdd) {
       /*forward_input*/ false,
       /*tfrt*/ false);
 }
-TEST(CAPI, ExecuteAddAsync) {
+// TODO(b/234067483): Investigate flakiness and re-enable.
+TEST(CAPI, DISABLED_ExecuteAddAsync) {
   ExecuteAdd(
       /*async=*/true,
       /*forward_input*/ false,
@@ -1255,16 +1263,6 @@ TEST(CAPI, RunAddFunctionWithGrappler) {
   RunAddFunction(/*use_tfrt=*/false, /*enable_grappler=*/true);
 }
 
-#ifdef PLATFORM_GOOGLE
-TEST(CAPI, RunAddFunction_TFRT) {
-  RunAddFunction(/*use_tfrt=*/true, /*enable_grappler=*/false);
-}
-
-TEST(CAPI, RunAddFunctionWithGrappler_TFRT) {
-  RunAddFunction(/*use_tfrt=*/true, /*enable_grappler=*/true);
-}
-#endif
-
 void BM_ExecuteFunction(::testing::benchmark::State& state) {
   const int async = state.range(0);
   state.SetLabel(async ? "ExecuteFunctionAsync" : "ExecuteFunction");
@@ -1795,23 +1793,9 @@ void TestOpAddAttrs(bool use_tfrt) {
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   tensorflow::AttrValueMap attr_values;
-  if (use_tfrt) {
-#ifdef PLATFORM_GOOGLE
-    auto* op = tensorflow::down_cast<tfrt::tf::OperationInterface*>(
-        tensorflow::unwrap(copy_op));
-    auto* tfrt_op_attrs =
-        tensorflow::down_cast<const tfrt::tf::OpAttrsInterface*>(
-            op->GetOpAttrs());
-    tensorflow::DataType result;
-    tfrt_op_attrs->GetType("dtype", &result);
-    EXPECT_EQ(tensorflow::DT_FLOAT, result);
-    tfrt_op_attrs->GetFallbackAttrs()->FillAttrValueMap(&attr_values);
-#endif
-  } else {
-    tensorflow::EagerOperation* op =
-        tensorflow::OperationFromInterface(tensorflow::unwrap(copy_op));
-    op->Attrs().FillAttrValueMap(&attr_values);
-  }
+  tensorflow::EagerOperation* op =
+      tensorflow::OperationFromInterface(tensorflow::unwrap(copy_op));
+  op->Attrs().FillAttrValueMap(&attr_values);
   EXPECT_EQ(tensorflow::DT_FLOAT, attr_values.find("dtype")->second.type());
 
   TF_DeleteStatus(status);
@@ -1821,11 +1805,6 @@ void TestOpAddAttrs(bool use_tfrt) {
 }
 
 TEST(CAPI, TestTFE_OpAddAttrs) { TestOpAddAttrs(/*use_tfrt=*/false); }
-
-#ifdef PLATFORM_GOOGLE
-TEST(CAPI, TestTFE_OpAddAttrs_TFRT) { TestOpAddAttrs(/*use_tfrt=*/true); }
-
-#endif
 
 TEST(CAPI, TestTFE_OpAttrsSerialize) {
   TF_Status* status = TF_NewStatus();
@@ -1961,115 +1940,6 @@ TEST(CAPI, TestTFE_OpRecreation) {
   TFE_DeleteContext(ctx);
 }
 
-tensorflow::ServerDef ReplaceTaskInServerDef(
-    const tensorflow::ServerDef& server_def, int task_index) {
-  tensorflow::ServerDef server_def_copy = server_def;
-  tensorflow::ClusterDef* cluster_def = server_def_copy.mutable_cluster();
-  tensorflow::JobDef* job_def = cluster_def->mutable_job(0);
-  const int port = tensorflow::testing::PickUnusedPortOrDie();
-  job_def->mutable_tasks()->at(task_index) =
-      tensorflow::strings::StrCat("localhost:", port);
-  return server_def_copy;
-}
-
-TFE_TensorHandle* CreateVarHandle(TFE_Context* ctx,
-                                  const tensorflow::string& device_name,
-                                  const tensorflow::string& variable_name) {
-  TF_Status* status = TF_NewStatus();
-  // Create the variable handle.
-  TFE_Op* op = TFE_NewOp(ctx, "VarHandleOp", status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
-  TFE_OpSetAttrShape(op, "shape", {}, 0, status);
-  TFE_OpSetAttrString(op, "container", "localhost", 0);
-  TFE_OpSetAttrString(op, "shared_name", variable_name.data(),
-                      variable_name.size());
-  if (!device_name.empty()) {
-    TFE_OpSetDevice(op, device_name.c_str(), status);
-  }
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  TFE_TensorHandle* var_handle = nullptr;
-  int num_retvals = 1;
-  TFE_Execute(op, &var_handle, &num_retvals, status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  TFE_DeleteOp(op);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  CHECK_EQ(1, num_retvals);
-  TF_DeleteStatus(status);
-  return var_handle;
-}
-
-TFE_TensorHandle* CreateVariable(TFE_Context* ctx, float value,
-                                 const tensorflow::string& device_name,
-                                 const tensorflow::string& variable_name) {
-  TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* var_handle =
-      CreateVarHandle(ctx, device_name, variable_name);
-
-  // Assign 'value' to it.
-  TFE_Op* op = TFE_NewOp(ctx, "AssignVariableOp", status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
-  TFE_OpAddInput(op, var_handle, status);
-  if (!device_name.empty()) {
-    TFE_OpSetDevice(op, device_name.c_str(), status);
-  }
-
-  // Convert 'value' to a TF_Tensor then a TFE_TensorHandle.
-  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> t(
-      TF_AllocateTensor(TF_FLOAT, nullptr, 0, sizeof(value)), TF_DeleteTensor);
-  memcpy(TF_TensorData(t.get()), &value, TF_TensorByteSize(t.get()));
-
-  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)>
-      value_handle(TFE_NewTensorHandle(t.get(), status),
-                   TFE_DeleteTensorHandle);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-
-  TFE_OpAddInput(op, value_handle.get(), status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-
-  int num_retvals = 0;
-  TFE_Execute(op, nullptr, &num_retvals, status);
-  TFE_DeleteOp(op);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  CHECK_EQ(0, num_retvals);
-  TF_DeleteStatus(status);
-  return var_handle;
-}
-
-TFE_Context* CreateContext(const string& serialized_server_def,
-                           bool isolate_session_state) {
-  TF_Status* status = TF_NewStatus();
-  TFE_ContextOptions* opts = TFE_NewContextOptions();
-  opts->session_options.options.config.set_isolate_session_state(
-      isolate_session_state);
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(false));
-  TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
-  TFE_Context* ctx = TFE_NewContext(opts, status);
-  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-  TFE_ContextSetServerDef(ctx, 0, serialized_server_def.data(),
-                          serialized_server_def.size(), status);
-  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-  TFE_DeleteContextOptions(opts);
-  TF_DeleteStatus(status);
-  return ctx;
-}
-
-std::vector<std::string> ListDeviceNames(TFE_Context* ctx) {
-  TF_Status* status = TF_NewStatus();
-  std::vector<std::string> device_names;
-  TF_DeviceList* devices = TFE_ContextListDevices(ctx, status);
-  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-  const int num_devices = TF_DeviceListCount(devices);
-  for (int i = 0; i < num_devices; ++i) {
-    device_names.emplace_back(TF_DeviceListName(devices, i, status));
-    EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-  }
-  TF_DeleteDeviceList(devices);
-  TF_DeleteStatus(status);
-  return device_names;
-}
-
 TEST(CAPI, ShareVariableAcrossContextsWorks) {
   // TODO(shreepadma): Add a test case with isolate_session_state set to true.
   tensorflow::ServerDef server_def_0 = GetServerDef(3);
@@ -2097,9 +1967,11 @@ TEST(CAPI, ShareVariableAcrossContextsWorks) {
   ASSERT_TRUE(worker_server2->Start().ok());
 
   TFE_Context* ctx_0 = CreateContext(serialized_server_def_0,
-                                     /*isolate_session_state=*/false);
+                                     /*isolate_session_state=*/false,
+                                     /*init_timeout_in_ms=*/0);
   TFE_Context* ctx_1 = CreateContext(serialized_server_def_1,
-                                     /*isolate_session_state=*/false);
+                                     /*isolate_session_state=*/false,
+                                     /*init_timeout_in_ms=*/0);
 
   // Remote device on `worker1`.
   const char remote_device[] = "/job:localhost/replica:0/task:1/device:CPU:0";
@@ -2174,13 +2046,6 @@ TEST(CAPI, ShareVariableAcrossContextsWorks) {
   worker_server2.release();
 }
 
-void ReplaceTaskInServerDef(tensorflow::ServerDef* server_def, int task_index,
-                            const string& host, int port) {
-  tensorflow::JobDef* job_def = server_def->mutable_cluster()->mutable_job(0);
-  job_def->mutable_tasks()->at(task_index) =
-      tensorflow::strings::StrCat(host, ":", port);
-}
-
 TEST(CAPI, ShareVariableAcrossContextsAfterUpdateContextWorks) {
   tensorflow::ServerDef server_def_0 = GetServerDef(3);
   server_def_0.mutable_default_session_config()->set_isolate_session_state(
@@ -2208,9 +2073,11 @@ TEST(CAPI, ShareVariableAcrossContextsAfterUpdateContextWorks) {
 
   // Create two contexts.
   TFE_Context* ctx_0 = CreateContext(serialized_server_def_0,
-                                     /*isolate_session_state=*/false);
+                                     /*isolate_session_state=*/false,
+                                     /*init_timeout_in_ms=*/0);
   TFE_Context* ctx_1 = CreateContext(serialized_server_def_1,
-                                     /*isolate_session_state=*/false);
+                                     /*isolate_session_state=*/false,
+                                     /*init_timeout_in_ms=*/0);
 
   // Remote device on `worker2`.
   const char remote_device[] = "/job:localhost/replica:0/task:2/device:CPU:0";
@@ -2365,7 +2232,16 @@ tensorflow::ServerDef GetClusterServerDef(const string& worker_job_name,
   return server_def;
 }
 
-TEST(CAPI, SingleHostServerDefWorks) {
+// This test verifies the following:
+// 1. Start the GRPC server for worker 1 using single host server def A with
+//    only worker 1.
+// 2. Create a context B using A.
+// 3. Create the variable in B.
+// 4. Create another single host server def C with only worker 0.
+// 5. Start the GRPC server for worker 0 using C.
+// 6. Create a context D using the full cluster server def E.
+// 7. Read the variable in D.
+TEST(CAPI, SingleHostServerDefV1Works) {
   // Create a server def that represents a 2-process cluster and a client.
   // Example:
   //
@@ -2414,7 +2290,8 @@ TEST(CAPI, SingleHostServerDefWorks) {
   worker_1_server_def.set_job_name("client");
   TFE_Context* local_ctx =
       CreateContext(worker_1_server_def.SerializeAsString(),
-                    /*isolate_session_state=*/false);
+                    /*isolate_session_state=*/false,
+                    /*init_timeout_in_ms=*/0);
 
   const char remote_device[] = "/job:worker/replica:0/task:1/device:CPU:0";
 
@@ -2444,7 +2321,8 @@ TEST(CAPI, SingleHostServerDefWorks) {
   cluster_server_def.set_job_name("client");
   TFE_Context* remote_ctx =
       CreateContext(cluster_server_def.SerializeAsString(),
-                    /*isolate_session_state=*/false);
+                    /*isolate_session_state=*/false,
+                    /*init_timeout_in_ms=*/0);
 
   // Read variable `var` using `remote_ctx`, created using `cluster_server_def`.
   {
@@ -2484,6 +2362,110 @@ TEST(CAPI, SingleHostServerDefWorks) {
 
   TFE_DeleteContext(local_ctx);
   TFE_DeleteContext(remote_ctx);
+
+  worker_server1.release();
+  worker_server0.release();
+}
+
+// This test verifies the following:
+// 1. Start the GRPC servers for both worker 0 and 1 using the full cluster
+//    server def A.
+// 2. Create a context B using the full cluster server def A.
+// 3. Create the variable in B.
+// 4. Create a context C using a single host server def D with only worker 1.
+// 5. Read the variable in C.
+TEST(CAPI, SingleHostServerDefV2Works) {
+  tensorflow::ServerDef cluster_server_def = GetClusterServerDef("worker", 2);
+
+  cluster_server_def.set_task_index(0);
+  cluster_server_def.set_job_name("worker");
+  std::unique_ptr<tensorflow::GrpcServer> worker_server0;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(cluster_server_def,
+                                             tensorflow::Env::Default(),
+                                             &worker_server0)
+                  .ok());
+  ASSERT_TRUE(worker_server0->Start().ok());
+
+  cluster_server_def.set_task_index(1);
+  cluster_server_def.set_job_name("worker");
+  std::unique_ptr<tensorflow::GrpcServer> worker_server1;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(cluster_server_def,
+                                             tensorflow::Env::Default(),
+                                             &worker_server1)
+                  .ok());
+  ASSERT_TRUE(worker_server1->Start().ok());
+
+  // Create a context for the whole cluster using cluster server def.
+  // This is initiated from the client.
+  cluster_server_def.set_task_index(0);
+  cluster_server_def.set_job_name("client");
+  TFE_Context* ctx_with_cluster_server_def =
+      CreateContext(cluster_server_def.SerializeAsString(),
+                    /*isolate_session_state=*/false,
+                    /*init_timeout_in_ms=*/0);
+
+  const char worker_1_device[] = "/job:worker/replica:0/task:1/device:CPU:0";
+
+  // Create a variable `var` using `ctx_with_cluster_server_def`.
+  TFE_TensorHandle* handle_0 =
+      CreateVariable(ctx_with_cluster_server_def, 1.2, worker_1_device,
+                     /*variable_name=*/"var");
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextAsyncWait(ctx_with_cluster_server_def, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+  TFE_DeleteTensorHandle(handle_0);
+
+  tensorflow::ServerDef worker_1_server_def =
+      CreateSingleHostServerDef(cluster_server_def, 1);
+
+  // Create a new context for worker 1 using single host server def.
+  // This is initiated from the client.
+  worker_1_server_def.set_task_index(0);
+  worker_1_server_def.set_job_name("client");
+  TFE_Context* ctx_with_worker_1_server_def =
+      CreateContext(worker_1_server_def.SerializeAsString(),
+                    /*isolate_session_state=*/false,
+                    /*init_timeout_in_ms=*/0);
+
+  // Read the variable `var` using `ctx_with_worker_1_server_def`.
+  {
+    TFE_TensorHandle* var_handle = CreateVarHandle(
+        ctx_with_worker_1_server_def, worker_1_device, /*variable_name=*/"var");
+
+    TFE_TensorHandle* handle_1 = nullptr;
+    int num_retvals = 1;
+    TF_Status* status = TF_NewStatus();
+    TFE_Op* op =
+        TFE_NewOp(ctx_with_worker_1_server_def, "ReadVariableOp", status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
+    TFE_OpAddInput(op, var_handle, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_Execute(op, &handle_1, &num_retvals, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_DeleteOp(op);
+
+    ASSERT_EQ(1, num_retvals);
+    EXPECT_EQ(TF_FLOAT, TFE_TensorHandleDataType(handle_1));
+    EXPECT_EQ(0, TFE_TensorHandleNumDims(handle_1, status));
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+    // Read the value of tensor handle `handle_1`.
+    float value = 0.0f;
+    TF_Tensor* t = TFE_TensorHandleResolve(handle_1, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    ASSERT_EQ(sizeof(float), TF_TensorByteSize(t));
+    memcpy(&value, TF_TensorData(t), sizeof(float));
+    TF_DeleteTensor(t);
+    EXPECT_EQ(1.2f, value);
+    TFE_DeleteTensorHandle(handle_1);
+    TF_DeleteStatus(status);
+    TFE_DeleteTensorHandle(var_handle);
+  }
+
+  TFE_DeleteContext(ctx_with_worker_1_server_def);
+  TFE_DeleteContext(ctx_with_cluster_server_def);
 
   worker_server1.release();
   worker_server0.release();

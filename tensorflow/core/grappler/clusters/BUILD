@@ -1,19 +1,14 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
-    licenses = ["notice"],
-)
-
-config_setting(
-    name = "xsmm",
-    define_values = {"tensorflow_xsmm": "1"},
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -26,15 +21,12 @@ tf_cuda_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ] + select({
-        ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
-        "//conditions:default": [],
-    }),
+        "//tensorflow/core/common_runtime/gpu:gpu_id",
+        "@eigen_archive//:eigen3",
+    ],
 )
 
 tf_cc_test(
@@ -79,6 +71,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core/grappler:grappler_item",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -136,6 +129,8 @@ cc_library(
         "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )

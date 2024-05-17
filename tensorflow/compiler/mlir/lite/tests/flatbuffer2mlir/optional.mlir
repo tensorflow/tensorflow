@@ -2,7 +2,7 @@
 // Test to make sure optional parameters survive a roundtrip
 
 func.func @main(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32> {
-// CHECK: [[NONE:%.*]] = "tfl.no_value"() {value} : () -> none
+// CHECK: [[NONE:%.*]] = "tfl.no_value"() <{value}> : () -> none
 // CHECK: "tfl.fully_connected"(%arg0, %arg1, [[NONE]])
 // CHECK-SAME: (tensor<40x37xf32>, tensor<40x37xf32>, none) -> (tensor<40x40xf32>, tensor<40x40xf32>)
   %cst = "tfl.no_value"() {value = unit} : () -> none

@@ -79,7 +79,7 @@ TEST(GenNodeTest, ParseNodeNoInputs) {
   map["node1"] = std::make_unique<GenNode>(&node1);
 
   auto gn1 = map["node1"].get();
-  ASSERT_THAT(gn1->ParseInputs(&map), Eq(OkStatus()));
+  ASSERT_THAT(gn1->ParseInputs(&map), Eq(absl::OkStatus()));
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre());
 }
 
@@ -101,7 +101,7 @@ TEST(GenNodeTest, ParseNodeWithControl) {
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
   auto gn3 = map["node3"].get();
-  ASSERT_THAT(gn3->ParseInputs(&map), Eq(OkStatus()));
+  ASSERT_THAT(gn3->ParseInputs(&map), Eq(absl::OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre(
       "o0: node3[i0]",
@@ -147,7 +147,7 @@ TEST(GenNodeTest, ParseNodeCommutative) {
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
   auto gn3 = map["node3"].get();
-  ASSERT_THAT(gn3->ParseInputs(&map), Eq(OkStatus()));
+  ASSERT_THAT(gn3->ParseInputs(&map), Eq(absl::OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre(
       "o0: node3[i0]"
@@ -180,7 +180,7 @@ TEST(GenNodeTest, ParseNodeMultiInputCommutative) {
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
   auto gn3 = map["node3"].get();
-  ASSERT_THAT(gn3->ParseInputs(&map), Eq(OkStatus()));
+  ASSERT_THAT(gn3->ParseInputs(&map), Eq(absl::OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre(
       "o0: node3[i0]"
@@ -216,7 +216,7 @@ TEST(GenNodeTest, ParseNodeMultiInputNotCommutative) {
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
   auto gn3 = map["node3"].get();
-  ASSERT_THAT(gn3->ParseInputs(&map), Eq(OkStatus()));
+  ASSERT_THAT(gn3->ParseInputs(&map), Eq(absl::OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre(
       "o0: node3[i0]"
@@ -250,7 +250,7 @@ TEST(GenNodeTest, ParseNodeMultiInputList) {
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
   auto gn3 = map["node3"].get();
-  ASSERT_THAT(gn3->ParseInputs(&map), Eq(OkStatus()));
+  ASSERT_THAT(gn3->ParseInputs(&map), Eq(absl::OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre(
       "o0: node3[i0]"
@@ -293,7 +293,7 @@ TEST(GenNodeTest, ParseNodeMultiMultiInput) {
   auto gn3 = map["node3"].get();
   auto gn4 = map["node4"].get();
   auto gn5 = map["node5"].get();
-  ASSERT_THAT(gn5->ParseInputs(&map), Eq(OkStatus()));
+  ASSERT_THAT(gn5->ParseInputs(&map), Eq(absl::OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre(
       "o0: node5[i0]"
@@ -337,7 +337,7 @@ TEST(GenNodeTest, ParseNodeMultiOutput) {
   map["node4"] = std::make_unique<GenNode>(&node4);
 
   auto gn4 = map["node4"].get();
-  ASSERT_THAT(gn4->ParseInputs(&map), Eq(OkStatus()));
+  ASSERT_THAT(gn4->ParseInputs(&map), Eq(absl::OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn4->links()), ElementsAre(
       "i0: node3[o1]",
@@ -360,9 +360,10 @@ TEST(GenNodeTest, ParseNodeUndefinedOp) {
   auto gn = map["node1"].get();
   ASSERT_THAT(
       gn->ParseInputs(&map),
-      Eq(Status(error::INVALID_ARGUMENT,
-                "Node 'node1' contains an undefined operation 'Zzzx': " +
-                    nested_error.error_message())));
+      Eq(Status(
+          absl::StatusCode::kInvalidArgument,
+          absl::StrCat("Node 'node1' contains an undefined operation 'Zzzx': ",
+                       nested_error.message()))));
 }
 
 TEST(GenNodeTest, ParseNodeUnexpectedInputs) {
@@ -374,7 +375,7 @@ TEST(GenNodeTest, ParseNodeUnexpectedInputs) {
 
   auto gn1 = map["node1"].get();
   EXPECT_THAT(gn1->ParseInputs(&map),
-              Eq(Status(error::INVALID_ARGUMENT,
+              Eq(Status(absl::StatusCode::kInvalidArgument,
                         "Node 'node1' has a non-control "
                         "input from 'node1' at index 0 but its operation "
                         "'Const' defines only 0 inputs.")));
@@ -388,7 +389,7 @@ TEST(GenNodeTest, ParseNodeUnexpectedInputs) {
 
   auto gn3 = map["node3"].get();
   EXPECT_THAT(gn3->ParseInputs(&map),
-              Eq(Status(error::INVALID_ARGUMENT,
+              Eq(Status(absl::StatusCode::kInvalidArgument,
                         "Node 'node3' has a non-control "
                         "input from 'node1' at index 2 but its operation "
                         "'Sub' defines only 2 inputs.")));
@@ -402,7 +403,7 @@ TEST(GenNodeTest, ParseNodeControlInputsAlwaysOk) {
   map["node1"] = std::make_unique<GenNode>(&node1);
   node1.add_input("^node1");
   auto gn1 = map["node1"].get();
-  ASSERT_THAT(gn1->ParseInputs(&map), Eq(OkStatus()));
+  ASSERT_THAT(gn1->ParseInputs(&map), Eq(absl::OkStatus()));
   // clang-format off
   EXPECT_THAT(DumpLinkMap(gn1->links()), ElementsAre(
       "iC: node1[oC]",
@@ -420,7 +421,7 @@ TEST(GenNodeTest, ParseNodeInvalidInput) {
   ASSERT_THAT(
       gn1->ParseInputs(&map),
       Eq(Status(
-          error::INVALID_ARGUMENT,
+          absl::StatusCode::kInvalidArgument,
           "Node 'node1' input 0 refers to a non-existing node 'node2'.")));
 }
 
@@ -433,7 +434,7 @@ TEST(GenNodeTest, BuildGraphInMap) {
       MakeNodeBroadcastGradientArgs("node3", "node1", "node2");
 
   GenNodeMap map;
-  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(OkStatus()));
+  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(absl::OkStatus()));
   ASSERT_THAT(map.find("node1"), Ne(map.end()));
   ASSERT_THAT(map.find("node2"), Ne(map.end()));
   ASSERT_THAT(map.find("node3"), Ne(map.end()));
@@ -465,9 +466,9 @@ TEST(GenNodeTest, BuildGraphInMapDuplicateNode) {
   (*graph.add_node()) = MakeNodeConst("node1");
   (*graph.add_node()) = MakeNodeConst("node1");
   GenNodeMap map;
-  ASSERT_THAT(
-      GenNode::BuildGraphInMap(graph, &map),
-      Eq(Status(error::INVALID_ARGUMENT, "Duplicate node name 'node1'.")));
+  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map),
+              Eq(Status(absl::StatusCode::kInvalidArgument,
+                        "Duplicate node name 'node1'.")));
 }
 
 TEST(GenNodeTest, BuildGraphInMapParseError) {
@@ -480,7 +481,7 @@ TEST(GenNodeTest, BuildGraphInMapParseError) {
   ASSERT_THAT(
       GenNode::BuildGraphInMap(graph, &map),
       Eq(Status(
-          error::INVALID_ARGUMENT,
+          absl::StatusCode::kInvalidArgument,
           "Node 'node2' input 0 refers to a non-existing node 'node3'.")));
 }
 

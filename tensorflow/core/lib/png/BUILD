@@ -4,6 +4,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
     ],
@@ -14,6 +15,7 @@ cc_library(
     name = "png_io",
     srcs = ["png_io.cc"],
     hdrs = ["png_io.h"],
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:logging",
@@ -21,6 +23,7 @@ cc_library(
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/base",
+        "@png",
         "@zlib",
     ],
 )

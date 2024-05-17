@@ -91,7 +91,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export(v1=["train.SessionRunHook"])
-class SessionRunHook(object):
+class SessionRunHook:
   """Hook to extend calls to MonitoredSession.run()."""
 
   def begin(self):
@@ -208,7 +208,7 @@ class SessionRunArgs(
 
 
 @tf_export(v1=["train.SessionRunContext"])
-class SessionRunContext(object):
+class SessionRunContext:
   """Provides information about the `session.run()` call being made.
 
   Provides information about original request to `Session.Run()` function.

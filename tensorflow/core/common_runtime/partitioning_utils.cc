@@ -22,8 +22,10 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "tensorflow/core/common_runtime/arg_ret_placement.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_partition.h"
@@ -66,8 +68,49 @@ Status PartitionFunctionGraph(
   };
   partition_options.control_flow_added = false;
   partition_options.get_tensor_name_attr = get_tensor_name_attr;
+  partition_options.can_make_destructive_changes = true;
 
   return Partition(partition_options, graph, partitions);
+}
+
+// A pair of matching Send/Recv ops.
+struct SendRecvPair {
+  Node* send_node = nullptr;
+  Node* recv_node = nullptr;
+};
+constexpr char kTensorNameAttr[] = "tensor_name";
+
+// Adds a dependency to each pair of matching Send/Recv ops to make the
+// dependency explicit.
+Status MakeSendRecvDependencyExplicit(Graph* graph) {
+  // Find all matching Send/Recv pairs.
+  absl::flat_hash_map<std::string, SendRecvPair> send_recv_pairs;
+  for (Node* node : graph->op_nodes()) {
+    if (node->IsSend() || node->IsRecv()) {
+      auto tensor_name_it = node->def().attr().find(kTensorNameAttr);
+      if (tensor_name_it == node->def().attr().end()) {
+        return errors::Internal(
+            "'", kTensorNameAttr,
+            "' attribute is not found from node: ", node->DebugString());
+      }
+      if (node->IsSend()) {
+        send_recv_pairs[tensor_name_it->second.s()].send_node = node;
+      } else {
+        send_recv_pairs[tensor_name_it->second.s()].recv_node = node;
+      }
+    }
+  }
+
+  // Add a control dependency to each pair of matching Send/Recv.
+  for (const auto& [tensor_name, send_recv_pair] : send_recv_pairs) {
+    if (send_recv_pair.send_node == nullptr ||
+        send_recv_pair.recv_node == nullptr) {
+      return errors::Internal(
+          "No matching Send/Recv nodes found for tensor_name = ", tensor_name);
+    }
+    graph->AddControlEdge(send_recv_pair.send_node, send_recv_pair.recv_node);
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -81,12 +124,14 @@ Status PartitionFunctionGraph(
       PartitionFunctionGraph(device_set, graph.get(), &partitions,
                              /*node_to_loc=*/nullptr, get_tensor_name_attr));
 
+  const OpRegistryInterface* default_registry =
+      graph->flib_def().default_registry();
+  graph.reset();
   for (auto& partition : partitions) {
     const string& device = partition.first;
     GraphDef& graph_def = partition.second;
     // Each partition gets a new graph.
-    std::unique_ptr<Graph> subgraph(
-        new Graph(graph->flib_def().default_registry()));
+    auto subgraph = std::make_unique<Graph>(default_registry);
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     opts.expect_device_spec = true;
@@ -95,10 +140,10 @@ Status PartitionFunctionGraph(
     subgraphs->emplace(device, std::move(subgraph));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
+absl::StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
     const DeviceSet& device_set, std::unique_ptr<Graph> graph) {
   // Skip transfer op insertion if the graph nodes are not assigned to multiple
   // devices.
@@ -148,6 +193,9 @@ StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
   opts.expect_device_spec = true;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, std::move(merged_graph_def),
                                             new_graph.get()));
+
+  TF_RETURN_IF_ERROR(MakeSendRecvDependencyExplicit(new_graph.get()));
+
   return std::move(new_graph);
 }
 
@@ -201,35 +249,21 @@ Status UpdateArgAndRetvalMetadata(
   for (int i = 0; i < arg_nodes.size(); ++i) {
     Node* arg = arg_nodes[i].first;
     arg->AddAttr("index", i);
-    TF_RETURN_IF_ERROR(arg->attrs().Find("T", &attr_value));
-    if (arg_alloc_attrs != nullptr) {
-      AllocatorAttributes alloc_attr;
-      DataType type = attr_value->type();
-      MemoryType mtype = ints_on_device ? MTypeFromDTypeIntsOnDevice(type)
-                                        : MTypeFromDType(type);
-      if (mtype == HOST_MEMORY) {
-        alloc_attr.set_on_host(true);
-      }
-      arg_alloc_attrs->push_back(alloc_attr);
-    }
+  }
+  if (arg_alloc_attrs != nullptr) {
+    TF_RETURN_IF_ERROR(full_type::SingleDeviceSetAllocAttrsForArgs(
+        arg_nodes, ints_on_device, *arg_alloc_attrs));
   }
   for (int i = 0; i < ret_nodes.size(); ++i) {
     Node* ret = ret_nodes[i].first;
     ret->AddAttr("index", i);
-    TF_RETURN_IF_ERROR(ret->attrs().Find("T", &attr_value));
-    if (ret_alloc_attrs) {
-      AllocatorAttributes alloc_attr;
-      DataType type = attr_value->type();
-      MemoryType mtype = ints_on_device ? MTypeFromDTypeIntsOnDevice(type)
-                                        : MTypeFromDType(type);
-      if (mtype == HOST_MEMORY) {
-        alloc_attr.set_on_host(true);
-      }
-      ret_alloc_attrs->push_back(alloc_attr);
-    }
+  }
+  if (ret_alloc_attrs) {
+    TF_RETURN_IF_ERROR(full_type::SingleDeviceSetAllocAttrsForRets(
+        ret_nodes, ints_on_device, *ret_alloc_attrs));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string FunctionNameGenerator::GetName() {

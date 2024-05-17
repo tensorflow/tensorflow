@@ -20,7 +20,7 @@ limitations under the License.
 // computations across different threads if necessary.
 #include <algorithm>
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -188,7 +188,8 @@ class LinearAlgebraOp : public OpKernel {
 };
 
 // Declare LinearAlgebraOp, which is explicitly instantiated in
-// linalg_ops_common.cc for float, double, complex64, and complex128.
+// linalg_ops_common.cc for half,float, double, complex64, and complex128.
+extern template class LinearAlgebraOp<Eigen::half>;
 extern template class LinearAlgebraOp<float>;
 extern template class LinearAlgebraOp<double>;
 extern template class LinearAlgebraOp<complex64>;

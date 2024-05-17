@@ -22,6 +22,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -252,7 +253,8 @@ class LinearOperatorZeros(linear_operator.LinearOperator):
     return batch_shape.concatenate(matrix_shape)
 
   def _shape_tensor(self):
-    matrix_shape = array_ops.stack((self._num_rows, self._num_columns), axis=0)
+    matrix_shape = array_ops_stack.stack(
+        (self._num_rows, self._num_columns), axis=0)
     if self._batch_shape_arg is None:
       return matrix_shape
 
@@ -329,6 +331,16 @@ class LinearOperatorZeros(linear_operator.LinearOperator):
 
     zeros = array_ops.zeros(shape=output_shape, dtype=x.dtype)
     return self._possibly_broadcast_batch_shape(zeros)
+
+  def _linop_matmul(
+      self,
+      left_operator: "LinearOperatorZeros",
+      right_operator: linear_operator.LinearOperator
+    ) -> linear_operator.LinearOperator:
+    if not left_operator.is_square or not right_operator.is_square:
+      raise ValueError("Matmul with non-square `LinearOperator`s or non-square "
+                       "`LinearOperatorZeros` not supported at this time.")
+    return left_operator
 
   def _determinant(self):
     if self.batch_shape.is_fully_defined():

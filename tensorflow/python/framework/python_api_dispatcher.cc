@@ -29,12 +29,28 @@ namespace py_dispatch {
 
 namespace {
 
+PyObject* ImportTypeFromModule(const char* module_name, const char* type_name) {
+  static PyObject* given_type = [module_name, type_name]() {
+    PyObject* module = PyImport_ImportModule(module_name);
+    PyObject* attr =
+        module ? PyObject_GetAttrString(module, type_name) : nullptr;
+    if (attr == nullptr) {
+      PyErr_WriteUnraisable(nullptr);
+      PyErr_Clear();
+    }
+    if (module) Py_DECREF(module);
+    return attr;
+  }();
+  return given_type;
+}
+
 std::vector<Safe_PyObjectPtr>& GetRegisteredDispatchableTypes() {
   static std::vector<Safe_PyObjectPtr>* registered_dispatchable_types =
       new std::vector<Safe_PyObjectPtr>();
   if (registered_dispatchable_types->empty()) {
-    static PyObject* composite_tensor =
-        swig::GetRegisteredPyObject("CompositeTensor");
+    static PyObject* composite_tensor = ImportTypeFromModule(
+        "tensorflow.python.framework.composite_tensor",
+        "CompositeTensor");
     Py_INCREF(composite_tensor);
     registered_dispatchable_types->push_back(
         Safe_PyObjectPtr(composite_tensor));
@@ -261,6 +277,7 @@ int PyInstanceChecker::cost() const { return py_classes_.size(); }
 std::string PyInstanceChecker::DebugString() const {
   DCheckPyGilState();
   std::vector<const char*> type_names;
+  type_names.reserve(py_classes_.size());
   for (const auto& py_class : py_classes_) {
     type_names.push_back(
         reinterpret_cast<PyTypeObject*>(py_class.get())->tp_name);

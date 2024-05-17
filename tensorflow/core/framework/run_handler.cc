@@ -22,7 +22,7 @@ limitations under the License.
 #include <list>
 #include <memory>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/run_handler_util.h"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -623,24 +622,24 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
       }
     }
     if (t.f) {
-      profiler::TraceMe activity(
+      tsl::profiler::TraceMe activity(
           [=] {
             return strings::StrCat(task_from_blocking_queue ? "inter" : "intra",
                                    " #id = ", tws->GetTracemeId(), " ",
                                    thread_id, "#");
           },
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::TraceMeLevel::kInfo);
       VLOG(2) << "Running " << (task_from_blocking_queue ? "inter" : "intra")
               << " work from " << tws->GetTracemeId();
       tws->IncrementInflightTaskCount(task_from_blocking_queue);
       env_.ExecuteTask(t);
       tws->DecrementInflightTaskCount(task_from_blocking_queue);
     } else {
-      profiler::TraceMe activity(
+      tsl::profiler::TraceMe activity(
           [=] {
             return strings::StrCat("Sleeping#thread_id=", thread_id, "#");
           },
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::TraceMeLevel::kInfo);
       if (VLOG_IS_ON(4)) {
         for (int i = 0; i < thread_work_sources->size(); ++i) {
           VLOG(4) << "source id " << i << " "
@@ -848,12 +847,12 @@ class RunHandlerPool::Impl {
     {
       mutex_lock l(mu_);
       if (!has_free_handler()) {
-        profiler::TraceMe activity(
+        tsl::profiler::TraceMe activity(
             [&] {
               return strings::StrCat("WaitingForHandler#step_id=", step_id,
                                      "#");
             },
-            profiler::TraceMeLevel::kInfo);
+            tsl::profiler::TraceMeLevel::kInfo);
         TRACESTRING(
             strings::StrCat("RunHandlerPool::Impl::Get waiting for a handler "
                             "with timeout in millisecond",
@@ -891,7 +890,7 @@ class RunHandlerPool::Impl {
       version = ++version_;
     }
     RecomputePoolStats(num_active_requests, version, *thread_work_sources);
-    return WrapUnique<RunHandler>(new RunHandler(handler_impl));
+    return std::unique_ptr<RunHandler>(new RunHandler(handler_impl));
   }
 
   void ReleaseHandler(RunHandler::Impl* handler) TF_LOCKS_EXCLUDED(mu_) {

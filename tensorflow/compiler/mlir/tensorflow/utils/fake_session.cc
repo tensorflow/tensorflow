@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/match.h"
 #include "llvm/Support/CommandLine.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -72,14 +77,14 @@ void FakeSession::BuildDeviceManager() {
 void FakeSession::InitVariables() {
   tensorflow::Device* device = nullptr;
   auto status = device_mgr_->LookupDevice(kDeviceName, &device);
-  if (status != ::tensorflow::OkStatus()) return;
+  if (status != absl::OkStatus()) return;
   auto container = device->resource_manager()->default_container();
 
   // Create 2 resources and initialize them with dummy values.
-  (void)device->resource_manager()->Create(
-      container, "var1", new tensorflow::Var(tensorflow::DataType::DT_FLOAT));
-  (void)device->resource_manager()->Create(
-      container, "var2", new tensorflow::Var(tensorflow::DataType::DT_FLOAT));
+  TF_CHECK_OK(device->resource_manager()->Create(
+      container, "var1", new tensorflow::Var(tensorflow::DataType::DT_FLOAT)));
+  TF_CHECK_OK(device->resource_manager()->Create(
+      container, "var2", new tensorflow::Var(tensorflow::DataType::DT_FLOAT)));
 }
 
 Status FakeSession::Create(const tensorflow::GraphDef& graph) {
@@ -102,9 +107,9 @@ Status FakeSession::LocalDeviceManager(
     const tensorflow::DeviceMgr** deviceMgrPtr) {
   Initialize();
   if (kSessionOptions->fail_to_fetch_local_device_manager)
-    return Status(tensorflow::error::UNKNOWN, "No Local Device Manager");
+    return Status(absl::StatusCode::kUnknown, "No Local Device Manager");
   *deviceMgrPtr = device_mgr_.get();
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status FakeSession::Run(
@@ -171,7 +176,7 @@ Status FakeSession::Run(
 
       outputs->push_back(t);
     } else if (absl::StartsWith(output_name, "var")) {
-      return Status(tensorflow::error::NOT_FOUND,
+      return Status(absl::StatusCode::kNotFound,
                     "Can't find variable " + output_name + " in session");
     } else {
       // Create a scalar float tensor.
@@ -180,7 +185,7 @@ Status FakeSession::Run(
       outputs->push_back(t);
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace test_util

@@ -16,6 +16,7 @@
 # pylint: disable=invalid-name
 """Checkpoint Manager and other utilities for managing checkpoints."""
 import collections
+import copy
 import os.path
 import re
 import time
@@ -23,6 +24,7 @@ import time
 from google.protobuf import text_format
 
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -813,26 +815,40 @@ class CheckpointManager(object):
       checkpoint_number = training_util.global_step(
           sess=session, global_step_tensor=checkpoint_number)
     prefix = "%s-%d" % (self._prefix, checkpoint_number)
+
+    def _record_and_sweep_state(save_path):
+      timestamp = time.time()
+      # If this is an overwritten checkpoint we were previously tracking, delete
+      # and reinsert it to make sure it goes to the end of the queue.
+      if save_path in self._maybe_delete:
+        del self._maybe_delete[save_path]
+      self._maybe_delete[save_path] = timestamp
+      self._latest_checkpoint = save_path
+      # Before deleting anything we update the Checkpoint proto with the new
+      # checkpoint. We'll go back and correct it after cleaning up old files,
+      # but a preemption while deleting will be more likely to see the new
+      # checkpoint this way.
+      self._record_state()
+      self._sweep()
+      # Write out the Checkpoint proto a second time, now without the deleted
+      # checkpoints.
+      self._record_state()
+
+    # Register `_record_and_sweep_state` as a callback in `CheckpointOptions`
     if options is None:
-      save_path = self._checkpoint.write(prefix)
+      options = checkpoint_options.CheckpointOptions(
+          experimental_write_callbacks=[_record_and_sweep_state]
+      )
     else:
-      save_path = self._checkpoint.write(prefix, options=options)
-    timestamp = time.time()
-    # If this is an overwritten checkpoint we were previously tracking, delete
-    # and reinsert it to make sure it goes to the end of the queue.
-    if save_path in self._maybe_delete:
-      del self._maybe_delete[save_path]
-    self._maybe_delete[save_path] = timestamp
-    self._latest_checkpoint = save_path
-    # Before deleting anything we update the Checkpoint proto with the new
-    # checkpoint. We'll go back and correct it after cleaning up old files, but
-    # a preemption while deleting will be more likely to see the new checkpoint
-    # this way.
-    self._record_state()
-    self._sweep()
-    # Write out the Checkpoint proto a second time, now without the deleted
-    # checkpoints.
-    self._record_state()
+      # We create a copy so that user's `options` instance would not be mutated
+      # by internal mechanisms.
+      options = copy.copy(options)
+      if options.experimental_write_callbacks is None:
+        options.experimental_write_callbacks = [_record_and_sweep_state]
+      else:
+        options.experimental_write_callbacks.append(_record_and_sweep_state)
+
+    save_path = self._checkpoint._write(prefix, options=options)  # pylint: disable=protected-access
     return save_path
 
   def restore_or_initialize(self):
@@ -853,6 +869,13 @@ class CheckpointManager(object):
       The restored checkpoint path if the lastest checkpoint is found and
       restored. Otherwise None.
     """
+    # TODO(chienchunh): When AsyncCheckpoint is used, we may need to force to
+    # sync until any ongoing async save is done. Otherwise, if this is the first
+    # checkpoint and _latest_checkpoint has not been updated due to async write,
+    # this would resort to init_fn instead of restoring from the checkpoin file.
+    # This should be fixed once AsyncCheckpoint is integrated with the public
+    # API so that we can rely on CheckpointOptions to tell whether we should
+    # sync for AsyncCheckpoint.
     if self._latest_checkpoint is not None:
       self._checkpoint.restore(self._latest_checkpoint)
       if self._checkpoint_interval is not None:
@@ -861,4 +884,11 @@ class CheckpointManager(object):
 
     if self._init_fn is not None:
       self._init_fn()
+      logging.info(
+          "Customized initialization is done through the passed `init_fn`.")
     return None
+
+  def sync(self):
+    """Wait for any outstanding save or restore operations."""
+    if self._checkpoint:
+      self._checkpoint.sync()

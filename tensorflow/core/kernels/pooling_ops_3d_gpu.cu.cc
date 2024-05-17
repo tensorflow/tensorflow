@@ -17,8 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/pooling_ops_3d_gpu.h"
+
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
 

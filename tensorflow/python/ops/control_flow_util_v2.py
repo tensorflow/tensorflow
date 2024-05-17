@@ -16,9 +16,11 @@
 """Utilities for V2 control flow."""
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager.polymorphic_function import atomic_function
+from tensorflow.python.eager.polymorphic_function import concrete_function
+from tensorflow.python.eager.polymorphic_function import tracing_compilation
+from tensorflow.python.eager.polymorphic_function import transform
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.func_graph import FuncGraph
@@ -27,7 +29,7 @@ from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import gradients_util
 from tensorflow.python.util import keras_deps
 from tensorflow.python.util import tf_contextlib
-
+from tensorflow.python.util.tf_export import tf_export
 
 _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = None
 _DISABLE_LOWER_USING_SWITCH_MERGE = False
@@ -66,9 +68,10 @@ def create_new_tf_function(func_graph):
   Returns:
     The name of the new TF_Function.
   """
-  func = function._EagerDefinedFunction(  # pylint: disable=protected-access
-      func_graph.name, func_graph, func_graph.inputs, func_graph.outputs, {})
-  func.add_to_graph(func_graph.outer_graph)
+  transform.apply_func_graph_transforms(func_graph)
+  func = atomic_function.from_func_graph(func_graph.name, func_graph, {})
+
+  func_graph.outer_graph._add_function_recursive(func)  # pylint: disable=protected-access
   return func_graph.name
 
 
@@ -162,7 +165,7 @@ def resource_input_index(tensor_name, input_names, node_defs, functions):
     tensor_name: the name of the resource tensor to be resolved to an input.
     input_names: a list of the names of all inputs to the function.
     node_defs: a dict mapping op name -> NodeDef for every op in the function.
-    functions: a dict mapping function name -> _EagerDefinedFunction.
+    functions: a dict mapping function name -> AtomicFunction.
 
   Returns:
     The index into input_names corresponding to `tensor_name`.
@@ -187,7 +190,7 @@ def resource_input_index(tensor_name, input_names, node_defs, functions):
 
     def _extract_input_index(function_attribute_name):
       func_name = node_def.attr[function_attribute_name].func.name
-      fdef = functions[func_name].definition
+      fdef = functions[func_name].cached_definition
       output_arg_name = fdef.signature.output_arg[output_idx].name
       output_tensor_name = fdef.ret[output_arg_name]
       return resource_input_index(
@@ -284,8 +287,7 @@ def output_all_intermediates():
     return _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
   if in_defun():
     return False
-  if (control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()) or
-      _is_tpu_strategy(distribution_strategy_context.get_strategy())):
+  if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
     return False
   if (context.context().function_call_options.executor_type ==
       "SINGLE_THREADED_EXECUTOR"):
@@ -301,7 +303,7 @@ def get_func_graph(op, input_shapes, func_name):
   while graph is not None:
     func = graph._get_function(func_name)  # pylint: disable=protected-access
     if func is not None:
-      fdef = func.definition
+      fdef = func.cached_definition
       break
     if hasattr(graph, "outer_graph"):
       graph = graph.outer_graph
@@ -319,7 +321,28 @@ def get_func_graph(op, input_shapes, func_name):
   # in `func_graph` from its gradient graph in `_resolve_grad_inputs`.
   with op.graph.as_default():
     func_graph = function_def_to_graph.function_def_to_graph(
-        fdef, input_shapes)
+        fdef, input_shapes=input_shapes)
+
+  # TODO(xjun): Ideally we want to retrieve the gradient functions instead of
+  # re-create them. But the lifetime of gradient functions of PartitionedCall
+  # ops is attached to ParitionedCall ops in the original func_graph and
+  # when we are inside this function we don't have access to the original
+  # func_graph or PartitionedCall ops. See cl/499362867 and cl/273858076 for
+  # more context.
+  for operation in func_graph.get_operations():
+    if operation.type in ["PartitionedCall", "StatefulPartitionedCall"]:
+      f = graph._get_function(operation.get_attr("f").name)  # pylint: disable=protected-access
+      try:
+        cf = concrete_function.ConcreteFunction.from_func_graph(
+            f.graph,
+            f.function_type,
+            attrs=f.cached_definition.attr,
+        )
+      except AttributeError:
+        # f is not found or f is a _DefinedFunction that doesn't have a graph.
+        continue
+      operation._gradient_function = cf._get_gradient_function()  # pylint: disable=protected-access
+
   return func_graph
 
 
@@ -367,10 +390,40 @@ def run_as_function_for_tape_gradients(make_op, inputs):
       # wrapped once, we stop wrapping to avoid infinite recursion.
       and not (ops.get_default_graph().building_function
                and "cflow_gradient_wrapper" in ops.get_default_graph().name)):
-    results = function.defun_with_attributes(
-        make_op,
-        autograph=False,
-        attributes=dict(func_name="cflow_gradient_wrapper"))(inputs)
+    results = tracing_compilation.call_function(
+        (inputs,),
+        tracing_options=tracing_compilation.TracingOptions(
+            make_op, "cflow_gradient_wrapper", autograph=False
+        ),
+    )
     return results
   else:
     return make_op(inputs)
+
+
+@tf_export(v1=["experimental.output_all_intermediates"])
+def set_output_all_intermediates(state):  # pylint: disable=invalid-name
+  """Whether to output all intermediates from functional control flow ops.
+
+  The "default" behavior to is to output all intermediates when using v2 control
+  flow inside Keras models in graph mode. This is needed to support taking
+  gradients of v2 control flow. In graph mode, Keras can sometimes freeze the
+  forward graph before the gradient computation which does not work for v2
+  control flow since it requires updating the forward ops to output the needed
+  intermediates. We work around this by proactively outputting the needed
+  intermediates when building the forward pass itself. Ideally any such extra
+  tensors should be pruned out at runtime. However, if for any reason this
+  doesn't work for you or if you have an inference-only model you can turn this
+  behavior off using
+  `tf.compat.v1.experimental.output_all_intermediates(False)`.
+
+  If with the default behavior you are still seeing errors of the form
+  "Connecting to invalid output X of source node Y which has Z outputs" try
+  setting `tf.compat.v1.experimental.output_all_intermediates(True)` and
+  please file an issue at https://github.com/tensorflow/tensorflow/issues.
+
+  Args:
+    state: True, False or None. None restores the default behavior.
+  """
+  global _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
+  _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = state  # pylint: disable=protected-access

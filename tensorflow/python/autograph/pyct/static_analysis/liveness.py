@@ -43,6 +43,13 @@ class Analyzer(cfg.GraphVisitor):
   def init_state(self, _):
     return set()
 
+  def lamba_check(self, fn_ast_node):
+    if isinstance(fn_ast_node, gast.Lambda):
+      # Exception: lambda functions are assumed to be used only in the
+      # place where they are defined, and not later.
+      return True
+    return False
+
   def visit_node(self, node):
     prev_live_in = self.in_[node]
 
@@ -65,9 +72,7 @@ class Analyzer(cfg.GraphVisitor):
       reaching_functions = anno.getanno(
           node.ast_node, anno.Static.DEFINED_FNS_IN)
       for fn_ast_node in reaching_functions:
-        if isinstance(fn_ast_node, gast.Lambda):
-          # Exception: lambda functions are assumed to be used only in the
-          # place where they are defined, and not later.
+        if self.lamba_check(fn_ast_node):
           continue
         fn_scope = anno.getanno(fn_ast_node, annos.NodeAnno.ARGS_AND_BODY_SCOPE)
         # Any closure of a reaching function definition is conservatively

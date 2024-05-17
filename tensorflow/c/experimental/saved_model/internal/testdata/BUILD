@@ -1,7 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "py_strict_binary")
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -12,15 +13,15 @@ py_strict_binary(
     srcs = ["gen_saved_models.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/saved_model",
         "@absl_py//absl:app",
     ],

@@ -14,16 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
+#include <vector>
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "xla/client/lib/arithmetic.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/math.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -159,11 +160,11 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
 
     // The instruction min_range has the shape of the axis, which is also the
     // shape for max_range, scale and inverse_scale.
-    xla::Shape axis_shape = b->GetShape(min_range).ValueOrDie();
+    xla::Shape axis_shape = b->GetShape(min_range).value();
     // The XLA client library can handle implicit broadcast from scalar. Add
     // explicit broadcast if the axis has a non-scalar shape.
     if (!xla::ShapeUtil::IsScalar(axis_shape)) {
-      xla::Shape input_shape = b->GetShape(input).ValueOrDie();
+      xla::Shape input_shape = b->GetShape(input).value();
       absl::Span<const int64_t> input_dimensions = input_shape.dimensions();
       auto convert_to_input_shape = [&](const xla::XlaOp op) {
         return xla::BroadcastInDim(op, input_dimensions, {axis_});

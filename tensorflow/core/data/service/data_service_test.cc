@@ -59,9 +59,9 @@ tstring LocalTempFilename() {
   return tstring(path);
 }
 
-std::vector<int64_t> Range(const int64 range) {
+std::vector<int64_t> Range(const int64_t range) {
   std::vector<int64_t> result;
-  for (int64 i = 0; i < range; ++i) {
+  for (int64_t i = 0; i < range; ++i) {
     result.push_back(i);
   }
   return result;
@@ -235,7 +235,7 @@ TEST(DataServiceTest, GcMissingClientsWithSmallTimeout) {
   TF_ASSERT_OK(dataset_client.GetTasks(iteration_client_id).status());
   // Iteration should be garbage collected within 10 seconds.
   absl::Time wait_start = absl::Now();
-  TF_ASSERT_OK(WaitWhile([&]() -> StatusOr<bool> {
+  TF_ASSERT_OK(WaitWhile([&]() -> absl::StatusOr<bool> {
     TF_ASSIGN_OR_RETURN(size_t num_iterations, cluster.NumActiveIterations());
     return num_iterations > 0;
   }));

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -86,6 +87,7 @@ class Placer {
   // This method is not thread-safe.
   // Run() may be invoked at most once.
   Status Run();
+  Status Run(const GraphOptimizationPassOptions& options);
 
  private:
   // Returns true if the device type of 'candidate_device_name' is
@@ -101,7 +103,8 @@ class Placer {
   const bool allow_soft_placement_;
   const bool log_device_placement_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Placer);
+  Placer(const Placer&) = delete;
+  void operator=(const Placer&) = delete;
 };
 
 }  // namespace tensorflow

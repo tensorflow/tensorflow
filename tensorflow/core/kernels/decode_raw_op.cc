@@ -58,7 +58,7 @@ class DecodeRawOp : public OpKernel {
     }
     TensorShape out_shape = input.shape();
     if (str_size == -1 || str_size == 0) {  // Empty input
-      out_shape.AddDim(0);
+      OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(0));
       Tensor* output_tensor = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output("output", out_shape,
                                                        &output_tensor));
@@ -70,7 +70,7 @@ class DecodeRawOp : public OpKernel {
                                 " that is not a multiple of ", sizeof(T),
                                 ", the size of ", DataTypeString(out_type_)));
     const int64_t added_dim = str_size / sizeof(T);
-    out_shape.AddDim(added_dim);
+    OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(added_dim));
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output("output", out_shape, &output_tensor));
@@ -82,8 +82,7 @@ class DecodeRawOp : public OpKernel {
     // output type is a single byte, we can copy the memory directly.
     if (!convert_data_endianness_ || sizeof(T) == 1) {
       for (int64_t i = 0; i < flat_in.size(); ++i) {
-        const T* in_data = reinterpret_cast<const T*>(flat_in(i).data());
-        memcpy(out_data, in_data, str_size);
+        memcpy(out_data, flat_in(i).data(), str_size);
         out_data += added_dim;
       }
     } else {

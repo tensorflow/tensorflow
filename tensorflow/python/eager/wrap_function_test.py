@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -414,7 +415,8 @@ class WrappedGraphTest(test.TestCase):
   def testCollections(self):
 
     def fn(x):
-      v = variables.VariableV1(3, name='v', trainable=False, collections=['a'])
+      v = variable_v1.VariableV1(
+          3, name='v', trainable=False, collections=['a'])
       v2 = variable_scope.get_variable(
           'v', initializer=init_ops.Constant(4), shape=[], dtype=dtypes.int32,
           collections=['a', 'b'])

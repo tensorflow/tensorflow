@@ -19,10 +19,10 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE) && !defined(IS_MOBILE_PLATFORM)
-#include "png.h"  // from @png
+#include "png.h"  // from @png  // IWYU pragma: export
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_WINDOWS) || \
     defined(PLATFORM_POSIX_ANDROID) || defined(IS_MOBILE_PLATFORM)
-#include <png.h>
+#include <png.h>  // IWYU pragma: export
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif

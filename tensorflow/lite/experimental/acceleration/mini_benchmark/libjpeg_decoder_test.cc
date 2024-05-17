@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_status.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_chessboard_jpeg.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_snow_jpeg.h"
@@ -60,7 +60,7 @@ TEST(LibjpegDecoderTest, DecodingChessboardShouldSucceedOnAndroid) {
   ASSERT_THAT(decoder, NotNull());
   tflite::StringRef string_ref = {
       reinterpret_cast<const char*>(g_tflite_acceleration_chessboard_jpeg),
-      g_tflite_acceleration_chessboard_jpeg_len};
+      static_cast<size_t>(g_tflite_acceleration_chessboard_jpeg_len)};
   unsigned char decoded[kDecodedSize];
 
   status = decoder->DecodeImage(string_ref, kExpectedImageDimensions, decoded,
@@ -81,8 +81,7 @@ TEST(LibjpegDecoderTest, DecodingRainbowTestCardShouldSucceedOnAndroid) {
   std::string encoded(
       reinterpret_cast<const char*>(g_tflite_acceleration_test_card_jpeg),
       g_tflite_acceleration_test_card_jpeg_len);
-  tflite::StringRef string_ref = {encoded.c_str(),
-                                  static_cast<int>(encoded.length())};
+  tflite::StringRef string_ref = {encoded.c_str(), encoded.length()};
   unsigned char decoded[kDecodedSize];
 
   status = decoder->DecodeImage(string_ref, kExpectedImageDimensions, decoded,
@@ -101,7 +100,7 @@ TEST(LibjpegDecoderTest, ErrorsFromJpegLayerAreReturnedToCaller) {
   EXPECT_EQ(status.code, kTfLiteOk);
   ASSERT_THAT(decoder, NotNull());
   std::string str = "this is not a jpeg image";
-  tflite::StringRef encoded = {str.c_str(), static_cast<int>(str.length())};
+  tflite::StringRef encoded = {str.c_str(), str.length()};
   unsigned char decoded_image[12];
 
   status = decoder->DecodeImage(encoded, kExpectedImageDimensions,
@@ -120,8 +119,7 @@ TEST(LibjpegDecoderTest, DecodingFailsWhenDecodeBufferIsSmall) {
   std::string encoded(
       reinterpret_cast<const char*>(g_tflite_acceleration_test_card_jpeg),
       g_tflite_acceleration_test_card_jpeg_len);
-  tflite::StringRef string_ref = {encoded.c_str(),
-                                  static_cast<int>(encoded.length())};
+  tflite::StringRef string_ref = {encoded.c_str(), encoded.length()};
   const int decoded_size = 100;
   unsigned char decoded[decoded_size];
   status = decoder->DecodeImage(string_ref, kExpectedImageDimensions, decoded,
@@ -141,8 +139,7 @@ TEST(LibjpegDecoderTest, DecodingFailsWhenImageDimensionsDifferFromExpected) {
   std::string encoded(
       reinterpret_cast<const char*>(g_tflite_acceleration_test_card_jpeg),
       g_tflite_acceleration_test_card_jpeg_len);
-  tflite::StringRef string_ref = {encoded.c_str(),
-                                  static_cast<int>(encoded.length())};
+  tflite::StringRef string_ref = {encoded.c_str(), encoded.length()};
   unsigned char decoded[kDecodedSize];
 
   status = decoder->DecodeImage(string_ref,
@@ -164,8 +161,7 @@ TEST(LibjpegDecoderTest, DecodingFailsWhenImageDimensionsAreOverThreshold) {
   std::string encoded(
       reinterpret_cast<const char*>(g_tflite_acceleration_test_card_jpeg),
       g_tflite_acceleration_test_card_jpeg_len);
-  tflite::StringRef origin_string_ref = {encoded.c_str(),
-                                         static_cast<int>(encoded.length())};
+  tflite::StringRef origin_string_ref = {encoded.c_str(), encoded.length()};
 
   const JpegHeader kHeader{
       .height = static_cast<int>(LibjpegDecoder::kMaxImageHeight + 1),
@@ -181,8 +177,8 @@ TEST(LibjpegDecoderTest, DecodingFailsWhenImageDimensionsAreOverThreshold) {
       BuildImageWithNewHeader(origin_string_ref, kHeader, altered_image);
   ASSERT_EQ(alter_header_status.code, kTfLiteOk);
 
-  tflite::StringRef altered_string_ref = {
-      altered_image.c_str(), static_cast<int>(altered_image.length())};
+  tflite::StringRef altered_string_ref = {altered_image.c_str(),
+                                          altered_image.length()};
 
   std::vector<unsigned char> decoded(decoded_size);
   status = decoder->DecodeImage(altered_string_ref, kHeader, decoded.data(),
@@ -205,8 +201,7 @@ TEST(LibjpegDecoderTest, DecodingFailsWhenImageHasUnsupportedNumberOfChannels) {
   std::string encoded(
       reinterpret_cast<const char*>(g_tflite_acceleration_test_card_jpeg),
       g_tflite_acceleration_test_card_jpeg_len);
-  tflite::StringRef string_ref = {encoded.c_str(),
-                                  static_cast<int>(encoded.length())};
+  tflite::StringRef string_ref = {encoded.c_str(), encoded.length()};
   unsigned char decoded[300 * 250 * 4];
 
   const JpegHeader kHeader{.height = 300, .width = 250, .channels = 4};
@@ -225,8 +220,7 @@ TEST(LibjpegDecoderTest, DecodingFailsWhenExpectedBitPerSampleIsNot8) {
   std::string encoded(
       reinterpret_cast<const char*>(g_tflite_acceleration_test_card_jpeg),
       g_tflite_acceleration_test_card_jpeg_len);
-  tflite::StringRef string_ref = {encoded.c_str(),
-                                  static_cast<int>(encoded.length())};
+  tflite::StringRef string_ref = {encoded.c_str(), encoded.length()};
   unsigned char decoded[kDecodedSize];
 
   status = decoder->DecodeImage(
@@ -247,9 +241,8 @@ TEST(LibjpegDecoderTest, DoesNotDecodeBeyondWhatIsSpecifiedInHeader) {
   std::string origin_encoded_img(
       reinterpret_cast<const char*>(g_tflite_acceleration_test_card_jpeg),
       g_tflite_acceleration_test_card_jpeg_len);
-  tflite::StringRef origin_string_ref = {
-      origin_encoded_img.c_str(),
-      static_cast<int>(origin_encoded_img.length())};
+  tflite::StringRef origin_string_ref = {origin_encoded_img.c_str(),
+                                         origin_encoded_img.length()};
 
   JpegHeader undersized_image_header = {
       .height = kExpectedImageDimensions.height / 2,
@@ -260,8 +253,8 @@ TEST(LibjpegDecoderTest, DoesNotDecodeBeyondWhatIsSpecifiedInHeader) {
       origin_string_ref, undersized_image_header, altered_image);
   ASSERT_EQ(alter_header_status.code, kTfLiteOk);
 
-  tflite::StringRef altered_string_ref = {
-      altered_image.c_str(), static_cast<int>(altered_image.length())};
+  tflite::StringRef altered_string_ref{altered_image.c_str(),
+                                       altered_image.length()};
 
   unsigned char decoded[kDecodedSize / 4];
 
@@ -279,9 +272,8 @@ TEST(LibjpegDecoderTest, CanReadImagesWithVeryLargeRows) {
   std::string origin_encoded_img(
       reinterpret_cast<const char*>(g_tflite_acceleration_snow_jpeg),
       g_tflite_acceleration_snow_jpeg_len);
-  tflite::StringRef origin_string_ref = {
-      origin_encoded_img.c_str(),
-      static_cast<int>(origin_encoded_img.length())};
+  tflite::StringRef origin_string_ref = {origin_encoded_img.c_str(),
+                                         origin_encoded_img.length()};
 
   JpegHeader one_long_row_image_header = {
       .height = 1,
@@ -292,8 +284,8 @@ TEST(LibjpegDecoderTest, CanReadImagesWithVeryLargeRows) {
       origin_string_ref, one_long_row_image_header, altered_image);
   ASSERT_EQ(alter_header_status.code, kTfLiteOk);
 
-  tflite::StringRef altered_string_ref = {
-      altered_image.c_str(), static_cast<int>(altered_image.length())};
+  tflite::StringRef altered_string_ref = {altered_image.c_str(),
+                                          altered_image.length()};
 
   const size_t kImageSize = LibjpegDecoder::kMaxImageWidth * 3;
   std::vector<unsigned char> decoded(kImageSize);
@@ -312,8 +304,7 @@ TEST(LibjpegDecoderTest, FailDecodingAnImageWithUnexpectedEofInDataStream) {
   std::string img(
       reinterpret_cast<const char*>(g_tflite_acceleration_test_card_jpeg),
       g_tflite_acceleration_test_card_jpeg_len);
-  tflite::StringRef truncated_image_ref = {
-      img.c_str(), static_cast<int>(img.length() - 100)};
+  tflite::StringRef truncated_image_ref = {img.c_str(), img.length() - 100};
 
   unsigned char decoded[kDecodedSize];
 

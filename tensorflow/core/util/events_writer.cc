@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <stddef.h>  // for NULL
 
+#include <memory>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -58,7 +60,7 @@ Status EventsWriter::InitIfNeeded() {
       }
     } else {
       // No-op: File is present and writer is initialized.
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -76,7 +78,7 @@ Status EventsWriter::InitIfNeeded() {
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       env_->NewWritableFile(filename_, &recordio_file_),
       "Creating writable file ", filename_);
-  recordio_writer_.reset(new io::RecordWriter(recordio_file_.get()));
+  recordio_writer_ = std::make_unique<io::RecordWriter>(recordio_file_.get());
   if (recordio_writer_ == nullptr) {
     return errors::Unknown("Could not create record writer");
   }
@@ -89,10 +91,12 @@ Status EventsWriter::InitIfNeeded() {
     Event event;
     event.set_wall_time(time_in_seconds);
     event.set_file_version(strings::StrCat(kVersionPrefix, kCurrentVersion));
+    SourceMetadata* source_metadata = event.mutable_source_metadata();
+    source_metadata->set_writer(kWriterSourceMetadata);
     WriteEvent(event);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(Flush(), "Flushing first event.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string EventsWriter::FileName() {
@@ -122,7 +126,7 @@ void EventsWriter::WriteEvent(const Event& event) {
 }
 
 Status EventsWriter::Flush() {
-  if (num_outstanding_events_ == 0) return OkStatus();
+  if (num_outstanding_events_ == 0) return absl::OkStatus();
   CHECK(recordio_file_ != nullptr) << "Unexpected NULL file";
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(recordio_writer_->Flush(), "Failed to flush ",
@@ -133,7 +137,7 @@ Status EventsWriter::Flush() {
                                   filename_);
   VLOG(1) << "Wrote " << num_outstanding_events_ << " events to disk.";
   num_outstanding_events_ = 0;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EventsWriter::Close() {
@@ -152,7 +156,7 @@ Status EventsWriter::Close() {
 
 Status EventsWriter::FileStillExists() {
   if (env_->FileExists(filename_).ok()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   // This can happen even with non-null recordio_writer_ if some other
   // process has removed the file.

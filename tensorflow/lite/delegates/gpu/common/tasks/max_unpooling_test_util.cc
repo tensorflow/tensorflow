@@ -50,7 +50,8 @@ absl::Status MaxUnpoolingTest(TestExecutionEnvironment* env) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation = CreateMaxUnpooling(op_def, attr);
+      GPUOperation operation =
+          CreateMaxUnpooling(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor, src_ind_tensor},
           std::make_unique<GPUOperation>(std::move(operation)),

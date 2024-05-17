@@ -20,6 +20,7 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -149,16 +150,23 @@ class RangeTest(test_base.DatasetTestBase, parameterized.TestCase):
 class RangeCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                           parameterized.TestCase):
 
-  def _build_range_dataset(self, start, stop):
-    return dataset_ops.Dataset.range(start, stop)
+  def _build_range_dataset(self, start, stop, options=None):
+    dataset = dataset_ops.Dataset.range(start, stop)
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
     start = 2
     stop = 10
-    verify_fn(self, lambda: self._build_range_dataset(start, stop),
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(self, lambda: self._build_range_dataset(start, stop, options),
               stop - start)
 
 

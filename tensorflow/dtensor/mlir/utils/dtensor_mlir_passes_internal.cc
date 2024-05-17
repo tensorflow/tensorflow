@@ -15,19 +15,31 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.h"
 
-#include "mlir/IR/BuiltinOps.h"
+#include <cstdlib>
+
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/dtensor/mlir/create_dtensor_mlir_passes.h"
+
 
 namespace tensorflow {
 namespace dtensor {
 
-void AddDTensorAllReduceCombineOptimization(mlir::OpPassManager* pm){}
-
-void AddDTensorEmbeddingPass(mlir::OpPassManager* pm){}
-
-void AddDTensorEmbeddingPassV2(mlir::OpPassManager* pm){}
-
-void AddDTensorEmbeddingCheckpointPass(mlir::OpPassManager* pm){}
+// Combine independent DTensorAllReduceOps from the same ClusterOp.
+// Non-sea of donuts does not need this. It can rely on the XLA all-reduce
+// combiner instead.
+void AddDTensorAllReduceCombineOptimization(mlir::OpPassManager* pm) {
+  // Experimental feature. If zero, the optimization for combining all reduces
+  // with same group assignment and reduction, will not be done.
+  const char* env_str =
+      (std::getenv("DTENSOR_ENABLE_COMBINE_ALL_REDUCES_OPTIMIZATION"));
+  if (env_str && strcmp(env_str, "0") == 0) {
+    return;
+  }
+  pm->addNestedPass<mlir::func::FuncOp>(
+      CreateDTensorAllReduceCombineOptimization());
+}
 
 }  // namespace dtensor
 }  // namespace tensorflow
+

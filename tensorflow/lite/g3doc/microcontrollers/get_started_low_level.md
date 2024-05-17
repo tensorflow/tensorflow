@@ -16,16 +16,16 @@ animation.
 
 The end-to-end workflow involves the following steps:
 
-1.  [Train a model](#train_a_model) (in Python): A jupyter notebook to train,
-    convert and optimize a model for on-device use.
-2.  [Run inference](#run_inference) (in C++ 11): An end-to-end unit test that
+1.  [Train a model](#train_a_model) (in Python): A python file to train, convert
+    and optimize a model for on-device use.
+2.  [Run inference](#run_inference) (in C++ 17): An end-to-end unit test that
     runs inference on the model using the [C++ library](library.md).
 
 ## Get a supported device
 
 The example application we'll be using has been tested on the following devices:
 
-*   [Arduino Nano 33 BLE Sense](https://store.arduino.cc/usa/nano-33-ble-sense-with-headers)
+*   [Arduino Nano 33 BLE Sense](https://store-usa.arduino.cc/products/arduino-nano-33-ble-sense-with-headers)
     (using Arduino IDE)
 *   [SparkFun Edge](https://www.sparkfun.com/products/15170) (building directly
     from source)
@@ -50,12 +50,13 @@ Learn more about supported platforms in
 Note: You can skip this section and use the trained model included in the
 example code.
 
-Use Google Colaboratory to
-[train your own model](https://colab.research.google.com/github/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/train/train_hello_world_model.ipynb).
-For more details, refer to the `README.md`:
+Use
+[train.py](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/train.py)
+for hello world model training for sinwave recognition
 
-<a class="button button-primary" href="https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/hello_world/train/README.md">Hello
-World Training README.md</a>
+Run: `bazel build tensorflow/lite/micro/examples/hello_world:train`
+`bazel-bin/tensorflow/lite/micro/examples/hello_world/train --save_tf_model
+--save_dir=/tmp/model_created/`
 
 ## Run inference
 
@@ -66,7 +67,7 @@ To run the model on your device, we will walk through the instructions in the
 World README.md</a>
 
 The following sections walk through the example's
-[`hello_world_test.cc`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/hello_world/hello_world_test.cc),
+[`evaluate_test.cc`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/hello_world/evaluate_test.cc),
 unit test which demonstrates how to run inference using TensorFlow Lite for
 Microcontrollers. It loads the model and runs inference several times.
 
@@ -76,16 +77,16 @@ To use the TensorFlow Lite for Microcontrollers library, we must include the
 following header files:
 
 ```C++
-#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 ```
 
--   [`all_ops_resolver.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/all_ops_resolver.h)
+-   [`micro_mutable_op_resolver.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/micro_mutable_op_resolver.h)
     provides the operations used by the interpreter to run the model.
--   [`micro_error_reporter.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/micro_error_reporter.h)
+-   [`micro_error_reporter.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/tflite_bridge/micro_error_reporter.h)
     outputs debug information.
 -   [`micro_interpreter.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/micro_interpreter.h)
     contains code to load and run models.
@@ -162,23 +163,29 @@ if (model->version() != TFLITE_SCHEMA_VERSION) {
 
 ### 6. Instantiate operations resolver
 
-An
-[`AllOpsResolver`](github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/all_ops_resolver.h)
-instance is declared. This will be used by the interpreter to access the
-operations that are used by the model:
+A
+[`MicroMutableOpResolver`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/micro_mutable_op_resolver.h)
+instance is declared. This will be used by the interpreter to register and
+access the operations that are used by the model:
 
 ```C++
-tflite::AllOpsResolver resolver;
+using HelloWorldOpResolver = tflite::MicroMutableOpResolver<1>;
+
+TfLiteStatus RegisterOps(HelloWorldOpResolver& op_resolver) {
+  TF_LITE_ENSURE_STATUS(op_resolver.AddFullyConnected());
+  return kTfLiteOk;
+
 ```
 
-The `AllOpsResolver` loads all of the operations available in TensorFlow Lite
-for Microcontrollers, which uses a lot of memory. Since a given model will only
-use a subset of these operations, it's recommended that real world applications
-load only the operations that are needed.
+The `MicroMutableOpResolver`requires a template parameter indicating the number
+of ops that will be registered. The `RegisterOps` function registers the ops
+with the resolver.
 
-This is done using a different class, `MicroMutableOpResolver`. You can see how
-to use it in the *Micro speech* example's
-[`micro_speech_test.cc`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/micro_speech/micro_speech_test.cc).
+```C++
+HelloWorldOpResolver op_resolver;
+TF_LITE_ENSURE_STATUS(RegisterOps(op_resolver));
+
+```
 
 ### 7. Allocate memory
 
@@ -331,12 +338,3 @@ interpreter.Invoke();
 value = output->data.f[0];
 TF_LITE_MICRO_EXPECT_NEAR(-0.959, value, 0.05);
 ```
-
-### 15. Read the application code
-
-Once you have walked through this unit test, you should be able to understand
-the example's application code, located in
-[`main_functions.cc`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/main_functions.cc).
-It follows a similar process, but generates an input value based on how many
-inferences have been run, and calls a device-specific function that displays the
-model's output to the user.

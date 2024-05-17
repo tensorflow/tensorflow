@@ -160,6 +160,9 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
     if want is None:
       want = ''
 
+    if want == got:
+      return True
+
     # Replace python's addresses with ellipsis (`...`) since it can change on
     # each execution.
     want = self._ADDRESS_RE.sub('at ...>', want)
@@ -172,7 +175,16 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
     # Separate out the floats, and replace `want` with the wild-card version
     # "result=7.0" => "result=..."
     want_text_parts, self.want_floats = self.extract_floats(want)
+    # numpy sometimes pads floats in arrays with spaces
+    # got: [1.2345, 2.3456, 3.0   ]  want:  [1.2345, 2.3456, 3.0001]
+    # And "normalize whitespace" only works when there's at least one space,
+    # so strip them and let the wildcard handle it.
+    want_text_parts = [part.strip(' ') for part in want_text_parts]
     want_text_wild = '...'.join(want_text_parts)
+    if '....' in want_text_wild:
+      # If a float comes just after a period you'll end up four dots and the
+      # first three count as the ellipsis. Replace it with three dots.
+      want_text_wild = re.sub(r'\.\.\.\.+', '...', want_text_wild)
 
     # Find the floats in the string returned by the test
     _, self.got_floats = self.extract_floats(got)

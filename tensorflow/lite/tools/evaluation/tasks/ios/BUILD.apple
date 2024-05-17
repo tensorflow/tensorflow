@@ -1,0 +1,37 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
+load("//tensorflow/lite/ios:ios.bzl", "TFL_MINIMUM_OS_VERSION")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
+
+# Main target for the inference diff tool iOS framework.
+# bazel build --config=ios_arm64 -c opt --cxxopt=-std=c++17 //tensorflow/lite/tools/evaluation/tasks/ios:TensorFlowLiteInferenceDiffC_framework
+ios_static_framework(
+    name = "TensorFlowLiteInferenceDiffC_framework",
+    hdrs = [
+        "//tensorflow/lite/tools:logging.h",
+        "//tensorflow/lite/tools/evaluation/tasks:task_executor_c_api.h",
+    ],
+    bundle_name = "TensorFlowLiteInferenceDiffC",
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    deps = [
+        "//tensorflow/lite/tools/evaluation/tasks:task_executor_c_api",
+        "//tensorflow/lite/tools/evaluation/tasks/inference_diff:run_eval_lib",
+    ],
+)
+
+# Used for building TensorFlowLiteInferenceDiffC_framework framework.
+build_test(
+    name = "framework_build_test",
+    # build_test targets are not meant to be run with sanitizers.
+    tags = [
+        "nomsan",
+        "notsan",
+    ],
+    targets = [
+        ":TensorFlowLiteInferenceDiffC_framework",
+    ],
+)

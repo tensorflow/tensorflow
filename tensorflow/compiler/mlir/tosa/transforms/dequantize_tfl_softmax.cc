@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -30,10 +32,13 @@ namespace mlir {
 namespace tosa {
 namespace {
 
+#define GEN_PASS_DEF_TOSADEQUANTIZETFLSOFTMAXPASS
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
 class TosaDequantizeTFLSoftmax
-    : public TosaDequantizeTFLSoftmaxPassBase<TosaDequantizeTFLSoftmax> {
+    : public impl::TosaDequantizeTFLSoftmaxPassBase<TosaDequantizeTFLSoftmax> {
  public:
-  explicit TosaDequantizeTFLSoftmax() {}
+  explicit TosaDequantizeTFLSoftmax() = default;
   void runOnOperation() override;
 };
 
@@ -48,18 +53,18 @@ LogicalResult TosaDequantizeTFLSoftmaxPattern::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   TFL::SoftmaxOp tfl_softmax_op = cast<TFL::SoftmaxOp>(op);
   RankedTensorType input_type =
-      tfl_softmax_op.input().getType().cast<RankedTensorType>();
-  if (!input_type.getElementType().isa<mlir::quant::QuantizedType>()) {
+      mlir::cast<RankedTensorType>(tfl_softmax_op.getInput().getType());
+  if (!mlir::isa<mlir::quant::QuantizedType>(input_type.getElementType())) {
     return failure();
   }
   Location loc = tfl_softmax_op.getLoc();
   RankedTensorType dequantized_input_type =
       RankedTensorType::get(input_type.getShape(), rewriter.getF32Type());
   Value dequantized_input = rewriter.create<TFL::DequantizeOp>(
-      loc, dequantized_input_type, tfl_softmax_op.input());
+      loc, dequantized_input_type, tfl_softmax_op.getInput());
   Value dequantized_softmax_output = rewriter.create<TFL::SoftmaxOp>(
-      loc, dequantized_input_type, dequantized_input, tfl_softmax_op.beta());
-  Type qtype = tfl_softmax_op.output().getType();
+      loc, dequantized_input_type, dequantized_input, tfl_softmax_op.getBeta());
+  Type qtype = tfl_softmax_op.getOutput().getType();
   rewriter.replaceOpWithNewOp<TFL::QuantizeOp>(tfl_softmax_op, qtype,
                                                dequantized_softmax_output,
                                                mlir::TypeAttr::get(qtype));

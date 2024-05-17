@@ -1,0 +1,9 @@
+path: "tensorflow.tpu.experimental.embedding.QuantizationConfig"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils.QuantizationConfig\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'num_buckets\', \'lower\', \'upper\'], varargs=None, keywords=None, defaults=None"
+  }
+}

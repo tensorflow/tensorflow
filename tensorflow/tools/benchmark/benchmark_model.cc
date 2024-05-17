@@ -26,25 +26,34 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/core/util/reporter.h"
 #include "tensorflow/core/util/stat_summarizer.h"
+#include "tensorflow/core/util/stat_summarizer_options.h"
+#include "tensorflow/core/util/stats_calculator.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace benchmark_model {
@@ -80,6 +89,10 @@ void CreateTensorsFromInputInfo(
     switch (input.data_type) {
       case DT_INT32: {
         InitializeTensor<int32>(input.initialization_values, &input_tensor);
+        break;
+      }
+      case DT_INT64: {
+        InitializeTensor<int64>(input.initialization_values, &input_tensor);
         break;
       }
       case DT_FLOAT: {

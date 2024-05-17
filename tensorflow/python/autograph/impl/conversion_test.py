@@ -14,12 +14,9 @@
 # ==============================================================================
 """Tests for conversion module."""
 
-import imp
 import sys
 import types
 import weakref
-
-import six
 
 from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import config
@@ -50,7 +47,7 @@ class ConversionTest(test.TestCase):
 
   def test_is_allowlisted_tensorflow_like(self):
 
-    tf_like = imp.new_module('tensorflow_foo')
+    tf_like = types.ModuleType('tensorflow_foo')
     def test_fn():
       pass
     tf_like.test_fn = test_fn
@@ -60,12 +57,12 @@ class ConversionTest(test.TestCase):
 
   def test_is_allowlisted_callable_allowlisted_call(self):
 
-    allowlisted_mod = imp.new_module('test_allowlisted_call')
+    allowlisted_mod = types.ModuleType('test_allowlisted_call')
     sys.modules['test_allowlisted_call'] = allowlisted_mod
     config.CONVERSION_RULES = ((config.DoNotConvert('test_allowlisted_call'),) +
                                config.CONVERSION_RULES)
 
-    class TestClass(object):
+    class TestClass:
 
       def __call__(self):
         pass
@@ -74,10 +71,7 @@ class ConversionTest(test.TestCase):
         pass
 
     TestClass.__module__ = 'test_allowlisted_call'
-    if six.PY2:
-      TestClass.__call__.__func__.__module__ = 'test_allowlisted_call'
-    else:
-      TestClass.__call__.__module__ = 'test_allowlisted_call'
+    TestClass.__call__.__module__ = 'test_allowlisted_call'
 
     class Subclass(TestClass):
 
@@ -94,8 +88,12 @@ class ConversionTest(test.TestCase):
     self.assertFalse(conversion.is_allowlisted(tc.converted_method))
 
   def test_is_allowlisted_tfmethodwrapper(self):
+    allowlisted_mod = types.ModuleType('test_allowlisted_call')
+    sys.modules['test_allowlisted_call'] = allowlisted_mod
+    config.CONVERSION_RULES = ((config.DoNotConvert('test_allowlisted_call'),) +
+                               config.CONVERSION_RULES)
 
-    class TestClass(object):
+    class TestClass:
 
       def member_function(self):
         pass

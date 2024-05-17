@@ -1,10 +1,11 @@
 # Description:
 # Profiler C API
 
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "filegroup")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -61,8 +62,8 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler/lib:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
 )

@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -22,17 +24,16 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 
 namespace tensorflow {
-
 namespace dtensor {
+
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_DTENSORFUNCTIONRENAMING
 #include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 struct DTensorFunctionRenaming
-    : public DTensorFunctionRenamingBase<DTensorFunctionRenaming> {
+    : public impl::DTensorFunctionRenamingBase<DTensorFunctionRenaming> {
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
 

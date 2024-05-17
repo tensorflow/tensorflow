@@ -14,6 +14,7 @@
 # ==============================================================================
 """Jacobian ops."""
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gradients_impl as gradient_ops
@@ -66,7 +67,7 @@ def jacobian(output, inputs, use_pfor=True, parallel_iterations=None):
         parallel_iterations=parallel_iterations)
 
   for i, out in enumerate(pfor_outputs):
-    if isinstance(out, ops.Tensor):
+    if isinstance(out, tensor.Tensor):
       new_shape = array_ops.concat(
           [output_shape, array_ops.shape(out)[1:]], axis=0)
       out = array_ops.reshape(out, new_shape)

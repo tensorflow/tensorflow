@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 

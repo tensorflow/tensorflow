@@ -19,17 +19,22 @@ import os
 from absl.testing import parameterized
 
 from google.protobuf import text_format
-
 from tensorflow.core.config import flags
+from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import function_pb2
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.framework import graph_pb2
-from tensorflow.core.protobuf import graph_debug_info_pb2
+from tensorflow.core.framework import node_def_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.checkpoint import checkpoint
+from tensorflow.python.checkpoint.sharding import sharding_policies
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -41,13 +46,15 @@ from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
+from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
@@ -58,12 +65,20 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training import saver
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 
 
-def _run_signature(session, meta_graph_def, inputs, signature_key):
+def _run_signature(
+    session,
+    meta_graph_def,
+    inputs,
+    signature_key,
+    disable_check_for_input_signature_size_match=False,
+):
   signature = meta_graph_def.signature_def[signature_key]
-  assert set(inputs.keys()) == set(signature.inputs.keys())
+  if not disable_check_for_input_signature_size_match:
+    assert set(inputs.keys()) == set(signature.inputs.keys())
   feed_dict = {}
   for arg_name in inputs.keys():
     input_tensor = session.graph.get_tensor_by_name(
@@ -79,12 +94,20 @@ def _run_signature(session, meta_graph_def, inputs, signature_key):
 def _import_and_infer(
     save_dir,
     inputs,
-    signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY):
+    signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+    disable_check_for_input_signature_size_match=False,
+):
   """Import a SavedModel into a TF 1.x-style graph and run `signature_key`."""
   graph = ops.Graph()
   with graph.as_default(), session_lib.Session() as session:
     model = loader.load(session, [tag_constants.SERVING], save_dir)
-    return _run_signature(session, model, inputs, signature_key)
+    return _run_signature(
+        session,
+        model,
+        inputs,
+        signature_key,
+        disable_check_for_input_signature_size_match,
+    )
 
 
 class SaveTest(test.TestCase, parameterized.TestCase):
@@ -106,7 +129,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     def case_fn(x):
       branch_index = constant_op.constant(1)
       branches = [lambda: x, lambda: x + 1]
-      case_out = control_flow_ops.switch_case(branch_index, branches)
+      case_out = control_flow_switch_case.switch_case(branch_index, branches)
       return case_out
 
     root.f = def_function.function(
@@ -165,6 +188,179 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     self.assertEqual({"out": 2.},
                      _import_and_infer(
                          save_dir, {"z": 1.}, signature_key="non_default_key"))
+
+  def test_method_save_defaults(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.float32)]
+    )
+    def f(x, y=constant_op.constant(5.0)):
+      return x + y
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.float32)]
+    )
+    def g(x=constant_op.constant(10.0), y=constant_op.constant(20.0)):
+      return x + y
+
+    root = module.Module()
+    root.f = f
+    root.g = g
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir, {"f": root.f, "g": root.g})
+
+    self.assertEqual(
+        {"output_0": 7.0},
+        _import_and_infer(
+            save_dir,
+            inputs={"x": 2.0},
+            signature_key="f",
+            disable_check_for_input_signature_size_match=True,
+        ),
+    )
+    self.assertEqual(
+        {"output_0": 30.0},
+        _import_and_infer(
+            save_dir,
+            inputs={},
+            signature_key="g",
+            disable_check_for_input_signature_size_match=True,
+        ),
+    )
+    self.assertEqual(
+        {"output_0": 15.0},
+        _import_and_infer(
+            save_dir,
+            inputs={"y": 5.0},
+            signature_key="g",
+            disable_check_for_input_signature_size_match=True,
+        ),
+    )
+
+  def test_save_defaults_dict(self):
+    root = autotrackable.AutoTrackable()
+
+    @def_function.function(
+        input_signature=[{
+            "temperature": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.float32, name="d"
+            ),
+            "per_example_max_decode_steps": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.int32, name="c"
+            ),
+            "per_example_top_k": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.int32, name="b"
+            ),
+            "gumbel_prng_key": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.int32, name="a"
+            ),
+        }]
+    )
+    def f(
+        x={
+            "temperature": constant_op.constant(0.5),
+            "per_example_max_decode_steps": constant_op.constant(1024),
+            "per_example_top_k": constant_op.constant(40),
+            "gumbel_prng_key": constant_op.constant(0),
+        }
+    ):  # pylint: disable=dangerous-default-value
+      return x
+
+    root.f = f
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir, root.f)
+
+    self.assertEqual(
+        {
+            "gumbel_prng_key": 0,
+            "per_example_max_decode_steps": 1024,
+            "temperature": 0.5,
+            "per_example_top_k": 40,
+        },
+        _import_and_infer(
+            save_dir, {}, disable_check_for_input_signature_size_match=True
+        ),
+    )
+
+  def test_save_defaults_nested_structure(self):
+    root = autotrackable.AutoTrackable()
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name="m"),
+            [
+                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+                {
+                    "temperature": tensor_spec.TensorSpec(
+                        shape=(), dtype=dtypes.float32
+                    ),
+                    "per_example_max_decode_steps": tensor_spec.TensorSpec(
+                        shape=(), dtype=dtypes.int32
+                    ),
+                    "per_example_top_k": tensor_spec.TensorSpec(
+                        shape=(), dtype=dtypes.int32
+                    ),
+                    "gumbel_prng_key": tensor_spec.TensorSpec(
+                        shape=(), dtype=dtypes.int32
+                    ),
+                    "dict_entry": {
+                        "a": tensor_spec.TensorSpec(
+                            shape=(), dtype=dtypes.float32
+                        ),
+                        "b": tensor_spec.TensorSpec(
+                            shape=(), dtype=dtypes.float32
+                        ),
+                    },
+                },
+                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+            ],
+            tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name="y"),
+        ]
+    )
+    def f(
+        m,
+        x=[
+            constant_op.constant(5.0),
+            constant_op.constant(1.0),
+            {
+                "tempurature": constant_op.constant(0.5),
+                "per_example_max_decode_steps": constant_op.constant(1024),
+                "per_example_top_k": constant_op.constant(40),
+                "gumbel_prng_key": constant_op.constant(0),
+                "dict_entry": {
+                    "a": constant_op.constant(1.0),
+                    "b": constant_op.constant(2.0),
+                },
+            },
+            constant_op.constant(3.0),
+        ],
+        y=constant_op.constant(2.0),
+    ):  # pylint: disable=dangerous-default-value
+      return m + x[2]["dict_entry"]["a"] + x[3] + y
+
+    root.f = f
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir, {"f": root.f})
+
+    self.assertEqual(
+        {"output_0": 8.0},
+        _import_and_infer(
+            save_dir,
+            inputs={"m": 2.0},
+            signature_key="f",
+            disable_check_for_input_signature_size_match=True,
+        ),
+    )
+
+    self.assertEqual(
+        {"output_0": 10.0},
+        _import_and_infer(
+            save_dir,
+            inputs={"m": 2.0, "y": 4.0},
+            signature_key="f",
+            disable_check_for_input_signature_size_match=True,
+        ),
+    )
 
   def test_unsaveable_func_graph(self):
     root = module.Module()
@@ -306,11 +502,11 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     root = ObjWithFunction()
     root.bar(1)
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertLogs(level="WARNING") as logs:
+    with self.assertLogs(level="INFO") as logs:
       save.save(root, save_dir)
 
     expected_message = (
-        "WARNING:absl:Found untraced functions such as foo while saving "
+        "INFO:absl:Found untraced functions such as foo while saving "
         "(showing 1 of 1). These functions will not be directly callable after "
         "loading.")
     self.assertIn(expected_message, logs.output)
@@ -430,20 +626,12 @@ class SaveTest(test.TestCase, parameterized.TestCase):
 
   def test_variable_args_cannot_be_used_as_signature(self):
 
-    @def_function.function(input_signature=[
-        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
-    ])
-    def f(unused_v):
-      return 1
-
-    root = autotrackable.AutoTrackable()
-    root.f = f.get_concrete_function()
-    with self.assertRaisesRegex(ValueError,
-                                "tf.Variable inputs cannot be exported"):
-      save.save(
-          root,
-          os.path.join(self.get_temp_dir(), "saved_model"),
-          signatures=root.f)
+    with self.assertRaises(TypeError):
+      @def_function.function(input_signature=[
+          resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
+      ])
+      def f(unused_v):
+        return 1
 
   def test_export_correct_output_shapes(self):
     """Asserts that nodes are exported with the correct number of output shapes.
@@ -764,6 +952,48 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     result = save.save(root, save_dir)
     self.assertIsNone(result)
 
+  def test_sharding_callback_saveoption(self):
+    servers = [server_lib.Server.create_local_server() for _ in range(3)]
+    cluster_spec = server_lib.ClusterSpec({
+        "worker": [s.target[len("grpc://"):] for s in servers]})
+    remote.connect_to_cluster(cluster_spec)
+    root = module.Module()
+    with ops.device("/job:worker/task:0/cpu:0"):
+      v0 = resource_variable_ops.ResourceVariable(0.0, name="v0")
+    self.evaluate(v0.initializer)
+    with ops.device("/job:worker/task:1/cpu:0"):
+      v1 = resource_variable_ops.ResourceVariable(1.0, name="v1")
+      v2 = resource_variable_ops.ResourceVariable([2.0, 3.0], name="v2")
+    self.evaluate(v1.initializer)
+    self.evaluate(v2.initializer)
+    root.v0 = v0
+    root.v1 = v1
+    root.v2 = v2
+
+    save_dir = os.path.join(self.get_temp_dir(), "shard_by_task")
+    save.save(
+        root, save_dir, options=save_options.SaveOptions(
+            experimental_sharding_callback=(
+                sharding_policies.ShardByTaskPolicy())))
+    self.assertLen(gfile.Glob(save_dir + "/variables/variables.data*"), 3)
+    loaded_root = load.load(save_dir)
+    self.assertEqual(loaded_root.v0.numpy(), root.v0.numpy())
+    self.assertEqual(loaded_root.v1.numpy(), root.v1.numpy())
+    self.assertEqual(loaded_root.v2.numpy()[0], root.v2.numpy()[0])
+    self.assertEqual(loaded_root.v2.numpy()[1], root.v2.numpy()[1])
+
+    save_dir = os.path.join(self.get_temp_dir(), "max_shard_size")
+    save.save(
+        root, save_dir, options=save_options.SaveOptions(
+            experimental_sharding_callback=(
+                sharding_policies.MaxShardSizePolicy(max_shard_size=(4)))))
+    self.assertLen(gfile.Glob(save_dir + "/variables/variables.data*"), 5)
+    loaded_root = load.load(save_dir)
+    self.assertEqual(loaded_root.v0.numpy(), root.v0.numpy())
+    self.assertEqual(loaded_root.v1.numpy(), root.v1.numpy())
+    self.assertEqual(loaded_root.v2.numpy()[0], root.v2.numpy()[0])
+    self.assertEqual(loaded_root.v2.numpy()[1], root.v2.numpy()[1])
+
 
 class DependencyTest(test.TestCase):
   """Tests for deserialization dependencies (saving-related only)."""
@@ -884,22 +1114,160 @@ class SavingOptionsTest(test.TestCase):
     # If the user passes an empty list for the namespace whitelist rather than
     # nothing, we should then throw an exception if a custom op is used.
     with self.assertRaisesRegex(
-        ValueError, "Attempted to save ops from non-whitelisted namespaces"):
+        ValueError, "Attempted to save ops from non-whitelisted namespaces"
+    ):
       save._verify_ops(graph_def, [])
+
+  def test_strip_debug_nodes(self):
+    # Test that we are able to strip debug nodes from a meta_graph correctly.
+    test_node_defs = [
+        node_def_pb2.NodeDef(
+            name="AssertNode",
+            op="Assert",
+            input=[
+                "NonControlInput:output:0",
+                "^ControlInput:output:0",
+            ],
+            attr={
+                "regular_node_attr": attr_value_pb2.AttrValue(i=1),
+                "_non_regular_node_attr": attr_value_pb2.AttrValue(i=2),
+            }
+        ),
+        node_def_pb2.NodeDef(
+            name="ConstNode",
+            op="Const",
+        ),
+        node_def_pb2.NodeDef(
+            name="CheckNumericsNode",
+            op="CheckNumerics",
+            input=[
+                "NonControlInput:output:0",
+                "NonControlInputTwo:output:0",
+                "^ControlInput:output:0",
+            ],
+            attr={
+                "T": attr_value_pb2.AttrValue(i=4),
+                "NotT": attr_value_pb2.AttrValue(i=5),
+            }
+        ),
+        node_def_pb2.NodeDef(
+            name="CheckNumericsNodeTwo",
+            op="CheckNumerics",
+            input=[
+                "NonControlInput:output:0",
+                "NonControlInputTwo:output:0",
+                "^ControlInput:output:0",
+            ],
+            attr={
+                "OnlyNotT": attr_value_pb2.AttrValue(i=6),
+            },
+        ),
+        node_def_pb2.NodeDef(
+            name="PrintNode",
+            op="Print",
+            input=[
+                "NonControlInput:output:0",
+            ],
+        ),
+        node_def_pb2.NodeDef(
+            name="PrintV2Node",
+            op="PrintV2",
+            input=[
+                "NonControlInput:output:0",
+            ],
+        ),
+    ]
+
+    expected_node_defs = [
+        node_def_pb2.NodeDef(
+            name="AssertNode",
+            op="NoOp",
+            input=[
+                "^NonControlInput",
+                "^ControlInput:output:0",
+            ],
+            attr={
+                "_non_regular_node_attr": attr_value_pb2.AttrValue(i=2),
+            }
+        ),
+        node_def_pb2.NodeDef(
+            name="ConstNode",
+            op="Const",
+        ),
+        node_def_pb2.NodeDef(
+            name="CheckNumericsNode",
+            op="Identity",
+            input=[
+                "NonControlInput:output:0",
+                "^NonControlInputTwo",
+                "^ControlInput:output:0",
+            ],
+            attr={
+                "T": attr_value_pb2.AttrValue(i=4),
+            }
+        ),
+        node_def_pb2.NodeDef(
+            name="CheckNumericsNodeTwo",
+            op="Identity",
+            input=[
+                "NonControlInput:output:0",
+                "^NonControlInputTwo",
+                "^ControlInput:output:0",
+            ],
+        ),
+        node_def_pb2.NodeDef(
+            name="PrintNode",
+            op="Identity",
+            input=[
+                "NonControlInput:output:0",
+            ],
+        ),
+        node_def_pb2.NodeDef(
+            name="PrintV2Node",
+            op="NoOp",
+            input=[
+                "^NonControlInput",
+            ],
+        ),
+    ]
+
+    meta_graph_def = meta_graph_pb2.MetaGraphDef(
+        graph_def=graph_pb2.GraphDef(
+            node=test_node_defs,
+            library=function_pb2.FunctionDefLibrary(
+                function=[function_pb2.FunctionDef(node_def=test_node_defs)]
+            ),
+        ),
+    )
+
+    expected = meta_graph_pb2.MetaGraphDef(
+        graph_def=graph_pb2.GraphDef(
+            node=expected_node_defs,
+            library=function_pb2.FunctionDefLibrary(
+                function=[function_pb2.FunctionDef(node_def=expected_node_defs)]
+            ),
+        ),
+    )
+
+    save._strip_debug_nodes(meta_graph_def)
+    self.assertEqual(expected, meta_graph_def)
 
   def test_save_debug_info_enabled(self):
     root = autotrackable.AutoTrackable()
     root.f = def_function.function(
-        lambda x: math_ops.mul(2., x, name="DEBUG_INFO_OP"),
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+        lambda x: math_ops.mul(2.0, x, name="DEBUG_INFO_OP"),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)],
+    )
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(
         root,
         save_dir,
         root.f,
-        options=save_options.SaveOptions(save_debug_info=True))
-    debug_info_file_name = os.path.join(save_dir, "debug",
-                                        "saved_model_debug_info.pb")
+        options=save_options.SaveOptions(save_debug_info=True),
+    )
+    debug_info_file_name = os.path.join(
+        save_dir, "debug", "saved_model_debug_info.pb"
+    )
     self.assertTrue(os.path.exists(debug_info_file_name))
     debug_info = graph_debug_info_pb2.GraphDebugInfo()
     with open(debug_info_file_name, "rb") as f:
@@ -908,11 +1276,13 @@ class SavingOptionsTest(test.TestCase):
     # Verify that there is a trace for DEBUG_INFO_OP just to ensure that
     # function debug info tracing is nominally functioning.
     found_op = False
-    for key in debug_info.traces.keys():
+    for key in debug_info.name_to_trace_id.keys():
       if key.startswith("DEBUG_INFO_OP@"):
         found_op = True
         break
-    self.assertTrue(found_op, "Did not find DEBUG_INFO_OP in trace")
+    self.assertTrue(
+        found_op, "Did not find DEBUG_INFO_OP in trace: %s" % debug_info
+    )
 
   def test_save_debug_info_disabled(self):
     root = autotrackable.AutoTrackable()
@@ -935,16 +1305,73 @@ class SavingOptionsTest(test.TestCase):
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    options = save_options.SaveOptions(function_aliases={
-        "my_func": root.f,
-    })
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": root.f,
+        }
+    )
     save.save(root, save_dir, root.f, options=options)
-    function_cache = root.f._stateful_fn._list_all_concrete_functions()
+    function_cache = root.f._variable_creation_config.function_cache.values()
     function_aliases = loader_impl.parse_saved_model(
         save_dir).meta_graphs[0].meta_info_def.function_aliases
     self.assertLen(function_cache, 1)
     self.assertEqual(function_cache[0].name.decode("utf-8"),
                      list(function_aliases.keys())[0])
+
+  def test_concrete_function_aliases(self):
+    root = autotrackable.AutoTrackable()
+    f = def_function.function(
+        lambda x: 2.0 * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)],
+    ).get_concrete_function()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": f,
+        }
+    )
+    save.save(root, save_dir, f, options=options)
+    function_aliases = loader_impl.parse_saved_model(
+        save_dir).meta_graphs[0].meta_info_def.function_aliases
+    self.assertEqual(f.name.decode("utf-8"),
+                     list(function_aliases.keys())[0])
+
+  def test_concrete_function_list_aliases(self):
+    root = autotrackable.AutoTrackable()
+    f = def_function.function(lambda z: {"out": z * z})
+    f1 = f.get_concrete_function(tensor_spec.TensorSpec(None, dtypes.float32))
+    f2 = f.get_concrete_function(tensor_spec.TensorSpec(None, dtypes.int32))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": [f1, f2],
+        }
+    )
+    save.save(root, save_dir, f1, options=options)
+    function_aliases = (
+        loader_impl.parse_saved_model(save_dir)
+        .meta_graphs[0]
+        .meta_info_def.function_aliases
+    )
+    self.assertSameElements(
+        [f1.name.decode("utf-8"), f2.name.decode("utf-8")],
+        list(function_aliases.keys()),
+    )
+
+  def test_function_aliases_incorrect_type(self):
+    root = autotrackable.AutoTrackable()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    f = lambda x: 2.0 * x
+    root.f = def_function.function(
+        f, input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
+    )
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": f,
+        }
+    )
+    with self.assertRaisesRegex(TypeError, "Unsupported type"):
+      save.save(root, save_dir, root.f, options=options)
 
   def test_accepts_io_device(self):
     options = save_options.SaveOptions()
@@ -1041,7 +1468,7 @@ class AssetTests(test.TestCase):
         input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])
     root.table_user(constant_op.constant("gamma"))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegexp(AssertionError, "HashTable"):
+    with self.assertRaisesRegex(AssertionError, "HashTable"):
       save.save(root, save_dir)
 
   def test_unused_asset(self):
@@ -1069,6 +1496,26 @@ class AssetTests(test.TestCase):
 
     with self.assertRaisesRegex(AssertionError, "tf.function"):
       _calls_save()
+
+  def test_rewrite_asset_to_same_destination(self):
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    asset_path = os.path.join(self.get_temp_dir(), "asset")
+
+    def save_and_load(label):
+      with open(asset_path, "w") as f:
+        f.write(label)
+
+      model = autotrackable.AutoTrackable()
+      model.asset = asset.Asset(asset_path)
+      model.fn = def_function.function(lambda: io_ops.read_file(model.asset))
+      self.assertEqual(label, model.fn().numpy().decode("utf-8"))
+
+      save.save(model, save_dir)
+      imported = load.load(save_dir)
+      self.assertEqual(label, imported.fn().numpy().decode("utf-8"))
+
+    save_and_load("first")
+    save_and_load("second")
 
 
 class ExportMetaGraphTests(test.TestCase):
@@ -1124,9 +1571,9 @@ class ExportMetaGraphTests(test.TestCase):
 class FingerprintingTests(test.TestCase):
 
   def test_toggle_flag(self):
-    self.assertFalse(flags.config().saved_model_fingerprinting.value())
-    flags.config().saved_model_fingerprinting.reset(True)
     self.assertTrue(flags.config().saved_model_fingerprinting.value())
+    flags.config().saved_model_fingerprinting.reset(False)
+    self.assertFalse(flags.config().saved_model_fingerprinting.value())
 
 
 if __name__ == "__main__":

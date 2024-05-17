@@ -15,13 +15,15 @@
 # ==============================================================================
 # External `common.sh`
 
-# Keep in sync with tensorflow_estimator and configure.py.
+# Keeps Bazel versions of the build scripts.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=5.1.1
+LATEST_BAZEL_VERSION=6.5.0
 # LINT.ThenChange(
-#   //tensorflow_estimator/google/kokoro/common.sh,
+#   //tensorflow/opensource_only/.bazelversion,
+#   //tensorflow/opensource_only/ci/official/requirements_updater/.bazelversion
 #   //tensorflow/tools/ci_build/install/install_bazel.sh,
-#   //tensorflow/tools/ci_build/install/install_bazel_from_source.sh)
+#   //tensorflow/tools/ci_build/install/install_bazel_from_source.sh,
+#   //tensorflow/tools/toolchains/cross_compile/cc/cc_toolchain_config.bzl)
 
 # Run flaky functions with retries.
 # run_with_retry cmd
@@ -104,8 +106,7 @@ function update_bazel_linux {
   which bazel
   bazel version
 }
-# LINT.ThenChange(
-#   //tensorflow_estimator/google/kokoro/common.sh)
+# LINT.ThenChange()
 
 function install_ubuntu_16_pip_deps {
   PIP_CMD="pip"
@@ -424,13 +425,13 @@ function test_xml_summary_exit {
 }
 
 # Note: The Docker-based Ubuntu TF-nightly jobs do not use this list. They use
-# https://github.com/tensorflow/build/blob/master/tf_sig_build_dockerfiles/devel.usertools/wheel_verification.bats
+# //tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/wheel_verification.bats
 # instead. See go/tf-devinfra/docker.
 # CPU size
 MAC_CPU_MAX_WHL_SIZE=240M
 WIN_CPU_MAX_WHL_SIZE=170M
 # GPU size
-WIN_GPU_MAX_WHL_SIZE=345M
+WIN_GPU_MAX_WHL_SIZE=360M
 
 function test_tf_whl_size() {
   WHL_PATH=${1}

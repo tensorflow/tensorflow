@@ -13,36 +13,44 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iterator>
+#include <memory>
+#include <optional>
 #include <utility>
 
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
-#include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORCLUSTERFUNCTIONCONVERSION
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Attach layouts for all the returned values so that custom device could get
 // layouts for the handles.
@@ -60,7 +68,7 @@ mlir::LogicalResult AttachRetvalLayouts(
   if (!func)
     return sp_call_op.emitOpError() << "found no FuncOp for symbol " << sym;
 
-  llvm::SmallVector<absl::optional<Layout>, 8> retvals_layouts;
+  llvm::SmallVector<std::optional<Layout>, 8> retvals_layouts;
   retvals_layouts.reserve(func.getNumResults());
   for (auto operand : func.front().getTerminator()->getOperands()) {
     auto result_layout_or_status = ExtractLayoutFromOperand(operand);
@@ -68,20 +76,20 @@ mlir::LogicalResult AttachRetvalLayouts(
       return func.emitOpError("error while parsing result layout for function");
     }
 
-    auto result_layout = result_layout_or_status.ValueOrDie();
+    auto result_layout = result_layout_or_status.value();
 
     // When function returns its arguments directly, layout information for the
     // return value of `func` may be only obtainable by looking at it's callsite
     // operations. In that case, query the input layouts for function callsite
     // operations for layout information.
     if (!result_layout) {
-      if (auto block_arg = operand.dyn_cast<mlir::BlockArgument>()) {
+      if (auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(operand)) {
         auto layout_or_status = ExtractLayoutFromOperand(
             sp_call_op.getOperand(block_arg.getArgNumber()));
         if (!layout_or_status.ok())
           return func.emitOpError(
               "error while parsing result layout for function");
-        result_layout = std::move(layout_or_status.ValueOrDie());
+        result_layout = std::move(layout_or_status.value());
       }
 
       if (!result_layout)
@@ -131,7 +139,7 @@ mlir::LogicalResult ReplaceClusterWithPartitionCallOp(
       cluster_func.getResultTypes().begin(),
       cluster_func.getResultTypes().end()};
 
-  auto function_name = cluster_func.funcAttr();
+  llvm::StringRef function_name = cluster_func.getFunc();
 
   builder->setInsertionPoint(cluster_func);
   auto call_op = builder->create<mlir::TF::StatefulPartitionedCallOp>(
@@ -156,7 +164,7 @@ mlir::LogicalResult ReplaceClusterWithPartitionCallOp(
 // MLIR pass that converts tf_device.cluster_func to TF partitioned call
 // op with device mesh config added to `config` attribute.
 struct DTensorClusterFunctionConversion
-    : public DTensorClusterFunctionConversionBase<
+    : public impl::DTensorClusterFunctionConversionBase<
           DTensorClusterFunctionConversion> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();

@@ -76,7 +76,6 @@ class TrtConverterTest
   GraphDef GetGraphWithFunction(PartialTensorShape input_shape) {
     using ::tensorflow::test::function::GDef;
     using ::tensorflow::test::function::NDef;
-    GraphConstructorOptions opts;
     const Tensor kOne = test::AsScalar<float>(1.0f);
     TensorShapeProto value_shape_proto;
     kOne.shape().AsProto(&value_shape_proto);
@@ -107,16 +106,14 @@ class TrtConverterTest
         {});
     FunctionDef fdef;
     if (use_variable_) {
-      gdef.add_node()->CopyFrom(
+      *gdef.add_node() =
           NDef("my_var", "VarHandleOp", {},
-               {{"dtype", DT_FLOAT}, {"shape", value_shape_proto}}));
+               {{"dtype", DT_FLOAT}, {"shape", value_shape_proto}});
 
-      gdef.add_node()->CopyFrom(NDef("my_var/init", "AssignVariableOp",
-                                     {"my_var", "my_const"},
-                                     {{"dtype", DT_FLOAT}}));
-      gdef.add_node()->CopyFrom(NDef("my_var/Read/ReadVariableOp",
-                                     "ReadVariableOp", {"my_var"},
-                                     {{"dtype", DT_FLOAT}}));
+      *gdef.add_node() = NDef("my_var/init", "AssignVariableOp",
+                              {"my_var", "my_const"}, {{"dtype", DT_FLOAT}});
+      *gdef.add_node() = NDef("my_var/Read/ReadVariableOp", "ReadVariableOp",
+                              {"my_var"}, {{"dtype", DT_FLOAT}});
       // Define function f(x, v) = x * v + x, where v is a variable.
       fdef = FunctionDefHelper::Define(
           "f",                          // Name
@@ -146,7 +143,7 @@ class TrtConverterTest
            {{"my_add"}, "AddV2", {"x", "my_mul"}, {{"T", DT_FLOAT}}},
            {{"q"}, "Identity", {"my_add"}, {{"T", DT_FLOAT}}}});
     }
-    gdef.mutable_library()->add_function()->CopyFrom(fdef);
+    *gdef.mutable_library()->add_function() = fdef;
 
     return gdef;
   }
@@ -166,13 +163,12 @@ class TrtConverterTest
     SignatureDef signature_def;
     (*signature_def.mutable_inputs())["input"].set_name("input:0");
     (*signature_def.mutable_inputs())["input"].set_dtype(DT_FLOAT);
-    (*signature_def.mutable_inputs())["input"].mutable_tensor_shape()->CopyFrom(
-        shape_proto);
+    *(*signature_def.mutable_inputs())["input"].mutable_tensor_shape() =
+        shape_proto;
     (*signature_def.mutable_outputs())["output"].set_name("output:0");
     (*signature_def.mutable_outputs())["output"].set_dtype(DT_FLOAT);
-    (*signature_def.mutable_outputs())["output"]
-        .mutable_tensor_shape()
-        ->CopyFrom(shape_proto);
+    *(*signature_def.mutable_outputs())["output"].mutable_tensor_shape() =
+        shape_proto;
     (*out.mutable_signature_def())["serving_default"] = signature_def;
 
     VLOG(2) << signature_def.DebugString();
@@ -253,7 +249,7 @@ class TrtConverterTest
         meta_graph_def.graph_def(), {"input"}, {"output"}, input_tensors_,
         param_.conv_params);
     TF_ASSERT_OK(result.status());
-    const GraphDef& converted_graph_def = result.ValueOrDie();
+    const GraphDef& converted_graph_def = result.value();
     CheckTrtNode(converted_graph_def);
 
     // Create a session to execute the original graph.
@@ -272,7 +268,7 @@ class TrtConverterTest
     StatusOr<GraphDef> result = tensorrt::ConvertAndBuild(
         &bundle, "serving_default", input_tensors_, param_.conv_params);
     TF_ASSERT_OK(result.status());
-    const GraphDef& converted_graph_def = result.ValueOrDie();
+    const GraphDef& converted_graph_def = result.value();
     CheckTrtNode(converted_graph_def);
 
     RunAndCompareResults(bundle.GetSession(), converted_graph_def);
@@ -288,7 +284,7 @@ INSTANTIATE_TEST_CASE_P(
     TrtConverterTestInstantiation, TrtConverterTest,
     ::testing::Combine(
         ::testing::Values(
-            // Dynamic shape mode test with conver_to_static_engine=true.
+            // Dynamic shape mode test with convert_to_static_engine=true.
             TestParam{TfTrtConversionParams{
                           1 << 20,  // max workspace size
                           TrtPrecisionMode::FP32,
@@ -301,7 +297,7 @@ INSTANTIATE_TEST_CASE_P(
                           true   // convert_to_static_engine
                       },
                       {{1, 2}, {4, 2}}},
-            // Implicit batch mode test with conver_to_static_engine=true.
+            // Implicit batch mode test with convert_to_static_engine=true.
             TestParam{TfTrtConversionParams{
                           1 << 20,  // max workspace size
                           TrtPrecisionMode::FP16,

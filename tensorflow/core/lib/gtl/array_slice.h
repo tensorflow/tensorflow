@@ -16,19 +16,25 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_GTL_ARRAY_SLICE_H_
 #define TENSORFLOW_CORE_LIB_GTL_ARRAY_SLICE_H_
 
+#include "absl/base/macros.h"
 #include "absl/types/span.h"
 // TODO(timshen): This is kept only because lots of targets transitively depend
 // on it. Remove all targets' dependencies.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
+
 namespace tensorflow {
 namespace gtl {
 
 template <typename T>
-using ArraySlice = absl::Span<const T>;
+using ArraySlice ABSL_DEPRECATE_AND_INLINE() = absl::Span<const T>;
 
 template <typename T>
-using MutableArraySlice = absl::Span<T>;
+using MutableArraySlice ABSL_DEPRECATE_AND_INLINE() = absl::Span<T>;
 
 }  // namespace gtl
 }  // namespace tensorflow

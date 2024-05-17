@@ -15,9 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_SAVED_MODEL_UTIL_H_
 #define TENSORFLOW_CC_SAVED_MODEL_UTIL_H_
 
+#include <set>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 
 namespace tensorflow {
@@ -31,6 +37,18 @@ namespace saved_model {
 //
 // NOTE: The "WriteVersion" does *not* equal the major version of TF.
 std::string GetWriteVersion(const SavedModel& saved_model);
+
+// Get view of string keys of a map.
+std::set<std::string> GetMapKeys(
+    const ::google::protobuf::Map<std::string, ::tensorflow::TensorProto>& map);
+
+// Get the default input value from signature if it's missing in the request
+// inputs. If `is_alias` is set to true, the keys of the `request_inputs` are
+// alias names rather than the feed names in the graph.
+Status GetInputValues(
+    const SignatureDef& signature,
+    const ::google::protobuf::Map<std::string, ::tensorflow::TensorProto>& request_inputs,
+    std::vector<std::pair<string, Tensor>>& inputs);
 
 }  // namespace saved_model
 }  // namespace tensorflow

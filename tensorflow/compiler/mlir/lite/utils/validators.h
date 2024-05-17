@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {
@@ -50,8 +51,11 @@ inline bool TFDataFormatIsNDHWC(Operation *op) {
 bool TFIntListIs1XY1(Operation *op, StringRef name, IntegerAttr *x,
                      IntegerAttr *y);
 
-// Returns true if the attribute is an integer list of the form [1, X, Y, 1],
-bool TFIntListIs1XY1(const Attribute attr);
+// Returns true if the attribute is an integer list of the form [1, X, Y, 1].
+bool TFIntListIs1XY1(Attribute attr);
+
+// Returns true if the attribute is an integer list of the form [1, 1, X, Y].
+bool TFIntListIs11XY(Attribute attr);
 
 // Returns true if the given `op`
 //   * has an attribute with the given `name`,
@@ -62,26 +66,26 @@ bool TFIntListIs1XYZ1(Operation *op, StringRef name, IntegerAttr *x,
 
 // Returns true if every element of the attribute is 1. All elements of `attr`
 // must be `IntegerAttr`.
-bool TFIntListIsAllOnes(const Attribute attr);
+bool TFIntListIsAllOnes(Attribute attr);
 
 // Returns true iff the given value is a float32 tensor.
 // is "DT_FLOAT".
 inline bool TFTypeIsFloat32Tensor(Value value) {
-  auto tensorType = value.getType().dyn_cast<TensorType>();
+  auto tensorType = mlir::dyn_cast<TensorType>(value.getType());
   if (!tensorType) return false;
   return tensorType.getElementType().isF32();
 }
 
 // Returns true iff the given value is a bf16 tensor.
 inline bool TFTypeIsBFloat16Tensor(Value value) {
-  auto tensorType = value.getType().dyn_cast<TensorType>();
+  auto tensorType = mlir::dyn_cast<TensorType>(value.getType());
   if (!tensorType) return false;
   return tensorType.getElementType().isBF16();
 }
 
 // Returns true iff the given value is a f16 tensor.
 inline bool TFTypeIsHalfTensor(Value value) {
-  auto tensorType = value.getType().dyn_cast<TensorType>();
+  auto tensorType = mlir::dyn_cast<TensorType>(value.getType());
   if (!tensorType) return false;
   return tensorType.getElementType().isF16();
 }
@@ -103,9 +107,9 @@ inline bool TFPaddingIsSameOrValid(Operation *op, StringAttr *padding) {
 
 /// Returns whether the given `a` and `b` have broadcast-compatible
 /// types.
-bool IsBroadcastableElementsAttrs(mlir::Attribute a, mlir::Attribute b);
+bool IsBroadcastableElementsAttrs(mlir::TypedAttr a, mlir::TypedAttr b);
 // Returns true if every dimension of the attribute is 1 except the last one.
-bool IsDimensionsDegenerateExceptLastOne(mlir::Attribute val);
+bool IsDimensionsDegenerateExceptLastOne(mlir::TypedAttr val);
 // Returns true if every element is 1 except the last one.
 bool IsDimensionsDegenerateExceptLastOne(ArrayRef<int64_t> elements_shape);
 

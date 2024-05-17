@@ -15,16 +15,18 @@
 """Helper classes for tensor shape inference."""
 import functools
 import operator
-from typing import Optional, Sequence
-
-import six
+from typing import Optional, Sequence, Type, Union
 
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.core.function import trace_type
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python import tf2
 from tensorflow.python.eager import monitoring
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import trace
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
 
 _TENSORSHAPE_V2_OVERRIDE = None
 
@@ -99,8 +101,11 @@ def disable_v2_tensorshape():
 
 
 @tf_export(
-    "compat.dimension_value", v1=["dimension_value", "compat.dimension_value"])
-def dimension_value(dimension):
+    "compat.dimension_value", v1=["dimension_value", "compat.dimension_value"]
+)
+def dimension_value(
+    dimension: Union["Dimension", int, None]
+) -> Union[int, None]:
   """Compatibility utility required to allow for both V1 and V2 behavior in TF.
 
   Until the release of TF 2.0, we need the legacy behavior of `TensorShape` to
@@ -134,7 +139,7 @@ def dimension_value(dimension):
 @tf_export(
     "compat.dimension_at_index",
     v1=["dimension_at_index", "compat.dimension_at_index"])
-def dimension_at_index(shape, index):
+def dimension_at_index(shape, index) -> "Dimension":
   """Compatibility utility required to allow for both V1 and V2 behavior in TF.
 
   Until the release of TF 2.0, we need the legacy behavior of `TensorShape` to
@@ -212,10 +217,10 @@ class Dimension(object):
         # TODO(b/143206389): Remove once we fully migrate to 3.X.
         self._value = int(value.__index__())
       except AttributeError:
-        six.raise_from(
-            TypeError("Dimension value must be integer or None or have "
-                      "an __index__ method, got value '{0!r}' with type '{1!r}'"
-                      .format(value, type(value))), None)
+        raise TypeError(
+            "Dimension value must be integer or None or have "
+            "an __index__ method, got value '{0!r}' with type '{1!r}'".format(
+                value, type(value))) from None
       if self._value < 0:
         raise ValueError("Dimension %d must be >= 0" % self._value)
 
@@ -740,11 +745,16 @@ def as_dimension(value):
 
 
 @tf_export("TensorShape")
-class TensorShape(trace.TraceType):
+class TensorShape(trace.TraceType, trace_type.Serializable):
   """Represents the shape of a `Tensor`.
 
-  A `TensorShape` represents a possibly-partial shape specification for a
-  `Tensor`. It may be one of the following:
+  >>> t = tf.constant([[1,2,3],[4,5,6]])
+  >>> t.shape
+  TensorShape([2, 3])
+
+  `TensorShape` is the *static* shape representation of a Tensor.
+  During eager execution a Tensor always has a fully specified shape but
+  when tracing a `tf.function` it may be one of the following:
 
   * *Fully-known shape:* has a known number of dimensions and a known size
     for each dimension. e.g. `TensorShape([16, 256])`
@@ -753,12 +763,57 @@ class TensorShape(trace.TraceType):
   * *Unknown shape:* has an unknown number of dimensions, and an unknown
     size in all dimensions. e.g. `TensorShape(None)`
 
+  During function tracing `t.shape` will return a `TensorShape` object
+  representing the shape of Tensor as it is known during tracing.
+  This static representation will be partially defined in cases where the
+  exact shape depends on the values within the tensors. To get the
+  *dynamic* representation, please use `tf.shape(t)`
+  which will return Tensor representing the fully defined shape of `t`.
+  This way, you can express logic that manipulates the shapes of tensors by
+  building other tensors that depend on the dynamic shape of `t`.
+
+  Note: `tf.RaggedTensor.shape` also returns a `tf.TensorShape`,
+  the lengths of any ragged dimensions are unknown (`None`).
+
+  For example, this function prints the `TensorShape' (`t.shape`), when you
+  trace the function, and returns a tensor `tf.shape(t)` for given input `t`:
+
+  >>> @tf.function
+  ... def get_dynamic_shape(t):
+  ...   print("tracing...")
+  ...   print(f"static shape is {t.shape}")
+  ...   return tf.shape(t)
+
+  Just calling the function traces it with a fully-specified static shape:
+
+  >>> result = get_dynamic_shape(tf.constant([[1, 1, 1], [0, 0, 0]]))
+  tracing...
+  static shape is (2, 3)
+  >>> result.numpy()
+  array([2, 3], dtype=int32)
+
+  But `tf.function` can also trace the function with a partially specified
+  (or even unspecified) shape:
+
+  >>> cf1 = get_dynamic_shape.get_concrete_function(tf.TensorSpec(
+  ...                                               shape=[None, 2]))
+  tracing...
+  static shape is (None, 2)
+  >>> cf1(tf.constant([[1., 0],[1, 0],[1, 0]])).numpy()
+  array([3, 2], dtype=int32)
+
+  >>> cf2 = get_dynamic_shape.get_concrete_function(tf.TensorSpec(shape=None))
+  tracing...
+  static shape is <unknown>
+  >>> cf2(tf.constant([[[[[1., 0]]]]])).numpy()
+  array([1, 1, 1, 1, 2], dtype=int32)
+
   If a tensor is produced by an operation of type `"Foo"`, its shape
   may be inferred if there is a registered shape function for
   `"Foo"`. See [Shape
   functions](https://www.tensorflow.org/guide/create_op#shape_functions_in_c)
   for details of shape functions and how to register them. Alternatively,
-  you may set the shape explicitly using `tf.Tensor.set_shape`.
+  you may set the shape explicitly using `tf.Tensor.ensure_shape`.
   """
   __slots__ = ["_dims"]
 
@@ -798,13 +853,11 @@ class TensorShape(trace.TraceType):
           try:
             self._dims.append(as_dimension(d).value)
           except TypeError as e:
-            six.raise_from(
-                TypeError(
-                    "Failed to convert '{0!r}' to a shape: '{1!r}'"
-                    "could not be converted to a dimension. A shape should "
-                    "either be single dimension (e.g. 10), or an iterable of "
-                    "dimensions (e.g. [1, 10, None])."
-                    .format(dims, d)), e)
+            raise TypeError(
+                "Failed to convert '{0!r}' to a shape: '{1!r}'"
+                "could not be converted to a dimension. A shape should "
+                "either be single dimension (e.g. 10), or an iterable of "
+                "dimensions (e.g. [1, 10, None]).".format(dims, d)) from e
         self._dims = tuple(self._dims)
 
   @property
@@ -1227,6 +1280,46 @@ class TensorShape(trace.TraceType):
     ]
     return TensorShape(dims)
 
+  @doc_controls.do_not_doc_inheritable
+  def placeholder_value(self, placeholder_context):
+    """See tf.types.experimental.TraceType base class."""
+    return super().placeholder_value(placeholder_context)
+
+  @doc_controls.do_not_doc_inheritable
+  def from_tensors(self, tensors):
+    """See tf.types.experimental.TraceType base class."""
+    return super().from_tensors(tensors)
+
+  @doc_controls.do_not_doc_inheritable
+  def to_tensors(self, value):
+    """See tf.types.experimental.TraceType base class."""
+    return super().to_tensors(value)
+
+  @doc_controls.do_not_doc_inheritable
+  def flatten(self):
+    """See tf.types.experimental.TraceType base class."""
+    return super().flatten()
+
+  @doc_controls.do_not_doc_inheritable
+  def cast(self, value, cast_context):
+    """See tf.types.experimental.TraceType base class."""
+    return super().cast(value, cast_context)
+
+  @classmethod
+  def experimental_type_proto(cls) -> Type[tensor_shape_pb2.TensorShapeProto]:
+    """Returns the type of proto associated with TensorShape serialization."""
+    return tensor_shape_pb2.TensorShapeProto
+
+  @classmethod
+  def experimental_from_proto(
+      cls, proto: tensor_shape_pb2.TensorShapeProto) -> "TensorShape":
+    """Returns a TensorShape instance based on the serialized proto."""
+    return TensorShape(proto)
+
+  def experimental_as_proto(self) -> tensor_shape_pb2.TensorShapeProto:
+    """Returns a proto representation of the TensorShape instance."""
+    return self.as_proto()
+
   # TODO(b/216206374): Consider deprecation at TraceType release.
   def is_compatible_with(self, other):
     """Returns True iff `self` is compatible with `other`.
@@ -1290,7 +1383,7 @@ class TensorShape(trace.TraceType):
     if not self.is_compatible_with(other):
       raise ValueError("Shapes %s and %s are incompatible" % (self, other))
 
-  def most_specific_compatible_shape(self, other):
+  def most_specific_compatible_shape(self, other) -> "TensorShape":
     """Returns the most specific TensorShape compatible with `self` and `other`.
 
     * TensorShape([None, 1]) is the most specific TensorShape compatible with
@@ -1421,8 +1514,34 @@ class TensorShape(trace.TraceType):
   def __concat__(self, other):
     return self.concatenate(other)
 
+trace_type.register_serializable(TensorShape)
 
-def as_shape(shape):
+
+class _TensorShapeCodec:
+  """Codec for `TensorShape`."""
+
+  def can_encode(self, pyobj):
+    return isinstance(pyobj, TensorShape)
+
+  def do_encode(self, tensor_shape_value, encode_fn):
+    del encode_fn
+    encoded_tensor_shape = struct_pb2.StructuredValue()
+    encoded_tensor_shape.tensor_shape_value.CopyFrom(
+        tensor_shape_value.as_proto())
+    return encoded_tensor_shape
+
+  def can_decode(self, value):
+    return value.HasField("tensor_shape_value")
+
+  def do_decode(self, value, decode_fn):
+    del decode_fn
+    return TensorShape(value.tensor_shape_value)
+
+
+nested_structure_coder.register_codec(_TensorShapeCodec())
+
+
+def as_shape(shape) -> "TensorShape":
   """Converts the given object to a TensorShape."""
   if isinstance(shape, TensorShape):
     return shape
@@ -1430,7 +1549,7 @@ def as_shape(shape):
     return TensorShape(shape)
 
 
-def unknown_shape(rank=None, **kwargs):
+def unknown_shape(rank=None, **kwargs) -> "TensorShape":
   """Returns an unknown TensorShape, optionally with a known rank.
 
   Args:

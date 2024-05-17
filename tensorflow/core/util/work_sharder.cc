@@ -15,10 +15,35 @@ limitations under the License.
 
 #include "tensorflow/core/util/work_sharder.h"
 
-#include "tensorflow/core/lib/core/blocking_counter.h"
+#include <algorithm>
+#include <functional>
+
+#include "xla/tsl/util/env_var.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
+namespace {
+
+bool UseEigenParallelFor() {
+  // If TF_USE_EIGEN_PARALLEL_FOR_IN_WORK_SHARDER is set and parsed
+  // successfully, the value specified will be returned. Otherwise, it returns
+  // true by default.
+  static bool result = []() {
+    bool result = true;
+    if (auto status =
+            tsl::ReadBoolFromEnvVar("TF_USE_EIGEN_PARALLEL_FOR_IN_WORK_SHARDER",
+                                    /*default_val=*/true, &result);
+        status.ok()) {
+      return result;
+    }
+    return true;
+  }();
+  return result;
+}
+
+}  // namespace
 
 /* ABSL_CONST_INIT */ thread_local int per_thread_max_parallelism = 1000000;
 
@@ -41,7 +66,14 @@ void Shard(int max_parallelism, thread::ThreadPool* workers, int64_t total,
     work(0, total);
     return;
   }
-  if (max_parallelism >= workers->NumThreads()) {
+  if (UseEigenParallelFor() && max_parallelism >= workers->NumThreads()) {
+    tsl::profiler::TraceMe trace_me([=, num_threads = workers->NumThreads()]() {
+      return tsl::profiler::TraceMeEncode("ParallelFor",
+                                          {{"cost_per_unit", cost_per_unit},
+                                           {"total", total},
+                                           {"max_parallelism", max_parallelism},
+                                           {"num_threads", num_threads}});
+    });
     workers->ParallelFor(total, cost_per_unit, work);
     return;
   }
@@ -56,6 +88,12 @@ void Shard(int max_parallelism, thread::ThreadPool* workers, int64_t total,
 // a fixed shard size.
 void Sharder::Do(int64_t total, int64_t cost_per_unit, const Work& work,
                  const Runner& runner, int max_parallelism) {
+  tsl::profiler::TraceMe trace_me([=]() {
+    return tsl::profiler::TraceMeEncode("Sharder::Do",
+                                        {{"cost_per_unit", cost_per_unit},
+                                         {"total", total},
+                                         {"max_parallelism", max_parallelism}});
+  });
   cost_per_unit = std::max(int64_t{1}, cost_per_unit);
   // We shard [0, total) into "num_shards" shards.
   //   1 <= num_shards <= num worker threads

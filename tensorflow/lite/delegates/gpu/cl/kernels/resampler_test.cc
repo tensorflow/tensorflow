@@ -28,13 +28,13 @@ namespace cl {
 
 TEST_F(OpenCLOperationTest, ResamplerIdentity) {
   auto status = ResamplerIdentityTest(BHWC(1, 2, 2, 1), &exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   status = ResamplerIdentityTest(BHWC(1, 3, 5, 3), &exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   status = ResamplerIdentityTest(BHWC(1, 6, 1, 7), &exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace cl

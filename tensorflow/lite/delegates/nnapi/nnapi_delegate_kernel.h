@@ -23,7 +23,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_plugin.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
@@ -149,7 +149,7 @@ enum class NNAPIValidationFailureType : int {
   // is specified in the validation failure message.
   // For more details on each operator version see
   // the GetBuiltinOperatorVersion function in
-  // third_party/tensorflow/lite/tools/versioning/op_version.cc.
+  // tensorflow/lite/tools/versioning/op_version.cc.
   kUnsupportedOperatorVersion = 2,
   // The given input operand type is not supported for the current combination
   // of operator type and sdk version.
@@ -402,6 +402,26 @@ class NNAPIDelegateKernel {
                           const TfLiteIntArray* input_tensors,
                           const TfLiteIntArray* output_tensors,
                           int* nnapi_errno);
+
+  // Log the compilation info provided by the support library at the end of
+  // a compilation (failed or successful).
+  // To avoid output spamming, logging is done only once, on the first call to
+  // this method, subsequent runs will only retrieve the information but not
+  // log it.
+  //
+  // This method is registered as a callback with the SL which calls it.
+  static void LogCompilationInfoOnce(
+      const NnApi* nnapi, const ANeuralNetworksDiagnosticCompilationInfo* info);
+
+  // Log the execution info provided by the support library at the end of
+  // an execution (failed or successful).
+  // To avoid output spamming, logging is done only once, on the first call to
+  // this method, subsequent runs will only retrieve the information but not
+  // log it.
+  //
+  // This method is registered as a callback with the SL which calls it.
+  static void LogExecutionInfoOnce(
+      const NnApi* nnapi, const ANeuralNetworksDiagnosticExecutionInfo* info);
 };
 
 }  // namespace nnapi

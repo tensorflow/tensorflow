@@ -21,10 +21,11 @@ limitations under the License.
 
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <queue>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -518,9 +519,12 @@ void BatchedNonMaxSuppressionOp(
   d.parallelFor(length, cost, shard_nms);
 
   int per_batch_size = total_size_per_batch;
+  // Avoid overflow.
+  int max_total_size = static_cast<int>(
+      std::min(static_cast<int64_t>(std::numeric_limits<int>::max()),
+               static_cast<int64_t>(max_size_per_class) * num_classes));
   if (pad_per_class) {
-    per_batch_size =
-        std::min(total_size_per_batch, max_size_per_class * num_classes);
+    per_batch_size = std::min(total_size_per_batch, max_total_size);
   }
 
   Tensor* valid_detections_t = nullptr;
@@ -535,8 +539,7 @@ void BatchedNonMaxSuppressionOp(
           nmsed_boxes[batch_idx], nmsed_scores[batch_idx],
           nmsed_classes[batch_idx], result_candidate_vec[batch_idx],
           final_valid_detections, batch_idx, total_size_per_batch,
-          pad_per_class, max_size_per_class * num_classes, clip_boxes,
-          per_batch_size);
+          pad_per_class, max_total_size, clip_boxes, per_batch_size);
       valid_detections_flat(batch_idx) = final_valid_detections[batch_idx];
     }
   };

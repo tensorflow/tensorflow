@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_EDGESET_H_
-#define TENSORFLOW_GRAPH_EDGESET_H_
+#ifndef TENSORFLOW_CORE_GRAPH_EDGESET_H_
+#define TENSORFLOW_CORE_GRAPH_EDGESET_H_
 
 #include <stddef.h>
 
@@ -86,7 +86,8 @@ class EdgeSet {
   void RegisterMutation() { mutations_++; }
 #endif
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EdgeSet);
+  EdgeSet(const EdgeSet&) = delete;
+  void operator=(const EdgeSet&) = delete;
 };
 
 class EdgeSet::const_iterator {
@@ -242,4 +243,4 @@ inline bool EdgeSet::const_iterator::operator==(
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_EDGESET_H_
+#endif  // TENSORFLOW_CORE_GRAPH_EDGESET_H_

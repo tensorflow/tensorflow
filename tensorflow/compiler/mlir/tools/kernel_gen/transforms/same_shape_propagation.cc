@@ -18,6 +18,8 @@ limitations under the License.
 // sizes of operands with equal shapes.
 
 #include <memory>
+#include <tuple>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMapInfo.h"
@@ -28,12 +30,11 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
@@ -120,7 +121,7 @@ struct ShapeValue {
 
   ArrayRef<ValueOrConst> scalars() const {
     assert(!is_vector);
-    return llvm::makeArrayRef(shape);
+    return llvm::ArrayRef(shape);
   }
 
   bool isVector() const { return is_vector; }
@@ -186,7 +187,7 @@ namespace transforms {
 
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PROPAGATESHAPEKNOWLEDGETOKERNELS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 // A basic shape equality inference. This should be superceeded by a proper
@@ -199,7 +200,8 @@ class ShapeEqualityKnowledge {
   void build(func::FuncOp function) {
     function.walk([&](Operation *op) {
       if (auto reshape = dyn_cast<memref::ReshapeOp>(op)) {
-        registerAssociation(ShapeValue{reshape.shape()}, reshape.result());
+        registerAssociation(ShapeValue{(Value)reshape.getShape()},
+                            reshape.getResult());
         return;
       }
       if (auto cast = dyn_cast<memref::ReinterpretCastOp>(op)) {
@@ -210,12 +212,12 @@ class ShapeEqualityKnowledge {
             return;
           }
         }
-        registerAssociation(ShapeValue{cast.sizes()}, cast.result());
+        registerAssociation(ShapeValue{cast.getSizes()}, cast.getResult());
         return;
       }
       if (auto alloc = dyn_cast<memref::AllocOp>(op)) {
         SmallVector<ValueOrConst, 4> shape;
-        ShapedType type = alloc.getResult().getType().cast<ShapedType>();
+        ShapedType type = mlir::cast<ShapedType>(alloc.getResult().getType());
         fillShapeFromAllocLike(alloc.getDynamicSizes(), type, shape);
         registerAssociation(ShapeValue{shape}, alloc.getResult());
         return;
@@ -223,8 +225,8 @@ class ShapeEqualityKnowledge {
       if (auto alloc = dyn_cast<tf_framework::TFAllocOp>(op)) {
         // Construct a symbol representing the allocated shape.
         SmallVector<ValueOrConst, 4> shape;
-        ShapedType type = alloc.getResult().getType().cast<ShapedType>();
-        fillShapeFromAllocLike(alloc.dyn_sizes(), type, shape);
+        ShapedType type = mlir::cast<ShapedType>(alloc.getResult().getType());
+        fillShapeFromAllocLike(alloc.getDynSizes(), type, shape);
         registerAssociation(ShapeValue{shape}, alloc.getResult());
         return;
       }
@@ -290,10 +292,10 @@ class ShapeEqualityKnowledge {
             if (val.isConstant()) return false;
             auto dimOp = val.value().getDefiningOp<memref::DimOp>();
             if (!dimOp) return false;
-            if (!candidate) candidate = dimOp.source();
+            if (!candidate) candidate = dimOp.getSource();
             auto index = dimOp.getConstantIndex();
-            if (!index.hasValue()) return false;
-            return candidate == dimOp.source() && p.index() == index.getValue();
+            if (!index.has_value()) return false;
+            return candidate == dimOp.getSource() && p.index() == index.value();
           });
       if (all_are_dimops && candidate) {
         equal_shapes_.unionSets(candidate.getAsOpaquePointer(),
@@ -312,7 +314,7 @@ class ShapeEqualityKnowledge {
 /// shape information of the left-most argument inside of the kernel function.
 /// That way, llvm can CSE index computations on same-shaped inputs.
 struct PropagateShapeKnowledgeToKernels
-    : public PropagateShapeKnowledgeToKernelsBase<
+    : public impl::PropagateShapeKnowledgeToKernelsBase<
           PropagateShapeKnowledgeToKernels> {
   void runOnOperation() override {
     ShapeEqualityKnowledge knowledge;
@@ -321,15 +323,15 @@ struct PropagateShapeKnowledgeToKernels
 
     getOperation().walk([&](gpu::LaunchFuncOp launch) {
       auto module = launch->getParentOfType<ModuleOp>();
-      auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.kernel());
+      auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.getKernel());
 
       if (!kernel || kernel.isExternal()) return;
 
       llvm::SmallVector<std::pair<Value, int>, 4> seen_memrefs;
       // Position of the kernel argument we are currently at.
       int kernel_p = 0;
-      for (auto operand : launch.operands()) {
-        auto memref = operand.getType().dyn_cast<MemRefType>();
+      for (auto operand : launch.getKernelOperands()) {
+        auto memref = mlir::dyn_cast<MemRefType>(operand.getType());
         if (!memref) {
           // Scalar argument, advance kernel position by one.
           kernel_p++;
@@ -339,7 +341,7 @@ struct PropagateShapeKnowledgeToKernels
           if (!knowledge.haveSameShape(operand, previous.first)) {
             continue;
           }
-          auto previous_type = previous.first.getType().cast<MemRefType>();
+          auto previous_type = mlir::cast<MemRefType>(previous.first.getType());
           // We use the first equality found and replace uses of corresponding
           // size and (potentially) stride information here.
           auto args_to_replace = memref.getRank();

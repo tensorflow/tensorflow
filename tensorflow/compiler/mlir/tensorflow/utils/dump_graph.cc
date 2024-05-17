@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <utility>
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -92,7 +93,7 @@ Status DumpTextualIRToFile(const MlirDumpConfig& config, const Graph& graph,
 
   TF_RETURN_IF_ERROR(convert());
   module->print(os, config.op_printing_flags);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void UseMlirForGraphDump(const MlirDumpConfig& config) {

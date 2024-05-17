@@ -51,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
-#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
@@ -132,7 +131,7 @@ Status ApplyRewrites(OpKernelContext* ctx,
     RemoveFakeSinks(&function_def);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // anonymous namespace
 
@@ -227,7 +226,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
       uint64 hash = 0;
       Status s = HashNode(graph_def, *node_def, *lib_def, &hash);
       if (!s.ok()) {
-        VLOG(3) << "Failed to hash graph: " << s.ToString();
+        VLOG(3) << "Failed to hash graph: " << s;
         return;
       }
       for (const auto& pair : input_list) {
@@ -237,7 +236,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
         if (s.ok()) {
           hash = Hash64CombineUnordered(hash, tensor_hash);
         } else {
-          VLOG(3) << "Failed to hash tensor: " << s.ToString();
+          VLOG(3) << "Failed to hash tensor: " << s;
         }
       }
       string graph_hash =
@@ -246,11 +245,12 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
     });
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(
-    GraphDef* graph_def, std::string* dataset_node, bool add_fake_sinks) {
+    GraphDef* graph_def, std::string* dataset_node, bool add_fake_sinks,
+    bool apply_optimizations) {
   // Add an identity node as the fetch node, otherwise we might get 'placeholder
   // is both fed and fetched' errors in some cases when using input list with
   // placeholder dataset nodes.
@@ -286,7 +286,7 @@ std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(
 
   // Create Grappler item.
   tensorflow::grappler::ItemConfig item_config;
-  item_config.apply_optimizations = true;
+  item_config.apply_optimizations = apply_optimizations;
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
       tensorflow::grappler::GrapplerItemFromMetaGraphDef(
           "graph", meta_graph_def, item_config);
@@ -329,10 +329,10 @@ absl::flat_hash_set<tstring> SelectOptimizations(
   return optimizations;
 }
 
-StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def) {
+absl::StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def) {
   // Symbolic `_Retval` node indicates which node corresponds to the dataset.
   for (const auto& node : graph_def.node()) {
-    if (node.op() == "_Retval") {
+    if (node.op() == kRetvalOp) {
       return node.input(0);
     }
   }
@@ -341,7 +341,7 @@ StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def) {
                        graph_def.ShortDebugString()));
 }
 
-StatusOr<NodeDef> GetDatasetNodeDef(const GraphDef& graph_def) {
+absl::StatusOr<NodeDef> GetDatasetNodeDef(const GraphDef& graph_def) {
   TF_ASSIGN_OR_RETURN(std::string dataset_node_name, GetDatasetNode(graph_def));
   for (const auto& node : graph_def.node()) {
     if (node.name() == dataset_node_name) {

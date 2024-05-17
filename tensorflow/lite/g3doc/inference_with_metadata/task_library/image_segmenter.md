@@ -147,7 +147,7 @@ let segmentationResult = try segmenter.segment(mlImage: mlImage)
 
 ```objc
 // Imports
-#import <TensorFlowLiteTaskVision/TFLTaskVision.h>
+#import <TensorFlowLiteTaskVision/TensorFlowLiteTaskVision.h>
 
 // Initialization
 NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"deeplabv3" ofType:@"tflite"];
@@ -196,7 +196,7 @@ from tflite_support.task import processor
 # Initialization
 base_options = core.BaseOptions(file_name=model_path)
 segmentation_options = processor.SegmentationOptions(
-    output_type=processor.SegmentationOptions.OutputType.CATEGORY_MASK)
+    output_type=processor.SegmentationOptions.output_type.CATEGORY_MASK)
 options = vision.ImageSegmenterOptions(base_options=base_options, segmentation_options=segmentation_options)
 segmenter = vision.ImageSegmenter.create_from_options(options)
 
@@ -217,8 +217,13 @@ for more options to configure `ImageSegmenter`.
 ```c++
 // Initialization
 ImageSegmenterOptions options;
-options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_path);
 std::unique_ptr<ImageSegmenter> image_segmenter = ImageSegmenter::CreateFromOptions(options).value();
+
+// Create input frame_buffer from your inputs, `image_data` and `image_dimension`.
+// See more information here: tensorflow_lite_support/cc/task/vision/utils/frame_buffer_common_utils.h
+std::unique_ptr<FrameBuffer> frame_buffer = CreateFromRgbRawBuffer(
+      image_data, image_dimension);
 
 // Run inference
 const SegmentationResult result = image_segmenter->Segment(*frame_buffer).value();

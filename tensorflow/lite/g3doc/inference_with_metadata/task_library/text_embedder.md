@@ -32,9 +32,6 @@ API.
 *   The
     [Universal Sentence Encoder TFLite model from TensorFlow Hub](https://tfhub.dev/google/lite-model/universal-sentence-encoder-qa-ondevice/1)
 
-*   The
-    [MobileBERT TFLite model from TensorFlow Hub](https://tfhub.dev/tensorflow/lite-model/mobilebert/1/metadata/1)
-
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).
 
@@ -43,12 +40,12 @@ API.
 ```c++
 // Initialization.
 TextEmbedderOptions options:
-options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_path);
 std::unique_ptr<TextEmbedder> text_embedder = TextEmbedder::CreateFromOptions(options).value();
 
-// Run inference on two texts.
-const EmbeddingResult result_1 = text_embedder->Embed(text_1);
-const EmbeddingResult result_2 = text_embedder->Embed(text_2);
+// Run inference with your two inputs, `input_text1` and `input_text2`.
+const EmbeddingResult result_1 = text_embedder->Embed(input_text1);
+const EmbeddingResult result_2 = text_embedder->Embed(input_text2);
 
 // Compute cosine similarity.
 double similarity = TextEmbedder::CosineSimilarity(
@@ -77,7 +74,7 @@ pip install tflite-support
 from tflite_support.task import text
 
 # Initialization.
-text_embedder = text.TextEmbedder.create_from_file(model_file)
+text_embedder = text.TextEmbedder.create_from_file(model_path)
 
 # Run inference on two texts.
 result_1 = text_embedder.embed(text_1)

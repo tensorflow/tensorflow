@@ -17,11 +17,17 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_MLIR_COLLECTIVES_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 
 namespace tensorflow {
@@ -53,11 +59,32 @@ StatusOr<mlir::Value> EmitRelayout(
     const dtensor::Layout& tgt_layout,
     llvm::SmallPtrSet<mlir::Operation*, 4>* newly_created_ops = nullptr);
 
+// Emits TransposeOp that permutes the input shape.
+mlir::Operation* EmitTransposeOp(mlir::OpBuilder& builder,
+                                 const mlir::Location& loc, mlir::Value input,
+                                 std::vector<int64_t>& perm_arr);
+
 // Emits collective ops to reduce `input` over `reduced_dims`.
 StatusOr<mlir::Operation*> EmitAllReduce(
     mlir::OpBuilder& builder, const dtensor::Layout& output_layout,
     const absl::flat_hash_set<std::string>& reduced_dims,
     mlir::Operation* input, absl::string_view reduce_op);
+
+// Emits a barrier used for synchronization purposes and returns
+// a R1 const value using `value`. More precisely, this barrier
+// guarantees that
+//    1. Side-effect Ops before this barrier are complete before this op begins.
+//    2. Side-effect Ops after this barrier start after this barrier completes.
+//
+// Note that the returned operation must be used in the graph. If it is not
+// used, then this op will be removed from the graph from various compiler
+// passes and thus there will be no barrier.
+//
+// Used for introducing a barrier before every Merge op during checkpointing.
+StatusOr<mlir::Operation*> EmitBarrierWithConstValue(mlir::OpBuilder& builder,
+                                                     mlir::Location loc,
+                                                     const Mesh& mesh,
+                                                     int32 value);
 
 // Given input `tensor` that is sharded across spatial dimensions, conduct
 // halo exchange such that each spatially sharded input blocks exchange

@@ -29,8 +29,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
@@ -42,6 +40,48 @@ namespace gpu {
 
 class ConvGeneric : public GPUOperation {
  public:
+  enum class WeightsUploadType {
+    LOCAL_MEM_ASYNC_SUBGROUP,  // we use it for PowerVR with workgroup size = 32
+    LOCAL_MEM_BY_THREADS,
+    GLOBAL_MEM,
+    CONSTANT_MEM,
+    PRIVATE_MEM_SIMD_BROADCAST,
+    TEXTURES_MEM_X4,  // 4 textures for weights
+  };
+  struct ConvParams {
+    DataType weights_data_type;  // used for weights and biases
+    int4 block_size;             // WHDS
+    bool fixed_work_group_size;
+    int3 work_group_size;
+    int3 work_group_launch_order;
+    bool linear_spatial;  // spatial dimensions are Width/Height/Depth
+    bool linear_all;  // linear_spatial & linear_all can not be used together,
+                      // linear_all can not be used with WeightsUploadTypes
+                      // that use workgroups(subgroups) for
+                      // uploading(LOCAL_MEM_BY_THREADS for example).
+    bool different_weights_for_height;
+    bool groups_support = false;  // convolution groups
+    int src_depth_loop_size;
+    bool need_src_loop = true;
+    bool need_dst_loop = true;
+    WeightsUploadType weights_upload_type;
+    bool x_kernel_is_1 = false;
+    bool y_kernel_is_1 = false;
+    bool z_kernel_is_1 = false;
+    WeightsLayout weights_layout;
+
+    // used only with PRIVATE_MEM_SIMD_BROADCAST
+    int simd_size = 1;
+
+    bool AreWeightsBuffer() const {
+      return weights_upload_type != WeightsUploadType::TEXTURES_MEM_X4;
+    }
+
+    bool IsPrivateMemBroadcast() const {
+      return weights_upload_type ==
+             WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
+    }
+  };
   ConvGeneric() = default;
   void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const GpuInfo& gpu_info,
@@ -65,53 +105,6 @@ class ConvGeneric : public GPUOperation {
   ConvGeneric& operator=(const ConvGeneric&) = delete;
 
  private:
-  enum class WeightsUploadType {
-    LOCAL_MEM_ASYNC_SUBGROUP,  // we use it for PowerVR with workgroup size = 32
-    LOCAL_MEM_BY_THREADS,
-    GLOBAL_MEM,
-    CONSTANT_MEM,
-    PRIVATE_MEM_SIMD_BROADCAST,
-    TEXTURES_MEM_X4,  // 4 textures for weights
-  };
-
-  struct ConvParams {
-    // Usually we use this combinations for CalculationPrecision:
-    // F32: all F32
-    // F16: all F16
-    // F32_F16: all besides accumulator is F16, including weights
-    // But for PowerVR we can achieve better performance in F32_F16 with F32
-    // weights, so for PowerVR in this kernel we have F32 weights for
-    // F32_F16 precision mode
-    DataType weights_data_type;  // used for weights and biases
-    int4 block_size;             // WHDS
-    bool fixed_work_group_size;
-    bool linear_spatial;  // spatial dimensions are Width/Height/Depth
-    bool linear_all;  // linear_spatial & linear_all can not be used together,
-                      // linear_all can not be used with WeightsUploadTypes
-                      // that use workgroups(subgroups) for
-                      // uploading(LOCAL_MEM_BY_THREADS for example).
-    bool different_weights_for_height;
-    bool groups_support = false;  // convolution groups
-    int src_depth_loop_size;
-    WeightsUploadType weights_upload_type;
-    bool x_kernel_is_1 = false;
-    bool y_kernel_is_1 = false;
-    bool z_kernel_is_1 = false;
-    WeightsLayout weights_layout;
-
-    // used only with PRIVATE_MEM_SIMD_BROADCAST
-    int simd_size = 1;
-
-    bool AreWeightsBuffer() const {
-      return weights_upload_type != WeightsUploadType::TEXTURES_MEM_X4;
-    }
-
-    bool IsPrivateMemBroadcast() const {
-      return weights_upload_type ==
-             WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
-    }
-  };
-
   ConvGeneric(const OperationDef& definition,
               const Convolution2DAttributes& attr, const GpuInfo& gpu_info,
               const BHWC* dst_shape = nullptr);
@@ -199,9 +192,14 @@ class ConvGeneric : public GPUOperation {
                              bool y_kernel_is_1,
                              bool different_weights_for_height,
                              const BHWC* dst_shape = nullptr);
+  ConvParams GuessBestParamsApple(const GpuInfo& gpu_info,
+                                  const OperationDef& definition, int src_depth,
+                                  int dst_depth, bool x_kernel_is_1,
+                                  bool y_kernel_is_1,
+                                  bool different_weights_for_height,
+                                  const BHWC& dst_shape);
 
   std::string GenerateConv(const GpuInfo& gpu_info, const OperationDef& op_def,
-                           bool stride_correction,
                            const ConvParams& conv_params);
 
   int4 stride_;
@@ -285,14 +283,11 @@ void ConvGeneric::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
     uint2 tex_size = Get2dResourceSize(weights_desc, weights.shape);
     int sub_size = SizeOf(weights_desc.type) * 4 * tex_size.x * tex_size.y;
     for (int i = 0; i < 4; ++i) {
-      Texture2DDescriptor desc;
-      desc.element_type = weights_desc.type;
-      desc.size = int2(tex_size.x, tex_size.y);
-      desc.data.resize(sub_size);
-      memcpy(desc.data.data(), weights_data.data() + sub_size * i, sub_size);
-      const std::string name = "weights" + std::to_string(i);
-      args_.AddObject(name,
-                      std::make_unique<Texture2DDescriptor>(std::move(desc)));
+      TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+          weights_desc.type, TensorStorageType::TEXTURE_2D, tex_size.x,
+          tex_size.y, weights_data.data() + sub_size * i);
+      args_.AddObject("weights" + std::to_string(i),
+                      std::make_unique<TensorDescriptor>(std::move(desc)));
     }
   }
 }
@@ -318,14 +313,11 @@ void ConvGeneric::UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights) {
     uint2 tex_size = Get2dResourceSize(weights_desc, weights.shape);
     int sub_size = SizeOf(weights_desc.type) * 4 * tex_size.x * tex_size.y;
     for (int i = 0; i < 4; ++i) {
-      Texture2DDescriptor desc;
-      desc.element_type = weights_desc.type;
-      desc.size = int2(tex_size.x, tex_size.y);
-      desc.data.resize(sub_size);
-      memcpy(desc.data.data(), weights_data.data() + sub_size * i, sub_size);
-      const std::string name = "weights" + std::to_string(i);
-      args_.AddObject(name,
-                      std::make_unique<Texture2DDescriptor>(std::move(desc)));
+      TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+          weights_desc.type, TensorStorageType::TEXTURE_2D, tex_size.x,
+          tex_size.y, weights_data.data() + sub_size * i);
+      args_.AddObject("weights" + std::to_string(i),
+                      std::make_unique<TensorDescriptor>(std::move(desc)));
     }
   }
 }

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
 
+#include <functional>
+
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -23,17 +25,25 @@ limitations under the License.
 namespace tensorflow {
 namespace tfd {
 
+std::function<void(std::function<void()>)>* GetDefaultRunner() {
+  static auto* const default_runner =
+      new std::function<void(std::function<void()>)>(
+          [](const std::function<void()>& f) { f(); });
+  return default_runner;
+}
+
 void SetUpParams(const tfrt_stub::OpKernelRunner& runner,
                  const KernelFallbackCompatRequestState& fallback_request_state,
                  tensorflow::Device* device,
                  tfrt_stub::OpKernelRunState& run_state) {
   auto& params = run_state.params;
-  params.inputs = &run_state.input_tf_tensor_values;
+  params.step_id = fallback_request_state.step_id();
+  params.inputs = run_state.input_tf_tensor_values;
   params.device = device;
   params.op_kernel = runner.op_kernel();
   // Still use original device's resource_manager.
   params.resource_manager = runner.resource_manager();
-  params.input_alloc_attrs = &runner.input_alloc_attrs();
+  params.input_alloc_attrs = runner.input_alloc_attrs();
   params.output_attr_array = runner.output_alloc_attrs().data();
   params.step_container = fallback_request_state.step_container();
   // Following two parameters are used to support executing tf.data via
@@ -56,10 +66,11 @@ tensorflow::Device* GetDeviceFromFallbackState(
   //
   // The device handling is similar to TF1 code in the below link:
   // http://cs/?q=f:common_runtime%2Fexecutor.cc:692%20package:piper&rcl=351575626
-  if (auto* custom_device = fallback_request_state.custom_device()) {
+  auto* device = kernel_runner.device();
+  if (auto* custom_device = fallback_request_state.custom_device(device)) {
     return custom_device;
   }
-  return kernel_runner.device();
+  return device;
 }
 
 }  // namespace tfd

@@ -10,6 +10,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -44,7 +45,6 @@ android_library(
     name = "android_tensorflow_inference_java",
     srcs = glob(["java/**/*.java"]) + ["//tensorflow/java:java_sources"],
     javacopts = [
-        "-XepOpt:CheckReturnValue:CheckAllConstructors=false",  # b/226969262
     ],
     tags = [
         "manual",

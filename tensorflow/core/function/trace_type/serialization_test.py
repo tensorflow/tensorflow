@@ -39,6 +39,9 @@ class MyCustomClass(serialization.Serializable):
     return proto
 
 
+serialization.register_serializable(MyCustomClass)
+
+
 class MyCompositeClass(serialization.Serializable):
 
   def __init__(self, *elements):
@@ -60,6 +63,57 @@ class MyCompositeClass(serialization.Serializable):
     proto = serialization_test_pb2.MyCompositeRepresentation(
         elements=serialized_elements)
     return proto
+
+serialization.register_serializable(MyCompositeClass)
+
+
+class MySerializableSuperClass(serialization.Serializable):
+
+  @classmethod
+  def experimental_type_proto(cls):
+    return serialization_test_pb2.MyMultiClassRepresentation
+
+  @classmethod
+  def experimental_from_proto(cls, proto):
+    if proto.id == 1:
+      return SerializableFromSuperClassOne()
+
+    if proto.id == 2:
+      return SerializableFromSuperClassTwo()
+
+    if proto.id == 3:
+      return SerializableFromSuperClassThree()
+
+    raise NotImplementedError
+
+  def experimental_as_proto(self):
+    if isinstance(self, SerializableFromSuperClassOne):
+      return serialization_test_pb2.MyMultiClassRepresentation(id=1)
+
+    if isinstance(self, SerializableFromSuperClassTwo):
+      return serialization_test_pb2.MyMultiClassRepresentation(id=2)
+
+    if isinstance(self, SerializableFromSuperClassThree):
+      return serialization_test_pb2.MyMultiClassRepresentation(id=3)
+
+    raise NotImplementedError
+
+  def __eq__(self, other):
+    return type(self) is type(other)
+
+serialization.register_serializable(MySerializableSuperClass)
+
+
+class SerializableFromSuperClassOne(MySerializableSuperClass):
+  pass
+
+
+class SerializableFromSuperClassTwo(MySerializableSuperClass):
+  pass
+
+
+class SerializableFromSuperClassThree(MySerializableSuperClass):
+  pass
 
 
 class SerializeTest(test.TestCase):
@@ -124,25 +178,26 @@ class SerializeTest(test.TestCase):
     self.assertEqual(deserialized.elements[2].name, "name_3")
 
   def testNonUniqueProto(self):
+    class ClassThatReusesProto(serialization.Serializable):
+
+      @classmethod
+      def experimental_type_proto(cls):
+        return serialization_test_pb2.MyCustomRepresentation
+
+      @classmethod
+      def experimental_from_proto(cls, proto):
+        raise NotImplementedError
+
+      def experimental_as_proto(self):
+        raise NotImplementedError
+
     with self.assertRaisesRegex(
         ValueError,
         ("Existing Python class MyCustomClass already has "
          "MyCustomRepresentation as its associated proto representation. "
          "Please ensure ClassThatReusesProto has a unique proto representation."
         )):
-
-      class ClassThatReusesProto(serialization.Serializable):  # pylint: disable=unused-variable
-
-        @classmethod
-        def experimental_type_proto(cls):
-          return serialization_test_pb2.MyCustomRepresentation
-
-        @classmethod
-        def experimental_from_proto(cls, proto):
-          raise NotImplementedError
-
-        def experimental_as_proto(self):
-          raise NotImplementedError
+      serialization.register_serializable(ClassThatReusesProto)
 
   def testWrongProto(self):
 
@@ -164,6 +219,20 @@ class SerializeTest(test.TestCase):
         ("ClassReturningWrongProto returned different type of proto than "
          "specified by experimental_type_proto()")):
       serialization.serialize(ClassReturningWrongProto())
+
+  def testSerializableSuperClass(self):
+    self.assertEqual(
+        serialization.deserialize(
+            serialization.serialize(SerializableFromSuperClassOne())),
+        SerializableFromSuperClassOne())
+    self.assertEqual(
+        serialization.deserialize(
+            serialization.serialize(SerializableFromSuperClassTwo())),
+        SerializableFromSuperClassTwo())
+    self.assertEqual(
+        serialization.deserialize(
+            serialization.serialize(SerializableFromSuperClassThree())),
+        SerializableFromSuperClassThree())
 
 
 if __name__ == "__main__":

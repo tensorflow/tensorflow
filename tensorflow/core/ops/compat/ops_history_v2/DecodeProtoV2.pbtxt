@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "DecodeProtoV2"
   input_arg {
     name: "bytes"

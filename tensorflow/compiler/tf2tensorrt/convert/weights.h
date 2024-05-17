@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_WEIGHTS_H_
-#define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_WEIGHTS_H_
+#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_WEIGHTS_H_
+#define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_WEIGHTS_H_
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
@@ -85,7 +85,7 @@ class TRT_ShapedWeights {
         return errors::InvalidArgument(
             "Unsupported data type ", tensorflow::tensorrt::DebugString(type_));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status SetShape(DimsAdapter dims);
@@ -163,6 +163,17 @@ class TrtWeightStore {
   std::vector<Tensor> store_;
 };
 
+// Enumerates the possible types of arguments of a converter. This determines
+// what object is contained in TRT_TensorOrWeights, and converters can require
+// a specific type for each of their arguments.
+enum class TRT_ArgumentType {
+  TENSOR = 0,
+  WEIGHTS = 1,
+  RESOURCE = 2,
+};
+
+struct OpConverterParams;
+
 // Represents a TRT-style input to a TF node, it can be either a
 // ITensorProxyPtr (representing nvinfer1::ITensor* or SimpleITensor),
 // or TRT_ShapedWeights which is compile-time constant.
@@ -192,14 +203,28 @@ class TRT_TensorOrWeights {
   // Constructs a wrapper for the given weights.
   explicit TRT_TensorOrWeights(const TRT_ShapedWeights& weights);
 
+  // Constructs a wrapper for the given resource handle.
+  explicit TRT_TensorOrWeights(const ResourceHandle& resource);
+
   TRT_TensorOrWeights(const TRT_TensorOrWeights& rhs);
 
   void operator=(const TRT_TensorOrWeights& rhs);
 
-  bool is_tensor() const { return initialized_ && is_tensor_; }
-  bool is_weights() const { return initialized_ && !is_tensor_; }
+  bool is_tensor() const {
+    return initialized_ && arg_type_ == TRT_ArgumentType::TENSOR;
+  }
+  bool is_weights() const {
+    return initialized_ && arg_type_ == TRT_ArgumentType::WEIGHTS;
+  }
+  bool is_resource() const {
+    return initialized_ && arg_type_ == TRT_ArgumentType::RESOURCE;
+  }
 
   ITensorProxyPtr tensor() const;
+
+  ResourceHandle resource() const;
+
+  ITensorProxyPtr as_tensor(const OpConverterParams* params);
 
   TRT_ShapedWeights& weights() {
     DCHECK(is_weights());
@@ -220,7 +245,12 @@ class TRT_TensorOrWeights {
   string DebugString() const;
 
   nvinfer1::DataType TrtDType() const {
-    return is_tensor_ ? tensor_proxy_ptr_->getType() : weights_.TrtDType();
+    if (arg_type_ == TRT_ArgumentType::RESOURCE) {
+      VLOG(0) << "Calling TrtDType() with a RESOURCE argument is undefined "
+                 "behavior.";
+    }
+    return arg_type_ == TRT_ArgumentType::TENSOR ? tensor_proxy_ptr_->getType()
+                                                 : weights_.TrtDType();
   }
 
  private:
@@ -241,12 +271,19 @@ class TRT_TensorOrWeights {
   //
   // If use_implicit_batch is false, batch_size_ is unused and
   // tensor_->getDimensions() will contain the entire shape (A,B,C).
+  //
+  // tensor_proxy_ptr_ is used when arg_type_ == TENSOR.
   ITensorProxyPtr tensor_proxy_ptr_ = nullptr;
   int batch_size_ = -1;
 
+  // For DT_RESOURCE arguments (there is no corresponding type in TRT).
+  // resource_ is used when arg_type_ == RESOURCE.
+  ResourceHandle resource_;
+
+  // weights_ is used when arg_type_ == WEIGHTS.
   TRT_ShapedWeights weights_;
   bool initialized_ = false;
-  bool is_tensor_ = false;
+  TRT_ArgumentType arg_type_ = TRT_ArgumentType::WEIGHTS;
 
   friend class Converter;
 };
@@ -255,4 +292,4 @@ class TRT_TensorOrWeights {
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
-#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_WEIGHTS_H_
+#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_WEIGHTS_H_

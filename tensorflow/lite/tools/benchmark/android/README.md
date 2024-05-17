@@ -20,7 +20,7 @@ application.
 ## To build/install/run
 
 (0) Refer to
-https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android
+https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/android/test
 to edit the `WORKSPACE` to configure the android NDK/SDK.
 
 (1) Build for your specific platform, e.g.:

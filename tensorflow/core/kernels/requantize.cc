@@ -18,9 +18,11 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <math.h>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/meta_support.h"
@@ -38,10 +40,34 @@ class RequantizeOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
-    const float input_min_float = ctx->input(1).flat<float>()(0);
-    const float input_max_float = ctx->input(2).flat<float>()(0);
-    const float requested_output_min_float = ctx->input(3).flat<float>()(0);
-    const float requested_output_max_float = ctx->input(4).flat<float>()(0);
+
+    const Tensor& input_min = ctx->input(1);
+    const Tensor& input_max = ctx->input(2);
+    const Tensor& requested_output_min = ctx->input(3);
+    const Tensor& requested_output_max = ctx->input(4);
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(input_min.shape()),
+        errors::InvalidArgument("`input_min` must be rank 0 but is rank ",
+                                input_min.dims()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(input_max.shape()),
+        errors::InvalidArgument("`input_max` must be rank 0 but is rank ",
+                                input_max.dims()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(requested_output_min.shape()),
+                errors::InvalidArgument(
+                    "`requested_output_min` must be rank 0 but is rank ",
+                    requested_output_min.dims()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(requested_output_max.shape()),
+                errors::InvalidArgument(
+                    "`requested_output_max` must be rank 0 but is rank ",
+                    requested_output_max.dims()));
+
+    const float input_min_float = input_min.flat<float>()(0);
+    const float input_max_float = input_max.flat<float>()(0);
+    const float requested_output_min_float =
+        requested_output_min.flat<float>()(0);
+    const float requested_output_max_float =
+        requested_output_max.flat<float>()(0);
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));

@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -50,7 +51,7 @@ TEST(EvalUtilsTest, InvalidInputs) {
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
 
-  auto iter = func.body().begin()->begin();
+  auto iter = func.getBody().begin()->begin();
   Operation *const_0 = &*iter++;
   ASSERT_TRUE(tfg_dialect->IsConstant(const_0));
   Operation *const_1 = &*iter++;
@@ -60,7 +61,7 @@ TEST(EvalUtilsTest, InvalidInputs) {
   auto cpu_device = std::make_unique<util::SimpleDevice>();
   auto resource_mgr = std::make_unique<tensorflow::ResourceMgr>();
 
-  llvm::SmallVector<Attribute> result;
+  llvm::SmallVector<TypedAttr> result;
 
   // The operand 1 of SwitchOp is not scalar.
   EXPECT_TRUE(failed(
@@ -88,7 +89,7 @@ TEST(EvalUtilsTest, EvaluateOperation) {
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
 
-  auto iter = func.body().begin()->begin();
+  auto iter = func.getBody().begin()->begin();
   Operation *const_0 = &*iter++;
   Operation *const_1 = &*iter++;
   Operation *add = &*iter++;
@@ -96,15 +97,15 @@ TEST(EvalUtilsTest, EvaluateOperation) {
   auto cpu_device = std::make_unique<util::SimpleDevice>();
   auto resource_mgr = std::make_unique<tensorflow::ResourceMgr>();
 
-  llvm::SmallVector<Attribute> result;
+  llvm::SmallVector<TypedAttr> result;
 
   ASSERT_TRUE(succeeded(util::EvaluateOperation(
       cpu_device.get(), resource_mgr.get(), const_0,
       {const_0->getAttrOfType<ElementsAttr>("value")}, result)));
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_TRUE(result[0].isa<ElementsAttr>());
-  EXPECT_EQ(result[0].cast<ElementsAttr>().getValues<int>()[0], 1);
+  ASSERT_TRUE(mlir::isa<ElementsAttr>(result[0]));
+  EXPECT_EQ(mlir::cast<ElementsAttr>(result[0]).getValues<int>()[0], 1);
 
   result.clear();
 
@@ -113,8 +114,8 @@ TEST(EvalUtilsTest, EvaluateOperation) {
       {const_1->getAttrOfType<ElementsAttr>("value")}, result)));
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_TRUE(result[0].isa<ElementsAttr>());
-  EXPECT_EQ(result[0].cast<ElementsAttr>().getValues<int>()[0], 2);
+  ASSERT_TRUE(mlir::isa<ElementsAttr>(result[0]));
+  EXPECT_EQ(mlir::cast<ElementsAttr>(result[0]).getValues<int>()[0], 2);
 
   result.clear();
 
@@ -125,8 +126,8 @@ TEST(EvalUtilsTest, EvaluateOperation) {
                               result)));
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_TRUE(result[0].isa<ElementsAttr>());
-  EXPECT_EQ(result[0].cast<ElementsAttr>().getValues<int>()[0], 3);
+  ASSERT_TRUE(mlir::isa<ElementsAttr>(result[0]));
+  EXPECT_EQ(mlir::cast<ElementsAttr>(result[0]).getValues<int>()[0], 3);
 }
 
 TEST(EvalUtilsTest, OutputInvalidation) {
@@ -149,7 +150,7 @@ TEST(EvalUtilsTest, OutputInvalidation) {
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
 
-  auto iter = func.body().begin()->begin();
+  auto iter = func.getBody().begin()->begin();
   Operation *const_0 = &*iter++;
   ASSERT_TRUE(tfg_dialect->IsConstant(const_0));
   Operation *const_1 = &*iter++;
@@ -159,7 +160,7 @@ TEST(EvalUtilsTest, OutputInvalidation) {
   auto cpu_device = std::make_unique<util::SimpleDevice>();
   auto resource_mgr = std::make_unique<tensorflow::ResourceMgr>();
 
-  llvm::SmallVector<Attribute> result;
+  llvm::SmallVector<TypedAttr> result;
 
   ASSERT_TRUE(succeeded(
       util::EvaluateOperation(cpu_device.get(), resource_mgr.get(), switch_op,
@@ -170,7 +171,7 @@ TEST(EvalUtilsTest, OutputInvalidation) {
   ASSERT_EQ(result.size(), 2);
   // Output 0 is invalidated.
   EXPECT_EQ(result[0], nullptr);
-  EXPECT_EQ(result[1].cast<ElementsAttr>().getValues<int>()[0], 2);
+  EXPECT_EQ(mlir::cast<ElementsAttr>(result[1]).getValues<int>()[0], 2);
 }
 
 }  // namespace tfg

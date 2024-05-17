@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RiscCondition"
   input_arg {
     name: "pred"

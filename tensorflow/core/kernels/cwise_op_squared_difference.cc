@@ -24,6 +24,8 @@ REGISTER8(BinaryOp, CPU, "SquaredDifference", functor::squared_difference,
 REGISTER4(BinaryOp, GPU, "SquaredDifference", functor::squared_difference,
           float, Eigen::half, double, int64);
 #endif
+REGISTER(BinaryOp, GPU, "SquaredDifference", functor::squared_difference,
+         bfloat16);
 #endif
 
 // A special GPU kernel for int32.

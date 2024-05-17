@@ -19,8 +19,8 @@ limitations under the License.
 
 #include <cstdlib>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h"
@@ -153,8 +153,8 @@ TfLiteStatus AverageEvalQuantizedUint8(TfLiteContext* context, TfLiteNode* node,
                                        TfLiteTensor* output) {
   int32_t activation_min;
   int32_t activation_max;
-  (void)CalculateActivationRangeQuantized(context, params->activation, output,
-                                          &activation_min, &activation_max);
+  TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+      context, params->activation, output, &activation_min, &activation_max));
 #define TF_LITE_AVERAGE_POOL(type)                                            \
   tflite::PoolParams op_params;                                               \
   op_params.stride_height = params->stride_height;                            \

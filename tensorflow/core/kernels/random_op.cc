@@ -166,7 +166,7 @@ class RandomGammaOp : public OpKernel {
     }
     const int64_t samples_per_alpha = samples_shape.num_elements();
 
-    samples_shape.AppendShape(alpha_t.shape());
+    OP_REQUIRES_OK(ctx, samples_shape.AppendShapeWithStatus(alpha_t.shape()));
     // Allocate output samples.
     Tensor* samples_t = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, samples_shape, &samples_t));
@@ -321,7 +321,8 @@ class RandomGammaOp : public OpKernel {
  private:
   GuardedPhiloxRandom generator_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomGammaOp);
+  RandomGammaOp(const RandomGammaOp&) = delete;
+  void operator=(const RandomGammaOp&) = delete;
 };
 
 }  // namespace
@@ -441,6 +442,7 @@ TF_CALL_uint64(REGISTER_FULL_INT);
                           RandomUniformIntOp<GPUDevice, IntType>);
 
 TF_CALL_half(REGISTER);
+TF_CALL_bfloat16(REGISTER);
 TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 TF_CALL_int32(REGISTER_INT);

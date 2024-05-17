@@ -21,9 +21,15 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) &&                       \
+    (!defined(TARGET_OS_IOS) || !TARGET_OS_IOS)
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
+
 #include <numeric>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -214,56 +220,6 @@ class SplitVOpBase : public OpKernel {
 template <typename T, typename Tlen, typename InputReshapedType, int NDims>
 class SplitVOpCPUImpl {
  public:
-  void ParallelSplitByInputData(OpKernelContext* context,
-                                const InputReshapedType& input_reshaped,
-                                const TensorShape& input_shape,
-                                const std::vector<Tlen>& split_sizes_vec,
-                                const int32_t split_dim) const {
-    const T* p_data = input_reshaped.data();
-    const uint32 elem_pkg = input_reshaped.dimensions().rank() == 3
-                                ? input_reshaped.dimension(2)
-                                : 1;
-    const uint32 line_elem_num =
-        (input_reshaped.dimensions().rank() >= 2 ? input_reshaped.dimension(1)
-                                                 : 1) *
-        elem_pkg;
-    const uint32 line_num = input_reshaped.dimension(0);
-
-    // Prepare the output matrix.
-    std::vector<T*> outputs(split_sizes_vec.size());
-    for (uint64 i = 0; i < split_sizes_vec.size(); ++i) {
-      TensorShape output_shape(input_shape);
-      output_shape.set_dim(split_dim, split_sizes_vec[i]);
-      Tensor* result = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(i, output_shape, &result));
-      outputs[i] = static_cast<T*>(&result->flat<T>()(0));
-    }
-
-    auto sub_split_func = [&split_sizes_vec, &p_data, elem_pkg, &outputs,
-                           line_elem_num](int32_t start_part,
-                                          int32_t end_part) {
-      int start = start_part * line_elem_num;
-      int end = end_part * line_elem_num;
-      uint32 times = 0;
-      for (int32_t i = start; i < end;) {
-        for (uint32 j = 0; j < split_sizes_vec.size(); ++j) {
-          const auto copy_elem_num = split_sizes_vec[j] * elem_pkg;
-          std::copy_n(p_data + i, copy_elem_num,
-                      &(outputs[j][(start_part + times) * copy_elem_num]));
-          i += copy_elem_num;
-        }
-        ++times;
-      }
-    };
-
-    uint32 part_size =
-        context->device()->tensorflow_cpu_worker_threads()->num_threads;
-    Shard(part_size,
-          context->device()->tensorflow_cpu_worker_threads()->workers, line_num,
-          line_num, sub_split_func);
-  }
-
   template <typename MakeSizesType, typename ReshapeResultType>
   void operator()(OpKernelContext* context,
                   const InputReshapedType& input_reshaped,
@@ -275,6 +231,8 @@ class SplitVOpCPUImpl {
                   std::vector<Tlen>& split_sizes_vec,
                   const MakeSizesType& make_sizes,
                   const ReshapeResultType& reshape_result) const {
+    constexpr uint64 kMinimumSplitNum = 4;
+
     Eigen::DSizes<Eigen::DenseIndex, NDims> indices;
     for (int i = 0; i < NDims; ++i) {
       indices[i] = 0;
@@ -289,49 +247,38 @@ class SplitVOpCPUImpl {
          input_element_count >= std::min(num_threads, num_split) * 4096 &&
          input_element_count < num_split * 180 * 1024);
 
-    auto range_output_func = [&indices, context, &input_shape, split_dim,
-                              &split_sizes_vec, &split_start_points,
-                              use_parallelism_between_outputs, &input_reshaped,
-                              &make_sizes,
-                              &reshape_result](int64_t start, int64_t limit) {
-      for (int64_t i = start; i < limit; ++i) {
-        TensorShape output_shape(input_shape);
-        output_shape.set_dim(split_dim, split_sizes_vec[i]);
-        Tensor* result = nullptr;
-        OP_REQUIRES_OK(context,
-                       context->allocate_output(i, output_shape, &result));
+    auto range_output_func =
+        [&indices, context, &input_shape, split_dim, &split_sizes_vec,
+         &split_start_points, use_parallelism_between_outputs, &input_reshaped,
+         &make_sizes, &reshape_result](int64_t start, int64_t limit) {
+          for (int64_t i = start; i < limit; ++i) {
+            TensorShape output_shape(input_shape);
+            output_shape.set_dim(split_dim, split_sizes_vec[i]);
+            Tensor* result = nullptr;
+            OP_REQUIRES_OK(context,
+                           context->allocate_output(i, output_shape, &result));
 
-        const auto sizes = make_sizes(split_sizes_vec[i]);
+            const auto sizes = make_sizes(split_sizes_vec[i]);
 
-        if (sizes.TotalSize() > 0) {
-          auto result_shaped = reshape_result(result, split_sizes_vec[i]);
+            if (sizes.TotalSize() > 0) {
+              auto result_shaped = reshape_result(result, split_sizes_vec[i]);
 
-          auto current_indices = indices;
-          current_indices[NDims - 2] = split_start_points[i];
-          if (use_parallelism_between_outputs) {
-            // Use sequential implementation for single output.
-            result_shaped = input_reshaped.slice(current_indices, sizes);
-          } else {
-            // This implementation may be parallel internally.
-            functor::Split<CPUDevice, T, NDims>()(
-                context->eigen_device<CPUDevice>(), result_shaped,
-                input_reshaped, current_indices, sizes);
+              auto current_indices = indices;
+              current_indices[NDims - 2] = split_start_points[i];
+              if (use_parallelism_between_outputs) {
+                // Use sequential implementation for single output.
+                result_shaped = input_reshaped.slice(current_indices, sizes);
+              } else {
+                // This implementation may be parallel internally.
+                functor::Split<CPUDevice, T, NDims>()(
+                    context->eigen_device<CPUDevice>(), result_shaped,
+                    input_reshaped, current_indices, sizes);
+              }
+            }
           }
-        }
-      }
-    };
+        };
 
-    // 1. Parallel performance is not as good as serial when the amount of data
-    // is too small (<kMinimumInputSize);
-    // 2. There is sufficient data on the 0th dimension to ensure parallelism;
-    // 3. This method only supports non-zero split.
-    if ((input_element_count >= kMinimumInputSize) &&
-        input_reshaped.dimension(0) > kMinimumDim0Size && split_dim) {
-      // Each thread processes the same amount of data, and then copies data
-      // to all output tensors .
-      ParallelSplitByInputData(context, input_reshaped, input_shape,
-                               split_sizes_vec, split_dim);
-    } else if (use_parallelism_between_outputs) {
+    if (use_parallelism_between_outputs) {
       // A thread maps a output tensor, this thread will traverse all the data,
       // and then put specified data to mapped output tensor. Run in parallel,
       // disabling parallelism in functor.
@@ -343,9 +290,6 @@ class SplitVOpCPUImpl {
       range_output_func(0, num_split);
     }
   }
-  static constexpr uint64 kMinimumInputSize = 4096 * 512;
-  static constexpr uint64 kMinimumDim0Size = 8;
-  static constexpr uint64 kMinimumSplitNum = 4;
 };
 
 template <typename T, typename Tlen>
@@ -544,10 +488,16 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
                           SplitVOpCPU<type, len_type>);
 
 #define REGISTER_SPLIT_LEN(type) \
+  REGISTER_SPLIT(type, int8);    \
   REGISTER_SPLIT(type, int32);   \
   REGISTER_SPLIT(type, int64_t);
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT_LEN);
+TF_CALL_float8_e5m2(REGISTER_SPLIT_LEN);
+TF_CALL_float8_e4m3fn(REGISTER_SPLIT_LEN);
+TF_CALL_int4(REGISTER_SPLIT_LEN);
+TF_CALL_uint4(REGISTER_SPLIT_LEN);
+REGISTER_SPLIT_LEN(quint8)
 
 #undef REGISTER_SPLIT_LEN
 #undef REGISTER_SPLIT
@@ -564,10 +514,10 @@ TF_CALL_ALL_TYPES(REGISTER_SPLIT_LEN);
                           SplitVOpGPU<type, len_type>);
 
 #define REGISTER_GPU_LEN(type) \
+  REGISTER_GPU(type, int8);    \
   REGISTER_GPU(type, int32);   \
   REGISTER_GPU(type, int64_t);
 
-TF_CALL_bfloat16(REGISTER_GPU_LEN);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_LEN);
 TF_CALL_COMPLEX_TYPES(REGISTER_GPU_LEN);
 #undef REGISTER_GPU_LEN
@@ -590,6 +540,23 @@ REGISTER_GPU_int32(int32);
 REGISTER_GPU_int32(int64_t);
 
 #undef REGISTER_GPU_int32
+
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+#define REGISTER_DEFAULT_KERNEL(len_type)                       \
+  REGISTER_KERNEL_BUILDER(Name("SplitV")                        \
+                              .Device(DEVICE_DEFAULT)           \
+                              .TypeConstraint<int32>("T")       \
+                              .TypeConstraint<len_type>("Tlen") \
+                              .HostMemory("size_splits")        \
+                              .HostMemory("split_dim")          \
+                              .HostMemory("value")              \
+                              .HostMemory("output"),            \
+                          SplitVOpCPU<int32, len_type>);
+
+TF_CALL_int32(REGISTER_DEFAULT_KERNEL);
+TF_CALL_int64(REGISTER_DEFAULT_KERNEL);
+#undef REGISTER_DEFAULT_KERNEL
+#endif
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

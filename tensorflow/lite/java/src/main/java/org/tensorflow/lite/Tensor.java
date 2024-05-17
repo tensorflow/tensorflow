@@ -133,11 +133,10 @@ public interface Tensor {
    * particular, some graphs have dynamically shaped outputs, which can make feeding a predefined
    * output buffer to the interpreter awkward. Example usage:
    *
-   * <pre>{@code
+   * <pre> {@code
    * interpreter.run(input, null);
    * ByteBuffer outputBuffer = interpreter.getOutputTensor(0).asReadOnlyBuffer();
-   * // Copy or read from outputBuffer.
-   * }</pre>
+   * // Copy or read from outputBuffer.}</pre>
    *
    * <p>WARNING: If the tensor has not yet been allocated, e.g., before inference has been executed,
    * the result is undefined. Note that the underlying tensor pointer may also change when the
@@ -145,11 +144,10 @@ public interface Tensor {
    * it is *not* safe to hold a reference to the returned buffer beyond immediate use directly
    * following inference. Example *bad* usage:
    *
-   * <pre>{@code
+   * <pre> {@code
    * ByteBuffer outputBuffer = interpreter.getOutputTensor(0).asReadOnlyBuffer();
    * interpreter.run(input, null);
-   * // Copy or read from outputBuffer (which may now be invalid).
-   * }</pre>
+   * // Copy or read from outputBuffer (which may now be invalid).}</pre>
    *
    * @throws IllegalArgumentException if the tensor data has not been allocated.
    */

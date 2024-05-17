@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
@@ -47,6 +48,9 @@ class CreateTRTResourceHandle : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
+    tensorflow::profiler::TraceMe activity(
+        "CreateTRTResourceHandle::Compute",
+        tensorflow::profiler::TraceMeLevel::kInfo);
     {
       mutex_lock l(mutex_);
       if (!initialized_) {
@@ -72,7 +76,8 @@ class CreateTRTResourceHandle : public OpKernel {
   mutex mutex_;
   bool initialized_ TF_GUARDED_BY(mutex_) = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CreateTRTResourceHandle);
+  CreateTRTResourceHandle(const CreateTRTResourceHandle&) = delete;
+  void operator=(const CreateTRTResourceHandle&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CreateTRTResourceHandle")
@@ -88,6 +93,9 @@ class InitializeTRTResource : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
+    tensorflow::profiler::TraceMe activity(
+        "InitializeTRTResource::Compute",
+        tensorflow::profiler::TraceMeLevel::kInfo);
     ResourceHandle handle = HandleFromInput(ctx, 0);
     core::RefCountPtr<TRTEngineCacheResource> resource;
     OP_REQUIRES_OK(
@@ -96,7 +104,7 @@ class InitializeTRTResource : public OpKernel {
                  [this, ctx](TRTEngineCacheResource** resource) -> Status {
                    *resource = new TRTEngineCacheResource(
                        ctx, this->max_cached_engines_);
-                   return Status::OK();
+                   return OkStatus();
                  }));
 
     auto allocator = resource->allocator_.get();
@@ -169,7 +177,8 @@ class InitializeTRTResource : public OpKernel {
   // Maximum number of cached engines
   int max_cached_engines_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InitializeTRTResource);
+  InitializeTRTResource(const InitializeTRTResource&) = delete;
+  void operator=(const InitializeTRTResource&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("InitializeTRTResource")
@@ -186,6 +195,9 @@ class SerializeTRTResource : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
+    tensorflow::profiler::TraceMe activity(
+        "SerializeTRTResource::Compute",
+        tensorflow::profiler::TraceMeLevel::kInfo);
     const string& resource_name = ctx->input(0).scalar<tstring>()();
     const string& filename = ctx->input(1).scalar<tstring>()();
     OP_REQUIRES(ctx, !filename.empty(),
@@ -211,6 +223,17 @@ class SerializeTRTResource : public OpKernel {
 
     int num_serialized_engines = 0;
     if (save_gpu_specific_engines_) {
+      // If user requests TRT engines export, recursively create
+      // requisite directories.
+      const char* export_trt_engines_env =
+          getenv("TF_TRT_EXPORT_TRT_ENGINES_PATH");
+      if (export_trt_engines_env) {
+        VLOG(1) << "Exporting TRT engines to directory: "
+                << export_trt_engines_env;
+        OP_REQUIRES_OK(
+            ctx, ctx->env()->RecursivelyCreateDir(export_trt_engines_env));
+      }
+
       for (const auto& pair : resource->cache_) {
         // Ignore engines that failed to build.
         const std::unique_ptr<EngineContext>& engine = pair.second;
@@ -227,6 +250,28 @@ class SerializeTRTResource : public OpKernel {
             engine->GetCudaEngine()->serialize());
         engine_instance.set_serialized_engine(engine_data->data(),
                                               engine_data->size());
+
+        if (export_trt_engines_env) {
+          const std::string engine_filename =
+              std::string(export_trt_engines_env) + "/" + resource_name;
+          std::unique_ptr<WritableFile> engine_file;
+          OP_REQUIRES_OK(
+              ctx, ctx->env()->NewWritableFile(engine_filename, &engine_file));
+          OP_REQUIRES_OK(ctx, engine_file->Append(StringPiece(
+                                  static_cast<char*>(engine_data->data()),
+                                  engine_data->size())));
+
+          const std::string dims_filename =
+              std::string(export_trt_engines_env) + "/dims-" + resource_name;
+          std::unique_ptr<WritableFile> dims_file;
+          OP_REQUIRES_OK(
+              ctx, ctx->env()->NewWritableFile(dims_filename, &dims_file));
+
+          for (const TensorShape& shape : engine_input_shapes) {
+            OP_REQUIRES_OK(ctx,
+                           dims_file->Append(StringPiece(shape.DebugString())));
+          }
+        }
 
         OP_REQUIRES_OK(
             ctx, writer->WriteRecord(engine_instance.SerializeAsString()));
@@ -252,7 +297,8 @@ class SerializeTRTResource : public OpKernel {
   bool delete_resource_ = false;
   bool save_gpu_specific_engines_ = true;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SerializeTRTResource);
+  SerializeTRTResource(const SerializeTRTResource&) = delete;
+  void operator=(const SerializeTRTResource&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("SerializeTRTResource").Device(DEVICE_GPU),

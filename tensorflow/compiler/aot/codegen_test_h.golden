@@ -9,7 +9,7 @@
 #ifndef TFCOMPILE_GENERATED_entry_point_H_  // NOLINT(build/header_guard)
 #define TFCOMPILE_GENERATED_entry_point_H_  // NOLINT(build/header_guard)
 
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 #include "tensorflow/core/platform/types.h"
@@ -58,12 +58,14 @@ namespace bar {
 // Memory stats:
 //   arg bytes total:    392
 //   arg bytes aligned:  576
-//   temp bytes total:   126
+//   temp bytes total:   171
 //   temp bytes aligned: 512
 class MyClass final : public tensorflow::XlaCompiledCpuFunction {
  public:
   // Number of input arguments for the compiled computation.
   static constexpr size_t kNumArgs = 5;
+
+  static constexpr size_t kNumResults = 3;
 
   // Number of variables for the compiled computation.
   static constexpr size_t kNumVariables = 3;
@@ -81,10 +83,14 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
       set_static_data_raw_function(data, entry_point);
       set_static_data_buffer_infos(data, BufferInfos());
       set_static_data_num_buffers(data, kNumBuffers);
+      set_static_data_result_index_table(data, ResultIndexToBufferIndex());
+      set_static_data_num_results(data, kNumResults);
       set_static_data_arg_index_table(data, ArgIndexToBufferIndex());
       set_static_data_num_args(data, kNumArgs);
       set_static_data_num_variables(data, kNumVariables);
       set_static_data_result_index(data, kResultIndex);
+      set_static_data_arg_shape_infos(data, ArgShapeInfos());
+      set_static_data_result_shape_infos(data, ResultShapeInfos());
       set_static_data_arg_names(data, StaticArgNames());
       set_static_data_variable_names(data, StaticVariableNames());
       set_static_data_result_names(data, StaticResultNames());
@@ -110,7 +116,7 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   //
   // void set_argN_data(void* data)
   //   Sets the buffer of type T for positional argument N. May be called in
-  //   any AllocMode. Must be called before Run to have an affect. Must be
+  //   any AllocMode. Must be called before Run to have an effect. Must be
   //   called in AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY for each positional
   //   argument, to set the argument buffers.
   //
@@ -354,20 +360,27 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   static const ::xla::cpu_function_runtime::BufferInfo* BufferInfos() {
     static const ::xla::cpu_function_runtime::BufferInfo
       kBufferInfos[kNumBuffers] = {
-::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::xla::cpu_function_runtime::BufferInfo({34ULL, 0ULL}),
-::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::xla::cpu_function_runtime::BufferInfo({386ULL, 1ULL}),
-::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::xla::cpu_function_runtime::BufferInfo({386ULL, 2ULL}),
-::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::xla::cpu_function_runtime::BufferInfo({386ULL, 3ULL}),
-::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::xla::cpu_function_runtime::BufferInfo({386ULL, 4ULL}),
-::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
-::xla::cpu_function_runtime::BufferInfo({481ULL, ~0ULL})
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{97ULL, ~0U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{34ULL, 0U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{5ULL, ~0U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{386ULL, 1U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{5ULL, ~0U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{386ULL, 2U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{5ULL, ~0U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{386ULL, 3U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{481ULL, ~0U, 0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{386ULL, 4U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{17ULL, ~0U, 1U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{81ULL, ~0U, 2U})
       };
     return kBufferInfos;
+  }
+
+  static const ::tensorflow::int32* ResultIndexToBufferIndex() {
+    static constexpr ::tensorflow::int32 kResultIndexToBufferIndex[kNumResults] = {
+8, 10, 11
+    };
+    return kResultIndexToBufferIndex;
   }
 
   static const ::tensorflow::int32* ArgIndexToBufferIndex() {
@@ -378,7 +391,53 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   }
 
   // The 0-based index of the result tuple in the temporary buffers.
-  static constexpr size_t kResultIndex = 11;
+  static constexpr size_t kResultIndex = 0;
+
+  // Shapes of the input arguments.
+  static constexpr int32_t kArg0Shapes[] = {
+1, 2
+  };
+  static constexpr int32_t kArg1Shapes[] = {
+3, 4
+  };
+  static constexpr int32_t kArg2Shapes[] = {
+1
+  };
+  static constexpr int32_t kArg3Shapes[] = {
+1
+  };
+  static constexpr int32_t kArg4Shapes[] = {
+5
+  };
+  static const ShapeInfo* ArgShapeInfos() {
+    static constexpr ShapeInfo kArgShapeInfoTable[kNumArgs] = {
+{ kArg0Shapes, 2 },
+{ kArg1Shapes, 2 },
+{ kArg2Shapes, 1 },
+{ kArg3Shapes, 1 },
+{ kArg4Shapes, 1 },
+    };
+    return kArgShapeInfoTable;
+  };
+
+  // Shapes of the results.
+  static constexpr int32_t kResult0Shapes[] = {
+5, 6
+  };
+  static constexpr int32_t kResult1Shapes[] = {
+1
+  };
+  static constexpr int32_t kResult2Shapes[] = {
+5
+  };
+  static const ShapeInfo* ResultShapeInfos() {
+    static constexpr ShapeInfo kResultShapeInfoTable[kNumResults] = {
+{ kResult0Shapes, 2 },
+{ kResult1Shapes, 1 },
+{ kResult2Shapes, 1 },
+    };
+    return kResultShapeInfoTable;
+  };
 
   // Array of names of each positional argument, terminated by nullptr.
   static const char** StaticArgNames() {
@@ -402,7 +461,7 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   static const ::xla::ProgramShapeProto* StaticProgramShape() {
     static const ::xla::ProgramShapeProto* kShape = []() {
     ::xla::ProgramShapeProto* proto = new ::xla::ProgramShapeProto;
-    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[0], 149);
+    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[0], 157);
     return proto;
   }();
     return kShape;

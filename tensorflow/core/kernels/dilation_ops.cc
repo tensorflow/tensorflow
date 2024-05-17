@@ -22,7 +22,7 @@ limitations under the License.
 #include <cfloat>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -104,12 +104,12 @@ void ParseSizes(OpKernelContext* context, const std::vector<int32>& strides,
   const int filter_cols_eff =
       filter_cols + (filter_cols - 1) * (*rate_cols - 1);
 
-  OP_REQUIRES_OK(
-      context, GetWindowedOutputSize(input_rows, filter_rows_eff, *stride_rows,
-                                     padding, out_rows, pad_top));
-  OP_REQUIRES_OK(
-      context, GetWindowedOutputSize(input_cols, filter_cols_eff, *stride_cols,
-                                     padding, out_cols, pad_left));
+  OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                              input_rows, filter_rows_eff, /*dilation_rate=*/1,
+                              *stride_rows, padding, out_rows, pad_top));
+  OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                              input_cols, filter_cols_eff, /*dilation_rate=*/1,
+                              *stride_cols, padding, out_cols, pad_left));
 }
 
 template <typename Device, typename T>

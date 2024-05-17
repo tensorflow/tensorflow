@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_SPARSE_DIM_COMPARATOR_H_
 #define TENSORFLOW_CORE_UTIL_SPARSE_DIM_COMPARATOR_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -44,7 +45,7 @@ namespace sparse {
 // the values in IX in particular columns (dimensions) of interest.
 class DimComparator {
  public:
-  typedef typename gtl::ArraySlice<int64_t> VarDimArray;
+  typedef absl::Span<const int64_t> VarDimArray;
 
   DimComparator(const TTypes<int64_t>::Matrix& ix, const VarDimArray& order,
                 const VarDimArray& shape)

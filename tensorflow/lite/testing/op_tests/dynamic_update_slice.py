@@ -15,7 +15,7 @@
 """Test configs for tensor_list_set_item."""
 import functools
 
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -53,10 +53,10 @@ def make_dynamic_update_slice_tests(options):
 
   def build_graph(parameters):
     """Build the TensorListSetItem op testing graph."""
-    data = tf.placeholder(
+    data = tf.compat.v1.placeholder(
         dtype=parameters["element_dtype"],
         shape=[parameters["num_elements"]] + parameters["element_shape"])
-    item = tf.placeholder(
+    item = tf.compat.v1.placeholder(
         dtype=parameters["element_dtype"], shape=parameters["element_shape"])
     tensor_list = list_ops.tensor_list_from_tensor(data,
                                                    parameters["element_shape"])

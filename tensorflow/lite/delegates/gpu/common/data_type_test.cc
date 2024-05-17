@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 namespace tflite {
@@ -96,6 +95,13 @@ TEST(DataTypeTest, GlslShaderDataTypes) {
             ToGlslShaderDataType(DataType::UINT16, 1, /*add_precision*/ true));
   EXPECT_EQ("lowp uint",
             ToGlslShaderDataType(DataType::UINT8, 1, /*add_precision*/ true));
+
+  EXPECT_EQ("bool", ToGlslShaderDataType(DataType::BOOL));
+  EXPECT_EQ("bvec4", ToGlslShaderDataType(DataType::BOOL, 4));
+  EXPECT_EQ("bool",
+            ToGlslShaderDataType(DataType::BOOL, 1, /*add_precision*/ true));
+  EXPECT_EQ("bool", ToGlslShaderDataType(DataType::BOOL, 1,
+                                         /*add_precision*/ false));
 }
 
 }  // namespace

@@ -17,14 +17,16 @@ func.func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-NEXT:         name: "arg0",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:         }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         has_rank: true
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         buffer: 2,
 // CHECK-NEXT:         name: "tfl.fake_quant",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:         }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         has_rank: true
 // CHECK-NEXT:       } ],
 // CHECK-NEXT:       inputs: [ 0 ],
 // CHECK-NEXT:       outputs: [ 1 ],
@@ -57,7 +59,7 @@ func.func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-NEXT:     signature_defs: [ ]
 // CHECK-NEXT:   }
 
-// IMPORT: "tfl.fake_quant"(%arg0) {max = 1.400000e+00 : f32, min = 3.000000e-01 : f32, narrow_range = false, num_bits = 6 : i32}
+// IMPORT: "tfl.fake_quant"(%arg0) <{max = 1.400000e+00 : f32, min = 3.000000e-01 : f32, narrow_range = false, num_bits = 6 : i32}>
 
   %0 = "tfl.fake_quant"(%arg0) {num_bits = 6 : i32, narrow_range = false, min = 0.3:f32, max = 1.4:f32} : (tensor<4 x f32>) -> tensor<4 x f32>
   func.return %0 : tensor<4xf32>

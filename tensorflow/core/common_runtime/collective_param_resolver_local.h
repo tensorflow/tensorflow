@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -194,8 +195,16 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   mutex group_mu_;
   gtl::FlatMap<int32, std::unique_ptr<GroupRec>> group_table_
       TF_GUARDED_BY(group_mu_);
+  struct TupleHash {
+    std::size_t operator()(const std::tuple<int64_t, int32_t> x) const {
+      // The hash does not need to be unique and a value of 20 is picked
+      // arbitrarily as an effort to reduce probability of conflicts.
+      return (std::get<0>(x) << 20) + std::get<1>(x);
+    }
+  };
   mutex instance_mu_;
-  gtl::FlatMap<int32, gtl::FlatMap<int32, std::unique_ptr<InstanceRec>>>
+  gtl::FlatMap<int32_t, gtl::FlatMap<std::tuple<int64_t, int32_t>,
+                                     std::unique_ptr<InstanceRec>, TupleHash>>
       instance_table_ TF_GUARDED_BY(instance_mu_);
   mutex status_mu_;
   Status status_ TF_GUARDED_BY(status_mu_);

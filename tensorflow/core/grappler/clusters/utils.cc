@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/clusters/utils.h"
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -25,10 +25,6 @@ limitations under the License.
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/include/hip/hip_runtime.h"
-#endif
-
-#ifdef TENSORFLOW_USE_LIBXSMM
-#include "include/libxsmm.h"
 #endif
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
@@ -67,9 +63,6 @@ DeviceProperties GetLocalCPUInfo() {
 
   (*device.mutable_environment())["eigen"] = strings::StrCat(
       EIGEN_WORLD_VERSION, ".", EIGEN_MAJOR_VERSION, ".", EIGEN_MINOR_VERSION);
-#ifdef TENSORFLOW_USE_LIBXSMM
-  (*device.mutable_environment())["libxsmm"] = LIBXSMM_VERSION;
-#endif
 
   return device;
 }

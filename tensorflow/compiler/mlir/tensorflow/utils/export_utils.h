@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace mlir {
 class ShapedType;
@@ -40,25 +39,25 @@ class ShapedType;
 
 namespace tensorflow {
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // Add custom op prefix for TensorFlow dialects.
 Status AddTensorFlowOpPrefix(std::string);
 
 // Maps an MLIR op name in the TensorFlow dialect or the TensorFlow control
 // dialect back into a TensorFlow valid op name.
-StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef);
+absl::StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef);
 
 // Converts an MLIR operation to TensorFlow NodeDef with given node name. This
 // name should be unique to the graph it is being inserted into.
-StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
+absl::StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
     mlir::Operation* inst, llvm::StringRef name);
 
 // Converts MLIR attributes with values to their tensorflow equivalent.
 // "name" and "device" attributes are ignored by default. Use attrs_to_ignore to
 // specify any other attributes that should be ignored.
 Status ConvertAttributes(
-    const llvm::ArrayRef<mlir::NamedAttribute> attrs,
+    llvm::ArrayRef<mlir::NamedAttribute> attrs,
     const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
     bool remove_ref_type, AttrValueMap* values);
 
@@ -71,7 +70,7 @@ template <typename ShapeContainerT>
 void SetTensorShapeProto(ShapeContainerT shape, TensorShapeProto* proto) {
   if (shape.hasRank()) {
     for (int64_t dim : shape.getShape()) {
-      proto->add_dim()->set_size(dim);
+      proto->add_dim()->set_size(mlir::ShapedType::isDynamic(dim) ? -1 : dim);
     }
   } else {
     proto->set_unknown_rank(true);

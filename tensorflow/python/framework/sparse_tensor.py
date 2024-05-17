@@ -18,24 +18,30 @@ import collections
 
 import numpy as np
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import tf2
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import override_binary_operator
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import internal
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
-_eval_using_default_session = ops._eval_using_default_session
-_override_helper = ops._override_helper
+_eval_using_default_session = tensor._eval_using_default_session
+_override_helper = tensor._override_helper
 # pylint: enable=protected-access
 
 
@@ -147,7 +153,7 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     # dense_shape.
     indices_shape.dims[1].assert_is_compatible_with(dense_shape_shape.dims[0])
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     """Get the `TensorShape` representing the shape of the dense tensor.
 
     Returns:
@@ -200,7 +206,7 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     return SparseTensor(self._indices, new_values, self._dense_shape)
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     """The `Operation` that produces `values` as an output."""
     return self._values.op
 
@@ -223,12 +229,69 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     """
     return self._dense_shape_default
 
+  def set_shape(self, shape):
+    """Updates the `TensorShape` representing the shape of the dense tensor.
+
+    With eager execution this operates as a shape assertion.
+    Here the shapes match:
+
+    >>> st = tf.SparseTensor(
+    ...   indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
+    >>> st.set_shape([3, 4])
+
+    Passing a `None` in the new shape allows any value for that axis:
+
+    >>> st.set_shape([3, None])
+
+    An error is raised if an incompatible shape is passed.
+
+    >>> st.set_shape([1, 4])
+    Traceback (most recent call last):
+    ...
+    ValueError: Tensor's shape (3, 4) is not compatible with supplied
+    shape [1, 4]
+
+    When executing in a `tf.function`, or building a model using
+    `tf.keras.Input`, `SparseTensor.set_shape` will *merge* the given `shape`
+    with the current shape of this tensor, and set the tensor's shape to the
+    merged value (see `tf.TensorShape.merge_with` for details):
+
+    >>> st = tf.keras.Input(shape=[None, None, 3], sparse=True)
+    >>> print(st.shape)
+    (None, None, None, 3)
+
+    Dimensions set to `None` are not updated:
+
+    >>> st.set_shape([None, 224, 224, None])
+    >>> print(st.shape)
+    (None, 224, 224, 3)
+
+    The main use case for this is to provide additional shape information
+    that cannot be inferred from the graph alone.
+
+    Caution: `set_shape` ensures that the applied shape is compatible with
+    the existing shape, but it does not check at runtime. Setting
+    incorrect shapes can result in inconsistencies between the
+    statically-known graph and the runtime value of tensors.
+
+    Args:
+      shape: A `TensorShape` representing the shape of this tensor, a
+        `TensorShapeProto`, a list, a tuple, or None.
+
+    Raises:
+      ValueError: If `shape` is not compatible with the current shape of
+        this tensor.
+    """
+    if not isinstance(shape, tensor_shape.TensorShape):
+      shape = tensor_shape.TensorShape(shape)
+    self._dense_shape_default = self._dense_shape_default.merge_with(shape)
+
   @property
   def graph(self):
     """The `Graph` that contains the index, value, and dense_shape tensors."""
     return self._indices.graph
 
-  def __str__(self):
+  def __repr__(self):
     return "SparseTensor(indices=%s, values=%s, dense_shape=%s)" % (
         self._indices, self._values, self._dense_shape)
 
@@ -281,15 +344,38 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
   def consumers(self):
     return self._consumers()
 
+  def _numpy(self):
+    """Returns a numpy `array` with the values for this `SparseTensor`.
+
+    Requires that this `SparseTensor` was constructed in eager execution mode.
+    """
+    if not self._is_eager():
+      raise ValueError("SparseTensor.numpy() is only supported in eager mode.")
+    arr = np.zeros(self.dense_shape, dtype=self.dtype.as_numpy_dtype())
+    for i, v in zip(self.indices, self.values):
+      arr[tuple(i)] = v
+
+    return arr
+
+  def _is_eager(self):
+    """Returns True if this `SparseTensor` was constructed in eager execution.
+
+    Requires that each individual component of `SparseTensor`
+    (`indices`, `values` and `dense_shape`) is an instance of `EagerTensor`.
+    """
+
+    return all(
+        isinstance(t, ops.EagerTensor)
+        for t in (self.indices, self.values, self.dense_shape))
+
 
 SparseTensorValue = collections.namedtuple("SparseTensorValue",
                                            ["indices", "values", "dense_shape"])
 tf_export(v1=["SparseTensorValue"])(SparseTensorValue)
-_pywrap_utils.RegisterType("SparseTensorValue", SparseTensorValue)
 
 
 @tf_export("SparseTensorSpec")
-@type_spec.register("tf.SparseTensorSpec")
+@type_spec_registry.register("tf.SparseTensorSpec")
 class SparseTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for a `tf.sparse.SparseTensor`."""
 
@@ -340,7 +426,11 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
         not tf2.enabled()):
       return SparseTensorValue(*tensor_list)
     else:
-      return SparseTensor(*tensor_list)
+      result = SparseTensor(*tensor_list)
+      # Augment the static dense shape with the shape carried by the spec.
+      result._dense_shape_default = result._dense_shape_default.merge_with(  # pylint: disable=protected-access
+          self._shape)
+      return result
 
   # The SparseTensorSpec tensor_list encoding uses (de)serialize_sparse ops
   # to (un)box the component tensors in a way that allows for batching &
@@ -382,13 +472,11 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
           self._shape, dtype=dtypes.int64, name="shape")
     elif (self._shape.rank is not None and
           any(dim.value is not None for dim in self._shape.dims)):
-      # array_ops imports sparse_tensor.py. Local import to avoid import cycle.
-      from tensorflow.python.ops import array_ops  # pylint: disable=g-import-not-at-top
-      pieces = array_ops.unstack(dense_shape, num=self._shape.rank)
+      pieces = array_ops_stack.unstack(dense_shape, num=self._shape.rank)
       for i, dim in enumerate(self._shape.dims):
         if dim.value is not None:
           pieces[i] = constant_op.constant(dim.value, dense_shape.dtype)
-      dense_shape = array_ops.stack(pieces)
+      dense_shape = array_ops_stack.stack(pieces)
     else:
       dense_shape.set_shape([rank])
 
@@ -425,6 +513,13 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
     else:
       raise TypeError("Expected SparseTensor or SparseTensorValue. Received: "
                       f"{value} of type {type(value).__name__}.")
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        SparseTensorSpec, struct_pb2.TypeSpecProto.SPARSE_TENSOR_SPEC
+    )
+)
 
 
 # TODO(b/133606651) Delete the SparseTensor registration when CompositeTensor
@@ -479,3 +574,68 @@ def is_sparse(x):
     `tf.compat.v1.SparseTensorValue`.
   """
   return isinstance(x, (SparseTensor, SparseTensorValue))
+
+
+# Conversion table for __truediv__.  None entries mean no conversion required.
+_TRUEDIV_TABLE = {
+    dtypes.uint8: dtypes.float32,
+    dtypes.int8: dtypes.float32,
+    dtypes.uint16: dtypes.float32,
+    dtypes.int16: dtypes.float32,
+    dtypes.uint32: dtypes.float64,
+    dtypes.int32: dtypes.float64,
+    dtypes.uint64: dtypes.float64,
+    dtypes.int64: dtypes.float64,
+    dtypes.bfloat16: None,
+    dtypes.float16: None,
+    dtypes.float32: None,
+    dtypes.float64: None,
+    dtypes.complex64: None,
+    dtypes.complex128: None,
+}
+
+
+# NOTE: the support of "sparse (true)div dense" is currently not baked in into
+# "tf.(true_)div()".  Until such an API decision is made, the supported usage is
+# to explicitly use the "/" operator to invoke either truediv or div.
+def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
+  """Internal helper function for 'sp_t / dense_t'."""
+  with ops.name_scope(
+      name, "truediv", [sp_indices, sp_values, sp_shape, y]
+  ) as name:
+    sp_values = ops.convert_to_tensor(sp_values, name="sp_values")
+    y = ops.convert_to_tensor(y, name="y")
+    x_dtype = sp_values.dtype.base_dtype
+    y_dtype = y.dtype.base_dtype
+    if x_dtype != y_dtype:
+      raise TypeError(
+          "`x` and `y` must have the same dtype, "
+          f"got {x_dtype!r} != {y_dtype!r}."
+      )
+    try:
+      dtype = _TRUEDIV_TABLE[x_dtype]
+    except KeyError as exc:
+      raise TypeError(
+          f"Invalid dtype {x_dtype!r} in __truediv__. Expected one "
+          f"of {{{', '.join([repr(x) for x in _TRUEDIV_TABLE.keys()])}}}."
+      ) from exc
+    if dtype is not None:
+      sp_values = gen_math_ops.cast(sp_values, dtype)
+      y = gen_math_ops.cast(y, dtype)
+    return gen_sparse_ops.sparse_dense_cwise_div(
+        sp_indices, sp_values, sp_shape, y, name=name
+    )
+
+
+# NOTE(aselle): When integer division is added for sparse_dense_cwise,
+# div, truediv, and floordiv should be delegated appropriately for
+# Python semantics, analogous to dense cwise tensor operations.
+override_binary_operator.override_binary_operator_helper(
+    gen_sparse_ops.sparse_dense_cwise_div, "div", SparseTensor
+)  # pylint: disable=protected-access
+override_binary_operator.override_binary_operator_helper(
+    _sparse_dense_truediv, "truediv", SparseTensor
+)  # pylint: disable=protected-access
+override_binary_operator.override_binary_operator_helper(
+    gen_sparse_ops.sparse_dense_cwise_mul, "mul", SparseTensor
+)  # pylint: disable=protected-access

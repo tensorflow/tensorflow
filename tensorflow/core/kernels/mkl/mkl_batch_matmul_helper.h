@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #ifndef TENSORFLOW_CORE_KERNELS_MKL_MKL_BATCH_MATMUL_HELPER_H_
 #define TENSORFLOW_CORE_KERNELS_MKL_MKL_BATCH_MATMUL_HELPER_H_
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL)
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -49,8 +49,9 @@ struct MklBatchMatMulHelper {
   }
 
   std::unique_ptr<MklMatMulParams> CreateMatMulParams(
-      const TensorShape& lhs_shape, const TensorShape& rhs_shape,
-      const TensorShape& out_shape, bool& adj_x, bool& adj_y) {
+      string& prefix, const TensorShape& lhs_shape,
+      const TensorShape& rhs_shape, const TensorShape& out_shape, bool& adj_x,
+      bool& adj_y) {
     const auto ndims_lhs = lhs_shape.dims();
     const auto ndims_rhs = rhs_shape.dims();
     const auto ndims_out = out_shape.dims();
@@ -69,10 +70,6 @@ struct MklBatchMatMulHelper {
     if (ndims_rhs < ndims_out) {
       ExpandInputDimsToOutputShape(rhs_shape, out_shape, &rhs_dims);
     }
-    using dim = dnnl::memory::dim;
-    dim m;  // Number of rows in x
-    dim k;  // Number of columns in x
-    dim n;  // Number of columns in y
     auto lhs_strides = CalculateTFStrides(lhs_dims);
     auto rhs_strides = CalculateTFStrides(rhs_dims);
     auto out_strides = CalculateTFStrides(out_dims);
@@ -80,8 +77,7 @@ struct MklBatchMatMulHelper {
     if (adj_x) {
       int m_idx = ndims_out - 1;
       int k_idx = ndims_out - 2;
-      m = lhs_dims[m_idx];
-      k = lhs_dims[k_idx];
+      memory::dim m = lhs_dims[m_idx];  // number of rows in x
       std::swap(lhs_dims[m_idx], lhs_dims[k_idx]);
       lhs_strides[m_idx] = m;
       lhs_strides[k_idx] = 1;
@@ -90,15 +86,15 @@ struct MklBatchMatMulHelper {
     if (adj_y) {
       int k_idx = ndims_out - 1;
       int n_idx = ndims_out - 2;
-      k = rhs_dims[k_idx];
-      n = rhs_dims[n_idx];
+      memory::dim k = rhs_dims[k_idx];  // number of columns in x
       std::swap(rhs_dims[k_idx], rhs_dims[n_idx]);
       rhs_strides[k_idx] = k;
       rhs_strides[n_idx] = 1;
     }
 
-    return std::make_unique<MklMatMulParams>(
-        lhs_dims, rhs_dims, out_dims, lhs_strides, rhs_strides, out_strides);
+    return std::make_unique<MklMatMulParams>(prefix, lhs_dims, rhs_dims,
+                                             out_dims, lhs_strides, rhs_strides,
+                                             out_strides);
   }
 };
 

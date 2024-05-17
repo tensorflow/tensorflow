@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_ARITH_OPS_FOLDER_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_ARITH_OPS_FOLDER_H_
 
+#include <utility>
+
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -24,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 
@@ -57,10 +61,10 @@ template <
         OpT, AddV2Op, SubOp, MulOp, DivOp, RealDivOp>::value>::type * = nullptr>
 OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
                                         ArrayRef<Attribute> operands) {
-  auto lhs_type = arithmetic_op.x().getType().template cast<ShapedType>();
-  auto rhs_type = arithmetic_op.y().getType().template cast<ShapedType>();
+  auto lhs_type = mlir::cast<ShapedType>(arithmetic_op.getX().getType());
+  auto rhs_type = mlir::cast<ShapedType>(arithmetic_op.getY().getType());
   auto result_type =
-      arithmetic_op.getResult().getType().template cast<ShapedType>();
+      mlir::cast<ShapedType>(arithmetic_op.getResult().getType());
 
   // We can fold arithmetic operation only of we can prove that we will not
   // accidentally hide a broadcasting error.
@@ -71,20 +75,20 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
     bool scalar_identity = identity_ty.hasRank() && identity_ty.getRank() == 0;
     if (scalar_identity) return operand_ty == result_ty;
 
-    // If identity is not a scalar, we must verify that all shapes are equal
-    // and statically known.
-    //
-    // TODO(ezhulenev): Fold if identity shape is statically know to be
-    // broadcastable to the operand shape.
-    return operand_ty == result_ty && identity_ty == result_ty &&
-           result_ty.hasStaticShape();
+    // If identity is not a scalar, we must verify that identity shape is
+    // statically known to be broadcastable to the operand shape and the operand
+    // and result shape are equal.
+    return operand_ty == result_ty && identity_ty.hasStaticShape() &&
+           result_ty.hasStaticShape() &&
+           OpTrait::util::staticallyKnownBroadcastable(operand_ty.getShape(),
+                                                       identity_ty.getShape());
   };
 
   // Check that we have a constant operand on one side (candidate for identity).
   const bool is_commutative =
       (std::is_same<OpT, AddV2Op>::value || std::is_same<OpT, MulOp>::value);
-  auto lhs_attr = operands[0].dyn_cast_or_null<DenseElementsAttr>();
-  auto rhs_attr = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+  auto lhs_attr = mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0]);
+  auto rhs_attr = mlir::dyn_cast_or_null<DenseElementsAttr>(operands[1]);
   if (!rhs_attr && !(is_commutative && lhs_attr)) return {};
 
   // Mul and Div ops have identity value one while AddV2 and SubOp have identity
@@ -97,9 +101,9 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
 
   Type element_ty = lhs_type.getElementType();
   Attribute identity_attr;
-  if (auto ty = element_ty.template dyn_cast<FloatType>()) {
+  if (auto ty = mlir::dyn_cast<FloatType>(element_ty)) {
     identity_attr = FloatAttr::get(ty, static_cast<double>(identity));
-  } else if (auto ty = element_ty.template dyn_cast<IntegerType>()) {
+  } else if (auto ty = mlir::dyn_cast<IntegerType>(element_ty)) {
     identity_attr = IntegerAttr::get(ty, static_cast<int64_t>(identity));
   } else {
     return {};
@@ -109,7 +113,7 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
   if (rhs_attr && is_valid_broadcasting(lhs_type, rhs_type, result_type)) {
     if (rhs_attr.isSplat() &&
         rhs_attr.getSplatValue<Attribute>() == identity_attr)
-      return arithmetic_op.x();
+      return arithmetic_op.getX();
   }
 
   // Fold: Op(Identity, Operand) -> Operand for commutative operations.
@@ -117,7 +121,7 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
       is_valid_broadcasting(rhs_type, lhs_type, result_type)) {
     if (lhs_attr.isSplat() &&
         lhs_attr.getSplatValue<Attribute>() == identity_attr)
-      return arithmetic_op.y();
+      return arithmetic_op.getY();
   }
 
   return {};

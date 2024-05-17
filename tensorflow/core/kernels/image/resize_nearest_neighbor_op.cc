@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -257,11 +257,11 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
     const int64_t out_width = sizes(1);
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(
-        context,
-        context->allocate_output(
-            0, TensorShape({batch_size, out_height, out_width, channels}),
-            &output));
+    TensorShape shape;
+    OP_REQUIRES_OK(context,
+                   TensorShape::BuildTensorShape(
+                       {batch_size, out_height, out_width, channels}, &shape));
+    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output));
 
     // Return if the output is empty.
     if (output->NumElements() == 0) return;

@@ -19,6 +19,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_DIALECT_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_DIALECT_H_
 
+#include <functional>
+#include <utility>
+
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -91,15 +94,7 @@ class TensorFlowDialect final : public Dialect {
     return failure();
   }
 
-  using DecodeConstantHook = LogicalResult (*)(OpaqueElementsAttr input,
-                                               ElementsAttr &output);
-  static void RegisterDecodeConstantHook(DecodeConstantHook fn) {
-    decode_constant_hook_ = std::move(fn);
-  }
-  static LogicalResult decode(OpaqueElementsAttr input, ElementsAttr &output) {
-    if (decode_constant_hook_) return decode_constant_hook_(input, output);
-    return failure();
-  }
+  static bool HasConstantFoldHook() { return constant_fold_hook_; }
 
   // Provides a hook for op interface.
   void *getRegisteredInterfaceForOp(mlir::TypeID interface,
@@ -107,7 +102,6 @@ class TensorFlowDialect final : public Dialect {
 
  private:
   static ConstantFoldHook constant_fold_hook_;
-  static DecodeConstantHook decode_constant_hook_;
 
   // Storage for a custom fallback interface.
   TensorFlowRegistryEffectInterfaceFallback *fallback_effect_op_interface_;

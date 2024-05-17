@@ -22,14 +22,14 @@ limitations under the License.
 
 #include "llvm/ADT/Bitfields.h"
 #include "llvm/ADT/DenseMap.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
@@ -38,11 +38,11 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PROPAGATETFABIKNOWLEDGETOKERNELS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct PropagateTfAbiKnowledgeToKernelsPass
-    : public PropagateTfAbiKnowledgeToKernelsBase<
+    : public impl::PropagateTfAbiKnowledgeToKernelsBase<
           PropagateTfAbiKnowledgeToKernelsPass> {
   void runOnOperation() override {
     func::FuncOp function = getOperation();
@@ -56,7 +56,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       // the inner stride is one.
       // TODO(herhut): Insert asserts in debug mode to check this.
       for (auto argument : function.getArguments()) {
-        if (argument.getType().isa<BaseMemRefType>()) {
+        if (mlir::isa<BaseMemRefType>(argument.getType())) {
           worklist.push_back(argument);
           allocated_by_tf_runtime.insert(argument);
           offset_is_zero.insert(argument);
@@ -83,7 +83,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
     // Now look at launches and make use of the knowledge we have.
     function.walk([&](gpu::LaunchFuncOp launch) {
       auto module = launch->getParentOfType<ModuleOp>();
-      auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.kernel());
+      auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.getKernel());
 
       if (!kernel || kernel.isExternal()) return;
 
@@ -94,8 +94,8 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       OpBuilder b = OpBuilder::atBlockBegin(&kernel.getBody().front());
       llvm::SmallDenseMap<int64_t, Value> constants;
       auto loc = kernel.getLoc();
-      for (auto operand : launch.operands()) {
-        auto memref = operand.getType().dyn_cast<MemRefType>();
+      for (auto operand : launch.getKernelOperands()) {
+        auto memref = mlir::dyn_cast<MemRefType>(operand.getType());
         if (!memref) {
           // Scalar argument, advance kernel position by one.
           kernel_p++;
@@ -173,7 +173,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
         }
         if (auto cast = dyn_cast<memref::ReinterpretCastOp>(user)) {
           // Check that we have offset 0.
-          Value result = cast.result();
+          Value result = cast.getResult();
           if (!cast.isDynamicOffset(0) && cast.getStaticOffset(0) == 0) {
             offset_is_zero.insert(result);
           }

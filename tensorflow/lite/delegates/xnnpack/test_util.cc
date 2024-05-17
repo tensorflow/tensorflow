@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <limits>
+#include <vector>
 
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -68,8 +69,8 @@ float GetInt8QuantizationScaleFromMinMax(float min, float max) {
 
 float GetInt8QuantizationScale(const std::vector<float>& data) {
   return GetInt8QuantizationScaleFromMinMax(
-      *std::max_element(data.begin(), data.end()),
-      *std::min_element(data.begin(), data.end()));
+      *std::min_element(data.begin(), data.end()),
+      *std::max_element(data.begin(), data.end()));
 }
 
 std::vector<float> GetInt8QuantizationScalePerChannel(

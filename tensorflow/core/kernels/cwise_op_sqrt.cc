@@ -17,25 +17,21 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if !defined(MLIR_GENERATED_CPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER6(UnaryOp, CPU, "Sqrt", functor::sqrt, float, Eigen::half, double,
           bfloat16, complex64, complex128);
-#else
-REGISTER3(UnaryOp, CPU, "Sqrt", functor::sqrt, bfloat16, complex64, complex128);
-#endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER3(UnaryOp, GPU, "Sqrt", functor::sqrt, float, Eigen::half, double);
 #endif
+REGISTER(UnaryOp, GPU, "Sqrt", functor::sqrt, bfloat16);
 #endif
 
 REGISTER6(SimpleBinaryOp, CPU, "SqrtGrad", functor::sqrt_grad, float,
           Eigen::half, bfloat16, double, complex64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-REGISTER3(SimpleBinaryOp, GPU, "SqrtGrad", functor::sqrt_grad, float,
-          Eigen::half, double);
+REGISTER4(SimpleBinaryOp, GPU, "SqrtGrad", functor::sqrt_grad, float,
+          Eigen::half, bfloat16, double);
 #endif
 
 }  // namespace tensorflow

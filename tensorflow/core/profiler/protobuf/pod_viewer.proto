@@ -6,6 +6,7 @@ package tensorflow.profiler;
 
 import "tensorflow/core/profiler/protobuf/diagnostics.proto";
 import "tensorflow/core/profiler/protobuf/pod_stats.proto";
+import "tensorflow/core/profiler/protobuf/topology.proto";
 
 // Describes the replica groups in a cross replica op (e.g., all-reduce and
 // all-to-all).
@@ -85,24 +86,26 @@ message PodViewerSummary {
   repeated string warnings = 1;
 }
 
-// Next ID: 8
+// Next ID: 9
 // Topology graph draws all the cores in the system in a 2-D rectangle or
 // 3-D cube. It is hierarchically grouped by host, chip and core.
 message PodViewerTopology {
-  // Number of cores in the x dimension of the rectangle/cube.
+  // Number of chips in the x dimension of the rectangle/cube.
   int32 x_dimension = 1;
-  // Number of cores in the y dimension of the rectangle/cube.
+  // Number of chips in the y dimension of the rectangle/cube.
   int32 y_dimension = 2;
-  // Number of cores in the z dimension of the cube.
+  // Number of chips in the z dimension of the cube.
   int32 z_dimension = 3;
-  // Number of cores in the x dimension of each host.
+  // Number of chips in the x dimension of each host.
   int32 host_x_stride = 4;
-  // Number of cores in the y dimension of each host.
+  // Number of chips in the y dimension of each host.
   int32 host_y_stride = 5;
-  // Number of cores in the z dimension of each host.
+  // Number of chips in the z dimension of each host.
   int32 host_z_stride = 6;
   // Number of cores per chip.
   int32 num_cores_per_chip = 7;
+  // Core locations.
+  repeated TopologyLocation cores = 8;
 }
 
 // Next ID: 12

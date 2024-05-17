@@ -87,6 +87,12 @@ TfLiteDelegatePtr CoreMlDelegateProvider::CreateTfLiteDelegate(
         params.Get<int>("max_delegated_partitions");
     coreml_opts.min_nodes_per_partition =
         params.Get<int>("min_nodes_per_partition");
+#ifdef TFLITE_DEBUG_DELEGATE
+    coreml_opts.first_delegate_node_index =
+        params.Get<int>("first_delegate_node_index");
+    coreml_opts.last_delegate_node_index =
+        params.Get<int>("last_delegate_node_index");
+#endif  // TFLITE_DEBUG_DELEGATE
     delegate = TfLiteDelegatePtr(TfLiteCoreMlDelegateCreate(&coreml_opts),
                                  &TfLiteCoreMlDelegateDelete);
     if (!delegate) {

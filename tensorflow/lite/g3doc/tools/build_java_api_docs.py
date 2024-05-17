@@ -50,6 +50,8 @@ flags.DEFINE_bool(
 #     - Note that this needs a branch with an api/ dir, such as *-release)
 # Internally, both the monorepo and the external build system do this for you.
 SOURCE_PATH_CORE = pathlib.Path('tensorflow/lite/java/src/main/java')
+SOURCE_PATH_GPU = pathlib.Path(
+    'tensorflow/lite/delegates/gpu/java/src/main/java')
 SOURCE_PATH_SUPPORT = pathlib.Path('tensorflow_lite_support/java/src/java')
 SOURCE_PATH_METADATA = pathlib.Path(
     'tensorflow_lite_support/metadata/java/src/java')
@@ -60,8 +62,7 @@ SOURCE_PATH_ANDROID_SDK = pathlib.Path('android/sdk/api/26.txt')
 SECTION_LABELS = {
     'org.tensorflow.lite': 'Core',
     'org.tensorflow.lite.support': 'Support Library',
-    'org.tensorflow.lite.task.gms': 'Task Library (Play Services)',
-    'org.tensorflow.lite.task': 'Task Library',
+    'org.tensorflow.lite.gpu': 'Delegates',
     # If we ever need other ODML packages, drop the `.image` here.
     'com.google.android.odml.image': 'ODML',
 }
@@ -103,7 +104,7 @@ def main(unused_argv):
   all_deps = [SOURCE_PATH_CORE, SOURCE_PATH_SUPPORT, SOURCE_PATH_ODML]
   # Keep searching upwards for a root that hosts the various dependencies. We
   # test `root.name` to ensure we haven't hit /.
-  while root.name and not (exists := exists_maybe_nested(all_deps, root)):
+  while not (exists := exists_maybe_nested(all_deps, root)) and root.name:
     root = root.parent
   if not exists:
     raise FileNotFoundError('Could not find dependencies.')
@@ -112,6 +113,7 @@ def main(unused_argv):
     # Merge the combined API sources into a single location.
     merged_temp_dir = pathlib.Path(merge_tmp_dir)
     overlay(resolve_nested_dir(SOURCE_PATH_CORE, root), merged_temp_dir)
+    overlay(resolve_nested_dir(SOURCE_PATH_GPU, root), merged_temp_dir)
     overlay(resolve_nested_dir(SOURCE_PATH_SUPPORT, root), merged_temp_dir)
     overlay(resolve_nested_dir(SOURCE_PATH_METADATA, root), merged_temp_dir)
     overlay(resolve_nested_dir(SOURCE_PATH_ODML, root), merged_temp_dir)

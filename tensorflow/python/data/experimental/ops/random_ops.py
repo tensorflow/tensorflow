@@ -16,14 +16,17 @@
 import functools
 
 from tensorflow.python import tf2
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import random_op
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
+# TODO(b/260143413): Migrate users to `tf.data.Dataset.random`.
 @deprecation.deprecated(None, "Use `tf.data.Dataset.random(...)`.")
 @tf_export("data.experimental.RandomDataset", v1=[])
-class RandomDatasetV2(dataset_ops.RandomDataset):
+class RandomDatasetV2(random_op._RandomDataset):  # pylint: disable=protected-access
   """A `Dataset` of pseudorandom values."""
 
 
@@ -42,3 +45,14 @@ if tf2.enabled():
   RandomDataset = RandomDatasetV2
 else:
   RandomDataset = RandomDatasetV1
+
+
+def _tf2_callback():
+  global RandomDataset
+  if tf2.enabled():
+    RandomDataset = RandomDatasetV2
+  else:
+    RandomDataset = RandomDatasetV1
+
+
+v2_compat.register_data_v2_callback(_tf2_callback)

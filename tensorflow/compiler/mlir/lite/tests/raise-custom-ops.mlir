@@ -42,11 +42,11 @@ func.func @tf_executor_wrapper(%arg0: tensor<*xf32>) -> tensor<*xf32> attributes
 // CHECK: tf_executor.island wraps "tf.FakeQuantWithMinMaxVarsPerChannel"
 
 // WRAPPED-NEXT: tf_executor.graph {
-// WRAPPED-NEXT:   tf_executor.island wraps "tf.Const"() {device = "", value = dense<1.000000e+00> : tensor<186xf32>} : () -> tensor<186xf32>
-// WRAPPED-NEXT:   tf_executor.island wraps "tf.Const"() {device = "", value = dense<2.000000e+00> : tensor<186xf32>} : () -> tensor<186xf32>
+// WRAPPED-NEXT:   tf_executor.island wraps "tf.Const"() <{value = dense<1.000000e+00> : tensor<186xf32>}> {device = ""} : () -> tensor<186xf32>
+// WRAPPED-NEXT:   tf_executor.island wraps "tf.Const"() <{value = dense<2.000000e+00> : tensor<186xf32>}> {device = ""} : () -> tensor<186xf32>
 // WRAPPED-NEXT:   tf_executor.island wraps "tfl.custom_tf"
 // WRAPPED-NEXT:     ^bb0(%arg1: tensor<*xf32>, %arg2: tensor<186xf32>, %arg3: tensor<186xf32>):
-// WRAPPED-NEXT:   %[[fq:.*]] = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg1, %arg2, %arg3) {device = "", narrow_range = true, num_bits = 8 : i64} : (tensor<*xf32>, tensor<186xf32>, tensor<186xf32>) -> tensor<*xf32>
+// WRAPPED-NEXT:   %[[fq:.*]] = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg1, %arg2, %arg3) <{narrow_range = true, num_bits = 8 : i64}> {device = ""} : (tensor<*xf32>, tensor<186xf32>, tensor<186xf32>) -> tensor<*xf32>
 // WRAPPED-NEXT:   "tfl.yield"(%[[fq]]) : (tensor<*xf32>) -> ()
 // WRAPPED-NEXT:   }) {device = "", narrow_range = true, num_bits = 8 : i64} : (tensor<*xf32>, tensor<186xf32>, tensor<186xf32>) -> tensor<*xf32>
 }

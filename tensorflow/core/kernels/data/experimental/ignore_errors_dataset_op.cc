@@ -64,12 +64,14 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
       return "IgnoreErrorsDatasetOp::Dataset";
     }
 
-    int64_t CardinalityInternal() const override { return kUnknownCardinality; }
+    int64_t CardinalityInternal(CardinalityOptions options) const override {
+      return kUnknownCardinality;
+    }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -87,7 +89,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(
           b->AddDataset(this, {std::make_pair(0, input_graph_node)}, {},
                         {{"log_warning", log_warning_attr}}, output));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -109,13 +111,12 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
-            return OkStatus();
+            return absl::OkStatus();
           }
           s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
           while (!s.ok() && !errors::IsCancelled(s)) {
             if (dataset()->log_warning_) {
-              LOG(WARNING) << "Error raised with error message "
-                           << s.error_message();
+              LOG(WARNING) << "Error raised with error message " << s.message();
             }
             out_tensors->clear();
             s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
@@ -143,7 +144,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
         else
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impls_empty"), ""));
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -153,7 +154,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
           input_impl_.reset();
         else
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:

@@ -52,8 +52,11 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     auto os_input = input->output_shapes();
     auto os_concatenate = to_concatenate->output_shapes();
     for (int i = 0; i < os_input.size(); i++) {
-      output_shapes_.push_back(
-          MostSpecificCompatibleShape(os_input[i], os_concatenate[i]));
+      PartialTensorShape output_tensorshape({});
+      OP_REQUIRES_OK(ctx,
+                     MostSpecificCompatibleShape(os_input[i], os_concatenate[i],
+                                                 &output_tensorshape));
+      output_shapes_.push_back(output_tensorshape);
     }
   }
   ~Dataset() override {
@@ -70,7 +73,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
                                 split_providers) const override {
     TF_ASSIGN_OR_RETURN(*split_providers, GetSplitProviders(this));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -83,18 +86,6 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
-  }
-
-  int64_t CardinalityInternal() const override {
-    if (input_cardinality_ == kInfiniteCardinality ||
-        to_concatenate_cardinality_ == kInfiniteCardinality) {
-      return kInfiniteCardinality;
-    }
-    if (input_cardinality_ == kUnknownCardinality ||
-        to_concatenate_cardinality_ == kUnknownCardinality) {
-      return kUnknownCardinality;
-    }
-    return input_cardinality_ + to_concatenate_cardinality_;
   }
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {
@@ -115,7 +106,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     inputs->push_back(to_concatenate_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -132,7 +123,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           to_concatenate_->Get(ctx, index - input_cardinality_, out_tensors));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  protected:
@@ -146,7 +137,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
         b->AddInputDataset(ctx, to_concatenate_, &to_concatenate_graph));
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph, to_concatenate_graph}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -155,12 +146,16 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params), i_(0) {}
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       TF_ASSIGN_OR_RETURN(input_contexts_,
                           CreateInputIteratorContexts(ctx, dataset()));
-      return dataset()->input_->MakeIterator(&input_contexts_[0], this,
-                                             strings::StrCat(prefix(), "[0]"),
-                                             &input_impl_);
+      TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
+          &input_contexts_[0], this, strings::StrCat(prefix(), "[0]"),
+          &input_impl_));
+      ctx->MergeCheckpoint(input_contexts_[0].checkpoint());
+      return absl::OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -169,13 +164,14 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       if (!input_impl_) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
       while (i_ < 2) {
         TF_RETURN_IF_ERROR(input_impl_->GetNext(&input_contexts_[i_],
                                                 out_tensors, end_of_sequence));
+        ctx->MergeCheckpoint(input_contexts_[i_].checkpoint());
         if (!*end_of_sequence) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         if (++i_ < 2) {
           TF_RETURN_IF_ERROR(dataset()->to_concatenate_->MakeIterator(
@@ -185,7 +181,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       }
       *end_of_sequence = true;
       input_impl_.reset();
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -198,23 +194,26 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kIndex), i_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kIndex, i_));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(prefix(), kInputImplUninitialized,
+                              static_cast<int64_t>(!input_impl_)));
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      } else {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kInputImplUninitialized), ""));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &i_));
-      if (reader->Contains(full_name(kInputImplUninitialized))) {
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kIndex, &i_));
+      int64_t input_uninitialized;
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kInputImplUninitialized,
+                                            &input_uninitialized));
+      if (static_cast<bool>(input_uninitialized)) {
         input_impl_.reset();
-        return OkStatus();
+        return absl::OkStatus();
       }
       if (!TF_PREDICT_TRUE(i_ >= 0 && i_ <= 2))
         return errors::InvalidArgument("i_ must be in range [0, 2].");
@@ -227,7 +226,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       if (input_impl_) {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -237,20 +236,20 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     std::vector<IteratorContext> input_contexts_;
   };
 
-  static PartialTensorShape MostSpecificCompatibleShape(
-      const PartialTensorShape& ts1, const PartialTensorShape& ts2) {
+  Status MostSpecificCompatibleShape(const PartialTensorShape& ts1,
+                                     const PartialTensorShape& ts2,
+                                     PartialTensorShape* output_tensorshape) {
     if (ts1.dims() != ts2.dims() || ts1.unknown_rank() || ts2.unknown_rank())
-      return PartialTensorShape();
-    PartialTensorShape output_tensorshape({});
+      return absl::OkStatus();
     auto dims1 = ts1.dim_sizes();
     auto dims2 = ts2.dim_sizes();
     for (int d = 0; d < ts1.dims(); d++) {
       if (dims1[d] == dims2[d])
-        output_tensorshape.AddDim(dims1[d]);
+        TF_RETURN_IF_ERROR(output_tensorshape->AddDimWithStatus(dims1[d]));
       else
-        output_tensorshape.AddDim(-1);
+        TF_RETURN_IF_ERROR(output_tensorshape->AddDimWithStatus(-1));
     }
-    return output_tensorshape;
+    return absl::OkStatus();
   }
 
   const DatasetBase* input_;

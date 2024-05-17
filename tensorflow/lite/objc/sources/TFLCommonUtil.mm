@@ -17,7 +17,11 @@
 #import "TFLQuantizationParameters+Internal.h"
 #import "tensorflow/lite/objc/apis/TFLTensor.h"
 
-#include "tensorflow/lite/c/c_api.h"
+#ifdef COCOAPODS
+#import <TensorFlowLiteC/TensorFlowLiteC.h>
+#else
+#include "tensorflow/lite/core/c/c_api.h"
+#endif  // COCOAPODS
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -28,6 +32,8 @@ TFLTensorDataType TFLTensorDataTypeFromCTensor(const TfLiteTensor *cTensor) {
       return TFLTensorDataTypeFloat32;
     case kTfLiteFloat16:
       return TFLTensorDataTypeFloat16;
+    case kTfLiteBFloat16:
+      return TFLTensorDataTypeBFloat16;
     case kTfLiteFloat64:
       return TFLTensorDataTypeFloat64;
     case kTfLiteInt32:
@@ -49,11 +55,10 @@ TFLTensorDataType TFLTensorDataTypeFromCTensor(const TfLiteTensor *cTensor) {
     case kTfLiteUInt16:
     case kTfLiteUInt32:
     case kTfLiteUInt64:
+    case kTfLiteInt4:
     case kTfLiteResource:
     case kTfLiteVariant:
-      // kTfLiteString, kTfLiteUInt64, kTfLiteComplex64, kTfLiteComplex128,
-      // kTfLiteResource and kTfLiteVariant are not supported in TensorFlow Lite
-      // Objc API.
+      // Not all datatypes are supported in the TfLite Objc API.
       return TFLTensorDataTypeNoType;
   }
 }

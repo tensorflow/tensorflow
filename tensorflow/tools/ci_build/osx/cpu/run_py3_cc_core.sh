@@ -30,7 +30,7 @@ export TF_NEED_CUDA=0
 export PYTHON_BIN_PATH=$(which python3)
 yes "" | $PYTHON_BIN_PATH configure.py
 which bazel
-bazel test --test_tag_filters=-no_oss,-gpu,-tpu,-benchmark-test,-nomac,-no_mac \
+bazel test --test_tag_filters=-no_oss,-oss_excluded,-gpu,-tpu,-benchmark-test,-nomac,-no_mac,-mac_excluded \
     --announce_rc \
     --test_timeout 300,450,1200,3600 \
     --test_size_filters=small,medium \

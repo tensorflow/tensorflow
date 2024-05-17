@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <complex>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -33,7 +33,7 @@ namespace {
 
 template <typename T, bool conjugate>
 void TransposeSimple(const CPUDevice& device, const Tensor& in,
-                     const gtl::ArraySlice<int32> perm, Tensor* out) {
+                     const absl::Span<const int32> perm, Tensor* out) {
   const int ndims = in.dims();
   gtl::InlinedVector<int64_t, 8> in_strides =
       ComputeStride<int64_t>(in.shape());
@@ -73,7 +73,7 @@ void TransposeSimple(const CPUDevice& device, const Tensor& in,
 template <typename T, bool conjugate>
 struct Transpose<CPUDevice, T, conjugate> {
   static void run(const CPUDevice& d, const Tensor& in,
-                  const gtl::ArraySlice<int32> perm, Tensor* out) {
+                  const absl::Span<const int32> perm, Tensor* out) {
     switch (in.dims()) {
       case 2:
         internal::TransposeUsingEigen<CPUDevice, T, 2>(d, in, perm, conjugate,

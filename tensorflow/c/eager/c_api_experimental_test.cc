@@ -17,14 +17,21 @@ limitations under the License.
 
 #include <string.h>
 
+#include <string>
+
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 using tensorflow::string;
 
@@ -206,8 +213,35 @@ TEST(CAPI, MonitoringMultipleSampler) {
 TEST(CAPI, CancellationManager) {
   TFE_CancellationManager* c_mgr = TFE_NewCancellationManager();
   EXPECT_FALSE(TFE_CancellationManagerIsCancelled(c_mgr));
+
+  TFE_CancelCallback callback1;
+  callback1.callback = [](void* context) {
+    ADD_FAILURE() << "Callback1 should be deregistered.";
+  };
+  TFE_CancellationToken token1 = TFE_CancellationManagerGetToken(c_mgr);
+  EXPECT_TRUE(TFE_CancellationManagerRegisterCallback(c_mgr, token1, &callback1,
+                                                      "callback1"));
+
+  TFE_CancelCallback callback2;
+  bool callback2_invoked = false;
+  callback2.context = &callback2_invoked;
+  callback2.callback = [](void* context) {
+    *reinterpret_cast<bool*>(context) = true;
+  };
+  TFE_CancellationToken token2 = TFE_CancellationManagerGetToken(c_mgr);
+  EXPECT_TRUE(TFE_CancellationManagerRegisterCallback(c_mgr, token2, &callback2,
+                                                      "callback2"));
+
+  TFE_CancellationToken token3 = TFE_CancellationManagerGetToken(c_mgr);
+  EXPECT_TRUE(TFE_CancellationManagerRegisterCallback(c_mgr, token3, &callback1,
+                                                      "callback3"));
+
+  EXPECT_TRUE(TFE_CancellationManagerDeregisterCallback(c_mgr, token1));
+  EXPECT_TRUE(TFE_CancellationManagerTryDeregisterCallback(c_mgr, token3));
+
   TFE_CancellationManagerStartCancel(c_mgr);
   EXPECT_TRUE(TFE_CancellationManagerIsCancelled(c_mgr));
+  EXPECT_TRUE(callback2_invoked);
   TFE_DeleteCancellationManager(c_mgr);
 }
 
@@ -220,7 +254,8 @@ TEST(CAPI, ExecutorContextDestructionOrder) {
     ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
     TFE_DeleteContextOptions(opts);
     TFE_Executor* executor = TFE_NewExecutor(
-        /*is_async=*/false, /*enable_streaming_enqueue=*/true);
+        /*is_async=*/false, /*enable_streaming_enqueue=*/true,
+        /*in_flight_nodes_limit=*/0);
     TFE_ContextSetExecutorForThread(ctx, executor);
 
     TFE_DeleteContext(ctx);
@@ -233,7 +268,8 @@ TEST(CAPI, ExecutorContextDestructionOrder) {
     ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
     TFE_DeleteContextOptions(opts);
     TFE_Executor* executor = TFE_NewExecutor(
-        /*is_async=*/false, /*enable_streaming_enqueue=*/true);
+        /*is_async=*/false, /*enable_streaming_enqueue=*/true,
+        /*in_flight_nodes_limit=*/0);
     TFE_ContextSetExecutorForThread(ctx, executor);
 
     TFE_DeleteExecutor(executor);
@@ -275,7 +311,8 @@ TEST(CAPI, Function_ident_CPU) {
   for (bool async : {false, true, false}) {
     TFE_Executor* old_executor = TFE_ContextGetExecutorForThread(ctx);
     TFE_Executor* executor = TFE_NewExecutor(
-        /*is_async=*/async, /*enable_streaming_enqueue=*/true);
+        /*is_async=*/async, /*enable_streaming_enqueue=*/true,
+        /*in_flight_nodes_limit=*/0);
     TFE_ContextSetExecutorForThread(ctx, executor);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
@@ -327,7 +364,8 @@ void Executor_MatMul_CPU(bool async) {
 
   TFE_Executor* old_executor = TFE_ContextGetExecutorForThread(ctx);
   TFE_Executor* executor = TFE_NewExecutor(
-      /*is_async=*/async, /*enable_streaming_enqueue=*/true);
+      /*is_async=*/async, /*enable_streaming_enqueue=*/true,
+      /*in_flight_nodes_limit=*/0);
   TFE_ContextSetExecutorForThread(ctx, executor);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle(ctx);
@@ -516,6 +554,210 @@ TEST(CAPI, TensorHandleDefaults) {
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
   TFE_DeleteExecutor(executor);
   TFE_DeleteContext(ctx);
+}
+
+TEST(CAPI, CreateLocalContextAsReset) {
+  tensorflow::ServerDef server_def = GetServerDef("worker", 2);
+  server_def.mutable_default_session_config()->set_isolate_session_state(false);
+
+  ServerFactory* factory;
+  ASSERT_TRUE(ServerFactory::GetFactory(server_def, &factory).ok());
+  server_def.set_job_name("worker");
+  server_def.set_task_index(0);
+  std::unique_ptr<tensorflow::ServerInterface> w0;
+  ASSERT_TRUE(
+      factory->NewServer(server_def, ServerFactory::Options(), &w0).ok());
+  ASSERT_TRUE(w0->Start().ok());
+  server_def.set_task_index(1);
+  std::unique_ptr<tensorflow::ServerInterface> w1;
+  ASSERT_TRUE(
+      factory->NewServer(server_def, ServerFactory::Options(), &w1).ok());
+  ASSERT_TRUE(w1->Start().ok());
+
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  opts->session_options.options.config.set_isolate_session_state(false);
+  TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  server_def.set_task_index(0);
+  auto cluster = server_def.mutable_cluster();
+  auto client_job = cluster->add_job();
+  client_job->set_name("localhost");
+  int client_port = tensorflow::testing::PickUnusedPortOrDie();
+  client_job->mutable_tasks()->insert(
+      {0, strings::StrCat("localhost:", client_port)});
+  server_def.set_job_name("localhost");
+  auto serialized = server_def.SerializeAsString();
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  server_def.set_job_name("worker");
+  server_def.set_task_index(0);
+  tensorflow::ClusterDef* cluster_def = server_def.mutable_cluster();
+  tensorflow::JobDef* job_def = cluster_def->mutable_job(0);
+  int worker_port = tensorflow::testing::PickUnusedPortOrDie();
+  job_def->mutable_tasks()->at(0) =
+      tensorflow::strings::StrCat("localhost:", worker_port);
+  serialized = server_def.SerializeAsString();
+  TFE_InitializeLocalOnlyContext(ctx, 0, serialized.data(), serialized.size(),
+                                 status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  TFE_DeleteContextOptions(opts);
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+
+  w0.release();
+  w1.release();
+}
+
+TEST(CAPI, ShareVariableAcrossContextsAfterUpdateContextWorksWithTimeout) {
+  tensorflow::ServerDef server_def_0 = GetServerDef(3);
+  server_def_0.mutable_default_session_config()->set_isolate_session_state(
+      false);
+  tensorflow::ServerDef server_def_1 =
+      ReplaceTaskInServerDef(server_def_0, /*task_index=*/0);
+
+  // These server defs have task index set to 0.
+  string serialized_server_def_0 = server_def_0.SerializeAsString();
+  string serialized_server_def_1 = server_def_1.SerializeAsString();
+
+  // Create two worker tasks.
+  server_def_0.set_task_index(1);
+  std::unique_ptr<tensorflow::GrpcServer> worker_server1;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(
+                  server_def_0, tensorflow::Env::Default(), &worker_server1)
+                  .ok());
+  ASSERT_TRUE(worker_server1->Start().ok());
+  server_def_0.set_task_index(2);
+  std::unique_ptr<tensorflow::GrpcServer> worker_server2;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(
+                  server_def_0, tensorflow::Env::Default(), &worker_server2)
+                  .ok());
+  ASSERT_TRUE(worker_server2->Start().ok());
+
+  // Create two contexts.
+  int32_t init_timeout_in_ms = 300000;
+  TFE_Context* ctx_0 =
+      CreateContext(serialized_server_def_0,
+                    /*isolate_session_state=*/false, init_timeout_in_ms);
+  TFE_Context* ctx_1 =
+      CreateContext(serialized_server_def_1,
+                    /*isolate_session_state=*/false, init_timeout_in_ms);
+
+  // Remote device on `worker2`.
+  const char remote_device[] = "/job:localhost/replica:0/task:2/device:CPU:0";
+  // `ctx_0`, `ctx_1` contains `remote_device`.
+  {
+    const std::vector<std::string>& device_names = ListDeviceNames(ctx_0);
+    ASSERT_TRUE(std::find(device_names.begin(), device_names.end(),
+                          remote_device) != device_names.end());
+  }
+
+  {
+    const std::vector<std::string>& device_names = ListDeviceNames(ctx_1);
+    ASSERT_TRUE(std::find(device_names.begin(), device_names.end(),
+                          remote_device) != device_names.end());
+  }
+
+  // Create a variable using `ctx_0`.
+  // Replace worker1 using a new worker, and update the contexts.
+  // Read the variable using `ctx_1`. This read should succeed.
+  //
+  // 1. Create a variable on `remote_device`, using `ctx_0`.
+  TFE_TensorHandle* handle_0 =
+      CreateVariable(ctx_0, 1.2, remote_device, /*variable_name=*/"var");
+
+  // 2. Wait for `var` to be created and initialized on the worker.
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextAsyncWait(ctx_0, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+
+  int port = tensorflow::testing::PickUnusedPortOrDie();
+  // 3. Replace worker1 with a new worker in server_def_0 and server_def_1.
+  ReplaceTaskInServerDef(&server_def_0, /*task_index=*/1, "localhost", port);
+  ReplaceTaskInServerDef(&server_def_1, /*task_index=*/1, "localhost", port);
+  // 4. Start a new task to replace worker1.
+  server_def_0.set_task_index(1);
+  worker_server1.release();
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(
+                  server_def_0, tensorflow::Env::Default(), &worker_server1)
+                  .ok());
+  ASSERT_TRUE(worker_server1->Start().ok());
+
+  // 5a. Update `ctx_0` with updated `server_def_0`.
+  {
+    server_def_0.set_task_index(0);
+    string serialized_update = server_def_0.SerializeAsString();
+    TF_Status* status = TF_NewStatus();
+    TFE_ContextUpdateServerDefWithTimeout(ctx_0, 0, serialized_update.data(),
+                                          serialized_update.size(),
+                                          init_timeout_in_ms, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TF_DeleteStatus(status);
+  }
+
+  // 5b. Update `ctx_1` with updated `server_def_1`.
+  {
+    server_def_1.set_task_index(0);
+    string serialized_update = server_def_1.SerializeAsString();
+    TF_Status* status = TF_NewStatus();
+    TFE_ContextUpdateServerDefWithTimeout(ctx_1, 0, serialized_update.data(),
+                                          serialized_update.size(),
+                                          init_timeout_in_ms, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TF_DeleteStatus(status);
+  }
+
+  // 6. Read `var` using `ctx_1`. This read should succeed since `ctx_1` was
+  // created with `isolate_session_state` set to false, and update should
+  // preserve it.
+  {
+    // Create a handle to `var`, using `ctx_1`.
+    TFE_TensorHandle* var_handle =
+        CreateVarHandle(ctx_1, remote_device, /*variable_name=*/"var");
+
+    TFE_TensorHandle* handle_1 = nullptr;
+    int num_retvals = 1;
+    TF_Status* status = TF_NewStatus();
+    TFE_Op* op = TFE_NewOp(ctx_1, "ReadVariableOp", status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
+    TFE_OpAddInput(op, var_handle, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_Execute(op, &handle_1, &num_retvals, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_DeleteOp(op);
+
+    ASSERT_EQ(1, num_retvals);
+    EXPECT_EQ(TF_FLOAT, TFE_TensorHandleDataType(handle_1));
+    EXPECT_EQ(0, TFE_TensorHandleNumDims(handle_1, status));
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+    // Read the value of tensor handle `handle_1`.
+    float value = 0.0f;
+    TF_Tensor* t = TFE_TensorHandleResolve(handle_1, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    ASSERT_EQ(sizeof(float), TF_TensorByteSize(t));
+    memcpy(&value, TF_TensorData(t), sizeof(float));
+    TF_DeleteTensor(t);
+    EXPECT_EQ(1.2f, value);
+    TFE_DeleteTensorHandle(handle_1);
+    TF_DeleteStatus(status);
+    TFE_DeleteTensorHandle(var_handle);
+  }
+
+  TFE_DeleteTensorHandle(handle_0);
+
+  TFE_DeleteContext(ctx_0);
+  TFE_DeleteContext(ctx_1);
+
+  worker_server1.release();
+  worker_server2.release();
 }
 
 }  // namespace

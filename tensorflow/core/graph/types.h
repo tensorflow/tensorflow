@@ -22,13 +22,13 @@ limitations under the License.
 namespace tensorflow {
 
 // We model running time in microseconds.
-TF_LIB_GTL_DEFINE_INT_TYPE(Microseconds, int64_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(Microseconds, int64_t);
 
 // We can also model running time in nanoseconds for more accuracy.
-TF_LIB_GTL_DEFINE_INT_TYPE(Nanoseconds, int64_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(Nanoseconds, int64_t);
 
 // We model size in bytes.
-TF_LIB_GTL_DEFINE_INT_TYPE(Bytes, int64_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(Bytes, int64_t);
 
 }  // namespace tensorflow
 

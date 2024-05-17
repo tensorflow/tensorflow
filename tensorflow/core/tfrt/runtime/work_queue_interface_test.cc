@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 
+#include <thread>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/tfrt/utils/thread_pool.h"
-#include "tfrt/cpp_tests/test_util.h""  // from @tf_runtime
+#include "tfrt/cpp_tests/test_util.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/task_function.h"  // from @tf_runtime
 
@@ -85,13 +86,10 @@ TEST(DefaultWorkQueueWrapperTest, IntraOpThreadPool) {
   auto work_queue_wrapper =
       WrapDefaultWorkQueue(std::move(work_queue), &intra_op_thread_pool);
 
-  thread::ThreadPoolInterface* got_intra_op_threadpool;
-  auto statusor_queue = work_queue_wrapper->InitializeRequest(
-      /*request_context_builder=*/nullptr, &got_intra_op_threadpool);
-  TF_ASSERT_OK(statusor_queue.status());
-  EXPECT_NE(statusor_queue.ValueOrDie(), nullptr);
-
-  EXPECT_EQ(got_intra_op_threadpool, &intra_op_thread_pool);
+  TF_ASSERT_OK_AND_ASSIGN(auto queue, work_queue_wrapper->InitializeRequest(
+                                          /*request_id=*/0));
+  EXPECT_NE(queue, nullptr);
+  EXPECT_EQ(queue->GetIntraOpThreadPool(), &intra_op_thread_pool);
 }
 
 }  // namespace

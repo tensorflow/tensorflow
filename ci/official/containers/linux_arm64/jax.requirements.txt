@@ -1,0 +1,29 @@
+# JAX requirements, passed into container by defining the ARG 
+# REQUIREMENTS_FILE=jax.requirements.txt
+
+
+setuptools
+wheel
+cloudpickle
+colorama>=0.4.4
+matplotlib
+pillow>=9.1.0
+rich
+absl-py
+portpicker
+six
+opt-einsum
+auditwheel
+typing_extensions
+importlib_metadata>=4.6
+numpy==1.26.0;python_version=="3.12"
+numpy==1.23.4;python_version=="3.11"
+numpy==1.22.4;python_version<"3.11"
+scipy==1.11.2;python_version=="3.12"
+scipy==1.9.2;python_version=="3.11"
+scipy==1.7.3;python_version<"3.11"
+ml_dtypes>=0.2.0
+
+# For using Python 3.11 with Bazel 6 (b/286090018)
+
+lit ~= 17.0.2

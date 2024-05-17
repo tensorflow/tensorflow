@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -50,14 +50,14 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tfr {
 
 const char* const kTFRLibEnv = "TF_MLIR_TFR_LIB_DIR";
 
-StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
+absl::StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
     mlir::MLIRContext* mlir_ctx) {
   Env* env = Env::Default();
   std::string tfr_lib_dir;
@@ -94,7 +94,7 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
   // Load dialects involved in the conversion
   mlir::DialectRegistry registry;
   // clang-format off
-  registry.insert<mlir::arith::ArithmeticDialect,
+  registry.insert<mlir::arith::ArithDialect,
                   mlir::func::FuncDialect,
                   mlir::scf::SCFDialect,
                   mlir::shape::ShapeDialect,
@@ -103,6 +103,7 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
                   mlir::tf_executor::TensorFlowExecutorDialect,
                   mlir::TFR::TFRDialect>();
   // clang-format on
+  mlir::func::registerAllExtensions(registry);
   mlir_ctx->appendDialectRegistry(registry);
   mlir_ctx->loadAllAvailableDialects();
 
@@ -120,8 +121,8 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
   return std::make_unique<TFRDecomposeContext>(module_op);
 }
 
-StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,
-                                                      StringPiece func_name) {
+absl::StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(
+    const NodeDef& node_def, StringPiece func_name) {
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def));
   DataTypeVector input_dtys, output_dtys;
@@ -185,7 +186,7 @@ Status TFRDecomposeContext::DecomposeGraph(mlir::ModuleOp user_module) {
   if (failed(pm_.run(user_module))) {
     return errors::Internal("Failed to run the decompose passes.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Constructor of the decompose context.
@@ -208,8 +209,8 @@ TFRDecomposeContext::TFRDecomposeContext(mlir::ModuleOp tfr_module)
 
 void TFRDecomposeContext::Destroy() { tfr_module_.erase(); }
 
-StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
-                                 StringPiece func_name) {
+absl::StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
+                                       StringPiece func_name) {
   mlir::MLIRContext mlir_ctx;
   TF_ASSIGN_OR_RETURN(auto ctx, TFRDecomposeContext::Get(&mlir_ctx));
   return ctx->ExpandNode(node_def, func_name);

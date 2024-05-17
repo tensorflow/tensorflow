@@ -62,10 +62,10 @@ func.func @multiple_islands(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor
 // CHECK:    %[[SUB1:.*]], %[[SUB1_control:.*]] = tf_executor.island(%[[ADD2_control]]) wraps "tf.Sub"(%arg0, %arg1)
 // CHECK:    %[[MUL:.*]], %[[MUL_control:.*]] = tf_executor.island wraps "tf.Mul"(%[[SUB1]], %arg1)
 // CHECK:    %[[SUB2:.*]], %[[SUB2_control:.*]] = tf_executor.island(%[[ADD2_control]], %[[MUL_control]]) wraps "tf.Sub"(%[[ADD1]], %[[SUB1]])
-// CHECK:    %[[PRINT1:.*]], %[[PRINT1_control:.*]] = tf_executor.island wraps "tf.Print"(%[[SUB2]]) {message = "sub result"}
+// CHECK:    %[[PRINT1:.*]], %[[PRINT1_control:.*]] = tf_executor.island wraps "tf.Print"(%[[SUB2]]) <{message = "sub result"}>
 // CHECK:    %[[ISLAND1:.*]] = tf_executor.island(%[[ADD2_control]], %[[MUL_control]]) wraps "tf.NoOp"()
 // CHECK:    %[[ADD3:.*]], %[[ADD3_control:.*]] = tf_executor.island(%[[ISLAND1]], %[[ADD2_control]]) wraps "tf.Add"(%[[ADD2]], %[[ADD2]])
-// CHECK:    %[[PRINT2:.*]], %[[PRINT2_control:.*]] = tf_executor.island wraps "tf.Print"(%[[ADD3]]) {message = "add result"}
+// CHECK:    %[[PRINT2:.*]], %[[PRINT2_control:.*]] = tf_executor.island wraps "tf.Print"(%[[ADD3]]) <{message = "add result"}>
 // CHECK:    tf_executor.fetch %[[ADD2]], %[[MUL]], %[[PRINT1_control]], %[[PRINT2_control:.*]] :
 // CHECK:  }
 // CHECK:  return %[[GRAPH]]#0, %[[GRAPH]]#1
@@ -87,7 +87,7 @@ func.func @dangling_print(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*
 // CHECK:  %[[GRAPH:.*]]:2 = tf_executor.graph {
 // CHECK:    %[[ADD1:.*]], %[[ADD1_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
 // CHECK:    %[[ADD2:.*]], %[[ADD2_control:.*]] = tf_executor.island wraps "tf.Add"(%[[ADD1_control:.*]], %arg1)
-// CHECK:    %[[PRINT:.*]], %[[PRINT_control:.*]] = tf_executor.island wraps "tf.Print"(%[[ADD2_control:.*]]) {message = "add result"}
+// CHECK:    %[[PRINT:.*]], %[[PRINT_control:.*]] = tf_executor.island wraps "tf.Print"(%[[ADD2_control:.*]]) <{message = "add result"}>
 // CHECK:    tf_executor.fetch %[[ADD1]], %[[ADD2]], %[[PRINT_control]] :
 // CHECK:  }
 // CHECK:  return %[[GRAPH]]#0, %[[GRAPH]]#1
@@ -116,11 +116,11 @@ func.func @switch_and_merge(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor
 // CHECK: %[[GRAPH:.*]]:2 = tf_executor.graph {
 // CHECK:   %[[ADD1:.*]], %[[ADD1_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
 // CHECK:   %[[LESS:.*]], %[[LESS_control:.*]] = tf_executor.island wraps "tf.Less"(%arg1, %arg1)
-// CHECK:   %[[PRINT1:.*]], %[[PRINT1_control:.*]] = tf_executor.island wraps "tf.Print"(%[[ADD1]]) {message = "add result 1"}
+// CHECK:   %[[PRINT1:.*]], %[[PRINT1_control:.*]] = tf_executor.island wraps "tf.Print"(%[[ADD1]]) <{message = "add result 1"}>
 // CHECK:   %[[ISLAND1:.*]] = tf_executor.island(%[[LESS_control]], %[[PRINT1_control]]) wraps "tf.NoOp"()
 // CHECK:   %[[SWITCH_false:.*]], %[[SWITCH_true:.*]], {{.*}} = tf_executor.Switch %[[ADD1]], %[[LESS]], %[[ISLAND1]]
 // CHECK:   %[[ADD2:.*]], %[[ADD2_control:.*]] = tf_executor.island wraps "tf.Add"(%[[SWITCH_false]], %arg1)
-// CHECK:   %[[PRINT2:.*]], %[[PRINT2_control:.*]] = tf_executor.island wraps "tf.Print"(%[[ADD2]]) {message = "add result 2"}
+// CHECK:   %[[PRINT2:.*]], %[[PRINT2_control:.*]] = tf_executor.island wraps "tf.Print"(%[[ADD2]]) <{message = "add result 2"}>
 // CHECK:   %[[MERGE:.*]], %[[MERGE_index:.*]], %{{.*}} = tf_executor.Merge %[[ADD2]], %[[SWITCH_true]], %[[PRINT2_control]]
 // CHECK:   tf_executor.fetch %[[MERGE]], %[[MERGE_index]]
 // CHECK: }
@@ -141,7 +141,7 @@ func.func @control_flow_plumbing(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> te
 
 // CHECK-LABEL: func @control_flow_plumbing
 // CHECK: %[[GRAPH:.*]] = tf_executor.graph {
-// CHECK:   %[[PRINT:.*]], %[[PRINT_control:.*]] = tf_executor.island wraps "tf.Print"(%arg0) {message = "Random Print"}
+// CHECK:   %[[PRINT:.*]], %[[PRINT_control:.*]] = tf_executor.island wraps "tf.Print"(%arg0) <{message = "Random Print"}>
 // CHECK:   %[[ADD1:.*]], %[[ADD1_control:.*]] = tf_executor.island(%[[PRINT_control]]) wraps "tf.Add"(%arg0, %arg1)
 // CHECK:   %[[ADD2:.*]], %[[ADD2_control:.*]] = tf_executor.island wraps "tf.Add"(%[[ADD1]], %arg1)
 // CHECK:   tf_executor.fetch %[[ADD2]] : tensor<*xi32>
@@ -193,7 +193,7 @@ func.func @non_aliasing_reads_writes(
 // CHECK:   %[[READ0:.*]], %[[READ0_CONTROL:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%arg0)
 // CHECK:   %[[ASSIGN0_CONTROL:.*]] = tf_executor.island(%[[READ0_CONTROL]]) wraps "tf.AssignVariableOp"(%arg0, %arg2)
 // CHECK:   %[[READ1:.*]], %[[READ1_CONTROL:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%arg1)
-// CHECK:   %[[VH0:.*]], %[[VH0_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() {container = "c", shared_name = "v0"}
+// CHECK:   %[[VH0:.*]], %[[VH0_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() <{container = "c", shared_name = "v0"}>
 // CHECK:   %[[READ2:.*]], %[[READ2_CONTROL:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%[[VH0]])
 // CHECK:   %[[ASSIGN1_CONTROL:.*]] = tf_executor.island(%[[READ1_CONTROL]]) wraps "tf.AssignVariableOp"(%arg1, %[[READ0:.*]])
 // CHECK:   %[[ASSIGN2_CONTROL:.*]] = tf_executor.island(%[[ASSIGN0_CONTROL]]) wraps "tf.AssignVariableOp"(%arg0, %[[READ2]])
@@ -222,8 +222,8 @@ func.func @unknown_side_effecting_op(%arg0: tensor<32xf32>) -> () {
 
 // CHECK-LABEL: func @unknown_side_effecting_op
 // CHECK: tf_executor.graph {
-// CHECK:   %[[VH0:.*]], %[[VH0_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() {container = "c", shared_name = "v0"}
-// CHECK:   %[[VH1:.*]], %[[VH1_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() {container = "c", shared_name = "v1"}
+// CHECK:   %[[VH0:.*]], %[[VH0_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() <{container = "c", shared_name = "v0"}>
+// CHECK:   %[[VH1:.*]], %[[VH1_CONTROL:.*]] = tf_executor.island wraps "tf.VarHandleOp"() <{container = "c", shared_name = "v1"}>
 // CHECK:   %[[READ0:.*]], %[[READ0_CONTROL:.*]] = tf_executor.island wraps "tf.ReadVariableOp"(%[[VH0]])
 // CHECK:   %[[ASSIGN0_CONTROL:.*]] = tf_executor.island wraps "tf.AssignVariableOp"(%[[VH1]], %arg0)
 // CHECK:   %[[UNKNOWN_CONTROL:.*]] = tf_executor.island(%[[READ0_CONTROL]], %[[ASSIGN0_CONTROL]]) wraps "tf._UnknownSideEffectingOp_"()
@@ -467,7 +467,7 @@ func.func @generator_op(%str : tensor<!tf_type.string>, %arg0: tensor<*x!tf_type
         finalize_func = @__finalize_func_790,
         init_func = @__init_func_530, next_func = @__next_func_680,
         next_func.experimental_ints_on_device = true,
-        operand_segment_sizes = dense<[2, 2, 1]> : vector<3xi32>,
+        operandSegmentSizes = array<i32: 2, 2, 1>,
         output_shapes = [#tf_type.shape<?>],
         output_types = [f32],
         metadata = ""
@@ -479,7 +479,7 @@ func.func @generator_op(%str : tensor<!tf_type.string>, %arg0: tensor<*x!tf_type
         finalize_func = @__finalize_func_790,
         init_func = @__init_func_530, next_func = @__next_func_680,
         next_func.experimental_ints_on_device = true,
-        operand_segment_sizes = dense<[2, 2, 1]> : vector<3xi32>,
+        operandSegmentSizes = array<i32: 2, 2, 1>,
         output_shapes = [#tf_type.shape<?>],
         output_types = [f32],
         metadata = ""
@@ -487,6 +487,77 @@ func.func @generator_op(%str : tensor<!tf_type.string>, %arg0: tensor<*x!tf_type
          (tensor<!tf_type.string>, tensor<*x!tf_type.string>, tensor<!tf_type.string>, tensor<*xi64>, tensor<!tf_type.string>) -> tensor<*x!tf_type.variant>
       tf_executor.yield
     }
+    tf_executor.fetch
+  }
+  func.return
+}
+
+
+func.func @then_function() {
+  tf_executor.graph {
+    tf_executor.island {
+      "tf.OpA"() : () -> ()
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  func.return
+}
+
+func.func @else_function() {
+  tf_executor.graph {
+    tf_executor.island {
+      "tf.OpB"() : () -> ()
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// Check that stateful control-flow ops always have an outgoing control
+// dependency to `tf_executor.fetch`.
+func.func @stateful_control_flow_has_outgoing_control(%arg : tensor<i1>) {
+  tf_executor.graph {
+    tf_executor.island {
+      "tf.OpC"() {is_stateless = true} : () -> ()
+      // CHECK: %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.If"
+      "tf.If"(%arg) {then_branch = @then_function, else_branch = @else_function, is_stateless = false} : (tensor<i1>) -> ()
+      tf_executor.yield
+    }
+    // CHECK: tf_executor.fetch %[[CONTROL]]
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// Test case where an island is not a direct parent of a user (`tf.OpC` consumes
+// a value produced by the first island but its direct parent is
+// `tf_device.launch`). See related bug b/242920486.
+func.func @island_not_direct_parent_of_user() -> () {
+  tf_executor.graph {
+    %island1:2 = tf_executor.island {
+      // CHECK: %[[VAL_0:.*]], %[[VAL_1:.*]] = tf_executor.island wraps "tf.OpA"() : () -> tensor<i64>
+      %0 = "tf.OpA"() : () -> (tensor<i64>)
+      // CHECK: %[[VAL_2:.*]] = tf_executor.island(%[[VAL_1]]) wraps "tf.OpB"() : () -> ()
+      "tf.OpB"() : () -> ()
+      tf_executor.yield %0 : tensor<i64>
+    }
+    // CHECK: "tf_device.launch"()
+    // CHECK-SAME: <{device = "/job:worker/replica:0/task:0/device:CPU:0"}>
+    // CHECK:   "tf.OpC"(%[[VAL_0]]) : (tensor<i64>) -> ()
+    // CHECK:   "tf.OpD"() : () -> ()
+    // CHECK:   tf_device.return
+    // CHECK: }) : () -> ()
+    %island2 = tf_executor.island {
+      "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:CPU:0"}> ({
+        "tf.OpC"(%island1#0) : (tensor<i64>) -> ()
+        "tf.OpD"() : () -> ()
+        tf_device.return
+      }) : () -> ()
+      tf_executor.yield
+    }
+    // CHECK: tf_executor.fetch
     tf_executor.fetch
   }
   func.return

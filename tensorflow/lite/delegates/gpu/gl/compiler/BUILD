@@ -1,6 +1,7 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -104,6 +105,16 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:object",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "compiled_node_test",
+    srcs = ["compiled_node_test.cc"],
+    deps = [
+        ":compiled_node",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

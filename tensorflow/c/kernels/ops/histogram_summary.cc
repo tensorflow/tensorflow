@@ -43,7 +43,7 @@ void Register_HistogramSummaryOp() {
 }
 
 TF_ATTRIBUTE_UNUSED static bool HistogramSummaryOpRegistered = []() {
-  if (SHOULD_REGISTER_OP("HistogramSummary")) {
+  if (&TF_NewStatus != nullptr && SHOULD_REGISTER_OP("HistogramSummary")) {
     Register_HistogramSummaryOp();
   }
   return true;

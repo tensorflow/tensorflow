@@ -20,6 +20,8 @@ message TPUHardwareFeature {
     V2 = 2;
   }
   EmbeddingFeature embedding_feature = 1;
+  // Number of embedding accelerator devices per chip.
+  int32 num_embedding_devices_per_chip = 2;
 }
 
 // Describes the geometry of a TPU mesh.

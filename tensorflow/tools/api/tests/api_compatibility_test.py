@@ -28,7 +28,6 @@ import os
 import re
 import sys
 
-import six
 import tensorflow as tf
 
 from google.protobuf import message
@@ -97,15 +96,9 @@ _TEST_README_FILE = resource_loader.get_path_to_datafile('README.txt')
 _UPDATE_WARNING_FILE = resource_loader.get_path_to_datafile(
     'API_UPDATE_WARNING.txt')
 
-_NON_CORE_PACKAGES = ['estimator', 'keras']
+_NON_CORE_PACKAGES = ['keras']
 _V1_APIS_FROM_KERAS = ['layers', 'nn.rnn_cell']
 _V2_APIS_FROM_KERAS = ['initializers', 'losses', 'metrics', 'optimizers']
-
-# TODO(annarev): remove this once we test with newer version of
-# estimator that actually has compat v1 version.
-if not hasattr(tf.compat.v1, 'estimator'):
-  tf.compat.v1.estimator = tf.estimator
-  tf.compat.v2.estimator = tf.estimator
 
 
 def _KeyToFilePath(key, api_version):
@@ -125,8 +118,7 @@ def _KeyToFilePath(key, api_version):
     match = matchobj.group(0)
     return '-%s' % (match.lower())
 
-  case_insensitive_key = re.sub('([A-Z]{1})', _ReplaceCapsWithDash,
-                                six.ensure_str(key))
+  case_insensitive_key = re.sub('([A-Z]{1})', _ReplaceCapsWithDash, key)
   api_folder = (
       _API_GOLDEN_FOLDER_V2 if api_version == 2 else _API_GOLDEN_FOLDER_V1)
   if key.startswith('tensorflow.experimental.numpy'):
@@ -149,7 +141,7 @@ def _FileNameToKey(filename):
   base_filename = os.path.basename(filename)
   base_filename_without_ext = os.path.splitext(base_filename)[0]
   api_object_key = re.sub('((-[a-z]){1})', _ReplaceDashWithCaps,
-                          six.ensure_str(base_filename_without_ext))
+                          base_filename_without_ext)
   return api_object_key
 
 
@@ -185,8 +177,7 @@ def _FilterGoldenFilesByPrefix(golden_file_list, package_prefixes):
   filtered_package_prefixes = ['tensorflow.%s.' % p for p in package_prefixes]
   for f in golden_file_list:
     if any(
-        six.ensure_str(f).rsplit('/')[-1].startswith(pre)
-        for pre in filtered_package_prefixes):
+        f.rsplit('/')[-1].startswith(pre) for pre in filtered_package_prefixes):
       continue
     filtered_file_list.append(f)
   return filtered_file_list
@@ -197,7 +188,7 @@ def _FilterGoldenProtoDict(golden_proto_dict, omit_golden_symbols_map):
   if not omit_golden_symbols_map:
     return golden_proto_dict
   filtered_proto_dict = dict(golden_proto_dict)
-  for key, symbol_list in six.iteritems(omit_golden_symbols_map):
+  for key, symbol_list in omit_golden_symbols_map.items():
     api_object = api_objects_pb2.TFAPIObject()
     api_object.CopyFrom(filtered_proto_dict[key])
     filtered_proto_dict[key] = api_object
@@ -247,7 +238,7 @@ class ApiCompatibilityTest(test.TestCase):
 
     Args:
       expected_dict: a dict of TFAPIObject protos constructed from golden files.
-      actual_dict: a ict of TFAPIObject protos constructed by reading from the
+      actual_dict: a dict of TFAPIObject protos constructed by reading from the
         TF package linked to the test.
       verbose: Whether to log the full diffs, or simply report which files were
         different.
@@ -258,7 +249,6 @@ class ApiCompatibilityTest(test.TestCase):
     """
     diffs = []
     verbose_diffs = []
-
     expected_keys = set(expected_dict.keys())
     actual_keys = set(actual_dict.keys())
     only_in_expected = expected_keys - actual_keys
@@ -491,8 +481,6 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument(
       '--update_goldens', type=bool, default=False, help=_UPDATE_GOLDENS_HELP)
-  # TODO(mikecase): Create Estimator's own API compatibility test or
-  # a more general API compatibility test for use for TF components.
   parser.add_argument(
       '--only_test_core_api',
       type=bool,

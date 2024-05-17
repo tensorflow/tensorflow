@@ -15,23 +15,22 @@
 """A type for representing values that may or may not exist."""
 import abc
 
-import six
-
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_optional_ops
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("experimental.Optional", "data.experimental.Optional")
 @deprecation.deprecated_endpoints("data.experimental.Optional")
-@six.add_metaclass(abc.ABCMeta)
-class Optional(composite_tensor.CompositeTensor):
+class Optional(composite_tensor.CompositeTensor, metaclass=abc.ABCMeta):
   """Represents a value that may or may not be present.
 
   A `tf.experimental.Optional` can represent the result of an operation that may
@@ -130,7 +129,7 @@ class Optional(composite_tensor.CompositeTensor):
     Returns:
       A `tf.experimental.Optional` with no value.
     """
-    return _OptionalImpl(gen_dataset_ops.optional_none(), element_spec)
+    return _OptionalImpl(gen_optional_ops.optional_none(), element_spec)
 
   @staticmethod
   def from_value(value):
@@ -155,8 +154,9 @@ class Optional(composite_tensor.CompositeTensor):
         encoded_value = structure.to_tensor_list(element_spec, value)
 
     return _OptionalImpl(
-        gen_dataset_ops.optional_from_value(encoded_value, name=scope),
-        element_spec)
+        gen_optional_ops.optional_from_value(encoded_value, name=scope),
+        element_spec,
+    )
 
 
 class _OptionalImpl(Optional):
@@ -167,12 +167,15 @@ class _OptionalImpl(Optional):
   """
 
   def __init__(self, variant_tensor, element_spec):
+    super().__init__()
     self._variant_tensor = variant_tensor
     self._element_spec = element_spec
 
   def has_value(self, name=None):
     with ops.colocate_with(self._variant_tensor):
-      return gen_dataset_ops.optional_has_value(self._variant_tensor, name=name)
+      return gen_optional_ops.optional_has_value(
+          self._variant_tensor, name=name
+      )
 
   def get_value(self, name=None):
     # TODO(b/110122868): Consolidate the restructuring logic with similar logic
@@ -180,11 +183,12 @@ class _OptionalImpl(Optional):
     with ops.name_scope(name, "OptionalGetValue",
                         [self._variant_tensor]) as scope:
       with ops.colocate_with(self._variant_tensor):
-        result = gen_dataset_ops.optional_get_value(
+        result = gen_optional_ops.optional_get_value(
             self._variant_tensor,
             name=scope,
             output_types=structure.get_flat_tensor_types(self._element_spec),
-            output_shapes=structure.get_flat_tensor_shapes(self._element_spec))
+            output_shapes=structure.get_flat_tensor_shapes(self._element_spec),
+        )
       # NOTE: We do not colocate the deserialization of composite tensors
       # because not all ops are guaranteed to have non-GPU kernels.
       return structure.from_tensor_list(self._element_spec, result)
@@ -225,6 +229,7 @@ class OptionalSpec(type_spec.TypeSpec):
   __slots__ = ["_element_spec"]
 
   def __init__(self, element_spec):
+    super().__init__()
     self._element_spec = element_spec
 
   @property
@@ -257,3 +262,10 @@ class OptionalSpec(type_spec.TypeSpec):
 
   def _to_legacy_output_classes(self):
     return self
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        OptionalSpec, struct_pb2.TypeSpecProto.OPTIONAL_SPEC
+    )
+)

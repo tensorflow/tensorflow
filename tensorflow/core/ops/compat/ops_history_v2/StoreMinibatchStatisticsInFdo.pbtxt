@@ -1,0 +1,48 @@
+op {
+  name: "StoreMinibatchStatisticsInFdo"
+  input_arg {
+    name: "program_key"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "max_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "max_uniques"
+    type: DT_INT32
+  }
+  attr {
+    name: "sample_count"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_replica"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sc_per_chip"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+  attr {
+    name: "mini_batch_splits"
+    type: "string"
+  }
+  is_stateful: true
+}

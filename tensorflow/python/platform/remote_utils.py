@@ -14,6 +14,7 @@
 # ==============================================================================
 """Platform-specific helpers for connecting to remote servers."""
 
+
 def get_default_communication_protocol():
   return 'grpc'
 
@@ -26,5 +27,6 @@ def get_appendable_file_encoding():
   return ''
 
 
-def coordination_service_type(_):
+def coordination_service_type(*args, **kwargs):
+  del args, kwargs
   return None

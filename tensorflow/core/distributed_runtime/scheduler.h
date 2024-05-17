@@ -49,7 +49,8 @@ class SlackAnalysis {
   const Graph* graph_;
   const CostModel* cost_model_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SlackAnalysis);
+  SlackAnalysis(const SlackAnalysis&) = delete;
+  void operator=(const SlackAnalysis&) = delete;
 };
 
 class GreedyScheduler {
@@ -87,7 +88,8 @@ class GreedyScheduler {
   std::vector<int64_t>* priority_;
   std::unordered_map<string, Sim*> device_states_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GreedyScheduler);
+  GreedyScheduler(const GreedyScheduler&) = delete;
+  void operator=(const GreedyScheduler&) = delete;
 };
 
 class PriorityScheduler {
@@ -110,7 +112,8 @@ class PriorityScheduler {
   const CostModel* cost_model_;
   const Graph* graph_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PriorityScheduler);
+  PriorityScheduler(const PriorityScheduler&) = delete;
+  void operator=(const PriorityScheduler&) = delete;
 };
 
 }  // namespace tensorflow

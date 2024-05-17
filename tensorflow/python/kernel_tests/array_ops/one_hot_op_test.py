@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for tensorflow.ops.one_hot_op."""
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -22,7 +23,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class OneHotTest(test.TestCase):
+class OneHotTest(test.TestCase, parameterized.TestCase):
 
   def _testOneHot(self,
                   truth,
@@ -100,29 +101,20 @@ class OneHotTest(test.TestCase):
   def testDefaultNoDtype(self):
     self._testDefaultBasic(None)
 
-  def testFloatBasic(self):
-    self._testBasic(np.float32)
-    self._testDefaultBasic(np.float32)
-
-  def testDoubleBasic(self):
-    self._testBasic(np.float64)
-    self._testDefaultBasic(np.float64)
-
-  def testInt32Basic(self):
-    self._testBasic(np.int32)
-    self._testDefaultBasic(np.int32)
-
-  def testInt64Basic(self):
-    self._testBasic(np.int64)
-    self._testDefaultBasic(np.int64)
-
-  def testComplex64Basic(self):
-    self._testBasic(np.complex64)
-    self._testDefaultBasic(np.complex64)
-
-  def testComplex128Basic(self):
-    self._testBasic(np.complex128)
-    self._testDefaultBasic(np.complex128)
+  @parameterized.parameters(
+      np.float16,
+      dtypes.bfloat16.as_numpy_dtype,
+      np.float32,
+      np.float64,
+      np.int8,
+      np.int32,
+      np.int64,
+      np.complex64,
+      np.complex128,
+  )
+  def testBasic(self, dtype):
+    self._testBasic(dtype)
+    self._testDefaultBasic(dtype)
 
   def _testBatch(self, dtype):
     indices = np.asarray([[0, 2, -1, 1], [1, 0, 1, -1]], dtype=np.int64)
@@ -223,41 +215,22 @@ class OneHotTest(test.TestCase):
         dtype=dtype,
         truth=truth)
 
-  def testHalfBatch(self):
-    self._testEmpty(np.float16)
-    self._testBatch(np.float16)
-    self._testDefaultValuesBatch(np.float16)
-    self._testValueTypeBatch(np.float16)
-
-  def testFloatBatch(self):
-    self._testEmpty(np.float32)
-    self._testBatch(np.float32)
-    self._testDefaultValuesBatch(np.float32)
-    self._testValueTypeBatch(np.float32)
-
-  def testDoubleBatch(self):
-    self._testEmpty(np.float64)
-    self._testBatch(np.float64)
-    self._testDefaultValuesBatch(np.float64)
-    self._testValueTypeBatch(np.float64)
-
-  def testInt32Batch(self):
-    self._testEmpty(np.int32)
-    self._testBatch(np.int32)
-    self._testDefaultValuesBatch(np.int32)
-    self._testValueTypeBatch(np.int32)
-
-  def testInt64Batch(self):
-    self._testEmpty(np.int64)
-    self._testBatch(np.int64)
-    self._testDefaultValuesBatch(np.int64)
-    self._testValueTypeBatch(np.int64)
-
-  def testComplexBatch(self):
-    self._testEmpty(np.complex64)
-    self._testBatch(np.complex64)
-    # self._testDefaultValuesBatch(np.complex64)
-    self._testValueTypeBatch(np.complex64)
+  @parameterized.parameters(
+      np.float16,
+      dtypes.bfloat16.as_numpy_dtype,
+      np.float32,
+      np.float64,
+      np.int8,
+      np.int32,
+      np.int64,
+      np.complex64,
+  )
+  def testBatch(self, dtype):
+    self._testEmpty(dtype)
+    self._testBatch(dtype)
+    if dtype != np.complex64:
+      self._testDefaultValuesBatch(dtype)
+    self._testValueTypeBatch(dtype)
 
   def testSimpleCases(self):
     indices = [0, 1, 2]

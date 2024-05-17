@@ -1,11 +1,12 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -55,7 +56,7 @@ cc_library(
     name = "parallel_device",
     srcs = [":device_sources"],
     hdrs = [":device_headers"],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:private"],
     deps = [
         ":parallel_device_lib",
         "//tensorflow/c:c_api",
@@ -76,6 +77,7 @@ cc_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c:safe_ptr",
         "//tensorflow/c:tf_status_internal",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",

@@ -88,15 +88,15 @@ void ComputeCostPass::runOnOperation() {
   for (auto func : module.getOps<func::FuncOp>()) {
     // We only care about those functions annotated with "tac.interface_name".
     auto interface_name = GetInterFaceName(func);
-    if (!interface_name.hasValue()) continue;
+    if (!interface_name.has_value()) continue;
 
     auto target = GetTargetAnnotation(func);
-    if (!target.hasValue()) {
+    if (!target.has_value()) {
       func.emitError("we cannot get hardware info for this function.");
       signalPassFailure();
     }
 
-    float total_cost = GetCostForFunc(&func, target.getValue());
+    float total_cost = GetCostForFunc(&func, *target);
     OpBuilder builder(func);
     UpdateCost(func, total_cost, &builder);
   }

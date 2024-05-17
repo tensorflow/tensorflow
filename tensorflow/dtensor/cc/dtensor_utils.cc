@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 
+#include <algorithm>
 #include <cstdlib>
+#include <string>
+#include <vector>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -51,10 +57,15 @@ bool LogOnAllTasks() {
   return true;
 }
 
-bool LogOpByOp() {
-  char* dtensor_log_op_by_op_str = std::getenv("DTENSOR_LOG_OP_BY_OP");
-  if (dtensor_log_op_by_op_str == nullptr) return false;
-  return true;
+bool LogOpByOp(absl::string_view op_name) {
+  char* op_list_str = std::getenv("DTENSOR_LOG_OP_BY_OP");
+  if (op_list_str == nullptr) return false;
+  if (!strcmp(op_list_str, "*")) return true;
+  std::vector<absl::string_view> op_list = absl::StrSplit(op_list_str, ',');
+  if (std::find(op_list.begin(), op_list.end(), op_name) != op_list.end()) {
+    return true;
+  }
+  return false;
 }
 
 int LayoutPropagationMaxSteps() {
@@ -97,5 +108,79 @@ int ReduceInBfloat16MaxGroupSize() {
   return 8;
 }
 
+bool LowerCollectiveGatherToCollectiveGatherV2() {
+  // We lower DTensorGather to CollectiveReduceV2 ops instead of
+  // CollectiveGatherV2, since we do not observe a performance gain with Gather
+  // lowering and ReduceV2 is agnostic of the rank order.
+  //
+  // If LOWER_DTENSOR_GATHER_TO_COLLECTIVE_GATHER_V2 environment variable is set
+  // to '1', it is reduced to collective
+  char* use_collective_gather =
+      std::getenv("LOWER_DTENSOR_GATHER_TO_COLLECTIVE_GATHER_V2");
+  if (use_collective_gather == nullptr) return false;
+  return true;
+}
+
+bool EnableReplicatedSpmdAsDefault(const std::string& op_name) {
+  // These environment variables enroll MLIR ops of the given name for default
+  // replicated SPMD expansion. No expanders are registered for these Ops,
+  // and without enrolling to the default replicated behavior, SPMD expansion
+  // raises an error for these Op.
+  //
+  // For example, to enroll tf.Mod, set
+  //   DTENSOR_ENABLE_REPLICATED_SPMD_AS_DEFAULT_TF.MOD = 1
+  std::string env_name = "DTENSOR_ENABLE_REPLICATED_SPMD_AS_DEFAULT_" +
+                         absl::AsciiStrToUpper(op_name);
+  char* dtensor_enable_replicated_spmd_as_default =
+      std::getenv(env_name.c_str());
+  return dtensor_enable_replicated_spmd_as_default != nullptr;
+}
+
+bool EnableAllToAllForRelayout() {
+  // Whether to use all-to-all collective for relayout when possible.
+  static bool is_enabled = [] {
+    bool ret = true;
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("DTENSOR_USE_ALL_TO_ALL_RELAYOUT",
+                                        /*default_val=*/true, &ret));
+    return ret;
+  }();
+  return is_enabled;
+}
+
+int AllReduceCombineOptimizationGroupSize() {
+  char* group_size_str =
+      std::getenv("DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_GROUP_SIZE");
+  if (group_size_str == nullptr) return 0;
+  int group_size;
+  if (absl::SimpleAtoi(group_size_str, &group_size)) return group_size;
+  LOG(WARNING) << "Invalid DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_GROUP_SIZE, "
+                  "using the default value 0.";
+  return 0;
+}
+
+int AllReduceCombineOptimizationTopologicalDistance() {
+  int64_t topo_dist;
+  absl::Status status = tsl::ReadInt64FromEnvVar(
+      "DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_TOPOLOGICAL_DISTANCE",
+      /*default_val=*/0, &topo_dist);
+  if (!status.ok()) {
+    LOG(WARNING) << "Invalid DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_TOPOLOGICAL"
+                    "_DISTANCE, using the default value 0.";
+    return 0;
+  } else if (topo_dist < 0) {
+    LOG(WARNING) << "Invalid DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_TOPOLOGICAL"
+                    "_DISTANCE, value must be a positive integer, using the "
+                    "default value 0.";
+    return 0;
+  }
+  return topo_dist;
+}
+
+bool EnableMultiDeviceMode() {
+  bool multi_device_mode;
+  absl::Status status = tsl::ReadBoolFromEnvVar(
+      "DTENSOR_ENABLE_MULTI_DEVICE_EXPANSION", false, &multi_device_mode);
+  return status.ok() && multi_device_mode;
+}
 }  // namespace dtensor
 }  // namespace tensorflow

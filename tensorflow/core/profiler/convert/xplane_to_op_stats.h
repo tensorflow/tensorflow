@@ -16,11 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_OP_STATS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_OP_STATS_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
+#include <vector>
+
+#include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/hlo_proto_map.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -36,6 +37,10 @@ struct OpStatsOptions {
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options);
 
+// Populates the program_id_to_name map in OpStats.
+void SetProgramIdToNameMap(const HloProtoMap& hlo_proto_map,
+                           tensorflow::profiler::OpStats& op_stats);
+
 // Populates the given RunEnvironment with data from XSpace.
 void SetRunEnvironment(const XSpace& space, RunEnvironment* env);
 
@@ -45,18 +50,10 @@ void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
 
 // Populates PerfEnv.
 PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
-                    double peak_hbm_bw_giga_bytes_per_second);
+                    std::vector<double> peak_bws);
 
 // Extracts PerfEnv from XPlane stats.
 PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane);
-
-// Takes an XSpace proto message, converts to OpStats, and
-// combine them to a single OpStats in <combined_op_stats>.
-// Return the first error status during conversion, or return Status::OK() if
-// there is no error.
-Status ConvertMultiXSpacesToCombinedOpStats(const std::vector<XSpace>& xspaces,
-                                            const OpStatsOptions& options,
-                                            OpStats* combined_op_stats);
 
 }  // namespace profiler
 }  // namespace tensorflow

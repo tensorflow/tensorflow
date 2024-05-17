@@ -13,5 +13,5 @@ def repo():
             # Repeated to bypass 'at least two urls' check. TODO(karimnosseir): add original source of this package.
             "https://storage.googleapis.com/mirror.tensorflow.org/storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_headers_v1.20.0.9.tgz",
         ],
-        build_file = "//third_party/hexagon:BUILD",
+        build_file = "//third_party/hexagon:hexagon.BUILD",
     )

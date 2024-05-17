@@ -53,6 +53,9 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   // Rewrite rule for Conv2D, Conv2DBackpropInput and Conv2DBackpropFilter.
   static bool RewriteConv2D(EagerOperation* op);
 
+  // Rewrite rule for MklSparseMatrixMatMul.
+  static bool RewriteSparseMatrixMatMul(EagerOperation* op);
+
   // Rewrite rule for FusedBatchNormV3 and FusedBatchNormGradV3
   static bool RewriteFusedBatchNormV3(EagerOperation* op);
 
@@ -112,6 +115,13 @@ MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
   InsertMKLEagerOps(
       {"FusedBatchNormV3", RewriteFusedBatchNormV3, CreateGenericMklOp});
   InsertMKLEagerOps({"MatMul", AlwaysRewrite, CreateGenericMklOp});
+#ifdef ENABLE_ONEDNN_V3
+  InsertMKLEagerOps(
+      {"SparseMatrixMatMul", RewriteSparseMatrixMatMul, CreateGenericMklOp});
+#endif  // ENABLE_ONEDNN_V3
+  // TODO(Intel-tf): Support MaxPool, MaxPool3D rewrite, handle workspace.
+  // Note: MaxPoolGrad, MaxPool3DGrad rewrite cannot be supported in eager
+  // mode due to workspace restriction
 };
 
 void MklEagerOpRewrite::InsertMKLEagerOps(MklEagerOp op) {
@@ -124,7 +134,7 @@ Status MklEagerOpRewrite::Run(
   if (ShouldRewriteOp(orig_op)) {
     TF_CHECK_OK(RewriteToMklOp(orig_op, out_op));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MklEagerOpRewrite::SetupNewOp(
@@ -164,7 +174,7 @@ Status MklEagerOpRewrite::CreateGenericMklOp(
   const string mkl_op_name =
       mkl_op_registry::GetMklNativeOpName(orig_op->Name());
   TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_op));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
@@ -173,7 +183,7 @@ bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
     return false;
   }
   DataType data_type;
-  if (op->Attrs().Get("T", &data_type) != Status::OK()) {
+  if (op->Attrs().Get("T", &data_type) != OkStatus()) {
     return false;
   }
   // Only rewrite if op is to be run on CPU device.
@@ -218,7 +228,7 @@ Status MklEagerOpRewrite::RewriteToMklOp(
   // (once each in ShouldRewriteOp & RewriteToMklOp) to just once.
   TF_RETURN_IF_ERROR(
       mkl_eager_ops_[orig_op->Name()].CreateMklOp(orig_op, mkl_op));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool MklEagerOpRewrite::RewriteConv2D(EagerOperation* op) {
@@ -227,6 +237,41 @@ bool MklEagerOpRewrite::RewriteConv2D(EagerOperation* op) {
   TF_CHECK_OK(GetNodeAttr(ndef, "padding", &padding));
   // Right now MKL Conv2D does not support explicit padding.
   return (padding != "EXPLICIT");
+}
+
+bool MklEagerOpRewrite::RewriteSparseMatrixMatMul(EagerOperation* op) {
+  const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
+  DataType T;
+  Tensor tensor;
+  bool adjoint_a, adjoint_b, transpose_a, transpose_b, transpose_out;
+
+  // Check the datatype.
+  TF_CHECK_OK(GetNodeAttr(ndef, "T", &T));
+  if (T != DT_FLOAT) {
+    VLOG(1) << "_MklSparseMatrixMatMul only supports DT_FLOAT";
+    return false;
+  }
+
+  // Check for adjointing.
+  TF_CHECK_OK(GetNodeAttr(ndef, "adjoint_a", &adjoint_a));
+  TF_CHECK_OK(GetNodeAttr(ndef, "adjoint_b", &adjoint_b));
+  if (adjoint_a || adjoint_b) {
+    VLOG(1)
+        << "_MklNativeSparseMatrixMatMul doesn't support adjointing matrices";
+    return false;
+  }
+
+  // Check for transposing.
+  TF_CHECK_OK(GetNodeAttr(ndef, "transpose_a", &transpose_a));
+  TF_CHECK_OK(GetNodeAttr(ndef, "transpose_b", &transpose_b));
+  TF_CHECK_OK(GetNodeAttr(ndef, "transpose_output", &transpose_out));
+  if (transpose_a || transpose_b || transpose_out) {
+    VLOG(1)
+        << "_MklNativeSparseMatrixMatMul doesn't support transposing matrices";
+    return false;
+  }
+
+  return true;
 }
 
 bool MklEagerOpRewrite::RewriteFusedBatchNormV3(EagerOperation* op) {

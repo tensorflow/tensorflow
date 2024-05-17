@@ -14,57 +14,67 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/lib/db/sqlite.h"
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/macros.h"
+#include "tsl/platform/status.h"
 
 extern "C" int sqlite3_snapfn_init(sqlite3*, const char**, const void*);
 
 namespace tensorflow {
 namespace {
 
-error::Code GetTfErrorCode(int code) {
+absl::StatusCode GetTfErrorCode(int code) {
   // See: https://sqlite.org/rescode.html
   switch (code & 0xff) {
     case SQLITE_OK:    // Successful result
     case SQLITE_ROW:   // Step has another row ready
     case SQLITE_DONE:  // Step has finished executing
-      return error::OK;
+      return absl::StatusCode::kOk;
     case SQLITE_ABORT:  // Callback routine requested an abort
-      return error::ABORTED;
+      return absl::StatusCode::kAborted;
     case SQLITE_READONLY:  // Attempt to write a readonly database
     case SQLITE_MISMATCH:  // Data type mismatch
-      return error::FAILED_PRECONDITION;
+      return absl::StatusCode::kFailedPrecondition;
     case SQLITE_MISUSE:    // Library used incorrectly
     case SQLITE_INTERNAL:  // Internal logic error in SQLite
-      return error::INTERNAL;
+      return absl::StatusCode::kInternal;
     case SQLITE_RANGE:  // 2nd parameter to sqlite3_bind out of range
-      return error::OUT_OF_RANGE;
+      return absl::StatusCode::kOutOfRange;
     case SQLITE_CANTOPEN:    // Unable to open the database file
     case SQLITE_CONSTRAINT:  // Abort due to constraint violation
     case SQLITE_NOTFOUND:    // Unknown opcode or statement parameter name
     case SQLITE_NOTADB:      // File opened that is not a database file
-      return error::INVALID_ARGUMENT;
+      return absl::StatusCode::kInvalidArgument;
     case SQLITE_CORRUPT:  // The database disk image is malformed
-      return error::DATA_LOSS;
+      return absl::StatusCode::kDataLoss;
     case SQLITE_AUTH:  // Authorization denied
     case SQLITE_PERM:  // Access permission denied
-      return error::PERMISSION_DENIED;
+      return absl::StatusCode::kPermissionDenied;
     case SQLITE_FULL:    // Insertion failed because database is full
     case SQLITE_TOOBIG:  // String or BLOB exceeds size limit
     case SQLITE_NOLFS:   // Uses OS features not supported on host
-      return error::RESOURCE_EXHAUSTED;
+      return absl::StatusCode::kResourceExhausted;
     case SQLITE_BUSY:      // The database file is locked
     case SQLITE_LOCKED:    // A table in the database is locked
     case SQLITE_PROTOCOL:  // Database lock protocol error
     case SQLITE_NOMEM:     // Out of heap or perhaps lookaside memory
-      return error::UNAVAILABLE;
+      return absl::StatusCode::kUnavailable;
     case SQLITE_INTERRUPT:  // Operation terminated by sqlite3_interrupt
-      return error::CANCELLED;
+      return absl::StatusCode::kCancelled;
     case SQLITE_ERROR:   // SQL error or missing database
     case SQLITE_IOERR:   // Some kind of disk I/O error occurred
     case SQLITE_SCHEMA:  // The database schema changed
     default:
-      return error::UNKNOWN;
+      return absl::StatusCode::kUnknown;
   }
 }
 
@@ -82,7 +92,7 @@ sqlite3_stmt* PrepareRawOrDie(sqlite3* db, const char* sql) {
 }
 
 Status SetPragma(Sqlite* db, const char* pragma, const StringPiece& value) {
-  if (value.empty()) return OkStatus();
+  if (value.empty()) return absl::OkStatus();
   for (auto p = value.begin(); p < value.end(); ++p) {
     if (!(('0' <= *p && *p <= '9') || ('A' <= *p && *p <= 'Z') ||
           ('a' <= *p && *p <= 'z') || *p == '-')) {
@@ -104,7 +114,7 @@ const StringPiece GetEnv(const char* var) {
 Status EnvPragma(Sqlite* db, const char* pragma, const char* var) {
   TF_RETURN_WITH_CONTEXT_IF_ERROR(SetPragma(db, pragma, GetEnv(var)), "getenv(",
                                   var, ")");
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -129,7 +139,7 @@ Status Sqlite::Open(const string& path, int flags, Sqlite** db) {
   sqlite3_stmt* commit = PrepareRawOrDie(sqlite, "COMMIT");
   sqlite3_stmt* rollback = PrepareRawOrDie(sqlite, "ROLLBACK");
   *db = new Sqlite(sqlite, begin, commit, rollback);
-  Status s = OkStatus();
+  Status s = absl::OkStatus();
   // Up until 2016 the default SQLite page_size was 1024. This ensures
   // the new default regardless of linkage unless configured otherwise.
   s.Update(SetPragma(*db, "page_size", "4096"));
@@ -171,7 +181,7 @@ Status Sqlite::Prepare(const StringPiece& sql, SqliteStatement* stmt) {
                         sql.size(), sql.data());
   }
   *stmt = SqliteStatement(this, ps);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SqliteStatement::Step(bool* is_done) {
@@ -187,10 +197,10 @@ Status SqliteStatement::Step(bool* is_done) {
   switch (rc) {
     case SQLITE_ROW:
       *is_done = false;
-      return OkStatus();
+      return absl::OkStatus();
     case SQLITE_DONE:
       *is_done = true;
-      return OkStatus();
+      return absl::OkStatus();
     default:
       *is_done = true;
       return PrintfStatus(rc, "Step() failed: [%d] %s: %s", rc, db_->errmsg(),
@@ -210,7 +220,7 @@ Status SqliteStatement::StepOnce() {
   if (TF_PREDICT_FALSE(is_done)) {
     return errors::Internal("No rows returned: ", sql());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const SqliteStatement& SqliteStatement::StepOnceOrDie() {
@@ -276,7 +286,7 @@ Status SqliteTransaction::Commit() {
   sqlite3_reset(db_->commit_);
   sqlite3_reset(db_->begin_);
   Begin();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

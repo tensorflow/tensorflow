@@ -23,6 +23,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_function
+from tensorflow.python.tpu import tpu_replication
 # pylint: disable=protected-access
 
 
@@ -453,7 +454,8 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
       def host_computation():
         return fc._EmbeddingColumn._get_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc._EmbeddingColumn._get_dense_tensor(
@@ -477,7 +479,8 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
       def host_computation():
         return fc._EmbeddingColumn._get_sequence_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc._EmbeddingColumn._get_sequence_dense_tensor(
@@ -592,7 +595,8 @@ class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
       def host_computation():
         return fc._SharedEmbeddingColumn._get_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc._SharedEmbeddingColumn._get_dense_tensor(
@@ -615,7 +619,8 @@ class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
       def host_computation():
         return fc._SharedEmbeddingColumn._get_sequence_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc._SharedEmbeddingColumn._get_sequence_dense_tensor(
@@ -683,38 +688,3 @@ def get_sequence_length_feature_key_name_from_feature_key_name(feature_name):
     A string which is the feature key for the associated feature length column.
   """
   return feature_name + _SEQUENCE_FEATURE_LENGTH_POSTFIX
-
-
-def split_sequence_columns(feature_columns):
-  """Split a list of _TPUEmbeddingColumn into sequence and non-sequence columns.
-
-  For use in a TPUEstimator model_fn function. E.g.
-
-  def model_fn(features):
-    sequence_columns, feature_columns = (
-        tf.tpu.feature_column.split_sequence_columns(feature_columns))
-    input = tf.feature_column.input_layer(
-        features=features, feature_columns=feature_columns)
-    sequence_features, sequence_lengths = (
-        tf.contrib.feature_column.sequence_input_layer(
-            features=features, feature_columns=sequence_columns))
-
-  Args:
-    feature_columns: A list of _TPUEmbeddingColumns to split.
-
-  Returns:
-    Two lists of _TPUEmbeddingColumns, the first is the sequence columns and the
-    second is the non-sequence columns.
-  """
-  sequence_columns = []
-  non_sequence_columns = []
-  for column in feature_columns:
-    if not isinstance(column, (_TPUEmbeddingColumn, _TPUSharedEmbeddingColumn)):
-      raise TypeError(
-          'column must be a _TPUEmbeddingColumn or  _TPUSharedEmbeddingColumn '
-          f'but got {type(column)} instead.')
-    if column.is_sequence_column():
-      sequence_columns.append(column)
-    else:
-      non_sequence_columns.append(column)
-  return sequence_columns, non_sequence_columns

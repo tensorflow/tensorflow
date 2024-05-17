@@ -52,6 +52,23 @@ GRAPH_DEF_TXT = """
     attr: { key: "transpose_a" value: { b: false } }
     attr: { key: "transpose_b" value: { b: false } }
   }
+  library {
+    function {
+      node_def {
+        name: "node_6"
+        op: "Const"
+        attr: { key: "dtype" value: { type: DT_INT64 } }
+      }
+      node_def {
+        name: "node_7"
+        op: "Maximum"
+        input: "clip_by_value/Minimum:z:0"
+        input: "clip_by_value/y:output:0"
+        attr: { key: "T" value: { type: DT_INT64 } }
+        attr { key: "_output_shapes" value: { list: { shape: { dim: { size: -1 } dim: { size: 1 } } } } }
+      }
+    }
+  }
 """
 
 # AccumulateNV2 is included because it should be included in the header despite
@@ -110,10 +127,12 @@ class PrintOpFilegroupTest(test.TestCase):
         [
             ('AccumulateNV2', None),  #
             ('BiasAdd', 'BiasOp<CPUDevice, float>'),  #
+            ('Const', 'ConstantOp'),  #
             ('MatMul', matmul_prefix +
              'MatMulOp<CPUDevice, double, double, double, true>'),  #
             ('MatMul', matmul_prefix +
              'MatMulOp<CPUDevice, float, float, float, true>'),  #
+            ('Maximum', 'BinaryOp<CPUDevice, functor::maximum<int64_t>>'),  #
             ('NoOp', 'NoOp'),  #
             ('Reshape', 'ReshapeOp'),  #
             ('_Recv', 'RecvOp'),  #
@@ -129,10 +148,12 @@ class PrintOpFilegroupTest(test.TestCase):
         [
             ('AccumulateNV2', None),  #
             ('BiasAdd', 'BiasOp<CPUDevice, float>'),  #
+            ('Const', 'ConstantOp'),  #
             ('MatMul', matmul_prefix +
              'MatMulOp<CPUDevice, double, double, double, true>'),  #
             ('MatMul', matmul_prefix +
              'MatMulOp<CPUDevice, float, float, float, true>'),  #
+            ('Maximum', 'BinaryOp<CPUDevice, functor::maximum<int64_t>>'),  #
             ('NoOp', 'NoOp'),  #
             ('Reshape', 'ReshapeOp'),  #
             ('_Recv', 'RecvOp'),  #

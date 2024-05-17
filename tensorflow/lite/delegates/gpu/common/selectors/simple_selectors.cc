@@ -77,8 +77,10 @@ std::unique_ptr<GPUOperation> SelectPooling(const Pooling2DAttributes& attr,
 }
 
 std::unique_ptr<GPUOperation> SelectMaxUnpooling(
-    const MaxUnpooling2DAttributes& attr, const OperationDef& op_def) {
-  return std::make_unique<GPUOperation>(CreateMaxUnpooling(op_def, attr));
+    const MaxUnpooling2DAttributes& attr, const GpuInfo& gpu_info,
+    const OperationDef& op_def) {
+  return std::make_unique<GPUOperation>(
+      CreateMaxUnpooling(gpu_info, op_def, attr));
 }
 
 void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
@@ -88,13 +90,9 @@ void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
 }
 
 absl::Status SelectGather(const GatherAttributes& attr,
-                          const OperationDef& op_def,
+                          const OperationDef& op_def, const GpuInfo& gpu_info,
                           std::unique_ptr<GPUOperation>* ptr) {
-  if (attr.axis != Axis::WIDTH) {
-    return absl::UnimplementedError(
-        "No gather for this axis. Only Width axis supported.");
-  }
-  GPUOperation operation = CreateGather(op_def, attr);
+  GPUOperation operation = CreateGather(gpu_info, op_def, attr);
   *ptr = std::make_unique<GPUOperation>(std::move(operation));
   return absl::OkStatus();
 }
@@ -197,13 +195,14 @@ std::unique_ptr<GPUOperation> SelectReduce(const std::set<Axis>& axis_to_reduce,
       CreateReduce(axis_to_reduce, src_shape, op_type, op_def, gpu_info));
 }
 
-void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
+void SelectSoftmax(const GpuInfo& gpu_info, const BHWC& shape,
+                   const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr) {
-  if (shape.w == 1 && shape.h == 1) {
-    Softmax1x1 operation = CreateSoftmax1x1(op_def);
+  if (shape.w * shape.h <= 256 && shape.w * shape.h <= shape.c) {
+    Softmax1x1 operation = CreateSoftmax1x1(op_def, gpu_info, shape);
     *ptr = std::make_unique<Softmax1x1>(std::move(operation));
   } else {
-    GPUOperation operation = CreateSoftmax(op_def);
+    GPUOperation operation = CreateSoftmax(op_def, gpu_info, shape);
     *ptr = std::make_unique<GPUOperation>(std::move(operation));
   }
 }
@@ -257,8 +256,8 @@ void SelectCast(const OperationDef& op_def, const GpuInfo& gpu_info,
 
 void SelectCumsum(const OperationDef& op_def, const CumsumAttributes& attr,
                   std::unique_ptr<GPUOperation>* ptr) {
-  GPUOperation operation = CreateCumsum(op_def, attr);
-  *ptr = std::make_unique<GPUOperation>(std::move(operation));
+  Cumsum operation = CreateCumsum(op_def, attr);
+  *ptr = std::make_unique<Cumsum>(std::move(operation));
 }
 
 void SelectOneHot(const OperationDef& op_def, const OneHotAttributes& attr,

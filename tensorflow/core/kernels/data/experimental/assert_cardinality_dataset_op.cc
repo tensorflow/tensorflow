@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -47,6 +49,10 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
         output_types_(output_types),
         output_shapes_(output_shapes) {
     input_->Ref();
+    random_indexing_compatible_ = absl::OkStatus();
+    if (input_ != nullptr) {
+      random_indexing_compatible_ = input_->RandomIndexingCompatible();
+    }
   }
 
   ~Dataset() override { input_->Unref(); }
@@ -66,15 +72,21 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override { return cardinality_; }
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return cardinality_;
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
+  }
+
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
   }
 
  protected:
@@ -87,7 +99,7 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(cardinality_, &cardinality_node));
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph_node, cardinality_node}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -95,6 +107,8 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params), num_elements_(0) {}
+
+    bool SymbolicCheckpointCompatible() const override { return true; }
 
     Status Initialize(IteratorContext* ctx) override {
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
@@ -109,6 +123,11 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
         num_elements_++;
       }
       if (*end_of_sequence && num_elements_ != dataset()->cardinality_) {
+        if (ctx->index_mapper()) {
+          return absl::FailedPreconditionError(
+              absl::StrCat("Input dataset was expected to contain ",
+                           ElementString(dataset()->cardinality_), "."));
+        }
         return errors::FailedPrecondition(
             "Input dataset was expected to contain ",
             ElementString(dataset()->cardinality_), " but contained only ",
@@ -121,7 +140,7 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
             ElementString(dataset()->cardinality_), " but contained at least ",
             ElementString(num_elements_), ".");
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -136,15 +155,23 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name("num_elements"), num_elements_));
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name("num_elements"), &num_elements_));
-      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      return OkStatus();
+      if (ctx->restored_element_count().has_value()) {
+        num_elements_ = *(ctx->restored_element_count());
+        // If the dataset has reached the end of sequence, the restored element
+        // count could be cardinality + 1.
+        if (num_elements_ > dataset()->Cardinality()) {
+          num_elements_ = dataset()->Cardinality();
+        }
+      } else {
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name("num_elements"), &num_elements_));
+      }
+      return RestoreInput(ctx, reader, input_impl_);
     }
 
    private:
@@ -163,6 +190,7 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
   const int64_t cardinality_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
+  absl::Status random_indexing_compatible_;
 };
 
 AssertCardinalityDatasetOp::AssertCardinalityDatasetOp(

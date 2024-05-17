@@ -17,14 +17,19 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/framework/attr_value.pb.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/tpu/optimization_parameters.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -45,6 +50,8 @@ std::string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
       return "ADAM";
     case OptimizationAlgorithm::kMomentum:
       return "Momentum";
+    case OptimizationAlgorithm::kLion:
+      return "Lion";
     case OptimizationAlgorithm::kRmsProp:
       return "RMSProp";
     case OptimizationAlgorithm::kCenteredRmsProp:
@@ -87,6 +94,8 @@ std::string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
       return "ADAM";
     case OptimizationAlgorithm::kMomentum:
       return "Momentum";
+    case OptimizationAlgorithm::kLion:
+      return "Lion";
     case OptimizationAlgorithm::kRmsProp:
       return "RMSProp";
     case OptimizationAlgorithm::kCenteredRmsProp:
@@ -121,49 +130,52 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
   switch (params.parameters_case()) {
     case OptimizationAlgorithm::kAdagrad:
       *count = 1;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::kAdagradMomentum:
       *count = 2;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::kBoundedAdagrad:
       *count = 1;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::kStochasticGradientDescent:
       *count = 0;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::kFtrl:
       *count = 2;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::kAdam:
       *count = 2;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::kMomentum:
       *count = 1;
-      return OkStatus();
+      return absl::OkStatus();
+    case OptimizationAlgorithm::kLion:
+      *count = 1;
+      return absl::OkStatus();
     case OptimizationAlgorithm::kRmsProp:
       *count = 2;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::kCenteredRmsProp:
       *count = 3;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::kMdlAdagradLight:
       *count = 3;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::kAdadelta:
       *count = 2;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::kProximalAdagrad:
       *count = 1;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::kOnlineYogi:
       *count = 2;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::kProximalYogi:
       *count = 2;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::kFrequencyEstimator:
       *count = 1;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::kUserDefinedProgram: {
       const xla::ProgramShapeProto& program_shape =
           params.user_defined_program().program().host_program_shape();
@@ -182,11 +194,11 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
 
       *count = num_outputs - 1;
 
-      return OkStatus();
+      return absl::OkStatus();
     }
     case OptimizationAlgorithm::kAssign:
       *count = 0;
-      return OkStatus();
+      return absl::OkStatus();
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return errors::InvalidArgument("No optimization algorithm specified");
   }
@@ -201,7 +213,7 @@ Status GetGradientAccumulationSupport(const OptimizationParameters& params,
   *support = auxiliary_parameter_count + 1 <= kMaxAuxiliaryParameterCount
                  ? GradientAccumulationSupport::kSupported
                  : GradientAccumulationSupport::kNotSupported;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status UseGradientAccumulation(const OptimizationParameters& params,
@@ -245,7 +257,7 @@ Status UseGradientAccumulation(const OptimizationParameters& params,
       break;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetOptimizationAlgorithmStateVariables(
@@ -300,6 +312,11 @@ Status GetOptimizationAlgorithmStateVariables(
       break;
     }
     case OptimizationAlgorithm::kMomentum: {
+      add_state_variable("parameters");
+      add_state_variable("momenta");
+      break;
+    }
+    case OptimizationAlgorithm::kLion: {
       add_state_variable("parameters");
       add_state_variable("momenta");
       break;
@@ -386,7 +403,7 @@ Status GetOptimizationAlgorithmStateVariables(
         "does not support gradient accumulation because it "
         "already has too many other accumulators");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
@@ -398,6 +415,7 @@ std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
       OptimizationAlgorithm::kFtrl,
       OptimizationAlgorithm::kAdam,
       OptimizationAlgorithm::kMomentum,
+      OptimizationAlgorithm::kLion,
       OptimizationAlgorithm::kRmsProp,
       OptimizationAlgorithm::kCenteredRmsProp,
       OptimizationAlgorithm::kMdlAdagradLight,
@@ -438,7 +456,7 @@ Status LoadOpShapeFunction::operator()(
     TF_RETURN_IF_ERROR(c->Merge(parameter_shape, accumulator_j_shape, &merged));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RetrieveOpShapeFunction::operator()(
@@ -460,7 +478,7 @@ Status RetrieveOpShapeFunction::operator()(
     c->set_output(j, c->MakeShape(std::vector<shape_inference::DimensionHandle>(
                          2, c->UnknownDim())));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tpu

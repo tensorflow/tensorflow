@@ -19,7 +19,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
@@ -45,6 +45,10 @@ struct PseudoHalfType {
 };
 template <>
 struct PseudoHalfType<Eigen::half> {
+  using Type = float;
+};
+template <>
+struct PseudoHalfType<Eigen::bfloat16> {
   using Type = float;
 };
 }  // namespace detail
@@ -669,7 +673,7 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
   TF_CHECK_OK(GpuLaunchKernel(kernel, config.block_count, block_dim,
                               shared_memory_size, device.stream(), args, input,
                               filter, output));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns whether the context's GPU supports efficient fp16 math.
@@ -758,7 +762,7 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
                               std::min(max_block_count, config.block_count),
                               config.thread_per_block, 0, device.stream(), args,
                               input, filter, output, num_outputs));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
@@ -976,7 +980,7 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   TF_CHECK_OK(GpuLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, filter, in_backprop, num_in_backprop));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
@@ -1585,7 +1589,7 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
   TF_CHECK_OK(GpuLaunchKernel(kernel, config.block_count, block_dim,
                               shared_memory_size, device.stream(), args,
                               out_backprop, input, filter_backprop));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
@@ -1691,7 +1695,7 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
                                    " is not supported");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
@@ -1703,7 +1707,7 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
                                                        kKnownFilterHeight>(
             ctx, args, out_backprop, input, filter_backprop, data_format)
             .ok()) {
-      return Status::OK();
+      return OkStatus();
     }
 
     return LaunchDepthwiseConv2dBackpropFilterGPU<T, kKnownFilterWidth,
@@ -1736,7 +1740,8 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
   int num_filter_backprop =
       args.filter_rows * args.filter_cols * args.out_depth;
   se::DeviceMemoryBase filter_bp_ptr(filter_backprop, num_filter_backprop);
-  stream->ThenMemZero(&filter_bp_ptr, num_filter_backprop * sizeof(T));
+  OP_REQUIRES_OK(
+      ctx, stream->MemZero(&filter_bp_ptr, num_filter_backprop * sizeof(T)));
 
   if (args.filter_rows == 3 && args.filter_cols == 3) {
     OP_REQUIRES_OK(

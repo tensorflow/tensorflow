@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TFRT_GOOGLE_BEF_EXECUTOR_DRIVER_FLAGS_H_
-#define TFRT_GOOGLE_BEF_EXECUTOR_DRIVER_FLAGS_H_
+#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_BEF_EXECUTOR_FLAGS_H_
+#define TENSORFLOW_CORE_RUNTIME_FALLBACK_BEF_EXECUTOR_FLAGS_H_
 
 #include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
@@ -48,4 +48,4 @@ std::string AbslUnparseFlag(tfrt::HostAllocatorTypeWrapper host_allocator_type);
 
 }  // namespace tfrt
 
-#endif  // TFRT_GOOGLE_BEF_EXECUTOR_DRIVER_FLAGS_H_
+#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_BEF_EXECUTOR_FLAGS_H_

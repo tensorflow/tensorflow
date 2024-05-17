@@ -17,9 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_REMOTE_EXECUTE_NODE_H_
 
 #include <cstddef>
+#include <memory>
+#include <utility>
 
 #include "absl/types/span.h"
-#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/shape_inference.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
@@ -41,7 +42,8 @@ class RemoteExecuteNode : public AsyncRemoteExecuteNode {
                     std::unique_ptr<EnqueueRequest> request, Device* device,
                     uint64 context_view_id, EagerClient* eager_client,
                     CancellationManager* cancellation_manager,
-                    const NodeDef& ndef, FunctionLibraryDefinition* lib_def,
+                    const NodeDef& ndef,
+                    const FunctionLibraryDefinition* lib_def,
                     const gtl::InlinedVector<TensorHandle*, 4>& inputs,
                     absl::Span<TensorHandle*> retvals)
       : AsyncRemoteExecuteNode(),

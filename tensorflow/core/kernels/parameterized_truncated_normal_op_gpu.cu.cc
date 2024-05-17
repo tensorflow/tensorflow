@@ -22,7 +22,7 @@ limitations under the License.
 
 #include <cmath>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/parameterized_truncated_normal_op.h"
 #include "tensorflow/core/lib/random/philox_random.h"
@@ -132,8 +132,6 @@ __global__ void __launch_bounds__(1024)
                 (normMax >= T(0.))) ||
                ((normMax > kStdDevsInsideBoundsToUseRandnSampler) &&
                 (normMin <= T(0.)))) {
-      Eigen::array<T, 4> n;
-
       int numIterations = 0;
       while (numIterations < kMaxIterations) {
         const auto randn = normal_dist(&gen);

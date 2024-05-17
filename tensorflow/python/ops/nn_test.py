@@ -20,6 +20,7 @@ import math
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -35,6 +36,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -92,6 +94,7 @@ class ZeroFractionTest(test_lib.TestCase):
                           sess.run(sparsity, {value: [[0., 1.], [0.3, 2.]]}))
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
 
   def _softmax(self, x):
@@ -103,7 +106,6 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     z = u.sum(1)[:, np.newaxis]
     return u / z
 
-  @test_util.run_in_graph_and_eager_modes
   def testSoftmax(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float32)
@@ -142,18 +144,15 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     self.assertAllClose(y_bf16_tf, expected, rtol=tol, atol=tol)
 
   @parameterized.parameters(((5, 10),), ((2, 3, 4),))
-  @test_util.run_deprecated_v1
   def testGradient(self, x_shape):
     x_np = np.random.randn(*x_shape).astype(np.float64)
-    with self.cached_session():
-      x_tf = constant_op.constant(x_np)
-      y_tf = nn_ops.softmax_v2(x_tf)
-      err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
-                                                    x_shape)
-    eps = 2e-8
-    self.assertLess(err, eps)
+    x_tf = constant_op.constant(x_np)
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        nn_ops.softmax_v2, [x_tf])
+    self.assertAllClose(theoretical, numerical)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LogPoissonLossTest(test_lib.TestCase):
 
   def _log_poisson_loss(self, x, z, compute_full_loss=False):
@@ -163,7 +162,6 @@ class LogPoissonLossTest(test_lib.TestCase):
       lpl += np.ma.masked_array(stirling_approx, mask=(z <= 1)).filled(0.)
     return lpl
 
-  @test_util.run_in_graph_and_eager_modes
   def testLogPoissonLoss(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float32)
@@ -178,25 +176,19 @@ class LogPoissonLossTest(test_lib.TestCase):
     self.assertAllClose(y_tf_np, y_np, eps)
     self.assertAllClose(y_tf_np_stirling, y_np_stirling, eps)
 
-  @test_util.run_deprecated_v1
   def testGradient(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float64)
     z_np = np.random.randint(0, 5, size=x_shape).astype(np.float64)
     with self.cached_session():
       x_tf = constant_op.constant(x_np)
-      y_tf = nn_impl.log_poisson_loss(z_np, x_tf, compute_full_loss=False)
-      y_tf_stirling = nn_impl.log_poisson_loss(
-          z_np, x_tf, compute_full_loss=True)
-      err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
-                                                    x_shape)
-      err_stirling = gradient_checker.compute_gradient_error(
-          x_tf, x_shape, y_tf_stirling, x_shape)
-    eps = 1e-6
-    self.assertLess(err, eps)
-    self.assertLess(err_stirling, eps)
+      # TODO(b/241834841): Test with `compute_full_loss` set as True
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          nn_impl.log_poisson_loss, [z_np, x_tf])
+      self.assertAllClose(theoretical, numerical)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LogSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
 
   def _log_softmax(self, x):
@@ -205,7 +197,6 @@ class LogSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     u = x - m
     return u - np.log(np.sum(np.exp(u), 1, keepdims=True))
 
-  @test_util.run_in_graph_and_eager_modes
   def testLogSoftmax(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float32)
@@ -229,23 +220,22 @@ class LogSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
 
   @parameterized.parameters(((5, 10),), ((2, 3, 4),))
-  @test_util.run_deprecated_v1
   def testGradient(self, x_shape):
     x_np = np.random.randn(*x_shape).astype(np.float64)
     with self.cached_session():
       x_tf = constant_op.constant(x_np)
-      y_tf = nn_ops.log_softmax_v2(x_tf)
-      err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
-                                                    x_shape)
-    eps = 1e-7
-    self.assertLess(err, eps)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          nn_ops.log_softmax_v2, [x_tf])
+      self.assertAllClose(theoretical, numerical)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class L2LossTest(test_lib.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testL2Loss(self):
-    for dtype in [dtypes.float32, dtypes.float64]:
+    for dtype in [dtypes.float32, dtypes.float64] + \
+                 [dtypes.bfloat16] if test_util.is_gpu_available(
+                                          cuda_only=True) else []:
       x = constant_op.constant([1.0, 0.0, 3.0, 2.0],
                                shape=[2, 2],
                                name="x",
@@ -254,20 +244,18 @@ class L2LossTest(test_lib.TestCase):
       value = self.evaluate(l2loss)
       self.assertAllClose(7.0, value)
 
-  @test_util.run_deprecated_v1
   def testGradient(self):
     x_shape = [20, 7, 3]
     np.random.seed(1)  # Make it reproducible.
     x_val = np.random.random_sample(x_shape).astype(np.float64)
     with self.cached_session():
       x = constant_op.constant(x_val, name="x")
-      output = nn_ops.l2_loss(x)
-      err = gradient_checker.compute_gradient_error(x, x_shape, output, [1])
-    print("L2Loss gradient err = %g " % err)
-    err_tolerance = 1e-10
-    self.assertLess(err, err_tolerance)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          nn_ops.l2_loss, [x])
+      self.assertAllClose(theoretical, numerical)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class L2NormalizeTest(test_lib.TestCase):
 
   def _l2Normalize(self, x, dim):
@@ -280,7 +268,6 @@ class L2NormalizeTest(test_lib.TestCase):
       norm = np.apply_along_axis(np.linalg.norm, dim, x)
       return x / np.expand_dims(norm, dim)
 
-  @test_util.run_in_graph_and_eager_modes
   def testL2Normalize(self):
     x_shape = [20, 7, 3]
     np.random.seed(1)
@@ -291,7 +278,6 @@ class L2NormalizeTest(test_lib.TestCase):
       y_tf = nn_impl.l2_normalize(x_tf, dim)
       self.assertAllClose(y_np, self.evaluate(y_tf))
 
-  @test_util.run_in_graph_and_eager_modes
   def testL2NormalizeDimArray(self):
     x_shape = [20, 7, 3]
     np.random.seed(1)
@@ -302,21 +288,17 @@ class L2NormalizeTest(test_lib.TestCase):
     y_tf = nn_impl.l2_normalize(x_tf, dim)
     self.assertAllClose(y_np, self.evaluate(y_tf))
 
-  @test_util.run_deprecated_v1
   def testL2NormalizeGradient(self):
     x_shape = [20, 7, 3]
     np.random.seed(1)
     x_np = np.random.random_sample(x_shape).astype(np.float64)
-    for dim in range(len(x_shape)):
-      with self.cached_session():
-        x_tf = constant_op.constant(x_np, name="x")
-        y_tf = nn_impl.l2_normalize(x_tf, dim)
-        err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
-                                                      x_shape)
-      print("L2Normalize gradient err = %g " % err)
-      self.assertLess(err, 1e-4)
+    with self.cached_session():
+      x_tf = constant_op.constant(x_np, name="x")
+      # TODO(b/241834841): Test l2_normalize with `axis` set to other dims
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          nn_impl.l2_normalize, [x_tf])
+      self.assertAllClose(theoretical, numerical)
 
-  @test_util.run_in_graph_and_eager_modes
   def testL2NormalizeComplex(self):
     x_shape = [20, 7, 3]
     for dtype in [np.complex64, np.complex128]:
@@ -336,21 +318,28 @@ DROPOUT_FNS = [
     ("stateful_v2", nn_ops.dropout_v2),
     ("stateless", functools.partial(nn_ops.stateless_dropout, seed=(1, 2))),
     ("stateless_philox", functools.partial(
-        nn_ops.stateless_dropout, seed=(1, 2), rng_alg="philox"))]
+        nn_ops.stateless_dropout, seed=(1, 2), rng_alg="philox")),
+    ("generator", functools.partial(  # pylint: disable=g-long-lambda
+        nn_ops.general_dropout, uniform_sampler=lambda shape, dtype: (  # pylint: disable=g-long-lambda
+            stateful_random_ops.Generator.from_seed(1).uniform(
+                shape=shape, dtype=dtype)))),
+    ]
 
 
 class DropoutTest(test_lib.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
-      ("_%s_%s_%s" % (case_name, use_noise_shape, keep_prob), dropout_fn,  # pylint: disable=g-complex-comprehension
-       use_noise_shape, keep_prob)
+      ("_%s_%s_%s" % (case_name, use_noise_shape, keep_prob), case_name,  # pylint: disable=g-complex-comprehension
+       dropout_fn, use_noise_shape, keep_prob)
       for keep_prob in [0.1, 0.5, 0.8]
       for use_noise_shape in ["no", "concrete", "partial"]
       for case_name, dropout_fn in DROPOUT_FNS)
-  def testDropout(self, dropout_fn, use_noise_shape, keep_prob):
+  def testDropout(self, case_name, dropout_fn, use_noise_shape, keep_prob):
     # Runs dropout with 0-1 tensor 10 times, sum the number of ones and validate
     # that it is producing approximately the right number of ones over a large
     # number of samples, based on the keep probability.
+    if "generator" in case_name and not context.executing_eagerly():
+      self.skipTest("tf.random.Generator can only be used in TF2.")
     if use_noise_shape == "no":
       x_dim = 70
       y_dim = 30
@@ -382,11 +371,13 @@ class DropoutTest(test_lib.TestCase, parameterized.TestCase):
     self.assertLess(rel_error, 0.15)
 
   @parameterized.named_parameters(
-      ("_%s_%s" % (case_name, keep_prob), dropout_fn, keep_prob)  # pylint: disable=g-complex-comprehension
+      ("_%s_%s" % (case_name, keep_prob), case_name, dropout_fn, keep_prob)  # pylint: disable=g-complex-comprehension
       for keep_prob in [0.1, 0.5, 0.8]
       for case_name, dropout_fn in DROPOUT_FNS)
-  def testShapedDropoutCorrelation(self, dropout_fn, keep_prob):
+  def testShapedDropoutCorrelation(self, case_name, dropout_fn, keep_prob):
     # Runs a shaped dropout and tests that the correlations are correct.
+    if "generator" in case_name and not context.executing_eagerly():
+      self.skipTest("tf.random.Generator can only be used in TF2.")
     x_dim = 40
     y_dim = 30
     num_iter = 10
@@ -406,7 +397,6 @@ class DropoutTest(test_lib.TestCase, parameterized.TestCase):
       for use_keep_prob in [False, True]
       for keep_prob in [0.1, 0.5, 0.8]
       for case_name, dropout_fn in DROPOUT_FNS)
-  @test_util.run_deprecated_v1
   def testDropoutPlaceholderRateAndKeepProb(self, case_name, dropout_fn,
                                             keep_prob, use_keep_prob):
     # Runs dropout with 0-1 tensor 10 times, sum the number of ones and validate
@@ -414,26 +404,26 @@ class DropoutTest(test_lib.TestCase, parameterized.TestCase):
     # number of samples, based on the keep probability.
     if use_keep_prob and case_name != "stateful_v1":
       self.skipTest("Only V1 `dropout` has the `keep_prob` argument.")
+    if "generator" in case_name and not context.executing_eagerly():
+      self.skipTest("tf.random.Generator can only be used in TF2.")
     x_dim = 70
     y_dim = 30
     num_iter = 10
-    with self.cached_session():
-      t = constant_op.constant(
-          1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      keep_prob_placeholder = array_ops.placeholder(dtypes.float32)
+    t = constant_op.constant(
+        1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
+    final_count = 0
+    for _ in range(0, num_iter):
       if use_keep_prob:
-        dropout = dropout_fn(t, keep_prob=keep_prob_placeholder)
+        dropout = dropout_fn(t, keep_prob=keep_prob)
       else:
-        dropout = dropout_fn(t, rate=1 - keep_prob_placeholder)
-      final_count = 0
+        dropout = dropout_fn(t, rate=1 - keep_prob)
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
-      for _ in range(0, num_iter):
-        value = dropout.eval(feed_dict={keep_prob_placeholder: keep_prob})
-        final_count += np.count_nonzero(value)
-        # Verifies that there are only two values: 0 and 1/keep_prob.
-        sorted_value = np.unique(np.sort(value))
-        self.assertEqual(0, sorted_value[0])
-        self.assertAllClose(1 / keep_prob, sorted_value[1])
+      value = self.evaluate(dropout)
+      final_count += np.count_nonzero(value)
+      # Verifies that there are only two values: 0 and 1/keep_prob.
+      sorted_value = np.unique(np.sort(value))
+      self.assertEqual(0, sorted_value[0])
+      self.assertAllClose(1 / keep_prob, sorted_value[1])
     # Check that we are in the 15% error range
     expected_count = x_dim * y_dim * keep_prob * num_iter
     rel_error = math.fabs(final_count - expected_count) / expected_count
@@ -1863,7 +1853,7 @@ class RaggedEmbeddingTest(test_lib.TestCase):
     ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]],
                                              ragged_rank=1)
 
-    embedded_ragged = nn.embedding_lookup_ragged(weights, ragged_ids)
+    embedded_ragged = nn.embedding_lookup(weights, ragged_ids)
     expected_output = ragged_factory_ops.constant(
         [[[1, 1, 1], [2, 2, 2], [3, 3, 3]], [[0, 0, 0]], [[1, 1, 1], [2, 2, 2]]
         ],
@@ -1879,7 +1869,7 @@ class RaggedEmbeddingTest(test_lib.TestCase):
                                                                        ]],
         ragged_rank=2)
 
-    embedded_ragged = nn.embedding_lookup_ragged(weights, ragged_ids)
+    embedded_ragged = nn.embedding_lookup(weights, ragged_ids)
     expected_output = ragged_factory_ops.constant(
         [[[[[3, 3], [4, 4]], [[0, 0], [6, 6]]], []],
          [[[[2, 2], [1, 1]], [[1, 1], [0, 0]]],
@@ -1891,16 +1881,14 @@ class RaggedEmbeddingTest(test_lib.TestCase):
   def testMissingWeights(self):
     ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]])
 
-    with self.assertRaisesRegex(ValueError,
-                                "The embedding weights must be specified.*"):
-      nn.embedding_lookup_ragged(None, ragged_ids)
+    with self.assertRaisesRegex(ValueError, "params must be specified.*"):
+      nn.embedding_lookup(None, ragged_ids)
 
   def testEmptyWeights(self):
     ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]])
 
-    with self.assertRaisesRegex(ValueError,
-                                "The embedding weights should not be empty.*"):
-      nn.embedding_lookup_ragged([], ragged_ids)
+    with self.assertRaisesRegex(ValueError, "params should not be empty.*"):
+      nn.embedding_lookup([], ragged_ids)
 
   def testInvalidIndicesType(self):
     weights = constant_op.constant([[0, 0, 0], [1, 1, 1], [2, 2, 2]])
@@ -1908,7 +1896,7 @@ class RaggedEmbeddingTest(test_lib.TestCase):
 
     with self.assertRaisesRegex(
         ValueError, "The values contained by the inputs have type*"):
-      nn.embedding_lookup_ragged(weights, ragged_ids)
+      nn.embedding_lookup(weights, ragged_ids)
 
   def testMaxNormForEmbeddings(self):
     weights = constant_op.constant(

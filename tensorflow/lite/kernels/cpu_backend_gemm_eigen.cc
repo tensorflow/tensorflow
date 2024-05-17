@@ -23,7 +23,7 @@ limitations under the License.
 // errors) depending on the order in which these headers are #included.
 // So we have moved the #include of Eigen here, in a .cc file, where we have
 // control over the header #include sequence.
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/internal/common.h"

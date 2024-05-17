@@ -21,20 +21,20 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
 namespace mlir {
 namespace tfg {
 
 // Convert a GraphDef directly to TFG.
-tensorflow::StatusOr<OwningOpRef<ModuleOp>> ImportGraphDef(
+absl::StatusOr<OwningOpRef<ModuleOp>> ImportGraphDef(
     MLIRContext *context, const tensorflow::GraphDebugInfo &debug_info,
     const tensorflow::GraphDef &graph_def);
 
 // Converts a graph and function library to a TFG module.
-tensorflow::StatusOr<OwningOpRef<ModuleOp>> ImportGraphAndFunctionsToMlir(
+absl::StatusOr<OwningOpRef<ModuleOp>> ImportGraphAndFunctionsToMlir(
     MLIRContext *context, const tensorflow::GraphDebugInfo &debug_info,
     const tensorflow::Graph &graph,
     const tensorflow::FunctionLibraryDefinition &flib_def);

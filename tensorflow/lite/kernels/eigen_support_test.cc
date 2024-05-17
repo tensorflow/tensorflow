@@ -18,7 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/eigen_spatial_convolutions.h"
 
 namespace tflite {

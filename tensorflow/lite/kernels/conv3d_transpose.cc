@@ -17,8 +17,8 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -193,7 +193,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   }
 
   // Resize the output tensor.
-  if (!IsConstantTensor(output_shape)) {
+  if (!IsConstantOrPersistentTensor(output_shape)) {
     SetTensorToDynamic(output);
     if (opdata->need_col2im) {
       SetTensorToDynamic(col2im);

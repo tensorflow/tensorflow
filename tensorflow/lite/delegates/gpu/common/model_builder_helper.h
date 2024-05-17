@@ -17,14 +17,13 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MODEL_BUILDER_HELPER_H_
 
 #include <stddef.h>
-#include <stdint.h>
-#include <string.h>
 
-#include <string>
+#include <cstdint>
+#include <cstring>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace gpu {
@@ -100,19 +100,96 @@ inline void DequantizeConstantTensor(const TfLiteTensor& tensor,
 }
 
 template <typename T>
-absl::Status CreateVectorCopyData(const TfLiteTensor& tensor, T* tensor_data) {
-  if (tensor.bytes % sizeof(T) != 0) {
+absl::Status CreateVectorCopyData(const TfLiteTensor& src, T* dst) {
+  if (src.bytes % sizeof(T) != 0) {
     return absl::InvalidArgumentError(
-        absl::StrCat("Input data size ", tensor.bytes,
+        absl::StrCat("Input data size ", src.bytes,
                      " is not aligned to expected type: ", sizeof(T)));
   }
-  std::memcpy(tensor_data, tensor.data.uint8, tensor.bytes);
-  return absl::OkStatus();
+  if (const int n = tflite::NumElements(&src); n * sizeof(T) == src.bytes) {
+    std::memcpy(dst, src.data.raw_const, src.bytes);
+    return absl::OkStatus();
+  } else {
+    switch (src.type) {
+      case kTfLiteNoType:
+        return absl::InvalidArgumentError("src has no type.");
+      case kTfLiteFloat32:
+        for (int i = 0; i < n; ++i) {
+          dst[i] = tflite::GetTensorData<float>(&src)[i];
+        }
+        return absl::OkStatus();
+      case kTfLiteInt32:
+        for (int i = 0; i < n; ++i) {
+          dst[i] = tflite::GetTensorData<int32_t>(&src)[i];
+        }
+        return absl::OkStatus();
+      case kTfLiteUInt8:
+        for (int i = 0; i < n; ++i) {
+          dst[i] = tflite::GetTensorData<uint8_t>(&src)[i];
+        }
+        return absl::OkStatus();
+      case kTfLiteInt64:
+        for (int i = 0; i < n; ++i) {
+          dst[i] = tflite::GetTensorData<int64_t>(&src)[i];
+        }
+        return absl::OkStatus();
+      case kTfLiteString:
+        return absl::UnimplementedError("src can't be string.");
+      case kTfLiteBool:
+        for (int i = 0; i < n; ++i) {
+          dst[i] = tflite::GetTensorData<bool>(&src)[i];
+        }
+        return absl::OkStatus();
+      case kTfLiteInt16:
+        for (int i = 0; i < n; ++i) {
+          dst[i] = tflite::GetTensorData<int16_t>(&src)[i];
+        }
+        return absl::OkStatus();
+      case kTfLiteComplex64:
+        return absl::UnimplementedError("src can't be complex64.");
+      case kTfLiteInt8:
+        for (int i = 0; i < n; ++i) {
+          dst[i] = tflite::GetTensorData<int8_t>(&src)[i];
+        }
+        return absl::OkStatus();
+      case kTfLiteFloat16:
+        return absl::UnimplementedError("src can't be float16.");
+      case kTfLiteBFloat16:
+        return absl::UnimplementedError("src can't be bfloat16.");
+      case kTfLiteFloat64:
+        for (int i = 0; i < n; ++i) {
+          dst[i] = tflite::GetTensorData<double>(&src)[i];
+        }
+        return absl::OkStatus();
+      case kTfLiteComplex128:
+        return absl::UnimplementedError("src can't be complex128.");
+      case kTfLiteUInt64:
+        for (int i = 0; i < n; ++i) {
+          dst[i] = tflite::GetTensorData<uint64_t>(&src)[i];
+        }
+        return absl::OkStatus();
+      case kTfLiteResource:
+        return absl::UnimplementedError("src can't be resource.");
+      case kTfLiteVariant:
+        return absl::UnimplementedError("src can't be variant.");
+      case kTfLiteUInt32:
+        for (int i = 0; i < n; ++i) {
+          dst[i] = tflite::GetTensorData<uint32_t>(&src)[i];
+        }
+        return absl::OkStatus();
+      case kTfLiteUInt16:
+        for (int i = 0; i < n; ++i) {
+          dst[i] = tflite::GetTensorData<uint16_t>(&src)[i];
+        }
+        return absl::OkStatus();
+      case kTfLiteInt4:
+        return absl::UnimplementedError("src can't be int4.");
+    }
+  }
 }
 
 template <>
-absl::Status CreateVectorCopyData<float>(const TfLiteTensor& tensor,
-                                         float* tensor_data);
+absl::Status CreateVectorCopyData<float>(const TfLiteTensor& src, float* dst);
 
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Scalar* shape);
 

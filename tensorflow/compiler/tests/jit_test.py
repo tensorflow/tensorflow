@@ -28,10 +28,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 
 
@@ -119,7 +121,7 @@ class JitLaunchTest(test.TestCase):
       print("Compiled Result {}".format(compiled))
 
       if require_kernel_launch:
-        self.assert_(MetadataHasXlaRunOp(run_metadata))
+        self.assertTrue(MetadataHasXlaRunOp(run_metadata))
 
         direct = sess.run(direct_op, feeds)
         print("Direct Result {}".format(direct))
@@ -266,7 +268,7 @@ class JitLaunchTest(test.TestCase):
         # TODO(phawkins): really we would like to test that there were exactly
         # two kernel launches. However, we have no reliable way to determine
         # that.
-        self.assert_(MetadataHasXlaRunOp(run_metadata))
+        self.assertTrue(MetadataHasXlaRunOp(run_metadata))
 
         expected = np.square(np.dot(dx, dw) + db)
         self.assertAllClose(expected, output, rtol=1e-1)
@@ -299,7 +301,7 @@ class XlaCompilationTest(test.TestCase):
           run_metadata=run_metadata,
           options=config_pb2.RunOptions(
               trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assert_(MetadataHasXlaRunOp(run_metadata))
+      self.assertTrue(MetadataHasXlaRunOp(run_metadata))
       self.assertAllClose(np.array([[1, 2, 3], [4, 5, 6]], np.float32), out)
 
   def testIgnoredArguments(self):
@@ -327,7 +329,7 @@ class XlaCompilationTest(test.TestCase):
           run_metadata=run_metadata,
           options=config_pb2.RunOptions(
               trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assert_(MetadataHasXlaRunOp(run_metadata))
+      self.assertTrue(MetadataHasXlaRunOp(run_metadata))
       self.assertAllClose(28, out)
 
   def testLoops(self):
@@ -338,14 +340,14 @@ class XlaCompilationTest(test.TestCase):
       with jit_scope():
         c = lambda i, _: math_ops.less(i, 5)
         b = lambda i, x: (i + 1, x * 2.0 + 1.0)
-        _, y = control_flow_ops.while_loop(c, b, (constant_op.constant(0), x))
+        _, y = while_loop.while_loop(c, b, (constant_op.constant(0), x))
 
       run_metadata = config_pb2.RunMetadata()
       result = session.run(y, {x: np.float32(2)},
                            run_metadata=run_metadata,
                            options=config_pb2.RunOptions(
                                trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assert_(MetadataHasXlaRunOp(run_metadata))
+      self.assertTrue(MetadataHasXlaRunOp(run_metadata))
       self.assertAllClose(result, np.float32(95), rtol=1e-1)
 
   def testCond(self):
@@ -357,7 +359,7 @@ class XlaCompilationTest(test.TestCase):
       c = array_ops.placeholder(dtypes.bool)
       with jit_scope():
         z = x + 1.0
-        w = control_flow_ops.cond(c, lambda: z, lambda: y)
+        w = cond.cond(c, lambda: z, lambda: y)
         t = math_ops.add(z, w)
 
       # If JIT compilation chooses to cluster z and t, then execution will
@@ -374,7 +376,7 @@ class XlaCompilationTest(test.TestCase):
           run_metadata=run_metadata,
           options=config_pb2.RunOptions(
               trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assert_(MetadataHasXlaRunOp(run_metadata))
+      self.assertTrue(MetadataHasXlaRunOp(run_metadata))
       self.assertAllClose(result, np.float32(6), rtol=1e-1)
 
   def testNestedFunction(self):
@@ -415,8 +417,7 @@ class XlaCompilationTest(test.TestCase):
         y = x + 1.0
         c = lambda i, _x, _y: math_ops.less(i, 5)
         b = lambda i, x, _y: (i + 1, x * 2.0 + 1.0, x - 3.0)
-        _, _, w = control_flow_ops.while_loop(c, b,
-                                              (constant_op.constant(0), y, x))
+        _, _, w = while_loop.while_loop(c, b, (constant_op.constant(0), y, x))
         u = w + y
       result = session.run(u, {x: np.float32(2)})
       self.assertAllClose(result, np.float32(63), rtol=1e-1)

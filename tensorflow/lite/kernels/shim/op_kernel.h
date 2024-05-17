@@ -32,12 +32,14 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <variant>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/variant.h"
 #include "tensorflow/lite/kernels/shim/shape.h"
+#include "tensorflow/lite/kernels/shim/status_macros.h"
 #include "tensorflow/lite/kernels/shim/tensor_view.h"
 
 namespace tflite {
@@ -61,7 +63,7 @@ using ConstTensorViewOr = absl::StatusOr<std::unique_ptr<const TensorView>>;
 // methods.
 
 // The attribute dictionary passed to the op
-using AttrValue = absl::variant<bool, int64_t, float, absl::string_view>;
+using AttrValue = std::variant<bool, int64_t, float, absl::string_view>;
 
 // The interface for available methods during an op kernel initialization
 template <typename SubType>
@@ -177,7 +179,8 @@ struct ContextTypeForRuntime {
 //   };
 //
 // WARNING: Experimental interface, subject to change
-template <template <Runtime> typename SubType, Runtime Rt>
+template <template <Runtime, typename...> typename SubType, Runtime Rt,
+          typename... Ts>
 class OpKernelShim {
  public:
   // Some typedefs for convenience
@@ -194,21 +197,26 @@ class OpKernelShim {
 
   // If the operation has any attributes they are passed here.
   absl::Status Init(InitContext* ctx) {
-    return static_cast<SubType<Rt>&>(*this).Init(ctx);
+    return static_cast<SubType<Rt, Ts...>&>(*this).Init(ctx);
   }
 
   // The actual computations of the operation
   absl::Status Invoke(InvokeContext* ctx) {
-    return static_cast<SubType<Rt>&>(*this).Invoke(ctx);
+    return static_cast<SubType<Rt, Ts...>&>(*this).Invoke(ctx);
   }
 
   // Shape inference
   static absl::Status ShapeInference(ShapeInferenceContext* ctx) {
-    return SubType<Rt>::ShapeInference(ctx);
+    return SubType<Rt, Ts...>::ShapeInference(ctx);
   }
 
  protected:
   OpKernelShim() = default;
+
+  // Convience method for filling a single dimension output tensor.
+  template <typename BufferType, typename DType>
+  absl::Status FillOutputTensor(const std::vector<BufferType>& buffer,
+                                int index, InvokeContext* context) const;
 };
 
 /////////////////////// Implementations
@@ -221,13 +229,13 @@ absl::Status GetAttr(const std::string& attr_name,
                      AttrType* value) {
   if (!attr_value_or.ok()) return attr_value_or.status();
   const AttrValue& attr_value = attr_value_or.value();
-  if (!absl::holds_alternative<AttrType>(attr_value)) {
+  if (!std::holds_alternative<AttrType>(attr_value)) {
     return absl::InternalError(
         absl::StrCat("The attribute type does not match the provided "
                      "type: attr_name: ",
                      attr_name));
   }
-  *value = absl::get<AttrType>(attr_value);
+  *value = std::get<AttrType>(attr_value);
   return absl::OkStatus();
 }
 }  // namespace internal
@@ -248,7 +256,23 @@ absl::Status ShapeInferenceContext<SubType>::GetAttr(
   return internal::GetAttr<AttrType>(attr_name, attr_value_or, value);
 }
 
+template <template <Runtime, typename...> typename SubType, Runtime Rt,
+          typename... Ts>
+template <typename BufferType, typename DType>
+absl::Status OpKernelShim<SubType, Rt, Ts...>::FillOutputTensor(
+    const std::vector<BufferType>& buffer, const int index,
+    tflite::shim::InvokeContext<typename ContextTypeForRuntime<Rt>::Invoke>*
+        context) const {
+  SH_ASSIGN_OR_RETURN(
+      const auto tensorview,
+      context->GetOutput(
+          index, tflite::shim::Shape({static_cast<int>(buffer.size())})));
+  auto data = tensorview->template As<DType, 1>();
+  for (int i = 0; i < buffer.size(); ++i) data(i) = buffer.at(i);
+  return absl::OkStatus();
+}
+
 }  // namespace shim
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_KERNELS_SHIM_ABSTRACT_OP_H_
+#endif  // TENSORFLOW_LITE_KERNELS_SHIM_OP_KERNEL_H_

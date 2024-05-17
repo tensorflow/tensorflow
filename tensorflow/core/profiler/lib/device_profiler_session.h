@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #endif
-#include "tensorflow/core/profiler/profiler_options.pb.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
 
 namespace tensorflow {
 
@@ -38,7 +38,7 @@ class DeviceProfilerSession {
   // Does not trace TPU devices (not supported).
   static std::unique_ptr<DeviceProfilerSession> Create() {
 #if !defined(IS_MOBILE_PLATFORM)
-    ProfileOptions options = ProfilerSession::DefaultOptions();
+    ProfileOptions options = tsl::ProfilerSession::DefaultOptions();
     options.set_host_tracer_level(0);
     options.set_device_type(ProfileOptions::GPU);
     return absl::WrapUnique(new DeviceProfilerSession(options));
@@ -54,9 +54,9 @@ class DeviceProfilerSession {
     return errors::Unimplemented("Profiling not supported on mobile platform.");
 #else
     profiler::XSpace space;
-    TF_RETURN_IF_ERROR(profiler_session_.CollectDataInternal(&space));
+    TF_RETURN_IF_ERROR(profiler_session_->CollectData(&space));
     profiler::ConvertGpuXSpaceToStepStats(space, step_stats);
-    return OkStatus();
+    return absl::OkStatus();
 #endif
   }
 
@@ -64,17 +64,18 @@ class DeviceProfilerSession {
   // Constructs an instance of the class and starts profiling
   explicit DeviceProfilerSession(const ProfileOptions& options)
 #if !defined(IS_MOBILE_PLATFORM)
-      : profiler_session_(options)
+      : profiler_session_(tsl::ProfilerSession::Create(options))
 #endif
   {
   }
 
-  // DeviceProfilerSession is neither copyable or movable.
+  // DeviceProfilerSession is neither copyable nor movable.
   DeviceProfilerSession(const DeviceProfilerSession&) = delete;
   DeviceProfilerSession& operator=(const DeviceProfilerSession&) = delete;
 
 #if !defined(IS_MOBILE_PLATFORM)
-  ProfilerSession profiler_session_;
+  // TODO(b/256013238)
+  std::unique_ptr<tsl::ProfilerSession> profiler_session_;
 #endif
 };
 

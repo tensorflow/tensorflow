@@ -1,7 +1,10 @@
 # Description:
 #   Contains the Keras initializer API (internal TensorFlow version).
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/python/keras:__subpackages__"],
     licenses = ["notice"],
 )
@@ -23,18 +26,18 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python:tf2",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:tf_inspect",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:init_ops",
+        "//tensorflow/python/ops:linalg_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/ops:stateless_random_ops",
         "//tensorflow/python/util:tf_export",
     ],
 )

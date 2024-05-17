@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -157,7 +157,8 @@ struct PerChannelQuantizationParams {
 };
 
 // Gets next index to iterate through a multidimensional array.
-inline bool NextIndex(const int num_dims, const int* dims, int* current) {
+template <typename IndexType = int>
+inline bool NextIndex(const int num_dims, const int* dims, IndexType* current) {
   if (num_dims == 0) {
     return false;
   }
@@ -165,7 +166,7 @@ inline bool NextIndex(const int num_dims, const int* dims, int* current) {
   TFLITE_DCHECK(current != nullptr);
   int carry = 1;
   for (int idx = num_dims - 1; idx >= 0; --idx) {
-    int current_val = current[idx] + carry;
+    IndexType current_val = current[idx] + carry;
     TFLITE_DCHECK_GE(dims[idx], current_val);
     if (dims[idx] == current_val) {
       current[idx] = 0;
@@ -659,6 +660,9 @@ struct ArithmeticParams {
   // int64_t activation params.
   int64_t int64_activation_min;
   int64_t int64_activation_max;
+  // int16_t activation params.
+  int16_t int16_activation_min;
+  int16_t int16_activation_max;
 
   // Processed output dimensions.
   // Let input "a" be the one that broadcasts in the faster-changing dimension.
@@ -979,6 +983,7 @@ struct StridedSliceParams {
   uint16_t end_mask;
   uint16_t new_axis_mask;
   uint16_t shrink_axis_mask;
+  bool offset;
 };
 
 struct TanhParams {
@@ -988,9 +993,11 @@ struct TanhParams {
   int input_left_shift;
 };
 
+constexpr int kTransposeMaxDimensions = 6;
+
 struct TransposeParams {
   int8_t perm_count;
-  int32_t perm[5];
+  int32_t perm[kTransposeMaxDimensions];
 };
 
 struct UnpackParams {
@@ -1021,6 +1028,18 @@ inline void SetActivationParams(int32_t min, int32_t max, P* params) {
 }
 
 template <typename P>
+inline void SetActivationParams(uint32_t min, uint32_t max, P* params) {
+  params->quantized_activation_min = min;
+  params->quantized_activation_max = max;
+}
+
+template <typename P>
+inline void SetActivationParams(int16_t min, int16_t max, P* params) {
+  params->int16_activation_min = min;
+  params->int16_activation_max = max;
+}
+
+template <typename P>
 inline void SetActivationParams(int64_t min, int64_t max, P* params) {
   params->int64_activation_min = min;
   params->int64_activation_max = max;
@@ -1030,6 +1049,18 @@ template <typename P>
 inline void GetActivationParams(const P& params, int32_t* min, int32_t* max) {
   *min = params.quantized_activation_min;
   *max = params.quantized_activation_max;
+}
+
+template <typename P>
+inline void GetActivationParams(const P& params, uint32_t* min, uint32_t* max) {
+  *min = params.quantized_activation_min;
+  *max = params.quantized_activation_max;
+}
+
+template <typename P>
+inline void GetActivationParams(const P& params, int16_t* min, int16_t* max) {
+  *min = params.int16_activation_min;
+  *max = params.int16_activation_max;
 }
 
 template <typename P>

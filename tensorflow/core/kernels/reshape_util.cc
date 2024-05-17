@@ -48,7 +48,7 @@ struct ReshapeSparseTensorFunctor<CPUDevice> {
     const int64_t input_rank = input_shape.dims();
     const int64_t output_rank = output_shape.dims();
     const int64_t nnz = input_indices.dimension(0);
-    gtl::InlinedVector<int64_t, 8> input_strides(input_rank);
+    absl::InlinedVector<int64_t, 8> input_strides(input_rank);
     if (input_rank > 0) {
       input_strides[input_rank - 1] = 1;
       for (int d = input_rank - 2; d >= 0; --d) {
@@ -56,7 +56,7 @@ struct ReshapeSparseTensorFunctor<CPUDevice> {
       }
     }
 
-    gtl::InlinedVector<int64_t, 8> output_strides(output_rank);
+    absl::InlinedVector<int64_t, 8> output_strides(output_rank);
     if (output_rank > 0) {
       output_strides[output_rank - 1] = 1;
       for (int d = output_rank - 2; d >= 0; --d) {
@@ -75,7 +75,7 @@ struct ReshapeSparseTensorFunctor<CPUDevice> {
         id %= output_strides[j];
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -122,13 +122,13 @@ void ReshapeSparseTensor(OpKernelContext *context,
                                   "not both ",
                                   unknown_index, " and ", d));
       unknown_index = d;
-      output_shape.AddDim(1);
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(1));
     } else {
       OP_REQUIRES(context, size >= 0,
                   errors::InvalidArgument("size ", d,
                                           " must be non-negative, not ", size));
       product *= size;
-      output_shape.AddDim(size);
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(size));
     }
   }
   if (unknown_index != -1) {

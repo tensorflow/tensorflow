@@ -29,17 +29,17 @@ namespace {
 
 TEST_F(OpenCLOperationTest, DepthwiseConvSimpleWeights) {
   auto status = DepthwiseConvSimpleWeightsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, DepthwiseConvNoMultiplier) {
   auto status = DepthwiseConvNoMultiplierTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, DepthwiseConvMultiplier2) {
   auto status = DepthwiseConvMultiplier2Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

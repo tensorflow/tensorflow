@@ -68,7 +68,8 @@ class WorkerClientTest : public ::testing::Test {
     const auto dataset_def = RangeSquareDataset(range);
     std::string dataset_id;
     TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
-        dataset_def, DataServiceMetadata(), dataset_id));
+        dataset_def, DataServiceMetadata(),
+        /*requested_dataset_id=*/std::nullopt, dataset_id));
     return dataset_id;
   }
 
@@ -102,8 +103,12 @@ class WorkerClientTest : public ::testing::Test {
 
   StatusOr<std::unique_ptr<DataServiceWorkerClient>> GetWorkerClient(
       const std::string& data_transfer_protocol) {
-    return CreateDataServiceWorkerClient(
-        GetWorkerAddress(), /*protocol=*/kProtocol, data_transfer_protocol);
+    DataTransferServerInfo info;
+    info.set_address(GetWorkerAddress());
+    info.set_protocol(data_transfer_protocol);
+    return CreateDataServiceWorkerClient(kProtocol, info,
+                                         /*accelerator_device_info=*/nullptr,
+                                         /*allocator=*/nullptr);
   }
 
   StatusOr<GetElementResult> GetElement(DataServiceWorkerClient& client,

@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+
 #include "mlir/Analysis/CallGraph.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
@@ -49,7 +55,7 @@ mlir::LogicalResult WalkReachableFromTpuCluster(
   // Traverse ops in each TPU cluster.
   auto result = module.walk([&](tf_device::ClusterOp tpu_cluster) {
     std::optional<std::string> host_device;
-    if (pass_host_device && !tensorflow::HasModelParallelism(tpu_cluster)) {
+    if (pass_host_device) {
       std::string host_device_value;
       if (failed(tensorflow::GetHostDeviceOutsideComputation(
               devices, tpu_cluster, &host_device_value)))

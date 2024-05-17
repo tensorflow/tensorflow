@@ -156,21 +156,23 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       return "ChooseFastestDatasetOp::Dataset";
     }
 
-    int64_t CardinalityInternal() const override { return cardinality_; }
+    int64_t CardinalityInternal(CardinalityOptions options) const override {
+      return cardinality_;
+    }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       for (const auto& input : inputs_) {
         inputs->push_back(input);
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status CheckExternalState() const override {
       for (const auto& input : inputs_) {
         TF_RETURN_IF_ERROR(input->CheckExternalState());
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -208,7 +210,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
               ctx, this, strings::StrCat(prefix(), "[", i, "]"),
               &input_impls_[i]));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -264,7 +266,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
             TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl));
           }
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -287,7 +289,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
             TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl));
           }
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:

@@ -18,7 +18,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/builds_common.sh"
-configure_android_workspace
+# To setup Android via `configure` script.
+export TF_SET_ANDROID_WORKSPACE=1
+yes "" | ./configure
 
 # The Bazel builds are intentionally built for x86 and arm64 to maximize build
 # coverage while minimizing compilation time. For full build coverage and
@@ -31,14 +33,9 @@ TARGETS=
 # :execute, which what TF Lite needs. Note that this does *not* build the
 # full set of mobile ops/kernels, as that can be prohibitively expensive.
 TARGETS+=" //tensorflow/core/common_runtime/eager:execute"
-# Enable sandboxing so that zip archives don't get incorrectly packaged
-# in assets/ dir (see https://github.com/bazelbuild/bazel/issues/2334)
-# TODO(gunan): remove extra flags once sandboxing is enabled for all builds.
 bazel --bazelrc=/dev/null build \
-    --compilation_mode=opt --cxxopt=-std=c++14 \
+    --compilation_mode=opt --cxxopt=-std=c++17 \
     --config=android_arm64 --fat_apk_cpu=x86,arm64-v8a \
-    --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
-    --define=grpc_no_ares=true \
     ${TARGETS}
 
 # TODO(b/122377443): Restore Makefile builds after resolving r18b build issues.

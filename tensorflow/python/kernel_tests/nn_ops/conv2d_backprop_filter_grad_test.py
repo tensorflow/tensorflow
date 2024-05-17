@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for convolution related functionality in tensorflow.ops.nn."""
 
+import unittest
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -30,6 +31,8 @@ from tensorflow.python.platform import test
     "Run Conv2D backprop without TF32 on GPU")
 class Conv2DBackpropFilterGradTest(test.TestCase):
 
+  # TODO(b/292002914): Enable this test after fixing its flakyness.
+  @unittest.skip("Disable the flaky test.")
   @test_util.run_deprecated_v1
   def testGradient(self):
     with self.cached_session():

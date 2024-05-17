@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -54,26 +55,27 @@ PluginConfigMap* GetPluginConfigMap() {
 // See tensorflow/core/protobuf/rewriter_config.proto for more details about
 // each optimizer.
 const ConfigList& DefaultPluginConfigs() {
-  static ConfigList* default_plugin_configs =
-      new ConfigList(/*disable_model_pruning=*/false,
-                     {{"implementation_selector", RewriterConfig::ON},
-                      {"function_optimization", RewriterConfig::ON},
-                      {"common_subgraph_elimination", RewriterConfig::ON},
-                      {"arithmetic_optimization", RewriterConfig::ON},
-                      {"debug_stripper", RewriterConfig::ON},
-                      {"constant_folding", RewriterConfig::ON},
-                      {"shape_optimization", RewriterConfig::ON},
-                      {"auto_mixed_precision", RewriterConfig::ON},
-                      {"auto_mixed_precision_mkl", RewriterConfig::ON},
-                      {"auto_mixed_precision_cpu", RewriterConfig::ON},
-                      {"pin_to_host_optimization", RewriterConfig::ON},
-                      {"layout_optimizer", RewriterConfig::ON},
-                      {"remapping", RewriterConfig::ON},
-                      {"loop_optimization", RewriterConfig::ON},
-                      {"dependency_optimization", RewriterConfig::ON},
-                      {"auto_parallel", RewriterConfig::ON},
-                      {"memory_optimization", RewriterConfig::ON},
-                      {"scoped_allocator_optimization", RewriterConfig::ON}});
+  static ConfigList* default_plugin_configs = new ConfigList(
+      /*disable_model_pruning=*/false,
+      {{"implementation_selector", RewriterConfig::ON},
+       {"function_optimization", RewriterConfig::ON},
+       {"common_subgraph_elimination", RewriterConfig::ON},
+       {"arithmetic_optimization", RewriterConfig::ON},
+       {"debug_stripper", RewriterConfig::ON},
+       {"constant_folding", RewriterConfig::ON},
+       {"shape_optimization", RewriterConfig::ON},
+       {"auto_mixed_precision", RewriterConfig::ON},
+       {"auto_mixed_precision_onednn_bfloat16", RewriterConfig::ON},
+       {"auto_mixed_precision_mkl", RewriterConfig::ON},
+       {"auto_mixed_precision_cpu", RewriterConfig::ON},
+       {"pin_to_host_optimization", RewriterConfig::ON},
+       {"layout_optimizer", RewriterConfig::ON},
+       {"remapping", RewriterConfig::ON},
+       {"loop_optimization", RewriterConfig::ON},
+       {"dependency_optimization", RewriterConfig::ON},
+       {"auto_parallel", RewriterConfig::ON},
+       {"memory_optimization", RewriterConfig::ON},
+       {"scoped_allocator_optimization", RewriterConfig::ON}});
   return *default_plugin_configs;
 }
 
@@ -110,8 +112,11 @@ PluginGraphOptimizerRegistry::CreateOptimizers(
   for (auto it = GetPluginRegistrationMap()->begin();
        it != GetPluginRegistrationMap()->end(); ++it) {
     if (device_types.find(it->first) == device_types.end()) continue;
-    LOG(INFO) << "Plugin optimizer for device_type " << it->first
-              << " is enabled.";
+    static absl::once_flag plugin_optimizer_flag;
+    absl::call_once(plugin_optimizer_flag, [&]() {
+      LOG(INFO) << "Plugin optimizer for device_type " << it->first
+                << " is enabled.";
+    });
     optimizer_list.emplace_back(
         std::unique_ptr<CustomGraphOptimizer>(it->second()));
   }

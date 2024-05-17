@@ -12,12 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/compiler/mlir/lite/transforms/lift_tflite_flex_ops.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <utility>
 
+#include "absl/strings/match.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -55,7 +57,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LIFTTFLITEFLEXOPSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 using ::tensorflow::StatusOr;
@@ -70,12 +72,12 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 
   LogicalResult matchAndRewrite(TFL::CustomOp op,
                                 PatternRewriter& rewriter) const override {
-    if (!op.custom_code().startswith(kFlexOpNamePrefix)) {
+    if (!op.getCustomCode().starts_with(kFlexOpNamePrefix)) {
       return failure();
     }
 
     llvm::StringRef tf_op_name =
-        op.custom_code().substr(kFlexOpNamePrefix.size());
+        op.getCustomCode().substr(kFlexOpNamePrefix.size());
     const std::string tf_op_full_name = llvm::Twine("tf.", tf_op_name).str();
 
     // Create the TF op
@@ -86,7 +88,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     SmallVector<NamedAttribute, 2> attrs;
     std::string parsed_op_name;
     tensorflow::NodeDef node_def;
-    if (failed(ParseCustomOption(op.custom_option().getValue(), op.getLoc(),
+    if (failed(ParseCustomOption(op.getCustomOption().getValue(), op.getLoc(),
                                  parsed_op_name, attrs, node_def))) {
       return failure();
     }
@@ -114,8 +116,8 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     // Int32 tensor during MLIR->TFLite flatbuffer conversion.
     // TODO(b/146131919): correct handling of resource type
     if (auto tensor_array_v3_op = dyn_cast<TF::TensorArrayV3Op>(tf_op)) {
-      Value handle = tensor_array_v3_op.handle();
-      auto handle_type = handle.getType().cast<TensorType>();
+      Value handle = tensor_array_v3_op.getHandle();
+      auto handle_type = mlir::cast<TensorType>(handle.getType());
       if (handle_type.getElementType().isInteger(/*width=*/32)) {
         Type resource_tensor_type =
             handle_type.clone(TF::ResourceType::get(rewriter.getContext()));
@@ -132,7 +134,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     if (auto tensor_array_v3_op = dyn_cast<TF::TensorArrayV3Op>(tf_op)) {
       // The "flow" in TensorArrayV3 is always a scalar float tensor.
       // https://www.tensorflow.org/api_docs/python/tf/raw_ops/TensorArrayWriteV3
-      Value flow = tensor_array_v3_op.flow();
+      Value flow = tensor_array_v3_op.getFlow();
       Type scalar_f32_tensor_type =
           RankedTensorType::get(/*shape=*/{}, rewriter.getF32Type());
       flow.setType(scalar_f32_tensor_type);
@@ -146,16 +148,14 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
             const tensorflow::protobuf::RepeatedPtrField<
                 tensorflow::OpDef::ArgDef>& args,
             llvm::StringRef attr_name) {
-          std::vector<mlir::Attribute> values;
+          std::vector<int32_t> values;
           values.reserve(args.size());
           for (const auto& arg : args) {
             auto range = arg_ranges.at(arg.name());
-            values.push_back(
-                rewriter.getI32IntegerAttr(range.second - range.first));
+            values.push_back(range.second - range.first);
           }
-          auto attr_type =
-              mlir::VectorType::get(args.size(), rewriter.getIntegerType(32));
-          auto attr_value = mlir::DenseElementsAttr::get(attr_type, values);
+          auto attr_value =
+              mlir::DenseI32ArrayAttr::get(tf_op->getContext(), values);
           tf_op->setAttr(attr_name, attr_value);
         };
     if (tf_op->hasTrait<mlir::OpTrait::AttrSizedOperandSegments>() ||
@@ -198,11 +198,15 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
       tensorflow::NodeDef& node_def) {
     // The flexbuffer contains a vector where the first elements is the
     // op name and the second is a serialized NodeDef.
+    const uint8_t* const opt_data =
+        reinterpret_cast<const uint8_t*>(custom_options.data());
+    const size_t opt_size = custom_options.size();
+    if (!flexbuffers::VerifyBuffer(opt_data, opt_size)) {
+      return emitError(loc, "invalid custom options");
+    }
+
     const flexbuffers::Vector& v =
-        flexbuffers::GetRoot(
-            reinterpret_cast<const uint8_t*>(custom_options.data()),
-            custom_options.size())
-            .AsVector();
+        flexbuffers::GetRoot(opt_data, opt_size).AsVector();
 
     op_name = v[0].AsString().str();
 
@@ -215,10 +219,14 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     for (const auto& name_and_value : node_def.attr()) {
       const std::string& attr_name = name_and_value.first;
       const tensorflow::AttrValue& attr_value = name_and_value.second;
-      StatusOr<Attribute> mlir_attr =
+      absl::StatusOr<Attribute> mlir_attr =
           tensorflow::ConvertAttributeValue(attr_value, &builder);
       if (!mlir_attr.ok()) {
-        return emitError(loc, mlir_attr.status().error_message());
+        return emitError(loc, mlir_attr.status().message());
+      }
+      if (absl::StrContains(op_name, "Dataset") &&
+          mlir::isa<TF::FuncAttr>(*mlir_attr)) {
+        mlir_attr = mlir::cast<TF::FuncAttr>(*mlir_attr).getName();
       }
       attributes.push_back(builder.getNamedAttr(attr_name, *mlir_attr));
     }
@@ -227,7 +235,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 };
 
 class LiftTfliteFlexOpsPass
-    : public LiftTfliteFlexOpsPassBase<LiftTfliteFlexOpsPass> {
+    : public impl::LiftTfliteFlexOpsPassBase<LiftTfliteFlexOpsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect>();
   }
@@ -240,7 +248,7 @@ class LiftTfliteFlexOpsPass
     func::FuncOp func = getOperation();
 
     mlir::RewritePatternSet patterns(context);
-    patterns.add<LiftFlexCustomOp>(context);
+    AddLiftTfliteFlexOpsPatterns(context, patterns);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       signalPassFailure();
       return;
@@ -249,6 +257,11 @@ class LiftTfliteFlexOpsPass
 };
 
 }  // namespace
+
+void AddLiftTfliteFlexOpsPatterns(MLIRContext* context,
+                                  RewritePatternSet& patterns) {
+  patterns.add<LiftFlexCustomOp>(context);
+}
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLiftTfliteFlexOpsPass() {
   return std::make_unique<LiftTfliteFlexOpsPass>();

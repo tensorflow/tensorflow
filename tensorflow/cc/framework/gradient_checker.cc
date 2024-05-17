@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/gradient_checker.h"
 
+#include <algorithm>
+#include <utility>
+
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -180,7 +183,7 @@ Status ComputeTheoreticalJacobianTranspose(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EvaluateGraph(ClientSession* session, const OutputList& xs,
@@ -205,7 +208,7 @@ Status EvaluateGraph(ClientSession* session, const OutputList& xs,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
@@ -269,7 +272,7 @@ Status ComputeNumericJacobianTranspose(const Scope& scope, const OutputList& xs,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // The Jacobian is always a real-valued matrix.
@@ -363,13 +366,13 @@ Status ComputeGradientErrorInternal(const Scope& scope, const OutputList& xs,
         // (Note that std::max may ignore NaN arguments.)
         if (std::isnan(cur_error)) {
           *max_error = cur_error;
-          return OkStatus();
+          return absl::OkStatus();
         }
         *max_error = std::max(*max_error, cur_error);
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

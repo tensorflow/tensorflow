@@ -23,6 +23,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -76,6 +77,16 @@ class MultinomialTest(test.TestCase):
       sample1, sample2 = self._make_ops(10)
       # Consecutive runs shouldn't yield identical output.
       self.assertFalse(np.equal(sample1.numpy(), sample2.numpy()).all())
+
+  @test_util.run_deprecated_v1
+  def testBfloat16(self):
+    with test_util.use_gpu():
+      sample_op1, _ = self._make_ops(10, dtype=dtypes.bfloat16)
+      self.evaluate(sample_op1)
+
+  def testEagerBfloat16(self):
+    with context.eager_mode(), test_util.device(use_gpu=True):
+      self._make_ops(10, dtype=dtypes.bfloat16)
 
   def testTwoOpsIndependent(self):
     with test_util.use_gpu():
@@ -131,8 +142,8 @@ class MultinomialTest(test.TestCase):
       check(native_chi2)
       check(composed_native_chi2)
 
-  def _make_ops(self, num_samples, seed=None):
-    prob_dist = constant_op.constant([[0.15, 0.5, 0.3, 0.05]])
+  def _make_ops(self, num_samples, seed=None, dtype=dtypes.float32):
+    prob_dist = constant_op.constant([[0.15, 0.5, 0.3, 0.05]], dtype=dtype)
     logits = math_ops.log(prob_dist)
     # Two independent sets of samples from the same distribution
     sample_op1 = random_ops.multinomial(logits, num_samples, seed)

@@ -28,11 +28,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.platform import test
@@ -45,7 +46,7 @@ class FIFOQueueTest(test.TestCase):
   def testConstructor(self):
     with ops.Graph().as_default():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, name="Q")
-    self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
+    self.assertTrue(isinstance(q.queue_ref, tensor.Tensor))
     self.assertProtoEquals("""
       name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
       attr { key: 'component_types' value { list { type: DT_FLOAT } } }
@@ -61,7 +62,7 @@ class FIFOQueueTest(test.TestCase):
           5, (dtypes_lib.int32, dtypes_lib.float32),
           shared_name="foo",
           name="Q")
-    self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
+    self.assertTrue(isinstance(q.queue_ref, tensor.Tensor))
     self.assertProtoEquals("""
       name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
       attr { key: 'component_types' value { list {
@@ -80,7 +81,7 @@ class FIFOQueueTest(test.TestCase):
           shapes=(tensor_shape.TensorShape([1, 1, 2, 3]),
                   tensor_shape.TensorShape([5, 8])),
           name="Q")
-    self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
+    self.assertTrue(isinstance(q.queue_ref, tensor.Tensor))
     self.assertProtoEquals("""
       name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
       attr { key: 'component_types' value { list {
@@ -150,6 +151,7 @@ class FIFOQueueTest(test.TestCase):
         self.q2.enqueue(x)
         self.q2.enqueue(x + 3)
         self.q1.enqueue(self.q2.dequeue())
+        return 1
 
     m = _M()
     self.evaluate(m.uses_queues(constant_op.constant(2)))
@@ -1626,7 +1628,7 @@ class FIFOQueueParallelTests(test.TestCase):
     with self.cached_session() as session:
       q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
       a = q.dequeue()
-      b = control_flow_ops.Assert(False, ["Before enqueue"])
+      b = control_flow_assert.Assert(False, ["Before enqueue"])
       with ops.control_dependencies([b]):
         c = q.enqueue(33)
       with self.assertRaisesWithPredicateMatch(
@@ -1644,7 +1646,7 @@ class FIFOQueueDictTest(test.TestCase):
           names=("i", "j"),
           shared_name="foo",
           name="Q")
-    self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
+    self.assertTrue(isinstance(q.queue_ref, tensor.Tensor))
     self.assertProtoEquals("""
       name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
       attr { key: 'component_types' value { list {
@@ -1665,7 +1667,7 @@ class FIFOQueueDictTest(test.TestCase):
           shapes=(tensor_shape.TensorShape([1, 1, 2, 3]),
                   tensor_shape.TensorShape([5, 8])),
           name="Q")
-    self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
+    self.assertTrue(isinstance(q.queue_ref, tensor.Tensor))
     self.assertProtoEquals("""
       name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
       attr { key: 'component_types' value { list {

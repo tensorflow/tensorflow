@@ -16,7 +16,12 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <initializer_list>
 #include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/kernels/mlir_generated/base_ops_test.h"
 #include "tensorflow/core/kernels/mlir_generated/base_unary_ops_test.h"
@@ -825,6 +830,11 @@ GENERATE_DEFAULT_TEST(OnesLike, DT_DOUBLE, DT_DOUBLE, baseline_ones_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(OnesLike, DT_INT64, DT_INT64, baseline_ones_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_COMPLEX64, DT_COMPLEX64, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_COMPLEX128, DT_COMPLEX128,
+                      baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
 #if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
@@ -1278,6 +1288,12 @@ GENERATE_DEFAULT_TEST(ZerosLike, DT_FLOAT, DT_FLOAT, baseline_zeros_like,
 GENERATE_DEFAULT_TEST(ZerosLike, DT_DOUBLE, DT_DOUBLE, baseline_zeros_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(ZerosLike, DT_INT64, DT_INT64, baseline_zeros_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(ZerosLike, DT_COMPLEX64, DT_COMPLEX64,
+                      baseline_zeros_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(ZerosLike, DT_COMPLEX128, DT_COMPLEX128,
+                      baseline_zeros_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.

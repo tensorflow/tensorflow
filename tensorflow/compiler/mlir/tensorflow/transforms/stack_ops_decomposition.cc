@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -41,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -55,8 +53,11 @@ namespace {
 
 namespace cutil = TF::collection_ops_util;
 
+#define GEN_PASS_DEF_STACKOPSDECOMPOSITIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct StackOpsDecompositionPass
-    : public TF::StackOpsDecompositionPassBase<StackOpsDecompositionPass> {
+    : public impl::StackOpsDecompositionPassBase<StackOpsDecompositionPass> {
   void runOnOperation() final;
 };
 
@@ -72,7 +73,7 @@ Type GetSizeVarType(OpBuilder builder) {
 // forwards the argument. Otherwise, returns -1.
 int64_t FindAliasedInput(func::FuncOp func, int64_t return_index) {
   Value return_val = func.front().getTerminator()->getOperand(return_index);
-  auto maybe_arg = return_val.dyn_cast<BlockArgument>();
+  auto maybe_arg = mlir::dyn_cast<BlockArgument>(return_val);
   if (!maybe_arg) return -1;
   return maybe_arg.getArgNumber();
 }
@@ -89,7 +90,7 @@ int64_t FindAliasedInput(func::FuncOp func, int64_t return_index) {
 // size variables before finally changing the function type.
 void ModifyFunctionSignature(
     func::FuncOp func, llvm::SmallDenseMap<Value, Value>* stack_var_to_size_var,
-    llvm::function_ref<llvm::Optional<Type>(int64_t)> arg_to_stack_type,
+    llvm::function_ref<std::optional<Type>(int64_t)> arg_to_stack_type,
     llvm::function_ref<void(ArrayRef<BlockArgument>)> handle_new_size_vars =
         nullptr) {
   auto new_input_types = llvm::to_vector<8>(func.getFunctionType().getInputs());
@@ -97,7 +98,7 @@ void ModifyFunctionSignature(
   int64_t original_arg_count = new_input_types.size();
   for (int64_t i = 0; i < original_arg_count; ++i) {
     auto stack_type = arg_to_stack_type(i);
-    if (!stack_type.hasValue()) continue;
+    if (!stack_type.has_value()) continue;
     func.getArgument(i).setType(*stack_type);
     new_input_types[i] = *stack_type;
     auto size_arg = func.front().addArgument(size_var_type, func.getLoc());
@@ -135,9 +136,9 @@ LogicalResult HandleWhileOp(
         decomposed_partitioned_call_callees) {
   auto body = while_op.body_function();
   llvm::SmallDenseMap<Value, Value> body_map;
-  auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
+  auto find_arg_stack_type = [&](int64_t index) -> std::optional<Type> {
     auto it = data_var_to_size_var.find(while_op.getOperand(index));
-    if (it == data_var_to_size_var.end()) return llvm::None;
+    if (it == data_var_to_size_var.end()) return std::nullopt;
     return it->getFirst().getType();
   };
   auto add_size_vars_to_return = [&](ArrayRef<BlockArgument> new_args) {
@@ -179,8 +180,8 @@ LogicalResult HandleWhileOp(
       while_op.getLoc(), body.getFunctionType().getInputs(), new_while_operands,
       while_op->getAttrs());
   for (int64_t i = 0; i < while_op.getNumResults(); ++i) {
-    if (!getElementTypeOrSelf(while_op.getOperand(i).getType())
-             .isa<TF::ResourceType>()) {
+    if (!mlir::isa<TF::ResourceType>(
+            getElementTypeOrSelf(while_op.getOperand(i).getType()))) {
       continue;
     }
     int64_t aliased_input = FindAliasedInput(body, i);
@@ -207,9 +208,9 @@ LogicalResult HandleIfOp(
   llvm::SmallDenseMap<Value, Value> then_map;
   llvm::SmallDenseMap<Value, Value> else_map;
 
-  auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
+  auto find_arg_stack_type = [&](int64_t index) -> std::optional<Type> {
     auto it = data_var_to_size_var.find(if_op.getOperand(index + 1));
-    if (it == data_var_to_size_var.end()) return llvm::None;
+    if (it == data_var_to_size_var.end()) return std::nullopt;
     return it->getFirst().getType();
   };
   ModifyFunctionSignature(then_func, &then_map, find_arg_stack_type);
@@ -232,7 +233,7 @@ LogicalResult HandleIfOp(
       if_op.getLoc(), then_func.getFunctionType().getResults(), new_if_operands,
       if_op->getAttrs());
   for (auto result : if_op.getResults()) {
-    if (!getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>()) {
+    if (!mlir::isa<TF::ResourceType>(getElementTypeOrSelf(result.getType()))) {
       continue;
     }
     int64_t then_aliased_input =
@@ -286,8 +287,8 @@ LogicalResult HandlePartitionedCallOp(
                  const_cast<func::FuncOp&>(info.decomposed_callee).getName()));
     for (int64_t i = 0; i < call.getNumResults(); ++i) {
       auto result = call.getResult(i);
-      if (!getElementTypeOrSelf(result.getType())
-               .template isa<TF::ResourceType>()) {
+      if (!mlir::isa<TF::ResourceType>(
+              getElementTypeOrSelf(result.getType()))) {
         continue;
       }
       int64_t aliased_input = FindAliasedInput(info.decomposed_callee, i);
@@ -312,9 +313,9 @@ LogicalResult HandlePartitionedCallOp(
     lowered_callee = callee.clone();
     lowered_callee.setPrivate();
   }
-  auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
+  auto find_arg_stack_type = [&](int64_t index) -> std::optional<Type> {
     auto it = data_var_to_size_var.find(call.getOperand(index));
-    if (it == data_var_to_size_var.end()) return llvm::None;
+    if (it == data_var_to_size_var.end()) return std::nullopt;
     return it->getFirst().getType();
   };
   ModifyFunctionSignature(lowered_callee, &callee_map, find_arg_stack_type);
@@ -327,9 +328,9 @@ LogicalResult HandlePartitionedCallOp(
   } else {
     info.decomposed_callee = lowered_callee;
     for (auto& entry : callee_map) {
-      info.stack_var_arg_to_size_arg
-          [entry.getFirst().cast<BlockArgument>().getArgNumber()] =
-          entry.getSecond().cast<BlockArgument>().getArgNumber();
+      info.stack_var_arg_to_size_arg[mlir::cast<BlockArgument>(entry.getFirst())
+                                         .getArgNumber()] =
+          mlir::cast<BlockArgument>(entry.getSecond()).getArgNumber();
     }
     if (lowered_callee != callee) {
       // Add the clone with a new name.
@@ -353,25 +354,25 @@ LogicalResult HandleStackV2Op(
     llvm::SmallDenseMap<Value, Value>* data_var_to_size_var) {
   // Create a buffer variable and a size variable to replace the stack.
   auto elem_type = cutil::GetElementTypeFromAccess(
-      stack.handle(), module, [](Operation* user) -> llvm::Optional<Type> {
+      stack.getHandle(), module, [](Operation* user) -> std::optional<Type> {
         auto push = llvm::dyn_cast<TF::StackPushV2Op>(user);
-        if (!push) return llvm::None;
-        return push.elem().getType();
+        if (!push) return std::nullopt;
+        return push.getElem().getType();
       });
-  if (!elem_type.hasValue()) {
+  if (!elem_type.has_value()) {
     return stack.emitOpError("cannot infer element shape of stack");
   }
   OpBuilder builder(stack);
   Value buffer;
   if (failed(cutil::CreateInitBufferValue(
-          elem_type->getShape(), stack.max_size(), stack,
+          elem_type->getShape(), stack.getMaxSize(), stack,
           elem_type->getElementType(), builder, &buffer))) {
     return failure();
   }
   auto size_var_type = GetSizeVarType(builder);
   auto var_type = RankedTensorType::get(
       {}, TF::ResourceType::get(
-              ArrayRef<TensorType>{buffer.getType().cast<TensorType>()},
+              ArrayRef<TensorType>{mlir::cast<TensorType>(buffer.getType())},
               stack.getContext()));
   auto local_var = builder.create<TF::MlirLocalVarOp>(
       stack.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{});
@@ -382,7 +383,7 @@ LogicalResult HandleStackV2Op(
                             cutil::GetR1Const({0LL}, builder, stack.getLoc()),
                             builder, stack.getLoc());
   cutil::WriteLocalVariable(local_var, buffer, builder, stack.getLoc());
-  stack.handle().replaceAllUsesWith(local_var);
+  stack.getHandle().replaceAllUsesWith(local_var);
   (*data_var_to_size_var)[local_var] = local_size_var;
   stack.erase();
   return success();
@@ -391,22 +392,23 @@ LogicalResult HandleStackV2Op(
 LogicalResult HandleStackPushV2Op(
     TF::StackPushV2Op push,
     llvm::SmallDenseMap<Value, Value>* data_var_to_size_var) {
-  auto it = data_var_to_size_var->find(push.handle());
+  auto it = data_var_to_size_var->find(push.getHandle());
   if (it == data_var_to_size_var->end()) {
     return push.emitOpError("unknown stack");
   }
   // Push output simply forward the input element.
-  push.replaceAllUsesWith(push.elem());
+  push.replaceAllUsesWith(push.getElem());
   OpBuilder builder(push);
   // Read the current buffer and size.
   auto stack_val =
-      cutil::ReadLocalVariable(push.handle(), builder, push.getLoc());
+      cutil::ReadLocalVariable(push.getHandle(), builder, push.getLoc());
   auto index =
       cutil::ReadLocalVariable(it->getSecond(), builder, push.getLoc());
-  stack_val =
-      cutil::SetElement(index, stack_val, push.elem(), builder, push.getLoc());
+  stack_val = cutil::SetElement(index, stack_val, push.getElem(), builder,
+                                push.getLoc());
   // Assign the new buffer and size.
-  cutil::WriteLocalVariable(push.handle(), stack_val, builder, push.getLoc());
+  cutil::WriteLocalVariable(push.getHandle(), stack_val, builder,
+                            push.getLoc());
   index = builder.create<TF::AddV2Op>(
       push.getLoc(), ArrayRef<Type>{index.getType()},
       ArrayRef<Value>{index, cutil::GetR1Const({1}, builder, push.getLoc())});
@@ -418,14 +420,14 @@ LogicalResult HandleStackPushV2Op(
 LogicalResult HandleStackPopV2Op(
     TF::StackPopV2Op pop,
     llvm::SmallDenseMap<Value, Value>* data_var_to_size_var) {
-  auto it = data_var_to_size_var->find(pop.handle());
+  auto it = data_var_to_size_var->find(pop.getHandle());
   if (it == data_var_to_size_var->end()) {
     return pop.emitOpError("unknown stack");
   }
   OpBuilder builder(pop);
   // Read the current buffer and size.
   auto stack_val =
-      cutil::ReadLocalVariable(pop.handle(), builder, pop.getLoc());
+      cutil::ReadLocalVariable(pop.getHandle(), builder, pop.getLoc());
   auto size = cutil::ReadLocalVariable(it->getSecond(), builder, pop.getLoc());
   auto new_size = builder.create<TF::SubOp>(
       pop.getLoc(), ArrayRef<Type>{size.getType()},
@@ -444,7 +446,8 @@ LogicalResult HandleRegionControlFlowOps(
     llvm::StringMap<PartitionedCallStackOpsInfo>*
         decomposed_partitioned_call_callees) {
   for (OpOperand& operand : op.getOpOperands()) {
-    if (getElementTypeOrSelf(operand.get().getType()).isa<TF::ResourceType>()) {
+    if (mlir::isa<TF::ResourceType>(
+            getElementTypeOrSelf(operand.get().getType()))) {
       return op.emitOpError()
              << "found unexpected type " << operand.get().getType()
              << " of operand #" << operand.getOperandNumber()
@@ -453,7 +456,7 @@ LogicalResult HandleRegionControlFlowOps(
     }
   }
   for (OpResult result : op.getResults()) {
-    if (getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>()) {
+    if (mlir::isa<TF::ResourceType>(getElementTypeOrSelf(result.getType()))) {
       return op.emitOpError()
              << "found unexpected type " << result.getType() << " of result #"
              << result.getResultNumber()
@@ -499,7 +502,7 @@ LogicalResult DecomposeStackOpsInternal(
         return failure();
       }
     } else if (auto close = llvm::dyn_cast<TF::StackCloseV2Op>(&op)) {
-      data_var_to_size_var->erase(close.handle());
+      data_var_to_size_var->erase(close.getHandle());
       close.erase();
     } else if (auto while_op = llvm::dyn_cast<TF::WhileOp>(&op)) {
       if (failed(HandleWhileOp(while_op, module, *data_var_to_size_var,

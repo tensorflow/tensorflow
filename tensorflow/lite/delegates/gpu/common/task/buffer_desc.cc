@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
-#include "absl/strings/substitute.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
@@ -45,11 +46,13 @@ GPUResources BufferDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
 }
 
 absl::Status BufferDescriptor::PerformSelector(
-    const GpuInfo& gpu_info, const std::string& selector,
+    const GpuInfo& gpu_info, absl::string_view selector,
     const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
   if (selector == "Read") {
     return PerformReadSelector(gpu_info, args, result);
+  } else if (selector == "Write") {
+    return PerformWriteSelector(gpu_info, args, result);
   } else if (selector == "GetPtr") {
     return PerformGetPtrSelector(args, template_args, result);
   } else {
@@ -87,30 +90,9 @@ absl::Status BufferDescriptor::PerformReadSelector(
                          " % 2 == 0 ? 0 : 2]), unpackHalf2x16(buffer[", arg0,
                          " / 2][", arg0, " % 2 == 0 ? 1 : 3]))");
       } else {
-        if (element_size == 4) {
-          *result =
-              absl::StrCat("vec4(unpackHalf2x16(buffer[", args[0],
-                           "].x), unpackHalf2x16(buffer[", args[0], "].y))");
-        } else if (element_size == 16) {
-          const std::string vec0 = absl::Substitute(
-              "vec4(unpackHalf2x16(buffer[$0].a.x), "
-              "unpackHalf2x16(buffer[$0].a.y))",
-              args[0]);
-          const std::string vec1 = absl::Substitute(
-              "vec4(unpackHalf2x16(buffer[$0].a.z), "
-              "unpackHalf2x16(buffer[$0].a.w))",
-              args[0]);
-          const std::string vec2 = absl::Substitute(
-              "vec4(unpackHalf2x16(buffer[$0].b.x), "
-              "unpackHalf2x16(buffer[$0].b.y))",
-              args[0]);
-          const std::string vec3 = absl::Substitute(
-              "vec4(unpackHalf2x16(buffer[$0].b.z), "
-              "unpackHalf2x16(buffer[$0].b.w))",
-              args[0]);
-          *result = absl::Substitute("mat4x4($0, $1, $2, $3)", vec0, vec1, vec2,
-                                     vec3);
-        }
+        *result =
+            absl::StrCat("vec4(unpackHalf2x16(buffer[", args[0],
+                         "].x), unpackHalf2x16(buffer[", args[0], "].y))");
       }
     } else {
       *result = absl::StrCat("buffer[", args[0], "]");
@@ -120,6 +102,18 @@ absl::Status BufferDescriptor::PerformReadSelector(
     *result = absl::StrCat("buffer[", args[0], "]");
     return absl::OkStatus();
   }
+}
+
+absl::Status BufferDescriptor::PerformWriteSelector(
+    const GpuInfo& gpu_info, const std::vector<std::string>& args,
+    std::string* result) const {
+  if (args.size() != 2) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "BufferDescriptor Write require two arguments(value, index), but ",
+        args.size(), " was passed"));
+  }
+  *result = absl::StrCat("buffer[", args[1], "] = ", args[0]);
+  return absl::OkStatus();
 }
 
 absl::Status BufferDescriptor::PerformGetPtrSelector(

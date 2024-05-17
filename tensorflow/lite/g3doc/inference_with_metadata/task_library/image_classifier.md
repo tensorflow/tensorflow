@@ -7,7 +7,7 @@ in a given picture. The task of predicting what an image represents is called
 classes of images. For example, a model might be trained to recognize photos
 representing three different types of animals: rabbits, hamsters, and dogs. See
 the
-[image classification overview](../../examples/image_classification/overview)
+[image classification overview](https://www.tensorflow.org/lite/examples/image_classification/overview)
 for more information about image classifiers.
 
 Use the Task Library `ImageClassifier` API to deploy your custom image
@@ -48,7 +48,7 @@ API.
 ## Run inference in Java
 
 See the
-[Image Classification reference app](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/android/EXPLORE_THE_CODE.md)
+[Image Classification reference app](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/android/README.md)
 for an example of how to use `ImageClassifier` in an Android app.
 
 ### Step 1: Import Gradle dependency and other settings
@@ -155,7 +155,7 @@ let classificationResults = try classifier.classify(mlImage: mlImage)
 
 ```objc
 // Imports
-#import <TensorFlowLiteTaskVision/TFLTaskVision.h>
+#import <TensorFlowLiteTaskVision/TensorFlowLiteTaskVision.h>
 
 // Initialization
 NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"birds_V1" ofType:@"tflite"];
@@ -224,8 +224,14 @@ for more options to configure `ImageClassifier`.
 ```c++
 // Initialization
 ImageClassifierOptions options;
-options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_path);
 std::unique_ptr<ImageClassifier> image_classifier = ImageClassifier::CreateFromOptions(options).value();
+
+// Create input frame_buffer from your inputs, `image_data` and `image_dimension`.
+// See more information here: tensorflow_lite_support/cc/task/vision/utils/frame_buffer_common_utils.h
+
+std::unique_ptr<FrameBuffer> frame_buffer = CreateFromRgbRawBuffer(
+      image_data, image_dimension);
 
 // Run inference
 const ClassificationResult result = image_classifier->Classify(*frame_buffer).value();
@@ -268,8 +274,8 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `ImageClassifier` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../models/convert/metadata). See examples of creating
-metadata for image classifiers using the
+[TFLite Model Metadata](https://www.tensorflow.org/lite/models/convert/metadata).
+See examples of creating metadata for image classifiers using the
 [TensorFlow Lite Metadata Writer API](../../models/convert/metadata_writer_tutorial.ipynb#image_classifiers).
 
 The compatible image classifier models should meet the following requirements:

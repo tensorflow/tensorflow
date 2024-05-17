@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
 #include <memory>
+#include <optional>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -24,11 +25,12 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -58,23 +60,25 @@ Status SetTypeAttribute(absl::string_view name, ContainerT types,
   assert(result.second && "cannot have multiple attributes with the same name");
   (void)result;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Sets shape list attribute with the given `name` to the given `shapes`. If the
 // attribute already exists then this will just retain the set value.
 template <typename ContainerT,
           typename = typename std::enable_if<std::is_same<
-              llvm::Optional<llvm::ArrayRef<int64_t>>,
+              std::optional<llvm::ArrayRef<int64_t>>,
               decltype(*std::declval<ContainerT>().begin())>::value>::type>
 void SetShapeAttribute(absl::string_view name, ContainerT shapes,
                        AttrValueMap* values) {
   AttrValue value;
   auto& shape_list = *value.mutable_list();
-  for (const llvm::Optional<llvm::ArrayRef<int64_t>>& shape : shapes) {
+  for (const std::optional<llvm::ArrayRef<int64_t>>& shape : shapes) {
     TensorShapeProto& tshape = *shape_list.add_shape();
-    if (shape.hasValue()) {
-      for (int64_t dim : *shape) tshape.add_dim()->set_size(dim);
+    if (shape.has_value()) {
+      for (int64_t dim : *shape) {
+        tshape.add_dim()->set_size(mlir::ShapedType::isDynamic(dim) ? -1 : dim);
+      }
     } else {
       tshape.set_unknown_rank(true);
     }
@@ -94,7 +98,7 @@ Status GetUnregisteredAttrs(
     absl::flat_hash_set<absl::string_view>* attrs_to_ignore) {
   if (!op_reg_data) {
     // This is likely a function call node, so we should continue.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Collect all the registered attributes.
@@ -111,12 +115,12 @@ Status GetUnregisteredAttrs(
           absl::string_view(attr.getName().data(), attr.getName().size()));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Collects all attribute names to ignore in an MLIR operation when exporting to
 // a TensorFlow NodeDef.
-StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
+absl::StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
     mlir::Operation* inst, mlir::DictionaryAttr derived_attrs,
     const tensorflow::OpRegistrationData* op_reg_data,
     bool ignore_unregistered_attrs) {
@@ -180,7 +184,7 @@ Status PopulateDerivedAttributes(mlir::Operation* inst, llvm::StringRef name,
     auto values = inst->getResults();
     auto begin = values.begin();
     auto end = values.begin();
-    while (end != values.end() && (*end).getType().isa<mlir::ShapedType>())
+    while (end != values.end() && mlir::isa<mlir::ShapedType>((*end).getType()))
       end++;
     if (begin != end) {
       mlir::TF::ResultShapeRange output_shapes = {
@@ -190,7 +194,27 @@ Status PopulateDerivedAttributes(mlir::Operation* inst, llvm::StringRef name,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
+}
+
+// A `Cast` with DstT == SrcT can be introduced in MLIR as a shape cast. But
+// `Cast` only has shapes in the TF dialect's types, not TF graph, so it is
+// valid to convert a `Cast` to an `Identity`. The `_output_shapes` attribute of
+// the `Cast` will be preserved. This transform is needed for the graph to be
+// executed on TPU or GPU devices, which do not have `Cast` registered as a
+// runtime OpKernel.
+void RemoveIdentityCast(NodeDef* node_def) {
+  auto attr = node_def->mutable_attr();
+  if (node_def->op() == "Cast" && attr->contains("SrcT") &&
+      attr->contains("DstT") &&
+      attr->at("SrcT").type() == attr->at("DstT").type() &&
+      attr->contains("Truncate") && !attr->at("Truncate").b()) {
+    node_def->set_op("Identity");
+    attr->insert({{"T", attr->at("SrcT")}});
+    attr->erase("SrcT");
+    attr->erase("DstT");
+    attr->erase("Truncate");
+  }
 }
 
 }  // namespace
@@ -230,10 +254,10 @@ Status GetAttrValuesFromOperation(
     value.mutable_func()->set_name("");
     (*attributes)[kShapeInferenceGraph] = value;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
+absl::StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
     mlir::Operation* inst, llvm::StringRef name,
     bool ignore_unregistered_attrs) {
   TF_ASSIGN_OR_RETURN(auto node_def, GetOperationNodeDef(inst, name));
@@ -244,6 +268,7 @@ StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
   TF_RETURN_IF_ERROR(GetAttrValuesFromOperation(inst, name, op_reg_data,
                                                 ignore_unregistered_attrs,
                                                 node_def->mutable_attr()));
+  RemoveIdentityCast(node_def.get());
   return node_def;
 }
 

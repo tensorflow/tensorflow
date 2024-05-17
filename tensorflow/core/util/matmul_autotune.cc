@@ -25,7 +25,7 @@ bool MatmulAutotuneEnable() {
   Status status =
       ReadBoolFromEnvVar("TF_MATMUL_AUTOTUNE_ENABLE", false, &value);
   if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
   }
   return value;
 }
@@ -43,7 +43,7 @@ bool MatmulDoFP32ComputationFP16Input() {
   Status status =
       ReadBoolFromEnvVar("TF_FP16_MATMUL_USE_FP32_COMPUTE", true, &value);
   if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
   }
   return value;
 }

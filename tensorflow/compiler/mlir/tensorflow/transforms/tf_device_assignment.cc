@@ -18,7 +18,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -27,8 +26,12 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kTFDeviceAttr[] = "tf.device";
 
+#define GEN_PASS_DEF_SIMPLETFDEVICEASSIGNMENTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class SimpleTFDeviceAssignmentPass
-    : public SimpleTFDeviceAssignmentPassBase<SimpleTFDeviceAssignmentPass> {
+    : public impl::SimpleTFDeviceAssignmentPassBase<
+          SimpleTFDeviceAssignmentPass> {
  public:
   SimpleTFDeviceAssignmentPass() = default;
   SimpleTFDeviceAssignmentPass(const SimpleTFDeviceAssignmentPass&) {}
@@ -54,11 +57,14 @@ class SimpleTFDeviceAssignmentPass
   }
 };
 
+#define GEN_PASS_DEF_TFDEVICEASSIGNMENTBYFUNCATTRPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // A pass to perform device assignment for TF dialect ops that do not
 // have device assignment, by using the device attribute of the function.
 // If device attribute is not found from the function, nothing is done.
 class TFDeviceAssignmentByFuncAttrPass
-    : public TFDeviceAssignmentByFuncAttrPassBase<
+    : public impl::TFDeviceAssignmentByFuncAttrPassBase<
           TFDeviceAssignmentByFuncAttrPass> {
  public:
   TFDeviceAssignmentByFuncAttrPass() = default;

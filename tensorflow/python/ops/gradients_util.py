@@ -19,29 +19,28 @@ import contextlib
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python import pywrap_tfe
-from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_state
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import default_gradient
-from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
@@ -66,8 +65,13 @@ def _MarkReachedOps(from_ops, reached_ops, func_graphs):
           queue.extend(_Consumers(output, func_graphs))
 
 
-def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops, func_graphs,
-                  xs_set):
+def _PendingCount(
+    to_ops: list[ops.Operation],
+    from_ops: list[ops.Operation],
+    colocate_gradients_with_ops,
+    func_graphs,
+    xs_set,
+):
   """Initialize the pending count for ops between two lists of Operations.
 
   'pending_count[op]' indicates the number of backprop inputs
@@ -159,7 +163,8 @@ def _DefaultGradYs(grad_ys,
   if len(grad_ys) != len(ys):
     raise ValueError(f"Length mismatch. Passed {len(grad_ys)} grad_ys for "
                      f"{len(ys)} ys")
-  grad_ys = ops.convert_n_to_tensor_or_indexed_slices(grad_ys, name="grad_y")
+  grad_ys = indexed_slices.convert_n_to_tensor_or_indexed_slices(
+      grad_ys, name="grad_y")
   new_grad_ys = []
   for i, (y, grad_y) in enumerate(zip(ys, grad_ys)):
     with _maybe_colocate_with(y.op, gradient_uid, colocate_gradients_with_ops):
@@ -167,63 +172,84 @@ def _DefaultGradYs(grad_ys,
         if y.dtype.is_complex:
           raise TypeError(
               f"Gradients of complex tensors ({y}) must set grad_ys (y.dtype = "
-              f"{dtypes.as_dtype(y.dtype).name})")
+              f"{dtypes.as_dtype(y.dtype).name})"
+          )
         new_grad_ys.append(
             array_ops.ones(
-                array_ops.shape(y), dtype=y.dtype, name="grad_ys_%d" % i))
+                array_ops.shape(y), dtype=y.dtype, name="grad_ys_%d" % i
+            )
+        )
         continue
       if y.dtype.is_floating or y.dtype.is_integer:
         if not grad_y.dtype.is_floating and not grad_y.dtype.is_integer:
           raise TypeError(
               f"Gradient type {dtypes.as_dtype(grad_y.dtype).name} generated "
               f"for real or integer-valued tensor {y} with type "
-              f"{dtypes.as_dtype(y.dtype).name} must be real or integer")
+              f"{dtypes.as_dtype(y.dtype).name} must be real or integer"
+          )
       elif y.dtype.is_complex:
         if not grad_y.dtype.is_complex:
           raise TypeError(
               f"Gradient type {dtypes.as_dtype(grad_y.dtype).name} generated "
               f"for complex-valued tensor {y} with type "
-              f"{dtypes.as_dtype(y.dtype).name} must be real")
+              f"{dtypes.as_dtype(y.dtype).name} must be real"
+          )
       elif y.dtype == dtypes.variant:
         if grad_y.dtype != dtypes.variant:
           raise TypeError(
               f"Gradient type {dtypes.as_dtype(grad_y.dtype).name} generated "
               f"for variant tensor {y} with type "
-              f"{dtypes.as_dtype(y.dtype).name} must be variant")
+              f"{dtypes.as_dtype(y.dtype).name} must be variant"
+          )
       elif y.dtype == dtypes.resource:
         # We assume y is the handle of a ResourceVariable. The gradient of a
         # ResourceVariable should be a numeric value, not another resource.
         if grad_y.dtype == dtypes.resource:
-          raise TypeError(f"Input gradient {grad_y} for resource tensor {y} "
-                          "should not be a resource")
+          raise TypeError(
+              f"Input gradient {grad_y} for resource tensor {y} "
+              "should not be a resource"
+          )
       else:
         raise TypeError(
             f"Tensor {y} with type {dtypes.as_dtype(y.dtype).name} must be "
-            "numeric to obtain a default gradient")
+            "numeric to obtain a default gradient"
+        )
       # Create a grad_y tensor in the name scope of the gradient.
       # Required for TensorArrays to identify which gradient call a
       # grad_y value is coming from.
       if isinstance(grad_y, indexed_slices.IndexedSlices):
         new_grad_ys.append(
             indexed_slices.IndexedSlices(
-                indices=(array_ops.identity(
-                    grad_y.indices, name="grad_ys_%d_indices" % i)
-                         if isinstance(grad_y.indices, ops.Tensor) else
-                         grad_y.indices),
-                values=(array_ops.identity(
-                    grad_y.values, name="grad_ys_%d_values" % i) if isinstance(
-                        grad_y.values, ops.Tensor) else grad_y.values),
-                dense_shape=(array_ops.identity(
-                    grad_y.dense_shape, name="grad_ys_%d_shape" % i)
-                             if isinstance(grad_y.dense_shape, ops.Tensor) else
-                             grad_y.dense_shape)))
+                indices=(
+                    array_ops.identity(
+                        grad_y.indices, name="grad_ys_%d_indices" % i
+                    )
+                    if isinstance(grad_y.indices, tensor_lib.Tensor)
+                    else grad_y.indices
+                ),
+                values=(
+                    array_ops.identity(
+                        grad_y.values, name="grad_ys_%d_values" % i
+                    )
+                    if isinstance(grad_y.values, tensor_lib.Tensor)
+                    else grad_y.values
+                ),
+                dense_shape=(
+                    array_ops.identity(
+                        grad_y.dense_shape, name="grad_ys_%d_shape" % i
+                    )
+                    if isinstance(grad_y.dense_shape, tensor_lib.Tensor)
+                    else grad_y.dense_shape
+                ),
+            )
+        )
       else:
         new_grad_ys.append(array_ops.identity(grad_y, name="grad_ys_%d" % i))
 
   return new_grad_ys
 
 
-def _VerifyGeneratedGradients(grads, op):
+def _VerifyGeneratedGradients(grads, op: ops.Operation):
   """Verify that gradients are valid in number and type.
 
   Args:
@@ -240,11 +266,18 @@ def _VerifyGeneratedGradients(grads, op):
     return
 
   if len(grads) != len(op.inputs):
-    raise ValueError(f"Num gradients {len(grads)} generated for op "
-                     f"{op.node_def} do not match num inputs {len(op.inputs)}")
+    raise ValueError(
+        f"Num gradients {len(grads)} generated for op "
+        f"{op.node_def} do not match num inputs {len(op.inputs)}"
+    )
 
 
-def _StopOps(from_ops, stop_gradient_ops, pending_count, xs_set):
+def _StopOps(
+    from_ops: list[ops.Operation],
+    stop_gradient_ops: list[ops.Operation],
+    pending_count,
+    xs_set,
+):
   """The set of ops that terminate the gradient computation.
 
   This computes the frontier of the forward graph *before* which backprop
@@ -279,7 +312,11 @@ def _StopOps(from_ops, stop_gradient_ops, pending_count, xs_set):
 
 
 @contextlib.contextmanager
-def _maybe_colocate_with(op, gradient_uid, colocate_gradients_with_ops):  # pylint: disable=invalid-name
+def _maybe_colocate_with(  # pylint: disable=invalid-name
+    op: ops.Operation,
+    gradient_uid,
+    colocate_gradients_with_ops,
+):
   """Context to colocate with `op` if `colocate_gradients_with_ops`."""
   if colocate_gradients_with_ops:
     with ops._colocate_with_for_gradient(op, gradient_uid):  # pylint: disable=protected-access
@@ -288,11 +325,11 @@ def _maybe_colocate_with(op, gradient_uid, colocate_gradients_with_ops):  # pyli
     yield
 
 
-def _IsPartitionedCall(op):
+def _IsPartitionedCall(op: ops.Operation):
   return op.type == "PartitionedCall" or op.type == "StatefulPartitionedCall"
 
 
-def _SymGrad(op, out_grads):
+def _SymGrad(op: ops.Operation, out_grads):
   """Backprop through a function call node op given its outputs' gradients."""
   f_in = [x for x in op.inputs] + out_grads
   f_types = [default_gradient.get_zeros_dtype(x) for x in op.inputs]
@@ -303,18 +340,18 @@ def _SymGrad(op, out_grads):
     f.name = op.type
   for k in op.node_def.attr:
     f.attr[k].CopyFrom(op.node_def.attr[k])
-  in_grads = functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
+  in_grads = gen_functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
   return in_grads
 
 
-def _MaybeCompile(scope, op, func, grad_fn):
+def _MaybeCompile(scope, op: ops.Operation, func, grad_fn):
   """Compile the calculation in grad_fn if op was marked as compiled."""
   scope = scope.rstrip("/").replace("/", "_")
   if func is not None:
-    xla_compile = func.definition.attr["_XlaCompile"].b
-    xla_separate_compiled_gradients = func.definition.attr[
+    xla_compile = func.cached_definition.attr["_XlaCompile"].b
+    xla_separate_compiled_gradients = func.cached_definition.attr[
         "_XlaSeparateCompiledGradients"].b
-    xla_scope = func.definition.attr["_XlaScope"].s.decode()
+    xla_scope = func.cached_definition.attr["_XlaScope"].s.decode()
   else:
     try:
       xla_compile = op.get_attr("_XlaCompile")
@@ -344,7 +381,11 @@ def _MaybeCompile(scope, op, func, grad_fn):
     return grad_fn()
 
 
-def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs_set):
+def _RaiseNoGradWrtInitialLoopValError(
+    op: ops.Operation,
+    from_ops: list[ops.Operation],
+    xs_set,
+):
   """Raises an error if we backprop through a loop var."""
   # Find the nearest 'to_op' reachable from 'op' to provide a more helpful error
   # message.
@@ -368,16 +409,14 @@ def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs_set):
 
 
 def _IsFunction(graph):
-  return (isinstance(graph, FuncGraph) or
-          isinstance(graph, framework_function._FuncGraph))  # pylint: disable=protected-access
+  # isinstance check for FuncGraphs that avoids the explicit dependency
+  # on func_graph.py and function.py
+  return isinstance(graph, ops.Graph) and graph._building_function  # pylint: disable=protected-access
 
 
 def _Captures(func_graph):
-  if isinstance(func_graph, FuncGraph):
-    return func_graph.captures
-  else:
-    assert isinstance(func_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
-    return func_graph.captures
+  assert _IsFunction(func_graph)
+  return func_graph.captures
 
 
 def _MaybeCaptured(t):
@@ -399,7 +438,7 @@ def _MaybeCaptured(t):
   return t
 
 
-def _NonEagerInputs(op, xs_set):
+def _NonEagerInputs(op: ops.Operation, xs_set):
   """Returns the inputs of op, crossing closure boundaries where necessary.
 
   Does not return any captured EagerTensors, i.e., the number of tensors
@@ -418,7 +457,7 @@ def _NonEagerInputs(op, xs_set):
 
 # TODO(skyewm): plumbing xs through everywhere is ugly, consider making
 # _GradientsHelper a class with xs as a member variable.
-def _Inputs(op, xs_set):
+def _Inputs(op: ops.Operation, xs_set):
   """Returns the inputs of op, crossing closure boundaries where necessary.
 
   Args:
@@ -478,8 +517,11 @@ def _GradientsHelper(ys,
   if context.executing_eagerly():
     raise RuntimeError("tf.gradients is not supported when eager execution "
                        "is enabled. Use tf.GradientTape instead.")
-  ys = _AsList(ys)
-  xs = _AsList(xs)
+  ys = variable_utils.convert_variables_to_tensors(_AsList(ys))
+  xs = [
+      x.handle if resource_variable_ops.is_resource_variable(x) else x
+      for x in _AsList(xs)
+  ]
   if grad_ys is not None:
     grad_ys = _AsList(grad_ys)
 
@@ -512,11 +554,7 @@ def _GradientsHelper(ys,
   curr_graph = src_graph
   while _IsFunction(curr_graph):
     func_graphs.append(curr_graph)
-    if isinstance(curr_graph, FuncGraph):
-      curr_graph = curr_graph.outer_graph
-    else:
-      assert isinstance(curr_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
-      curr_graph = curr_graph._outer_graph  # pylint: disable=protected-access
+    curr_graph = curr_graph.outer_graph
 
   stop_gradients = [] if stop_gradients is None else _AsList(stop_gradients)
   if grad_ys is None:
@@ -528,12 +566,8 @@ def _GradientsHelper(ys,
     # Get a uid for this call to gradients that can be used to help
     # cluster ops for compilation.
     gradient_uid = ops.get_default_graph().unique_name("uid")
-    ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
-    xs = [
-        x.handle if resource_variable_ops.is_resource_variable(x) else x
-        for x in xs
-    ]
-    xs = ops.internal_convert_n_to_tensor_or_indexed_slices(
+    ys = indexed_slices.convert_n_to_tensor_or_indexed_slices(ys, name="y")
+    xs = indexed_slices.internal_convert_n_to_tensor_or_indexed_slices(
         xs, name="x", as_ref=True)
     xs_set = object_identity.ObjectIdentitySet(xs)
     grad_ys = _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops,
@@ -602,10 +636,11 @@ def _GradientsHelper(ys,
         func_call = None
         is_partitioned_call = _IsPartitionedCall(op)
         # pylint: disable=protected-access
-        is_func_call = (
-            src_graph._is_function(op.type) or is_partitioned_call)
+        is_func_call = src_graph._is_function(op.type) or is_partitioned_call
         # pylint: enable=protected-access
-        has_out_grads = any(isinstance(g, ops.Tensor) or g for g in out_grads)
+        has_out_grads = any(
+            isinstance(g, tensor_lib.Tensor) or g for g in out_grads
+        )
         if has_out_grads and (op not in stop_ops):
           try:
             grad_fn = ops.get_gradient_function(op)
@@ -670,9 +705,12 @@ def _GradientsHelper(ys,
           # output, it means that the cost does not depend on output[i],
           # therefore dC/doutput[i] is 0.
           for i, out_grad in enumerate(out_grads):
-            if (not isinstance(out_grad, ops.Tensor) and not out_grad) and (
+            if (
+                not isinstance(out_grad, tensor_lib.Tensor) and not out_grad
+            ) and (
                 (not grad_fn and is_func_call)
-                or backprop_util.IsTrainable(op.outputs[i])):
+                or backprop_util.IsTrainable(op.outputs[i])
+            ):
               # Only trainable outputs or outputs for a function call that
               # will use SymbolicGradient get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
@@ -718,7 +756,7 @@ def _GradientsHelper(ys,
         # line up with in_grads.
         for i, (t_in, in_grad) in enumerate(zip(_Inputs(op, xs_set), in_grads)):
           if in_grad is not None:
-            if (isinstance(in_grad, ops.Tensor) and
+            if (isinstance(in_grad, tensor_lib.Tensor) and
                 t_in.dtype != dtypes.resource):
               try:
                 in_grad.set_shape(t_in.get_shape())
@@ -742,11 +780,11 @@ def _GradientsHelper(ys,
   return [_GetGrad(grads, x, unconnected_gradients) for x in xs]
 
 
-def _HasAnyNotNoneGrads(grads, op):
+def _HasAnyNotNoneGrads(grads, op: ops.Operation):
   """Return true iff op has real gradient."""
   out_grads = _GetGrads(grads, op)
   for out_grad in out_grads:
-    if isinstance(out_grad, (ops.Tensor, indexed_slices.IndexedSlices)):
+    if isinstance(out_grad, (tensor_lib.Tensor, indexed_slices.IndexedSlices)):
       return True
     if out_grad and isinstance(out_grad, collections_abc.Sequence):
       if any(g is not None for g in out_grad):
@@ -754,12 +792,13 @@ def _HasAnyNotNoneGrads(grads, op):
   return False
 
 
-def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state,
-                                  xs_set):
+def _UpdatePendingAndEnqueueReady(
+    grads, op: ops.Operation, queue, pending_count, loop_state, xs_set
+):
   """Update pending count for the inputs of op and enqueue ready ops."""
   for x in _NonEagerInputs(op, xs_set):
     pending_count[x.op] -= 1
-    ready = (pending_count[x.op] == 0)
+    ready = pending_count[x.op] == 0
     if loop_state and not ready:
       ready = pending_count[x.op] > 0 and control_flow_util.IsLoopSwitch(x.op)
     if ready:
@@ -839,7 +878,7 @@ def _GetGrad(grads, t, unconnected_gradients):
   return t_grad
 
 
-def _GetGrads(grads, op):
+def _GetGrads(grads, op: ops.Operation):
   """Gets all gradients for op."""
   if op in grads:
     return grads[op]
@@ -850,12 +889,12 @@ def _GetGrads(grads, op):
 def _AccumulatorShape(inputs):
   shape = tensor_shape.unknown_shape()
   for i in inputs:
-    if isinstance(i, ops.Tensor):
+    if isinstance(i, tensor_lib.Tensor):
       shape = shape.merge_with(i.get_shape())
   return shape
 
 
-def _LogOpGradients(op, out_grads, in_grads):
+def _LogOpGradients(op: ops.Operation, out_grads, in_grads):
   """Log the in and out grads of an op."""
   logging.vlog(1, "Gradient for '" + op.name + "'")
 
@@ -925,6 +964,20 @@ class AggregationMethod:
     the "AddN" op. This method of summing gradients may reduce
     performance, but it can improve memory utilization because the
     gradients can be released earlier.
+  * `EXPERIMENTAL_ACCUMULATE_N`: Same as `EXPERIMENTAL_TREE`.
+
+  Example usage when computing gradient:
+
+  >>> @tf.function
+  ... def example():
+  ...   x = tf.constant(1.0)
+  ...   y = x * 2.0
+  ...   z = y + y + y + y
+  ...   return tf.gradients(z, [x, y],
+  ...     aggregation_method=tf.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N)
+  >>> example()
+  [<tf.Tensor: shape=(), dtype=float32, numpy=8.0>,
+   <tf.Tensor: shape=(), dtype=float32, numpy=4.0>]
 
   """
   ADD_N = 0
@@ -975,12 +1028,13 @@ def _AggregatedGrads(grads,
   out_grads = _GetGrads(grads, op)
   for i, out_grad in enumerate(out_grads):
     if loop_state:
-      if isinstance(out_grad, (ops.Tensor, indexed_slices.IndexedSlices)):
+      if isinstance(
+          out_grad, (tensor_lib.Tensor, indexed_slices.IndexedSlices)):
         assert control_flow_util.IsLoopSwitch(op)
         continue
     # Grads have to be Tensors or IndexedSlices
     if (isinstance(out_grad, collections_abc.Sequence) and not all(
-        isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices))
+        isinstance(g, (tensor_lib.Tensor, indexed_slices.IndexedSlices))
         for g in out_grad
         if g is not None)):
       raise TypeError(f"Invalid gradient {out_grad} [index = {i}]. Gradients "
@@ -990,7 +1044,8 @@ def _AggregatedGrads(grads,
       if len(out_grad) < 2:
         used = "nop"
         out_grads[i] = out_grad[0]
-      elif all(isinstance(g, ops.Tensor) for g in out_grad if g is not None):
+      elif all(
+          isinstance(g, tensor_lib.Tensor) for g in out_grad if g is not None):
         tensor_shape = _AccumulatorShape(out_grad)
         if aggregation_method in [
             AggregationMethod.EXPERIMENTAL_TREE,
@@ -1015,7 +1070,7 @@ def _AggregatedGrads(grads,
         logging.vlog(2, "  _AggregatedGrads %d x %s using %s", len(out_grad),
                      tensor_shape, used)
       else:
-        out_grads[i] = backprop.aggregate_indexed_slices_gradients(out_grad)  # pylint: disable=protected-access
+        out_grads[i] = backprop_util.AggregateIndexedSlicesGradients(out_grad)  # pylint: disable=protected-access
     else:  # not out_grad
       # out_grads[i] is [], thus its aggregation is simply None.
       out_grads[i] = None

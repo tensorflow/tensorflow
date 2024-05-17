@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_UTILS_GRAPH_PARTITION_H_
 #define TENSORFLOW_CORE_TFRT_UTILS_GRAPH_PARTITION_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -53,7 +54,7 @@ namespace tfrt_stub {
 //                                    /
 //              PartitionedCall_2 ----
 //
-StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
+absl::StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
     const std::string& graph_func_name, const DeviceSet& device_set,
     const Device* host_device, const std::vector<std::string>& inputs,
     const std::vector<std::string>& outputs,

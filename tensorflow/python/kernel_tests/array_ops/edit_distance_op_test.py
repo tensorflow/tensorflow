@@ -15,8 +15,9 @@
 """Tests for tensorflow.kernels.edit_distance_op."""
 
 import numpy as np
-
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
@@ -224,6 +225,66 @@ class EditDistanceTest(test.TestCase):
         expected_err_re=(r"inner product -\d+ which would require writing "
                          "to outside of the buffer for the output tensor|"
                          r"Dimension -\d+ must be >= 0"))
+
+  def testEmptyShapeWithEditDistanceRaisesError(self):
+    para = {
+        "hypothesis_indices": [[]],
+        "hypothesis_values": ["tmp/"],
+        "hypothesis_shape": [],
+        "truth_indices": [[]],
+        "truth_values": [""],
+        "truth_shape": [],
+        "normalize": False,
+    }
+
+    # Check edit distance raw op with empty shape in eager mode.
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        (
+            r"Input Hypothesis SparseTensors must have rank at least 2, but"
+            " hypothesis_shape rank is: 0|Input SparseTensors must have rank "
+            "at least 2, but truth_shape rank is: 0"
+        ),
+    ):
+      array_ops.gen_array_ops.EditDistance(**para)
+
+    # Check raw op with tf.function
+    @def_function.function
+    def TestFunction():
+      """Wrapper function for edit distance call."""
+      array_ops.gen_array_ops.EditDistance(**para)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        (
+            "Input Hypothesis SparseTensors must have rank at least 2, but"
+            " hypothesis_shape rank is: 0"
+        ),
+    ):
+      TestFunction()
+
+    # Check with python wrapper API
+    hypothesis_indices = [[]]
+    hypothesis_values = [0]
+    hypothesis_shape = []
+    truth_indices = [[]]
+    truth_values = [1]
+    truth_shape = []
+    expected_output = []  # dummy ignored
+
+    with self.assertRaisesRegex(
+        ValueError,
+        (
+            "Input Hypothesis SparseTensors must have rank at least 2, but"
+            " hypothesis_shape rank is: 0"
+        ),
+    ):
+      self._testEditDistance(
+          hypothesis=(hypothesis_indices, hypothesis_values, hypothesis_shape),
+          truth=(truth_indices, truth_values, truth_shape),
+          normalize=False,
+          expected_output=expected_output,
+      )
 
 
 if __name__ == "__main__":

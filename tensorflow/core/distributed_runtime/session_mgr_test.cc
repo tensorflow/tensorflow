@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
@@ -48,10 +49,10 @@ class SessionMgrTest : public ::testing::Test {
  protected:
   SessionMgrTest()
       : mgr_(&env_, "/job:mnist/replica:0/task:0",
-             std::unique_ptr<WorkerCacheInterface>(), factory_) {
-    device_mgr_ = std::make_unique<StaticDeviceMgr>(
+             std::unique_ptr<WorkerCacheInterface>(), factory_,
+             /*coordination_handler=*/nullptr) {
+    device_mgr_ = std::make_unique<DynamicDeviceMgr>(
         FakeDevice::MakeCPU("/job:mnist/replica:0/task:0/device:fakecpu:0"));
-    env_.local_devices = device_mgr_->ListDevices();
     env_.device_mgr = device_mgr_.get();
   }
 
@@ -60,7 +61,7 @@ class SessionMgrTest : public ::testing::Test {
   SessionMgr::WorkerCacheFactory factory_ =
       [](const ServerDef& server_def, WorkerCacheInterface** worker_cache) {
         *worker_cache = nullptr;  // Set to null to make debugging easier.
-        return OkStatus();
+        return absl::OkStatus();
       };
   SessionMgr mgr_;
 };
@@ -193,11 +194,13 @@ TEST_F(SessionMgrTest, CreateSessionWithMasterName) {
                                   cluster_device_attributes, true, master_name,
                                   new_incarnation));
 
-  EXPECT_NE(mgr_.WorkerSessionForSession(sess_handle1, &session), OkStatus())
+  EXPECT_NE(mgr_.WorkerSessionForSession(sess_handle1, &session),
+            absl::OkStatus())
       << "Session for " << sess_handle1
       << " should have been garbage collected.";
 
-  EXPECT_NE(mgr_.WorkerSessionForSession(sess_handle2, &session), OkStatus())
+  EXPECT_NE(mgr_.WorkerSessionForSession(sess_handle2, &session),
+            absl::OkStatus())
       << "Session for " << sess_handle2
       << " should have been garbage collected.";
 
@@ -250,9 +253,8 @@ TEST_F(SessionMgrTest, UnknownSessionHandle) {
   std::string session_handle = "unknown_session_handle";
   std::shared_ptr<WorkerSession> session;
   Status s = mgr_.WorkerSessionForSession(session_handle, &session);
-  EXPECT_TRUE(errors::IsAborted(s));
-  EXPECT_TRUE(
-      absl::StrContains(s.error_message(), "Session handle is not found"));
+  EXPECT_TRUE(absl::IsAborted(s));
+  EXPECT_TRUE(absl::StrContains(s.message(), "Session handle is not found"));
   EXPECT_TRUE(s.GetPayload(kWorkerPossiblyRestarted).has_value());
 }
 

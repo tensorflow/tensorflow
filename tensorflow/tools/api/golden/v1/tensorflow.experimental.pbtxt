@@ -17,12 +17,40 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "ExtensionTypeSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Optional"
     mtype: "<type \'type\'>"
   }
   member {
     name: "RowPartition"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StructuredTensor"
+    mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
+  }
+  member {
+    name: "extension_type"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "float8_e4m3fn"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "float8_e5m2"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "int4"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "uint4"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member_method {
     name: "async_clear_error"
@@ -47,6 +75,10 @@ tf_module {
   member_method {
     name: "dispatch_for_unary_elementwise_apis"
     argspec: "args=[\'x_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_strict_mode"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "function_executor_type"

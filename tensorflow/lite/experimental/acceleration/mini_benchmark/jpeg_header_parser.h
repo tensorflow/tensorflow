@@ -12,13 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_METRICS_JPEG_HEADER_PARSER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_METRICS_JPEG_HEADER_PARSER_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_JPEG_HEADER_PARSER_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_JPEG_HEADER_PARSER_H_
 
 #include <string>
 #include <tuple>
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_status.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/jpeg_common.h"
 #include "tensorflow/lite/string_type.h"
@@ -44,4 +44,4 @@ Status BuildImageWithNewHeader(const tflite::StringRef& orig_jpeg_image_data,
 }  // namespace acceleration
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_METRICS_JPEG_HEADER_PARSER_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_JPEG_HEADER_PARSER_H_

@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/graph/graph.h"
@@ -36,12 +36,12 @@ namespace {
 
 constexpr char kNoOp[] = "NoOp";
 constexpr char kConfigureOp[] = "ConfigureTPUEmbedding";
-constexpr char kExecutePartitionerOp[] = "_ExecuteTPUEmbeddingPartitioner";
-constexpr char kConfigureMemoryOp[] = "_ConfigureTPUEmbeddingMemory";
-constexpr char kCollateMemoryOp[] = "_CollateTPUEmbeddingMemory";
-constexpr char kConfigureHostOp[] = "_ConfigureTPUEmbeddingHost";
-constexpr char kConnectHostsOp[] = "_ConnectTPUEmbeddingHosts";
-constexpr char kFinalizeOp[] = "_FinalizeTPUEmbedding";
+constexpr char kExecutePartitionerOp[] = "ExecuteTPUEmbeddingPartitioner";
+constexpr char kConfigureMemoryOp[] = "ConfigureTPUEmbeddingMemory";
+constexpr char kCollateMemoryOp[] = "CollateTPUEmbeddingMemory";
+constexpr char kConfigureHostOp[] = "ConfigureTPUEmbeddingHost";
+constexpr char kConnectHostsOp[] = "ConnectTPUEmbeddingHosts";
+constexpr char kFinalizeOp[] = "FinalizeTPUEmbedding";
 constexpr char kEmbeddingConfigurationAttr[] = "config";
 
 Status AddSynchronizationNode(
@@ -73,7 +73,7 @@ Status AddSynchronizationNode(
       graph->AddEdge(sync_node, dep.src_output, dep.dst, dep.dst_input);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddSetupPropagationEmbeddingNode(const string& device_name,
@@ -96,7 +96,7 @@ Status AddSetupPropagationEmbeddingNode(const string& device_name,
   for (int i = 0; i < input_nodes.size(); ++i) {
     graph->AddEdge(input_nodes[i], 0, *node, i);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddExecutePartitionerNode(const string& configuration_device_name,
@@ -116,7 +116,7 @@ Status AddExecutePartitionerNode(const string& configuration_device_name,
     graph->AddControlEdge(src_node, *partitioner_node);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddConfigureMemoryNode(const string& host_device_name,
@@ -130,7 +130,7 @@ Status AddConfigureMemoryNode(const string& host_device_name,
   TF_ASSIGN_OR_RETURN(*embedding_node, graph->AddNode(embedding_def));
   (*embedding_node)->set_assigned_device_name(host_device_name);
   graph->AddEdge(partitioner_node, 0, *embedding_node, 0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddCollateMemoryNode(const string& configuration_device_name,
@@ -160,7 +160,7 @@ Status AddConfigureHostNode(const string& host_device_name,
   graph->AddEdge(partitioner_node, 0, *embedding_node, 0);
   graph->AddEdge(memory_node, 0, *embedding_node, 1);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddConnectHostsNode(const string& host_device_name,
@@ -188,7 +188,7 @@ Status AddFinalizeNode(const string& configuration_device_name,
   graph->AddEdge(partitioner_node, 0, *finalize_node, 0);
   graph->AddEdge(memory_node, 0, *finalize_node, 1);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -224,7 +224,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
 
             auto get_updated_device_name =
                 [](absl::string_view initial_device_name)
-                -> xla::StatusOr<std::string> {
+                -> absl::StatusOr<std::string> {
               DeviceNameUtils::ParsedName device_spec;
               TF_RET_CHECK(DeviceNameUtils::ParseFullName(initial_device_name,
                                                           &device_spec));
@@ -328,7 +328,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
                   end_nodes, output_dependencies, graph));
             }
 
-            return OkStatus();
+            return absl::OkStatus();
           }));
 
   if (VLOG_IS_ON(1)) {
@@ -336,7 +336,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
   }
 
   VLOG(1) << "ConfigureTPUEmbeddingRewritePass::Run() finished";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

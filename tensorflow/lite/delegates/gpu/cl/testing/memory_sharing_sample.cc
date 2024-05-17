@@ -16,15 +16,17 @@ limitations under the License.
 #include <algorithm>
 #include <chrono>  // NOLINT(build/c++11)
 #include <iostream>
+#include <ostream>
+#include <set>
 #include <string>
 
 #include "absl/time/time.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/kernels/register.h"
 
 namespace tflite {
 namespace gpu {
@@ -100,17 +102,20 @@ absl::Status RunSample(const std::string& model_name_mv1,
   Tensor input_224_224, output_mv1, output_mv2;
   auto data_type = DeduceDataTypeFromPrecision(create_info_mv1.precision);
   RETURN_IF_ERROR(CreateTensor(
-      env.context(), BHWC(1, 224, 224, 3),
-      TensorDescriptor{data_type, TensorStorageType::TEXTURE_2D, Layout::HWC},
+      env.context(),
+      CreateHwcTensorDescriptor(data_type, TensorStorageType::TEXTURE_2D,
+                                HWC(224, 224, 3)),
       &input_224_224));
-  RETURN_IF_ERROR(CreateTensor(
-      env.context(), BHWC(1, 1, 1, 1001),
-      TensorDescriptor{data_type, TensorStorageType::BUFFER, Layout::HWC},
-      &output_mv1));
-  RETURN_IF_ERROR(CreateTensor(
-      env.context(), BHWC(1, 1, 1, 1001),
-      TensorDescriptor{data_type, TensorStorageType::BUFFER, Layout::HWC},
-      &output_mv2));
+  RETURN_IF_ERROR(
+      CreateTensor(env.context(),
+                   CreateHwcTensorDescriptor(
+                       data_type, TensorStorageType::BUFFER, HWC(1, 1, 1001)),
+                   &output_mv1));
+  RETURN_IF_ERROR(
+      CreateTensor(env.context(),
+                   CreateHwcTensorDescriptor(
+                       data_type, TensorStorageType::BUFFER, HWC(1, 1, 1001)),
+                   &output_mv2));
 
   create_info_mv1.external_immutable_tensors = {
       {graph_mv1.inputs()[0]->id, &input_224_224},

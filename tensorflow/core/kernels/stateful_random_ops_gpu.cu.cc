@@ -121,6 +121,8 @@ void RngSkip_Philox<GPUDevice>::operator()(const GPUDevice& d,
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, Eigen::half> >;
 template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::NormalDistribution<random::PhiloxRandom, Eigen::bfloat16> >;
+template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, float> >;
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, double> >;
@@ -131,6 +133,10 @@ template struct UpdateVariableAndFill_Philox<
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::TruncatedNormalDistribution<
                  random::SingleSampleAdapter<random::PhiloxRandom>,
+                 Eigen::bfloat16> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::TruncatedNormalDistribution<
+                 random::SingleSampleAdapter<random::PhiloxRandom>,
                  float> >;
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::TruncatedNormalDistribution<
@@ -138,6 +144,8 @@ template struct UpdateVariableAndFill_Philox<
                  double> >;
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::UniformDistribution<random::PhiloxRandom, Eigen::half> >;
+template struct UpdateVariableAndFill_Philox<
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, Eigen::bfloat16> >;
 template struct UpdateVariableAndFill_Philox<
     GPUDevice, random::UniformDistribution<random::PhiloxRandom, float> >;
 template struct UpdateVariableAndFill_Philox<

@@ -493,6 +493,12 @@ class LinearOperatorScaledIdentityTest(
     self.assertTrue(operator.is_non_singular)
     self.assertTrue(operator.is_self_adjoint)  # Auto-set due to real multiplier
 
+  def test_identity_adjoint_type(self):
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=1., is_non_singular=True)
+    self.assertIsInstance(
+        operator.adjoint(), linalg_lib.LinearOperatorScaledIdentity)
+
   def test_identity_matmul(self):
     operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
     operator2 = linalg_lib.LinearOperatorScaledIdentity(

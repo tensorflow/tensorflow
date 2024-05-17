@@ -32,10 +32,16 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/debug.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tsl/platform/thread_annotations.h"
+
+namespace tsl {
+class CoordinationServiceAgent;
+}
 
 namespace tensorflow {
 
@@ -44,7 +50,6 @@ class StepStatsCollector;
 class RendezvousMgrInterface;
 class DeviceMgr;
 class WorkerSession;
-class CoordinationServiceAgent;
 
 // GraphMgr keeps track of a set of graphs that are registered with a
 // TensorFlow worker. Each registered graph is identified by a handle
@@ -94,7 +99,7 @@ class GraphMgr {
                     WorkerSession* session, StepStatsCollector* collector,
                     MutableRunGraphResponseWrapper* response,
                     CancellationManager* cancellation_manager,
-                    CoordinationServiceAgent* coordination_service_agent,
+                    tsl::CoordinationServiceAgent* coordination_service_agent,
                     StatusCallback done);
 
   Status SendInputs(const int64_t step_id, const NamedTensors& in);
@@ -131,6 +136,9 @@ class GraphMgr {
 
     // Graph handle.
     string handle;
+
+    // Session configuration options for the graph.
+    ConfigProto session_config;
 
     std::unique_ptr<FunctionLibraryDefinition> lib_def;
     // Owns the FunctionLibraryRuntime objects needed to execute functions, one
@@ -171,7 +179,7 @@ class GraphMgr {
       CollectiveExecutor::Handle* ce_handle, StepStatsCollector* collector,
       CostGraphDef* cost_graph, CancellationManager* cancellation_manager,
       WorkerSession* session, int64_t start_time_usecs,
-      CoordinationServiceAgent* coordination_service_agent,
+      tsl::CoordinationServiceAgent* coordination_service_agent,
       StatusCallback done);
 
   // Don't attempt to process cost models unless explicitly requested for at
@@ -191,7 +199,8 @@ class GraphMgr {
   Status DecorateAndPublishGraphForDebug(const DebugOptions& debug_options,
                                          Graph* graph, Device* device);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GraphMgr);
+  GraphMgr(const GraphMgr&) = delete;
+  void operator=(const GraphMgr&) = delete;
 };
 
 }  // end namespace tensorflow

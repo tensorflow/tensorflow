@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/examples/example_hardware.h"
 
+#include <memory>
+
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/device_transform_patterns.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 

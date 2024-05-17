@@ -14,15 +14,17 @@
 # ==============================================================================
 """Maintain moving averages of parameters."""
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
 from tensorflow.python.util.tf_export import tf_export
@@ -96,7 +98,7 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
       else:
         return _update(strategy, v, update_fn, args=(value,))
 
-    replica_context = distribution_strategy_context.get_replica_context()
+    replica_context = distribute_lib.get_replica_context()
     if replica_context:
       # In a replica context, we update variable using the mean of value across
       # replicas.
@@ -107,7 +109,7 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
 
       return replica_context.merge_call(merge_fn, args=(variable, value))
     else:
-      strategy = distribution_strategy_context.get_cross_replica_context()
+      strategy = distribute_lib.get_cross_replica_context()
       return update(strategy, variable, value)
 
 
@@ -177,7 +179,7 @@ def weighted_moving_average(value,
 
 def _update(strategy, var, update_fn, args):
   """Applies updates depending on the context."""
-  assert distribution_strategy_context.in_cross_replica_context(), (
+  assert distribute_lib.in_cross_replica_context(), (
       "_update can only be called in cross-replica context")
   if distribute_lib.get_update_replica_id() is not None:
     # Call update_fn on var to delegate the implementation. We expect `var` will
@@ -279,7 +281,7 @@ def _zero_debias(strategy, unbiased_var, value, decay):
 
 
 @tf_export("train.ExponentialMovingAverage")
-class ExponentialMovingAverage(object):
+class ExponentialMovingAverage:
   """Maintains moving averages of variables by employing an exponential decay.
 
   When training a model, it is often beneficial to maintain moving averages of
@@ -530,7 +532,7 @@ class ExponentialMovingAverage(object):
     if var_list is None:
       var_list = variables.trainable_variables()
     for v in var_list:
-      if (isinstance(v, ops.Tensor)
+      if (isinstance(v, tensor.Tensor)
           and ops.executing_eagerly_outside_functions()):
         raise TypeError(
             "tf.train.ExponentialMovingAverage does not support non-Variable"
@@ -550,7 +552,9 @@ class ExponentialMovingAverage(object):
         with ops.init_scope():
           if isinstance(var, variables.Variable):
             with ops.device(var.device):
-              initialized_value = var.initialized_value()
+              initialized_value = cond.cond(
+                  variable_v1.is_variable_initialized(var), var.read_value,
+                  lambda: var.initial_value)  # pylint: disable=cell-var-from-loop
             avg = slot_creator.create_slot(
                 var,
                 initialized_value,

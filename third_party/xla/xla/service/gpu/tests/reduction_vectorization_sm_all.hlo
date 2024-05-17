@@ -1,0 +1,210 @@
+// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb --split-input-file | FileCheck %s
+// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/p100.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM60
+// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/v100.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM70
+// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/a6000.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM86
+
+// CHECK-LABEL: .entry wrapped_reduce_odd_row
+// CHECK-NOT: ld.global.nc.v2.f32
+// CHECK-NOT: ld.global.nc.v4.f32
+// CHECK-NOT: ld.global.nc.u64
+// CHECK-NOT: ld.global.u64
+
+HloModule ReduceOddRowSize, is_scheduled=true
+
+%max_ {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %maximum.7 = f32[] maximum(%x, %y)
+}
+
+%fused_computation {
+  %param_0.1 = f32[5,4071]{1,0} parameter(0)
+  %param_1 = f32[] parameter(1)
+  ROOT %reduce.odd_row.1 = f32[5]{0} reduce(f32[5,4071]{1,0} %param_0.1, f32[] %param_1), dimensions={1}, to_apply=%max_
+}
+
+ENTRY %main {
+  %param_0 = f32[5,4071] parameter(0)
+  %constant.3 = f32[] constant(0)
+  ROOT %wrapped_reduce.odd_row = f32[5]{0} fusion(f32[5,4071]{1,0} %param_0, f32[] %constant.3), kind=kInput, calls=%fused_computation
+}
+
+// -----
+
+// CHECK-SM86-LABEL: .entry wrapped_reduce_small_row
+// CHECK-SM86: .reqntid 256, 1, 1
+
+HloModule ReduceSmallRow, is_scheduled=true
+
+addition {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT out = add(%x, %y)
+}
+
+%fused_computation {
+  %param_0 = f32[700000,32]{1,0} parameter(0)
+  %param_1 = f32[] parameter(1)
+  ROOT %reduce_small_row.1 = f32[700000]{0} reduce(f32[700000,32]{1,0} %param_0, f32[] %param_1), dimensions={1}, to_apply=%addition
+}
+
+ENTRY main {
+  p = f32[700000,32] parameter(0)
+  zero = f32[] constant(0)
+  ROOT %wrapped_reduce_small_row = f32[700000]{0} fusion(f32[700000,32]{1,0} %p, f32[] %zero), kind=kInput, calls=%fused_computation
+}
+
+// -----
+
+// CHECK-LABEL: .entry wrapped_reduce_sine
+// CHECK-COUNT-7: ld.global.nc.v2.f32
+
+HloModule DisableSin, is_scheduled=true
+
+%add_float {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add.17 = f32[] add(f32[] %x, f32[] %y)
+}
+
+%fused_computation {
+  %param_0 = f32[5,3584]{1,0} parameter(0)
+  ROOT %sine.1 = f32[5,3584]{1,0} sine(f32[5,3584]{1,0} %param_0)
+}
+
+%fused_computation.1 {
+  %param_0.1 = f32[5,3584]{1,0} parameter(0)
+  %param_1 = f32[] parameter(1)
+  ROOT %reduce.sine.1 = f32[5]{0} reduce(f32[5,3584]{1,0} %param_0.1, f32[] %param_1), dimensions={1}, to_apply=%add_float
+}
+
+ENTRY %main {
+  %arg0.1 = f32[5,3584] parameter(0)
+  %wrapped_sine = f32[5,3584]{1,0} fusion(f32[5,3584]{1,0} %arg0.1), kind=kLoop, calls=%fused_computation
+  %constant.0 = f32[] constant(0)
+  ROOT %wrapped_reduce.sine = f32[5]{0} fusion(f32[5,3584]{1,0} %wrapped_sine, f32[] %constant.0), kind=kInput, calls=%fused_computation.1
+}
+
+// -----
+
+// SM dependent tests
+
+// CHECK-SM60: .entry wrapped_exp
+// CHECK-SM60-LABEL: .entry wrapped_reduce_exp
+// CHECK-SM60-COUNT-8: ld.global.nc.v2.f32
+
+// CHECK-SM70: .entry wrapped_exp
+// CHECK-SM70-LABEL: .entry wrapped_reduce_exp
+// CHECK-SM70-COUNT-8: ld.global.nc.v2.f32
+
+HloModule Exp, is_scheduled=true
+
+%add_float {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add.17 = f32[] add(f32[] %x, f32[] %y)
+}
+
+%fused_computation {
+  %param_0 = f32[5,3584]{1,0} parameter(0)
+  ROOT %exp.1 = f32[5,3584]{1,0} exponential(f32[5,3584]{1,0} %param_0)
+}
+
+%fused_computation.1 {
+  %param_0.1 = f32[5,3584]{1,0} parameter(0)
+  %param_1 = f32[] parameter(1)
+  ROOT %reduce.exp.1 = f32[5]{0} reduce(f32[5,3584]{1,0} %param_0.1, f32[] %param_1), dimensions={1}, to_apply=%add_float
+}
+
+ENTRY %main {
+  %arg0.1 = f32[5,3584] parameter(0)
+  %wrapped_exp = f32[5,3584]{1,0} fusion(f32[5,3584]{1,0} %arg0.1), kind=kLoop, calls=%fused_computation
+  %constant.0 = f32[] constant(0)
+  ROOT %wrapped_reduce.exp = f32[5]{0} fusion(f32[5,3584]{1,0} %wrapped_exp, f32[] %constant.0), kind=kInput, calls=%fused_computation.1
+}
+
+// -----
+
+HloModule ReduceTileFit, is_scheduled=true
+
+// CHECK-SM60-LABEL: .entry wrapped_reduce_tile_fit
+// CHECK-SM60-COUNT-8: ld.global.nc.v2.f32
+
+// CHECK-SM70-LABEL: .entry wrapped_reduce_tile_fit
+// CHECK-SM70-COUNT-4: ld.global.nc.v2.f32
+
+%max_ {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %maximum.7 = f32[] maximum(f32[] %x, f32[] %y)
+}
+
+%fused_computation {
+  %param_0.1 = f32[5,3584]{1,0} parameter(0)
+  %param_1 = f32[] parameter(1)
+  ROOT %reduce.tile_fit.1 = f32[5]{0} reduce(f32[5,3584]{1,0} %param_0.1, f32[] %param_1), dimensions={1}, to_apply=%max_
+}
+
+ENTRY %main {
+  %param_0 = f32[5,3584] parameter(0)
+  %constant.3 = f32[] constant(0)
+  ROOT %wrapped_reduce.tile_fit = f32[5]{0} fusion(f32[5,3584]{1,0} %param_0, f32[] %constant.3), kind=kInput, calls=%fused_computation
+}
+
+// -----
+
+HloModule ReducePower2, is_scheduled=true
+
+// CHECK-SM60-LABEL: .entry wrapped_reduce_pow_2
+// CHECK-SM60-COUNT-4: ld.global.nc.v2.f32
+
+// CHECK-SM70-LABEL: .entry wrapped_reduce_pow_2
+// CHECK-SM70-COUNT-4: ld.global.nc.v2.f32
+
+%max_ {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %maximum.7 = f32[] maximum(f32[] %x, f32[] %y)
+}
+
+%fused_computation {
+  %param_0.1 = f32[5,4096]{1,0} parameter(0)
+  %param_1 = f32[] parameter(1)
+  ROOT %reduce.pow_2.1 = f32[5]{0} reduce(f32[5,4096]{1,0} %param_0.1, f32[] %param_1), dimensions={1}, to_apply=%max_
+}
+
+ENTRY %main {
+  %param_0 = f32[5,4096] parameter(0)
+  %constant.3 = f32[] constant(0)
+  ROOT %wrapped_reduce.pow_2 = f32[5]{0} fusion(f32[5,4096]{1,0} %param_0, f32[] %constant.3), kind=kInput, calls=%fused_computation
+}
+
+// -----
+
+HloModule ReduceEvenColumns, is_scheduled=true
+
+// CHECK-SM60-LABEL: .entry wrapped_reduce_even_col
+// CHECK-SM60-NOT: ld.global.nc.f32
+// CHECK-SM60-COUNT-8: ld.global.nc.f32
+
+// CHECK-SM70-LABEL: .entry wrapped_reduce_even_col
+// CHECK-SM70-COUNT-2: ld.global.nc.v2.f32
+// CHECK-SM70-COUNT-2: ld.global.nc.v2.f32
+
+%max_ {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %maximum.7 = f32[] maximum(f32[] %x, f32[] %y)
+}
+
+%fused_computation {
+  %param_0.1 = f32[5,4070]{1,0} parameter(0)
+  %param_1 = f32[] parameter(1)
+  ROOT %reduce.even_col.1 = f32[5]{0} reduce(f32[5,4070]{1,0} %param_0.1, f32[] %param_1), dimensions={1}, to_apply=%max_
+}
+
+ENTRY %main {
+  %param_0 = f32[5,4070] parameter(0)
+  %constant.3 = f32[] constant(0)
+  ROOT %wrapped_reduce.even_col = f32[5]{0} fusion(f32[5,4070]{1,0} %param_0, f32[] %constant.3), kind=kInput, calls=%fused_computation
+}

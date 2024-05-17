@@ -29,7 +29,9 @@ from tensorflow.python.ops import control_flow_ops
 # CHECK-SAME: then_branch = @"key/[[then:[a-zA-Z_0-9]+]]"
 
 # CHECK: func private @"key/[[else]]"(
+# CHECK-SAME: tf._original_func_name
 # CHECK: func private @"key/[[then]]"(
+# CHECK-SAME: tf._original_func_name
 
 
 def Test():

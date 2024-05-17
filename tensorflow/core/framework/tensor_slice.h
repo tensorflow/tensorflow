@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_SLICE_H_
 
 #include <string>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -198,8 +198,8 @@ class TensorSlice {
 
   // TODO(yangke): switch to Eigen once it supports variable size arrays.
   // A value of
-  gtl::InlinedVector<int64_t, 4> starts_;
-  gtl::InlinedVector<int64_t, 4> lengths_;
+  absl::InlinedVector<int64_t, 4UL> starts_;
+  absl::InlinedVector<int64_t, 4UL> lengths_;
 };
 
 template <int NDIMS>

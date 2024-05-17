@@ -1,0 +1,43 @@
+# This bazelrc can build a CPU-supporting TF package.
+
+# Convenient cache configurations
+# Use a cache directory mounted to /tf/cache. Very useful!
+build:sigbuild_local_cache --disk_cache=/tf/cache
+# Use the public-access TF DevInfra cache (read only)
+build:sigbuild_remote_cache --remote_cache="https://storage.googleapis.com/tensorflow-devinfra-bazel-cache/september2022" --remote_upload_local_results=false
+# Write to the TF DevInfra cache (only works for internal TF CI)
+build:sigbuild_remote_cache_push --remote_cache="https://storage.googleapis.com/tensorflow-devinfra-bazel-cache/september2022" --google_default_credentials
+# Change the value of CACHEBUSTER when upgrading the toolchain, or when testing
+# different compilation methods. E.g. for a PR to test a new CUDA version, set
+# the CACHEBUSTER to the PR number.
+build --action_env=CACHEBUSTER=565341047
+
+# Build options for CPU Linux
+build --config=release_cpu_linux
+
+# "nonpip" tests are regular py_test tests.
+# Pass --config=nonpip to run the same suite of tests. If you want to run just
+# one test for investigation, you don't need --config=nonpip; just run the
+# bazel test invocation as normal.
+
+test:nonpip_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py39,-no_oss_py310
+test:nonpip_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py39,-no_oss_py310
+test:nonpip_filters --test_lang_filters=py --test_size_filters=small,medium
+test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+
+# For building libtensorflow archives
+test:libtensorflow_test -- //tensorflow/tools/lib_package:libtensorflow_test //tensorflow/tools/lib_package:libtensorflow_java_test
+build:libtensorflow_build -- //tensorflow/tools/lib_package:libtensorflow.tar.gz //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz //tensorflow/java:libtensorflow.jar //tensorflow/java:libtensorflow-src.jar //tensorflow/tools/lib_package:libtensorflow_proto.zip
+
+# For outputting Build Event Protocol files
+build:build_event_export --build_event_json_file=/tf/pkg/bep.json
+
+# For Remote Build Execution.
+# TODO(kanglan): Replace the old rbe configs with rbe_linux_cpu in linux cpu jobs and remove the `rbe` config here.
+build:rbe --config=rbe_linux_cpu
+
+# For continuous builds
+test:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+test:pycpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+test:pycpp_filters --test_lang_filters=cc,py --test_size_filters=small,medium
+test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...

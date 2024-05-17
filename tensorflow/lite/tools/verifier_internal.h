@@ -12,23 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_LITE_TOOLS_VERIFIER_INTERNAL_H_
 #define TENSORFLOW_LITE_TOOLS_VERIFIER_INTERNAL_H_
 
-#include <stddef.h>
+/// For documentation, see third_party/tensorflow/lite/core/tools/verifier_internal.h
 
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/core/tools/verifier_internal.h"  // IWYU pragma: export
 
 namespace tflite {
 namespace internal {
 
-// Verifies that the buffer is a valid TF Lite Model flatbuffer
-// (without checking the consistency of the flatbuffer contents,
-// just that it is a valid flatbuffer).
-// Returns the FlatBuffer Model on success, or nullptr if the buffer does not
-// contain a valid TF Lite Model flatbuffer.
-const Model* VerifyFlatBufferAndGetModel(const void* buf, size_t len);
+using ::tflite::internal::VerifyFlatBufferAndGetModel;  // NOLINT
 
 }  // namespace internal
 }  // namespace tflite

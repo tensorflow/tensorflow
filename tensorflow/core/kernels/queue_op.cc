@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/queue_op.h"
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/queue_interface.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -21,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -36,9 +38,9 @@ QueueOp::QueueOp(OpKernelConstruction* context) : ResourceOpKernel(context) {
 
 void QueueOp::Compute(OpKernelContext* context) {
   ResourceOpKernel<QueueInterface>::Compute(context);
-  mutex_lock l(mu_);
-  if (resource_ && context->track_allocations()) {
-    context->record_persistent_memory_allocation(resource_->MemoryUsed());
+  core::RefCountPtr<QueueInterface> resource = get_resource();
+  if (resource != nullptr && context->track_allocations()) {
+    context->record_persistent_memory_allocation(resource->MemoryUsed());
   }
 }
 

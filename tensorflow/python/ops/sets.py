@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tensorflow set operations."""
+"""Tensorflow set operations.
+
+API docstring: tensorflow.sets
+"""
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import

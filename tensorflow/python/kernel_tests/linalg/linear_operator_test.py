@@ -275,8 +275,12 @@ class LinearOperatorTest(test.TestCase):
 
     self.assertTrue(operator_matmul.is_square)
     self.assertTrue(operator_matmul.is_non_singular)
-    self.assertEqual(None, operator_matmul.is_self_adjoint)
-    self.assertEqual(None, operator_matmul.is_positive_definite)
+
+    # A @ A is SA since A is.
+    self.assertEqual(True, operator_matmul.is_self_adjoint)
+
+    # A @ A is non-singular (since A is) and A @ A = A @ A.H is semi-def so...
+    self.assertEqual(True, operator_matmul.is_positive_definite)
 
   def test_linear_operator_matmul_hints_false(self):
     matrix1 = array_ops.placeholder_with_default(
@@ -308,19 +312,20 @@ class LinearOperatorTest(test.TestCase):
 
     operator_matmul = operator2.matmul(operator2, adjoint_arg=True)
 
+    # Composition recognizes this as the form A @ A.H, which is square, SA.
+    self.assertTrue(operator_matmul.is_square)
+    self.assertTrue(operator_matmul.is_self_adjoint)
+
     if context.executing_eagerly():
-      self.assertTrue(operator_matmul.is_square)
       # False since we specified is_non_singular=False.
       self.assertFalse(operator_matmul.is_non_singular)
     else:
-      self.assertIsNone(operator_matmul.is_square)
       # May be non-singular, since it's the composition of two non-square.
       # TODO(b/136162840) This is a bit inconsistent, and should probably be
       # False since we specified operator2.is_non_singular == False.
       self.assertIsNone(operator_matmul.is_non_singular)
 
     # No way to deduce these, even in Eager mode.
-    self.assertIsNone(operator_matmul.is_self_adjoint)
     self.assertIsNone(operator_matmul.is_positive_definite)
 
   def test_linear_operator_matmul_hint_infer_square(self):

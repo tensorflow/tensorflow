@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -45,6 +50,10 @@ TakeDataset::TakeDataset(DatasetContext::Params params, int64_t count,
       count_(count),
       input_(input) {
   input_->Ref();
+  random_indexing_compatible_ = absl::OkStatus();
+  if (input_ != nullptr) {
+    random_indexing_compatible_ = input_->RandomIndexingCompatible();
+  }
 }
 
 TakeDataset::~TakeDataset() { input_->Unref(); }
@@ -61,19 +70,6 @@ string TakeDataset::DebugString() const {
   return name_utils::DatasetDebugString(TakeDatasetOp::kDatasetType);
 }
 
-int64_t TakeDataset::CardinalityInternal() const {
-  int64_t n = input_->Cardinality();
-  if (n == kUnknownCardinality) {
-    return kUnknownCardinality;
-  }
-  if (n == kInfiniteCardinality) {
-    return count_;
-  } else if (count_ == kInfiniteCardinality) {
-    return n;
-  }
-  return std::min(n, count_);
-}
-
 int64_t TakeDataset::CardinalityInternal(CardinalityOptions options) const {
   int64_t n = input_->Cardinality(options);
   if (n == kUnknownCardinality) {
@@ -84,14 +80,13 @@ int64_t TakeDataset::CardinalityInternal(CardinalityOptions options) const {
   } else if (count_ == kInfiniteCardinality) {
     return n;
   }
-
   return std::min(n, count_);
 }
 
 Status TakeDataset::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
   inputs->push_back(input_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TakeDataset::CheckExternalState() const {
@@ -104,14 +99,21 @@ Status TakeDataset::Get(OpKernelContext* ctx, int64 index,
   return input_->Get(ctx, index, out_tensors);
 }
 
+absl::Status TakeDataset::RandomIndexingCompatible() const {
+  return random_indexing_compatible_;
+}
+
 class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
  public:
   explicit EmptyIterator(const Params& params)
       : DatasetIterator<TakeDataset>(params) {}
+
+  bool SymbolicCheckpointCompatible() const override { return true; }
+
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
     *end_of_sequence = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  protected:
@@ -123,12 +125,12 @@ class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
 
   Status SaveInternal(SerializationContext* ctx,
                       IteratorStateWriter* writer) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status RestoreInternal(IteratorContext* ctx,
                          IteratorStateReader* reader) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -136,6 +138,8 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
  public:
   explicit FiniteIterator(const Params& params)
       : DatasetIterator<TakeDataset>(params), i_(0) {}
+
+  bool SymbolicCheckpointCompatible() const override { return true; }
 
   Status Initialize(IteratorContext* ctx) override {
     return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
@@ -146,20 +150,20 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
     mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
     if (!input_impl_) {
       *end_of_sequence = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
     while (dataset()->count_ < 0 || i_ < dataset()->count_) {
       TF_RETURN_IF_ERROR(
           input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
       if (!*end_of_sequence) {
         ++i_;
-        return OkStatus();
+        return absl::OkStatus();
       }
       break;
     }
     *end_of_sequence = true;
     input_impl_.reset();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  protected:
@@ -172,25 +176,34 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
   Status SaveInternal(SerializationContext* ctx,
                       IteratorStateWriter* writer) override {
     mutex_lock l(mu_);
-    TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurIndex, i_));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kInputImplEmpty,
+                                           static_cast<int64_t>(!input_impl_)));
     if (input_impl_) {
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-    } else {
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status RestoreInternal(IteratorContext* ctx,
                          IteratorStateReader* reader) override {
+    if (ctx->restored_element_count().has_value()) {
+      mutex_lock l(mu_);
+      i_ = *ctx->restored_element_count();
+      return RestoreInput(ctx, reader, input_impl_);
+    }
+
     mutex_lock l(mu_);
-    TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIndex), &i_));
-    if (!reader->Contains(full_name(kInputImplEmpty))) {
+    TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &i_));
+    int64_t input_empty;
+    TF_RETURN_IF_ERROR(
+        reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
+    if (!static_cast<bool>(input_empty)) {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
     } else {
       input_impl_.reset();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -220,7 +233,7 @@ Status TakeDataset::AsGraphDefInternal(SerializationContext* ctx,
   Node* count = nullptr;
   TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
   TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node, count}, output));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TakeDatasetOp::TakeDatasetOp(OpKernelConstruction* ctx)

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The full pipline of converting jax random include 2 steps.
+// The full pipeline of converting jax random include 2 steps.
 // 1. Rename the jax random functions to tflite wrapped functions with the aid
 //    of "jax.named_call". For example, in the dumped hlo, the
 //    jax.random.uniform will have name "tfl_wrapped_jax_random_uniform".
@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -46,7 +47,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -54,24 +55,21 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LEGALIZEJAXRANDOMPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 struct LegalizeJaxRandomPass
-    : public LegalizeJaxRandomPassBase<LegalizeJaxRandomPass> {
+    : public impl::LegalizeJaxRandomPassBase<LegalizeJaxRandomPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeJaxRandomPass)
 
   void runOnOperation() override;
 };
 
-inline OpaqueElementsAttr CustomOption(ImplicitLocOpBuilder *builder,
-                                       const std::string &content) {
-  ShapedType type = RankedTensorType::get(
-      {static_cast<int64_t>(content.size())}, builder->getIntegerType(8));
-  return OpaqueElementsAttr::get(builder->getContext()->getLoadedDialect("tfl"),
-                                 type,
-                                 StringRef(content.data(), content.size()));
+inline ConstBytesAttr CustomOption(ImplicitLocOpBuilder *builder,
+                                   const std::string &content) {
+  return ConstBytesAttr::get(builder->getContext(),
+                             StringRef(content.data(), content.size()));
 }
 
 inline bool IsJaxRandomUniform(mlir::func::FuncOp func) {
@@ -86,10 +84,10 @@ void LegalizeJaxRandomPass::runOnOperation() {
   auto func = getOperation();
   if (!IsJaxRandomUniform(func) && !IsJaxRandomNormal(func)) return;
   auto result_tuple_ty =
-      func.getFunctionType().getResult(0).dyn_cast_or_null<TupleType>();
+      mlir::dyn_cast_or_null<TupleType>(func.getFunctionType().getResult(0));
   if (!result_tuple_ty) return;
   if (result_tuple_ty.size() != 1) return;
-  auto result_ty = result_tuple_ty.getType(0).dyn_cast<ShapedType>();
+  auto result_ty = mlir::dyn_cast<ShapedType>(result_tuple_ty.getType(0));
 
   func.eraseBody();
   func.addEntryBlock();
@@ -101,7 +99,7 @@ void LegalizeJaxRandomPass::runOnOperation() {
   }
   auto result_shape_attr = builder.getI32TensorAttr(result_shape_i32);
   Value result_shape_tensor =
-      builder.create<mhlo::ConstantOp>(result_shape_attr);
+      builder.create<stablehlo::ConstantOp>(result_shape_attr);
   auto custom_code =
       IsJaxRandomUniform(func) ? "RandomUniform" : "RandomStandardNormal";
 
@@ -114,7 +112,7 @@ void LegalizeJaxRandomPass::runOnOperation() {
                                  ValueRange(result_shape_tensor_vec),
                                  custom_code, attr)
           .getResult(0);
-  Value tulple_result = builder.create<mhlo::TupleOp>(random_result);
+  Value tulple_result = builder.create<stablehlo::TupleOp>(random_result);
   builder.create<mlir::func::ReturnOp>(tulple_result);
 }
 }  // namespace

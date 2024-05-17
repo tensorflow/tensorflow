@@ -15,15 +15,24 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 
+#include <utility>
+#include <vector>
+
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/base64.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
@@ -89,7 +98,252 @@ TEST(GraphToFunctionDefTest, Basics) {
   string diff;
   bool fdefs_equal =
       EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
+
   EXPECT_TRUE(fdefs_equal) << diff;
+}
+
+TEST(GraphToFunctionDefTest, OverrideOutputNames) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(root.WithOpName("A"), DT_FLOAT, 0);
+  auto b = ops::_Retval(root.WithOpName("H"), a, 0);
+
+  FunctionDef fdef;
+  // Override the output name from h to b.
+  TF_EXPECT_OK(GraphToFunctionDef(*root.graph(), "test_fn", {"b"}, &fdef));
+
+  FunctionDef fdef_expected =
+      FunctionDefHelper::Create("test_fn",      // function name
+                                {"a: float"},   // inputs
+                                {"b: float"},   // outputs
+                                {},             // attrs
+                                {},             // body
+                                {{"b", "a"}});  // return values
+
+  string diff;
+  bool fdefs_equal =
+      EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
+
+  EXPECT_TRUE(fdefs_equal) << diff;
+}
+
+TEST(GraphToFunctionDefTest, DuplicatedOutputNames) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(root.WithOpName("A"), DT_FLOAT, 0);
+  auto b = ops::_Retval(root.WithOpName("B"), a, 0);
+  auto c = ops::_Retval(root.WithOpName("C"), a, 1);
+
+  FunctionDef fdef;
+  // Duplicated output names.
+  auto status = GraphToFunctionDef(*root.graph(), "test_fn", {"d", "d"}, &fdef);
+
+  EXPECT_THAT(status, tensorflow::testing::StatusIs(
+                          error::INVALID_ARGUMENT,
+                          "Cannot have duplicate output names. Name 'd' "
+                          "appears more than once in 'output_names' array."));
+}
+
+TEST(GraphToFunctionDefTest, ArgAttrShape) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(root.WithOpName("A"), DT_FLOAT, 0);
+  // Attr "shape" is auto renamed to "_output_shapes".
+  AttrValue shape_attr;
+  *(shape_attr.mutable_shape()) = TensorShape({1, 2}).AsProto();
+  a.node()->AddAttr("shape", shape_attr);
+  auto b = ops::_Retval(root.WithOpName("B"), a, 0);
+
+  FunctionDef fdef;
+  TF_EXPECT_OK(GraphToFunctionDef(*root.graph(), "test_fn", &fdef));
+
+  FunctionDef fdef_expected =
+      FunctionDefHelper::Create("test_fn",      // function name
+                                {"a: float"},   // inputs
+                                {"b: float"},   // outputs
+                                {},             // attrs
+                                {},             // body
+                                {{"b", "a"}});  // return values
+
+  FunctionDef::ArgAttrs attrs;
+  AttrValue output_shapes;
+  *(output_shapes.mutable_list()->add_shape()) = TensorShape({1, 2}).AsProto();
+  attrs.mutable_attr()->insert({"_output_shapes", output_shapes});
+  (*fdef_expected.mutable_arg_attr())[0] = std::move(attrs);
+
+  string diff;
+  bool fdefs_equal =
+      EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
+
+  EXPECT_TRUE(fdefs_equal) << diff;
+}
+
+TEST(GraphToFunctionDefTest, ArgAttrPrivateAttr) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(root.WithOpName("A"), DT_FLOAT, 0);
+  // Private arg attr starting with "_" are copied to fdef arg_attr.
+  AttrValue private_attr;
+  *(private_attr.mutable_s()) = "value";
+  a.node()->AddAttr("_name", private_attr);
+  auto b = ops::_Retval(root.WithOpName("B"), a, 0);
+
+  FunctionDef fdef;
+  TF_EXPECT_OK(GraphToFunctionDef(*root.graph(), "test_fn", &fdef));
+
+  FunctionDef fdef_expected =
+      FunctionDefHelper::Create("test_fn",      // function name
+                                {"a: float"},   // inputs
+                                {"b: float"},   // outputs
+                                {},             // attrs
+                                {},             // body
+                                {{"b", "a"}});  // return values
+
+  FunctionDef::ArgAttrs attrs;
+  attrs.mutable_attr()->insert({"_name", private_attr});
+  (*fdef_expected.mutable_arg_attr())[0] = std::move(attrs);
+
+  string diff;
+  bool fdefs_equal =
+      EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
+
+  EXPECT_TRUE(fdefs_equal) << diff;
+}
+
+TEST(GraphToFunctionDefTest, ArgAttrConstInput) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::Const(root.WithOpName("A"), 0.0f, {2, 2});
+  // Attr "shape" with dtype other than DT_RESOURCE is copied to fdef arg_attr.
+  Tensor t(DT_FLOAT, TensorShape({2, 2}));
+  TensorProto t_proto;
+  t.AsProtoField(&t_proto);
+  AttrValue attr;
+  *(attr.mutable_tensor()) = std::move(t_proto);
+  a.node()->AddAttr("value", attr);
+  a.node()->AddAttr("index", 0);
+  auto b = ops::_Retval(root.WithOpName("B"), a, 0);
+
+  std::vector<OutputTensor> inputs;
+  std::vector<OutputTensor> outputs;
+  auto add_arg_or_retval = [](Node* node,
+                              std::vector<OutputTensor>* args_or_retvals) {
+    int index;
+    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "index", &index));
+    if (index >= args_or_retvals->size()) {
+      args_or_retvals->resize(index + 1);
+    }
+    (*args_or_retvals)[index].node = node;
+    return OkStatus();
+  };
+  for (Node* node : root.graph()->op_nodes()) {
+    // Set const as the input node.
+    if (node->IsConstant()) {
+      TF_EXPECT_OK(add_arg_or_retval(node, &inputs));
+    } else {
+      TF_EXPECT_OK(add_arg_or_retval(node, &outputs));
+    }
+  }
+
+  FunctionDef fdef;
+  // Adds description.
+  TF_EXPECT_OK(GraphToFunctionDef(
+      *root.graph(), "test_fn", /*append_hash_to_fn_name=*/false,
+      /*set_stateful_from_nodes=*/false,
+      /*copy_placeholder_attrs_from_nodes=*/false, /*body_nodes*/ {}, inputs,
+      outputs,
+      /*output_names*/ {}, /*control_outputs=*/{}, /*control_output_names=*/{},
+      /*description=*/"ArgAttrConstInput", &fdef));
+
+  FunctionDef fdef_expected =
+      FunctionDefHelper::Create("test_fn",      // function name
+                                {"a: float"},   // inputs
+                                {"b: float"},   // outputs
+                                {},             // attrs
+                                {},             // body
+                                {{"b", "a"}});  // return values
+
+  AttrValue value;
+  *(value.mutable_list()->add_shape()) = TensorShape({2, 2}).AsProto();
+  FunctionDef::ArgAttrs attrs;
+  attrs.mutable_attr()->insert({"_output_shapes", value});
+  (*fdef_expected.mutable_arg_attr())[0] = std::move(attrs);
+  (*fdef_expected.mutable_signature()->mutable_description()) =
+      "ArgAttrConstInput";
+
+  string diff;
+  bool fdefs_equal =
+      EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
+
+  EXPECT_TRUE(fdefs_equal) << diff;
+}
+
+TEST(GraphToFunctionDefTest, AppendHashToFnName) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::Const(root.WithOpName("A"), 0.0f, {2, 2});
+  AttrValue foo;
+  *foo.mutable_placeholder() = "foo";
+  a.node()->AddAttr("attr_name_not_found", foo);
+
+  std::vector<const Node*> body_nodes;
+  for (Node* node : root.graph()->op_nodes()) {
+    body_nodes.push_back(node);
+  }
+
+  FunctionDef fdef;
+  // Set append_hash_to_fn_name to true.
+  TF_EXPECT_OK(GraphToFunctionDef(
+      *root.graph(), "test_fn", /*append_hash_to_fn_name=*/true,
+      /*set_stateful_from_nodes=*/false,
+      /*copy_placeholder_attrs_from_nodes=*/false, /*body_nodes*/ body_nodes,
+      /*inputs*/ {},
+      /*outputs*/ {},
+      /*output_names*/ {}, /*control_outputs=*/{}, /*control_output_names=*/{},
+      /*description=*/nullptr, &fdef));
+
+  // Hash appended after "test_fn".
+  EXPECT_TRUE(absl::StartsWith(fdef.signature().name(), "test_fn_"));
+}
+
+TEST(GraphToFunctionDefTest, CopyPlaceholderAttrsFromNodes) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::VarHandleOp(root.WithOpName("var"), DT_FLOAT, {});
+  AttrValue foo;
+  *foo.mutable_placeholder() = "foo";
+  // The op_def of VarHandleOp has a "shared_name" attribute.
+  a.node()->AddAttr("shared_name", foo);
+  std::vector<const Node*> body_nodes;
+  for (Node* node : root.graph()->op_nodes()) {
+    body_nodes.push_back(node);
+  }
+
+  FunctionDef fdef;
+  TF_EXPECT_OK(GraphToFunctionDef(
+      *root.graph(), "test_fn", /*append_hash_to_fn_name=*/false,
+      /*set_stateful_from_nodes=*/false,
+      /*copy_placeholder_attrs_from_nodes=*/true, body_nodes, /*inputs*/ {},
+      /*outputs*/ {},
+      /*output_names*/ {}, /*control_outputs=*/{}, /*control_output_names=*/{},
+      /*description=*/nullptr, &fdef));
+}
+
+TEST(GraphToFunctionDefTest, CopyPlaceholderAttrsFromNodesUnImplemented) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::Const(root.WithOpName("A"), 0.0f, {2, 2});
+  AttrValue foo;
+  *foo.mutable_placeholder() = "foo";
+  // Const op_def doesn't have a "attr_name_not_found" attr.
+  a.node()->AddAttr("attr_name_not_found", foo);
+  std::vector<const Node*> body_nodes;
+  for (Node* node : root.graph()->op_nodes()) {
+    body_nodes.push_back(node);
+  }
+
+  FunctionDef fdef;
+  auto status = GraphToFunctionDef(
+      *root.graph(), "test_fn", /*append_hash_to_fn_name=*/false,
+      /*set_stateful_from_nodes=*/false,
+      /*copy_placeholder_attrs_from_nodes=*/true, body_nodes, /*inputs*/ {},
+      /*outputs*/ {},
+      /*output_names*/ {}, /*control_outputs=*/{}, /*control_output_names=*/{},
+      /*description=*/nullptr, &fdef);
+
+  EXPECT_EQ(status.code(), error::UNIMPLEMENTED);
 }
 
 // Regression test for a crash if there was a control edge to a _Retval node.
@@ -123,6 +377,7 @@ TEST(GraphToFunctionDefTest, ControlDependencies) {
   string diff;
   bool fdefs_equal =
       EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
+
   EXPECT_TRUE(fdefs_equal) << diff;
 }
 
@@ -163,6 +418,7 @@ TEST(GraphToFunctionDefTest, ControlOutputs) {
   string diff;
   bool fdefs_equal =
       EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
+
   EXPECT_TRUE(fdefs_equal) << diff;
 }
 

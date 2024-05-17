@@ -23,7 +23,7 @@ def _internal_attr_name(name):
   return "_" + name
 
 
-class OptionsBase(object):
+class OptionsBase:
   """Base class for representing a set of tf.data options.
 
   Attributes:
@@ -166,6 +166,10 @@ def merge_options(*options_list):
         setattr(result, name, that)
       elif isinstance(this, OptionsBase):
         setattr(result, name, merge_options(this, that))
+      elif name == "framework_type":
+        # Since, `framework_type`` is a repeated string field (list), the merged
+        # result will be a combined list.
+        setattr(result, name, this+that)
       elif this != that:
         logging.warning("Changing the value of option %s from %r to %r.", name,
                         this, that)

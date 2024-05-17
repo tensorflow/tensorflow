@@ -22,13 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
-
-class Interpreter;
 
 namespace xnnpack {
 

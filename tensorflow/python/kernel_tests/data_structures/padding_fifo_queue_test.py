@@ -23,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -37,7 +38,7 @@ class PaddingFIFOQueueTest(test.TestCase):
     with ops.Graph().as_default():
       q = data_flow_ops.PaddingFIFOQueue(
           10, dtypes_lib.float32, ((None,),), name="Q")
-    self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
+    self.assertTrue(isinstance(q.queue_ref, tensor.Tensor))
     self.assertProtoEquals("""
       name:'Q' op:'PaddingFIFOQueueV2'
       attr { key: 'component_types' value { list { type: DT_FLOAT } } }
@@ -53,7 +54,7 @@ class PaddingFIFOQueueTest(test.TestCase):
           5, (dtypes_lib.int32, dtypes_lib.float32), ((), ()),
           shared_name="foo",
           name="Q")
-    self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
+    self.assertTrue(isinstance(q.queue_ref, tensor.Tensor))
     self.assertProtoEquals("""
       name:'Q' op:'PaddingFIFOQueueV2'
       attr { key: 'component_types' value { list {
@@ -72,7 +73,7 @@ class PaddingFIFOQueueTest(test.TestCase):
           shapes=(tensor_shape.TensorShape([1, 1, 2, 3]),
                   tensor_shape.TensorShape([5, 8])),
           name="Q")
-    self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
+    self.assertTrue(isinstance(q.queue_ref, tensor.Tensor))
     self.assertProtoEquals("""
       name:'Q' op:'PaddingFIFOQueueV2'
       attr { key: 'component_types' value { list {

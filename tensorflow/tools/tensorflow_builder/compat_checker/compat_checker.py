@@ -15,12 +15,11 @@
 # ==============================================================================
 """Checks if a set of configuration(s) is version and dependency compatible."""
 
+import configparser
 import re
 import sys
 
-import six
-from six.moves import range
-import six.moves.configparser
+
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
 
@@ -47,8 +46,8 @@ def _compare_versions(v1, v2):
     raise RuntimeError("Cannot compare `inf` to `inf`.")
 
   rtn_dict = {"smaller": None, "larger": None}
-  v1_list = six.ensure_str(v1).split(".")
-  v2_list = six.ensure_str(v2).split(".")
+  v1_list = v1.split(".")
+  v2_list = v2.split(".")
   # Take care of cases with infinity (arg=`inf`).
   if v1_list[0] == "inf":
     v1_list[0] = str(int(v2_list[0]) + 1)
@@ -111,7 +110,7 @@ def _get_func_name():
   return tf_inspect.stack()[1][3]
 
 
-class ConfigCompatChecker(object):
+class ConfigCompatChecker:
   """Class that checks configuration versions and dependency compatibilities.
 
   `ConfigCompatChecker` checks a given set of configurations and their versions
@@ -371,7 +370,7 @@ class ConfigCompatChecker(object):
     curr_status = True
 
     # Initialize config parser for parsing version requirements file.
-    parser = six.moves.configparser.ConfigParser()
+    parser = configparser.ConfigParser()
     parser.read(self.req_file)
 
     if not parser.sections():
@@ -634,7 +633,7 @@ class ConfigCompatChecker(object):
     if filtered[-1] == "]":
       filtered = filtered[:-1]
     elif "]" in filtered[-1]:
-      filtered[-1] = six.ensure_str(filtered[-1]).replace("]", "")
+      filtered[-1] = filtered[-1].replace("]", "")
     # If `]` is missing, then it could be a formatting issue with
     # config file (.ini.). Add to warning.
     else:
@@ -785,7 +784,7 @@ class ConfigCompatChecker(object):
     # Check if all `Required` configs are found in user configs.
     usr_keys = list(self.usr_config.keys())
 
-    for k in six.iterkeys(self.usr_config):
+    for k in self.usr_config.keys():
       if k not in usr_keys:
         err_msg = "[Error] Required config not found in user config."
         err_msg += "(required = %s, " % str(k)
@@ -797,7 +796,7 @@ class ConfigCompatChecker(object):
 
     # Parse each user config and validate its compatibility.
     overall_status = True
-    for config_name, spec in six.iteritems(self.usr_config):
+    for config_name, spec in self.usr_config.items():
       temp_status = True
       # Check under which section the user config is defined.
       in_required = config_name in list(self.required.keys())

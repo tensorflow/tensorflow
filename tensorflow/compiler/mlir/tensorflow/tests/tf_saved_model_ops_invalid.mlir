@@ -346,7 +346,7 @@ module attributes {tf_saved_model.semantics} {
   // expected-error@+1 {{the initializer function should have no output}}
   "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   func.func @init() -> (tensor<1xf32> {tf_saved_model.index_path = ["output"]})
-    attributes { tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"] } {
+    attributes { tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"], tf_saved_model.initializer_type = "init_op" } {
     %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
     func.return %0 : tensor<1xf32>
   }
@@ -360,7 +360,7 @@ module attributes {tf_saved_model.semantics} {
   // expected-error@+1 {{there must be no more than one session_initializer op}}
   "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   func.func @init() -> (tensor<1xf32> {tf_saved_model.index_path = ["output"]})
-    attributes { tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"] } {
+    attributes { tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"], tf_saved_model.initializer_type = "init_op" } {
     %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
     func.return %0 : tensor<1xf32>
   }
@@ -383,7 +383,61 @@ module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{the initializer function should have only one exported name}}
   "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
-  func.func @init() attributes { tf_saved_model.exported_names = ["a", "b"] } {
+  func.func @init() attributes { tf_saved_model.exported_names = ["a", "b"], tf_saved_model.initializer_type = "restore_op" } {
+    func.return
+  }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
+
+  // expected-error@+1 {{tf_saved_model.initializer_type should be one of 'restore_op' or 'init_op'. Got: unknown_init_op}}
+  func.func @init() attributes {
+    tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"],
+    tf_saved_model.initializer_type = "unknown_init_op" } {
+    func.return
+  }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  "tf_saved_model.session_initializer"() { initializers = [@init_0, @init_1] } : () -> ()
+
+  func.func @init_0() attributes {
+    tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_init_0"],
+    tf_saved_model.initializer_type = "restore_op" } {
+    func.return
+  }
+
+  // expected-error@+1 {{Attribute tf_saved_model.initializer_type should not have duplicate values. Found duplicate: "restore_op"}}
+  func.func @init_1() attributes {
+    tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_init_1"],
+    tf_saved_model.initializer_type = "restore_op" } {
+    func.return
+  }
+}
+
+// -----
+
+// expected-error@+1 {{Attribute tf_saved_model.initializer_type should be on a func::FuncOp}}
+module attributes {tf_saved_model.semantics, tf_saved_model.initializer_type = "restore_op"} {
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
+
+  // expected-error@+1 {{tf_saved_model.initializer_type should be a StringAttr}}
+  func.func @init() attributes {
+    tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"],
+    tf_saved_model.initializer_type = 123 } {
     func.return
   }
 }

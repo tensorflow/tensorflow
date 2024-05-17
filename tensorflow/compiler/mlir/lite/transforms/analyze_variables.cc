@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -23,7 +25,7 @@ namespace mlir {
 namespace TFL {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_ANALYZEVARIABLESPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Attribute name to be added on the module to identify whether
@@ -48,12 +50,18 @@ bool IsSupportedTFLiteControlFlow(Operation* op) {
 // Returns true if the 'op' is one of the supported TF control flow ops or
 // dataset ops. Those ops just forward the operands to other subgraphs.
 bool IsSupportedTFDataForwardingOp(Operation* op) {
-  return llvm::isa<TF::MapDatasetOp, TF::ReduceDatasetOp,
+  return llvm::isa<TF::MapDatasetOp, TF::ReduceDatasetOp, TF::CacheDatasetV2Op,
                    TF::TakeWhileDatasetOp, TF::IfOp, TF::WhileOp>(op);
 }
 
+// Returns true if the 'op' is one of the supported custom op that takes
+// resource type.
+bool IsSupportedTFCustomOp(Operation* op) {
+  return op->getName().getStringRef().str() == "tf.SentencepieceTokenizeOp";
+}
+
 class AnalyzeVariablesPass
-    : public AnalyzeVariablesPassBase<AnalyzeVariablesPass> {
+    : public impl::AnalyzeVariablesPassBase<AnalyzeVariablesPass> {
  public:
   explicit AnalyzeVariablesPass() {}
   void runOnOperation() override;
@@ -69,6 +77,8 @@ void AnalyzeVariablesPass::runOnOperation() {
     if (IsSupportedTFLiteResourceOp(op)) return WalkResult::advance();
     if (IsSupportedTFLiteControlFlow(op)) return WalkResult::advance();
 
+    if (IsSupportedTFCustomOp(op)) return WalkResult::advance();
+
     // Check for ops that are legalized to TFLite.
     if (op->getDialect()->getNamespace() == "tfl") {
       return WalkResult::advance();
@@ -83,7 +93,8 @@ void AnalyzeVariablesPass::runOnOperation() {
     // Note: this might disable native variables in more than needed cases.
     // TODO(b/189370197): Enhance variable analysis.
     for (auto operand : op->getOperands()) {
-      if (getElementTypeOrSelf(operand.getType()).isa<TF::ResourceType>()) {
+      if (mlir::isa<TF::ResourceType>(
+              getElementTypeOrSelf(operand.getType()))) {
         legalize_to_tfl = false;
         return WalkResult::interrupt();
       }

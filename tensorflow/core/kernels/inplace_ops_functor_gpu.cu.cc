@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
@@ -53,7 +53,7 @@ Status DoParallelConcatUpdate(const Device& d, const Tensor& value, int32 loc,
   TF_CHECK_OK(GpuLaunchKernel(
       DoParallelConcatOpKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
       d.stream(), cfg.virtual_thread_count, nrows, ncols, loc, src, dst));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
@@ -69,6 +69,7 @@ Status DoParallelConcat(const Device& d, const Tensor& value, int32 loc,
     CASE(float)
     CASE(double)
     CASE(Eigen::half)
+    CASE(Eigen::bfloat16)
 // Using TF_CALL_GPU_NUMBER_TYPES(CASE) results in the compiler complaining
 // that CASE is not defined...hence the above construction
 #undef CASE
@@ -76,7 +77,7 @@ Status DoParallelConcat(const Device& d, const Tensor& value, int32 loc,
       return errors::InvalidArgument("Unsupported data type: ",
                                      DataTypeString(value.dtype()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T, InplaceOpType op>
@@ -175,13 +176,17 @@ Status DoInplace(const Device& d, InplaceOpType op, const Tensor& i,
     CASE(float)
     CASE(double)
     CASE(Eigen::half)
-    CASE(int64)
+    CASE(Eigen::bfloat16)
+    CASE(uint8_t)
+    CASE(int8_t)
+    CASE(int64_t)
+    CASE(uint64_t)
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported data type: ",
+      return errors::InvalidArgument("Unsupported data type from DoInplace: ",
                                      DataTypeString(v.dtype()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
@@ -197,15 +202,19 @@ Status DoCopy(const Device& d, const Tensor& x, Tensor* y) {
     CASE(float)
     CASE(double)
     CASE(Eigen::half)
+    CASE(Eigen::bfloat16)
     CASE(complex64)
     CASE(complex128)
-    CASE(int64)
+    CASE(uint8_t)
+    CASE(int8_t)
+    CASE(int64_t)
+    CASE(uint64_t)
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported dtype: ",
+      return errors::InvalidArgument("Unsupported dtype from DoCopy: ",
                                      DataTypeString(x.dtype()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace functor

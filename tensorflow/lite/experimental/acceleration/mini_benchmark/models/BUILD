@@ -16,13 +16,22 @@
 # Model files for mini-benchmark tests and examples.
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//visibility:public",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+        "//tensorflow/lite/tools/benchmark:__subpackages__",
     ],
     licenses = ["notice"],
 )
 
 exports_files(["blazeface_mlkit_v1.tfl"])
+
+filegroup(
+    name = "add.bin",
+    srcs = [
+        "//tensorflow/lite:testdata/add.bin",
+    ],
+)
 
 filegroup(
     name = "mobilenet_v1_1.0_224.tflite",

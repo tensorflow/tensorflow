@@ -16,19 +16,32 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_TEST_UTIL_H_
 
 #include <functional>
+#include <ostream>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace testing {
+
+// Creates a local tempfile and returns the path.
+std::string LocalTempFilename();
+
+// Creates a dataset graph for testing. `dataset_name` is one of the filenames
+// defined in `testdata` (without `.pbtxt`). `args` specifies arguments passed
+// to the dataset. These args appear as `$0`, `$1`, etc, in the dataset
+// definition and will be replaced with the specified args.
+absl::StatusOr<DatasetDef> GetTestDataset(
+    absl::string_view dataset_name, const std::vector<std::string>& args = {});
 
 // Returns a test dataset representing
 // tf.data.Dataset.range(range). Useful for testing dataset graph execution.
@@ -43,17 +56,25 @@ DatasetDef RangeSquareDataset(int64_t range);
 DatasetDef RangeDatasetWithShardHint(int64_t range);
 
 // Returns a test dataset representing
+// tf.data.Dataset.range(100000000).repeat().
+DatasetDef InfiniteDataset();
+
+// Returns a distributed snapshot metadata for a dummy dataset.
+experimental::DistributedSnapshotMetadata
+CreateDummyDistributedSnapshotMetadata();
+
+// Returns a test dataset representing
 // tf.data.Dataset.from_tensor_slices(["filenames"]).interleave(
 //     lambda filepath: tf.data.TextLineDataset(filepath),
 //     cycle_length=10)
-StatusOr<DatasetDef> InterleaveTextlineDataset(
+absl::StatusOr<DatasetDef> InterleaveTextlineDataset(
     const std::vector<tstring>& filenames,
     const std::vector<tstring>& contents);
 
 // Repeatedly calls `f()`, blocking until `f()` returns `false`.
 //
 // Returns an error if `f()` returns an error.
-Status WaitWhile(std::function<StatusOr<bool>()> f);
+absl::Status WaitWhile(std::function<absl::StatusOr<bool>()> f);
 
 // TODO(b/229726259): Make EqualsProto available in Googletest
 // (Public feature request: https://github.com/google/googletest/issues/1761).

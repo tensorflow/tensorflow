@@ -53,7 +53,7 @@ class PlacerInspectionRequiredOpChecker {
                                     const FunctionLibraryDefinition* flib_def);
 
   // If `node` is considered a deep op, sets `*is_deep` to true and returns
-  // Status::OK(). If an error occurs, returns that error, and the value of
+  // OkStatus(). If an error occurs, returns that error, and the value of
   // `*is_deep` is undefined.
   // Currently, an op is considered deep, if it is a calling a function
   // returning a resource. This definition is driven by Placer's need to
@@ -73,7 +73,8 @@ class PlacerInspectionRequiredOpChecker {
 // Extracts `fdef` and `func` from `flib_def` for the function identified
 // in "f" attribute of `node`.
 Status GetFunctionDefAndAttrs(const FunctionLibraryDefinition& flib_def,
-                              const Node& node, const FunctionDef** fdef,
+                              const Node& node,
+                              core::RefCountPtr<FunctionRecord>* fdef,
                               NameAttrList* func);
 
 // The "call" stack of functions.

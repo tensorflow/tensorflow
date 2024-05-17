@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -50,7 +50,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PREPARECOMPOSITEFUNCTIONSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 constexpr char kTFAPIImplements[] = "tf.api_implements";
@@ -63,13 +63,10 @@ constexpr char kTFLFusableOp[] = "tfl_fusable_op";
 
 using mlir::TF::FuncAttr;
 
-inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
-                                       const std::string& content) {
-  ShapedType type = RankedTensorType::get(
-      {static_cast<int64_t>(content.size())}, builder->getIntegerType(8));
-  return OpaqueElementsAttr::get(builder->getContext()->getLoadedDialect("tfl"),
-                                 type,
-                                 StringRef(content.data(), content.size()));
+inline ConstBytesAttr CustomOption(OpBuilder* builder,
+                                   const std::string& content) {
+  return ConstBytesAttr::get(builder->getContext(),
+                             StringRef(content.data(), content.size()));
 }
 
 LogicalResult CreateTflFusableOpCustomOptions(
@@ -83,12 +80,16 @@ LogicalResult CreateTflFusableOpCustomOptions(
   size_t start_map = fbb.StartMap();
 
   for (auto attr : attrs) {
-    if (auto float_attr = attr.second.dyn_cast_or_null<FloatAttr>()) {
+    if (auto float_attr = mlir::dyn_cast_or_null<FloatAttr>(attr.second)) {
       fbb.Float(attr.first.data(), float_attr.getValue().convertToFloat());
-    } else if (auto int_attr = attr.second.dyn_cast_or_null<IntegerAttr>()) {
+    } else if (auto int_attr =
+                   mlir::dyn_cast_or_null<IntegerAttr>(attr.second)) {
       fbb.Int(attr.first.data(), int_attr.getInt());
-    } else if (auto bool_attr = attr.second.dyn_cast_or_null<BoolAttr>()) {
+    } else if (auto bool_attr = mlir::dyn_cast_or_null<BoolAttr>(attr.second)) {
       fbb.Bool(attr.first.data(), bool_attr.getValue());
+    } else if (auto string_attr =
+                   mlir::dyn_cast_or_null<StringAttr>(attr.second)) {
+      fbb.String(attr.first.data(), string_attr.getValue().str());
     } else {
       // TODO(b/201482289): support other data types.
       return failure();
@@ -159,7 +160,8 @@ class ConvertEmbeddedLookupFunc {
 };
 
 class PrepareCompositeFunctionsPass
-    : public PrepareCompositeFunctionsPassBase<PrepareCompositeFunctionsPass> {
+    : public impl::PrepareCompositeFunctionsPassBase<
+          PrepareCompositeFunctionsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect>();
   }
@@ -182,7 +184,7 @@ LogicalResult CheckFusableLayerNormalizedLstmCellSimple(
     func::FuncOp lstm_func) {
   for (int i = 0; i < 5; ++i) {
     auto input = lstm_func.getArgument(i);
-    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    auto input_type = mlir::dyn_cast_or_null<RankedTensorType>(input.getType());
     if (!input_type) {
       lstm_func.emitWarning(
           "we cannot fuse this lstm func because all the inputs have not "
@@ -197,7 +199,7 @@ LogicalResult CheckFusableLayerNormalizedLstmCellSimple(
 LogicalResult CheckFusableLstmCellSimple(func::FuncOp lstm_func) {
   for (int i = 0; i < 4; ++i) {
     auto input = lstm_func.getArgument(i);
-    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    auto input_type = mlir::dyn_cast_or_null<RankedTensorType>(input.getType());
     if (!input_type) {
       lstm_func.emitWarning(
           "we cannot fuse this lstm func because all the inputs have not "
@@ -250,7 +252,7 @@ LogicalResult CheckFusableKerasLstm(func::FuncOp lstm_func, ModuleOp module) {
   // types.
   for (int i = 0; i < 6; ++i) {
     auto input = lstm_func.getArgument(i);
-    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    auto input_type = mlir::dyn_cast_or_null<RankedTensorType>(input.getType());
     if (!input_type) {
       lstm_func.emitWarning(
           "we cannot fuse this lstm func because all the inputs have not "
@@ -343,7 +345,7 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
   StringRef api_name = attr.getName().getLeafReference().getValue();
   bool enable_fuse_tftext =
       tfl_fuse_tftext_ || IsTFTextRegistered(tensorflow::OpRegistry::Global());
-  if (api_name.startswith(kTFTextAPIPrefix) && enable_fuse_tftext) {
+  if (api_name.starts_with(kTFTextAPIPrefix) && enable_fuse_tftext) {
     if (failed(ConvertTFTextAPI(func, api_name, attr))) {
       return signalPassFailure();
     }
@@ -368,7 +370,7 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
     for (auto attr_item : dict_attr) {
       // Push other attributes except the TFLFusableOp.
       if (attr_item.getName() == kTFLFusableOp &&
-          attr_item.getValue().dyn_cast<BoolAttr>().getValue()) {
+          mlir::dyn_cast<BoolAttr>(attr_item.getValue()).getValue()) {
         tfl_fusable_op = true;
       } else {
         attributes.push_back({attr_item.getName(), attr_item.getValue()});
@@ -392,13 +394,28 @@ void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(func::FuncOp func,
   // outputs(full sequence) is used, not the last_output, not the new_states.
   // We will discard everything except the outputs.
   // And the outputs is in the shape of [batch, time, units].
-  if (attr.getValue().startswith("lstm_")) {
+  if (attr.getValue().starts_with("lstm_")) {
     // Check if the keras lstm can be fused, if not, we just don't do anything.
     if (failed(CheckFusableKerasLstm(func, module))) return;
     func.eraseBody();
     func.addEntryBlock();
     OpBuilder builder(func.getBody());
     if (failed(ConvertKerasLSTMLayer(func, &builder)))
+      return signalPassFailure();
+  }
+
+  // LSTM `func::FuncOps` with indy behavior always have the `tf.api_implements`
+  // function attribute prefixed with `"indy_lstm_"`.
+  // IndyLSTMs have diagonal recurrent weight matrices and can benefit from
+  // more efficent operations in TFLite with the correct conversion (i.e. when
+  // the diagonal recurrent weight matrices are provided as vectors).
+  if (attr.getValue().starts_with("indy_lstm_")) {
+    // Check if the keras lstm can be fused, if not, we just don't do anything.
+    if (failed(CheckFusableKerasLstm(func, module))) return;
+    func.eraseBody();
+    func.addEntryBlock();
+    OpBuilder builder(func.getBody());
+    if (failed(ConvertKerasLSTMLayer(func, &builder, true)))
       return signalPassFailure();
   }
 }

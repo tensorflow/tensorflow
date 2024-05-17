@@ -113,6 +113,8 @@ class Member {
 
   string DebugString() const;
 
+  bool has_assigned_device_name() const { return assigned_device_name_.has_id; }
+
  private:
   // Updates this to contain the intersection of the device types in
   // this and `other_devices`.
@@ -382,7 +384,8 @@ class ColocationGraph {
   const bool allow_soft_placement_;
   const bool log_device_placement_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ColocationGraph);
+  ColocationGraph(const ColocationGraph&) = delete;
+  void operator=(const ColocationGraph&) = delete;
 };
 
 }  // namespace tensorflow

@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for conv followed with bias Add and activations."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -64,8 +64,8 @@ def make_conv_bias_activation_tests(activation_op):
     @tf.function(jit_compile=True)
     def add_conv(input_tensor, filter_input, parameters):
       out = tf.nn.conv2d(
-          input_tensor,
-          filter_input,
+          input=input_tensor,
+          filters=filter_input,
           strides=parameters["strides"],
           dilations=parameters["dilations"],
           padding="VALID",
@@ -91,8 +91,8 @@ def make_conv_bias_activation_tests(activation_op):
         out = add_conv(input_tensor, filter_input, parameters)
       else:
         out = tf.nn.conv2d(
-            input_tensor,
-            filter_input,
+            input=input_tensor,
+            filters=filter_input,
             strides=parameters["strides"],
             dilations=parameters["dilations"],
             padding="VALID",
@@ -109,8 +109,8 @@ def make_conv_bias_activation_tests(activation_op):
         out = add_conv(out, filter_input_2, parameters)
       else:
         out = tf.nn.conv2d(
-            out,
-            filter_input_2,
+            input=out,
+            filters=filter_input_2,
             strides=parameters["strides"],
             dilations=parameters["dilations"],
             padding="VALID",

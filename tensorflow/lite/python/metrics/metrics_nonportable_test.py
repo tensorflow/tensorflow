@@ -38,6 +38,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -354,7 +355,7 @@ def mock_ngrams(data, width, axis=-1, string_separator=' ', name=None):
 
       # Stack the slices.
       stack_axis = axis + 1 if axis >= 0 else axis
-      windowed_data = array_ops.stack(slices, stack_axis)
+      windowed_data = array_ops_stack.stack(slices, stack_axis)
 
       return string_ops.reduce_join(
           windowed_data, axis=axis, separator=string_separator)
@@ -434,10 +435,13 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
     self.convert_and_check_location_info(
         converter, converter_error_data_pb2.ConverterErrorData.UNKNOWNLOC)
     exported_error = metrics._gauge_conversion_errors.get_cell(
-        'CONVERT_TF_TO_TFLITE_MODEL', 'PrepareCompositeFunctionsPass', '',
-        'UNKNOWN').value()
+        'CONVERT_TF_TO_TFLITE_MODEL',
+        'PrepareCompositeFunctionsPass',
+        'tf.Const',
+        'UNKNOWN',
+    ).value()
     self.assertEqual(exported_error,
-                     "\'width\' attribute is not set or not an integer\n")
+                     "\'width\' attribute is not set or not an integer")
 
   def test_need_flex_ops(self):
 

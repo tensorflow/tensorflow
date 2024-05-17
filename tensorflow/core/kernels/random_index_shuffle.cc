@@ -59,20 +59,18 @@ namespace impl {
 // This variant uses std::bitset and can generate keys with any number of bits.
 // This should not be used to encrypt data. It's not secure. We only use it
 // to generate pseudorandom permutations.
-template <int W, int ROUNDS>
-std::array<std::bitset<W>, ROUNDS> simon_key_schedule(
-    const std::array<uint32_t, 3>& key) {
+template <int W>
+std::vector<std::bitset<W>> simon_key_schedule(
+    const std::array<uint32_t, 3>& key, const int32_t rounds) {
   // Required by ROTR/ROTL
   static_assert(W >= 8, "Minimum word size is 8 bits.");
   const auto c = std::bitset<W>(0xfffffffc);
   auto z = std::bitset<W>(0x7369f885192c0ef5LL);
-  std::array<std::bitset<W>, ROUNDS> rk;
-  rk[0] = key[0];
-  rk[1] = key[1];
-  rk[2] = key[2];
-  for (int i = 3; i < ROUNDS; i++) {
-    rk[i] = c ^ (z & std::bitset<W>(1)) ^ rk[i - 3] ^ ROTR(rk[i - 1], 3, W) ^
-            ROTR(rk[i - 1], 4, W);
+  std::vector<std::bitset<W>> rk({key[0], key[1], key[2]});
+  rk.reserve(rounds);
+  for (int i = 3; i < rounds; i++) {
+    rk.push_back(c ^ (z & std::bitset<W>(1)) ^ rk[i - 3] ^
+                 ROTR(rk[i - 1], 3, W) ^ ROTR(rk[i - 1], 4, W));
     z >>= 1;
   }
   return rk;
@@ -81,31 +79,31 @@ std::array<std::bitset<W>, ROUNDS> simon_key_schedule(
 // Encrypts the given value using the Simon chipher.
 // This is should not be used to encrypt data. It's not secure. We only use it
 // to generate pseudorandom permutations.
-template <int W, int ROUNDS>
+template <int W>
 uint64_t simon_encrypt(const uint64_t value,
-                       const std::array<std::bitset<W>, ROUNDS>& round_keys) {
+                       const std::vector<std::bitset<W>>& round_keys) {
   // Required by ROTR/ROTL
   static_assert(W >= 8, "Minimum word size is 8 bits.");
   std::bitset<W> left(value >> W);
   std::bitset<W> right(value);
-  for (int i = 0; i < ROUNDS;) {
+  for (int i = 0; i < round_keys.size();) {
     SIMON_Rx2(right, left, round_keys[i++], round_keys[i++], W);
   }
   return (left.to_ullong() << W) | right.to_ullong();
 }
 
 // In the original implementation the number of rounds depends on the block
-// size, key size and key words. For our purposes of random shuffle a 4 rounds
-// is fine.
+// size, key size and key words. For our purposes of random shuffle a 4 to 8
+// rounds is enough.
 // W = word size
 // B = 2 * W = block size
-template <int B, int ROUNDS = 4>
+template <int B>
 uint64_t index_shuffle(const uint64_t index, const std::array<uint32_t, 3>& key,
-                       const uint64_t max_index) {
-  const auto round_keys = simon_key_schedule<B / 2, ROUNDS>(key);
+                       const uint64_t max_index, const int32_t rounds) {
+  const auto round_keys = simon_key_schedule<B / 2>(key, rounds);
   uint64_t new_index = index;
   while (true) {
-    new_index = simon_encrypt<B / 2, ROUNDS>(new_index, round_keys);
+    new_index = simon_encrypt<B / 2>(new_index, round_keys);
     if (new_index <= max_index) {
       return new_index;
     }
@@ -120,62 +118,48 @@ uint64_t index_shuffle(const uint64_t index, const std::array<uint32_t, 3>& key,
 }  // namespace impl
 
 uint64_t index_shuffle(const uint64_t index, const std::array<uint32_t, 3>& key,
-                       const uint64_t max_index) {
+                       const uint64_t max_index, const int32_t rounds) {
+  // Block size must be large enough to represent max_index and even (since
+  // word size is half of it). We force at least 16 bits as minimum block size
+  // since we observed pattern in the permutations below.
   int block_size = static_cast<int>(std::ceil(std::log2(max_index)));
   block_size = std::max(block_size + block_size % 2, kMinBlockSize);
   assert(block_size > 0 && block_size % 2 == 0 && block_size <= 64);
+  // At least 4 rounds and number of rounds must be even.
+  assert(rounds >= 4 && rounds % 2 == 0);
+#define HANDLE_BLOCK_SIZE(B) \
+  case B:                    \
+    return impl::index_shuffle<B>(index, key, max_index, rounds);
+
   switch (block_size) {
-    case 16:
-      return impl::index_shuffle<16>(index, key, max_index);
-    case 18:
-      return impl::index_shuffle<18>(index, key, max_index);
-    case 20:
-      return impl::index_shuffle<20>(index, key, max_index);
-    case 22:
-      return impl::index_shuffle<22>(index, key, max_index);
-    case 24:
-      return impl::index_shuffle<24>(index, key, max_index);
-    case 26:
-      return impl::index_shuffle<26>(index, key, max_index);
-    case 28:
-      return impl::index_shuffle<28>(index, key, max_index);
-    case 30:
-      return impl::index_shuffle<30>(index, key, max_index);
-    case 32:
-      return impl::index_shuffle<32>(index, key, max_index);
-    case 34:
-      return impl::index_shuffle<34>(index, key, max_index);
-    case 36:
-      return impl::index_shuffle<36>(index, key, max_index);
-    case 38:
-      return impl::index_shuffle<38>(index, key, max_index);
-    case 40:
-      return impl::index_shuffle<40>(index, key, max_index);
-    case 42:
-      return impl::index_shuffle<42>(index, key, max_index);
-    case 44:
-      return impl::index_shuffle<44>(index, key, max_index);
-    case 46:
-      return impl::index_shuffle<46>(index, key, max_index);
-    case 48:
-      return impl::index_shuffle<48>(index, key, max_index);
-    case 50:
-      return impl::index_shuffle<50>(index, key, max_index);
-    case 52:
-      return impl::index_shuffle<52>(index, key, max_index);
-    case 54:
-      return impl::index_shuffle<54>(index, key, max_index);
-    case 56:
-      return impl::index_shuffle<56>(index, key, max_index);
-    case 58:
-      return impl::index_shuffle<58>(index, key, max_index);
-    case 60:
-      return impl::index_shuffle<60>(index, key, max_index);
-    case 62:
-      return impl::index_shuffle<62>(index, key, max_index);
+    HANDLE_BLOCK_SIZE(16);
+    HANDLE_BLOCK_SIZE(18);
+    HANDLE_BLOCK_SIZE(20);
+    HANDLE_BLOCK_SIZE(22);
+    HANDLE_BLOCK_SIZE(24);
+    HANDLE_BLOCK_SIZE(26);
+    HANDLE_BLOCK_SIZE(28);
+    HANDLE_BLOCK_SIZE(30);
+    HANDLE_BLOCK_SIZE(32);
+    HANDLE_BLOCK_SIZE(34);
+    HANDLE_BLOCK_SIZE(36);
+    HANDLE_BLOCK_SIZE(38);
+    HANDLE_BLOCK_SIZE(40);
+    HANDLE_BLOCK_SIZE(42);
+    HANDLE_BLOCK_SIZE(44);
+    HANDLE_BLOCK_SIZE(46);
+    HANDLE_BLOCK_SIZE(48);
+    HANDLE_BLOCK_SIZE(50);
+    HANDLE_BLOCK_SIZE(52);
+    HANDLE_BLOCK_SIZE(54);
+    HANDLE_BLOCK_SIZE(56);
+    HANDLE_BLOCK_SIZE(58);
+    HANDLE_BLOCK_SIZE(60);
+    HANDLE_BLOCK_SIZE(62);
     default:
-      return impl::index_shuffle<64>(index, key, max_index);
+      return impl::index_shuffle<64>(index, key, max_index, rounds);
   }
+#undef HANDLE_BLOCK_SIZE
 }
 
 }  // namespace random

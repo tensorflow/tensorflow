@@ -14,25 +14,25 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Support/LLVM.h"
-#include "absl/memory/memory.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
+#include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
+#include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 //===----------------------------------------------------------------------===//
 // The Pass to add default quantization parameters for the activations which
@@ -48,11 +48,11 @@ namespace TFL {
 
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_DEFAULTQUANTPARAMSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 class DefaultQuantParamsPass
-    : public DefaultQuantParamsPassBase<DefaultQuantParamsPass> {
+    : public impl::DefaultQuantParamsPassBase<DefaultQuantParamsPass> {
  public:
   using DefaultQuantParamsPassBase::DefaultQuantParamsPassBase;
 
@@ -116,8 +116,7 @@ void DefaultQuantParamsPass::runOnOperation() {
   }
 
   func.walk([&](Operation *op) {
-    if (quant::IsOpNotQuantizable(op) ||
-        op->getParentOfType<TFL::CustomTfOp>()) {
+    if (!quant::IsOpQuantizable(op) || op->getParentOfType<TFL::CustomTfOp>()) {
       return;
     }
 
@@ -154,7 +153,7 @@ void DefaultQuantParamsPass::AddToWorkListIfUnquantized(
     Value value, std::vector<Value> *values) {
   // If the result isn't with float type, this result is an integer tensor and
   // doesn't require quantization.
-  auto tensor_type = value.getType().dyn_cast<TensorType>();
+  auto tensor_type = mlir::dyn_cast<TensorType>(value.getType());
   if (!tensor_type) {
     // There are none type values.
     return;
@@ -188,7 +187,7 @@ void DefaultQuantParamsPass::QuantizeValue(OpBuilder builder, Value value,
   auto quantize = builder.create<TFL::QuantizeOp>(value.getLoc(), new_type,
                                                   value, type_attr);
   auto dequantize = builder.create<TFL::DequantizeOp>(
-      value.getLoc(), expressed_type, quantize.output());
+      value.getLoc(), expressed_type, quantize.getOutput());
   value.replaceAllUsesWith(dequantize);
 
   // `quantize` is using `dequantize` now, so we should set its operand to
@@ -204,9 +203,9 @@ quant::QuantParams DefaultQuantParamsPass::GetQuantParamsForBias(
   for (int non_bias : non_biases) {
     Operation *non_bias_define = op->getOperand(non_bias).getDefiningOp();
     if (auto dequant = llvm::dyn_cast<TFL::DequantizeOp>(non_bias_define)) {
-      auto non_bias_type = dequant.input().getType().cast<TensorType>();
+      auto non_bias_type = mlir::cast<TensorType>(dequant.getInput().getType());
       auto non_bias_ele_type =
-          non_bias_type.getElementType().cast<quant::QuantizedType>();
+          mlir::cast<quant::QuantizedType>(non_bias_type.getElementType());
       non_bias_types.push_back(non_bias_ele_type);
     } else {
       // The non-bias hasn't been quantized, let's skip this bias.
@@ -216,13 +215,14 @@ quant::QuantParams DefaultQuantParamsPass::GetQuantParamsForBias(
   // The non-bias hasn't been quantized, let's skip this bias.
   if (non_bias_types.size() != non_biases.size()) return {};
 
-  return func(non_bias_types, false);
+  return func(/*op_types=*/non_bias_types, /*adjusted_quant_dim=*/-1,
+              /*legacy_float_scale=*/false);
 }
 
 quant::QuantParams DefaultQuantParamsPass::GetDefaultQuantParams(
     Builder builder) {
   if (!default_quant_params_) {
-    default_quant_params_ = quant::fakeQuantAttrsToType(
+    default_quant_params_ = quantfork::fakeQuantAttrsToType(
         builder.getUnknownLoc(),
         /*numBits=*/8, default_min_, default_max_, /*narrowRange=*/false,
         builder.getF32Type(), is_signed_);

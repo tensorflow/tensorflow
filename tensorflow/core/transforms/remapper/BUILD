@@ -1,9 +1,10 @@
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
-    default_compatible_with = get_compatible_with_cloud(),
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_compatible_with = get_compatible_with_portable(),
     default_visibility = [
         "//tensorflow/core:__subpackages__",
     ],
@@ -30,11 +31,16 @@ gentbl_cc_library(
 cc_library(
     name = "Pass",
     srcs = ["pass.cc"],
-    hdrs = ["pass.h"],
+    hdrs = [
+        "pass.h",
+        "remapping_helper.h",
+    ],
     deps = [
         ":MklPDLLPatternsIncGen",
+        "//tensorflow/core:framework",
         "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/transforms:PassDetail",
+        "//tensorflow/core/transforms:PassIncGen",
+        "//tensorflow/core/transforms:op_cat_helper",
         "//tensorflow/core/transforms:pdll_utils",
         "//tensorflow/core/transforms:utils",
         "@llvm-project//mlir:IR",
@@ -42,11 +48,14 @@ cc_library(
         "@llvm-project//mlir:PDLInterpDialect",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = ["//tensorflow/core/transforms:test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     test_file_exts = ["mlir"],

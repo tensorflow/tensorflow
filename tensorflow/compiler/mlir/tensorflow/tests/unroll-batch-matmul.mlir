@@ -7,12 +7,12 @@ func.func @batchMatMulTwoDim(%arg0: tensor<2x3x4x5xf32>, %arg1: tensor<2x3x5x6xf
   func.return %0 : tensor<2x3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulTwoDim
-  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 4, 5]> : tensor<3xi64>}
-  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 5, 6]> : tensor<3xi64>}
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
-  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() {value = dense<[2, 3, 4, 6]> : tensor<4xi64>}
+  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 4, 5]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 5, 6]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[4, 5]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 6]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() <{value = dense<[2, 3, 4, 6]> : tensor<4xi64>}>
 
   // CHECK: %[[LHS_RESHAPED:.*]] = "tf.Reshape"(%arg0, %[[LHS_RESHAPED_SHAPE]]) : (tensor<2x3x4x5xf32>, tensor<3xi64>) -> tensor<6x4x5xf32>
   // CHECK: %[[LHS_SPLIT:.*]]:6 = "tf.Split"(%[[SPLITTING_AXIS]], %[[LHS_RESHAPED]]) : (tensor<i32>, tensor<6x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>)
@@ -32,14 +32,14 @@ func.func @batchMatMulTwoDim(%arg0: tensor<2x3x4x5xf32>, %arg1: tensor<2x3x5x6xf
   // CHECK: %[[RHS_5:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#4, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
   // CHECK: %[[RHS_6:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#5, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_4]], %[[RHS_4]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_5]], %[[RHS_5]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_6]], %[[RHS_6]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_4]], %[[RHS_4]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_5]], %[[RHS_5]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_6]], %[[RHS_6]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
   // CHECK: %[[RESULT:.*]] = "tf.Reshape"(%[[MATMUL_PACKED]], %[[RESULT_SHAPE]]) : (tensor<6x4x6xf32>, tensor<4xi64>) -> tensor<2x3x4x6xf32>
   // CHECK: return %[[RESULT]] : tensor<2x3x4x6xf32>
 }
@@ -51,12 +51,12 @@ func.func @batchMatMulTwoDimAdjXY(%arg0: tensor<2x3x5x4xf32>, %arg1: tensor<2x3x
   func.return %0 : tensor<2x3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulTwoDimAdjXY
-  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 5, 4]> : tensor<3xi64>}
-  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 6, 5]> : tensor<3xi64>}
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 4]> : tensor<2xi64>}
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 5]> : tensor<2xi64>}
-  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() {value = dense<[2, 3, 4, 6]> : tensor<4xi64>}
+  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 5, 4]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 6, 5]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 4]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 5]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() <{value = dense<[2, 3, 4, 6]> : tensor<4xi64>}>
 
   // CHECK: %[[LHS_RESHAPED:.*]] = "tf.Reshape"(%arg0, %[[LHS_RESHAPED_SHAPE]]) : (tensor<2x3x5x4xf32>, tensor<3xi64>) -> tensor<6x5x4xf32>
   // CHECK: %[[LHS_SPLIT:.*]]:6 = "tf.Split"(%[[SPLITTING_AXIS]], %[[LHS_RESHAPED]]) : (tensor<i32>, tensor<6x5x4xf32>) -> (tensor<1x5x4xf32>, tensor<1x5x4xf32>, tensor<1x5x4xf32>, tensor<1x5x4xf32>, tensor<1x5x4xf32>, tensor<1x5x4xf32>)
@@ -76,14 +76,14 @@ func.func @batchMatMulTwoDimAdjXY(%arg0: tensor<2x3x5x4xf32>, %arg1: tensor<2x3x
   // CHECK: %[[RHS_5:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#4, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x6x5xf32>, tensor<2xi64>) -> tensor<6x5xf32>
   // CHECK: %[[RHS_6:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#5, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x6x5xf32>, tensor<2xi64>) -> tensor<6x5xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_4]], %[[RHS_4]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_5]], %[[RHS_5]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_6]], %[[RHS_6]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_4]], %[[RHS_4]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_5]], %[[RHS_5]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_6]], %[[RHS_6]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
   // CHECK: %[[RESULT:.*]] = "tf.Reshape"(%[[MATMUL_PACKED]], %[[RESULT_SHAPE]]) : (tensor<6x4x6xf32>, tensor<4xi64>) -> tensor<2x3x4x6xf32>
   // CHECK: return %[[RESULT]] : tensor<2x3x4x6xf32>
 }
@@ -95,9 +95,9 @@ func.func @batchMatMulOneDim(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x5x6xf32>)
   func.return %0 : tensor<3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulOneDim
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[4, 5]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 6]> : tensor<2xi64>}>
 
   // CHECK: %[[LHS_RESHAPED:.*]]:3 = "tf.Split"(%[[SPLITTING_AXIS]], %arg0) : (tensor<i32>, tensor<3x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>)
   // CHECK: %[[LHS_1:.*]] = "tf.Reshape"(%[[LHS_RESHAPED]]#0, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
@@ -109,11 +109,11 @@ func.func @batchMatMulOneDim(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x5x6xf32>)
   // CHECK: %[[RHS_2:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#1, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
   // CHECK: %[[RHS_3:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#2, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
   // CHECK: return %[[MATMUL_PACKED]] : tensor<3x4x6xf32>
 }
 
@@ -124,16 +124,16 @@ func.func @batchMatMulSingleBatch(%arg0: tensor<1x4x5xf32>, %arg1: tensor<1x5x6x
   func.return %0 : tensor<1x4x6xf32>
 
   // CHECK-LABEL: batchMatMulSingleBatch
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>} : () -> tensor<2xi64>
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[4, 5]> : tensor<2xi64>}> : () -> tensor<2xi64>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 6]> : tensor<2xi64>}> : () -> tensor<2xi64>
 
   // CHECK: %[[LHS_1:.*]] = "tf.Reshape"(%arg0, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
 
   // CHECK: %[[RHS_2:.*]] = "tf.Reshape"(%arg1, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]]) {axis = 0 : i64} : (tensor<4x6xf32>) -> tensor<1x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]]) <{axis = 0 : i64}> : (tensor<4x6xf32>) -> tensor<1x4x6xf32>
   // CHECK: return %[[MATMUL_PACKED]] : tensor<1x4x6xf32>
 }
 
@@ -144,19 +144,19 @@ func.func @batchMatMulUnbatchedLeft(%arg0: tensor<4x5xf32>, %arg1: tensor<3x5x6x
   func.return %0 : tensor<3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulUnbatchedLeft
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 6]> : tensor<2xi64>}>
 
   // CHECK: %[[RHS_RESHAPED:.*]]:3 = "tf.Split"(%[[SPLITTING_AXIS]], %arg1) : (tensor<i32>, tensor<3x5x6xf32>) -> (tensor<1x5x6xf32>, tensor<1x5x6xf32>, tensor<1x5x6xf32>)
   // CHECK: %[[RHS_1:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#0, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
   // CHECK: %[[RHS_2:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#1, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
   // CHECK: %[[RHS_3:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#2, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %[[RHS_1]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%arg0, %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%arg0, %[[RHS_3]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%arg0, %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%arg0, %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
   // CHECK: return %[[MATMUL_PACKED]] : tensor<3x4x6xf32>
 }
 
@@ -167,19 +167,19 @@ func.func @batchMatMulUnbatchedRight(%arg0: tensor<3x4x5xf32>, %arg1: tensor<5x6
   func.return %0 : tensor<3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulUnbatchedRight
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[4, 5]> : tensor<2xi64>}> : () -> tensor<2xi64>
 
   // CHECK: %[[LHS_SPLIT:.*]]:3 = "tf.Split"(%[[SPLITTING_AXIS]], %arg0) : (tensor<i32>, tensor<3x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>)
   // CHECK: %[[LHS_1:.*]] = "tf.Reshape"(%[[LHS_SPLIT]]#0, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
   // CHECK: %[[LHS_2:.*]] = "tf.Reshape"(%[[LHS_SPLIT]]#1, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
   // CHECK: %[[LHS_3:.*]] = "tf.Reshape"(%[[LHS_SPLIT]]#2, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %arg1) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %arg1) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %arg1) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %arg1) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %arg1) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %arg1) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
   // CHECK: return %[[MATMUL_PACKED]] : tensor<3x4x6xf32>
 }
 
@@ -190,7 +190,7 @@ func.func @batchMatMulMatrix(%arg0: tensor<4x5xf32>, %arg1: tensor<5x6xf32>) -> 
   func.return %0 : tensor<4x6xf32>
 
   // CHECK-LABEL: batchMatMulMatrix
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %arg1) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
   // CHECK: return %[[MATMUL_1]] : tensor<4x6xf32>
 }
 
@@ -201,7 +201,7 @@ func.func @batchMatMulMatrixAdjXY(%arg0: tensor<5x4xf32>, %arg1: tensor<6x5xf32>
   func.return %0 : tensor<4x6xf32>
 
   // CHECK-LABEL: batchMatMulMatrixAdjXY
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %arg1) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %arg1) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
   // CHECK: return %[[MATMUL_1]] : tensor<4x6xf32>
 }
 
@@ -213,12 +213,12 @@ func.func @batchMatMulV2TwoDim(%arg0: tensor<2x3x4x5xf32>, %arg1: tensor<2x3x5x6
   func.return %0 : tensor<2x3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV2TwoDim
-  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 4, 5]> : tensor<3xi64>}
-  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 5, 6]> : tensor<3xi64>}
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
-  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() {value = dense<[2, 3, 4, 6]> : tensor<4xi64>}
+  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 4, 5]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 5, 6]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[4, 5]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 6]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() <{value = dense<[2, 3, 4, 6]> : tensor<4xi64>}>
 
   // CHECK: %[[LHS_RESHAPED:.*]] = "tf.Reshape"(%arg0, %[[LHS_RESHAPED_SHAPE]]) : (tensor<2x3x4x5xf32>, tensor<3xi64>) -> tensor<6x4x5xf32>
   // CHECK: %[[LHS_SPLIT:.*]]:6 = "tf.Split"(%[[SPLITTING_AXIS]], %[[LHS_RESHAPED]]) : (tensor<i32>, tensor<6x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>)
@@ -238,14 +238,14 @@ func.func @batchMatMulV2TwoDim(%arg0: tensor<2x3x4x5xf32>, %arg1: tensor<2x3x5x6
   // CHECK: %[[RHS_5:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#4, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
   // CHECK: %[[RHS_6:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#5, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_4]], %[[RHS_4]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_5]], %[[RHS_5]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_6]], %[[RHS_6]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_4]], %[[RHS_4]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_5]], %[[RHS_5]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_6]], %[[RHS_6]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
   // CHECK: %[[RESULT:.*]] = "tf.Reshape"(%[[MATMUL_PACKED]], %[[RESULT_SHAPE]]) : (tensor<6x4x6xf32>, tensor<4xi64>) -> tensor<2x3x4x6xf32>
   // CHECK: return %[[RESULT]] : tensor<2x3x4x6xf32>
 }
@@ -257,12 +257,12 @@ func.func @batchMatMulV2TwoDimAdjXY(%arg0: tensor<2x3x5x4xf32>, %arg1: tensor<2x
   func.return %0 : tensor<2x3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV2TwoDimAdjXY
-  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 5, 4]> : tensor<3xi64>}
-  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 6, 5]> : tensor<3xi64>}
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 4]> : tensor<2xi64>}
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 5]> : tensor<2xi64>}
-  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() {value = dense<[2, 3, 4, 6]> : tensor<4xi64>}
+  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 5, 4]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 6, 5]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 4]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 5]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() <{value = dense<[2, 3, 4, 6]> : tensor<4xi64>}>
 
   // CHECK: %[[LHS_RESHAPED:.*]] = "tf.Reshape"(%arg0, %[[LHS_RESHAPED_SHAPE]]) : (tensor<2x3x5x4xf32>, tensor<3xi64>) -> tensor<6x5x4xf32>
   // CHECK: %[[LHS_SPLIT:.*]]:6 = "tf.Split"(%[[SPLITTING_AXIS]], %[[LHS_RESHAPED]]) : (tensor<i32>, tensor<6x5x4xf32>) -> (tensor<1x5x4xf32>, tensor<1x5x4xf32>, tensor<1x5x4xf32>, tensor<1x5x4xf32>, tensor<1x5x4xf32>, tensor<1x5x4xf32>)
@@ -282,14 +282,14 @@ func.func @batchMatMulV2TwoDimAdjXY(%arg0: tensor<2x3x5x4xf32>, %arg1: tensor<2x
   // CHECK: %[[RHS_5:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#4, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x6x5xf32>, tensor<2xi64>) -> tensor<6x5xf32>
   // CHECK: %[[RHS_6:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#5, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x6x5xf32>, tensor<2xi64>) -> tensor<6x5xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_4]], %[[RHS_4]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_5]], %[[RHS_5]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_6]], %[[RHS_6]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_4]], %[[RHS_4]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_5]], %[[RHS_5]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_6]], %[[RHS_6]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
   // CHECK: %[[RESULT:.*]] = "tf.Reshape"(%[[MATMUL_PACKED]], %[[RESULT_SHAPE]]) : (tensor<6x4x6xf32>, tensor<4xi64>) -> tensor<2x3x4x6xf32>
   // CHECK: return %[[RESULT]] : tensor<2x3x4x6xf32>
 }
@@ -301,12 +301,12 @@ func.func @batchMatMulV2Broadcast(%arg0: tensor<2x1x4x5xf32>, %arg1: tensor<1x3x
   func.return %0 : tensor<2x3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV2Broadcast
-  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[2, 4, 5]> : tensor<3xi64>}
-  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[3, 5, 6]> : tensor<3xi64>}
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
-  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() {value = dense<[2, 3, 4, 6]> : tensor<4xi64>}
+  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[2, 4, 5]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[3, 5, 6]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[4, 5]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 6]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() <{value = dense<[2, 3, 4, 6]> : tensor<4xi64>}>
 
   // CHECK: %[[LHS_RESHAPED:.*]] = "tf.Reshape"(%arg0, %[[LHS_RESHAPED_SHAPE]]) : (tensor<2x1x4x5xf32>, tensor<3xi64>) -> tensor<2x4x5xf32>
   // CHECK: %[[LHS_SPLIT:.*]]:2 = "tf.Split"(%[[SPLITTING_AXIS]], %[[LHS_RESHAPED]]) : (tensor<i32>, tensor<2x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>)
@@ -319,14 +319,14 @@ func.func @batchMatMulV2Broadcast(%arg0: tensor<2x1x4x5xf32>, %arg1: tensor<1x3x
   // CHECK: %[[RHS_2:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#1, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
   // CHECK: %[[RHS_3:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#2, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_3]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_1]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_3]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
   // CHECK: %[[RESULT:.*]] = "tf.Reshape"(%[[MATMUL_PACKED]], %[[RESULT_SHAPE]]) : (tensor<6x4x6xf32>, tensor<4xi64>) -> tensor<2x3x4x6xf32>
   // CHECK: return %[[RESULT]] : tensor<2x3x4x6xf32>
 }
@@ -338,9 +338,9 @@ func.func @batchMatMulV2OneDim(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x5x6xf32
   func.return %0 : tensor<3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV2OneDim
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[4, 5]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 6]> : tensor<2xi64>}>
 
   // CHECK: %[[LHS_RESHAPED:.*]]:3 = "tf.Split"(%[[SPLITTING_AXIS]], %arg0) : (tensor<i32>, tensor<3x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>)
   // CHECK: %[[LHS_1:.*]] = "tf.Reshape"(%[[LHS_RESHAPED]]#0, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
@@ -352,11 +352,11 @@ func.func @batchMatMulV2OneDim(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x5x6xf32
   // CHECK: %[[RHS_2:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#1, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
   // CHECK: %[[RHS_3:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#2, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
   // CHECK: return %[[MATMUL_PACKED]] : tensor<3x4x6xf32>
 }
 
@@ -367,16 +367,16 @@ func.func @batchMatMulV2SingleBatch(%arg0: tensor<1x4x5xf32>, %arg1: tensor<1x5x
   func.return %0 : tensor<1x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV2SingleBatch
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>} : () -> tensor<2xi64>
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[4, 5]> : tensor<2xi64>}> : () -> tensor<2xi64>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 6]> : tensor<2xi64>}> : () -> tensor<2xi64>
 
   // CHECK: %[[LHS_1:.*]] = "tf.Reshape"(%arg0, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
 
   // CHECK: %[[RHS_2:.*]] = "tf.Reshape"(%arg1, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]]) {axis = 0 : i64} : (tensor<4x6xf32>) -> tensor<1x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]]) <{axis = 0 : i64}> : (tensor<4x6xf32>) -> tensor<1x4x6xf32>
   // CHECK: return %[[MATMUL_PACKED]] : tensor<1x4x6xf32>
 }
 
@@ -387,19 +387,19 @@ func.func @batchMatMulV2UnbatchedLeft(%arg0: tensor<4x5xf32>, %arg1: tensor<3x5x
   func.return %0 : tensor<3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV2UnbatchedLeft
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 6]> : tensor<2xi64>}>
 
   // CHECK: %[[RHS_RESHAPED:.*]]:3 = "tf.Split"(%[[SPLITTING_AXIS]], %arg1) : (tensor<i32>, tensor<3x5x6xf32>) -> (tensor<1x5x6xf32>, tensor<1x5x6xf32>, tensor<1x5x6xf32>)
   // CHECK: %[[RHS_1:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#0, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
   // CHECK: %[[RHS_2:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#1, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
   // CHECK: %[[RHS_3:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#2, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %[[RHS_1]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%arg0, %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%arg0, %[[RHS_3]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%arg0, %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%arg0, %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
   // CHECK: return %[[MATMUL_PACKED]] : tensor<3x4x6xf32>
 }
 
@@ -410,19 +410,19 @@ func.func @batchMatMulV2UnbatchedRight(%arg0: tensor<3x4x5xf32>, %arg1: tensor<5
   func.return %0 : tensor<3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV2UnbatchedRight
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[4, 5]> : tensor<2xi64>}> : () -> tensor<2xi64>
 
   // CHECK: %[[LHS_SPLIT:.*]]:3 = "tf.Split"(%[[SPLITTING_AXIS]], %arg0) : (tensor<i32>, tensor<3x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>)
   // CHECK: %[[LHS_1:.*]] = "tf.Reshape"(%[[LHS_SPLIT]]#0, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
   // CHECK: %[[LHS_2:.*]] = "tf.Reshape"(%[[LHS_SPLIT]]#1, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
   // CHECK: %[[LHS_3:.*]] = "tf.Reshape"(%[[LHS_SPLIT]]#2, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %arg1) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %arg1) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %arg1) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %arg1) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %arg1) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %arg1) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
   // CHECK: return %[[MATMUL_PACKED]] : tensor<3x4x6xf32>
 }
 
@@ -433,7 +433,7 @@ func.func @batchMatMulV2Matrix(%arg0: tensor<4x5xf32>, %arg1: tensor<5x6xf32>) -
   func.return %0 : tensor<4x6xf32>
 
   // CHECK-LABEL: batchMatMulV2Matrix
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %arg1) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
   // CHECK: return %[[MATMUL_1]] : tensor<4x6xf32>
 }
 
@@ -444,8 +444,19 @@ func.func @batchMatMulV2MatrixAdjXY(%arg0: tensor<5x4xf32>, %arg1: tensor<6x5xf3
   func.return %0 : tensor<4x6xf32>
 
   // CHECK-LABEL: batchMatMulV2MatrixAdjXY
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %arg1) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %arg1) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
   // CHECK: return %[[MATMUL_1]] : tensor<4x6xf32>
+}
+
+// -----
+
+func.func @batchMatMulV2DynamicSize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x4xf32>) -> tensor<?x4xf32> {
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<?x?xf32>, tensor<?x4xf32>) -> tensor<?x4xf32>
+  func.return %0 : tensor<?x4xf32>
+
+  // CHECK-LABEL: batchMatMulV2DynamicSize
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %arg1) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<?x?xf32>, tensor<?x4xf32>) -> tensor<?x4xf32>
+  // CHECK: return %[[MATMUL_1]] : tensor<?x4xf32>
 }
 
 // -----
@@ -456,12 +467,12 @@ func.func @batchMatMulV3TwoDim(%arg0: tensor<2x3x4x5xf32>, %arg1: tensor<2x3x5x6
   func.return %0 : tensor<2x3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV3TwoDim
-  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 4, 5]> : tensor<3xi64>}
-  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 5, 6]> : tensor<3xi64>}
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
-  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() {value = dense<[2, 3, 4, 6]> : tensor<4xi64>}
+  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 4, 5]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 5, 6]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[4, 5]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 6]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() <{value = dense<[2, 3, 4, 6]> : tensor<4xi64>}>
 
   // CHECK: %[[LHS_RESHAPED:.*]] = "tf.Reshape"(%arg0, %[[LHS_RESHAPED_SHAPE]]) : (tensor<2x3x4x5xf32>, tensor<3xi64>) -> tensor<6x4x5xf32>
   // CHECK: %[[LHS_SPLIT:.*]]:6 = "tf.Split"(%[[SPLITTING_AXIS]], %[[LHS_RESHAPED]]) : (tensor<i32>, tensor<6x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>)
@@ -481,14 +492,14 @@ func.func @batchMatMulV3TwoDim(%arg0: tensor<2x3x4x5xf32>, %arg1: tensor<2x3x5x6
   // CHECK: %[[RHS_5:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#4, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
   // CHECK: %[[RHS_6:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#5, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_4]], %[[RHS_4]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_5]], %[[RHS_5]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_6]], %[[RHS_6]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_4]], %[[RHS_4]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_5]], %[[RHS_5]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_6]], %[[RHS_6]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
   // CHECK: %[[RESULT:.*]] = "tf.Reshape"(%[[MATMUL_PACKED]], %[[RESULT_SHAPE]]) : (tensor<6x4x6xf32>, tensor<4xi64>) -> tensor<2x3x4x6xf32>
   // CHECK: return %[[RESULT]] : tensor<2x3x4x6xf32>
 }
@@ -500,12 +511,12 @@ func.func @batchMatMulV3TwoDimAdjXY(%arg0: tensor<2x3x5x4xf32>, %arg1: tensor<2x
   func.return %0 : tensor<2x3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV3TwoDimAdjXY
-  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 5, 4]> : tensor<3xi64>}
-  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 6, 5]> : tensor<3xi64>}
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 4]> : tensor<2xi64>}
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[6, 5]> : tensor<2xi64>}
-  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() {value = dense<[2, 3, 4, 6]> : tensor<4xi64>}
+  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 5, 4]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 6, 5]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 4]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[6, 5]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() <{value = dense<[2, 3, 4, 6]> : tensor<4xi64>}>
 
   // CHECK: %[[LHS_RESHAPED:.*]] = "tf.Reshape"(%arg0, %[[LHS_RESHAPED_SHAPE]]) : (tensor<2x3x5x4xf32>, tensor<3xi64>) -> tensor<6x5x4xf32>
   // CHECK: %[[LHS_SPLIT:.*]]:6 = "tf.Split"(%[[SPLITTING_AXIS]], %[[LHS_RESHAPED]]) : (tensor<i32>, tensor<6x5x4xf32>) -> (tensor<1x5x4xf32>, tensor<1x5x4xf32>, tensor<1x5x4xf32>, tensor<1x5x4xf32>, tensor<1x5x4xf32>, tensor<1x5x4xf32>)
@@ -525,14 +536,14 @@ func.func @batchMatMulV3TwoDimAdjXY(%arg0: tensor<2x3x5x4xf32>, %arg1: tensor<2x
   // CHECK: %[[RHS_5:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#4, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x6x5xf32>, tensor<2xi64>) -> tensor<6x5xf32>
   // CHECK: %[[RHS_6:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#5, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x6x5xf32>, tensor<2xi64>) -> tensor<6x5xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_4]], %[[RHS_4]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_5]], %[[RHS_5]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_6]], %[[RHS_6]]) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_4]], %[[RHS_4]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_5]], %[[RHS_5]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_6]], %[[RHS_6]]) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
   // CHECK: %[[RESULT:.*]] = "tf.Reshape"(%[[MATMUL_PACKED]], %[[RESULT_SHAPE]]) : (tensor<6x4x6xf32>, tensor<4xi64>) -> tensor<2x3x4x6xf32>
   // CHECK: return %[[RESULT]] : tensor<2x3x4x6xf32>
 }
@@ -544,12 +555,12 @@ func.func @batchMatMulV3Broadcast(%arg0: tensor<2x1x4x5xf32>, %arg1: tensor<1x3x
   func.return %0 : tensor<2x3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV3Broadcast
-  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[2, 4, 5]> : tensor<3xi64>}
-  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() {value = dense<[3, 5, 6]> : tensor<3xi64>}
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
-  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() {value = dense<[2, 3, 4, 6]> : tensor<4xi64>}
+  // CHECK-DAG: %[[LHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[2, 4, 5]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[RHS_RESHAPED_SHAPE:.*]] = "tf.Const"() <{value = dense<[3, 5, 6]> : tensor<3xi64>}>
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[4, 5]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 6]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[RESULT_SHAPE:.*]] = "tf.Const"() <{value = dense<[2, 3, 4, 6]> : tensor<4xi64>}>
 
   // CHECK: %[[LHS_RESHAPED:.*]] = "tf.Reshape"(%arg0, %[[LHS_RESHAPED_SHAPE]]) : (tensor<2x1x4x5xf32>, tensor<3xi64>) -> tensor<2x4x5xf32>
   // CHECK: %[[LHS_SPLIT:.*]]:2 = "tf.Split"(%[[SPLITTING_AXIS]], %[[LHS_RESHAPED]]) : (tensor<i32>, tensor<2x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>)
@@ -562,14 +573,14 @@ func.func @batchMatMulV3Broadcast(%arg0: tensor<2x1x4x5xf32>, %arg1: tensor<1x3x
   // CHECK: %[[RHS_2:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#1, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
   // CHECK: %[[RHS_3:.*]] = "tf.Reshape"(%[[RHS_SPLIT]]#2, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_3]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_1]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_3]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_4:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_5:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_6:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]], %[[MATMUL_4]], %[[MATMUL_5]], %[[MATMUL_6]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<6x4x6xf32>
   // CHECK: %[[RESULT:.*]] = "tf.Reshape"(%[[MATMUL_PACKED]], %[[RESULT_SHAPE]]) : (tensor<6x4x6xf32>, tensor<4xi64>) -> tensor<2x3x4x6xf32>
   // CHECK: return %[[RESULT]] : tensor<2x3x4x6xf32>
 }
@@ -581,9 +592,9 @@ func.func @batchMatMulV3OneDim(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x5x6xf32
   func.return %0 : tensor<3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV3OneDim
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>}
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[4, 5]> : tensor<2xi64>}>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 6]> : tensor<2xi64>}>
 
   // CHECK: %[[LHS_RESHAPED:.*]]:3 = "tf.Split"(%[[SPLITTING_AXIS]], %arg0) : (tensor<i32>, tensor<3x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>)
   // CHECK: %[[LHS_1:.*]] = "tf.Reshape"(%[[LHS_RESHAPED]]#0, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
@@ -595,11 +606,11 @@ func.func @batchMatMulV3OneDim(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x5x6xf32
   // CHECK: %[[RHS_2:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#1, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
   // CHECK: %[[RHS_3:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#2, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
   // CHECK: return %[[MATMUL_PACKED]] : tensor<3x4x6xf32>
 }
 
@@ -610,16 +621,16 @@ func.func @batchMatMulV3SingleBatch(%arg0: tensor<1x4x5xf32>, %arg1: tensor<1x5x
   func.return %0 : tensor<1x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV3SingleBatch
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>} : () -> tensor<2xi64>
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[4, 5]> : tensor<2xi64>}> : () -> tensor<2xi64>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 6]> : tensor<2xi64>}> : () -> tensor<2xi64>
 
   // CHECK: %[[LHS_1:.*]] = "tf.Reshape"(%arg0, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
 
   // CHECK: %[[RHS_2:.*]] = "tf.Reshape"(%arg1, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]]) {axis = 0 : i64} : (tensor<4x6xf32>) -> tensor<1x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]]) <{axis = 0 : i64}> : (tensor<4x6xf32>) -> tensor<1x4x6xf32>
   // CHECK: return %[[MATMUL_PACKED]] : tensor<1x4x6xf32>
 }
 
@@ -630,19 +641,19 @@ func.func @batchMatMulV3UnbatchedLeft(%arg0: tensor<4x5xf32>, %arg1: tensor<3x5x
   func.return %0 : tensor<3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV3UnbatchedLeft
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 6]> : tensor<2xi64>}
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+  // CHECK-DAG: %[[MATMUL_RHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[5, 6]> : tensor<2xi64>}>
 
   // CHECK: %[[RHS_RESHAPED:.*]]:3 = "tf.Split"(%[[SPLITTING_AXIS]], %arg1) : (tensor<i32>, tensor<3x5x6xf32>) -> (tensor<1x5x6xf32>, tensor<1x5x6xf32>, tensor<1x5x6xf32>)
   // CHECK: %[[RHS_1:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#0, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
   // CHECK: %[[RHS_2:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#1, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
   // CHECK: %[[RHS_3:.*]] = "tf.Reshape"(%[[RHS_RESHAPED]]#2, %[[MATMUL_RHS_SHAPE]]) : (tensor<1x5x6xf32>, tensor<2xi64>) -> tensor<5x6xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %[[RHS_1]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%arg0, %[[RHS_2]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%arg0, %[[RHS_3]]) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %[[RHS_1]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%arg0, %[[RHS_2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%arg0, %[[RHS_3]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
   // CHECK: return %[[MATMUL_PACKED]] : tensor<3x4x6xf32>
 }
 
@@ -653,19 +664,19 @@ func.func @batchMatMulV3UnbatchedRight(%arg0: tensor<3x4x5xf32>, %arg1: tensor<5
   func.return %0 : tensor<3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV3UnbatchedRight
-  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // CHECK-DAG: %[[SPLITTING_AXIS:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
+  // CHECK-DAG: %[[MATMUL_LHS_SHAPE:.*]] = "tf.Const"() <{value = dense<[4, 5]> : tensor<2xi64>}> : () -> tensor<2xi64>
 
   // CHECK: %[[LHS_SPLIT:.*]]:3 = "tf.Split"(%[[SPLITTING_AXIS]], %arg0) : (tensor<i32>, tensor<3x4x5xf32>) -> (tensor<1x4x5xf32>, tensor<1x4x5xf32>, tensor<1x4x5xf32>)
   // CHECK: %[[LHS_1:.*]] = "tf.Reshape"(%[[LHS_SPLIT]]#0, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
   // CHECK: %[[LHS_2:.*]] = "tf.Reshape"(%[[LHS_SPLIT]]#1, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
   // CHECK: %[[LHS_3:.*]] = "tf.Reshape"(%[[LHS_SPLIT]]#2, %[[MATMUL_LHS_SHAPE]]) : (tensor<1x4x5xf32>, tensor<2xi64>) -> tensor<4x5xf32>
 
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %arg1) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %arg1) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
-  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %arg1) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%[[LHS_1]], %arg1) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_2:.*]] = "tf.MatMul"(%[[LHS_2]], %arg1) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_3:.*]] = "tf.MatMul"(%[[LHS_3]], %arg1) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
 
-  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) {axis = 0 : i64} : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
+  // CHECK: %[[MATMUL_PACKED:.*]] = "tf.Pack"(%[[MATMUL_1]], %[[MATMUL_2]], %[[MATMUL_3]]) <{axis = 0 : i64}> : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<4x6xf32>) -> tensor<3x4x6xf32>
   // CHECK: return %[[MATMUL_PACKED]] : tensor<3x4x6xf32>
 }
 
@@ -676,7 +687,7 @@ func.func @batchMatMulV3Matrix(%arg0: tensor<4x5xf32>, %arg1: tensor<5x6xf32>) -
   func.return %0 : tensor<4x6xf32>
 
   // CHECK-LABEL: batchMatMulV3Matrix
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = false} : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %arg1) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> : (tensor<4x5xf32>, tensor<5x6xf32>) -> tensor<4x6xf32>
   // CHECK: return %[[MATMUL_1]] : tensor<4x6xf32>
 }
 
@@ -687,7 +698,7 @@ func.func @batchMatMulV3MatrixAdjXY(%arg0: tensor<5x4xf32>, %arg1: tensor<6x5xf3
   func.return %0 : tensor<4x6xf32>
 
   // CHECK-LABEL: batchMatMulV3MatrixAdjXY
-  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %arg1) {transpose_a = true, transpose_b = true} : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %arg1) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = true}> : (tensor<5x4xf32>, tensor<6x5xf32>) -> tensor<4x6xf32>
   // CHECK: return %[[MATMUL_1]] : tensor<4x6xf32>
 }
 

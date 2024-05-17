@@ -197,6 +197,92 @@ class _TypeBasedDispatcher(OpDispatcher):
       return self.NOT_SUPPORTED
 
 
+def _remove_annotation(sig):
+  """Removes annotation from a python Signature."""
+  parameters = [p.replace(annotation=p.empty) for p in sig.parameters.values()]
+  return sig.replace(parameters=parameters, return_annotation=sig.empty)
+
+
+def _get_required_param_names(sig):
+  """Returns a list of required parameter names from a python Signature."""
+  params = []
+  for p in sig.parameters.values():
+    if p.kind == p.VAR_POSITIONAL:
+      continue
+    if p.kind == p.VAR_KEYWORD:
+      continue
+    if p.default is not p.empty:
+      continue
+    params.append(p.name)
+  return params
+
+
+def get_compatible_func(op, func):
+  """Returns a compatible function.
+
+  Args:
+    op: a callable with whose signature the returned function is compatible.
+    func: a callable which is called by the returned function.
+
+  Returns:
+    a compatible function, which conducts the actions of `func` but can
+    be called like `op`, given that:
+      - the list of required arguments in `func` and `op` are the same.
+      - there is no override of the default arguments of `op` that are not
+        supported by `func`.
+  """
+  op_signature = _remove_annotation(tf_inspect.signature(op))
+  func_signature = _remove_annotation(tf_inspect.signature(func))
+
+  # Identitical signatures, no need to apply compatibility fixes.
+  if op_signature == func_signature:
+    return func
+
+  # When calling func:
+  # - Positional args without default must be in the same order.
+  # - Ignore missing optional arguments from op
+
+  op_pos_names = _get_required_param_names(op_signature)
+  func_pos_names = _get_required_param_names(func_signature)
+
+  if op_pos_names != func_pos_names:
+    raise AssertionError(
+        "The decorated function's non-default arguments must be identical"
+        " to that of the overridden op."
+        f" func has {func_pos_names}. op has {op_pos_names}."
+    )
+
+  func_missing_params = {}
+
+  for name in set(op_signature.parameters.keys()) - set(
+      func_signature.parameters.keys()
+  ):
+    p = op_signature.parameters[name]
+    if p.default is p.empty:
+      raise AssertionError(
+          "The decorated function's signature must implement all of the"
+          f" non-default arguments of the overridden op. Argument `{name}` is"
+          " unimplemented."
+      )
+    func_missing_params[name] = p
+
+  def compatible_func(*args, **kwargs):
+    bound = op_signature.bind(*args, **kwargs)
+    for name, param in func_missing_params.items():
+      if name not in bound.arguments:
+        continue
+      value = bound.arguments.pop(name)
+      if value is not param.default:
+        raise AssertionError(
+            f"Dispatched op is called with argument `{name}` set to a"
+            " non-default value, which is not supported by the decorated"
+            " function"
+        )
+    return func(*bound.args, **bound.kwargs)
+
+  return compatible_func
+
+
 # pylint: disable=g-doc-return-or-yield
 def dispatch_for_types(op, *types):
   """Decorator to declare that a Python function overrides an op for a type.
@@ -218,10 +304,8 @@ def dispatch_for_types(op, *types):
   """
 
   def decorator(func):
-    if tf_inspect.getargspec(func) != tf_inspect.getargspec(op):
-      raise AssertionError("The decorated function's signature must exactly "
-                           "match the signature of the overridden op.")
-    _TypeBasedDispatcher(func, types).register(op)
+
+    _TypeBasedDispatcher(get_compatible_func(op, func), types).register(op)
     return func
 
   return decorator

@@ -12,18 +12,28 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/data/serialization_utils.h"
 
+#include <cstdint>
+#include <map>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 namespace data {
@@ -34,25 +44,8 @@ constexpr char kComponent[] = "component";
 constexpr char kNumComponents[] = "num_components";
 constexpr char kNumElements[] = "num_elements";
 constexpr char kIsDataset[] = ".is_dataset";
+constexpr char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 constexpr char kOutputNode[] = ".output_node";
-
-// We assume that all keys are of the form <iterator_prefix>:<name>. We extract
-// the iterator name by getting rid of everything post the final colon.
-Status GetIteratorName(StringPiece key, string* name) {
-  if (!str_util::StartsWith(key, data::kFullNameRandomHex)) {
-    return errors::InvalidArgument("Save key: ", key,
-                                   " not generated using full_name.");
-  }
-  std::vector<string> split_keys = str_util::Split(key, data::kPipe);
-  if (split_keys.size() != 2) {
-    return errors::InvalidArgument("Save key: ", key,
-                                   " not generated using full_name.");
-  }
-  string real_key = split_keys[1];
-  const int pos = real_key.rfind(kColon);
-  *name = real_key.substr(0, pos);
-  return OkStatus();
-}
 
 Status FromGraphDef(FunctionLibraryRuntime* flr, const GraphDef& graph_def,
                     const std::vector<std::pair<string, Tensor>>& input_list,
@@ -69,7 +62,7 @@ Status FromGraphDef(FunctionLibraryRuntime* flr, const GraphDef& graph_def,
   TF_RETURN_IF_ERROR(graph_runner.Run(&graph, cloned_flr, input_list,
                                       {output_node}, &outputs));
   *result = outputs[0];
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // FindStatefulOps searches `graph_def` for all of its stateful ops storing
@@ -97,7 +90,7 @@ Status FindStatefulOps(const GraphDef& graph_def,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -126,7 +119,21 @@ Status ReadElementsFromCheckpoint(IteratorContext* ctx,
           &element.back()));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
+}
+
+Status WriteElement(IteratorStateWriter* writer, StringPiece key_prefix,
+                    const std::vector<std::vector<Tensor>>& elements,
+                    int64_t index) {
+  const std::vector<Tensor>& element = elements[index];
+  std::string element_prefix = absl::StrCat(key_prefix, "::", index);
+  TF_RETURN_IF_ERROR(
+      writer->WriteScalar(element_prefix, kNumComponents, element.size()));
+  for (int j = 0; j < element.size(); ++j) {
+    TF_RETURN_IF_ERROR(writer->WriteTensor(
+        element_prefix, absl::StrCat(kComponent, "[", j, "]"), element[j]));
+  }
+  return absl::OkStatus();
 }
 
 Status WriteElementsToCheckpoint(
@@ -135,16 +142,21 @@ Status WriteElementsToCheckpoint(
   TF_RETURN_IF_ERROR(
       writer->WriteScalar(key_prefix, kNumElements, elements.size()));
   for (int i = 0; i < elements.size(); ++i) {
-    const std::vector<Tensor>& element = elements[i];
-    std::string element_prefix = absl::StrCat(key_prefix, "::", i);
-    TF_RETURN_IF_ERROR(
-        writer->WriteScalar(element_prefix, kNumComponents, element.size()));
-    for (int j = 0; j < elements[i].size(); ++j) {
-      TF_RETURN_IF_ERROR(writer->WriteTensor(
-          element_prefix, absl::StrCat(kComponent, "[", j, "]"), element[j]));
-    }
+    TF_RETURN_IF_ERROR(WriteElement(writer, key_prefix, elements, i));
   }
-  return OkStatus();
+  return absl::OkStatus();
+}
+
+Status UpdateCheckpointElements(
+    IteratorStateWriter* writer, StringPiece key_prefix,
+    const std::vector<std::vector<Tensor>>& elements,
+    const absl::flat_hash_set<int64_t>& checkpoint_indices) {
+  TF_RETURN_IF_ERROR(
+      writer->WriteScalar(key_prefix, kNumElements, elements.size()));
+  for (int64_t i : checkpoint_indices) {
+    TF_RETURN_IF_ERROR(WriteElement(writer, key_prefix, elements, i));
+  }
+  return absl::OkStatus();
 }
 
 VariantTensorDataReader::VariantTensorDataReader(
@@ -164,9 +176,9 @@ VariantTensorDataReader::VariantTensorDataReader(
 
 Status VariantTensorDataReader::ReadScalar(StringPiece key,
                                            int64_t* val) const {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return ReadScalar(name, key, val);
+  string prefix;
+  TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
+  return ReadScalar(prefix, key, val);
 }
 
 Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
@@ -176,9 +188,9 @@ Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
 
 Status VariantTensorDataReader::ReadScalar(StringPiece key,
                                            tstring* val) const {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return ReadScalar(name, key, val);
+  string prefix;
+  TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
+  return ReadScalar(prefix, key, val);
 }
 
 Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
@@ -187,16 +199,16 @@ Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
 }
 
 Status VariantTensorDataReader::ReadTensor(StringPiece key, Tensor* val) const {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return ReadTensor(name, key, val);
+  string prefix;
+  TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
+  return ReadTensor(prefix, key, val);
 }
 
 Status VariantTensorDataReader::ReadTensor(FunctionLibraryRuntime* flr,
                                            StringPiece key, Tensor* val) const {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return ReadTensorInternal(flr, name, key, val);
+  string prefix;
+  TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
+  return ReadTensorInternal(flr, prefix, key, val);
 }
 
 Status VariantTensorDataReader::ReadTensor(StringPiece name, StringPiece key,
@@ -211,11 +223,11 @@ Status VariantTensorDataReader::ReadTensor(FunctionLibraryRuntime* flr,
 }
 
 bool VariantTensorDataReader::Contains(StringPiece key) const {
-  string name;
-  if (!GetIteratorName(key, &name).ok()) {
+  string prefix;
+  if (!ExtractIteratorPrefix(key, &prefix).ok()) {
     return false;
   }
-  return Contains(name, key);
+  return Contains(prefix, key);
 }
 
 bool VariantTensorDataReader::Contains(StringPiece n, StringPiece key) const {
@@ -243,7 +255,7 @@ Status VariantTensorDataReader::ReadScalarInternal(StringPiece n,
     return errors::NotFound(key);
   }
   *val = data_.at(name)->tensors(key_it->second).scalar<T>()();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VariantTensorDataReader::ReadTensorInternal(FunctionLibraryRuntime* flr,
@@ -264,7 +276,7 @@ Status VariantTensorDataReader::ReadTensorInternal(FunctionLibraryRuntime* flr,
     return errors::NotFound(key);
   }
   *val = data_.at(name)->tensors(key_it->second);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VariantTensorDataReader::ReadDatasetInternal(FunctionLibraryRuntime* flr,
@@ -283,14 +295,28 @@ Status VariantTensorDataReader::ReadDatasetInternal(FunctionLibraryRuntime* flr,
   GraphDef graph_def;
   graph_def.ParseFromString(serialized_graph_def);
   TF_RETURN_IF_ERROR(FromGraphDef(flr, graph_def, {}, output_node, val));
-  return OkStatus();
+  return absl::OkStatus();
+}
+
+std::map<string, Tensor> VariantTensorDataReader::ReadAllTensors() {
+  std::map<string, Tensor> result;
+  for (const auto& entry : map_) {
+    string key1 = entry.first;
+    for (const auto& inner : entry.second) {
+      string key2 = inner.first;
+      size_t index = inner.second;
+      result[absl::StrCat(key1, kDelimiter, key2)] =
+          data_[key1]->tensors(index);
+    }
+  }
+  return result;
 }
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece key,
                                             const int64_t val) {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return WriteScalar(name, key, val);
+  string prefix;
+  TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
+  return WriteScalar(prefix, key, val);
 }
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
@@ -300,9 +326,9 @@ Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece key,
                                             const tstring& val) {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return WriteScalar(name, key, val);
+  string prefix;
+  TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
+  return WriteScalar(prefix, key, val);
 }
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
@@ -312,9 +338,9 @@ Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
 
 Status VariantTensorDataWriter::WriteTensor(StringPiece key,
                                             const Tensor& val) {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return WriteTensor(name, key, val);
+  string prefix;
+  TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
+  return WriteTensor(prefix, key, val);
 }
 
 Status VariantTensorDataWriter::WriteTensor(StringPiece name, StringPiece key,
@@ -393,7 +419,7 @@ Status VariantTensorDataWriter::WriteTensorInternal(StringPiece n,
     data_[name]->set_type_name("tensorflow::Iterator");
   }
   *(data_[name]->add_tensors()) = val;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VariantTensorDataWriter::WriteDatasetInternal(
@@ -403,7 +429,7 @@ Status VariantTensorDataWriter::WriteDatasetInternal(
   TF_RETURN_IF_ERROR(AsGraphDef(dataset, std::move(ctx), &graph_def));
   string output_node;
   for (const auto& node : graph_def.node()) {
-    if (node.op() == "_Retval") {
+    if (node.op() == kRetvalOp) {
       output_node = node.input(0);
       break;
     }
@@ -414,38 +440,127 @@ Status VariantTensorDataWriter::WriteDatasetInternal(
   TF_RETURN_IF_ERROR(
       WriteScalar(n, strings::StrCat(key, kOutputNode), output_node));
   TF_RETURN_IF_ERROR(WriteScalar(n, key, result));
-  return OkStatus();
+  return absl::OkStatus();
 }
+
+std::string IteratorStateVariant::TypeName() {
+  return kIteratorVariantTypeName;
+}
+
+IteratorStateVariant::IteratorStateVariant(const IteratorStateVariant& other) {
+  if (other.data_) {
+    data_ = std::make_unique<VariantTensorData>(*other.data_);
+  }
+}
+
+Status IteratorStateVariant::InitializeFromVariantData(
+    std::unique_ptr<VariantTensorData> data) {
+  data_ = std::move(data);
+  return absl::OkStatus();
+}
+
+void IteratorStateVariant::Encode(VariantTensorData* data) const {
+  CompressedElement compressed_tensors;
+  Status s = CompressElement(data_->tensors(), &compressed_tensors);
+  if (!s.ok()) {
+    LOG(WARNING) << "Failed to compress iterator state variant: " << s;
+    *data = *data_;
+    return;
+  }
+
+  data->set_type_name(TypeName());
+  data->set_metadata(data_->metadata_string());
+  Tensor tensor(DT_VARIANT, TensorShape({}));
+  tensor.scalar<Variant>()() = std::move(compressed_tensors);
+  *data->add_tensors() = std::move(tensor);
+}
+
+bool IteratorStateVariant::Decode(VariantTensorData data) {
+  if (data.type_name() != TypeName()) {
+    return false;
+  }
+
+  const CompressedElement* compressed = GetCompressedElement(data);
+  if (!compressed) {
+    data_ = std::make_unique<VariantTensorData>(std::move(data));
+    return true;
+  }
+
+  std::vector<Tensor> tensors;
+  Status s = UncompressElement(*compressed, &tensors);
+  if (!s.ok()) {
+    LOG(WARNING) << "Failed to uncompress iterator state variant: " << s;
+    data_ = std::make_unique<VariantTensorData>(std::move(data));
+    return true;
+  }
+
+  data_ = std::make_unique<VariantTensorData>();
+  data_->set_type_name(TypeName());
+  data_->set_metadata(std::move(data.metadata_string()));
+  for (auto& tensor : tensors) {
+    *data_->add_tensors() = std::move(tensor);
+  }
+  return true;
+}
+
+const CompressedElement* IteratorStateVariant::GetCompressedElement(
+    const VariantTensorData& data) {
+  bool should_uncompress =
+      data.tensors_size() == 1 &&
+      TensorShapeUtils::IsScalar(data.tensors(0).shape()) &&
+      data.tensors(0).dtype() == DT_VARIANT;
+  if (!should_uncompress) {
+    return nullptr;
+  }
+
+  const Variant& variant = data.tensors(0).scalar<Variant>()();
+  return variant.get<CompressedElement>();
+}
+
+std::string IteratorStateVariant::DebugString() const {
+  if (data_) {
+    return strings::StrCat("IteratorStateVariant<", data_->DebugString(), ">");
+  } else {
+    return strings::StrCat("IteratorStateVariant<empty>");
+  }
+}
+
+// Register the reader class in the global variant decode_fn registry
+// so that a Variant containing a serialized representation of iterator state
+// can be decoded using DecodeUnaryVariant. If we don't do this we will need
+// to manually decode the returned Variant using MaybeDecodeAndCopy in
+// DeserializeIteratorOp which is not recommended.
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(IteratorStateVariant,
+                                       kIteratorVariantTypeName);
 
 Status AsGraphDefForRewrite(OpKernelContext* ctx, const DatasetBase* input,
                             std::vector<std::pair<string, Tensor>>* input_list,
                             GraphDef* result, string* dataset_node) {
   SerializationContext::Params params(ctx);
   params.input_list = input_list;
-  params.external_state_policy =
-      SerializationContext::ExternalStatePolicy::kIgnore;
+  params.external_state_policy = ExternalStatePolicy::POLICY_IGNORE;
   params.is_graph_rewrite = true;
   SerializationContext serialization_ctx(params);
   TF_RETURN_IF_ERROR(AsGraphDef(input, std::move(serialization_ctx), result));
 
   // Symbolic `_Retval` node indicates which node corresponds to the dataset.
   for (const auto& node : result->node()) {
-    if (node.op() == "_Retval") {
+    if (node.op() == kRetvalOp) {
       *dataset_node = node.input(0);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AsGraphDef(const DatasetBase* dataset,
                   SerializationContext&& serialization_ctx,
                   GraphDef* graph_def) {
   if (serialization_ctx.external_state_policy() ==
-      SerializationContext::ExternalStatePolicy::kFail) {
+      ExternalStatePolicy::POLICY_FAIL) {
     TF_RETURN_IF_ERROR(dataset->CheckExternalState());
   }
   if (serialization_ctx.external_state_policy() ==
-      SerializationContext::ExternalStatePolicy::kWarn) {
+      ExternalStatePolicy::POLICY_WARN) {
     std::vector<string> stateful_op_names;
     TF_RETURN_IF_ERROR(FindStatefulOps(*graph_def, &stateful_op_names));
     if (!stateful_op_names.empty()) {
@@ -463,13 +578,42 @@ Status AsGraphDef(const DatasetBase* dataset,
       db.AddInputDataset(&serialization_ctx, dataset, &output_node));
   // Insert a purely symbolic _Retval node to indicate to consumers which node
   // represents `dataset`.
-  ops::UnaryOp("_Retval", output_node,
+  ops::UnaryOp(std::string(kRetvalOp), output_node,
                b.opts()
                    .WithName("dataset")
                    .WithAttr("T", DT_VARIANT)
                    .WithAttr("index", 0));
   TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));
-  return OkStatus();
+  return absl::OkStatus();
+}
+
+absl::StatusOr<absl::flat_hash_map<std::string, int64_t>> CheckpointStats(
+    const std::string& checkpoint_bytes) {
+  TensorProto proto;
+  if (!ParseProtoUnlimited(&proto, checkpoint_bytes)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse checkpoint bytes into proto.");
+  }
+  Tensor t;
+  if (!t.FromProto(proto)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse checkpoint tensor from proto.");
+  }
+
+  auto variant = t.scalar<Variant>()();
+  auto* w = variant.get<IteratorStateVariant>();
+  if (!w) {
+    return absl::InvalidArgumentError(
+        "Failed to access IteratorStateVariant inside checkpoint tensor");
+  }
+  const VariantTensorData* data = w->GetData();
+  auto reader = std::make_unique<VariantTensorDataReader>(
+      std::vector<const VariantTensorData*>{data});
+  absl::flat_hash_map<std::string, int64_t> stats;
+  for (const auto& [key, tensor] : reader->ReadAllTensors()) {
+    stats[key] = tensor.TotalBytes();
+  }
+  return stats;
 }
 
 }  // namespace data

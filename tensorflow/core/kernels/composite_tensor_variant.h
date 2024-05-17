@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_EXTENSION_TYPE_VARIANT_H_
-#define TENSORFLOW_CORE_KERNELS_EXTENSION_TYPE_VARIANT_H_
+#ifndef TENSORFLOW_CORE_KERNELS_COMPOSITE_TENSOR_VARIANT_H_
+#define TENSORFLOW_CORE_KERNELS_COMPOSITE_TENSOR_VARIANT_H_
 
 #include <vector>
 
@@ -93,4 +93,4 @@ class CompositeTensorVariant {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_EXTENSION_TYPE_VARIANT_H_
+#endif  // TENSORFLOW_CORE_KERNELS_COMPOSITE_TENSOR_VARIANT_H_

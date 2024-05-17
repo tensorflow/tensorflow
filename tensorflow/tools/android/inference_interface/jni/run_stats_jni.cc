@@ -20,7 +20,6 @@ limitations under the License.
 #include <sstream>
 
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/util/stat_summarizer.h"
 
 using tensorflow::RunMetadata;
 using tensorflow::StatSummarizer;
@@ -42,7 +41,7 @@ StatSummarizer* requireHandle(JNIEnv* env, jlong handle) {
 JNIEXPORT jlong RUN_STATS_METHOD(allocate)(JNIEnv* env, jclass clazz) {
   static_assert(sizeof(jlong) >= sizeof(StatSummarizer*),
                 "Cannot package C++ object pointers as a Java long");
-  tensorflow::StatSummarizerOptions opts;
+  tsl::StatSummarizerOptions opts;
   return reinterpret_cast<jlong>(new StatSummarizer(opts));
 }
 
@@ -74,8 +73,7 @@ JNIEXPORT jstring RUN_STATS_METHOD(summary)(JNIEnv* env, jclass clazz,
   StatSummarizer* s = requireHandle(env, handle);
   if (s == nullptr) return nullptr;
   std::stringstream ret;
-  ret << s->GetStatsByMetric("Top 10 CPU", tensorflow::StatsCalculator::BY_TIME,
-                             10)
+  ret << s->GetStatsByMetric("Top 10 CPU", tsl::StatsCalculator::BY_TIME, 10)
       << s->GetStatsByNodeType() << s->ShortSummary();
   return env->NewStringUTF(ret.str().c_str());
 }

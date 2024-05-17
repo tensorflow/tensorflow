@@ -13,7 +13,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/common_runtime/forward_type_inference.h"
+#include "tensorflow/core/common_runtime/type_inference.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/data/shard_dataset_op.h"
@@ -55,7 +55,7 @@ class AutoShardDatasetParams : public DatasetParams {
     input_names->emplace_back(AutoShardDatasetOp::kInputDataset);
     input_names->emplace_back(AutoShardDatasetOp::kNumWorkers);
     input_names->emplace_back(AutoShardDatasetOp::kIndex);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -66,7 +66,7 @@ class AutoShardDatasetParams : public DatasetParams {
     attr_vector->emplace_back(AutoShardDatasetOp::kOutputTypes, output_dtypes_);
     attr_vector->emplace_back(AutoShardDatasetOp::kOutputShapes,
                               output_shapes_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override {
@@ -189,7 +189,7 @@ TEST_F(AutoShardDatasetOpTest, InvalidArguments) {
       AutoShardDatasetParams6(), AutoShardDatasetParams7()};
   for (const auto& dataset_params : invalid_dataset_params) {
     EXPECT_EQ(Initialize(dataset_params).code(),
-              tensorflow::error::INVALID_ARGUMENT);
+              absl::StatusCode::kInvalidArgument);
   }
 }
 
@@ -221,7 +221,7 @@ static Status type_inference(Graph& graph) {
   graph_ptr->Copy(graph);
   opt_options.graph = &graph_ptr;
   opt_options.flib_def = graph.mutable_flib_def();
-  ForwardTypeInferencePass pass;
+  TypeInferencePass pass;
   return pass.Run(opt_options);
 }
 

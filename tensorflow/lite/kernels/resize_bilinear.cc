@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -80,7 +80,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // integers.
   output->type = input->type;
 
-  if (!IsConstantTensor(size)) {
+  if (!IsConstantOrPersistentTensor(size)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }

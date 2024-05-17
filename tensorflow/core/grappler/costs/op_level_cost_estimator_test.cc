@@ -31,6 +31,8 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+using ::testing::ElementsAreArray;
+
 namespace {
 
 // TODO(dyoon): Consider to use this Test class for all the test cases, and then
@@ -583,7 +585,7 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     EXPECT_EQ(padding_enum, dims.padding);
   }
 
-  StatusOr<OpLevelCostEstimator::ConvolutionDimensions>
+  absl::StatusOr<OpLevelCostEstimator::ConvolutionDimensions>
   CallOpDimensionsFromInputs(const int n, const int h, const int w, const int c,
                              const int kx, const int ky, const int sx,
                              const int sy, const string& data_format,
@@ -1693,32 +1695,32 @@ TEST_F(OpLevelCostEstimatorTest, PredictFusedBatchNormGrad) {
   }
 }
 
-TEST_F(OpLevelCostEstimatorTest, MaybeGetMinimumShape) {
+TEST_F(OpLevelCostEstimatorTest, MaybeGetMinimumShapeTest) {
   {
     TensorShapeProto x;
     x.set_unknown_rank(true);
     bool unknown_shapes = false;
-    TensorShapeProto y = MaybeGetMinimumShape(x, 4, &unknown_shapes);
+    std::vector<int64_t> y = MaybeGetMinimumShape(x, 4, &unknown_shapes);
     EXPECT_TRUE(unknown_shapes);
-    ExpectTensorShape({1, 1, 1, 1}, y);
+    EXPECT_THAT(y, ElementsAreArray({1, 1, 1, 1}));
   }
 
   {
     TensorShapeProto x;
     x.set_unknown_rank(false);
     bool unknown_shapes = false;
-    TensorShapeProto y = MaybeGetMinimumShape(x, 1, &unknown_shapes);
+    std::vector<int64_t> y = MaybeGetMinimumShape(x, 1, &unknown_shapes);
     EXPECT_FALSE(unknown_shapes);
-    ExpectTensorShape({1}, y);
+    EXPECT_THAT(y, ElementsAreArray({1}));
   }
 
   {
     TensorShapeProto x;
     x.set_unknown_rank(false);
     bool unknown_shapes = false;
-    TensorShapeProto y = MaybeGetMinimumShape(x, 2, &unknown_shapes);
+    std::vector<int64_t> y = MaybeGetMinimumShape(x, 2, &unknown_shapes);
     EXPECT_FALSE(unknown_shapes);
-    ExpectTensorShape({1, 1}, y);
+    EXPECT_THAT(y, ElementsAreArray({1, 1}));
   }
 
   {
@@ -1727,15 +1729,14 @@ TEST_F(OpLevelCostEstimatorTest, MaybeGetMinimumShape) {
     x.add_dim()->set_size(10);
     x.add_dim()->set_size(20);
     bool unknown_shapes = false;
-    TensorShapeProto y = MaybeGetMinimumShape(x, 2, &unknown_shapes);
+    std::vector<int64_t> y = MaybeGetMinimumShape(x, 2, &unknown_shapes);
     EXPECT_FALSE(unknown_shapes);
-    ExpectTensorShape({10, 20}, y);
+    EXPECT_THAT(y, ElementsAreArray({10, 20}));
 
     unknown_shapes = false;
-    TensorShapeProto z = MaybeGetMinimumShape(x, 4, &unknown_shapes);
+    std::vector<int64_t> z = MaybeGetMinimumShape(x, 4, &unknown_shapes);
     EXPECT_TRUE(unknown_shapes);
-    EXPECT_EQ(4, z.dim_size());
-    ExpectTensorShape({10, 20, 1, 1}, z);
+    EXPECT_THAT(z, ElementsAreArray({10, 20, 1, 1}));
   }
 
   {
@@ -1746,9 +1747,9 @@ TEST_F(OpLevelCostEstimatorTest, MaybeGetMinimumShape) {
     x.add_dim()->set_size(-1);
     x.add_dim()->set_size(20);
     bool unknown_shapes = false;
-    TensorShapeProto y = MaybeGetMinimumShape(x, 4, &unknown_shapes);
+    std::vector<int64_t> y = MaybeGetMinimumShape(x, 4, &unknown_shapes);
     EXPECT_TRUE(unknown_shapes);
-    ExpectTensorShape({10, 20, 1, 20}, y);
+    EXPECT_THAT(y, ElementsAreArray({10, 20, 1, 20}));
   }
 
   {
@@ -1759,9 +1760,9 @@ TEST_F(OpLevelCostEstimatorTest, MaybeGetMinimumShape) {
     x.add_dim()->set_size(30);
     x.add_dim()->set_size(20);
     bool unknown_shapes = false;
-    TensorShapeProto y = MaybeGetMinimumShape(x, 2, &unknown_shapes);
+    std::vector<int64_t> y = MaybeGetMinimumShape(x, 2, &unknown_shapes);
     EXPECT_TRUE(unknown_shapes);
-    ExpectTensorShape({10, 20}, y);
+    EXPECT_THAT(y, ElementsAreArray({10, 20}));
   }
 }
 
