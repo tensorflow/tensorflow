@@ -270,7 +270,7 @@ LogicalResult SetAttributeMap(MLIRContext& context,
     if (const auto string_attr =
             mlir::dyn_cast_or_null<StringAttr>(attribute.getValue());
         string_attr != nullptr &&
-        string_attr.getValue().equals(kNullAttributeValue)) {
+        string_attr.getValue() == kNullAttributeValue) {
       continue;
     }
 
