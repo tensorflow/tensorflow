@@ -217,7 +217,7 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_driver",
         "//xla/stream_executor/cuda:cuda_executor",
     ]) + if_rocm_is_configured([
-        "//third_party/gpus/rocm:rocm_headers",
+        "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rccl",
         "//xla/stream_executor/rocm:rocm_driver",
         "//xla/stream_executor/rocm:rocm_executor",

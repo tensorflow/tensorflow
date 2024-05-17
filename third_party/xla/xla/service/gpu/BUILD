@@ -1743,10 +1743,10 @@ cc_library(
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
     ]) + if_rocm_is_configured([
         #keep sorted
-        "//third_party/gpus/rocm:rocm_headers",
         "//xla/stream_executor/platform:dso_loader",
         "//xla/stream_executor/rocm:amdhipblaslt_plugin",
         "//xla/stream_executor/rocm:hipblas_lt_header",
+        "@local_config_rocm//rocm:rocm_headers",
     ]) + if_static([
         "@local_tsl//tsl/platform:tensor_float_32_utils",
     ]),
