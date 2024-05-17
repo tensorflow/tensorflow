@@ -33,8 +33,48 @@ limitations under the License.
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
+
+absl::Status EagerOperation::EagerExecuteStub(TensorHandle** retvals,
+                                              int* num_retvals) {
+  return absl::OkStatus();
+}
+
+// TODO(b/152902651): Once we move many execute.cc functions into
+// eager_operation.cc we can avoid a circular dependency between them.
+absl::Status EagerOperation::ExecuteAlt(
+    absl::Span<AbstractTensorHandle*> retvals, int* num_retvals) {
+  for (ImmediateExecutionTensorHandle* handle : inputs_) {
+    if (TensorHandle::classof(handle)) {
+      TF_RETURN_IF_ERROR(down_cast<TensorHandle*>(handle)->WaitUnknownDevice());
+    }
+  }
+
+  // Run eager placement logic.
+  class Device* device = std::get<class Device*>(Device());
+  if (device == nullptr) {
+    TF_RETURN_IF_ERROR(eager::MaybePinToResourceDevice(&device, *this));
+  }
+  if (device == nullptr && ctx_.PinSmallOpsToCPU()) {
+    bool pin_to_cpu;
+    TF_RETURN_IF_ERROR(eager::MaybePinSmallOpsToCpu(
+        &pin_to_cpu, Name(), GetInputs(), ctx_.HostCPU()->name()));
+    if (pin_to_cpu) {
+      device = ctx_.HostCPU();
+    }
+  }
+
+  if (device != nullptr) {
+    SetDevice(device);
+  }
+  // At this point all inputs and outputs are TensorHandles associated with
+  // physical devices.
+  tensorflow::TensorHandle** retval_array =
+      reinterpret_cast<tensorflow::TensorHandle**>(retvals.data());
+  return EagerExecuteStub(retval_array, num_retvals);
+}
 
 // An EagerOperation object can be reused for a different op by calling
 // Clear(), and then Reset(...) with the same arguments that would have
@@ -529,4 +569,158 @@ void EagerOperation::AddTensorHandle(ImmediateExecutionTensorHandle* h) {
   inputs_.push_back(h);
   attrs_.NumInputs(static_cast<int>(inputs_.size()));
 }
+
+namespace eager {
+
+// These ops are not pinnable since they generate data. It can be slower to
+// generate and then copy the data instead of just generating the data on the
+// device directly.
+static bool IsPinnableOp(StringPiece op_name) {
+  static const gtl::FlatSet<string>* unpinnable_ops = new gtl::FlatSet<string>({
+      "RandomUniform",
+      "RandomUniformInt",
+      "RandomStandardNormal",
+      "StatelessRandomUniform",
+      "StatelessRandomUniformInt",
+      "StatelessRandomUniformFullInt",
+      "StatelessRandomNormal",
+  });
+
+  // XRT ops refer to per-device handles that are not safe to move between
+  // devices.
+  return unpinnable_ops->find(string(op_name)) == unpinnable_ops->end() &&
+         !absl::StartsWith(op_name, "XRT");
+}
+// Validate if the remote device with the given incarnation is valid in the
+// remote device manager of the current eager context.
+static Status ValidateTensorHandleRemoteDevice(EagerContext* ctx,
+                                               int64_t device_incarnation) {
+  if (ctx->remote_device_mgr()->ContainsDevice(device_incarnation)) {
+    return absl::OkStatus();
+  }
+  return errors::InvalidArgument(
+      "Resource input tensor contains an invalid device. This might happen "
+      "when the client has connected to a different cluster, or some remote "
+      "workers have been restarted.");
+}
+
+bool IsColocationExempt(StringPiece op_name) {
+  const auto& exempt_ops = InputColocationExemptionRegistry::Global()->Get();
+  return exempt_ops.find(string(op_name)) != exempt_ops.end();
+}
+
+bool IsFunction(StringPiece op_name) {
+  const OpDef* op_def = nullptr;
+  Status s = OpDefForOp(string(op_name), &op_def);
+  if (!s.ok()) {
+    if (!absl::IsNotFound(s)) {
+      LOG(WARNING) << "Looking up OpDef failed with error: " << s;
+    }
+    // Cannot find OpDef, it is a function.
+    return true;
+  }
+  return false;
+}
+
+Status MaybePinSmallOpsToCpu(
+    bool* result, StringPiece op_name,
+    absl::Span<ImmediateExecutionTensorHandle* const> args,
+    StringPiece cpu_device_name) {
+  if (IsFunction(op_name) || IsColocationExempt(op_name) ||
+      !IsPinnableOp(op_name)) {
+    *result = false;
+    return absl::OkStatus();
+  }
+
+  // Ops without inputs are usually ops that generate a tensor in some way and
+  // usually require being present on whatever device they are scheduled on
+  // - for e.g. VarHandleOp or _Recv).
+  if (args.empty()) {
+    *result = false;
+    return absl::OkStatus();
+  }
+
+  int i = 0;
+  for (auto* arg : args) {
+    Status s;
+    const char* device_name = arg->DeviceName(&s);
+    DataType dtype = arg->DataType();
+    TF_RETURN_IF_ERROR(s);
+
+    DVLOG(2) << "for op " << op_name << " input " << i << " "
+             << DataTypeString(dtype) << " input device = " << device_name;
+
+    // Input is on CPU.
+    if (device_name != cpu_device_name) {
+      *result = false;
+      return absl::OkStatus();
+    }
+
+    if (dtype != DataType::DT_INT32 && dtype != DataType::DT_INT64) {
+      *result = false;
+      return absl::OkStatus();
+    }
+
+    int64_t num_elements;
+    TF_RETURN_IF_ERROR(arg->NumElements(&num_elements));
+    if (num_elements > 64) {
+      *result = false;
+      return absl::OkStatus();
+    }
+    i++;
+  }
+
+  // TODO(nareshmodi): Is it possible there is no int32/int64 CPU kernel for
+  // an op, but there is a GPU kernel?
+  DVLOG(1) << "Forcing op " << op_name
+           << " to be on the CPU since all input tensors have an "
+              "int32/int64 dtype, and are small (less than 64 elements).";
+  *result = true;
+  return absl::OkStatus();
+}
+
+Status MaybePinToResourceDevice(Device** device, const EagerOperation& op) {
+  if (op.colocation_exempt()) {
+    return absl::OkStatus();
+  }
+  EagerContext& ctx = op.EagerContext();
+  const absl::InlinedVector<TensorHandle*, 4>* inputs;
+  TF_RETURN_IF_ERROR(op.TensorHandleInputs(&inputs));
+  Device* op_device = op.Device() == kVariantDeviceNull
+                          ? ctx.HostCPU()
+                          : std::get<Device*>(op.Device());
+  for (int i = 0; i < inputs->size(); ++i) {
+    TensorHandle* tensor_handle = (*inputs)[i];
+    if (tensor_handle->dtype == DT_RESOURCE) {
+      if (tensor_handle->resource_remote_device_incarnation() != 0) {
+        TF_RETURN_IF_ERROR(ValidateTensorHandleRemoteDevice(
+            &ctx, tensor_handle->resource_remote_device_incarnation()));
+      }
+      Device* resource_device = tensor_handle->resource_device();
+      DVLOG(2) << "for op " << op.Name() << " input " << i << " "
+               << DataTypeString(tensor_handle->dtype)
+               << " input device = " << resource_device->name()
+               << ", op device = " << op_device->name();
+      // We check for `op->Device() == nullptr` because it can be later
+      // interpreted as unspecified device and a different device can
+      // be selected based on device priority. If any input to an op
+      // is a resource we must pin it to prevent different device selection.
+      // TODO(iga): null device can mean "unspecified" or "CPU". Clean this up.
+      if (resource_device != op_device || op.Device() == kVariantDeviceNull) {
+        DVLOG(1) << (resource_device != op_device ? "Changing " : "Setting ")
+                 << "device of operation " << op.Name() << " to "
+                 << resource_device->name() << " because input #" << i
+                 << " is a resource in this device.";
+        *device = resource_device;
+        return absl::OkStatus();
+        // No point in looking at other inputs. If there are other resources,
+        // they must have the same device and we already declared the op to be
+        // ineligible for CPU pinning.
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace eager
 }  // namespace tensorflow
