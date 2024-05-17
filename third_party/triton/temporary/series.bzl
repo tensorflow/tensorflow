@@ -5,7 +5,4 @@ These are created temporarily and should be moved to the first copybara workflow
 internal patch during the next triton integration process.
 """
 
-temporary_patch_list = [
-    "//third_party/triton/temporary:fp8_splat.patch",
-    "//third_party/triton/temporary:fix_register_constraints.patch",
-]
+temporary_patch_list = []
