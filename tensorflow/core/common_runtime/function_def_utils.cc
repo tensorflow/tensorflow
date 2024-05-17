@@ -15,18 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/hash.h"
+#include "tsl/platform/logging.h"
 
 namespace tensorflow {
 
@@ -104,6 +111,48 @@ Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
   };
   return FunctionDefToBodyHelper(std::move(record), attrs, lib_def,
                                  get_func_sig, fbody);
+}
+
+// TODO(ezhulenev, skyewm): Function body should not have special treatment of
+// stateful ops, graph should encode nodes that must execute with `control_ret`
+// and `control_output`.
+void PruneFunctionBody(const FunctionDef& fdef, Graph* g,
+                       absl::Span<Node*> additional_root_nodes) {
+  VLOG(2) << "Pruning function body: function_name=" << fdef.signature().name()
+          << " #nodes = " << g->num_nodes();
+
+  // `control_ret` nodes must be always executed.
+  absl::flat_hash_set<absl::string_view, tsl::StringPieceHasher>
+      control_ret_nodes;
+  for (const auto& control_ret : fdef.control_ret()) {
+    control_ret_nodes.insert(control_ret.second);
+  }
+
+  std::unordered_set<const Node*> nodes;
+  for (auto n : additional_root_nodes) {
+    nodes.insert(n);
+  }
+  for (auto n : g->nodes()) {
+    // NOTE(mrry): "_Retval" nodes are stateful, and so will be added
+    // to the seed set of `nodes`. "_Arg" nodes are also stateful, but we
+    // specifically exclude them as seeds, to avoid unconditionally executing
+    // unused argument nodes (e.g. in a function like `lambda x, y: y`).
+    // TODO(mrry): Investigate whether the `n->IsControlFlow()` test is
+    // still needed. It would be preferable to prune entire loops and/or
+    // conditionals if they are not used in the graph.
+    if (n->IsControlFlow() ||
+        (n->op_def().is_stateful() &&
+         n->type_string() != FunctionLibraryDefinition::kArgOp) ||
+        (control_ret_nodes.find(n->name()) != control_ret_nodes.end())) {
+      nodes.insert(n);
+    }
+  }
+  bool changed = PruneForReverseReachability(g, std::move(nodes));
+  if (changed) {
+    VLOG(2) << "Pruned function body and changed: function_name="
+            << fdef.signature().name() << " #nodes = " << g->num_nodes();
+    FixupSourceAndSinkEdges(g);
+  }
 }
 
 }  // end namespace tensorflow

@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function_testlib.h"
 
+#include <cstdint>
+
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -178,6 +181,26 @@ FunctionDef XTimesTwoWithControlOutput() {
       {{"y", "y"}},
       // control_ret_def
       {{"dummy", "dummy"}});
+}
+
+FunctionDef XTimesTwoWithDanglingFloorDivNode() {
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
+  return FDH::Define(
+      // Name
+      "XTimesTwoWithDanglingFloorDivNode",
+      // Args
+      {"x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"z"}, "FloorDiv", {"x", "scale"}, {{"T", "$T"}}},
+          {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
+      });
 }
 
 FunctionDef TwoDeviceMult() {

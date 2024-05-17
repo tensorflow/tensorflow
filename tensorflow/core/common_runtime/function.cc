@@ -897,50 +897,6 @@ Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
   return parent_status;
 }
 
-namespace {
-
-// Removes all stateless nodes that do not contribute to a return
-// value from the function body. Unlike `RemoveDeadNodes()`, which is
-// triggered by `OptimizerOptions.do_function_inlining`, this pass
-// ignores the SINK node, from which (by definition) all nodes are
-// reverse reachable, and preserves all nodes that are reachable from
-// control output nodes.
-//
-// TODO(ezhulenev, skyewm): Function body should not have special treatment of
-// stateful ops, graph should encode nodes that must execute with `control_ret`
-// and `control_output`.
-void PruneFunctionBody(const FunctionDef& fdef, Graph* g) {
-  VLOG(2) << "Pruning function body: function_name=" << fdef.signature().name();
-
-  // `control_ret` nodes must be always executed.
-  std::unordered_set<StringPiece, StringPieceHasher> control_ret_nodes;
-  for (const auto& control_ret : fdef.control_ret()) {
-    control_ret_nodes.insert(control_ret.second);
-  }
-
-  std::unordered_set<const Node*> nodes;
-  for (auto n : g->nodes()) {
-    // NOTE(mrry): "_Retval" nodes are stateful, and so will be added
-    // to the seed set of `nodes`. "_Arg" nodes are also stateful, but we
-    // specifically exclude them as seeds, to avoid unconditionally executing
-    // unused argument nodes (e.g. in a function like `lambda x, y: y`).
-    // TODO(mrry): Investigate whether the `n->IsControlFlow()` test is
-    // still needed. It would be preferable to prune entire loops and/or
-    // conditionals if they are not used in the graph.
-    if (n->IsControlFlow() ||
-        (n->op_def().is_stateful() && n->type_string() != kArgOp) ||
-        (control_ret_nodes.find(n->name()) != control_ret_nodes.end())) {
-      nodes.insert(n);
-    }
-  }
-  bool changed = PruneForReverseReachability(g, std::move(nodes));
-  if (changed) {
-    FixupSourceAndSinkEdges(g);
-  }
-}
-
-}  // namespace
-
 Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   const FunctionBody* fbody;
   FunctionLibraryRuntime* flr;
