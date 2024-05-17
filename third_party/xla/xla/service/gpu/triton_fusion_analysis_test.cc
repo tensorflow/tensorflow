@@ -674,6 +674,62 @@ ENTRY e {
   (void)analysis;
 }
 
+TEST_F(TritonDotAnalysisTest, DynamicSliceIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+triton_gemm {
+  dot_lhs = f32[2,18]{1,0} parameter(0)
+  dynamic_slice_input = f32[96,2]{1,0} parameter(1)
+  start_index0 = s32[] parameter(2)
+  start_index1 = s32[] parameter(3)
+  dynamic_slice = f32[64,2]{1,0} dynamic-slice(dynamic_slice_input,
+                                               start_index0, start_index1),
+                  dynamic_slice_sizes={64,2}
+  ROOT dot = f32[18,64]{1,0} dot(dot_lhs, dynamic_slice),
+             lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  dot_lhs = f32[2,18]{1,0} parameter(0)
+  dynamic_slice_input = f32[96,2]{1,0} parameter(1)
+  start_index0 = s32[] parameter(2)
+  start_index1 = s32[] parameter(3)
+  ROOT triton_gemm_d = f32[18,64]{1,0} fusion(dot_lhs, dynamic_slice_input,
+                                              start_index0, start_index1),
+      kind=kCustom,
+      calls=triton_gemm,
+      backend_config={"kind":"__triton_gemm"}
+}
+)"));
+
+  const HloComputation* dot_computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*dot_computation));
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  const HloInstruction* p1 = dot_computation->parameter_instruction(1);
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
+            p0);
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
+            p1);
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0),
+              ElementsAre(FieldsAre(/*stride=*/18, /*count=*/2,
+                                    /*slice_start=*/0, /*sliced_count=*/2,
+                                    /*subfragments=*/ElementsAre(2))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/18,
+                                    /*slice_start=*/0, /*sliced_count=*/18,
+                                    /*subfragments=*/ElementsAre(18))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 0),
+              ElementsAre(FieldsAre(/*stride=*/2, /*count=*/96,
+                                    /*slice_start=*/0, /*sliced_count=*/96,
+                                    /*subfragments=*/ElementsAre(96))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 1),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2,
+                                    /*slice_start=*/0, /*sliced_count=*/2,
+                                    /*subfragments=*/ElementsAre(2))));
+}
+
 TEST_F(TritonDotAnalysisTest, SparseDot) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
