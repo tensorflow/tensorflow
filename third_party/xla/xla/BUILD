@@ -587,6 +587,7 @@ xla_cc_test(
         ":shape_util",
         ":test",
         ":xla_data_proto_cc",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -649,6 +650,7 @@ xla_cc_test(
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//testing/base/public:gunit_main",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/random",
@@ -713,14 +715,13 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto_cc",
-        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
@@ -730,6 +731,7 @@ cc_library(
     hdrs = ["metric_table_report.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/hash/hash.h"
 #include "absl/random/random.h"
