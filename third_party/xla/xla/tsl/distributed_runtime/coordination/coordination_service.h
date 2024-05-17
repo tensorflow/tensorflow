@@ -117,6 +117,7 @@ class CoordinationServiceInterface {
 
   // Register a task to the service.
   // Possible service errors:
+  //   - Internal: Service has shut down.
   //   - InvalidArgument: Unexpected task request.
   //   - Aborted: (1) task is in error state, or (2) task is in connected state
   //       with a different incarnation, indicating that it restarted.
@@ -136,6 +137,7 @@ class CoordinationServiceInterface {
   // specified in the config, blocks until all tasks reach the barrier before
   // disconnecting together.
   // Possible service errors:
+  //   - Internal: Service has shut down.
   //   - InvalidArgument: Unexpected task request.
   //   - FailedPrecondition: task has already disconnected.
   virtual void ShutdownTaskAsync(const tensorflow::CoordinatedTask& task,
@@ -143,12 +145,14 @@ class CoordinationServiceInterface {
 
   // Disconnects task from the service and cleans up its internal error state.
   // Possible service errors:
+  //   - Internal: Service has shut down.
   //   - InvalidArgument: Unexpected task request.
   //   - FailedPrecondition: task has already disconnected.
   virtual absl::Status ResetTask(const tensorflow::CoordinatedTask& task) = 0;
 
   // Update the heartbeat timestamp of a task. This should only be invoked on
   // the leader of the cluster.
+  //   - Internal: Service has shut down.
   virtual absl::Status RecordHeartbeat(const tensorflow::CoordinatedTask& task,
                                        uint64_t incarnation) = 0;
 
