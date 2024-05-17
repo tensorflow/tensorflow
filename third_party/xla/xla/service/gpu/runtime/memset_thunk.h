@@ -37,8 +37,6 @@ class MemzeroThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  void ClearCompileTimeInfo() override { Thunk::ClearCompileTimeInfo(); }
-
   const BufferAllocation::Slice& destination() const { return dest_; }
 
  private:
@@ -56,8 +54,6 @@ class Memset32BitValueThunk : public Thunk {
         dest_(dest) {}
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-
-  void ClearCompileTimeInfo() override { Thunk::ClearCompileTimeInfo(); }
 
   const BufferAllocation::Slice& destination() const { return dest_; }
   uint32_t value() const { return value_; }
