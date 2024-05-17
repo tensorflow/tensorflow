@@ -588,4 +588,3 @@ tf_cc_test_mkl(
         "@com_google_absl//absl/strings",
     ] + MKL_TEST_DEPS,
 )
-
