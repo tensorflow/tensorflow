@@ -44,9 +44,9 @@ WhileThunk::WhileThunk(
     : Thunk(Kind::kWhile, thunk_info),
       condition_result_buffer_index_(condition_result_buffer_index),
       condition_thunk_sequence_(std::make_unique<SequentialThunk>(
-          ThunkInfo(thunk_info.op), std::move(*condition_thunk_sequence))),
+          ThunkInfo(), std::move(*condition_thunk_sequence))),
       body_thunk_sequence_(std::make_unique<SequentialThunk>(
-          ThunkInfo(thunk_info.op), std::move(*body_thunk_sequence))),
+          ThunkInfo(), std::move(*body_thunk_sequence))),
       trip_count_(trip_count) {}
 
 absl::Status WhileThunk::Prepare(const PrepareParams& params,

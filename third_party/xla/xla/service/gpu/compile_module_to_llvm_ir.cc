@@ -234,10 +234,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     RecordHloToLlvmDuration(end_usecs - start_usecs);
   }
 
-  auto thunk_sequence = ir_emitter->ConsumeThunkSequence();
-  ForAllThunks([](Thunk* thunk) { thunk->ClearCompileTimeInfo(); },
-               thunk_sequence.get());
-  results.executable = std::move(thunk_sequence);
+  results.executable = ir_emitter->ConsumeThunkSequence();
 
   return results;
 }
