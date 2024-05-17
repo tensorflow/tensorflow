@@ -384,6 +384,7 @@ cc_library(
 xla_cc_test(
     name = "loop_mlir_test",
     srcs = ["loop_mlir_test.cc"],
+    tags = ["no_rocm"],
     use_gpu = True,
     deps = [
         ":loop_mlir",
