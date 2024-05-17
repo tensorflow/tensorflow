@@ -788,16 +788,16 @@ region_0.10 {
 
 ENTRY main.17 {
   p0 = s16[3,2,2,14,16]{0,1,4,3,2} parameter(0)
-  p1 = s32[6,11,8,2]{0,2,1,3} parameter(1)
-  p2 = s16[6,11,8,3,5]{0,1,4,3,2} parameter(2)
-  ROOT scatter = s16[3,2,2,14,16]{0,1,4,3,2} scatter(p0, p1, p2), update_window_dims={3,4}, inserted_window_dims={1,2,3}, scatter_dims_to_operand_dims={4,0}, index_vector_dim=3, to_apply=region_0.10
+  p1 = s32[2,11]{0,1} parameter(1)
+  p2 = s16[11,3,5]{2,0,1} parameter(2)
+  ROOT scatter = s16[3,2,2,14,16]{0,1,4,3,2} scatter(p0, p1, p2), update_window_dims={1,2}, inserted_window_dims={1,2,3}, scatter_dims_to_operand_dims={4,0}, index_vector_dim=0, to_apply=region_0.10
 }
 )";
 
   CheckLayoutNormalization(
       hlo, R"(
 // CHECK: scatter({{.*}}),
-// CHECK-SAME: update_window_dims={2,1}, inserted_window_dims={0,1,3}, scatter_dims_to_operand_dims={2,4}, index_vector_dim=0, to_apply=%region_0.10
+// CHECK-SAME: update_window_dims={2,0}, inserted_window_dims={0,1,3}, scatter_dims_to_operand_dims={2,4}, index_vector_dim=1, to_apply=%region_0.10
 )",
       // Run the ScatterSimplifier afterwards, otherwise the verifier will
       // complain!
