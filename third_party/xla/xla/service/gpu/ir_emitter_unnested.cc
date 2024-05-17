@@ -656,7 +656,9 @@ absl::Status IrEmitterUnnested::EmitGemmThunk(
   }
 
   bool deterministic_ops =
-      ir_emitter_context_->debug_options().xla_gpu_deterministic_ops();
+      ir_emitter_context_->debug_options().xla_gpu_deterministic_ops() ||
+      ir_emitter_context_->debug_options()
+          .xla_gpu_exclude_nondeterministic_ops();
 
   TF_ASSIGN_OR_RETURN(
       GemmConfig config,
@@ -1690,11 +1692,13 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
 
 absl::Status IrEmitterUnnested::AssertNonDeterminismIsOkay(
     const std::string& op_name) {
-  if (ir_emitter_context_->debug_options().xla_gpu_deterministic_ops()) {
+  if (ir_emitter_context_->debug_options().xla_gpu_deterministic_ops() ||
+      ir_emitter_context_->debug_options()
+          .xla_gpu_exclude_nondeterministic_ops()) {
     return Unimplemented(
         "HLO instruction %s does not have a deterministic implementation, "
-        "but run-to-run determinism is required by "
-        "--xla_gpu_deterministic_ops.",
+        "but run-to-run determinism is required by --xla_gpu_deterministic_ops "
+        "or --xla_gpu_exclude_nondeterministic_ops.",
         op_name);
   }
   return absl::OkStatus();

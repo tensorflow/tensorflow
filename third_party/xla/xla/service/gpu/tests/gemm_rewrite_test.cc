@@ -202,7 +202,7 @@ ENTRY AddDotsFunc {
   auto get_module = [&]() {
     HloModuleConfig config;
     DebugOptions debug_options = GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_deterministic_ops(true);
+    debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
     config.set_debug_options(debug_options);
     return ParseAndReturnVerifiedModule(hlo_text, config);
   };

@@ -363,9 +363,9 @@ message DebugOptions {
   int32 xla_gpu_force_compilation_parallelism = 147;
   bool xla_gpu_enable_llvm_module_compilation_parallelism = 268;
 
-  // Guarantees run-to-run determinism. At present, the HLO ops Scatter and
-  // SelectAndScatter do not have deterministic XLA:GPU implementations.
-  // Compilation errors out if these ops are encountered.
+  // Guarantees run-to-run determinism.
+  // This flag implies --xla_gpu_exclude_nondeterministic_ops and in addition
+  // disables autotuning.
   bool xla_gpu_deterministic_ops = 148;
 
   // Paths to files with LLVM code.
@@ -771,7 +771,17 @@ message DebugOptions {
   // If true, will enable host memory offloading on a device.
   bool xla_gpu_enable_host_memory_offloading = 296;
 
-  // Next id: 297
+  // Excludes non-deterministic ops from compiled executables.
+  // Unlike --xla_gpu_deterministic_ops does not disable autotuning - the
+  // compilation itself can be non-deterministic.
+  // At present, the HLO op SelectAndScatter does not have a
+  // deterministic XLA:GPU implementation.
+  // Compilation errors out if SelectAndScatter is encountered.
+  // Scatter ops can non-deterministic by default; these get converted to
+  // a deterministic implementation.
+  bool xla_gpu_exclude_nondeterministic_ops = 297;
+
+  // Next id: 298
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

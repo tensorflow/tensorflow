@@ -1013,6 +1013,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_deterministic_ops(),
                 "Guarantees run-to-run determinism on GPU."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_exclude_nondeterministic_ops",
+      bool_setter_for(&DebugOptions::set_xla_gpu_exclude_nondeterministic_ops),
+      debug_options->xla_gpu_exclude_nondeterministic_ops(),
+      "Excludes non-deterministic ops from compiled executables."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_disable_async_collectives",
       setter_for_xla_gpu_disable_async_collectives,
       collective_op_types_to_string(
