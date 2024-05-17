@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -32,12 +33,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
-#include "absl/types/span.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_interface.h"
-#include "xla/stream_executor/host/host_execution_engine.h"
 #include "xla/stream_executor/host/host_kernel.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -56,6 +55,16 @@ HostStream* AsHostStream(Stream* stream) {
   return dynamic_cast<HostStream*>(stream->implementation());
 }
 
+static std::vector<HostExecutor::KernelFunctionLoader>&
+KernelFunctionLoaderRegistry() {
+  static auto* registry = new std::vector<HostExecutor::KernelFunctionLoader>();
+  return *registry;
+}
+
+void HostExecutor::RegisterKernelFunctionLoader(KernelFunctionLoader loader) {
+  KernelFunctionLoaderRegistry().push_back(std::move(loader));
+}
+
 absl::Status HostExecutor::Init() { return absl::OkStatus(); }
 
 absl::StatusOr<std::unique_ptr<Kernel>> HostExecutor::CreateKernel() {
@@ -69,25 +78,16 @@ absl::Status HostExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
 
   VLOG(3) << "GetKernel on kernel " << kernel << " : " << kernel->name();
 
-  if (spec.has_llvm_host_kernel()) {
-    const LlvmHostKernel& llvm_host_kernel = spec.llvm_host_kernel();
-    const absl::string_view name = llvm_host_kernel.kernel_name();
-    const absl::string_view entry = llvm_host_kernel.entrypoint();
-    const absl::string_view ir = llvm_host_kernel.ir();
-    const absl::Span<const std::string> options = llvm_host_kernel.options();
+  for (auto& loader : KernelFunctionLoaderRegistry()) {
+    auto loaded = loader(spec);
+    if (!loaded.has_value()) continue;
 
-    TF_ASSIGN_OR_RETURN(
-        auto execution_engine,
-        LlvmExecutionEngine::CreateFromLlvmIr(name, entry, ir, options));
-    host_kernel->SetExecutionEngine(std::move(execution_engine));
+    TF_ASSIGN_OR_RETURN(auto kernel_function, *std::move(loaded));
+    host_kernel->SetExecutionEngine(std::move(kernel_function));
     return absl::OkStatus();
-  } else if (false /* TODO(tsilytskyi): Implement CppHostKernel */) {
-    // host_kernel->SetExecutionEngine(std::make_unique<CppExecutionEngine>());
-  } else {
-    return absl::InternalError("No method of loading host kernel provided");
   }
 
-  return absl::UnimplementedError("Not Implemented");
+  return absl::InternalError("No method of loading host kernel provided");
 }
 
 absl::Status HostExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,

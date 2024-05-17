@@ -90,11 +90,94 @@ cc_library(
 )
 
 cc_library(
-    name = "host_execution_engine",
-    srcs = ["host_execution_engine.cc"],
-    hdrs = ["host_execution_engine.h"],
+    name = "host_kernel",
+    srcs = ["host_kernel.cc"],
+    hdrs = ["host_kernel.h"],
     deps = [
         ":host_kernel_c_api",
+        "//xla/stream_executor",
+        "//xla/stream_executor:device_memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "host_kernel_test",
+    srcs = ["host_kernel_test.cc"],
+    deps = [
+        ":host_kernel",
+        ":host_kernel_c_api",
+        ":host_platform",
+        ":jit_host_kernel_function",
+        "//xla/stream_executor",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel_factory",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "host_executor",
+    srcs = [
+        "host_executor.cc",
+    ],
+    hdrs = [
+        "host_executor.h",
+    ],
+    deps = [
+        ":host_kernel",
+        ":host_stream",
+        "//xla/stream_executor",
+        "//xla/stream_executor:event_interface",
+        "//xla/stream_executor:stream_executor_interface",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform/profile_utils:profile_utils_cpu_utils",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "host_stream_test",
+    srcs = ["host_stream_test.cc"],
+    deps = [
+        ":host_platform",
+        "//xla/stream_executor",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "jit_host_kernel_function",
+    srcs = ["jit_host_kernel_function.cc"],
+    hdrs = ["jit_host_kernel_function.h"],
+    deps = [
+        ":host_executor",
+        ":host_kernel",
+        ":host_kernel_c_api",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/platform",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -132,84 +215,5 @@ cc_library(
         "@llvm-project//llvm:X86AsmParser",
         "@llvm-project//llvm:X86CodeGen",
     ]),
-)
-
-cc_library(
-    name = "host_kernel",
-    srcs = ["host_kernel.cc"],
-    hdrs = ["host_kernel.h"],
-    deps = [
-        ":host_execution_engine",
-        ":host_kernel_c_api",
-        "//xla/stream_executor",
-        "//xla/stream_executor:device_memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_cc_test(
-    name = "host_kernel_test",
-    srcs = ["host_kernel_test.cc"],
-    deps = [
-        ":host_kernel",
-        ":host_kernel_c_api",
-        ":host_platform",
-        "//xla/stream_executor",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:kernel_factory",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-cc_library(
-    name = "host_executor",
-    srcs = [
-        "host_executor.cc",
-    ],
-    hdrs = [
-        "host_executor.h",
-    ],
-    deps = [
-        ":host_execution_engine",
-        ":host_kernel",
-        ":host_stream",
-        "//xla/stream_executor",
-        "//xla/stream_executor:event_interface",
-        "//xla/stream_executor:stream_executor_interface",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform/profile_utils:profile_utils_cpu_utils",
-    ],
-    alwayslink = True,
-)
-
-xla_cc_test(
-    name = "host_stream_test",
-    srcs = ["host_stream_test.cc"],
-    deps = [
-        ":host_platform",
-        "//xla/stream_executor",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
-    ],
+    alwayslink = 1,  # static kernel function loader registration
 )

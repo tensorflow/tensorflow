@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/host/host_kernel.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -27,7 +28,7 @@ limitations under the License.
 namespace stream_executor::host {
 
 HostKernel::HostKernel(unsigned arity, SE_HOST_Kernel* kernel)
-    : arity_(arity), kernel_(kernel) {}
+    : function_(std::make_unique<KernelFunctionPtr>(kernel)), arity_(arity) {}
 
 absl::Status HostKernel::Launch(
     const ThreadDim& thread_dims,
@@ -46,6 +47,8 @@ absl::Status HostKernel::Launch(
   // for different threads (blocks) concurrently. For now it's the most trivial
   // implementation that runs tasks sequentially.
 
+  SE_HOST_Kernel* kernel = function_->kernel();
+
   for (uint64_t z = 0; z < thread_dims.z; ++z) {
     for (uint64_t y = 0; y < thread_dims.y; ++y) {
       for (uint64_t x = 0; x < thread_dims.x; ++x) {
@@ -54,7 +57,7 @@ absl::Status HostKernel::Launch(
         SE_HOST_KernelCallFrame call_frame = {
             &kernel_thread_dims, &kernel_thread, args.size(), args.data()};
 
-        SE_HOST_KernelError* error = (*kernel_)(&call_frame);
+        SE_HOST_KernelError* error = (*kernel)(&call_frame);
 
         if (error != nullptr) {
           return absl::InternalError("Failed to call host kernel");

@@ -21,7 +21,10 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
+#include <variant>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -29,11 +32,13 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/host/host_kernel.h"
 #include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_interface.h"
 
@@ -51,6 +56,15 @@ namespace host {
 // See stream_executor.h for description of the below operations.
 class HostExecutor : public StreamExecutor {
  public:
+  // A function that loads a kernel function from a given spec. If spec is not
+  // supported it returns an empty optional.
+  using KernelFunctionLoader = std::function<std::optional<
+      absl::StatusOr<std::unique_ptr<HostKernel::KernelFunction>>>(
+      const MultiKernelLoaderSpec& spec)>;
+
+  // Registers a kernel function loader in a static registry.
+  static void RegisterKernelFunctionLoader(KernelFunctionLoader loader);
+
   HostExecutor(Platform* platform, int device_ordinal)
       : StreamExecutor(platform), device_ordinal_(device_ordinal) {}
 
@@ -138,8 +152,7 @@ class HostExecutor : public StreamExecutor {
   std::unique_ptr<EventInterface> CreateEventImplementation() override;
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
-      std::optional<std::variant<StreamPriority, int>> priority =
-          std::nullopt) override;
+      std::optional<std::variant<StreamPriority, int>> priority) override;
 
  private:
   int device_ordinal_;

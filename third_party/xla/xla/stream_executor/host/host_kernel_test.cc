@@ -100,7 +100,7 @@ TEST(HostKernelTest, Addition) {
   EXPECT_EQ(out, expected);
 }
 
-TEST(HostKernelTest, LlvmAddition) {
+TEST(HostKernelTest, JitAddition) {
   std::vector<int32_t> lhs = {1, 2, 3, 4};
   std::vector<int32_t> rhs = {5, 6, 7, 8};
   std::vector<int32_t> out = {0, 0, 0, 0};
