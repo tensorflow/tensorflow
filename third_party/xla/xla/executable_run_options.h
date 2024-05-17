@@ -103,8 +103,8 @@ using ThenExecuteFunction =
 // recorded on a `stream` once the send operation is completed and data was
 // copied from the `src` memory. `frontend_attrs` contains frontend specific
 // attributes for the send.
-using SendDeviceMemoryFunction =
-    std::function<absl::StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
+using SendDeviceMemoryFunction = std::function<
+    absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<stream_executor::Event>>>(
         int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
         const stream_executor::DeviceMemoryBase& src,
         const absl::flat_hash_map<std::string, std::string>& frontend_attrs)>;
@@ -113,8 +113,8 @@ using SendDeviceMemoryFunction =
 // recorded on a `stream` once the recv operation is completed and data was
 // copied into the `dst` memory. `frontend_attrs` contains frontend specific
 // attributes for the receive.
-using RecvDeviceMemoryFunction =
-    std::function<absl::StatusOr<tsl::AsyncValueRef<stream_executor::Event>>(
+using RecvDeviceMemoryFunction = std::function<
+    absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<stream_executor::Event>>>(
         int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
         stream_executor::DeviceMemoryBase* dst,
         const absl::flat_hash_map<std::string, std::string>& frontend_attrs)>;
