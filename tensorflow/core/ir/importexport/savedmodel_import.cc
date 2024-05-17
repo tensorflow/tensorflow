@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/savedmodel_import.h"
 
+#include "absl/status/statusor.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/saved_model.pb.h"
 
 namespace mlir {
 namespace tfg {
