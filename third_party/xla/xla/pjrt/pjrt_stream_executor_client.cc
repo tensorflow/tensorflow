@@ -1486,32 +1486,76 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
   } else {
     if (local_device_state->allocation_model() ==
         LocalDeviceState::kComputeSynchronized) {
-      std::unique_ptr<se::Stream> block_stream;
+      se::Stream* block_stream = nullptr;
       for (const auto& stream_and_event : events) {
+        VLOG(2)
+            << "Checking whether need to wait for stream_and_event: stream: "
+            << stream_and_event.stream
+            << "; event: " << stream_and_event.event.get()
+            << "; reference_held: " << stream_and_event.reference_held
+            << "; is_predetermined_error: "
+            << stream_and_event.event->IsPredeterminedError();
         // We only need to do something for events that didn't already acquire a
-        // reference to the buffer, and also which the compute stream didn't
-        // already wait for. Based on our heuristics this rare case should only
-        // occur when a buffer was copied to a device and then never used there.
-        // In that case we get a new stream and use it to hold onto a reference
-        // to the buffer until the events are complete.
+        // reference to the buffer. In that case we get a new stream and use it
+        // to hold onto a reference to the buffer until the events are complete.
+        //
+        // It is also important that we check IsPredeterminedError before
+        // checking DefinedOn(compute_stream) because otherwise DefinedOn would
+        // indefinitely wait since the event is never recorded when the buffer
+        // is predetermined error.
         if (!stream_and_event.event->IsPredeterminedError() &&
             !stream_and_event.reference_held &&
-            !stream_and_event.event->DefinedOn(
-                local_device_state->compute_stream()) &&
             !stream_and_event.event->IsComplete()) {
           if (block_stream == nullptr) {
-            block_stream = local_device_state->BorrowStreamFromPool();
+            block_stream = local_device_state->GetFixedSizePoolUsageStream();
           }
-          stream_and_event.event->WaitForEventOnStream(block_stream.get());
+          VLOG(2) << "Waiting for stream_and_event: stream: "
+                  << stream_and_event.stream
+                  << "; event: " << stream_and_event.event.get()
+                  << "; reference_held: " << stream_and_event.reference_held
+                  << "; is_predetermined_error: "
+                  << stream_and_event.event->IsPredeterminedError();
+          stream_and_event.event->WaitForEventOnStream(block_stream);
+        }
+      }
+      for (const auto& definition_event : device_buffer->definition_events()) {
+        VLOG(2) << "Checking whether need to wait for definition_event: "
+                << definition_event.get() << "; is_predetermined_error: "
+                << definition_event->IsPredeterminedError();
+        // Here we wait for the definition events to complete on block_stream as
+        // well, if they are also recorded as usage events with
+        // reference_held==false, WaitForEventOnStream here will be no-op, which
+        // is intended.
+        //
+        // It is also important that we check IsPredeterminedError before
+        // checking DefinedOn(compute_stream) because otherwise DefinedOn would
+        // indefinitely wait since the event is never recorded when the buffer
+        // is predetermined error.
+        //
+        // Since it's possible that definition_event.SetSequencingEvent()
+        // is called on a different host thread than this host thread, when in
+        // future more conditions are added to this check, we should be careful
+        // about whether we put them before the DefinedOn check or after it.
+        // For example, we shouldn't add an IsDefined() check before the
+        // DefinedOn() check here because that could potentially cause a
+        // shortcut where we don't wait for
+        // definition_event.SetSequencingEvent() on the other thread and
+        // eventually cause memory corruption.
+        if (!definition_event->IsPredeterminedError() &&
+            !definition_event->IsComplete()) {
+          if (block_stream == nullptr) {
+            block_stream = local_device_state->GetFixedSizePoolUsageStream();
+          }
+          VLOG(2) << "Waiting for definition_event: " << definition_event.get()
+                  << "; is_predetermined_error: "
+                  << definition_event->IsPredeterminedError();
+          definition_event->WaitForEventOnStream(block_stream);
         }
       }
       if (block_stream != nullptr) {
-        se::Stream* block_stream_ptr = block_stream.release();
         TF_RETURN_IF_ERROR(local_device_state->ThenExecuteCallback(
-            block_stream_ptr,
-            [device_buffer, block_stream_ptr, local_device_state]() {
-              local_device_state->ReturnStreamToPool(
-                  std::unique_ptr<se::Stream>(block_stream_ptr));
+            block_stream, [device_buffer]() {
+              // Drops device_buffer shared pointer.
             }));
       }
     }
