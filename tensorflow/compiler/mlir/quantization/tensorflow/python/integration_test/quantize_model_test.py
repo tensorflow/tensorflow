@@ -5501,6 +5501,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @parameterized.named_parameters(
       ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
+      ('stablehlo_per_channel', quant_opts_pb2.STABLEHLO, True),
   )
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_model(
@@ -5542,8 +5543,14 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
+    if target_opset == quant_opts_pb2.XLA:
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaDotV2'))
+    elif target_opset == quant_opts_pb2.STABLEHLO:
+      # This is to verify the invocation of StableHLO quantizer works. More
+      # thorough functional tests are in StableHLO quantizer directory.
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaCallModule'))
+
     # Due to other meta data, the compression is not exactly 1/4.
-    self.assertTrue(self._contains_op(output_graphdef, 'XlaDotV2'))
     self.assertLess(
         testing.get_size_ratio(
             self._output_saved_model_path, self._input_saved_model_path
@@ -5553,6 +5560,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @parameterized.named_parameters(
       ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
+      ('stablehlo_per_channel', quant_opts_pb2.STABLEHLO, True),
       # TODO: b/289761265 - [Converter Component][TF-Quantizer] Improve Weight-
       # only Quantization
       # Enable this back once new weight-only quantizer is supported for per-
@@ -5612,7 +5620,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         0.3,
     )
 
-    if enable_per_channel_quantization:
+    if enable_per_channel_quantization and target_opset == quant_opts_pb2.XLA:
       per_channel_size_attr = attr_value_pb2.AttrValue(
           list=attr_value_pb2.AttrValue.ListValue(
               shape=[
@@ -5631,6 +5639,12 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               output_graphdef, 'Const', '_output_shapes', per_channel_size_attr
           )
       )
+    if target_opset == quant_opts_pb2.XLA:
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
+    elif target_opset == quant_opts_pb2.STABLEHLO:
+      # This is to verify the invocation of StableHLO quantizer works. More
+      # thorough functional tests are in StableHLO quantizer directory.
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaCallModule'))
 
     input_tensor = array_ops.constant(
         np.random.uniform(low=0, high=0.1, size=input_shape),

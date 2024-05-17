@@ -77,8 +77,8 @@ message StaticRangePtqPreset {
   bool enable_full_int_quantization = 3;
 }
 
-// Applies int8 per-tensor weight-only post-training quantization for all
-// dot_general op.
+// Applies int8 per-channel weight-only post-training quantization for all
+// dot_general and convolution ops.
 message WeightOnlyPtqPreset {}
 
 // Metadata specific to the input TensorFlow SavedModel, which may be required
