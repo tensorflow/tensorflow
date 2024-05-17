@@ -217,13 +217,14 @@ class FusedBatchMatMulOpTestBase : public OpsTestBase {
     Tensor y_min_tensor(DT_FLOAT, TensorShape({}));
     Tensor y_max_tensor(DT_FLOAT, TensorShape({}));
 
-    MklTestingUtil::GetQuantizationTensors<T>(x, &x_qtensor, DT_QINT8,
-                                              input_quant_mode, &x_min_tensor,
-                                              &x_max_tensor);
-    MklTestingUtil::GetQuantizationTensors<T>(y, &y_qtensor, DT_QINT8,
-                                              input_quant_mode, &y_min_tensor,
-                                              &y_max_tensor);
-
+    auto status_x = MklTestingUtil::GetQuantizationTensors<T>(
+        x, &x_qtensor, DT_QINT8, input_quant_mode, &x_min_tensor,
+        &x_max_tensor);
+    ASSERT_TRUE(status_x.ok());
+    auto status_y = MklTestingUtil::GetQuantizationTensors<T>(
+        y, &y_qtensor, DT_QINT8, input_quant_mode, &y_min_tensor,
+        &y_max_tensor);
+    ASSERT_TRUE(status_y.ok());
     Scope root = tensorflow::Scope::NewRootScope();
 
     Output x_input =
