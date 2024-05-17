@@ -215,10 +215,11 @@ bool ScatterSimplifier::IsSimplifiedScatter(
       !IsIdentityPermutation(dims.scatter_dims_to_operand_dims());
   bool scatter_dim_not_first =
       absl::c_linear_search(dims.update_window_dims(), 0);
+  bool update_window_dims_sorted = absl::c_is_sorted(dims.update_window_dims());
 
   return !(nonstandard_index_vector_dim || num_scatter_dims > 1 ||
            scatter_indices_reordered || scatter_dim_not_first ||
-           !dims.inserted_window_dims().empty());
+           !update_window_dims_sorted || !dims.inserted_window_dims().empty());
 }
 
 bool ScatterSimplifier::InstructionMatchesPattern(HloInstruction* inst) {
