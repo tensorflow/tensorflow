@@ -473,9 +473,9 @@ TEST_F(CoordinateTwoTasksTest,
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
   // Unexpected heartbeat from unregistered tasks since service state has been
   // reset.
-  EXPECT_TRUE(absl::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInternal(
       coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
-  EXPECT_TRUE(absl::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInternal(
       coord_service_->RecordHeartbeat(task_1_, incarnation_1_)));
 }
 
@@ -1448,7 +1448,7 @@ TEST_F(CoordinateTwoTasksTest,
   // service has stopped yet, which should fail.
   absl::Status s = coord_service_->RecordHeartbeat(task_1_, incarnation_1_);
 
-  EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
+  EXPECT_TRUE(absl::IsInternal(s)) << s;
 }
 
 TEST_F(CoordinateTwoTasksTest, BarrierFailsIfServiceHasStopped) {
