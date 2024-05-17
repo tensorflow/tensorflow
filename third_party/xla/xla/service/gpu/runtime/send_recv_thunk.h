@@ -63,18 +63,18 @@ class SendRecvAsyncEvents {
  public:
   // Emplace a new send/recv completion event.
   absl::Status Emplace(se::StreamExecutor* executor, int32_t channel_id,
-                       tsl::AsyncValueRef<se::Event> event);
+                       tsl::AsyncValueRef<std::unique_ptr<se::Event>> event);
 
   // Extract a send/recv completion event.
-  absl::StatusOr<tsl::AsyncValueRef<se::Event>> Extract(
+  absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<se::Event>>> Extract(
       se::StreamExecutor* executor, int32_t channel_id);
 
  private:
   using Key = std::pair<se::StreamExecutor*, /*channel_id=*/int64_t>;
 
   absl::Mutex mutex_;
-  absl::flat_hash_map<Key, tsl::AsyncValueRef<se::Event>> events_
-      ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<Key, tsl::AsyncValueRef<std::unique_ptr<se::Event>>>
+      events_ ABSL_GUARDED_BY(mutex_);
 };
 
 //===----------------------------------------------------------------------===//
