@@ -45,8 +45,6 @@ class DeviceToDeviceCopyThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  void ClearCompileTimeInfo() override { Thunk::ClearCompileTimeInfo(); }
-
   const BufferAllocation::Slice& source() const { return source_buffer_; }
   const BufferAllocation::Slice& destination() const {
     return destination_buffer_;
