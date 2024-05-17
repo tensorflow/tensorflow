@@ -23,11 +23,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -77,12 +80,14 @@ limitations under the License.
 #include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/strings/proto_serialization.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace nanobind {
 namespace detail {
@@ -617,24 +622,24 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
    public:
     ComputationWrapper(const HloComputation* comp,
                        const std::shared_ptr<HloModule> module)
-        : comp{comp}, module{module} {}
-    absl::string_view name() const { return comp->name(); }
+        : comp_(comp), module_(module) {}
+    absl::string_view name() const { return comp_->name(); }
     void render_html(const std::string& filename) {
       std::string html = xla::ValueOrThrow(RenderGraph(
-          *comp, /*label=*/"", comp->parent()->config().debug_options(),
+          *comp_, /*label=*/"", comp_->parent()->config().debug_options(),
           RenderedGraphFormat::kHtml, HloRenderOptions()));
       xla::ThrowIfError(tsl::WriteStringToFile(
           tsl::Env::Default(), absl::StrCat(filename, ".html"), html));
     }
 
    private:
-    const HloComputation* comp;
+    const HloComputation* comp_;
     // The module owns the computations: if its destructor is called, the
     // computations are freed. To prevent that from happening in cases where the
     // module Python object goes out of scope and gets garbage collected before
     // the computations, we keep a shared_ptr to the module that originated the
     // computation.
-    const std::shared_ptr<HloModule> module;
+    const std::shared_ptr<HloModule> module_;
   };
 
   nb::class_<ComputationWrapper> hlo_computation_class(m, "HloComputation");
