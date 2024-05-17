@@ -52,10 +52,10 @@ PjRtCompatibleClientRemapArrays(
           arrays[i]->DebugString());
     }
   }
-  if (plan.input_specs.size() > 1 || plan.output_specs.size() > 1) {
+  if (plan.input_specs.size() > 1) {
     if (semantics != ArrayCopySemantics::kDonateInput) {
       return InvalidArgument(
-          "kDonateInput is required if multiple inputs or outputs are used");
+          "kDonateInput is required if multiple inputs are used");
     }
   }
 
