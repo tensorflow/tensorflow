@@ -183,14 +183,10 @@ class Thunk {
   };
 
   struct ThunkInfo {
-    explicit ThunkInfo(mlir::Operation* op) : op(op) {}
-    static ThunkInfo WithProfileAnnotation(mlir::Operation* op);
+    ThunkInfo() = default;  // Disable implicit constructors.
     static ThunkInfo WithProfileAnnotation(const HloInstruction* instr);
 
     std::string profile_annotation;
-    // TODO(b/304613751): This is only needed by the LMHLO. Remove this when
-    // LMHLO is removed from the runtime pipeline.
-    mlir::Operation* op;
 
     ExecutionStreamId execution_stream_id = kDefaultExecutionStreamId;
   };
@@ -409,7 +405,6 @@ class Thunk {
   Thunk(Kind kind, ThunkInfo thunk_info)
       : kind_(kind),
         profile_annotation_(thunk_info.profile_annotation),
-        op_(thunk_info.op),
         execution_stream_id_(thunk_info.execution_stream_id) {}
   virtual ~Thunk() = default;
   Thunk(const Thunk&) = delete;
@@ -418,11 +413,6 @@ class Thunk {
   virtual std::string ToStringExtra(int indent) const { return ""; }
   Kind kind() const { return kind_; }
   std::string_view profile_annotation() const { return profile_annotation_; }
-
-  // Only valid during compilation, i.e., lowering thunks to kernel-launch
-  // related XLA runtime custom calls). nullptr at runtime. MLIR codegen will
-  // cease the practice of lowering thunks to XLA runtime custom calls.
-  mlir::Operation* op() { return op_; }
 
   // Prepares thunk for execution.
   //
@@ -451,9 +441,6 @@ class Thunk {
   // Precondition: Initialize(initialize_params) has been called.
   virtual absl::Status ExecuteOnStream(const ExecuteParams& params) = 0;
 
-  // Clears metadata that is only valid during compile time.
-  virtual void ClearCompileTimeInfo() { op_ = nullptr; }
-
   static absl::string_view KindToString(Thunk::Kind kind);
 
   ExecutionStreamId execution_stream_id() const { return execution_stream_id_; }
@@ -464,7 +451,6 @@ class Thunk {
  private:
   Kind kind_;
   std::string profile_annotation_;
-  mlir::Operation* op_;
   ExecutionStreamId execution_stream_id_;
 };
 
