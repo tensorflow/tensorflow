@@ -325,7 +325,7 @@ absl::Status HloBisectState::ExpectModuleIsBuggy() {
   // Verify that the current module has a bug.
   TF_ASSIGN_OR_RETURN(bool has_bug, RunModule(*module_));
   if (has_bug) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Check for the bug checker stability.

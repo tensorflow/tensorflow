@@ -61,7 +61,7 @@ class VariadicReductionLayoutEqualizer : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, new_reduce));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -74,7 +74,7 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
     auto reduce = Cast<HloReduceInstruction>(hlo);
     auto shape = reduce->shape();
     if (custom_layout_allowed_ && custom_layout_allowed_(reduce)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     std::vector<Shape> expected_shapes(reduce->input_count());
@@ -107,7 +107,7 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
       if (!shape.IsTuple()) {
         auto copy = MakeCopyHlo(r_prime, shape);
         TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, copy));
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       std::vector<HloInstruction*> copies;
@@ -119,7 +119,7 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
       auto out = MaybeMakeTuple(copies);
       TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, out));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

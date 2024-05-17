@@ -119,7 +119,7 @@ absl::Status ParseOneProfileOutputLine(
     InsertOrDie(parsed_results, parsed_line.opcode, parsed_line);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool IsExtraMetricProfileOutputLine(const std::string& line) {

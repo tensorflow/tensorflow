@@ -434,7 +434,7 @@ static absl::Status ConvertActivityBuffer(
   }
   VLOG(3) << "CUPTI tracer post-process one ACTIVITY buffer of size: " << size
           << ", total events count:" << total_activity_event_count;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

@@ -91,7 +91,7 @@ absl::StatusOr<bool> SubByteNormalization::Run(
   FunctionVisitor visitor([&](HloInstruction* hlo) -> absl::Status {
     auto* shape = hlo->mutable_shape();
     changed |= UpdateShape(shape, mode_);
-    return OkStatus();
+    return absl::OkStatus();
   });
   for (HloComputation* computation : module->computations()) {
     // We rewrite all computations instead of non-fusion computations, despite

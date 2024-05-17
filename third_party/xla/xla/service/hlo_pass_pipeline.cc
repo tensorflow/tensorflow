@@ -63,7 +63,7 @@ absl::Status AttemptRecordPassEndMetadata(HloModule& module,
   TF_RETURN_IF_ERROR(
       module.metadata()->set_current_pass_module_changed(module_changed));
   TF_RETURN_IF_ERROR(module.metadata()->RecordPassEnd());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RecordPassEndMetadata(HloModule& module, const std::string& pass_name,
@@ -87,7 +87,7 @@ absl::Status AttemptRecordPassEndMetadata(HloModuleGroup& module_group,
     TF_RETURN_IF_ERROR(
         AttemptRecordPassEndMetadata(*module, pass_name, module_changed));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RecordPassEndMetadata(HloModuleGroup& module_group,
@@ -121,7 +121,7 @@ absl::Status HloPassPipeline::RunInvariantCheckers(
     TF_RET_CHECK(!changed_status.value())
         << "invariant checkers must not change the graph";
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

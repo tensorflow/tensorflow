@@ -1907,13 +1907,13 @@ TEST_F(CollectivePipelinerTest,
     xla::FrontendAttributes attributes = instr->frontend_attributes();
     (*attributes.mutable_map())[kAttr] = "1";
     instr->set_frontend_attributes(attributes);
-    return OkStatus();
+    return absl::OkStatus();
   };
   auto postprocess_rotated = [&](HloInstruction* instr) {
     xla::FrontendAttributes attributes = instr->frontend_attributes();
     (*attributes.mutable_map())[kAttr] = "2";
     instr->set_frontend_attributes(attributes);
-    return OkStatus();
+    return absl::OkStatus();
   };
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,

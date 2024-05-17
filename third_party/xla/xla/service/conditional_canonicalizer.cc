@@ -39,7 +39,7 @@ absl::Status CanonicalizeNonTupleConditional(HloInstruction* conditional) {
   auto gte = parent->AddInstruction(
       HloInstruction::CreateGetTupleElement(root_shape, new_conditional, 0));
   TF_RETURN_IF_ERROR(parent->ReplaceInstruction(conditional, gte));
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

@@ -44,7 +44,7 @@ absl::Status RunAutoShardingPassFromFile(const std::string& file_name) {
   TF_ASSIGN_OR_RETURN(bool changed, AutoSharding(option).Run(hlo_module.get()));
   CHECK(changed);
   std::cout << hlo_module->ToString() << std::endl;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

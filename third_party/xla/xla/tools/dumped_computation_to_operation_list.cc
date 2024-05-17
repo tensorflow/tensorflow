@@ -53,7 +53,7 @@ class OperationDumper : public DfsHloVisitorWithDefault {
     std::cout << absl::StrFormat("%s :: (%s) -> %s :: %s\n",
                                  HloOpcodeString(hlo->opcode()), params,
                                  ShapeUtil::HumanString(hlo->shape()), path_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

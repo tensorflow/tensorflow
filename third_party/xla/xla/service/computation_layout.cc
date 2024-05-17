@@ -68,7 +68,7 @@ ComputationLayout::FlattenedParameterLayouts() const {
         [this, &result](const Shape& subshape,
                         const ShapeIndex& index) -> absl::Status {
           if (subshape.IsTuple()) {
-            return OkStatus();
+            return absl::OkStatus();
           }
           if (!subshape.IsArray()) {
             return Unimplemented(
@@ -83,7 +83,7 @@ ComputationLayout::FlattenedParameterLayouts() const {
                 ToString());
           }
           result.push_back(subshape.layout());
-          return OkStatus();
+          return absl::OkStatus();
         }));
   }
   return result;
@@ -97,7 +97,7 @@ absl::StatusOr<std::vector<Layout>> ComputationLayout::FlattenedResultLayouts()
       [this, &result](const Shape& subshape,
                       const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         if (!subshape.IsArray()) {
           return Unimplemented(
@@ -112,7 +112,7 @@ absl::StatusOr<std::vector<Layout>> ComputationLayout::FlattenedResultLayouts()
               ToString());
         }
         result.push_back(subshape.layout());
-        return OkStatus();
+        return absl::OkStatus();
       }));
   return result;
 }

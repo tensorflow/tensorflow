@@ -329,7 +329,7 @@ absl::Status RegisterBufferOnce(NcclApi* nccl_api, int device_ordinal,
     all_registered.handles.push_back(handle);
     all_registered.records.insert({device_ordinal, comm, base_ptr});
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status MaybeRegisterBuffers(NcclApi* nccl_api, int device_ordinal,
@@ -345,7 +345,7 @@ absl::Status MaybeRegisterBuffers(NcclApi* nccl_api, int device_ordinal,
                                             buffers[i].destination_buffer));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status NcclCollectiveThunk::AsyncEvents::Initialize(

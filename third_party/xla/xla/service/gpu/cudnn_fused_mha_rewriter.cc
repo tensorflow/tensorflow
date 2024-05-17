@@ -1610,7 +1610,7 @@ absl::Status RestoreFwdGraph(
   }
   TF_RETURN_IF_ERROR(
       comp->ReplaceInstruction(activation_gte, cloned_activation));
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

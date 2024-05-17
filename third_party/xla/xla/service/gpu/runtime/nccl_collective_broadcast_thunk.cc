@@ -46,7 +46,7 @@ NcclCollectiveBroadcastStartThunk::NcclCollectiveBroadcastStartThunk(
 /*static*/ absl::Status NcclCollectiveBroadcastStartThunk::CheckImplementable(
     const HloInstruction* instr, int64_t replica_count,
     int64_t partition_count) {
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ CollectiveOpGroupMode

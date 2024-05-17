@@ -13653,7 +13653,7 @@ TEST_P(SpmdPartitioningTest, CustomCallShardingRegistration) {
                                operand_partitioned.state())
               .Reshard(hlo->sharding());
       partitioner->SetPartitionedHlo(hlo, result_partitioned);
-      return OkStatus();
+      return absl::OkStatus();
     }
   };
   RegisterCustomCallPartitioner(

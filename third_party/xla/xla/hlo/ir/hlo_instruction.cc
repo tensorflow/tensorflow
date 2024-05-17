@@ -103,7 +103,7 @@ absl::Status EraseElementFromVector(PtrVec<T>* container, T value) {
   auto it = std::find(container->begin(), container->end(), value);
   TF_RET_CHECK(it != container->end());
   container->erase(it);
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -2707,7 +2707,7 @@ absl::Status HloInstruction::AddControlDependencyTo(
         instruction->rare()->control_predecessors, this));
     instruction->mutable_rare()->control_predecessors.push_back(this);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HloInstruction::RemoveControlDependencyTo(
@@ -2721,7 +2721,7 @@ absl::Status HloInstruction::RemoveControlDependencyTo(
     TF_RETURN_IF_ERROR(EraseElementFromVector(
         &instruction->mutable_rare()->control_predecessors, this));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HloInstruction::DropAllControlDeps() {
@@ -2738,7 +2738,7 @@ absl::Status HloInstruction::DropAllControlDeps() {
     r->control_successors.clear();
     r->control_predecessors.clear();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HloInstruction::SafelyDropAllControlDependencies() {
@@ -2751,7 +2751,7 @@ absl::Status HloInstruction::SafelyDropAllControlDependencies() {
     }
   }
   TF_RETURN_IF_ERROR(DropAllControlDeps());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HloInstruction::HasControlDependencies() const {
@@ -2767,7 +2767,7 @@ absl::Status HloInstruction::CopyAllControlDepsTo(HloInstruction* start,
   for (auto* ctrl_succ : control_successors()) {
     TF_RETURN_IF_ERROR(end->AddControlDependencyTo(ctrl_succ));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HloInstruction::IdenticalInternal(
@@ -3057,7 +3057,7 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
     TF_RETURN_IF_ERROR(
         Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HloInstruction::ReplaceUseWith(HloInstruction* user,
@@ -3085,7 +3085,7 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
       << " to be equal to " << ToString();
   user->operands_[operand_number] = new_producer;
   new_producer->AddUser(user);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HloInstruction::ReplaceOperandWith(int64_t operand_num,
@@ -3104,7 +3104,7 @@ absl::Status HloInstruction::ReplaceOperandWithDifferentShape(
   TF_RET_CHECK(operand_num < operand_count());
   HloInstruction* old_operand = mutable_operand(operand_num);
   if (old_operand == new_operand) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   operands_[operand_num] = new_operand;
@@ -3116,7 +3116,7 @@ absl::Status HloInstruction::ReplaceOperandWithDifferentShape(
     old_operand->RemoveUser(this);
   }
   new_operand->AddUser(this);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Copy all the instructions in the given fusion instruction into the fusion
@@ -3124,7 +3124,7 @@ absl::Status HloInstruction::ReplaceOperandWithDifferentShape(
 // instruction with the copy of the fusion expression root.
 absl::Status HloInstruction::Defuse() {
   if (opcode() != HloOpcode::kFusion) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(2) << "Defusing instruction: " << ToString();
 
@@ -3187,7 +3187,7 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     parent_->set_root_instruction(new_producer,
                                   /*accept_different_shape=*/true);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer,
@@ -3235,7 +3235,7 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
                                   /*accept_different_shape=*/true);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HloInstruction::IsEffectiveBitcast() const {
@@ -4438,7 +4438,7 @@ static absl::Status PostOrderDFS(
     std::reverse(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end());
   } while (!dfs_stack.empty());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename HloInstructionPtr>
@@ -4452,7 +4452,7 @@ absl::Status HloInstruction::Accept(
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Explicit instantiations.
@@ -4479,7 +4479,7 @@ absl::Status HloInstruction::AcceptWithOperandOrder(
     VLOG(3) << "HloInstruction::AcceptWithOperandOrder AFTER FINISH VISIT";
   }
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder EXIT";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const Shape& HloInstruction::shape() const { return shape_; }

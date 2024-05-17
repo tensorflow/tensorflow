@@ -94,7 +94,7 @@ absl::Status CustomCallDynamicDimensionInference(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class DynamicPadderTest : public HloTestBase {
@@ -689,7 +689,7 @@ ENTRY main {
   };
   auto custom_call_handler = [](HloInstruction* hlo,
                                 DynamicDimensionInference* inference) {
-    return OkStatus();
+    return absl::OkStatus();
   };
   TF_ASSERT_OK(
       RunPadder(

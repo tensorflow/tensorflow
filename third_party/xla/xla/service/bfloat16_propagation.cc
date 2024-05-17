@@ -768,7 +768,7 @@ absl::Status BFloat16Propagation::ResolveInconsistentFusions(
       fusion_computation->set_root_instruction(copy);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status BFloat16Propagation::ResolveConvertedConstants(
@@ -800,7 +800,7 @@ absl::Status BFloat16Propagation::ResolveConvertedConstants(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status BFloat16Propagation::SkipNoopConversions(
@@ -822,7 +822,7 @@ absl::Status BFloat16Propagation::SkipNoopConversions(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // The algorithm first does a forward pass (parameters to root) to determine a
@@ -967,7 +967,7 @@ absl::StatusOr<bool> BFloat16Propagation::Run(
         tuple_simplifier.Run(module, execution_threads).status());
     HloDCE dce;
     TF_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   if (!changed_) {

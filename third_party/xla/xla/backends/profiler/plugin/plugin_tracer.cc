@@ -146,7 +146,7 @@ absl::Status PluginTracer::Start() {
   args.profiler = profiler_;
   RETURN_STATUS_IF_PLUGIN_PROFILER_ERROR(profiler_api_->start(&args),
                                          profiler_api_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status PluginTracer::Stop() {
@@ -154,7 +154,7 @@ absl::Status PluginTracer::Stop() {
   args.profiler = profiler_;
   RETURN_STATUS_IF_PLUGIN_PROFILER_ERROR(profiler_api_->stop(&args),
                                          profiler_api_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status PluginTracer::CollectData(XSpace* space) {
@@ -172,7 +172,7 @@ absl::Status PluginTracer::CollectData(XSpace* space) {
       plane->Swap(&tpu_plane);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace profiler

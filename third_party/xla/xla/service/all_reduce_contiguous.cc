@@ -80,7 +80,7 @@ absl::Status ReplaceWithContiguousAllReduce(
   // Replace original all-reduce with tuple of slices from new all-reduce.
   TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
       all_reduce, HloInstruction::CreateTuple(outputs)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

@@ -155,7 +155,7 @@ static absl::Status EmitDynamicUpdateSliceInPlaceImpl(
     TF_ASSIGN_OR_RETURN(llvm::Value * update_data,
                         update_array_generator(update_index));
     output_array.EmitWriteArrayElement(output_index, update_data, b);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   if (launch_dimensions != nullptr) {
@@ -249,7 +249,7 @@ static absl::Status EmitFusedDynamicUpdateSliceInPlaceImpl(
         IrName(dynamic_update_slice), b));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status EmitFusedDynamicUpdateSliceInPlace(

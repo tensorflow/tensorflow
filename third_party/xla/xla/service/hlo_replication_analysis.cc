@@ -413,7 +413,7 @@ absl::Status HloReplicationAnalysis::ComputeHloReplication() {
     absl::Status status = ShapeUtil::ForEachSubshapeWithStatus(
         param->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           if (!ShapeUtil::IsLeafIndex(param->shape(), index)) {
-            return OkStatus();
+            return absl::OkStatus();
           }
           if (cross_partition_spmd_ && param->has_sharding()) {
             // In cross-partition spmd mode, set parameter replication status
@@ -442,14 +442,14 @@ absl::Status HloReplicationAnalysis::ComputeHloReplication() {
             }
             ++leaf_index;
           }
-          return OkStatus();
+          return absl::OkStatus();
         });
     TF_RETURN_IF_ERROR(status);
     hlo_replication_[param] = std::move(shape_tree);
   }
   ComputeHloReplicationOnComputation(entry,
                                      /*mark_everything_not_replicated=*/false);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HloReplicationAnalysis::HloInstructionIsReplicatedAt(

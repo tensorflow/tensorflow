@@ -106,7 +106,7 @@ class HloPassInterface {
       run_state->changed_this_iteration.insert(computations.begin(),
                                                computations.end());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Run the pass on the given HLO module group for specified

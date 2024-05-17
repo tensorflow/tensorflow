@@ -167,7 +167,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                         ElementWiseUnaryOp(abs, [](NativeT elem_operand) {
                           return elem_operand;
                         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   template <typename NativeT,
@@ -177,7 +177,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                         ElementWiseUnaryOp(abs, [](NativeT elem_operand) {
                           return std::abs(elem_operand);
                         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   template <typename NativeT,
@@ -192,7 +192,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             abs, [](NativeT elem_operand) { return std::abs(elem_operand); },
             operand_literal)));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleAbs(const HloInstruction* abs) override {
@@ -214,7 +214,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(round, [](ElementwiseT elem_operand) {
             return std::round(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(round);
   }
@@ -228,7 +228,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(round, [](ElementwiseT elem_operand) {
             return std::nearbyint(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(round);
   }
@@ -240,7 +240,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(ceil, [](ElementwiseT elem_operand) {
             return std::ceil(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(ceil);
   }
@@ -252,7 +252,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(erf, [](ElementwiseT elem_operand) {
             return std::erf(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(erf);
   }
@@ -262,7 +262,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                         ElementWiseUnaryOp(exp, [](ElementwiseT elem_operand) {
                           return std::exp(elem_operand);
                         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleExpm1(const HloInstruction* expm1) override {
@@ -272,7 +272,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(expm1, [](ElementwiseT elem_operand) {
             return std::expm1(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(expm1);
   }
@@ -284,7 +284,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(floor, [](ElementwiseT elem_operand) {
             return std::floor(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(floor);
   }
@@ -294,7 +294,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                         ElementWiseUnaryOp(log, [](ElementwiseT elem_operand) {
                           return std::log(elem_operand);
                         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleLog1p(const HloInstruction* log1p) override {
@@ -304,7 +304,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(log1p, [](ElementwiseT elem_operand) {
             return std::log1p(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(log1p);
   }
@@ -322,7 +322,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
               return ~elem_operand;
             }
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(not_);
   }
@@ -338,7 +338,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         ElementWiseUnaryOp(negate, [](ElementwiseT elem_operand) {
           return NativeT(-type(elem_operand));
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   template <typename NativeT, typename std::enable_if_t<
@@ -349,7 +349,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         parent_->evaluated_[negate],
         ElementWiseUnaryOp(
             negate, [](ElementwiseT elem_operand) { return -elem_operand; }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleNegate(const HloInstruction* negate) override {
@@ -363,7 +363,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           return static_cast<ElementwiseT>(1) /
                  (static_cast<ElementwiseT>(1) + std::exp(-elem_operand));
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleSign(const HloInstruction* sign) override {
@@ -386,7 +386,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             return 0 == abs_val ? ElementwiseT(0) : elem_operand / abs_val;
           }
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleAtan2(const HloInstruction* atan2) override {
@@ -396,7 +396,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                                         ElementwiseT rhs_elem) {
                             return std::atan2(lhs_elem, rhs_elem);
                           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     if constexpr (is_complex_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(
@@ -406,7 +406,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             auto i = ElementwiseT(0.0, 1.0);
             return (-i) * (std::log((x + i * y) / std::sqrt(x * x + y * y)));
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(atan2);
   }
@@ -416,7 +416,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                         ElementWiseUnaryOp(tanh, [](ElementwiseT elem_operand) {
                           return std::tanh(elem_operand);
                         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleMultiply(const HloInstruction* multiply) override {
@@ -427,7 +427,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
               return ElementwiseT(ToArithmeticSafeType(lhs_elem) *
                                   ToArithmeticSafeType(rhs_elem));
             }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleSubtract(const HloInstruction* subtract) override {
@@ -438,7 +438,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
               return ElementwiseT(ToArithmeticSafeType(lhs_elem) -
                                   ToArithmeticSafeType(rhs_elem));
             }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleAdd(const HloInstruction* add) override {
@@ -448,7 +448,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                           return ElementwiseT(ToArithmeticSafeType(lhs_elem) +
                                               ToArithmeticSafeType(rhs_elem));
                         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleDivide(const HloInstruction* divide) override {
@@ -475,7 +475,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
               }
               return lhs_elem / rhs_elem;
             }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleMaximum(const HloInstruction* maximum) override {
@@ -493,7 +493,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             }
             return std::max(lhs, rhs);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(maximum);
   }
@@ -513,7 +513,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             }
             return std::min(lhs, rhs);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(minimum);
   }
@@ -566,7 +566,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             return static_cast<ElementwiseT>(std::pow(lhs_el, rhs_el));
           }
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleSqrt(const HloInstruction* sqrt) override {
@@ -574,7 +574,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                         ElementWiseUnaryOp(sqrt, [](ElementwiseT elem_operand) {
                           return std::sqrt(elem_operand);
                         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleCbrt(const HloInstruction* cbrt) override {
@@ -584,7 +584,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(cbrt, [](ElementwiseT elem_operand) {
             return std::cbrt(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(cbrt);
   }
@@ -595,7 +595,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         ElementWiseUnaryOp(rsqrt, [](ElementwiseT elem_operand) {
           return static_cast<ElementwiseT>(1) / std::sqrt(elem_operand);
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleRemainder(const HloInstruction* remainder) override {
@@ -621,7 +621,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                   return std::fmod(lhs_el, rhs_el);
                 }
               }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(remainder);
   }
@@ -634,7 +634,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                               [](ElementwiseT lhs_el, ElementwiseT rhs_el) {
                                 return lhs_el & rhs_el;
                               }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(and_inst);
   }
@@ -646,7 +646,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                                           ElementwiseT rhs_el) {
                             return lhs_el | rhs_el;
                           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(or_inst);
   }
@@ -659,7 +659,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                               [](ElementwiseT lhs_el, ElementwiseT rhs_el) {
                                 return lhs_el ^ rhs_el;
                               }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(xor_inst);
   }
@@ -674,7 +674,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                        ? 0
                                        : (lhs_elem << rhs_elem);
                           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(shl);
   }
@@ -694,7 +694,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                   return static_cast<ElementwiseT>(lhs_signed >> rhs_elem);
                 }
               }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(shr);
   }
@@ -714,7 +714,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                             return static_cast<ElementwiseT>(
                                 static_cast<UnsignedT>(lhs_elem) >> rhs_elem);
                           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(shr);
   }
@@ -740,7 +740,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           parent_->evaluated_[clamp],
           ElementwiseTernaryOp(clamp,
                                std::move(ConvertTernaryFunction(clamp_op))));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(clamp);
   }
@@ -757,7 +757,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         };
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[select],
                         ElementwiseTernaryOp(select, std::move(select_op)));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleConvolutionWithLiterals(const HloInstruction* conv,
@@ -958,7 +958,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(func));
 
     parent_->evaluated_[conv] = std::move(result);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleConvolution(const HloInstruction* conv) override {
@@ -1092,7 +1092,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     result.PopulateR2FromArray2D(*result_array);
     parent_->evaluated_[dot] =
         std::move(result).Convert(dot->shape().element_type()).value();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   template <typename NativeT, typename std::enable_if_t<
@@ -1209,7 +1209,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         }));
 
     parent_->evaluated_[dot] = std::move(result);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleDotSlowPath(const HloInstruction* dot) {
@@ -1307,7 +1307,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                     step, func);
 
     parent_->evaluated_[pad] = std::move(result);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleClz(const HloInstruction* clz) override {
@@ -1321,7 +1321,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                       std::numeric_limits<ReturnT>::is_signed;
             return (unsigned_digits - 1) - Log2Floor<uint64_t>(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(clz);
   }
@@ -1335,7 +1335,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             return std::bitset<CHAR_BIT * sizeof(ReturnT)>(elem_operand)
                 .count();
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(popcnt);
   }
@@ -1348,7 +1348,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(sin, [](ElementwiseT elem_operand) {
             return std::sin(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(sin);
   }
@@ -1361,7 +1361,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(cos, [](ElementwiseT elem_operand) {
             return std::cos(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(cos);
   }
@@ -1373,7 +1373,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           ElementWiseUnaryOp(tan, [](ElementwiseT elem_operand) {
             return std::tan(elem_operand);
           }));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(tan);
   }
@@ -1474,7 +1474,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           }
           return reduced_result;
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   template <typename NativeT,
@@ -1501,7 +1501,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             return true;
           });
       parent_->evaluated_[iota] = std::move(result);
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(iota);
   }
@@ -1566,7 +1566,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                      " is not implemented.");
       }
       parent_->evaluated_[random] = std::move(result);
-      return OkStatus();
+      return absl::OkStatus();
     }
     if constexpr (std::is_integral_v<ElementwiseT>) {
       switch (distribution) {
@@ -1599,7 +1599,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                      " is not implemented.");
       }
       parent_->evaluated_[random] = std::move(result);
-      return OkStatus();
+      return absl::OkStatus();
     }
     return UnsupportedTypeError(random);
   }

@@ -66,7 +66,7 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
       auto c2 = MakeCopyHlo(b, s);
       TF_RETURN_IF_ERROR(ReplaceInstruction(reshape, c2));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

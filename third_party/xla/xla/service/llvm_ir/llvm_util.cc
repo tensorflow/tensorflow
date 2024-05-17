@@ -717,7 +717,7 @@ static absl::Status CreateAndWriteStringToFile(
   TF_RETURN_IF_ERROR(tsl::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(text));
   TF_RETURN_IF_ERROR(f->Close());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DumpIrIfEnabled(const HloModule& hlo_module,

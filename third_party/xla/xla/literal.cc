@@ -458,7 +458,7 @@ absl::Status MutableLiteralBase::CopySliceFromInternal(
                             stride_config.dimensions, stride_config.step,
                             copy_proc);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
@@ -521,10 +521,10 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
                 ShapeUtil::TupleElementCount(piece->subshape()),
                 proto_element->tuple_literals_size());
           }
-          return OkStatus();
+          return absl::OkStatus();
         }
         if (piece->subshape().element_type() == TOKEN) {
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         CHECK(piece->subshape().IsArray());
@@ -536,7 +536,7 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
           TF_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
         }
 
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   return std::move(literal);
@@ -691,7 +691,7 @@ absl::Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
       DeallocateBuffers();
     }
     array_value_state_ = src.array_value_state_;
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     CHECK(src.array_value_state_ == ArrayValueState::kKnown);
     if (array_value_state_ == ArrayValueState::kUndetermined ||
@@ -724,7 +724,7 @@ absl::Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
     memcpy(dynamic_size_buffer(), src.dynamic_size_buffer(),
            src.dynamic_size_buffer_bytes());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MutableLiteralBase::SetDynamicSize(int64_t dim_index, int32_t size) {
@@ -771,7 +771,7 @@ absl::Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
   return mutable_root_piece().ForEachMutableSubpieceWithStatus(
       [&](const ShapeIndex& index, Piece* piece) {
         if (!piece->subshape().IsArray()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         // Determine if this index is in the part of this literal that we want
@@ -784,7 +784,7 @@ absl::Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
           }
         }
         if (!in_subtree_to_copy) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         // Construct the index of the corresponding piece in the source literal.
         ShapeIndex src_piece_index = src_shape_index;
@@ -795,7 +795,7 @@ absl::Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
         TF_RETURN_IF_ERROR(
             piece->CopyFrom(src_literal.piece(src_piece_index),
                             /*only_dynamic_bound=*/only_dynamic_bound));
-        return OkStatus();
+        return absl::OkStatus();
       });
 }
 
@@ -829,7 +829,7 @@ absl::Status Literal::MoveFrom(Literal&& src_literal,
   src_literal.root_piece_ = Piece();
   src_literal.root_piece_.set_subshape(src_literal.shape_.get());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status MutableLiteralBase::CopySliceFrom(
@@ -935,7 +935,7 @@ absl::Status MutableLiteralBase::PopulateInplace(
         return populator(dest, indexes);
       },
       /*parallel=*/false);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status MutableLiteralBase::PopulateInplaceParallel(
@@ -944,7 +944,7 @@ absl::Status MutableLiteralBase::PopulateInplaceParallel(
       << __func__ << " is only supported for dense arrays: " << shape();
   PopulateInplaceInternal(populator,
                           /*parallel=*/element_count() > 32);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Literal LiteralBase::Relayout(const Layout& new_layout,
@@ -1390,7 +1390,7 @@ absl::Status MutableLiteralBase::SetIntegralAsS64(
                       primitive_type_constant == PRED) {
           using NativeT = NativeTypeOf<primitive_type_constant>;
           Set<NativeT>(multi_index, static_cast<NativeT>(value));
-          return OkStatus();
+          return absl::OkStatus();
         }
         return FailedPrecondition("Array element type is not integral: %s",
                                   PrimitiveType_Name(shape().element_type()));
@@ -1411,7 +1411,7 @@ absl::Status MutableLiteralBase::SetFromDouble(
         Set<NativeT>(multi_index, static_cast<NativeT>(value));
       },
       shape().element_type());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1715,7 +1715,7 @@ absl::Status ConvertIfDestTypeMatches(const LiteralBase& src_literal,
           ConvertBetweenNativeTypes<NativeSrcT, NativeDestT>(src_data,
                                                              dst_base);
         }
-        return OkStatus();
+        return absl::OkStatus();
       },
       dst_literal.shape().element_type());
 }
@@ -2343,7 +2343,7 @@ absl::Status CopyFromRepeatedField(absl::Span<NativeT> dest,
         dest.size(), src.size());
   }
   std::copy(src.begin(), src.end(), dest.begin());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -2514,7 +2514,7 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       return InvalidArgument("Is called on unsupported shape: %s",
                              ShapeUtil::HumanString(subshape()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool LiteralBase::Piece::IsKnown() const {

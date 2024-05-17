@@ -53,12 +53,12 @@ absl::Status VerifyS4U4Usage(HloInstruction* instruction) {
                       shape.element_type()),
                   instruction->ToString()));
             }
-            return OkStatus();
+            return absl::OkStatus();
           }));
       break;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -79,7 +79,7 @@ absl::Status CpuGpuShapeVerifier::Preprocess(HloInstruction* hlo) {
                 hlo->ToString()));
           }
         }
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   TF_RETURN_IF_ERROR(VerifyS4U4Usage(hlo));

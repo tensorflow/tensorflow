@@ -64,7 +64,7 @@ class KernelSupportLibrary {
                            [&](llvm::Value* ind_var,
                                bool is_first_iteration) -> absl::Status {
                              for_body_generator(ind_var, is_first_iteration);
-                             return OkStatus();
+                             return absl::OkStatus();
                            }));
   }
 
@@ -104,7 +104,7 @@ class KernelSupportLibrary {
              ForWithStatus(name, start, end, step,
                            [&](llvm::Value* ind_var) -> absl::Status {
                              for_body_generator(ind_var);
-                             return OkStatus();
+                             return absl::OkStatus();
                            }));
   }
 
@@ -161,7 +161,7 @@ class KernelSupportLibrary {
       llvm::Value* condition,
       const std::function<absl::Status()>& true_block_generator,
       const std::function<absl::Status()>& false_block_generator =
-          []() -> absl::Status { return OkStatus(); }) {
+          []() -> absl::Status { return absl::OkStatus(); }) {
     return IfWithStatus("", condition, true_block_generator,
                         false_block_generator);
   }
@@ -180,16 +180,16 @@ class KernelSupportLibrary {
           name, condition,
           [&]() {
             true_block_generator();
-            return OkStatus();
+            return absl::OkStatus();
           },
           [&]() {
             false_block_generator();
-            return OkStatus();
+            return absl::OkStatus();
           }));
     } else {
       TF_CHECK_OK(IfWithStatus(name, condition, [&]() {
         true_block_generator();
-        return OkStatus();
+        return absl::OkStatus();
       }));
     }
   }

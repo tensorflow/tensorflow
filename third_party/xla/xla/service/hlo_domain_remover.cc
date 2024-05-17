@@ -55,7 +55,7 @@ absl::Status HloDomainRemover::RunContext::VerifyAndNormalizeDomain(
     VLOG(2) << "Applying domain-less normalization";
     TF_RETURN_IF_ERROR(remover_->normalizer_(domain, nullptr));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> HloDomainRemover::RunContext::Run(

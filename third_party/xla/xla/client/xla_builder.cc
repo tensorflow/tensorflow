@@ -121,7 +121,7 @@ Status NormalizeAndAssignSharing(HloInstructionProto* instr,
   sharding = sharding.NormalizeTupleSharding(shape);
   TF_RETURN_IF_ERROR(sharding.Validate(shape));
   *instr->mutable_sharding() = sharding.ToProto();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -693,7 +693,7 @@ Status XlaBuilder::SetInstructionFrontendAttribute(const XlaOp op,
   TF_ASSIGN_OR_RETURN(auto instr_proto, LookUpMutableInstruction(op));
   auto* frontend_attributes = instr_proto->mutable_frontend_attributes();
   (*frontend_attributes->mutable_map())[attribute] = std::move(value);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaBuilder::SetInstructionSharding(
@@ -701,7 +701,7 @@ Status XlaBuilder::SetInstructionSharding(
   TF_ASSIGN_OR_RETURN(auto instr_proto, LookUpMutableInstruction(op));
   if (!sharding.has_value()) {
     instr_proto->clear_sharding();
-    return OkStatus();
+    return absl::OkStatus();
   }
   return NormalizeAndAssignSharing(instr_proto, sharding.value());
 }
@@ -723,7 +723,7 @@ Status XlaBuilder::GetCurrentStatus() const {
     first_error_backtrace_.Dump(tsl::DebugWriteToString, &backtrace);
     return AppendStatus(first_error_, backtrace);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<XlaComputation> XlaBuilder::Build(
@@ -859,7 +859,7 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(
   }
   *module->mutable_buffer_donor() = buffer_donor_config.ToProto();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 XlaOp XlaBuilder::MhloDynamicReshape(XlaOp operand, XlaOp output_shape,
@@ -2018,7 +2018,7 @@ Status XlaBuilder::VerifyConvolution(
                                field_name, i, numbers[i]);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
   TF_RETURN_IF_ERROR(
       check_spatial_dimensions("input_spatial_dimensions",
@@ -3340,7 +3340,7 @@ Status XlaBuilder::CheckOpBuilder(XlaOp op) const {
         "it in builder '%s'",
         op.handle(), op.builder()->name(), name());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 XlaOp XlaBuilder::Reduce(XlaOp operand, XlaOp init_value,
@@ -4653,7 +4653,7 @@ XlaBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
         dnum.output_batch_dimension(), dnum.output_feature_dimension(),
         dnum.output_spatial_dimensions(0), dnum.output_spatial_dimensions(1));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<XlaOp> XlaBuilder::AddInstruction(

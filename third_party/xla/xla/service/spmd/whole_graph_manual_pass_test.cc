@@ -49,7 +49,7 @@ class WholeGraphManualPassTest : public HloTestBase {
     HloPassPipeline pipeline("all-gather-cse");
     pipeline.AddPass<WholeGraphManualPass>();
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

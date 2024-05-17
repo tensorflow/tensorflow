@@ -116,7 +116,7 @@ class HloComputation {
       for (const auto& instruction : instructions_) {
         TF_RETURN_IF_ERROR(func(instruction.get()));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     HloInstruction* last_added_instruction() const {

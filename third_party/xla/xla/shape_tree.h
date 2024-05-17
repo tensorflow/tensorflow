@@ -237,7 +237,7 @@ class ShapeTree {
     for (const Node& node : nodes_) {
       TF_RETURN_IF_ERROR(func(node.first, node.second));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status ForEachMutableElementWithStatus(
@@ -245,7 +245,7 @@ class ShapeTree {
     for (Node& node : nodes_) {
       TF_RETURN_IF_ERROR(func(node.first, &node.second));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Like the above, but traverses in post-order.  Note children are visited in
@@ -269,7 +269,7 @@ class ShapeTree {
     for (auto node = nodes_.rbegin(); node != nodes_.rend(); ++node) {
       TF_RETURN_IF_ERROR(func(node->first, node->second));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status ForEachMutableElementPostOrderWithStatus(
@@ -277,7 +277,7 @@ class ShapeTree {
     for (auto node = nodes_.rbegin(); node != nodes_.rend(); ++node) {
       TF_RETURN_IF_ERROR(func(node->first, &node->second));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Maps each element to generate a new tree with the same shape.

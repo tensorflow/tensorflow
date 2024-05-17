@@ -40,7 +40,7 @@ class ConvertAsyncCollectivesToSyncTest : public HloTestBase {
     TF_ASSIGN_OR_RETURN(bool changed,
                         ConvertAsyncCollectivesToSync{is_nop}.Run(module));
     EXPECT_EQ(changed, expect_change);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::string_view GetAsyncName(const HloInstruction *inst) {

@@ -81,7 +81,7 @@ absl::Status RecordArguments(
         transfer_manager->TransferLiteralFromDevice(stream, *argument));
     *module->add_arguments() = literal.ToProto();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Records the result of a computation in a HloSnapshot proto.
@@ -93,7 +93,7 @@ absl::Status RecordResult(const ShapedBuffer& result, se::Stream* stream,
       Literal literal,
       transfer_manager->TransferLiteralFromDevice(stream, result));
   *module->mutable_result() = literal.ToProto();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -164,7 +164,7 @@ absl::Status Service::CreateChannelHandle(const CreateChannelHandleRequest* arg,
                                           CreateChannelHandleResponse* result) {
   TF_ASSIGN_OR_RETURN(*result->mutable_channel(),
                       channel_tracker_.NewChannel(arg->channel_type()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status Service::Unregister(const UnregisterRequest* arg,
@@ -189,7 +189,7 @@ absl::Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
   for (auto& element : elements) {
     *result->add_element_handles() = element;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status Service::ValidateResultShape(const Shape& client_shape,
@@ -202,7 +202,7 @@ absl::Status Service::ValidateResultShape(const Shape& client_shape,
         ShapeUtil::HumanStringWithLayout(client_shape),
         ShapeUtil::HumanString(result_shape));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
@@ -656,7 +656,7 @@ absl::Status Service::ExecuteGraphParallel(
   // basically the same thing.
   ExecutionProfile profile;
   std::vector<GlobalDataHandle> outputs;
-  absl::Status execution_status = OkStatus();
+  absl::Status execution_status = absl::OkStatus();
 
   if (executable_ptrs.size() == 1) {
     absl::StatusOr<GlobalDataHandle> output_or_status =
@@ -712,7 +712,7 @@ absl::Status Service::ExecuteGraphParallel(
   }
 
   VLOG(1) << "successfully completed 'execute-graph-parallel' request";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
@@ -736,7 +736,7 @@ absl::Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
     *result->add_device_handles() = device_handle;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
@@ -834,7 +834,7 @@ absl::Status Service::Compile(const CompileRequest* arg,
   *result->mutable_handle() = compilation_cache_.Insert(std::move(executable));
 
   VLOG(1) << "successfully completed 'compile' request";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status Service::Execute(const ExecuteRequest* arg,
@@ -905,7 +905,7 @@ absl::Status Service::Execute(const ExecuteRequest* arg,
   }
 
   VLOG(1) << "successfully completed 'execute' request";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status Service::TransferToClient(const TransferToClientRequest* arg,
@@ -948,7 +948,7 @@ absl::Status Service::TransferToClient(const TransferToClientRequest* arg,
     *result->mutable_literal() =
         result_literal.Relayout(return_shape).ToProto();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status Service::TransferToServer(const TransferToServerRequest* arg,
@@ -991,7 +991,7 @@ absl::Status Service::TransferToServer(const TransferToServerRequest* arg,
                           StrCat("TransferToServer literal of shape ",
                                  ShapeUtil::HumanString(shape))));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
@@ -1050,7 +1050,7 @@ absl::Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
       execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
           executor, &literal));
   *result->mutable_literal() = literal.ToProto();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status Service::ResetDevice(const ResetDeviceRequest* arg,
@@ -1117,7 +1117,7 @@ absl::Status Service::ComputeConstantGraph(
   }
   *result->mutable_literal() = result_literal.ToProto();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status Service::GetShape(const GetShapeRequest* arg,
@@ -1125,7 +1125,7 @@ absl::Status Service::GetShape(const GetShapeRequest* arg,
   TF_ASSIGN_OR_RETURN(const ShapedBuffer* buffer,
                       allocation_tracker_.ResolveForReplica(arg->data(), 0));
   *result->mutable_shape() = buffer->on_device_shape().ToProto();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status Service::GetComputationGraphStats(
@@ -1157,7 +1157,7 @@ absl::Status Service::GetComputationGraphStats(
   stats.set_flop_count(analysis.flop_count());
   stats.set_transcendental_count(analysis.transcendental_count());
   *result->mutable_stats() = stats;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 DeviceHandle Service::SingleComputationDeviceHandle() const {

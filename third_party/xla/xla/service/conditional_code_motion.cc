@@ -530,7 +530,7 @@ absl::Status RestructureConditionalInstruction(HloComputation* computation,
     }
   }
   VLOG(2) << "computation after root restructure:\n" << computation->ToString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
@@ -953,7 +953,7 @@ class MoveOperandIntoBranch {
     if (inst->user_count() == 0) {
       TF_RETURN_IF_ERROR(inst->parent()->RemoveInstruction(inst));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -1135,7 +1135,7 @@ class MoveOperandIntoBranch {
       }
       VLOG(2) << "User: " << user->ToString() << "\n";
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
   absl::Status MoveInputIntoBranch(
       HloInstruction* input, HloInstruction*& user,
@@ -1212,7 +1212,7 @@ class MoveOperandIntoBranch {
         UpdateTupleUsers(inserted);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
   void UpdateTupleUsers(HloInstruction* param_user) {
     for (auto new_user : param_user->users()) {

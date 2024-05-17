@@ -94,7 +94,7 @@ bool HasSplatArg(Operation* op, float val, int opr_num) {
 // Determines if the given op is semantically that of the gauss error function.
 bool MatchERF(Operation* op) {
   if (auto custom_call = llvm::dyn_cast_or_null<stablehlo::CustomCallOp>(op)) {
-    return custom_call.getCallTargetName().equals("mhlo.erf");
+    return custom_call.getCallTargetName() == "mhlo.erf";
   }
   return llvm::isa<chlo::ErfOp>(op);
 }

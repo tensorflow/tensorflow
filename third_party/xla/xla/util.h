@@ -794,7 +794,7 @@ absl::Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   auto it = std::find(container->begin(), container->end(), value);
   TF_RET_CHECK(it != container->end());
   container->erase(it);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Takes a sequence of unpacked n-bit values, such that every byte stores one

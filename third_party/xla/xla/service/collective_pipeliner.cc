@@ -86,7 +86,7 @@ absl::Status UpdateControlDependencies(HloInstruction* original,
     }
     TF_RETURN_IF_ERROR(it->second->AddControlDependencyTo(new_instr));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Checks for the condition where all indices except the one passed as parameter
@@ -1532,7 +1532,7 @@ absl::Status TransformLoopForward(
             TF_RETURN_IF_ERROR(
                 computation->RemoveInstructionAndUnusedOperands(to_replace));
           }
-          return OkStatus();
+          return absl::OkStatus();
         };
     auto* new_peeled_dus = input_stacked_data;
     if (it == moves_requiring_special_output_to_idx.end()) {
@@ -1554,7 +1554,7 @@ absl::Status TransformLoopForward(
         absl::MakeSpan(loop_output_to_replace), output_stacked_data));
   }
   TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Function that does the work of sinking all-reduces the output of which are
@@ -2054,7 +2054,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
   TF_RETURN_IF_ERROR(
       loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
   TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Function that does the work of pushing backward instructions that have been
@@ -2381,7 +2381,7 @@ static absl::Status TransformLoopBackward(
   TF_RETURN_IF_ERROR(
       loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
   TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> CollectivePipeliner::Run(

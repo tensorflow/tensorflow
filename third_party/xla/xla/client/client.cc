@@ -112,7 +112,7 @@ Status Client::TransferToInfeed(const LiteralSlice& literal, int64_t replica_id,
     return s;
   }
   VLOG(3) << "TransferToInfeedResponse: {" << response.DebugString() << "}";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<Literal> Client::TransferFromOutfeed(
@@ -160,7 +160,7 @@ Status Client::ResetDevice() {
     return s;
   }
   VLOG(3) << "ResetDeviceResponse: {" << response.DebugString() << "}";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<Literal> Client::ExecuteAndTransfer(

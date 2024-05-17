@@ -243,7 +243,7 @@ absl::Status CpuExecutable::ExecuteComputeFunction(
     return Internal("CustomCall failed: %s", *error_message);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(

@@ -219,7 +219,7 @@ absl::Status HloDCE::RecursivelyRemoveDeadComputation(
     TF_RETURN_IF_ERROR(
         RecursivelyRemoveDeadComputation(module, subcomp, live_call_counts));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> HloDCE::RecursivelyRemoveDeadComputations(

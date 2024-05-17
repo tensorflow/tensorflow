@@ -75,7 +75,7 @@ class TestAllocator : public se::DeviceMemoryAllocator {
   absl::Status Deallocate(int device_ordinal,
                           se::DeviceMemoryBase mem) override {
     if (mem.is_null()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     auto it = allocations_.find({device_ordinal, mem.opaque()});
@@ -85,7 +85,7 @@ class TestAllocator : public se::DeviceMemoryAllocator {
       free(mem.opaque());
       allocations_.erase(it);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool AllowsAsynchronousDeallocation() const override { return false; }

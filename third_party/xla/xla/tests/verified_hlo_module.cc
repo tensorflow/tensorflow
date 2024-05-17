@@ -48,7 +48,7 @@ void VerifiedHloModule::VerifyOrAddFailure(absl::string_view message) {
 absl::Status VerifiedHloModule::Verify() {
   if (computation_count() == 0) {
     // The computation was never built. Nothing to verify.
-    return OkStatus();
+    return absl::OkStatus();
   }
   return verifier_.Run(this).status();
 }

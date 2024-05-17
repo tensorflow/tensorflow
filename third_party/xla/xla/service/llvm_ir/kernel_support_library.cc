@@ -42,7 +42,7 @@ absl::Status KernelSupportLibrary::ForWithStatus(
   b_->SetInsertPoint(&loop->GetBodyBasicBlock()->back());
   TF_RETURN_IF_ERROR(for_body_generator(loop->GetIndVarValue()));
   llvm_ir::SetToLastInsertPoint(loop->GetExitBasicBlock(), b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status KernelSupportLibrary::IfWithStatus(
@@ -59,7 +59,7 @@ absl::Status KernelSupportLibrary::IfWithStatus(
     TF_RETURN_IF_ERROR(false_block_generator());
   }
   llvm_ir::SetToLastInsertPoint(if_data.after_block, b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void KernelSupportLibrary::EmitAndCallOutlinedKernel(

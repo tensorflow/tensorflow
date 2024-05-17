@@ -123,7 +123,7 @@ absl::Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
   for (auto& shaped_buffer : it->second) {
     shaped_buffer.reset();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<GlobalDataHandle>>
@@ -231,7 +231,7 @@ absl::Status AllocationTracker::DecrementRefCount(
   } else {
     allocation.ref_count--;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

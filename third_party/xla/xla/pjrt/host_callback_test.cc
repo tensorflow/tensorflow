@@ -46,7 +46,7 @@ class TestPjRtHostMemoryForDeviceManager
                             size_t dst_size, const Shape& dst_shape) override {
     CHECK_EQ(src_size, dst_size);
     std::memcpy(dst_data, src_data, src_size);
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -80,7 +80,7 @@ TEST(HostCallbackTest, Basic) {
   host_callback.results = {HostCallbackArgInfo{/*channel_id=*/2, shape}};
   host_callback.callback = [byte_size](void** outputs, void** inputs) {
     std::memcpy(outputs[0], inputs[0], byte_size);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   HostCallbackStates states;
@@ -128,7 +128,7 @@ TEST(HostCallbackTest, NonBlockingRecv) {
   host_callback.results = {HostCallbackArgInfo{/*channel_id=*/2, shape}};
   host_callback.callback = [byte_size](void** outputs, void** inputs) {
     std::memcpy(outputs[0], inputs[0], byte_size);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   HostCallbackStates states;

@@ -63,7 +63,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     Literal& literal = *Cast<HloConstantInstruction>(hlo)->mutable_literal();
     if (literal.shape().IsTuple()) {
       // TODO(cheshire): Tuple constants.
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     const Shape& shape = hlo->shape();
@@ -79,7 +79,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     *hlo->mutable_shape() = normalized_shape;
     TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWithDifferentShape(bc_to_orig));
     MarkAsChanged();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Slice is layout-preserving, so handling is analoguous to elementwise unary,
@@ -111,7 +111,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     SetVisited(*normalized_slice);
     HloInstruction* bc_to_orig = MakeBitcastHlo(normalized_slice, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Default action: ensure local postcondition that any input is always a
@@ -123,13 +123,13 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     if (!hlo->user_count()) {
       // The local postcondition does not have to apply to the case when there
       // are no users.
-      return OkStatus();
+      return absl::OkStatus();
     }
     auto users = hlo->users();
     auto shape = hlo->shape();
     if (shape.IsTuple() || shape.IsToken()) {
       // GTEs will be transformed individually, tokens should be skipped.
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     auto normalized_shape = Normalize(shape);
@@ -138,7 +138,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto bc_to_orig = MakeBitcastHlo(bc_to_normalized, shape);
     TF_RETURN_IF_ERROR(hlo->ReplaceUsesWith(users, bc_to_orig));
     MarkAsChanged();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Converts concatenation to normalized layout.
@@ -164,13 +164,13 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     SetVisited(*normalized_concat);
     auto bc_to_orig = MakeBitcastHlo(normalized_concat, hlo->shape());
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleReduceWindow(HloInstruction* hlo) override {
     if (hlo->shape().IsTuple()) {
       // TODO(cheshire): Handle variadic reductions.
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     HloInstruction* operand = hlo->mutable_operand(0);
@@ -201,7 +201,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
     HloInstruction* bc_to_orig = MakeBitcastHlo(rw, hlo->shape());
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Converts broadcast input and output to normalized layout.
@@ -238,7 +238,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     VLOG(3) << "Generated broadcast: " << normalized_broadcast->ToString();
     auto bc_to_orig = MakeBitcastHlo(normalized_broadcast, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleIota(HloInstruction* hlo) override {
@@ -255,7 +255,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     VLOG(3) << "Generated iota: " << normalized_iota->ToString();
     auto bc_to_orig = MakeBitcastHlo(normalized_iota, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // BitcastConvert is only layout-preserving if it doesn't change the rank.
@@ -314,7 +314,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     }
     auto bc_to_orig = MakeBitcastHlo(new_unary, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Pushes down the bitcast across the binary. Converts:
@@ -352,7 +352,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     SetVisited(*new_binary);
     auto bc_to_orig = MakeBitcastHlo(new_binary, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // The ReshapeDecomposer already gives us a precondition that a reshape is
@@ -375,7 +375,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     SetVisited(*new_reshape);
     auto bc_to_orig = MakeBitcastHlo(new_reshape, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Scatter is layout-preserving regarding the scatter operands, so we only
@@ -496,7 +496,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     SetVisited(*normalized_scatter);
     auto bc_to_orig = MakeBitcastHlo(normalized_scatter, scatter->shape());
     TF_RETURN_IF_ERROR(ReplaceInstruction(scatter, bc_to_orig));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // For bitcasting transposes, converts:
@@ -549,7 +549,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
       auto bc_to_orig = MakeBitcastHlo(a0, s, &hlo->metadata());
       TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Converts a purely physical copy into a physical+logical transposition.
@@ -579,7 +579,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     SetVisited(*t);
     auto bc_to_orig = MakeBitcastHlo(t, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // The reverse HLO has a list of dimensions it reverses.
@@ -601,7 +601,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     SetVisited(*normalized_reverse);
     auto bc_to_orig = MakeBitcastHlo(normalized_reverse, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Padding is layout-preserving, so we only have to permute values inside the
@@ -634,7 +634,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     SetVisited(*padded_normalized);
     auto bc_to_orig = MakeBitcastHlo(padded_normalized, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleCustomCall(HloInstruction* hlo) override {
@@ -645,7 +645,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
       if (transformed_custom_call) {
         SetVisited(*(*transformed_custom_call)->operand(0));
         TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, *transformed_custom_call));
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
     return DefaultAction(hlo);
@@ -689,7 +689,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     SetVisited(*normalized_dynamic_slice);
     HloInstruction* bc_to_orig = MakeBitcastHlo(normalized_dynamic_slice, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleDynamicUpdateSlice(HloInstruction* hlo) override {
@@ -718,7 +718,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     HloInstruction* bc_to_orig = MakeBitcastHlo(new_dus, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status HandleClamp(HloInstruction* hlo) override {
@@ -751,7 +751,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
     HloInstruction* bc_to_orig = MakeBitcastHlo(normalized, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<HloInstruction*> GetNewStartIdxs(

@@ -78,7 +78,7 @@ BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
                           target_element_generator(array_index));
       target_arrays_vec[0].EmitWriteArrayElement(array_index, target_element,
                                                  b);
-      return OkStatus();
+      return absl::OkStatus();
     };
   }
 
@@ -103,7 +103,7 @@ BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
       target_arrays_vec[i].EmitWriteArrayElement(
           used_index, b->CreateExtractValue(target_element, i), b);
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 }
 
@@ -195,7 +195,7 @@ absl::Status LoopEmitter::EmitLoop(absl::string_view loop_name,
   if (exit_bb_ != nullptr) {
     b_->SetInsertPoint(exit_bb_);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace llvm_ir

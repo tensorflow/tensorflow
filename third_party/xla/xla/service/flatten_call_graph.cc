@@ -113,7 +113,7 @@ absl::Status FlattenNode(const CallGraphNode& node) {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

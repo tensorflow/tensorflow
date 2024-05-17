@@ -1035,7 +1035,7 @@ absl::Status DotHandler::RegisterStrategies() {
                                       cluster_env_, batch_map_, option_));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /************** ConvHandler function definitions **************/
@@ -1106,7 +1106,7 @@ absl::Status ConvHandler::RegisterStrategies() {
                                       cluster_env_, batch_map_, option_));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ConvHandler::SplitLhsBatchRhsOutchannel() {
@@ -1233,7 +1233,7 @@ absl::Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
                      instruction_id, instruction_sequence, hlo_cost_analysis,
                      cluster_env, batch_map, option, call_graph);
   TF_RETURN_IF_ERROR(handler.RegisterStrategies());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Register strategies for convolution instructions.
@@ -1266,7 +1266,7 @@ absl::Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
     TF_RETURN_IF_ERROR(handler.RegisterStrategies());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace spmd

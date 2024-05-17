@@ -277,7 +277,7 @@ absl::Status HostOffloader::HandleMoveToHostCustomCall(
   } else {
     TF_RETURN_IF_ERROR(MemoryOnlyOffloadInsertCopies(custom_call));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HostOffloader::MemoryOnlyOffloadStartingWithDus(
@@ -424,7 +424,7 @@ absl::Status HostOffloader::MemoryOnlyOffloadStartingWithDus(
   broadcasts_to_replace_.emplace(
       broadcast_value->defining_position().instruction);
   AddAllPositionsToBeMovedToHostMemory(unique_buffer);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void HostOffloader::AddAllPositionsToBeMovedToHostMemory(
@@ -516,7 +516,7 @@ absl::Status HostOffloader::MemoryOnlyOffloadStartingWithCopy(
   expected_host_to_device_annotations_.emplace(consuming_copy_user);
 
   AddAllPositionsToBeMovedToHostMemory(unique_buffer);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HostOffloader::MemoryOnlyOffloadInsertCopies(
@@ -554,7 +554,7 @@ absl::Status HostOffloader::MemoryOnlyOffloadInsertCopies(
   }
 
   AddAllPositionsToBeMovedToHostMemory(unique_buffer);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HostOffloader::DynamifySlice(HloInstruction* slice) {
@@ -577,7 +577,7 @@ absl::Status HostOffloader::DynamifySlice(HloInstruction* slice) {
   VLOG(3) << "Newly created dynamic slice: " << new_ds->name();
   TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(new_ds));
   TF_RETURN_IF_ERROR(slice->parent()->RemoveInstruction(slice));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Taking an instruction representing a move-to-device custom call, creates a
@@ -628,7 +628,7 @@ absl::Status HostOffloader::CreateCopyForInputStreaming(
           operand_of_load_annotation->ReplaceUseWith(use, copy_to_device));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // From a unique buffer on host memory, finds move-to-device custom calls
@@ -680,7 +680,7 @@ absl::Status HostOffloader::HandleStreamedBuffer(
     }
   }
   AddAllPositionsToBeMovedToHostMemory(unique_buffer);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Finds parameters of the entry computation that are in host memory space and
@@ -709,7 +709,7 @@ absl::Status HostOffloader::HandleInputStreaming(HloComputation* computation) {
           }
         });
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Starts from the result of the entry computation and looks for a case of
@@ -731,7 +731,7 @@ absl::Status HostOffloader::HandleOutputStreaming(HloComputation* computation) {
           TF_CHECK_OK(HandleStreamedBuffer(unique_buffer));
         }
       });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> HostOffloader::Run(

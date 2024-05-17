@@ -115,7 +115,7 @@ static void FilterOutBlockArgControlDep(
 static void SplitNextIteration(Block &block) {
   // TODO(b/207144333): Supports callback for unregistered ops
   block.walk([&](Operation *op) {
-    if (!op->getName().getStringRef().equals("tfg.NextIteration")) return;
+    if (op->getName().getStringRef() != "tfg.NextIteration") return;
     mlir::OpBuilder builder(op);
 
     llvm::SmallVector<Value, 2> new_operands;

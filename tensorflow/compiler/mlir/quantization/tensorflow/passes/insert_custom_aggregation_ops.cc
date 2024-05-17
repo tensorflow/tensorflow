@@ -69,9 +69,9 @@ bool IsCallToQuantizableLiftedFunction(Operation *op) {
 
   TF::PartitionedCallOp call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
   return call_op && call_op->hasAttrOfType<StringAttr>(kQuantTraitAttrName) &&
-         call_op->getAttrOfType<StringAttr>(kQuantTraitAttrName)
-             .getValue()
-             .equals(QuantTraitValues[QuantizationTrait::FullyQuantizable]);
+         call_op->getAttrOfType<StringAttr>(kQuantTraitAttrName).getValue() ==
+             llvm::StringRef(
+                 QuantTraitValues[QuantizationTrait::FullyQuantizable]);
 }
 
 // Returns the composite function name.

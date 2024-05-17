@@ -223,7 +223,7 @@ absl::Status GatherComputationsByAllocationType(
     // will not appear in either thread_local_set or global_set. We don't bother
     // assigning buffers for these.
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string BufferAllocation::Slice::ToString() const {
@@ -531,7 +531,7 @@ bool BufferAssignment::HaveDisjointSlices(const HloInstruction* hlo_a,
             return InvalidArgument("No slices assigned to part of instr.");
           }
           slices.insert(shape_slices.begin(), shape_slices.end());
-          return OkStatus();
+          return absl::OkStatus();
         });
     if (!status.ok()) {
       return {};
@@ -767,7 +767,7 @@ absl::Status BufferAssignment::ComputeSummaryStats() {
     stats_.total_fragmentation_bytes = stats_.total_allocation_bytes - min_size;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string BufferAssignment::Stats::ToString() const {
@@ -1295,7 +1295,7 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
                 << *hlo_buffer << " value ptr: " << value;
       }
       VLOG(3) << "Not allocating buffer for constant";
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     const HloInstruction* instruction = value->instruction();
@@ -1321,7 +1321,7 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
       }
       VLOG(3) << "New allocation #" << allocation->index()
               << " marked as entry computation parameter: " << *hlo_buffer;
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -1331,7 +1331,7 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
     allocation->set_is_thread_local(true);
     VLOG(3) << "New allocation #" << allocation->index()
             << " for thread-local: " << *hlo_buffer;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   for (const HloValue* value : hlo_buffer->values()) {
@@ -1341,7 +1341,7 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
       allocation->set_is_tuple(true);
       VLOG(3) << "New allocation #" << allocation->index()
               << " for tuple-shaped buffer: " << *hlo_buffer;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     if (value->IsTopLevel() && !value->IsTuple()) {
@@ -1354,7 +1354,7 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
           if (MaybeAssignBuffer(allocation, *hlo_buffer, assignment)) {
             VLOG(3) << "Reusing (operand) allocation #" << allocation->index()
                     << " for: " << *hlo_buffer;
-            return OkStatus();
+            return absl::OkStatus();
           }
         }
       }
@@ -1370,7 +1370,7 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
     if (MaybeAssignBuffer(allocation, *hlo_buffer, assignment)) {
       VLOG(3) << "Reusing allocation #" << allocation->index()
               << " for: " << *hlo_buffer;
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -1399,7 +1399,7 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
         (*buffers_to_assign_sequentially)[computation].insert(hlo_value);
         VLOG(3) << "Delaying assignment of temp buffer: " << *hlo_value;
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -1412,7 +1412,7 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
   }
 
   TF_RET_CHECK(assignment->HasAllocation(*hlo_buffer));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status BufferAssigner::AssignBuffersForComputations(
@@ -1423,7 +1423,7 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
         buffers_to_assign_sequentially,
     BufferAssignment* assignment) {
   if (computations.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   std::vector<const HloBuffer*> sorted_buffers;
 
@@ -1459,7 +1459,7 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
     if (absl::c_linear_search(computations, node.computation())) {
       reverse_post_order_computations.push_back(node.computation());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }));
   absl::c_reverse(reverse_post_order_computations);
   for (auto* computation : reverse_post_order_computations) {
@@ -1530,7 +1530,7 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
                                              buffers_to_assign_sequentially,
                                              &allocation_indices, assignment));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 flat_hash_map<LogicalBuffer::Color, flat_hash_set<const HloValue*>>
@@ -1569,7 +1569,7 @@ absl::Status BufferAssigner::AssignPresetBuffers(
     absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
     BufferAssignment* assignment) {
   if (!preset_assignments_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Create an allocation for each preset color.
@@ -1613,7 +1613,7 @@ absl::Status BufferAssigner::AssignPresetBuffers(
   // method is called again, it does not assign the same buffers multiple times.
   preset_assignments_ = {};
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
@@ -1762,7 +1762,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

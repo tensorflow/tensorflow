@@ -739,7 +739,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
               *Cast<HloDotInstruction>(dot),
               std::get<se::CudaComputeCapability>(gpu_version_)) &&
           !should_fuse) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
 

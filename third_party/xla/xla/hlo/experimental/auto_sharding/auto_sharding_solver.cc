@@ -1268,7 +1268,7 @@ absl::Status ValidateRequest(const AutoShardingSolverRequest& request) {
     const int num_v_strategies = request.computation_costs(v).costs_size();
     CHECK_EQ(num_strategies, num_u_strategies * num_v_strategies);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace spmd

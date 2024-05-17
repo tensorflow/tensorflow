@@ -78,7 +78,7 @@ class BatchDimensionMerger : public DfsHloRewriteVisitor {
                                               dnums.lhs_batch_dimensions()) ||
         !LayoutUtil::AreDimensionsConsecutive(rhs_shape.layout(),
                                               dnums.rhs_batch_dimensions())) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Index of logically first original batch dimension and the only kept one.

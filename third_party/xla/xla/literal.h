@@ -913,7 +913,7 @@ class LiteralBase {
       return ForEachHelper(
                  [&func](const ShapeIndex& index, const Piece& piece) {
                    func(index, piece);
-                   return OkStatus();
+                   return absl::OkStatus();
                  },
                  *this, &index)
           .IgnoreError();
@@ -942,7 +942,7 @@ class LiteralBase {
       return ForEachMutableHelper(
                  [&func](const ShapeIndex& index, Piece* piece) {
                    func(index, piece);
-                   return OkStatus();
+                   return absl::OkStatus();
                  },
                  const_cast<xla::LiteralBase::Piece*>(this), &index)
           .IgnoreError();
@@ -1059,7 +1059,7 @@ class LiteralBase {
           index->pop_back();
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
     template <typename Fn>
     bool ForEachHelperBool(const Fn& func, const Piece& piece,
@@ -1090,7 +1090,7 @@ class LiteralBase {
           index->pop_back();
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Recursive helper for EqualElements.
@@ -1555,7 +1555,7 @@ absl::Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,
       [&](const ShapeIndex& shape_index, const Piece& piece) -> absl::Status {
         const Shape& subshape = piece.subshape();
         if (subshape.IsTuple()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         if (!subshape.IsArray()) {
           return InvalidArgument("Shape cannot be serialized: %s",
@@ -1567,11 +1567,11 @@ absl::Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,
               piece.SerializeData<NativeT>(state);
             },
             subshape.element_type());
-        return OkStatus();
+        return absl::OkStatus();
       }));
   DCHECK_EQ(state.num_written(), SerializedSize().value())
       << shape().ToString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename InputIterator>
@@ -1589,7 +1589,7 @@ absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
           [&](const ShapeIndex& shape_index, Piece* piece) -> absl::Status {
             const Shape& subshape = piece->subshape();
             if (subshape.IsTuple()) {
-              return OkStatus();
+              return absl::OkStatus();
             }
             if (!subshape.IsArray()) {
               return InvalidArgument("Shape cannot be deserialized: %s",
@@ -1606,7 +1606,7 @@ absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
                   "Failed to deserialize all data for shape: %s",
                   shape.ToString());
             }
-            return OkStatus();
+            return absl::OkStatus();
           }));
   DCHECK_EQ(state.num_read(), ShapeUtil::SerializedSize(shape).value())
       << shape.ToString();
@@ -1885,7 +1885,7 @@ TF_ATTRIBUTE_NOINLINE absl::Status MutableLiteralBase::PopulateInternal(
         *static_cast<NativeT*>(dest) = generator(indices, thread_id);
       },
       parallel);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename NativeT>

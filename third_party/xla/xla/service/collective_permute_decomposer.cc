@@ -178,7 +178,7 @@ absl::Status DecomposeCollectivePermute(
     recv_done->add_frontend_attributes(attributes);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns true if the (source, target) pairs form a forward cycle with all

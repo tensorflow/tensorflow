@@ -284,7 +284,7 @@ class DfsHloVisitorWithDefaultBase
   // Invoked to inform the visitor that the traversal has completed, and that
   // the root was "root".
   absl::Status FinishVisit(HloInstructionPtr /*root*/) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -320,7 +320,7 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
 
   // Default visitor action is to do nothing and return OK.
   absl::Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool changed() const { return changed_; }

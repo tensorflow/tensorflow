@@ -383,7 +383,7 @@ absl::Status HeapSimulator::RunComputation(
       Free(value, value->instruction());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HeapSimulator::HeapSimulator(
@@ -2038,7 +2038,7 @@ absl::Status GlobalDecreasingSizeBestFitHeap<BufferType>::
                           "have caught such a condition earlier.");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Future opportunities:

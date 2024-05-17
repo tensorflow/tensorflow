@@ -269,7 +269,7 @@ absl::StatusOr<Literal> MakeFakeLiteralInternal(
             PopulateWithFloatingPointData<NativeT>(
                 &literal, engine, no_duplicates, use_large_range,
                 max_bits_of_precision);
-            return OkStatus();
+            return absl::OkStatus();
           }
           if constexpr (primitive_type_constant == PRED) {
             std::uniform_int_distribution<int> generator(0, 1);
@@ -277,7 +277,7 @@ absl::StatusOr<Literal> MakeFakeLiteralInternal(
                 [&](absl::Span<const int64_t> /*indices*/) {
                   return generator(*engine);
                 }));
-            return OkStatus();
+            return absl::OkStatus();
           }
           if constexpr (primitive_util::IsIntegralType(
                             primitive_type_constant)) {
@@ -302,13 +302,13 @@ absl::StatusOr<Literal> MakeFakeLiteralInternal(
               std::sort(literal.data<NativeT>().begin(),
                         literal.data<NativeT>().end());
             }
-            return OkStatus();
+            return absl::OkStatus();
           }
           if constexpr (primitive_util::IsComplexType(
                             primitive_type_constant)) {
             PopulateWithComplexData<NativeT>(&literal, engine, no_duplicates,
                                              use_large_range);
-            return OkStatus();
+            return absl::OkStatus();
           }
         }
         return Unimplemented(

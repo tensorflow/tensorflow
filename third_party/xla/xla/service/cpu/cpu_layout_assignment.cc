@@ -185,7 +185,7 @@ absl::Status CpuLayoutAssignment::AddBackendConstraints(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace cpu
 }  // namespace xla
