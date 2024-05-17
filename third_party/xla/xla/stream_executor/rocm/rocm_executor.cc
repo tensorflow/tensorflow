@@ -245,7 +245,7 @@ absl::Status GpuExecutor::Init() {
 // Arg: strip_exe: if true, remove the name of the executable itself from the
 //                 returned string. Example: calling this from /usr/bin/foo
 //                 would return /usr/bin.
-static string GetBinaryDir(bool strip_exe) {
+static std::string GetBinaryDir(bool strip_exe) {
   char exe_path[PATH_MAX] = {0};
   CHECK_NE(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1), -1);
   // Make sure it's null-terminated:
@@ -253,8 +253,8 @@ static string GetBinaryDir(bool strip_exe) {
 
   if (strip_exe) {
     // The exe is the last component of the path, so remove one component.
-    string ret = exe_path;
-    std::vector<string> components = absl::StrSplit(exe_path, '/');
+    std::string ret = exe_path;
+    std::vector<std::string> components = absl::StrSplit(exe_path, '/');
     components.pop_back();
     return absl::StrJoin(components, "/");
   }
@@ -265,7 +265,7 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
                                     Kernel* kernel) {
   GpuKernel* rocm_kernel = AsGpuKernel(kernel);
   hipModule_t module = nullptr;
-  const string* kernel_name;
+  const std::string* kernel_name;
 
   if (spec.has_cuda_cubin_in_memory()) {
     kernel_name = &spec.cuda_cubin_in_memory().kernel_name();
@@ -909,7 +909,8 @@ GpuContext* GpuExecutor::gpu_context() { return context_; }
 //
 // For anything more complicated/prod-focused than this, you'll likely want to
 // turn to gsys' topology modeling.
-static int TryToReadNumaNode(const string& pci_bus_id, int device_ordinal) {
+static int TryToReadNumaNode(const std::string& pci_bus_id,
+                             int device_ordinal) {
   VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
   static const int kUnknownNumaNode = -1;
 
@@ -983,7 +984,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
   {
     int version = GpuDriver::GetDriverVersion().value_or(-1);
-    string augmented_driver_version = absl::StrFormat(
+    std::string augmented_driver_version = absl::StrFormat(
         "%d (%s)", version,
         rocm::DriverVersionStatusToString(Diagnostician::FindDsoVersion())
             .c_str());
@@ -991,7 +992,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   {
-    string pci_bus_id = GpuDriver::GetPCIBusID(device);
+    std::string pci_bus_id = GpuDriver::GetPCIBusID(device);
 
     // Lower the hex characters to match sysfs.
     pci_bus_id = absl::AsciiStrToLower(pci_bus_id);
@@ -1040,7 +1041,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   {
-    string device_name;
+    std::string device_name;
     TF_RETURN_IF_ERROR(GpuDriver::GetDeviceName(device, &device_name));
     builder.set_name(device_name);
   }

@@ -95,7 +95,7 @@ static absl::Status PopulateProfileFromTimer(
   return absl::OkStatus();
 }
 
-string ToString(miopenStatus_t status) {
+std::string ToString(miopenStatus_t status) {
   switch (status) {
     case miopenStatusSuccess:
       return "miopenStatusSuccess";
@@ -121,8 +121,8 @@ string ToString(miopenStatus_t status) {
   }
 }
 
-string ToString(miopenConvFwdAlgorithm_t algorithm) {
-  string s;
+std::string ToString(miopenConvFwdAlgorithm_t algorithm) {
+  std::string s;
   switch (algorithm) {
     case miopenConvolutionFwdAlgoGEMM:
       s = "GEMM";
@@ -143,8 +143,8 @@ string ToString(miopenConvFwdAlgorithm_t algorithm) {
   return s;
 }
 
-string ToString(miopenConvBwdWeightsAlgorithm_t algorithm) {
-  string s;
+std::string ToString(miopenConvBwdWeightsAlgorithm_t algorithm) {
+  std::string s;
   switch (algorithm) {
     case miopenConvolutionBwdWeightsAlgoGEMM:
       s = "GEMM";
@@ -162,8 +162,8 @@ string ToString(miopenConvBwdWeightsAlgorithm_t algorithm) {
   return s;
 }
 
-string ToString(miopenConvBwdDataAlgorithm_t algorithm) {
-  string s;
+std::string ToString(miopenConvBwdDataAlgorithm_t algorithm) {
+  std::string s;
   switch (algorithm) {
     case miopenConvolutionBwdDataAlgoGEMM:
       s = "GEMM";
@@ -187,8 +187,8 @@ string ToString(miopenConvBwdDataAlgorithm_t algorithm) {
   return s;
 }
 
-string ToString(miopenConvAlgorithm_t algorithm) {
-  string s;
+std::string ToString(miopenConvAlgorithm_t algorithm) {
+  std::string s;
   switch (algorithm) {
     case miopenConvolutionAlgoGEMM:
       s = "GEMM";
@@ -1908,6 +1908,9 @@ miopenDataType_t ToMIOpenDataType(
       return miopenHalf;
     case dnn::DataType::kInt8:
       if (data_layout == dnn::DataLayout::kBatchDepthYX) return miopenInt8;
+      LOG(FATAL)
+          << "The kInt8 data type only supports the kBatchDepthYX data layout!";
+      break;
     case dnn::DataType::kDouble:
       LOG(FATAL)
           << "Unsupported DNN data type: tf.float64 (dnn::DataType::kDouble)";
@@ -1963,12 +1966,12 @@ class MixinBase<void> {};
 
 }  // namespace
 
-#define RETURN_IF_MIOPEN_ERROR(STATUS, ...)                              \
-  if (!SE_PREDICT_TRUE((STATUS) == miopenStatusSuccess)) {               \
-    string error_msg = absl::StrCat(ToString(STATUS), " ", __VA_ARGS__); \
-    SetFailure(::absl::UnknownError(error_msg));                         \
-    LOG(ERROR) << error_msg;                                             \
-    return;                                                              \
+#define RETURN_IF_MIOPEN_ERROR(STATUS, ...)                                   \
+  if (!SE_PREDICT_TRUE((STATUS) == miopenStatusSuccess)) {                    \
+    std::string error_msg = absl::StrCat(ToString(STATUS), " ", __VA_ARGS__); \
+    SetFailure(::absl::UnknownError(error_msg));                              \
+    LOG(ERROR) << error_msg;                                                  \
+    return;                                                                   \
   }
 
 template <typename Base>
@@ -2202,7 +2205,7 @@ class MIOpenRnnSequenceTensorDescriptor
         data_type_(data_type) {
     miopenTensorDescriptor_t handle = nullptr;
     if (seq_length <= 0) {
-      string error_msg =
+      std::string error_msg =
           absl::StrCat("sequence length must be positive: ", seq_length);
       LOG(ERROR) << error_msg;
       SetFailure(absl::UnknownError(error_msg));
@@ -3819,8 +3822,8 @@ absl::Status MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
       break;
     }
     default: {
-      return absl::InternalError("Unexpected convolution kind " +
-                                 static_cast<int>(kind));
+      return absl::InternalError(absl::StrFormat(
+          "Unexpected convolution kind %d", static_cast<int>(kind)));
       break;
     }
   }
@@ -4985,13 +4988,12 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
         leakyrelu_alpha_(leakyrelu_alpha),
         side_input_scale_f32_(static_cast<float>(side_input_scale)),
 
+        activation_mode_(activation),
         dnn_input_nd_(dnn_input_nd),
         dnn_output_nd_(dnn_output_nd),
         dnn_filter_(dnn_filter),
         dnn_bias_nd_(dnn_bias_nd),
         dnn_conv_(dnn_conv),
-
-        activation_mode_(activation),
 
         input_nd_(std::move(input_nd)),
         output_nd_(std::move(output_nd)),
@@ -5029,7 +5031,6 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
     int d1 = 1, d2 = 1;
     bool bNCHW = (dnn_output_nd_.layout() != dnn::DataLayout::kBatchYXDepth);
     batch = dims_output[0];
-    int w, h = 1;
     if (bNCHW) {
       d1 = dims_output[1];
       for (int i = 2; i < rank; i++) d2 *= dims_output[i];

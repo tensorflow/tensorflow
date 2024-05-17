@@ -59,7 +59,7 @@ class ROCmPlatform : public Platform {
   // Returns -1 as a sentinel on internal failure (and logs the error).
   int VisibleDeviceCount() const override;
 
-  const string& Name() const override;
+  const std::string& Name() const override;
 
   absl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
@@ -77,7 +77,7 @@ class ROCmPlatform : public Platform {
   void InspectNumaNodes();
 
   // This platform's name.
-  string name_;
+  std::string name_;
 
   // mutex that guards internal state.
   mutable absl::Mutex mu_;
