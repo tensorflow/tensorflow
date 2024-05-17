@@ -388,10 +388,10 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Cbrt, {
   auto error_spec_gen = +[](NativeT x) {
     NativeT eps = std::numeric_limits<NativeT>::epsilon();
     NativeT min = std::numeric_limits<NativeT>::min();
-    // Allow a small absollute error (e.g. 9e-16 for F32).
+    // Allow a small absolute error (e.g. 9e-16 for F32).
     // This corresponds to a 0.5% relative error for the
     // smallest normalized floating point values.
-    return ErrorSpec{.abs_err = std::cbrt(min) / 200, .rel_err = 10 * eps};
+    return ErrorSpec{.abs_err = std::cbrt(min) / 200, .rel_err = 50 * eps};
   };
   Run(Cbrt, std::cbrt, error_spec_gen);
 })

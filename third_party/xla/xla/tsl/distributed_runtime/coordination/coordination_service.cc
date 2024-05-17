@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
@@ -225,6 +226,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     CoordinatedTaskState state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
     absl::Status status_;
     absl::Mutex last_heartbeat_mu_;
+    // TODO(b/339231167): Migrate to use absl annotations.
     uint64_t last_heartbeat_us_ TF_GUARDED_BY(last_heartbeat_mu_);
     // This denotes the deadline after which we stop accepting heartbeats from a
     // disconnected task. This grace period accounts for the lag time between
@@ -264,10 +266,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   absl::flat_hash_map<std::string, std::vector<StatusOrValueCallback>> get_cb_
       TF_GUARDED_BY(kv_mu_);
 
-  absl::Mutex check_staleness_thread_shutdown_mu_;
   absl::CondVar check_staleness_thread_cv_;
-  bool shutting_down_ TF_GUARDED_BY(check_staleness_thread_shutdown_mu_) =
-      false;
+  bool shutting_down_ ABSL_GUARDED_BY(state_mu_) = false;
   std::unique_ptr<Thread> check_staleness_thread_;
 
   absl::flat_hash_map<std::string, BarrierState> barriers_
@@ -311,6 +311,7 @@ absl::Status CoordinationServiceStandaloneImpl::TaskState::RecordHeartbeat(
     uint64_t task_incarnation) {
   if (!status_.ok()) return status_;
   if (task_incarnation != task_incarnation_) {
+    // TODO(b/339231167): Migrate to use absl error API.
     return MakeCoordinationError(errors::Aborted(
         "Incarnation ID mismatch: expecting ", task_incarnation_, " but got ",
         task_incarnation, ". This means the remote task has restarted."));
@@ -389,9 +390,9 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
         absl::flat_hash_map<std::string, BarrierState*> expired_barriers;
         while (true) {
           {
-            absl::MutexLock l(&check_staleness_thread_shutdown_mu_);
-            check_staleness_thread_cv_.WaitWithTimeout(
-                &check_staleness_thread_shutdown_mu_, absl::Seconds(1));
+            absl::MutexLock l(&state_mu_);
+            check_staleness_thread_cv_.WaitWithTimeout(&state_mu_,
+                                                       absl::Seconds(1));
             if (shutting_down_) {
               return;
             }
@@ -507,6 +508,11 @@ void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
   }
   {
     absl::MutexLock l(&state_mu_);
+    // Indicate that the service is shutting down and stop accepting new RPCs.
+    shutting_down_ = true;
+    // Stop the heartbeat thread.
+    check_staleness_thread_cv_.SignalAll();
+    // Fail all ongoing barriers.
     for (auto& [barrier_id, barrier] : barriers_) {
       if (!barrier.passed) {
         absl::Status error = MakeCoordinationError(errors::Aborted(absl::StrCat(
@@ -516,22 +522,19 @@ void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
       }
     }
     barriers_.clear();
-    // Cluster state is used in `PassBarrier` and it needs to be cleared after
-    // it.
+    // Erase cluster state.
+    // Note: sequence matters here, this must happen after barrier clean-up as
+    // the state is used in `PassBarrier`.
     cluster_state_.clear();
   }
-  {
-    absl::MutexLock l(&check_staleness_thread_shutdown_mu_);
-    shutting_down_ = true;
-    check_staleness_thread_cv_.SignalAll();
-  }
+  // Destroy thread outside of the mutex.
   if (shut_staleness_thread) {
     check_staleness_thread_.reset();
   }
 }
 
 bool CoordinationServiceStandaloneImpl::ServiceHasStopped() const {
-  return cluster_state_.empty();
+  return shutting_down_;
 }
 
 // Helper to log progress to having waited for all tasks.
@@ -562,6 +565,15 @@ absl::Status CoordinationServiceStandaloneImpl::RegisterTask(
   std::string error_message;
   {
     absl::MutexLock l(&state_mu_);
+    if (ServiceHasStopped()) {
+      return MakeCoordinationError(absl::InternalError(absl::StrCat(
+          "Coordination service has stopped. RegisterTask() from task: ",
+          task_name,
+          " failed. This usually implies an earlier error that caused "
+          "coordination service to shut down before the workers disconnect "
+          "gracefully. Check the task leader's logs for an earlier error to "
+          "debug the root cause.")));
+    }
     if (!cluster_state_.contains(task_name)) {
       // Note: return early here as unexpected task register errors should not
       // be propagated to other tasks.
@@ -632,6 +644,11 @@ void CoordinationServiceStandaloneImpl::WaitForAllTasks(
     StatusCallback done) {
   {
     absl::MutexLock l(&state_mu_);
+    if (ServiceHasStopped()) {
+      done(MakeCoordinationError(absl::InternalError(
+          "Coordination service has stopped. WaitForAllTasks() failed.")));
+      return;
+    }
     const auto& task_state = cluster_state_.find(GetTaskName(task));
     // Collect task device info for the first time that task
     // has called WaitForAllTasks(). This will be aggregated when the barrier
@@ -655,8 +672,13 @@ void CoordinationServiceStandaloneImpl::ShutdownTaskAsync(
     absl::Status status;
     {
       absl::MutexLock l(&state_mu_);
-      // Disconnect task from service individually.
-      status = DisconnectTask(task);
+      if (ServiceHasStopped()) {
+        status = MakeCoordinationError(absl::InternalError(
+            "Coordination service has stopped. ShutdownTaskAsync() failed."));
+      } else {
+        // Disconnect task from service individually.
+        status = DisconnectTask(task);
+      }
     }
     done(status);
   }
@@ -672,7 +694,12 @@ absl::Status CoordinationServiceStandaloneImpl::DisconnectTask(
     const CoordinatedTask& task) {
   const std::string task_name = GetTaskName(task);
   // Check if task is valid and not already disconnected.
-  if (!cluster_state_.contains(task_name)) {
+  if (ServiceHasStopped()) {
+    return MakeCoordinationError(absl::InternalError(
+        absl::StrCat("Coordination service has stopped. DisconnectTask() "
+                     "failed for task_name=",
+                     task_name)));
+  } else if (!cluster_state_.contains(task_name)) {
     return MakeCoordinationError(errors::InvalidArgument(
         "Unexpected disconnect request with task_name=", task_name));
   } else if (cluster_state_[task_name]->GetState() ==
@@ -709,7 +736,10 @@ absl::Status CoordinationServiceStandaloneImpl::ReportTaskError(
   const std::string task_name = GetTaskName(task);
   {
     absl::MutexLock l(&state_mu_);
-    if (!cluster_state_.contains(task_name)) {
+    if (ServiceHasStopped()) {
+      return MakeCoordinationError(absl::InternalError(
+          "Coordination service has stopped. ReportTaskError() failed."));
+    } else if (!cluster_state_.contains(task_name)) {
       return MakeCoordinationError(
           errors::InvalidArgument("Unexpected request from task ", task_name));
     } else if (cluster_state_[task_name]->GetState() !=
@@ -754,12 +784,18 @@ absl::Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
   absl::Status s = absl::OkStatus();
   {
     absl::MutexLock l(&state_mu_);
-    if (!cluster_state_.contains(task_name)) {
+    if (ServiceHasStopped()) {
+      return MakeCoordinationError(absl::InternalError(absl::StrCat(
+          "Coordination service has stopped. RecordHeartbeat() from task: ",
+          task_name,
+          " failed. This usually implies an earlier error that caused "
+          "coordination service to shut down before the workers disconnect "
+          "gracefully. Check the task leader's logs for an earlier error to "
+          "debug the root cause.")));
+    } else if (!cluster_state_.contains(task_name)) {
       return MakeCoordinationError(errors::InvalidArgument(
           "Unexpected heartbeat request from task: ", task_name,
-          ". This usually implies an earlier error that caused coordination "
-          "service to shut down before the workers disconnect. Check the task "
-          "leader's logs for an earlier error to debug the root cause."));
+          ". This usually implies a configuration error."));
     }
     if (!cluster_state_[task_name]->GetStatus().ok()) {
       return cluster_state_[task_name]->GetStatus();
@@ -1194,6 +1230,10 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
 absl::Status CoordinationServiceStandaloneImpl::CancelBarrier(
     const std::string& barrier_id, const CoordinatedTask& task) {
   absl::MutexLock l(&state_mu_);
+  if (ServiceHasStopped()) {
+    return MakeCoordinationError(absl::InternalError(
+        "Coordination service has stopped. CancelBarrier() failed."));
+  }
   auto [it, inserted] = barriers_.try_emplace(barrier_id);
   auto* barrier = &it->second;
   if (inserted) {
