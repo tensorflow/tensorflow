@@ -217,6 +217,7 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_driver",
         "//xla/stream_executor/cuda:cuda_executor",
     ]) + if_rocm_is_configured([
+        "//third_party/gpus/rocm:rocm_headers",
         "@local_config_rocm//rocm:rccl",
         "//xla/stream_executor/rocm:rocm_driver",
         "//xla/stream_executor/rocm:rocm_executor",
@@ -527,7 +528,10 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
-    ] + if_rocm_is_configured(["//xla/service/gpu:stream_executor_util"]),
+    ] + if_rocm_is_configured([
+        # keep sorted
+        "//xla/service/gpu:stream_executor_util",
+    ]),
 )
 
 cc_library(
