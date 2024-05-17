@@ -17,6 +17,10 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/env.h"
+
 namespace tensorflow {
 
 FakeClockEnv::FakeClockEnv(Env* wrapped) : EnvWrapper(wrapped) {}

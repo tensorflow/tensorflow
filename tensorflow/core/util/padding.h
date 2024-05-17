@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {

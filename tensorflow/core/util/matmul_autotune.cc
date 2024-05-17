@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/matmul_autotune.h"
 
-#include "tensorflow/core/framework/types.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {

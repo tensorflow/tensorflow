@@ -526,8 +526,8 @@ cc_library(
     ],
     deps = [
         ":env_var",
-        "//tensorflow/core/platform:platform_port",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
     ],
     alwayslink = 1,
 )
@@ -610,9 +610,13 @@ cc_library(
     hdrs = ["padding.h"],
     deps = [
         ":tensor_format",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -621,11 +625,14 @@ cc_library(
     srcs = ["einsum_op_util.cc"],
     hdrs = ["einsum_op_util.h"],
     deps = [
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/gtl:inlined_vector",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -799,7 +806,6 @@ tf_cc_test(
     srcs = ["overflow_test.cc"],
     deps = [
         ":overflow",
-        "//tensorflow/core:framework_lite",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -812,6 +818,7 @@ tf_cc_test(
     deps = [
         ":exec_on_stall",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -918,6 +925,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -929,9 +939,9 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform",
         "@com_google_absl//absl/functional:bind_front",
-        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/log:check",
+        "@com_google_benchmark//:benchmark",
     ],
 )
 

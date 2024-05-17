@@ -21,11 +21,23 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/lib/io/path.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/debug_event.pb.h"
 #include "tensorflow/core/public/version.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tfdbg {
