@@ -112,8 +112,8 @@ PjRtBuffer* GetPjrtBuffer(ifrt::Array* ifrt_array) {
   return arr->pjrt_buffers().front().get();
 }
 
-StatusOr<const Shape*> XlaDynamicShape(ifrt::Array* ifrt_array,
-                                       std::optional<Shape>& scratch) {
+absl::StatusOr<const Shape*> XlaDynamicShape(ifrt::Array* ifrt_array,
+                                             std::optional<Shape>& scratch) {
   auto* pjrt_buffer = GetPjrtBuffer(ifrt_array);
 
   if (!scratch) {
@@ -632,7 +632,7 @@ Status PyArray::set_arrays(nb::object obj) {
   return OkStatus();
 }
 
-StatusOr<PyArray> PyArray::FullyReplicatedShard() {
+absl::StatusOr<PyArray> PyArray::FullyReplicatedShard() {
   auto& cached = GetStorage().fully_replicated_array;
   if (!cached.is_none()) {
     return nb::cast<PyArray>(cached);
@@ -663,7 +663,7 @@ Status PyArray::BlockUntilReady() const {
   return AwaitBuffersReady(absl::MakeConstSpan(&ifrt_array, 1));
 }
 
-StatusOr<size_t> PyArray::GetOnDeviceSizeInBytes() {
+absl::StatusOr<size_t> PyArray::GetOnDeviceSizeInBytes() {
   if (ifrt_array() == nullptr) {
     return InvalidArgument(
         "GetOnDeviceSizeInBytes() called on deleted or donated buffer");
@@ -689,7 +689,7 @@ absl::Status PyArray::BlockUntilResultStatusIsReady() {
   return result_status.Await();
 }
 
-StatusOr<nb::object> PyArray::SingleDeviceArrayToNumpyArray() {
+absl::StatusOr<nb::object> PyArray::SingleDeviceArrayToNumpyArray() {
   TF_ASSIGN_OR_RETURN(auto arr, FullyReplicatedShard());
   auto result = arr.GetStorage().host_value.AsNumPyArray(
       arr.GetStorage().dynamic_shape, arr.ifrt_array());
@@ -703,7 +703,7 @@ Status PyArray::CopySingleDeviceArrayToHostAsync() {
       arr.GetStorage().dynamic_shape, arr.ifrt_array());
 }
 
-StatusOr<PyArray> PyArray::AssertUnsharded(std::string_view api) {
+absl::StatusOr<PyArray> PyArray::AssertUnsharded(std::string_view api) {
   if (ifrt_array() == nullptr) {
     return InvalidArgument("%s( called on deleted or donated buffer", api);
   }
@@ -719,7 +719,7 @@ StatusOr<PyArray> PyArray::AssertUnsharded(std::string_view api) {
   return py_arrays[0];
 }
 
-StatusOr<std::uintptr_t> PyArray::UnsafeBufferPointer() {
+absl::StatusOr<std::uintptr_t> PyArray::UnsafeBufferPointer() {
   TF_ASSIGN_OR_RETURN(auto arr, AssertUnsharded("UnsafeBufferPointer"));
 
   return py_client()->pjrt_client()->UnsafeBufferPointer(
@@ -800,9 +800,9 @@ nb::dict PyArray::CudaArrayInterface() {
   return result;
 }
 
-StatusOr<nb::object> CudaArrayInterfaceToBuffer(const nb::dict& cai,
-                                                nb_class_ptr<PyClient> client,
-                                                std::optional<int> device_id) {
+absl::StatusOr<nb::object> CudaArrayInterfaceToBuffer(
+    const nb::dict& cai, nb_class_ptr<PyClient> client,
+    std::optional<int> device_id) {
   if (!cai.contains("data")) {
     return absl::InvalidArgumentError(
         "CUDA Array Interface does not define `data`");
@@ -862,7 +862,7 @@ StatusOr<nb::object> CudaArrayInterfaceToBuffer(const nb::dict& cai,
       (version == 3 && (!cai.contains("stream") || cai["stream"].is_none()));
   TF_ASSIGN_OR_RETURN(
       std::intptr_t stream,
-      ([is_default_stream, cai, device]() -> StatusOr<std::intptr_t> {
+      ([is_default_stream, cai, device]() -> absl::StatusOr<std::intptr_t> {
         if (is_default_stream) {
           return device->GetStreamForExternalReadyEvents();
         } else {
@@ -987,8 +987,8 @@ PyArray::Storage::~PyArray_Storage() {
   ifrt_array.reset();
 }
 
-StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(ifrt::DeviceList devices,
-                                                    nb::object dst_sharding) {
+absl::StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
+    ifrt::DeviceList devices, nb::object dst_sharding) {
   auto* ifrt_array_ptr = ifrt_array();
   ifrt::MemoryKind dst_memory_kind =
       CreateIfRtMemoryKindFromSharding(dst_sharding);
@@ -1069,7 +1069,7 @@ StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(ifrt::DeviceList devices,
                  /*skip_checks=*/true, result_status());
 }
 
-StatusOr<PyArray> PyArray::BatchedDevicePut(
+absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
     nb::object aval, nb::object sharding, std::vector<nb::object> xs,
     absl::Span<const PyDevice* const> dst_devices, bool committed,
     bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics,
@@ -1407,7 +1407,7 @@ bool IsZeroCopyableCpuBuffer(const PjRtBuffer* buf) {
 PyHostValue::PyHostValue() = default;
 PyHostValue::~PyHostValue() = default;
 
-StatusOr<nb::object> PyHostValue::AsNumPyArray(
+absl::StatusOr<nb::object> PyHostValue::AsNumPyArray(
     std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array) {
   if (ifrt_array->IsDeleted()) {
     return InvalidArgument("DeviceArray has been deleted.");
