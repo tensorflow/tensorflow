@@ -173,6 +173,24 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromFloorDiv(
   return std::nullopt;
 }
 
+// See documentation of `DestructureSummation` for an explanation of the
+// algorithm.
+void DestructureSummationImpl(AffineExpr expr,
+                              std::vector<AffineExpr>& summands) {
+  switch (expr.getKind()) {
+    case AffineExprKind::Add: {
+      const auto add = llvm::cast<mlir::AffineBinaryOpExpr>(expr);
+      DestructureSummationImpl(add.getLHS(), summands);
+      DestructureSummationImpl(add.getRHS(), summands);
+      break;
+    }
+    default:
+      // The expression is not a sum.
+      summands.push_back(expr);
+      break;
+  }
+}
+
 // Given an n-ary summation of expressions `e0 + e1 + ... + e{n-1}` with
 // arbitrary order of association, returns the vector `(e0, e1, ..., e{n-1})`.
 // The order of the returned subexpressions is not guaranteed to match the order
@@ -189,23 +207,7 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromFloorDiv(
 // has practical implications.
 std::vector<AffineExpr> DestructureSummation(AffineExpr expr) {
   std::vector<AffineExpr> summands;
-
-  switch (expr.getKind()) {
-    case AffineExprKind::Add: {
-      const auto add = llvm::cast<mlir::AffineBinaryOpExpr>(expr);
-
-      absl::c_move(DestructureSummation(add.getLHS()),
-                   std::back_inserter(summands));
-      absl::c_move(DestructureSummation(add.getRHS()),
-                   std::back_inserter(summands));
-      break;
-    }
-    default:
-      // The expression is not a sum.
-      summands.push_back(expr);
-      break;
-  }
-
+  DestructureSummationImpl(expr, summands);
   return summands;
 }
 
