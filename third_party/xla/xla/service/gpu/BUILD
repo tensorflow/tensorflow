@@ -3670,6 +3670,7 @@ xla_test(
     name = "gpu_offloading_test",
     srcs = ["gpu_offloading_test.cc"],
     backends = ["gpu"],
+    tags = ["no_rocm"],
     deps = [
         ":backend_configs_cc",
         ":horizontal_loop_fusion",
