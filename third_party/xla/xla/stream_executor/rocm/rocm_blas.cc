@@ -75,7 +75,7 @@ RocBlasType_t<T> *complex_cast(DeviceMemory<T> *a) {
   return reinterpret_cast<RocBlasType_t<T> *>(GpuMemoryMutable(a));
 }
 
-static string ToString(rocblas_status status) {
+static std::string ToString(rocblas_status status) {
 #define XVAL(x) \
   case x:       \
     return #x
@@ -1251,7 +1251,7 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
   }
 }
 
-absl::Status ROCMBlas::GetVersion(string *version) {
+absl::Status ROCMBlas::GetVersion(std::string *version) {
 #if TF_ROCM_VERSION >= 60300  // Not yet available in ROCM-6.1
   absl::MutexLock lock{&mu_};
   size_t len = 0;

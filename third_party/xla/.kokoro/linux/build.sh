@@ -69,6 +69,7 @@ if is_linux_gpu_job ; then
 else
     TAGS_FILTER="$TAGS_FILTER,-gpu,-requires-gpu-nvidia"
     ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --config=nonccl"
+    TARGET_FILTERS="$TARGET_FILTERS -//xla/service/gpu/..."
 
     if is_linux_cpu_arm64_job ; then
         TAGS_FILTER="$TAGS_FILTER,-no_aarch64"

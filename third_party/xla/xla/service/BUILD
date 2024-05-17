@@ -7430,9 +7430,11 @@ xla_cc_test(
     name = "scatter_simplifier_test",
     srcs = ["scatter_simplifier_test.cc"],
     deps = [
+        ":hlo_parser",
         ":hlo_pass",
         ":hlo_pass_pipeline",
         ":scatter_simplifier",
+        "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
     ],

@@ -404,6 +404,22 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
       TF_ASSIGN_OR_RETURN(auto normalized_update, GetNormalizedInput(operand));
       normalized_updates.push_back(normalized_update);
     }
+
+    // Since normalization might reorder the 'scatter_updates' operands
+    // differently than the 'scatter_indices' update, we have no way to specify
+    // the order of 'scatter' (batch) dimensions, as that is not an attribute in
+    // ScatterDimensionNumbers. Scatter implicitly assumes that the 'scatter'
+    // dimensions appear in the same order in 'scatter_updates' and
+    // 'scatter_indices'. So we require that there is just a single
+    // 'scatter' dimension. This is ensured by the ScatterSimplifier pass.
+    const auto& dims = scatter->scatter_dimension_numbers();
+    if (scatter->scatter_updates().front()->shape().rank() -
+            dims.update_window_dims_size() >
+        1) {
+      return FailedPrecondition(
+          "There should be just a single scatter dimension. Make sure to run "
+          "ScatterSimplifier before LayoutNormalization");
+    }
     TF_ASSIGN_OR_RETURN(auto normalized_indices,
                         GetNormalizedInput(scatter->scatter_indices()));
 
@@ -423,7 +439,6 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     // operand dimensions. scatter dimension i corresponds to
     // scatter_dims_to_operand_dims[i] operand dimension.
 
-    const auto& dims = scatter->scatter_dimension_numbers();
     ScatterDimensionNumbers normalized_dims;
     normalized_dims.set_index_vector_dim(
         indices_permutation[dims.index_vector_dim()]);

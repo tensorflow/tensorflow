@@ -60,7 +60,7 @@ constexpr const char kTempFileTemplate[] =
 class TempFileDesc {
  public:
   static constexpr struct AutoClose {
-  } kAutoCLose;
+  } kAutoCLose{};
 
 #if defined(_MSC_VER)
   TempFileDesc() : fd_() {
@@ -144,7 +144,8 @@ TEST(MMapHandleTest, MapExistingFileWorks) {
 
   TempFileDesc tmp_file;
   ASSERT_TRUE(tmp_file.IsOpen());
-  static_cast<void>(write(tmp_file.GetFd(), payload.c_str(), size(payload)));
+  ASSERT_EQ(write(tmp_file.GetFd(), payload.c_str(), size(payload)),
+            size(payload));
   tmp_file.Close();
 
   MMapHandle handle;
@@ -165,7 +166,8 @@ TEST(MMapHandleTest, MoveConstructs) {
 
   TempFileDesc tmp_file;
   ASSERT_TRUE(tmp_file.IsOpen());
-  static_cast<void>(write(tmp_file.GetFd(), payload.c_str(), size(payload)));
+  ASSERT_EQ(write(tmp_file.GetFd(), payload.c_str(), size(payload)),
+            size(payload));
   tmp_file.Close();
 
   MMapHandle handle;

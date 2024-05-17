@@ -886,12 +886,14 @@ absl::StatusOr<Value> EmitScope(
     absl::flat_hash_map<const HloInstruction*, Value>& values) {
   for (const HloInstruction* hlo : instructions) {
     Value result;
-    if (hlo->opcode() == HloOpcode::kConcatenate) {
+    if (hlo->opcode() == HloOpcode::kConcatenate ||
+        hlo->opcode() == HloOpcode::kDynamicSlice) {
       // Parameter loads and their concatenations are handled outside EmitScope.
       TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
       continue;
     } else if (hlo->opcode() == HloOpcode::kParameter) {
-      if (hlo->users()[0]->opcode() == HloOpcode::kConcatenate) {
+      if (hlo->users()[0]->opcode() == HloOpcode::kConcatenate ||
+          hlo->users()[0]->opcode() == HloOpcode::kDynamicSlice) {
         continue;
       }
       TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
@@ -1376,6 +1378,18 @@ class MatMulEmitterHelper {
         values);
   }
 
+  int64_t GetNonContractingDimIdxForOperandScope(
+      TritonFusionAnalysis::Scope scope) {
+    if (scope == TritonFusionAnalysis::Scope::LHS) {
+      return dims_.lhs_noncontracting_dim_idx;
+    } else if (scope == TritonFusionAnalysis::Scope::RHS) {
+      return dims_.rhs_noncontracting_dim_idx;
+    } else {
+      CHECK(false) << "This shouldn't be called for the output scope.";
+    }
+  }
+
+  // bases: The base pointers of each argument.
   absl::StatusOr<Value> EmitTensorPointer(
       const HloInstruction* hlo, const Side& side, ValueRange bases,
       Value pid_k, std::vector<int32_t>& boundary_checks) {
@@ -1491,7 +1505,74 @@ class MatMulEmitterHelper {
             select_value,
             EmitMultiSelect(b_, pid_offset, concat_boundaries, input_bounds));
         bounds.push_back(select_value);
+        tensor_offsets.push_back(Cst32(specs.front()->at(0).slice_start));
+      } else if (hlo->opcode() == HloOpcode::kDynamicSlice &&
+                 (side.scope == TritonFusionAnalysis::Scope::LHS ||
+                  side.scope == TritonFusionAnalysis::Scope::RHS) &&
+                 properties.index ==
+                     GetNonContractingDimIdxForOperandScope(side.scope)) {
+        // Here we compute the offset of where we should read the slice from.
+        // TODO(b/323255699): Add support for slices of the contracting dim.
+        // Dynamic slices are guaranteed to only be offset along the majormost
+        // dimension.
+
+        // The only fragment of the non-contracting dim of the dot's input in
+        // the current scope:
+        TF_RET_CHECK(specs.back()->size() == 1);
+        const TensorIterationSpec::IterationSpecFragment
+            only_fragment_of_nc_dim = specs.back()->at(0);
+        // The majormost dim index in the dynamic slice's output.
+        const int majormost_dim = hlo->shape().layout().minor_to_major().back();
+
+        // dynamic slice operands are (input, start_index0, start_index1, ...)
+        // so the start index corresponding to the ith dimension is bases[i+1].
+        Value majormost_dim_start_index_ptr_val = bases[majormost_dim + 1];
+        Value majormost_dim_start_index_val = b_.create<mt::LoadOp>(
+            majormost_dim_start_index_ptr_val, mt::CacheModifier::NONE,
+            mt::EvictionPolicy::NORMAL,
+            /*isVolatile=*/false);
+        Value majormost_dim_start_index_lower_limit_val =
+            CreateConst(b_, majormost_dim_start_index_val.getType(), 0);
+        int64_t majormost_dim_start_index_upper_limit =
+            hlo->operand(0)->shape().dimensions(majormost_dim) -
+            hlo->dynamic_slice_sizes().at(majormost_dim);
+        Value majormost_dim_start_index_upper_limit_val =
+            CreateConst(b_, majormost_dim_start_index_val.getType(),
+                        majormost_dim_start_index_upper_limit);
+        // Our Triton codegen only supports signed integers so far.
+        majormost_dim_start_index_val =
+            b_.create<ma::MaxSIOp>(majormost_dim_start_index_val,
+                                   majormost_dim_start_index_lower_limit_val);
+        majormost_dim_start_index_val =
+            b_.create<ma::MinSIOp>(majormost_dim_start_index_val,
+                                   majormost_dim_start_index_upper_limit_val);
+
+        // How many "rows" (non-contracting dim values) are there in a slice of
+        // size 1?
+        int64_t rows_per_majormost_dim = 1;
+        for (int i = 0; i < hlo->shape().dimensions().size() - 1; ++i) {
+          rows_per_majormost_dim *= hlo->shape().dimensions_minor(i);
+        }
+        rows_per_majormost_dim =
+            rows_per_majormost_dim / only_fragment_of_nc_dim.stride;
+        Value rows_per_majormost_dim_val = Cst32(rows_per_majormost_dim);
+
+        Value tensor_offset_val_i32 = b_.create<ma::MulIOp>(
+            majormost_dim_start_index_val, rows_per_majormost_dim_val);
+        tensor_offsets.push_back(tensor_offset_val_i32);
+
+        // tt.make_tensor_ptr expects an i64 for shape and size, but expects
+        // i32 for offsets. We extend the offset to calculate the upper bound.
+        Value tensor_offset_val_i64 =
+            b_.create<ma::ExtSIOp>(i64_ty_, tensor_offset_val_i32);
+        Value sliced_count_val = Cst64(only_fragment_of_nc_dim.sliced_count);
+        Value upper_bound_val =
+            b_.create<ma::AddIOp>(tensor_offset_val_i64, sliced_count_val);
+        bounds.push_back(upper_bound_val);
+
+        block_offsets.push_back(pid_offset);
       } else {
+        tensor_offsets.push_back(Cst32(specs.front()->at(0).slice_start));
         block_offsets.push_back(pid_offset);
         int64_t count = specs.front()->at(0).count;
         if (side.scope == TritonFusionAnalysis::Scope::OUTPUT &&
@@ -1507,7 +1588,6 @@ class MatMulEmitterHelper {
           boundary_checks.push_back(bounds.size() - 1);
         }
       }
-      tensor_offsets.push_back(Cst32(specs.front()->at(0).slice_start));
       block_dims.push_back(properties.block_size);
       dim_order.emplace(dim_order.begin(), dim_order.size());
       return absl::OkStatus();
@@ -1651,13 +1731,17 @@ absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
   return launch_config.launch_dims;
 }
 
-SmallVector<Value> GetArguments(mlir::triton::FuncOp fn,
-                                const HloInstruction& input) {
+absl::StatusOr<SmallVector<Value>> GetArguments(mlir::triton::FuncOp fn,
+                                                const HloInstruction& input) {
   if (input.opcode() == HloOpcode::kParameter) {
-    return {fn.getArgument(input.parameter_number())};
-  } else if (input.opcode() == HloOpcode::kConcatenate) {
+    return {{fn.getArgument(input.parameter_number())}};
+  } else if (input.opcode() == HloOpcode::kConcatenate ||
+             input.opcode() == HloOpcode::kDynamicSlice) {
+    // As defined in GemmFusion, all inputs of concatenate and dynamic slice are
+    // parameters.
     SmallVector<Value> result;
     for (const HloInstruction* operand : input.operands()) {
+      TF_RET_CHECK(operand->opcode() == HloOpcode::kParameter);
       result.push_back(fn.getArgument(operand->parameter_number()));
     }
     return result;
@@ -1674,7 +1758,8 @@ ConstHloInstructionSet ScopeInputs(const TritonFusionAnalysis& analysis,
   ConstHloInstructionSet result;
   for (const HloInstruction* parameter : analysis.ScopeParameters(scope)) {
     if (absl::c_any_of(parameter->users(), [](const HloInstruction* user) {
-          return user->opcode() == HloOpcode::kConcatenate;
+          return user->opcode() == HloOpcode::kConcatenate ||
+                 user->opcode() == HloOpcode::kDynamicSlice;
         })) {
       // Concatenation is always the only user of its parameters by
       // construction.
@@ -2188,9 +2273,11 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
     for (const HloInstruction* input : ScopeInputs(analysis, side.scope)) {
       TF_RET_CHECK(
           iter_args_to_inputs.insert({iter_args.size(), input}).second);
+      TF_ASSIGN_OR_RETURN(SmallVector<Value> arguments,
+                          GetArguments(fn, *input));
       TF_ASSIGN_OR_RETURN(Value tensor_ptr,
                           emitter.EmitTensorPointer(
-                              input, side, GetArguments(fn, *input), pid_k,
+                              input, side, arguments, pid_k,
                               iter_args_to_boundary_checks[iter_args.size()]));
       iter_args.push_back(tensor_ptr);
     }
@@ -2214,10 +2301,11 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
     for (const HloInstruction* input :
          ScopeInputs(analysis, TritonFusionAnalysis::Scope::OUTPUT)) {
       std::vector<int32_t> boundary_checks;
-      TF_ASSIGN_OR_RETURN(
-          Value tensor_pointer,
-          emitter.EmitTensorPointer(input, out, GetArguments(fn, *input), pid_k,
-                                    boundary_checks));
+      TF_ASSIGN_OR_RETURN(SmallVector<Value> arguments,
+                          GetArguments(fn, *input));
+      TF_ASSIGN_OR_RETURN(Value tensor_pointer,
+                          emitter.EmitTensorPointer(input, out, arguments,
+                                                    pid_k, boundary_checks));
       TF_RET_CHECK(values_out
                        .insert({input, EmitParameterLoad(b, tensor_pointer,
                                                          boundary_checks)})

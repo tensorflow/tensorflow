@@ -40,7 +40,7 @@ void StatusIsMatcherCommonImpl::DescribeNegationTo(std::ostream* os) const {
 }
 
 bool StatusIsMatcherCommonImpl::MatchAndExplain(
-    const Status& status,
+    const absl::Status& status,
     ::testing::MatchResultListener* result_listener) const {
   ::testing::StringMatchResultListener inner_listener;
 

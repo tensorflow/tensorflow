@@ -78,7 +78,7 @@ namespace gpu {
 
 // Formats hipError_t to output prettified values into a log stream.
 // Error summaries taken from:
-string ToString(hipError_t result) {
+std::string ToString(hipError_t result) {
 #define OSTREAM_ROCM_ERROR(__name) \
   case hipError##__name:           \
     return "HIP_ERROR_" #__name;
@@ -156,7 +156,7 @@ tsl::thread::ThreadPool* GetDriverExecutor() {
 
 }  // namespace
 
-string MemorySpaceString(MemorySpace memory_space) {
+std::string MemorySpaceString(MemorySpace memory_space) {
   switch (memory_space) {
     case MemorySpace::kHost:
       return "host";
@@ -251,7 +251,7 @@ namespace {
 // Returns a stringified device number associated with pointer, primarily for
 // logging purposes. Returns "?" if the device could not be successfully
 // queried.
-string ROCMPointerToDeviceString(hipDeviceptr_t pointer) {
+std::string ROCMPointerToDeviceString(hipDeviceptr_t pointer) {
   auto value = GpuDriver::GetPointerDevice(pointer);
   if (value.ok()) {
     return absl::StrCat(value.value());
@@ -263,7 +263,7 @@ string ROCMPointerToDeviceString(hipDeviceptr_t pointer) {
 // Returns a stringified memory space associated with pointer, primarily for
 // logging purposes. Returns "?" if the memory space could not be successfully
 // queried.
-string ROCMPointerToMemorySpaceString(hipDeviceptr_t pointer) {
+std::string ROCMPointerToMemorySpaceString(hipDeviceptr_t pointer) {
   auto value = GpuDriver::GetPointerMemorySpace(pointer);
   if (value.ok()) {
     return MemorySpaceString(value.value());
@@ -276,7 +276,8 @@ string ROCMPointerToMemorySpaceString(hipDeviceptr_t pointer) {
 // permitted between the "from" and "to" pointers' associated contexts,
 // primarily for logging purposes. Returns "error" if an error is encountered
 // in the process of querying.
-string ROCMPointersToCanAccessString(hipDeviceptr_t from, hipDeviceptr_t to) {
+std::string ROCMPointersToCanAccessString(hipDeviceptr_t from,
+                                          hipDeviceptr_t to) {
   auto from_context = GpuDriver::GetPointerContext(from);
   if (!from_context.ok()) {
     LOG(ERROR) << "could not retrieve source pointer's context: "
@@ -339,7 +340,7 @@ static absl::Status InternalInit() {
 }
 
 /* static */ absl::Status GpuDriver::GetDeviceName(hipDevice_t device,
-                                                   string* device_name) {
+                                                   std::string* device_name) {
   static const size_t kCharLimit = 64;
   absl::InlinedVector<char, 4> chars(kCharLimit);
   RETURN_IF_ROCM_ERROR(
@@ -1763,7 +1764,8 @@ struct BitPatternToValue {
 /* static */ absl::StatusOr<MemorySpace> GpuDriver::GetPointerMemorySpace(
     hipDeviceptr_t pointer) {
   unsigned int value;
-  hipError_t result = hipSuccess;
+  hipError_t result = wrap::hipPointerGetAttribute(
+      &value, HIP_POINTER_ATTRIBUTE_MEMORY_TYPE, pointer);
   if (result == hipSuccess) {
     switch (value) {
       case hipMemoryTypeDevice:
@@ -2057,8 +2059,8 @@ static absl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return true;
 }
 
-/* static */ string GpuDriver::GetPCIBusID(hipDevice_t device) {
-  string pci_bus_id;
+/* static */ std::string GpuDriver::GetPCIBusID(hipDevice_t device) {
+  std::string pci_bus_id;
   static const int kBufferSize = 64;
   absl::InlinedVector<char, 4> chars(kBufferSize);
   chars[kBufferSize - 1] = '\0';
