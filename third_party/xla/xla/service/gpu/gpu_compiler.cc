@@ -1224,6 +1224,11 @@ absl::Status GpuCompiler::OptimizeHloModule(
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
     layout_normalization_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
         simplifier_options);
+    // Layout normalization will create broadcasts that are not canonical.
+    layout_normalization_pipeline.AddPass<BroadcastCanonicalizer>();
+    // Layout normalization will create scatters that are not simplified and
+    // also have unsorted update_window_dims.
+    layout_normalization_pipeline.AddPass<ScatterSimplifier>();
   }
   TF_RETURN_IF_ERROR(layout_normalization_pipeline.Run(hlo_module).status());
   // Run target-specific HLO optimization passes after layout assignment.
@@ -1376,6 +1381,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       // Remove any redundant operations (such as bitcasts) introduced by layout
       // normalization.
       pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_options);
+      // Layout normalization will create scatters that are not simplified and
+      // also have unsorted update_window_dims.
+      pipeline.AddPass<ScatterSimplifier>();
     }
     pipeline.AddPass<BroadcastCanonicalizer>();
 

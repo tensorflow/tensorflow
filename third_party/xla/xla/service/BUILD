@@ -7468,7 +7468,11 @@ xla_cc_test(
     ],
     deps = [
         ":layout_normalization",
+        ":scatter_simplifier",
+        "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -7493,6 +7497,7 @@ cc_library(
     deps = [
         ":hlo_creation_utils",
         "//xla:permutation_util",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/types:span",
     ],

@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout_util.h"
 #include "xla/permutation_util.h"
@@ -374,6 +375,112 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     SetVisited(*new_reshape);
     auto bc_to_orig = MakeBitcastHlo(new_reshape, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
+  // Scatter is layout-preserving regarding the scatter operands, so we only
+  // have to permute values inside the ScatterDimensionNumbers.
+  Status HandleScatter(HloInstruction* hlo) override {
+    auto* scatter = Cast<HloScatterInstruction>(hlo);
+    std::vector<HloInstruction*> normalized_operands;
+    normalized_operands.reserve(scatter->scatter_operand_count());
+    Shape operand_shape = scatter->scatter_operands().front()->shape();
+    for (HloInstruction* operand : scatter->scatter_operands()) {
+      if (operand->shape().layout() != operand_shape.layout()) {
+        return FailedPrecondition(
+            "All scatter operands must have the same layout");
+      }
+      TF_ASSIGN_OR_RETURN(auto normalized_operand, GetNormalizedInput(operand));
+      normalized_operands.push_back(normalized_operand);
+    }
+    std::vector<HloInstruction*> normalized_updates;
+    normalized_updates.reserve(scatter->scatter_operand_count());
+    Shape update_shape = scatter->scatter_updates().front()->shape();
+    for (HloInstruction* operand : scatter->scatter_updates()) {
+      if (operand->shape().layout() != update_shape.layout()) {
+        return FailedPrecondition(
+            "All scatter updates must have the same layout");
+      }
+      TF_ASSIGN_OR_RETURN(auto normalized_update, GetNormalizedInput(operand));
+      normalized_updates.push_back(normalized_update);
+    }
+    TF_ASSIGN_OR_RETURN(auto normalized_indices,
+                        GetNormalizedInput(scatter->scatter_indices()));
+
+    // The scatter operands are normalized by applying a permutation such that
+    // perm(layout) = standard layout -> inverse layout permutation is applied.
+    auto indices_permutation = InversePermutation(
+        ToTransposeDimensions(scatter->scatter_indices()->shape().layout()));
+
+    auto layout_permutation =
+        ToTransposeDimensions(scatter->scatter_operands()[0]->shape().layout());
+    auto operand_permutation = InversePermutation(layout_permutation);
+
+    auto update_permutation = InversePermutation(
+        ToTransposeDimensions(scatter->scatter_updates()[0]->shape().layout()));
+
+    // scatter_dims_to_operand_dims -> mapping from scatter dimensions to
+    // operand dimensions. scatter dimension i corresponds to
+    // scatter_dims_to_operand_dims[i] operand dimension.
+
+    const auto& dims = scatter->scatter_dimension_numbers();
+    ScatterDimensionNumbers normalized_dims;
+    normalized_dims.set_index_vector_dim(
+        indices_permutation[dims.index_vector_dim()]);
+    for (int64_t dim : dims.scatter_dims_to_operand_dims()) {
+      normalized_dims.add_scatter_dims_to_operand_dims(
+          operand_permutation[dim]);
+    }
+    std::vector<int64_t> normalized_update_window_dims;
+    normalized_update_window_dims.reserve(dims.update_window_dims_size());
+    for (int64_t dim : dims.update_window_dims()) {
+      normalized_update_window_dims.push_back(update_permutation[dim]);
+    }
+
+    // Now reorder 'normalized_update_window_dims' and 'inserted_window_dims'
+    // according to the output permutation, so that the window dimensions again
+    // appear in the same order as in the output. First we need to build a
+    // combined array of window dimensions. Note: 'inserted_window_dims' and
+    // 'update_window_dims' must be sorted according to shape inference/hlo
+    // verifier. We will temporarily create an unsorted update_window_dims
+    // attribute and rely on ScatterSimplifier to clean this up.
+    std::vector<int64_t> window_dimensions(operand_permutation.size());
+    for (int64_t i = 0, j = 0, k = 0; i < window_dimensions.size(); ++i) {
+      if (j < dims.inserted_window_dims_size() &&
+          dims.inserted_window_dims(j) == i) {
+        window_dimensions[i] = -1;
+        ++j;
+      } else {
+        window_dimensions[i] = normalized_update_window_dims[k];
+        ++k;
+      }
+    }
+    std::vector<int64_t> permuted_window_dimensions =
+        ComposePermutations(window_dimensions, layout_permutation);
+    for (int64_t i = 0; i < permuted_window_dimensions.size(); ++i) {
+      if (permuted_window_dimensions[i] == -1) {
+        normalized_dims.add_inserted_window_dims(i);
+      } else {
+        normalized_dims.add_update_window_dims(permuted_window_dimensions[i]);
+      }
+    }
+
+    auto normalized_shape = normalized_operands.front()->shape();
+    if (scatter->shape().IsTuple()) {
+      std::vector<Shape> tuple_shapes;
+      tuple_shapes.reserve(normalized_operands.size());
+      for (HloInstruction* operand : normalized_operands) {
+        tuple_shapes.push_back(operand->shape());
+      }
+      normalized_shape = ShapeUtil::MakeTupleShape(tuple_shapes);
+    }
+    auto normalized_scatter = hlo->AddInstruction(HloInstruction::CreateScatter(
+        normalized_shape, normalized_operands, normalized_indices,
+        normalized_updates, scatter->to_apply(), normalized_dims,
+        scatter->indices_are_sorted(), scatter->unique_indices()));
+    SetVisited(*normalized_scatter);
+    auto bc_to_orig = MakeBitcastHlo(normalized_scatter, scatter->shape());
+    TF_RETURN_IF_ERROR(ReplaceInstruction(scatter, bc_to_orig));
     return OkStatus();
   }
 
