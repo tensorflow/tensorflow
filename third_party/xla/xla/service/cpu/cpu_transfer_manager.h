@@ -37,10 +37,10 @@ class CpuTransferManager : public GenericTransferManager {
   CpuTransferManager();
   ~CpuTransferManager() override {}
 
-  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                 const LiteralSlice& literal) override;
-  Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
-                                    MutableBorrowingLiteral literal) override;
+  absl::Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                       const LiteralSlice& literal) override;
+  absl::Status TransferLiteralFromOutfeed(
+      se::StreamExecutor* executor, MutableBorrowingLiteral literal) override;
 
   bool CanShapedBufferBeAccessedNow(
       se::StreamExecutor* executor,
@@ -54,9 +54,9 @@ class CpuTransferManager : public GenericTransferManager {
     return true;
   }
 
-  Status ReadDynamicShapes(se::Stream* stream,
-                           const ShapedBuffer* device_buffer,
-                           Shape* device_shape) override;
+  absl::Status ReadDynamicShapes(se::Stream* stream,
+                                 const ShapedBuffer* device_buffer,
+                                 Shape* device_shape) override;
 
  private:
   bool PackSubbyteTypes() const override { return true; }
