@@ -207,7 +207,7 @@ TEST_F(MlirScatterFusionTest, Scatter_UniqueIndices) {
     // CHECK:      xla_gpu.pure_call @scatter_indices(%[[OPERAND]], %[[INDICES]]
     // CHECK-SAME:  %[[UPDATES]], %[[SLICE_ID]], %[[C0]])
 
-    // CHECK:      %[[IN_BOUNDS:.*]] = arith.andi
+    // CHECK:      %[[IN_BOUNDS:.*]] = arith.cmpi ule
     // CHECK:      scf.if %[[IN_BOUNDS]] -> (tensor<10x5xf32>) {
     // CHECK:        %[[CURRENT:.*]] = xla_gpu.pure_call @scatter_operand(
     // CHECK-SAME:  %[[OPERAND]], %[[INDICES]], %[[UPDATES]],
@@ -255,6 +255,10 @@ TEST_F(MlirScatterFusionTest, Scatter_Unsigned) {
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
     // CHECK: func.func @fused_computation(
+    // CHECK: %[[PARAM:.*]] = xla_gpu.pure_call @scatter_indices
+    // CHECK: %[[CVT:.*]] = builtin.unrealized_conversion_cast %[[PARAM]]
+    // CHECK: %[[INDEX:.*]] = arith.index_castui %[[CVT]]
+    // CHECK: arith.cmpi ule, %[[INDEX]]
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
@@ -302,7 +306,7 @@ TEST_F(MlirScatterFusionTest, Scatter_Add) {
     // CHECK-SAME:    %[[OUT:[a-zA-Z0-9]*]]: tensor<10x5xf32>
 
     // CHECK: %[[UPD_ELEM:.*]] = xla_gpu.pure_call @scatter_update
-    // CHECK: %[[IN_BOUNDS:.*]] = arith.andi
+    // CHECK: %[[IN_BOUNDS:.*]] = arith.cmpi ule
     // CHECK: scf.if %[[IN_BOUNDS]] -> (tensor<10x5xf32>) {
     // CHECK:   %[[RMW:.*]] = xla_gpu.atomic_rmw %[[OUT]]
     // CHECK:   ^bb0(%[[CUR_VALUE:.*]]: f32):
@@ -359,7 +363,7 @@ TEST_F(MlirScatterFusionTest, Scatter_Overwrite) {
     // CHECK-SAME:    %[[OUT:[a-zA-Z0-9]*]]: tensor<10x5xf32>
 
     // CHECK: %[[UPD_ELEM:.*]] = xla_gpu.pure_call @scatter_update
-    // CHECK: %[[IN_BOUNDS:.*]] = arith.andi
+    // CHECK: %[[IN_BOUNDS:.*]] = arith.cmpi ule
     // CHECK: scf.if %[[IN_BOUNDS]] -> (tensor<10x5xf32>) {
     // CHECK:   %[[RMW:.*]] = xla_gpu.atomic_rmw %[[OUT]]
     // CHECK:   ^bb0(%[[CUR_VALUE:.*]]: f32):
@@ -372,6 +376,7 @@ TEST_F(MlirScatterFusionTest, Scatter_Overwrite) {
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

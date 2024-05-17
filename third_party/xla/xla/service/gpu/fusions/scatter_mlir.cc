@@ -237,17 +237,15 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
             index = b.create<ma::IndexCastUIOp>(b.getIndexType(), index);
           } else {
             index = b.create<ma::IndexCastOp>(b.getIndexType(), index);
-            auto c0 = b.create<ma::ConstantIndexOp>(0);
-            in_bounds = b.create<ma::AndIOp>(
-                in_bounds,
-                b.create<ma::CmpIOp>(ma::CmpIPredicate::sge, index, c0));
           }
           Value ub = b.create<ma::ConstantIndexOp>(
               scatter_operand->shape().dimensions(i) -
               scatter_update->shape().dimensions(i + 1));
+          // One bounds check is enough even for signed indices: `sge 0` is
+          // implied by `ule ub`, because `ub >= 0`.
           in_bounds = b.create<ma::AndIOp>(
               in_bounds,
-              b.create<ma::CmpIOp>(ma::CmpIPredicate::sle, index, ub));
+              b.create<ma::CmpIOp>(ma::CmpIPredicate::ule, index, ub));
           indices[i] = b.create<ma::AddIOp>(index, indices[i]);
         }
         // Call scatter's computation if is_in_bounds.
