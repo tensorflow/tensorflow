@@ -2266,6 +2266,30 @@ std::vector<ReplicaGroup> SpmdPartitioningVisitor::CreateReplicaGroups(
   return device_groups;
 }
 
+Status SpmdPartitioningVisitor::HandleCall(HloInstruction* hlo) {
+  std::vector<HloInstruction*> call_args;
+  HloComputation* computation = hlo->called_computations()[0];
+  for (int64_t i = 0; i < hlo->operand_count(); ++i) {
+    // Shardings of the computation parameter and its argument must be
+    // the same.
+    computation->parameter_instruction(i)->set_sharding(
+        hlo->operand(i)->sharding());
+    call_args.push_back(GetPartitionedHlo(hlo->operand(i)).hlo());
+  }
+
+  TF_RETURN_IF_ERROR(partitioner_
+                         ->PartitionComputation(computation, hlo->sharding(),
+                                                next_channel_id_, logger_,
+                                                call_graph_)
+                         .status());
+  SetPartitionedHlo(hlo, [&] {
+    return b_.AddInstruction(HloInstruction::CreateCall(
+        MakePartitionedShape(hlo->shape(), hlo->sharding()), call_args,
+        hlo->called_computations()[0]));
+  });
+  return OkStatus();
+}
+
 Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   if (hlo->HasSideEffect() && !hlo->sharding().HasUniqueDevice()) {
     return Unimplemented("Side-effect ops cannot be replicated: %s",
@@ -2343,7 +2367,8 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       hlo->opcode() != HloOpcode::kParameter &&
       hlo->opcode() != HloOpcode::kWhile && hlo->opcode() != HloOpcode::kRng &&
       hlo->opcode() != HloOpcode::kOutfeed &&
-      hlo->opcode() != HloOpcode::kAllReduce) {
+      hlo->opcode() != HloOpcode::kAllReduce &&
+      hlo->opcode() != HloOpcode::kCall) {
     const bool has_manual_sharding =
         hlo->sharding().IsManual() ||
         (hlo->sharding().IsTuple() &&

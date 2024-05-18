@@ -555,6 +555,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   Status DefaultAction(HloInstruction* hlo) override;
   Status HandleAllReduce(HloInstruction* hlo) override;
   Status HandleBroadcast(HloInstruction* hlo) override;
+  Status HandleCall(HloInstruction* hlo) override;
   Status HandleConstant(HloInstruction* hlo) override;
   Status HandleCustomCall(HloInstruction* hlo) override;
   Status HandleDot(HloInstruction* hlo) override;
