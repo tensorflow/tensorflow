@@ -12,18 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
 
 #include <set>
 #include <string>
 #include <utility>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_cat.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/util/env_var.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
