@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/runtime/annotation.h"
+#include "xla/service/gpu/runtime/for_all_thunks.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/thunk.h"
@@ -119,28 +120,19 @@ static bool NeedsAsyncCommsStream(Thunk& thunk) {
   }
 }
 
-// Traverses operations in HLO module and collects execution stream ids
-// requested by HLO operations. At run time thunks may use additional streams to
-// launch compute operations in addition to a main one.
-//
-// TODO(ezhulenev): Execution stream requirements should be queried from thunks
-// directly and not from HLO module that might be missing.
+// Returns the set of `ExecutionStreamIds` requested by all `Thunks` in the
+// `GpuExecutable`. At run time `Thunks` may use additional streams to launch
+// compute operations in parallel.
 static absl::flat_hash_set<ExecutionStreamId> GetExecutionStreamIds(
-    const HloModule& module) {
+    const ThunkSequence& thunks) {
   absl::flat_hash_set<ExecutionStreamId> stream_ids;
-  for (const HloComputation* comp : module.computations()) {
-    for (const HloInstruction* hlo : comp->instructions()) {
-      if (hlo->has_backend_config() &&
-          hlo->backend_config<GpuBackendConfig>().ok()) {
-        int64_t op_queue_id = hlo->backend_config<GpuBackendConfig>()
-                                  .value()
-                                  .operation_queue_id();
-        if (op_queue_id > 0) {
-          stream_ids.insert(ExecutionStreamId(op_queue_id));
+  ForAllThunks(
+      [&](const Thunk* thunk) {
+        if (thunk->execution_stream_id() > 0) {
+          stream_ids.insert(thunk->execution_stream_id());
         }
-      }
-    }
-  }
+      },
+      &thunks);
   return stream_ids;
 }
 
@@ -158,9 +150,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       dnn_compiled_graphs_(std::move(params.dnn_compiled_graphs)),
       gpu_version_(params.gpu_version),
       thunks_(std::move(params.executable)),
-      execution_stream_ids_(has_module()
-                                ? GetExecutionStreamIds(module())
-                                : absl::flat_hash_set<ExecutionStreamId>()),
+      execution_stream_ids_(GetExecutionStreamIds(*thunks_)),
       module_name_(params.module_name),
       output_shape_(params.output_shape),
       allocations_(std::move(params.mlir_allocations)),
