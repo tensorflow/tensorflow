@@ -57,6 +57,7 @@ cc_library(
     name = "gpu_opt",
     testonly = True,
     srcs = if_gpu_is_configured(["gpu_opt.cc"]),
+    tags = ["gpu"],
     deps = [
         ":opt_lib",
         "//xla:debug_options_flags",
