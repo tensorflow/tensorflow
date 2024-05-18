@@ -66,10 +66,7 @@ absl::StatusOr<GpuCompilationEnvironment> CreateGpuCompEnvFromEnvVar() {
   GpuCompilationEnvironment env;
   std::vector<tsl::Flag> flag_objects;
   InitializeFlagsForGpuCompEnv(&flag_objects, &env);
-  bool result = ParseFlagsFromEnvAndIgnoreUnknown("XLA_FLAGS", flag_objects);
-  if (!result) {
-    return InvalidArgument("Could not parse XLA_FLAGS.");
-  }
+  ParseFlagsFromEnvAndIgnoreUnknown("XLA_FLAGS", flag_objects);
   return env;
 }
 

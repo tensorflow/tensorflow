@@ -186,18 +186,15 @@ static absl::flat_hash_map<std::string, EnvArgv>& EnvArgvs() {
 // Used to protect accesses to env_argvs.
 static absl::Mutex env_argv_mu(absl::kConstInit);
 
-bool ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
+static void DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar);
+
+void ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
                                       const std::vector<tsl::Flag>& flag_list) {
-  bool parsed_recognized_flags =
-      ParseFlagsFromEnvAndIgnoreUnknown(envvar, flag_list);
-  if (!parsed_recognized_flags) {
-    return false;
-  } else {
-    return !DieIfEnvHasUnknownFlagsLeft(envvar);
-  }
+  ParseFlagsFromEnvAndIgnoreUnknown(envvar, flag_list);
+  DieIfEnvHasUnknownFlagsLeft(envvar);
 }
 
-bool ParseFlagsFromEnvAndIgnoreUnknown(
+void ParseFlagsFromEnvAndIgnoreUnknown(
     absl::string_view envvar, const std::vector<tsl::Flag>& flag_list) {
   absl::MutexLock lock(&env_argv_mu);
   auto* env_argv = &EnvArgvs()[envvar];
@@ -210,10 +207,12 @@ bool ParseFlagsFromEnvAndIgnoreUnknown(
     }
   }
 
-  return tsl::Flags::Parse(&env_argv->argc, env_argv->argv.data(), flag_list);
+  QCHECK(tsl::Flags::Parse(&env_argv->argc, env_argv->argv.data(), flag_list))
+      << "Flag parsing failed.\n"
+      << tsl::Flags::Usage(getenv(std::string(envvar).c_str()), flag_list);
 }
 
-bool DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar) {
+static void DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar) {
   absl::MutexLock lock(&env_argv_mu);
   auto* env_argv = &EnvArgvs()[envvar];
   SetArgvFromEnv(envvar, env_argv);
@@ -225,9 +224,7 @@ bool DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar) {
     LOG(QFATAL) << "Unknown flag" << (unknown_flags.size() > 1 ? "s" : "")
                 << " in " << envvar << ": "
                 << absl::StrJoin(unknown_flags, " ");
-    return true;
   }
-  return false;
 }
 
 // Testing only.
