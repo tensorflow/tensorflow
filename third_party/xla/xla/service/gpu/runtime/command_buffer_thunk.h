@@ -39,6 +39,8 @@ class CommandBufferThunk : public Thunk {
   CommandBufferThunk(CommandBufferCmdSequence commands, ThunkInfo thunk_info,
                      std::optional<ThunkSequence> thunks = std::nullopt);
 
+  const std::optional<ThunkSequence>& thunks() const { return thunks_; }
+
   absl::Status Prepare(const PrepareParams& params,
                        ResourceRequests& resource_requests) override;
   absl::Status Initialize(const InitializeParams& params) override;
