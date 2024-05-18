@@ -37,18 +37,21 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend/graph_interface.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend/graph_properties.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#include "third_party/gpus/cudnn/cudnn_graph.h"
 #include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -94,7 +97,6 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn_ops_train.h"
 #endif
 
-#include "third_party/gpus/cudnn/cudnn_backend.h"
 
 #if CUDNN_VERSION >= 8100
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
@@ -108,7 +110,6 @@ limitations under the License.
 #include "third_party/cudnn_frontend/include/cudnn_frontend_Operation.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_OperationGraph.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_PointWiseDesc.h"
-#include "third_party/cudnn_frontend/include/cudnn_frontend_Rng.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_Tensor.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_VariantPack.h"
 #endif  // CUDNN_VERSION >= 8100

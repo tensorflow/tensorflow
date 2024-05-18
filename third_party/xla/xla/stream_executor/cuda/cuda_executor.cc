@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/log/log.h"
 #include "absl/numeric/int128.h"
 #include "absl/strings/str_join.h"
 #include "xla/stream_executor/blas.h"
