@@ -31,9 +31,7 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 #include "tsl/protobuf/coordination_service.pb.h"
@@ -250,7 +248,7 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_Timeout_ReturnError) {
 
   auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(1));
 
-  EXPECT_EQ(result.status().code(), error::DEADLINE_EXCEEDED);
+  EXPECT_TRUE(absl::IsDeadlineExceeded(result.status()));
   // Needed to tear down test safely since agent dtor would cancel pending
   // calls, which would reference deallocated call_opts.
   owned_done(absl::CancelledError("error"));
@@ -275,8 +273,7 @@ TEST_F(CoordinationServiceAgentTest,
   InitializeAgent();
 
   auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(1));
-  EXPECT_EQ(result.status().code(), error::DEADLINE_EXCEEDED);
-
+  EXPECT_TRUE(absl::IsDeadlineExceeded(result.status()));
   // Delayed server response: set key-value response, and invoke done callback.
   auto kv = owned_response->mutable_kv();
   kv->set_key(test_key);
