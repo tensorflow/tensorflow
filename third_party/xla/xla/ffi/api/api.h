@@ -820,18 +820,32 @@ class Unexpected;
 template <typename T, typename E>
 class Expected {
  public:
-  Expected(T value) : data_(std::move(value)) {}  // NOLINT
-  Expected(Unexpected<E> u);                      // NOLINT
+  constexpr Expected(T value) : data_(std::move(value)) {}  // NOLINT
+  constexpr Expected(Unexpected<E> u);                      // NOLINT
 
-  operator bool() const {  // NOLINT
+  constexpr operator bool() const {  // NOLINT
     return has_value();
   }
-  T operator*() const { return value(); }
-  T* operator->() const { return &value(); }
 
-  bool has_value() const { return std::holds_alternative<T>(data_); }
-  T value() const { return std::get<T>(data_); }
-  E error() const { return std::get<E>(data_); }
+  constexpr T& operator*() & { return value(); }
+  constexpr const T& operator*() const& { return value(); }
+  constexpr T&& operator*() && { return std::move(value()); }
+  constexpr const T& operator*() const&& { return std::move(value()); }
+
+  constexpr T* operator->() { return &value(); }
+  constexpr const T* operator->() const { return &value(); }
+
+  constexpr bool has_value() const { return std::holds_alternative<T>(data_); }
+
+  constexpr T& value() & { return std::get<T>(data_); }
+  constexpr const T& value() const& { return std::get<T>(data_); }
+  constexpr T&& value() && { return std::get<T>(std::move(data_)); }
+  constexpr const T& value() const&& { return std::get<T>(std::move(data_)); }
+
+  constexpr E& error() & { return std::get<E>(data_); }
+  constexpr const E& error() const& { return std::get<E>(data_); }
+  constexpr E&& error() && { return std::get<E>(std::move(data_)); }
+  constexpr const E&& error() const&& { return std::get<E>(std::move(data_)); }
 
  private:
   std::variant<T, E> data_;
@@ -840,7 +854,7 @@ class Expected {
 template <typename E>
 class Unexpected {
  public:
-  explicit Unexpected(E error) : error_(std::move(error)) {}
+  explicit constexpr Unexpected(E error) : error_(std::move(error)) {}
 
  private:
   template <typename, typename>
@@ -852,7 +866,8 @@ class Unexpected {
 Unexpected(const char*) -> Unexpected<std::string>;
 
 template <typename T, typename E>
-Expected<T, E>::Expected(Unexpected<E> u) : data_(std::move(u.error_)) {}
+constexpr Expected<T, E>::Expected(Unexpected<E> u)
+    : data_(std::move(u.error_)) {}
 
 //===----------------------------------------------------------------------===//
 // Type-safe wrapper for accessing a variable number of arguments.
