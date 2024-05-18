@@ -798,12 +798,13 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   // Similar to Delete, drops the buffer's reference to its associated device
   // memory, leaving the buffer in an invalid state, but returns the
   // TrackedDeviceBuffer rather than freeing the device memory, so that another
-  // framework can take ownership of it. The buffer returned from Release may
-  // be safely dropped at any time even if it still has pending async
-  // operations. The client should call GetReadyFuture()->Await() before calling
-  // Release with wait_for_operations_to_complete=false, to ensure that the host
-  // has synchronized past any outstanding write operations to the buffer. If
-  // wait_for_operations_to_complete=true the host will block until any
+  // framework can take ownership of it.
+  //
+  // When called with wait_for_operations_to_complete=false, the buffer returned
+  // from Release should be dropped on the compute stream, since the only events
+  // that Release doesn't wait for are events defined on the compute stream.
+  //
+  // If wait_for_operations_to_complete=true, the host will block until any
   // potentially outstanding asynchronous operations have completed before
   // returning, in which case it is safe to read or mutate the returned buffer.
   // If the buffer was shared via an external reference it is the client's

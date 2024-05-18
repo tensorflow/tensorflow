@@ -80,6 +80,10 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   for (int i = 0; i < num_device_to_device_streams; ++i) {
     device_to_device_streams_.emplace_back(create_stream());
   }
+  fixed_size_pool_usage_streams_.reserve(kNumFixedSizePoolUsageStreams);
+  for (int i = 0; i < kNumFixedSizePoolUsageStreams; ++i) {
+    fixed_size_pool_usage_streams_.emplace_back(create_stream());
+  }
   external_ready_event_streams_.reserve(kNumExternalReadyEventStreams);
   for (int i = 0; i < kNumExternalReadyEventStreams; ++i) {
     external_ready_event_streams_.emplace_back(create_stream());
@@ -165,6 +169,15 @@ se::Stream* LocalDeviceState::GetDeviceToDeviceStream() {
   next_device_to_device_stream_ =
       (next_device_to_device_stream_ + 1) % device_to_device_streams_.size();
   return device_to_device_streams_.at(i).get();
+}
+
+se::Stream* LocalDeviceState::GetFixedSizePoolUsageStream() {
+  absl::MutexLock lock(&mu_);
+  int i = next_fixed_size_pool_usage_stream_;
+  next_fixed_size_pool_usage_stream_ =
+      (next_fixed_size_pool_usage_stream_ + 1) %
+      fixed_size_pool_usage_streams_.size();
+  return fixed_size_pool_usage_streams_.at(i).get();
 }
 
 se::Stream* LocalDeviceState::GetExternalReadyEventStream() {
