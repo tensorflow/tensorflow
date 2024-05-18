@@ -28,6 +28,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -468,6 +469,43 @@ class AsyncHostToDeviceTransferManager
     std::move(on_done)();
   }
 };
+
+StreamExecutorGpuClient::StreamExecutorGpuClient(
+    std::string platform_name, LocalClient* client,
+    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+    int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
+    std::unique_ptr<tsl::Allocator> host_memory_allocator,
+    bool should_stage_host_to_device_transfers,
+    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
+    : xla::PjRtStreamExecutorClient(
+          platform_name, client, std::move(devices), process_index,
+          std::move(allocator), std::move(host_memory_allocator),
+          should_stage_host_to_device_transfers, std::move(gpu_run_options)),
+      topology_(xla::StreamExecutorGpuTopologyDescription::Create(
+          tsl::Fingerprint64(platform_name), platform_name,
+          devices_.back()->device_kind(), devices_)) {
+  for (auto* device : addressable_devices()) {
+    // Use the device id to construct a globally unique memory space id. We do
+    // not promise that memory space ids and device ids are the same.
+    const int id = device->id();
+    auto memory_space =
+        std::make_unique<StreamExecutorGpuHbmMemorySpace>(id, device);
+    tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
+        memory_space.get());
+    owned_memory_spaces_.push_back(std::move(memory_space));
+  }
+  for (const std::unique_ptr<PjRtMemorySpace>& memory_space :
+       owned_memory_spaces_) {
+    memory_spaces_.push_back(memory_space.get());
+  }
+
+  // We don't promise anything about the order of memory spaces, but this
+  // sorting is done for consistency with the device list that's sorted above.
+  absl::c_sort(memory_spaces_,
+               [](const PjRtMemorySpace* a, const PjRtMemorySpace* b) {
+                 return a->id() < b->id();
+               });
+}
 
 absl::string_view StreamExecutorGpuClient::platform_version() const {
 #define STRINGIFY2(X) #X
@@ -983,23 +1021,6 @@ absl::Status BuildDistributedDevices(
   return OkStatus();
 }
 
-std::vector<std::unique_ptr<PjRtStreamExecutorMemorySpace>> BuildMemorySpaces(
-    absl::Span<const std::unique_ptr<PjRtStreamExecutorDevice>> devices) {
-  std::vector<std::unique_ptr<PjRtStreamExecutorMemorySpace>> memory_spaces;
-  for (const auto& device : devices) {
-    if (device->IsAddressable()) {
-      // Use the device id to construct a globally unique memory space id. We
-      // do not promise that memory space ids and device ids are the same.
-      const int id = device->id();
-      auto memory_space =
-          std::make_unique<StreamExecutorGpuHbmMemorySpace>(id, device.get());
-      device->AttachMemorySpace(memory_space.get());
-      memory_spaces.push_back(std::move(memory_space));
-    }
-  }
-  return memory_spaces;
-}
-
 std::string MakeComputeCapabilityString(const se::DeviceDescription* desc) {
   se::GpuComputeCapability cc = desc->gpu_compute_capability();
   if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
@@ -1133,12 +1154,10 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
       pjrt_platform_name, std::move(local_device_states), options.node_id,
       options.num_nodes, &devices, gpu_run_options.get(), kv_store,
       options.enable_mock_nccl));
-  auto memory_spaces = BuildMemorySpaces(devices);
 
   return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(
-      pjrt_platform_name, xla_client, std::move(devices),
-      std::move(memory_spaces), options.node_id, std::move(allocator),
-      std::move(host_memory_allocator),
+      pjrt_platform_name, xla_client, std::move(devices), options.node_id,
+      std::move(allocator), std::move(host_memory_allocator),
       options.should_stage_host_to_device_transfers,
       std::move(gpu_run_options)));
 }

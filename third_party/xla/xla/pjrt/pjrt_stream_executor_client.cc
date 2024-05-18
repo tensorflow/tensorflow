@@ -154,12 +154,9 @@ namespace xla {
 PjRtStreamExecutorMemorySpace::PjRtStreamExecutorMemorySpace(
     int id, PjRtDevice* device, absl::string_view kind, int kind_id)
     : id_(id), device_(device), kind_(kind), kind_id_(kind_id) {
+  DCHECK(device_ != nullptr && device_->client() != nullptr);
+  auto* client = device_->client();
   to_string_ = absl::StrFormat("MEMORY_SPACE_%i", id_);
-}
-
-void PjRtStreamExecutorMemorySpace::SetClient(PjRtClient* client) {
-  // We have to define debug_string_ here because process_index() and
-  // platform_name() requires client to be initialized.
   debug_string_ = absl::StrFormat(
       "PjRtStreamExecutorMemory(id=%i, process_index=%i, client=%s)", id_,
       client->process_index(), client->platform_name());
@@ -232,7 +229,6 @@ class CpuAllocator : public tsl::Allocator {
 PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-    std::vector<std::unique_ptr<PjRtStreamExecutorMemorySpace>> memory_spaces,
     int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
     std::unique_ptr<tsl::Allocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
@@ -244,7 +240,6 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
       owned_allocator_(std::move(allocator)),
       owned_devices_(std::move(devices)),
       process_index_(process_index),
-      owned_memory_spaces_(std::move(memory_spaces)),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
       gpu_run_options_(std::move(gpu_run_options)),
@@ -280,18 +275,6 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
   absl::c_sort(addressable_devices_,
                [](const PjRtDevice* a, const PjRtDevice* b) {
                  return a->local_device_id() < b->local_device_id();
-               });
-
-  for (const std::unique_ptr<PjRtStreamExecutorMemorySpace>& memory_space :
-       owned_memory_spaces_) {
-    memory_spaces_.push_back(memory_space.get());
-    memory_space->SetClient(this);
-  }
-  // We don't promise anything about the order of memory spaces, but this
-  // sorting is done for consistency with the device list that's sorted above.
-  absl::c_sort(memory_spaces_,
-               [](const PjRtMemorySpace* a, const PjRtMemorySpace* b) {
-                 return a->id() < b->id();
                });
 }
 
@@ -1413,8 +1396,7 @@ PjRtStreamExecutorBuffer::PjRtStreamExecutorBuffer(
     : client_(tensorflow::down_cast<PjRtStreamExecutorClient*>(client)),
       on_device_shape_(std::move(on_device_shape)),
       device_(tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)),
-      memory_space_(
-          tensorflow::down_cast<PjRtStreamExecutorMemorySpace*>(memory_space)),
+      memory_space_(memory_space),
       device_buffer_(std::move(device_buffer)) {
   for (int i = 0; i < ScopedHold::Type::kMaxValue; ++i) {
     holds_[i] = 0;
