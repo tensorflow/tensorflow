@@ -170,13 +170,13 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
 
   Status GetRetTypes(Handle h, DataTypeVector* ret_types) override;
 
-  void Run(const Options& opts, Handle handle, gtl::ArraySlice<Tensor> args,
+  void Run(const Options& opts, Handle handle, absl::Span<const Tensor> args,
            std::vector<Tensor>* rets, DoneCallback done) override;
 
   void Run(const Options& opts, Handle handle, CallFrameInterface* call_frame,
            DoneCallback done) override;
 
-  Status RunSync(Options opts, Handle handle, gtl::ArraySlice<Tensor> args,
+  Status RunSync(Options opts, Handle handle, absl::Span<const Tensor> args,
                  std::vector<Tensor>* rets) override;
 
   Status RunSync(Options opts, Handle handle,
@@ -240,7 +240,7 @@ Status FunctionLibraryRuntimeOverlay::GetRetTypes(Handle h,
 }
 
 void FunctionLibraryRuntimeOverlay::Run(const Options& opts, Handle handle,
-                                        gtl::ArraySlice<Tensor> args,
+                                        absl::Span<const Tensor> args,
                                         std::vector<Tensor>* rets,
                                         DoneCallback done) {
   base_flr_->Run(opts, handle, args, rets, std::move(done));
@@ -253,7 +253,7 @@ void FunctionLibraryRuntimeOverlay::Run(const Options& opts, Handle handle,
 }
 
 Status FunctionLibraryRuntimeOverlay::RunSync(Options opts, Handle handle,
-                                              gtl::ArraySlice<Tensor> args,
+                                              absl::Span<const Tensor> args,
                                               std::vector<Tensor>* rets) {
   return base_flr_->RunSync(std::move(opts), handle, args, rets);
 }
@@ -354,11 +354,11 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   Status CreateKernel(const std::shared_ptr<const NodeProperties>& props,
                       OpKernel** kernel) override;
 
-  void Run(const Options& opts, Handle handle, gtl::ArraySlice<Tensor> args,
+  void Run(const Options& opts, Handle handle, absl::Span<const Tensor> args,
            std::vector<Tensor>* rets, DoneCallback done) override;
   void Run(const Options& opts, Handle handle, CallFrameInterface* frame,
            DoneCallback done) override;
-  Status RunSync(Options opts, Handle handle, gtl::ArraySlice<Tensor> args,
+  Status RunSync(Options opts, Handle handle, absl::Span<const Tensor> args,
                  std::vector<Tensor>* rets) override;
   Status RunSync(Options opts, Handle handle,
                  CallFrameInterface* call_frame) override;
@@ -453,7 +453,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   bool IsLocalTarget(const InstantiateOptions& options) const;
   AttrValueMap FixAttrs(const AttrSlice& attrs);
   void RunRemote(const Options& opts, Handle handle,
-                 gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                 absl::Span<const Tensor> args, std::vector<Tensor>* rets,
                  Item* item, DoneCallback done);
 
   // TODO(fishx): Avoid using std::unique_ptr for PrivateIntraProcessRendezvous,
@@ -1008,7 +1008,7 @@ void FunctionLibraryRuntimeImpl::ExecutorArgsFromOptions(
 }
 
 void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
-                                           gtl::ArraySlice<Tensor> args,
+                                           absl::Span<const Tensor> args,
                                            std::vector<Tensor>* rets,
                                            Item* item, DoneCallback done) {
   string target_device = parent_->GetDeviceName(handle);
@@ -1098,7 +1098,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
 }
 
 void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
-                                     gtl::ArraySlice<Tensor> args,
+                                     absl::Span<const Tensor> args,
                                      std::vector<Tensor>* rets,
                                      DoneCallback done) {
   if (opts.cancellation_manager && opts.cancellation_manager->IsCancelled()) {
@@ -1159,7 +1159,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
         return tsl::profiler::TraceMeEncode(
             "FunctionRun", {{"id", run_opts.step_id}, {"_r", 1}});
       },
-      profiler::ContextType::kTfExecutor, *exec_args.function_trace_id,
+      tsl::profiler::ContextType::kTfExecutor, *exec_args.function_trace_id,
       tsl::profiler::TraceMeLevel::kInfo);
 
   bool allow_dead_tensors = run_opts.allow_dead_tensors;
@@ -1231,7 +1231,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
         return tsl::profiler::TraceMeEncode("FunctionRun",
                                             {{"id", opts.step_id}, {"_r", 1}});
       },
-      profiler::ContextType::kTfExecutor, *exec_args.function_trace_id,
+      tsl::profiler::ContextType::kTfExecutor, *exec_args.function_trace_id,
       tsl::profiler::TraceMeLevel::kInfo);
 
   item->exec->RunAsync(exec_args, std::move(done));
@@ -1278,7 +1278,7 @@ Status FunctionLibraryRuntimeImpl::PrepareRunSync(
 }
 
 Status FunctionLibraryRuntimeImpl::RunSync(Options opts, Handle handle,
-                                           gtl::ArraySlice<Tensor> args,
+                                           absl::Span<const Tensor> args,
                                            std::vector<Tensor>* rets) {
   Item* item = nullptr;
   std::unique_ptr<PrivateIntraProcessRendezvous> rendezvous;
