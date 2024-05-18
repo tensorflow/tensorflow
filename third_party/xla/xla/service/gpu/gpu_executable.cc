@@ -975,8 +975,13 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   TF_RETURN_IF_ERROR(ExecuteThunksOrXlaRuntime(run_options, buffer_allocations,
                                                block_host_until_done));
 
-  TF_RETURN_IF_ERROR(
-      buffer_allocations.TearDown(buffers_in_result, GetAllocations()));
+  if (block_host_until_done) {
+    TF_RETURN_IF_ERROR(
+        buffer_allocations.TearDown(buffers_in_result, GetAllocations()));
+  } else {
+    TF_RETURN_IF_ERROR(buffer_allocations.TearDown(
+        buffers_in_result, GetAllocations(), run_options->stream()));
+  }
 
   // Free allocations for arguments.
   if (auto args = std::get_if<absl::Span<ExecutionInput>>(&arguments)) {
