@@ -17,16 +17,24 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
-#include "tensorflow/cc/ops/parsing_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "third_party/protobuf/text_format.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace grappler {
