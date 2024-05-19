@@ -683,6 +683,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
+        "@local_tsl//tsl/platform:env",
     ],
     alwayslink = 1,
 )
@@ -1572,6 +1573,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@local_tsl//tsl/platform:env",
     ],
 )
 

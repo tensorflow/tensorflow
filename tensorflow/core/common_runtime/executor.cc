@@ -70,7 +70,6 @@ limitations under the License.
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
@@ -82,6 +81,7 @@ limitations under the License.
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
+#include "tsl/platform/tracing.h"
 
 namespace tensorflow {
 
@@ -381,7 +381,7 @@ class ExecutorState {
   // Step-local container.
   ScopedStepContainer* step_container_;
   StepStatsCollectorInterface* const stats_collector_;
-  const tracing::EventCollector* const event_collector_;
+  const tsl::tracing::EventCollector* const event_collector_;
   Context context_;
 
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
@@ -435,8 +435,8 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       tensor_store_(args.tensor_store),
       step_container_(args.step_container),
       stats_collector_(args.stats_collector),
-      event_collector_(
-          tracing::GetEventCollector(tracing::EventCategory::kCompute)),
+      event_collector_(tsl::tracing::GetEventCollector(
+          tsl::tracing::EventCategory::kCompute)),
       context_(ContextKind::kThread),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
@@ -563,15 +563,15 @@ struct ExecutorState<PropagatorStateType>::AsyncState {
 
 // Returns true if `item` might be traced by the given trace and event
 // collectors. Returns false only if `item` definitely will not be traced.
-bool MightTrace(const tracing::EventCollector* event_collector,
+bool MightTrace(const tsl::tracing::EventCollector* event_collector,
                 bool is_expensive) {
   // Tracing will only be enabled if either `event_collector` is non null,
   // or `trace_collector` is non-null and enabled for this particular kernel.
   // Although `profiler::TraceMe`, `profiler::ScopedAnnotation`, and
-  // `tracing::ScopedRegion` check subsets of these properties internally in
-  // their constructors, the cost of passing the necessary arguments to them can
-  // be significant, so we avoid constructing them in the common case (when we
-  // know they will not be used).
+  // `tsl::tracing::ScopedRegion` check subsets of these properties internally
+  // in their constructors, the cost of passing the necessary arguments to them
+  // can be significant, so we avoid constructing them in the common case (when
+  // we know they will not be used).
   if (event_collector != nullptr) {
     return true;
   }
@@ -594,8 +594,8 @@ Status ExecutorState<PropagatorStateType>::ProcessSync(
   const bool is_expensive = kernel_stats_->IsExpensive(item);
 
   if (TF_PREDICT_FALSE(MightTrace(event_collector_, is_expensive))) {
-    tracing::ScopedRegion region(tracing::EventCategory::kCompute,
-                                 op_kernel->name_view());
+    tsl::tracing::ScopedRegion region(tsl::tracing::EventCategory::kCompute,
+                                      op_kernel->name_view());
     profiler::AnnotatedTraceMe activity(
         [op_kernel, &ctx] {
           return op_kernel->TraceString(
