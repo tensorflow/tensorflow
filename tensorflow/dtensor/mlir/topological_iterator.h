@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_TOPOLOGICAL_ITERATOR_H_
 #define TENSORFLOW_DTENSOR_MLIR_TOPOLOGICAL_ITERATOR_H_
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace tensorflow {
 namespace dtensor {
