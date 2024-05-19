@@ -1487,6 +1487,7 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
     if (local_device_state->allocation_model() ==
         LocalDeviceState::kComputeSynchronized) {
       se::Stream* block_stream = nullptr;
+      std::vector<std::shared_ptr<BufferSequencingEvent>> events_to_wait_for;
       for (const auto& stream_and_event : events) {
         VLOG(2)
             << "Checking whether need to wait for stream_and_event: stream: "
@@ -1520,7 +1521,7 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
                   << "; reference_held: " << stream_and_event.reference_held
                   << "; is_predetermined_error: "
                   << stream_and_event.event->IsPredeterminedError();
-          stream_and_event.event->WaitForEventOnStream(block_stream);
+          events_to_wait_for.push_back(std::move(stream_and_event.event));
         }
       }
       for (const auto& definition_event : device_buffer->definition_events()) {
@@ -1555,14 +1556,24 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
           VLOG(2) << "Waiting for definition_event: " << definition_event.get()
                   << "; is_predetermined_error: "
                   << definition_event->IsPredeterminedError();
-          definition_event->WaitForEventOnStream(block_stream);
+          events_to_wait_for.push_back(std::move(definition_event));
         }
       }
       if (block_stream != nullptr) {
-        TF_RETURN_IF_ERROR(local_device_state->ThenExecuteCallback(
-            block_stream, [device_buffer]() {
-              // Drops device_buffer shared pointer.
-            }));
+        CHECK(!events_to_wait_for.empty());
+        // Schedule the deallocation through a thread in a thread pool in case
+        // we are already in a host callback, to avoid CUDA_ERROR_NOT_PERMITTED
+        client_->thread_pool()->Schedule(
+            [block_stream, local_device_state, device_buffer,
+             events_to_wait_for = std::move(events_to_wait_for)]() {
+              for (const auto& event : events_to_wait_for) {
+                event->WaitForEventOnStream(block_stream);
+              }
+              TF_CHECK_OK(local_device_state->ThenExecuteCallback(
+                  block_stream, [device_buffer]() {
+                    // Drops device_buffer shared pointer.
+                  }));
+            });
       }
     }
   }
@@ -1582,9 +1593,15 @@ void PjRtStreamExecutorBuffer::Delete() {
   // the compute stream so that there wouldn't be use-after-free usages on the
   // compute stream.
   TF_CHECK_OK(tracked_device_buffer.status());
-  TF_CHECK_OK(device_->local_device_state()->ThenRelease(
-      device_->local_device_state()->compute_stream(),
-      std::move(tracked_device_buffer.value())));
+
+  // Schedule the deallocation through a thread in a thread pool in case we are
+  // already in a host callback, to avoid CUDA_ERROR_NOT_PERMITTED
+  client_->thread_pool()->Schedule(
+      [device_buffer = std::move(tracked_device_buffer).value(),
+       local_device_state = device_->local_device_state()]() {
+        TF_CHECK_OK(local_device_state->ThenRelease(
+            local_device_state->compute_stream(), std::move(device_buffer)));
+      });
 }
 
 bool PjRtStreamExecutorBuffer::IsDeleted() {
