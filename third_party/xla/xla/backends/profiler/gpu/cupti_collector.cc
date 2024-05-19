@@ -508,7 +508,8 @@ class EventInQueue {
 }  // namespace
 
 void CuptiTraceCollector::OnTracerCollectedCallbackData(
-    std::vector<CallbackAnnotationsAndEvents> callback_annotations_and_events) {
+    std::vector<CallbackAnnotationsAndEvents> callback_annotations_and_events,
+    bool need_callback_events) {
   // Build merged annotation first.
   std::priority_queue<EventInQueue> min_heap;
   for (auto& annotations_and_events : callback_annotations_and_events) {
@@ -544,6 +545,9 @@ void CuptiTraceCollector::OnTracerCollectedCallbackData(
       min_heap.emplace(std::move(event_in_queue));
     }
   }
+
+  // If we are not collecting CPU events from Callback API, we can return now.
+  if (!need_callback_events) return;
 
   size_t total_dropped_callback_event_count = 0;
   for (auto& annotations_and_events : callback_annotations_and_events) {
@@ -604,8 +608,10 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   }
 
   void OnTracerCollectedCallbackData(
-      std::vector<CallbackAnnotationsAndEvents> callback_events) override {
+      std::vector<CallbackAnnotationsAndEvents> callback_events,
+      bool need_callback_events) override {
     callback_events_ = std::move(callback_events);
+    need_callback_events_ = need_callback_events;
   }
 
   void OnTracerCachedActivityBuffers(
@@ -620,7 +626,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     // because the AnnotationMap is populated from the callback API events and
     // queried by the activity API events.
     CuptiTraceCollector::OnTracerCollectedCallbackData(
-        std::move(callback_events_));
+        std::move(callback_events_), need_callback_events_);
     CuptiTraceCollector::OnTracerCachedActivityBuffers(
         std::move(activity_buffers_));
 
