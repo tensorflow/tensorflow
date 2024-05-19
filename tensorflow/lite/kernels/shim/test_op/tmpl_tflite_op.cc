@@ -15,9 +15,11 @@ limitations under the License.
 #include "tensorflow/lite/kernels/shim/test_op/tmpl_tflite_op.h"
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/shim/op_kernel.h"
 #include "tensorflow/lite/kernels/shim/test_op/tmpl_op.h"
 #include "tensorflow/lite/kernels/shim/tflite_op_shim.h"
 #include "tensorflow/lite/kernels/shim/tflite_op_wrapper.h"
+#include "tensorflow/lite/mutable_op_resolver.h"
 
 namespace tflite {
 namespace ops {
