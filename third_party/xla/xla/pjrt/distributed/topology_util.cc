@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/utils.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
