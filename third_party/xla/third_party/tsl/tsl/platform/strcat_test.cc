@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "tsl/platform/bfloat16.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/stringprintf.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/types.h"

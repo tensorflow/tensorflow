@@ -20,8 +20,8 @@ limitations under the License.
 
 #include <string>
 
+#include <gtest/gtest.h>
 #include "absl/strings/match.h"
-#include "tsl/platform/platform.h"
 #include "tsl/platform/stacktrace_handler.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"

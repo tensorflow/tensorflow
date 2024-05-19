@@ -238,7 +238,9 @@ cc_library(
     hdrs = ["protobuf.h"],
     deps = [
         ":platform",
+        ":tstring",
         ":types",
+        "@com_google_absl//absl/strings:cord",
     ] + tsl_protobuf_deps(),
 )
 
@@ -279,11 +281,16 @@ cc_library(
         ":str_util",
         ":strcat",
         ":stringprintf",
+        ":thread_annotations",
         ":types",
+        "//tsl/platform/google:logging",
         "//tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
@@ -301,6 +308,8 @@ cc_library(
         ":status",
         "//tsl/protobuf:error_codes_proto_impl_cc",
         "//tsl/protobuf:status_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:source_location",
     ] + tf_platform_deps("status"),
 )
 
@@ -314,6 +323,7 @@ cc_library(
         ":statusor",
         ":test",
         "//tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -886,8 +896,6 @@ tsl_cc_test(
     ],
     tags = ["no_windows"],
     deps = [
-        ":logging",
-        ":stacktrace",
         ":stacktrace_handler",
         ":test",
         ":test_main",
@@ -912,10 +920,12 @@ cc_library(
     srcs = ["strcat.cc"],
     hdrs = ["strcat.h"],
     deps = [
+        ":bfloat16",
         ":logging",
         ":macros",
         ":numbers",
         ":stringpiece",
+        ":tstring",
         ":types",
         "@com_google_absl//absl/meta:type_traits",
     ],
@@ -1129,10 +1139,7 @@ cc_library(
     name = "setround",
     srcs = ["setround.cc"],
     hdrs = ["setround.h"],
-    deps = [
-        ":logging",
-        ":macros",
-    ],
+    deps = [":macros"],
 )
 
 cc_library(
@@ -1288,6 +1295,7 @@ tsl_cc_test(
         ":test",
         ":test_main",
         ":tstring",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1301,10 +1309,10 @@ cc_library(
         "//conditions:default": ["-lm"],
     }),
     deps = [
-        ":platform",
         ":stacktrace_handler",
         ":test",
         ":test_benchmark",
+        "//testing/base/public:gunit_for_library_testonly",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
@@ -1320,6 +1328,7 @@ tsl_cc_test(
         ":status",
         ":status_matchers",
         ":status_to_from_proto",
+        ":stringpiece",
         ":test",
         ":test_main",
         "//tsl/protobuf:error_codes_proto_impl_cc",
@@ -1337,11 +1346,12 @@ tsl_cc_test(
     deps = [
         ":errors",
         ":macros",
+        ":status",
         ":statusor",
         ":test",
         ":test_benchmark",
         ":test_main",
-        "@com_google_absl//absl/base:config",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -1392,12 +1402,12 @@ tsl_cc_test(
     name = "unbounded_work_queue_test",
     srcs = ["unbounded_work_queue_test.cc"],
     deps = [
-        ":blocking_counter",
         ":env",
-        ":env_impl",
+        ":mutex",
         ":random",
         ":test",
         ":test_main",
+        ":thread_annotations",
         ":unbounded_work_queue",
         "@com_google_absl//absl/memory",
     ],
@@ -1458,11 +1468,10 @@ tsl_cc_test(
     tags = ["no_oss"],  # TODO(b/327036247): revisit after this moves to XLA
     deps = [
         ":path",
-        ":strcat",
         ":subprocess",
         ":test",
         ":test_main",
-        "//tsl/lib/core:status_test_util",
+        ":types",
     ],
 )
 
@@ -1514,11 +1523,7 @@ tsl_cc_test(
     size = "small",
     srcs = ["setround_test.cc"],
     tags = ["noclang"],
-    deps = [
-        ":setround",
-        ":test",
-        ":test_main",
-    ],
+    deps = [":test_main"],
 )
 
 tsl_cc_test(
@@ -1529,10 +1534,10 @@ tsl_cc_test(
     ],
     deps = [
         ":env",
-        ":env_impl",
         ":refcount",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -1629,8 +1634,10 @@ tsl_cc_test(
     ],
     deps = [
         ":scanner",
+        ":stringpiece",
         ":test",
         ":test_main",
+        ":types",
     ],
 )
 
@@ -1642,8 +1649,10 @@ tsl_cc_test(
     ],
     deps = [
         ":str_util",
+        ":stringpiece",
         ":test",
         ":test_main",
+        ":types",
     ],
 )
 
@@ -1654,7 +1663,9 @@ tsl_cc_test(
         "strcat_test.cc",
     ],
     deps = [
+        ":bfloat16",
         ":strcat",
+        ":stringpiece",
         ":stringprintf",
         ":test",
         ":test_main",
@@ -1673,6 +1684,7 @@ tsl_cc_test(
         ":stringpiece",
         ":test",
         ":test_main",
+        ":types",
     ],
 )
 
@@ -1686,6 +1698,7 @@ tsl_cc_test(
         ":stringprintf",
         ":test",
         ":test_main",
+        ":types",
     ],
 )
 
@@ -1729,6 +1742,8 @@ cc_library(
         ":logging",
         ":random",
         ":status",
+        ":strcat",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
     ],
 )
@@ -1753,12 +1768,19 @@ tsl_cc_test(
     size = "small",
     srcs = ["retrying_file_system_test.cc"],
     deps = [
-        ":env_impl",
+        ":env",
+        ":errors",
+        ":file_statistics",
         ":retrying_file_system",
-        ":str_util",
+        ":retrying_utils",
+        ":status",
+        ":strcat",
+        ":stringpiece",
         ":test",
         ":test_main",
+        ":types",
         "//tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1767,14 +1789,13 @@ tsl_cc_test(
     size = "small",
     srcs = ["retrying_utils_test.cc"],
     deps = [
-        ":env",
-        ":env_impl",
         ":errors",
         ":retrying_utils",
-        ":str_util",
+        ":status",
         ":test",
         ":test_main",
         "//tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],
 )

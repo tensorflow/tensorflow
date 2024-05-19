@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

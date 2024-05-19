@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tsl/platform/threadpool.h"
 
+#include "tsl/platform/env.h"
+#include "tsl/platform/threadpool_interface.h"
+#include "tsl/platform/types.h"
+
 #define EIGEN_USE_THREADS
 
 #include "absl/types/optional.h"
@@ -23,7 +27,6 @@ limitations under the License.
 #include "tsl/platform/context.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/numa.h"
 #include "tsl/platform/setround.h"
 #include "tsl/platform/tracing.h"

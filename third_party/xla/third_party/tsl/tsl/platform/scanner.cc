@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tsl/platform/scanner.h"
 
+#include "tsl/platform/stringpiece.h"
+
 namespace tsl {
 namespace strings {
 

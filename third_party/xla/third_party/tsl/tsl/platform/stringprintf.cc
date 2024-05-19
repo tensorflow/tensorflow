@@ -19,6 +19,8 @@ limitations under the License.
 #include <stdarg.h>  // For va_list and related operations
 #include <stdio.h>   // MSVC requires this for _vsnprintf
 
+#include "tsl/platform/types.h"
+
 namespace tsl {
 namespace strings {
 

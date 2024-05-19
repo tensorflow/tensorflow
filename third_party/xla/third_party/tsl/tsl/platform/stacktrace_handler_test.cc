@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <csignal>
 
-#include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {

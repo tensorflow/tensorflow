@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/types/source_location.h"
 #include "tsl/platform/status.h"
 #include "tsl/protobuf/error_codes.pb.h"
 #include "tsl/protobuf/status.pb.h"

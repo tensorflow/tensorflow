@@ -22,6 +22,7 @@ limitations under the License.
 #include "tsl/platform/stack_frame.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/status_to_from_proto.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/error_codes.pb.h"
 #include "tsl/protobuf/status.pb.h"

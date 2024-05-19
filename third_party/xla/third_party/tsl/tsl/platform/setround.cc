@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tsl/platform/setround.h"
 
-#include "tsl/platform/logging.h"
-
 namespace tsl {
 namespace port {
 

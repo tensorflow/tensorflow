@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "tsl/platform/macros.h"

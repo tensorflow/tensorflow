@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/strings/cord.h"
 #include "tsl/platform/platform.h"
+#include "tsl/platform/tstring.h"
 #include "tsl/platform/types.h"
 
 // Import whatever namespace protobuf comes from into the
