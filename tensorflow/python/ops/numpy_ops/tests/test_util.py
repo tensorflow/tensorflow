@@ -76,8 +76,8 @@ EPS = 1e-4
 python_scalar_dtypes = {
   bool: onp.dtype(onp.bool_),
   int: onp.dtype(onp.int_),
-  float: onp.dtype(onp.float_),
-  complex: onp.dtype(onp.complex_),
+  float: onp.dtype(onp.float64),
+  complex: onp.dtype(onp.complex128),
 }
 
 
