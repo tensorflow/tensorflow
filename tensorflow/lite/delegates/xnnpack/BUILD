@@ -2850,6 +2850,9 @@ cc_test(
 cc_test(
     name = "weight_cache_test",
     srcs = ["weight_cache_test.cc"],
+    tags = [
+        "tflite_disable_mobile_test",  # TODO - b/341104412 - enable on Android
+    ],
     deps = [
         ":test_main",
         ":weight_cache",
