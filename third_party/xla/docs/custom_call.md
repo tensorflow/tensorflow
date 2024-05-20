@@ -76,7 +76,7 @@ XLA_FFI_DEFINE_HANDLER(handler, do_custom_call,
                        ffi::Ffi::Bind()
                            .Arg<Buffer>()
                            .Arg<Buffer>()
-                           .Ret<Buffer>();
+                           .Ret<Buffer>());
 
 // Registers `handler` with and XLA FFI on a "Host" platform.
 XLA_FFI_REGISTER_HANDLER(xla::ffi::GetXlaFfiApi(), "do_custom_call",
@@ -118,7 +118,7 @@ XLA_FFI_DEFINE_HANDLER(handler, do_custom_call,
                            .Ctx<xla::ffi::PlatformStream<CUstream>>()
                            .Arg<Buffer>()
                            .Arg<Buffer>()
-                           .Ret<Buffer>();
+                           .Ret<Buffer>());
 
 XLA_FFI_REGISTER_HANDLER(xla::ffi::GetXlaFfiApi(), "do_custom_call",
                          "CUDA", handler);
