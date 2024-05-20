@@ -40,11 +40,15 @@ else
   fi
 fi
 
+# TODO(b/341050361): When these steps are verified, removed the GCR image code.
+AR_IMAGE_PATH="us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build-arm64"
+
 # Build for both JAX and TF usage.  We do these in one place because they share
 # almost all of the same cache layers
 export DOCKER_BUILDKIT=1
 for target in jax tf; do
   IMAGE="gcr.io/tensorflow-sigs/build-arm64:$target-$TAG"
+  AR_IMAGE="$AR_IMAGE_PATH:$target-$TAG"
   docker pull "$IMAGE" || true
   # Due to some flakiness of resources pulled in the build, allow the docker
   # command to reattempt build a few times in the case of failure (b/302558736)
@@ -55,7 +59,7 @@ for target in jax tf; do
     --build-arg REQUIREMENTS_FILE=jax.requirements.txt \
     --target=$target \
     --cache-from "$IMAGE" \
-    -t "$IMAGE"  . && break
+    -t "$IMAGE" -t "$AR_IMAGE" . && break
   done
   final=$?
   if [ $final -ne 0 ]; then
@@ -66,5 +70,7 @@ for target in jax tf; do
   if [[ -n "$KOKORO_BUILD_ID" ]]; then
     gcloud auth configure-docker
     docker push "$IMAGE"
+    gcloud auth configure-docker us-central1-docker.pkg.dev
+    docker push "$AR_IMAGE"
   fi
 done
