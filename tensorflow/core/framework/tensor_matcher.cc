@@ -42,12 +42,31 @@ namespace {
 using tensorflow::Tensor;
 
 template <typename T>
+::testing::Matcher<absl::Span<const T>> MakePointwiseMatcher(
+    absl::Span<const T> target) {
+  return ::testing::MatcherCast<absl::Span<const T>>(
+      ::testing::Pointwise(::testing::Eq(), target));
+}
+
+template <>
+::testing::Matcher<absl::Span<const float>> MakePointwiseMatcher(
+    absl::Span<const float> target) {
+  return ::testing::MatcherCast<absl::Span<const float>>(
+      ::testing::Pointwise(::testing::FloatEq(), target));
+}
+
+template <>
+::testing::Matcher<absl::Span<const double>> MakePointwiseMatcher(
+    absl::Span<const double> target) {
+  return ::testing::MatcherCast<absl::Span<const double>>(
+      ::testing::Pointwise(::testing::DoubleEq(), target));
+}
+
+template <typename T>
 bool MatchAndExplainPointwise(absl::Span<const T> value,
                               absl::Span<const T> target,
                               ::testing::MatchResultListener* listener) {
-  auto matcher = ::testing::MatcherCast<absl::Span<const T>>(
-      ::testing::Pointwise(::testing::Eq(), target));
-  return matcher.MatchAndExplain(value, listener);
+  return MakePointwiseMatcher<T>(target).MatchAndExplain(value, listener);
 }
 
 class TensorEqMatcherImpl : public ::testing::MatcherInterface<const Tensor&> {
@@ -62,9 +81,7 @@ class TensorEqMatcherImpl : public ::testing::MatcherInterface<const Tensor&> {
   case tensorflow::DataTypeToEnum<T>::value: {             \
     *os << ", and tensor data ";                           \
     absl::Span<const T> data(target_.unaligned_flat<T>()); \
-    ::testing::MatcherCast<absl::Span<const T>>(           \
-        ::testing::Pointwise(::testing::Eq(), data))       \
-        .DescribeTo(os);                                   \
+    MakePointwiseMatcher<T>(data).DescribeTo(os);          \
     break;                                                 \
   }
       TF_CALL_POD_STRING_TYPES(CASE_TYPE);
@@ -84,9 +101,7 @@ class TensorEqMatcherImpl : public ::testing::MatcherInterface<const Tensor&> {
   case tensorflow::DataTypeToEnum<T>::value: {             \
     *os << ", or tensor data ";                            \
     absl::Span<const T> data(target_.unaligned_flat<T>()); \
-    ::testing::MatcherCast<absl::Span<const T>>(           \
-        ::testing::Pointwise(::testing::Eq(), data))       \
-        .DescribeNegationTo(os);                           \
+    MakePointwiseMatcher<T>(data).DescribeNegationTo(os);  \
     break;                                                 \
   }
       TF_CALL_POD_STRING_TYPES(CASE_TYPE);
