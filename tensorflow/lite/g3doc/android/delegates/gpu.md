@@ -132,6 +132,29 @@ If your application is targets devices which are not running Google Play,
 it is possible to bundle the GPU delegate to your application and use it
 with the standalone version of TensorFlow Lite.
 
+### Add project dependencies (with .toml version catalog)
+
+1. Update your project's libs.versions.toml file
+
+```
+[libraries]
+...
+tflite-gpu = { module = "org.tensorflow:tensorflow-lite-gpu", version = "2.X.Y" }
+tflite-gpu-api = { module = "org.tensorflow:tensorflow-lite-gpu-api", version = "2.X.Y" }
+...
+```
+
+2. Add project dependencies in the app's build.gradle.kts
+
+```
+dependencies {
+  ...
+  implementation(libraries.tflite.gpu)
+  implementation(libraries.tflite.gpu.api)
+  ...
+}
+```
+
 ### Add project dependencies
 
 To enable access to the GPU delegate, add
