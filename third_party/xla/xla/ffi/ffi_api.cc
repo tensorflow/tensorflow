@@ -138,7 +138,7 @@ static absl::Status RegisterHandler(std::string_view name,
     return absl::InvalidArgumentError(
         absl::StrCat("Duplicate FFI handler registration for ", name,
                      " on a platform ", platform));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<HandlerRegistration> FindHandler(std::string_view name,

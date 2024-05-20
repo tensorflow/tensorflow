@@ -154,7 +154,7 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
                            flatten_computation_args_result_)
                            .status());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HloModuleImporter::Import(const HloModuleProto& module_proto) {

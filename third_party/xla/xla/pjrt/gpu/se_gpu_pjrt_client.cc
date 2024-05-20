@@ -302,7 +302,7 @@ class AsyncHostToDeviceTransferManager
           (*ptr)();
           delete ptr;
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status TransferRawDataToBuffer(
@@ -1027,7 +1027,7 @@ absl::Status BuildDistributedDevices(
         });
   }
 #endif  // GOOGLE_CUDA
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string MakeComputeCapabilityString(const se::DeviceDescription* desc) {

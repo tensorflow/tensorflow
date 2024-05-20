@@ -95,7 +95,7 @@ namespace tsl {
 //  bytes_per_elem: Number of bytes in each element of the array
 //  array_len: Number of elements in the array
 //
-// Returns: OkStatus() on success, -1 otherwise
+// Returns: absl::OkStatus() on success, -1 otherwise
 //
 absl::Status ByteSwapArray(char *array, size_t bytes_per_elem, int array_len);
 

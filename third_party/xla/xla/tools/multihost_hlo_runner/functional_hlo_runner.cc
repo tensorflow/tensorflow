@@ -451,7 +451,7 @@ absl::Status FunctionalHloRunner::DumpOutput(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Span<PjRtDevice* const> FunctionalHloRunner::GetLocalDevices(
@@ -504,7 +504,7 @@ absl::Status FunctionalHloRunner::LoadAndRunAndDump(
                                       compile_options, running_options,
                                       hlo_files, input_format));
   return dump_output_to.empty()
-             ? OkStatus()
+             ? absl::OkStatus()
              : FunctionalHloRunner::DumpOutput(output, dump_output_to, task_id);
 }
 
@@ -573,7 +573,7 @@ absl::Status FunctionalHloRunner::LoadAndCompile(
                          debug_options, preproc_options, compile_options)
                          .status());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>>
@@ -749,7 +749,7 @@ absl::Status FunctionalHloRunner::PrepareHloModuleForCompilation(
             /*remove_comm=*/false, /*remove_host_transfer=*/true});
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 CompileOptions FunctionalHloRunner::CompleteCompileOptions(
@@ -915,7 +915,7 @@ absl::Status EnsureSingleTupleForFlattening(const HloModule& module) {
             ->shape()
             .ToString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

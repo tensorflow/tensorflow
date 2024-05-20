@@ -23,7 +23,7 @@ namespace xla {
 
 inline absl::Status FromGrpcStatus(const ::grpc::Status& s) {
   if (s.ok()) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return absl::Status(static_cast<absl::StatusCode>(s.error_code()),
                         s.error_message());
