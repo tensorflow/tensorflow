@@ -135,9 +135,18 @@ class AsyncHostToDeviceTransferManager
       // event will block the buffer usage until the transfer is done.
       definition_events.push_back(
           std::make_shared<BufferSequencingEvent>(client->thread_pool()));
+      TF_ASSIGN_OR_RETURN(Shape compact_shape,
+                          client->client()
+                              ->backend()
+                              .transfer_manager()
+                              ->ChooseCompactLayoutForShape(shape));
+      LocalDeviceState* local_device = device->local_device_state();
+      se::Stream* h2d_stream = local_device->host_to_device_stream();
       TF_ASSIGN_OR_RETURN(auto buffer,
-                          client->CreateUninitializedBuffer(
-                              shape, device, definition_events.back()));
+                          AllocateDestinationBuffer(
+                              compact_shape, device, local_device, h2d_stream,
+                              /*is_uninitialized_create=*/true, client,
+                              definition_events.back()));
       // Get a temporary hold just so we can fish out a shared_ptr to the
       // TrackedDeviceBuffer. It's ok to drop the hold before return the
       // buffers, because the invariants of this class ensure that the buffer

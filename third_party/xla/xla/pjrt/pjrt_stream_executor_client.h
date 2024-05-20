@@ -876,6 +876,25 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   PjRtFuture<>::Promise definition_promise_ ABSL_GUARDED_BY(mu_);
 };
 
+// Allocates the device buffers for a buffer that will be used as the
+// destination of a copy, either from the host or another device. copy_stream
+// may be nullptr, e.g., when allocating a buffer for a cross-host copy. If the
+// buffer is a tuple then the tuple tables are allocated, and all necessary
+// synchronization for them is dealt with, before the buffer is returned.
+//
+// It is safe to delete the returned PjRtBuffer without further
+// synchronization if an error occurs before the buffer is used.
+//
+// The caller may optionally provide a definition event to be recorded in
+// the buffer.
+// TODO(phawkins): replace on_host_shape here with on_device_shape.
+absl::StatusOr<std::unique_ptr<PjRtStreamExecutorBuffer>>
+AllocateDestinationBuffer(
+    const Shape& on_host_shape, PjRtDevice* device,
+    LocalDeviceState* local_device, se::Stream* copy_stream,
+    bool is_uninitialized_create, PjRtStreamExecutorClient* client,
+    std::shared_ptr<BufferSequencingEvent> definition_event = nullptr);
+
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by
 // the build options).
 class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
