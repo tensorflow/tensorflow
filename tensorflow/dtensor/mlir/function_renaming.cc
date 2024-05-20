@@ -17,13 +17,14 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/dtensor/cc/constants.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 
 namespace tensorflow {
 namespace dtensor {
