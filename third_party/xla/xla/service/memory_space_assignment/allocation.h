@@ -210,7 +210,7 @@ class PinnedAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   absl::Status Process() override;
-  absl::Status PostProcess() override { return OkStatus(); }
+  absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
       const override;
   void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -247,7 +247,7 @@ class CopyAllocation final : public Allocation {
   bool is_copy_allocation() const override { return true; }
   bool is_sliced_copy_allocation() const override { return false; }
   absl::Status Process() override;
-  absl::Status PostProcess() override { return OkStatus(); }
+  absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
       const override;
   void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -349,7 +349,7 @@ class SlicedCopyAllocation final : public Allocation {
   // MemorySpaceAssignment::Process() calls Process() to create asynchronous
   // slice copies, and a bitcast-concat call to glue the slices back together.
   absl::Status Process() override;
-  absl::Status PostProcess() override { return OkStatus(); }
+  absl::Status PostProcess() override { return absl::OkStatus(); }
   // Marks the allocation as needed.
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
       const override;
@@ -405,7 +405,7 @@ class MirroredAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   absl::Status Process() override;
-  absl::Status PostProcess() override { return OkStatus(); }
+  absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
       const override;
   void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)

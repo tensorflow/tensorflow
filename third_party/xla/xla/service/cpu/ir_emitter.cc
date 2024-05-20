@@ -258,7 +258,7 @@ void IrEmitter::InitializeIrFunction(const std::string& function_name) {
 absl::Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   VLOG(2) << "HandleBitcast: " << bitcast->ToString();
   emitted_value_[bitcast] = GetEmittedValueFor(bitcast->operand(0));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 llvm::Constant* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
@@ -297,7 +297,7 @@ absl::Status IrEmitter::EmitConstantGlobals() {
                 global_for_const);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleConstant(HloInstruction* constant) {
@@ -393,7 +393,7 @@ absl::Status IrEmitter::HandleGetTupleElement(
   emitted_value_[get_tuple_element] = llvm_ir::EmitGetTupleElement(
       shape, get_tuple_element->tuple_index(), MinimumAlignmentForShape(shape),
       GetEmittedValueFor(operand), IrShapeType(operand->shape()), &b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleSelect(HloInstruction* select) {
@@ -459,7 +459,7 @@ absl::Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
         EmitXfeedTransfer(XfeedKind::kInfeed, data_shape, data_address));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
@@ -524,7 +524,7 @@ absl::Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
                   acquired_pointer, shape_ptr, b_.getInt32(shape_length)},
                  b_.getVoidTy());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
@@ -554,7 +554,7 @@ absl::Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
                                          tuple_element_shape, tuple_element));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleSort(HloInstruction* hlo) {
@@ -649,7 +649,7 @@ absl::Status IrEmitter::HandleSort(HloInstruction* hlo) {
   if (sort->values_count() > 0) {
     llvm_ir::EmitTuple(GetIrArrayFor(sort), destination_addresses, &b_);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleTuple(HloInstruction* tuple) {
@@ -659,7 +659,7 @@ absl::Status IrEmitter::HandleTuple(HloInstruction* tuple) {
     base_ptrs.push_back(GetEmittedValueFor(operand));
   }
   llvm_ir::EmitTuple(GetIrArrayFor(tuple), base_ptrs, &b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
@@ -863,7 +863,7 @@ absl::Status IrEmitter::HandleSelectAndScatter(
   output_array.EmitWriteArrayElement(selected_index, scatter_value, &b_);
 
   SetToFirstInsertPoint(source_loops.GetOuterLoopExitBasicBlock(), &b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleDot(HloInstruction* dot) {
@@ -1075,7 +1075,7 @@ absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       EmitCallToFunc(fn_name, args, b_.getVoidTy(), /*does_not_throw=*/true,
                      /*only_accesses_arg_memory=*/true);
 
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   // This is a completely un-optimized version of convolution just to
@@ -1136,7 +1136,7 @@ absl::Status IrEmitter::HandleFft(HloInstruction* fft) {
                  /*only_accesses_arg_memory=*/false,
                  /*only_accesses_inaccessible_mem_or_arg_mem=*/true);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleAllReduceSingleReplica(HloInstruction* crs) {
@@ -1171,7 +1171,7 @@ absl::Status IrEmitter::HandleAllReduceSingleReplica(HloInstruction* crs) {
            /*SrcAlign=*/llvm::Align(1), ShapeUtil::ByteSizeOf(operand_shape));
   }
   llvm_ir::EmitTuple(GetIrArrayFor(crs), operand_ptrs, &b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Data types supported by ReduceScatter and AllReduce.
@@ -1279,7 +1279,7 @@ absl::Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
        /*output_buffers=*/output_buffers},
       b_.getVoidTy());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
@@ -1343,7 +1343,7 @@ absl::Status IrEmitter::HandleReduceScatter(HloInstruction* rs) {
        /*output_buffer=*/output_buffer},
       b_.getVoidTy());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
@@ -1399,7 +1399,7 @@ absl::Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
                  b_.getVoidTy());
 
   llvm_ir::EmitTuple(GetIrArrayFor(instruction), output_buffer_ptrs, &b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleAllGather(HloInstruction* instruction) {
@@ -1450,7 +1450,7 @@ absl::Status IrEmitter::HandleAllGather(HloInstruction* instruction) {
       b_.getVoidTy());
 
   llvm_ir::EmitTuple(GetIrArrayFor(instruction), output_buffer_ptrs, &b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
@@ -1487,7 +1487,7 @@ absl::Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
        /*source_target_pairs_size=*/b_.getInt32(source_target_pairs.size())},
       b_.getVoidTy());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandlePartitionId(HloInstruction* hlo) {
@@ -1499,7 +1499,7 @@ absl::Status IrEmitter::HandlePartitionId(HloInstruction* hlo) {
                  {/*run_options=*/GetExecutableRunOptionsArgument(),
                   /*output_buffer=*/output_buffer},
                  b_.getVoidTy());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
@@ -1511,7 +1511,7 @@ absl::Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
                  {/*run_options=*/GetExecutableRunOptionsArgument(),
                   /*output_buffer=*/output_buffer},
                  b_.getVoidTy());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleParameter(HloInstruction* parameter) {
@@ -2019,7 +2019,7 @@ absl::Status IrEmitter::HandleReduce(HloInstruction* reduce) {
     if (vectorization_successful) {
       VLOG(1) << "Successfully vectorized reduction " << reduce->ToString()
               << "\n";
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       VLOG(1) << "Could not vectorize reduction " << reduce->ToString() << ": "
               << vectorization_failure_reason;
@@ -2060,7 +2060,7 @@ absl::Status IrEmitter::HandleSlice(HloInstruction* slice) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(slice));
 
   if (ShapeUtil::IsZeroElementArray(slice->shape())) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const Layout& layout = operand->shape().layout();
@@ -2177,7 +2177,7 @@ absl::Status IrEmitter::HandleSlice(HloInstruction* slice) {
     SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b_);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice) {
@@ -2271,7 +2271,7 @@ absl::Status IrEmitter::HandlePad(HloInstruction* pad) {
   output_array.EmitWriteArrayElement(output_index, operand_data, &b_);
 
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
@@ -2323,7 +2323,7 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
         *dot, target_array, lhs_array, rhs_array, &addend_array,
         GetExecutableRunOptionsArgument(), &b_, mlir_context_,
         hlo_module_config_, target_machine_features_));
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return Unimplemented("Fusion kind not implemented on CPU");
   }
@@ -2371,7 +2371,7 @@ absl::Status IrEmitter::HandleCall(HloInstruction* call) {
     EmitGlobalCall(*computation, computation->name());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
@@ -2410,7 +2410,7 @@ absl::Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
     llvm_ir::IrArray::Index dest_index(linear_index, data_array.GetShape(),
                                        &b_);
     data_array.EmitWriteArrayElement(dest_index, source_element, &b_);
-    return OkStatus();
+    return absl::OkStatus();
   };
   return llvm_ir::LoopEmitter(loop_body_emitter, data_array.GetShape(),
                               dynamic_dims, &b_)
@@ -2471,7 +2471,7 @@ absl::Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
     llvm::Value* source_element =
         GetIrArrayFor(hlo->operand(0)).EmitReadArrayElement(source_index, &b_);
     data_array.EmitWriteArrayElement(array_index, source_element, &b_);
-    return OkStatus();
+    return absl::OkStatus();
   };
   TF_RETURN_IF_ERROR(
       llvm_ir::LoopEmitter(loop_body_emitter, input_shape, dynamic_dims, &b_)
@@ -2479,7 +2479,7 @@ absl::Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
 
   // Emit static tensor and dynamic sizes as one tuple.
   llvm_ir::EmitTuple(GetIrArrayFor(hlo), tuple_operand_ptrs, &b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleTopK(HloInstruction* hlo) {
@@ -2518,7 +2518,7 @@ absl::Status IrEmitter::HandleTopK(HloInstruction* hlo) {
 
   llvm_ir::EmitTuple(GetIrArrayFor(hlo), {out_values_ptr, out_indices_ptr},
                      &b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
@@ -2649,7 +2649,7 @@ absl::Status IrEmitter::HandleOneDnnMatMulCalls(
     scratch_stack_alloca.EmitLifetimeEnd();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
@@ -2726,7 +2726,7 @@ absl::Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
   b_.CreateLifetimeEnd(args_ptr, b_.getInt64(-1));
   result_stack_alloca.EmitLifetimeEnd();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleOneDnnSoftmax(HloInstruction* custom_call) {
@@ -2749,7 +2749,7 @@ absl::Status IrEmitter::HandleOneDnnSoftmax(HloInstruction* custom_call) {
   input_stack_alloca.EmitLifetimeEnd();
   result_stack_alloca.EmitLifetimeEnd();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
@@ -2855,7 +2855,7 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
           CustomCallApiVersion_Name(typed_custom_call->api_version()));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
@@ -2883,7 +2883,7 @@ absl::Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
                 a->ToString(), slice_a.ToString(), b->ToString(),
                 slice_b.ToString());
           }
-          return OkStatus();
+          return absl::OkStatus();
         };
         TF_RETURN_IF_ERROR(check(xla_while, xla_while->operand(0), index));
         TF_RETURN_IF_ERROR(check(
@@ -2894,7 +2894,7 @@ absl::Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
                   index));
         TF_RETURN_IF_ERROR(check(
             xla_while, xla_while->while_body()->root_instruction(), index));
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   // Set emitted value to that of 'init' with which it shares an allocation.
@@ -2946,7 +2946,7 @@ absl::Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   llvm_fn->insert(llvm_fn->end(), exit_bb);
   b_.SetInsertPoint(exit_bb);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> IrEmitter::EmitFastConcatenate(
@@ -3246,7 +3246,7 @@ absl::Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
       EmitFastConcatenate(concatenate, operands, &failure_reason));
   if (successful) {
     VLOG(1) << "Emitted fast concatenate for " << concatenate->ToString();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   VLOG(1) << "Could not emit fast concatenate for " << concatenate->ToString()
@@ -3302,7 +3302,7 @@ absl::Status IrEmitter::HandleConditional(HloInstruction* conditional) {
                    IrName(conditional, "_false"));
 
     SetToFirstInsertPoint(if_data.after_block, &b_);
-    return OkStatus();
+    return absl::OkStatus();
   }
   // We emit a switch statement to LLVM:
   // switch (branch_index) {
@@ -3361,21 +3361,21 @@ absl::Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   }
 
   SetToFirstInsertPoint(after_block, &b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleAfterAll(HloInstruction* after_all) {
   TF_RET_CHECK(ByteSizeOf(after_all->shape()) == 0);
   // No code to generate, but we need to emit an address for book-keeping.
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(after_all));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
   // AddDedendency just forwards its zero-th operand.
   emitted_value_[add_dependency] =
       GetEmittedValueFor(add_dependency->operand(0));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleRng(HloInstruction* rng) {
@@ -3397,7 +3397,7 @@ absl::Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
   store->setAlignment(llvm::Align(IrEmitter::MinimumAlignmentForPrimitiveType(
       rng_state->shape().element_type())));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::FinishVisit(HloInstruction* root) {
@@ -3425,7 +3425,7 @@ absl::Status IrEmitter::FinishVisit(HloInstruction* root) {
   // computations since it includes cycles spent in computations invoked by
   // While, Call etc.
   record_complete_computation(GetProfileCounterFor(*root->parent()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
@@ -3603,7 +3603,7 @@ absl::Status IrEmitter::Preprocess(HloInstruction* hlo) {
                                     GetExecutableRunOptionsArgument());
     profiling_state_.RecordCycleStart(&b_, hlo);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::Postprocess(HloInstruction* hlo) {
@@ -3616,7 +3616,7 @@ absl::Status IrEmitter::Postprocess(HloInstruction* hlo) {
        hlo->parent()->IsEntryComputation())) {
     tracing_state_.EmitTracingEnd(&b_, hlo, GetExecutableRunOptionsArgument());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 llvm_ir::IrArray IrEmitter::GetIrArrayFor(const HloInstruction* hlo) {
@@ -3773,7 +3773,7 @@ absl::Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
   llvm::Value* addr = EmitBufferPointer(slice, target_shape);
   addr->setName(IrName(op));
   emitted_value_[op] = addr;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::EmitTargetElementLoop(
@@ -3832,7 +3832,7 @@ absl::Status IrEmitter::EmitTargetElementLoop(
               .EmitLoop(IrName(target_op)));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::EmitMemcpy(const HloInstruction& source,
@@ -3843,7 +3843,7 @@ absl::Status IrEmitter::EmitMemcpy(const HloInstruction& source,
   // TODO(b/63762267): Be more aggressive about specifying alignment.
   MemCpy(destination_value, /*DstAlign=*/llvm::Align(1), source_value,
          /*SrcAlign=*/llvm::Align(1), source_size);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::ElementTypesSameAndSupported(
@@ -3862,7 +3862,7 @@ absl::Status IrEmitter::ElementTypesSameAndSupported(
                          PrimitiveType_Name(primitive_type),
                          HloOpcodeString(instruction.opcode()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::DefaultAction(HloInstruction* hlo) {

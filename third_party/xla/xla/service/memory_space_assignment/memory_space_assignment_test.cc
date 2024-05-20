@@ -10364,7 +10364,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // REQUIRES:
@@ -10394,7 +10394,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // REQUIRES:
@@ -10447,7 +10447,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
                     first_slice_start_after_schedule_after, "."));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // REQUIRES:
@@ -10474,7 +10474,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // REQUIRES:
@@ -10507,7 +10507,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // REQUIRES:
@@ -10537,7 +10537,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Return an OK status iff:
@@ -10629,10 +10629,10 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     TF_RETURN_IF_ERROR(
         ConcatBitcastAfterSliceDones(entry_schedule, schedule_to_class));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  // Returns OkStatus iff:
+  // Returns absl::OkStatus iff:
   // - Each slice is assigned a chunk that is the same size as the slice
   //   instruction's shape.
   // - When the slices of sliced_copy_result are sorted in expected spatial
@@ -10699,7 +10699,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
             << (result_chunk.has_value() ? result_chunk->ToString()
                                          : "no chunk assigned");
     if (sorted_slices.empty()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Check that slices are assigned contiguous chunks that are spatially
@@ -10763,7 +10763,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
                              ", to match its shape."));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   SlicedPrefetchTest() {
