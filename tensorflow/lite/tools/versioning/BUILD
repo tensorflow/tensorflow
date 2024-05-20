@@ -24,7 +24,6 @@ cc_library(
     deps = [
         ":op_signature",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -32,7 +31,6 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/schema:schema_utils",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
@@ -45,8 +43,8 @@ tf_cc_test(
         "runtime_version_test.cc",
     ],
     deps = [
+        ":op_signature",
         ":versioning",
-        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -67,13 +65,15 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -90,7 +90,10 @@ tf_cc_test(
         ":op_signature",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:model_builder",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -106,16 +109,13 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":op_signature",
-        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
-        "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@flatbuffers",
     ],
 )
 
@@ -135,7 +135,7 @@ tf_cc_test(
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],

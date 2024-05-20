@@ -19,13 +19,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/model_builder.h"
-#include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/versioning/op_signature.h"
 
 namespace tflite {
