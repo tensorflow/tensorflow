@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/global_device_id.h"
@@ -34,19 +36,16 @@ namespace xla {
 // participating device will create the unique id.
 class NcclIdStore {
  public:
-  NcclIdStore(int node_id,
-              absl::flat_hash_map<GlobalDeviceId, int> device_to_node,
+  NcclIdStore(absl::flat_hash_set<GlobalDeviceId> local_devices,
               std::shared_ptr<KeyValueStoreInterface> kv_store)
-      : node_id_(node_id),
-        device_to_node_(std::move(device_to_node)),
+      : local_devices_(std::move(local_devices)),
         kv_store_(std::move(kv_store)) {}
 
   absl::StatusOr<gpu::NcclCliqueId> GetNcclUniqueId(
       const gpu::NcclCliqueKey& key);
 
  private:
-  const int node_id_;
-  const absl::flat_hash_map<GlobalDeviceId, int> device_to_node_;
+  const absl::flat_hash_set<GlobalDeviceId> local_devices_;
   const std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   absl::Mutex mu_;

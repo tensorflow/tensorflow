@@ -17,15 +17,17 @@ limitations under the License.
 #define XLA_PJRT_GPU_GPU_TOPOLOGY_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
+#include "xla/pjrt/pjrt_common.h"
 
 namespace xla {
 class GpuTopology {
  public:
-  explicit GpuTopology(const std::vector<int>& gpu_device_ids,
+  explicit GpuTopology(const std::vector<PjRtGlobalDeviceId>& gpu_device_ids,
                        absl::string_view platform_version, int32_t num_slices,
                        int32_t num_hosts_per_slice,
                        int32_t num_devices_per_host)
@@ -46,7 +48,9 @@ class GpuTopology {
   int number_of_devices() const {
     return number_of_hosts() * num_devices_per_host_;
   }
-  const std::vector<int>& device_ids() const { return devices_ids_; }
+  const std::vector<PjRtGlobalDeviceId>& device_ids() const {
+    return devices_ids_;
+  }
   int number_of_hosts() const { return num_slices_ * num_hosts_per_slice_; }
 
   static std::unique_ptr<const GpuTopology> FromProto(
@@ -59,12 +63,26 @@ class GpuTopology {
   int32_t num_devices_per_host() const { return num_devices_per_host_; }
 
  private:
-  const std::vector<int> devices_ids_;
+  const std::vector<PjRtGlobalDeviceId> devices_ids_;
   const std::string platform_version_;
   const int32_t num_slices_;
   const int32_t num_hosts_per_slice_;
   const int32_t num_devices_per_host_;
 };
+
+static const int kMaxGpuDevicesPerProcess = 1 << 17;
+
+inline PjRtGlobalDeviceId PackGpuDeviceId(int process_id, int device_id) {
+  return PjRtGlobalDeviceId(kMaxGpuDevicesPerProcess * process_id + device_id);
+}
+
+inline int UnpackGpuProcessId(PjRtGlobalDeviceId global_device_id) {
+  return global_device_id.value() / kMaxGpuDevicesPerProcess;
+}
+
+inline int UnpackGpuDeviceId(PjRtGlobalDeviceId global_device_id) {
+  return global_device_id.value() % kMaxGpuDevicesPerProcess;
+}
 
 }  // namespace xla
 

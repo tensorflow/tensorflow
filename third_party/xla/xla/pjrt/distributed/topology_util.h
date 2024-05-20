@@ -36,13 +36,18 @@ absl::StatusOr<std::string> GetBootIdString();
 // Performs a distributed exchange of topologies using a KV store. Each process
 // provides its local topology, and the local topologies are exchanged to
 // form a global topology.
+// If assign_global_device_ids is true, assigns global IDs to each node in the
+// topology in the order they appear in the input. Otherwise leaves the global
+// IDs as they were in the local topologies..
+// TODO(phawkins): deprecate and remove assign_global_device_ids.
 absl::Status ExchangeTopologies(std::string_view platform, int node_id,
                                 int num_nodes,
                                 absl::Duration get_local_topology_timeout,
                                 absl::Duration get_global_topology_timeout,
                                 KeyValueStoreInterface* kv_store,
                                 const LocalTopologyProto& local_topology,
-                                GlobalTopologyProto* global_topology);
+                                GlobalTopologyProto* global_topology,
+                                bool assign_global_device_ids);
 
 // Functions below this point are public only for testing.
 
@@ -50,7 +55,8 @@ absl::Status ExchangeTopologies(std::string_view platform, int node_id,
 // GlobalTopologyProto that describes all nodes. Steals the contents of the
 // LocalTopologyProtos.
 GlobalTopologyProto BuildGlobalTopology(
-    absl::Span<LocalTopologyProto> local_topologies);
+    absl::Span<LocalTopologyProto> local_topologies,
+    bool assign_global_device_ids);
 
 // Builds a GpuTopologyProto representing the GPU configuration described in the
 // given GlobalTopologyProto.

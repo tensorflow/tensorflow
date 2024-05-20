@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -68,10 +69,10 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
       const PjRtPlatformId platform_id, const absl::string_view platform_name,
       const absl::string_view platform_version,
       const std::vector<PjRtDevice*>& devices) {
-    std::vector<int> device_ids;
+    std::vector<PjRtGlobalDeviceId> device_ids;
     device_ids.reserve(devices.size());
     for (PjRtDevice* device : devices) {
-      device_ids.push_back(device->id());
+      device_ids.push_back(device->global_device_id());
     }
     return StreamExecutorGpuTopologyDescription(platform_id, platform_name,
                                                 platform_version, device_ids);
@@ -81,7 +82,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   StreamExecutorGpuTopologyDescription(
       const PjRtPlatformId platform_id, const absl::string_view platform_name,
       const absl::string_view platform_version,
-      const std::vector<int>& gpu_device_ids,
+      const std::vector<PjRtGlobalDeviceId>& gpu_device_ids,
       const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& attributes =
           {})
       : platform_id_(platform_id),
@@ -112,7 +113,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
       const override {
     std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices;
     devices.reserve(gpu_topology_.number_of_devices());
-    for (const int device_id : gpu_topology_.device_ids()) {
+    for (const PjRtGlobalDeviceId device_id : gpu_topology_.device_ids()) {
       devices.push_back(std::make_unique<PjRtStreamExecutorDeviceDescription>(
           device_id, platform_version_));
     }
@@ -166,13 +167,11 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
 
 class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
  public:
-  StreamExecutorGpuDevice(int id,
+  StreamExecutorGpuDevice(PjRtGlobalDeviceId id,
                           std::unique_ptr<LocalDeviceState> local_device_state,
                           std::string device_kind, std::string device_vendor,
                           std::string compute_capability, int core_count,
-                          int node_id, int slice_index = 0);
-
-  int slice_index() const;
+                          int process_id);
 
   absl::string_view device_vendor() const;
 
@@ -186,7 +185,6 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
 
  private:
   std::string device_vendor_;
-  int slice_index_;
 };
 
 class StreamExecutorGpuHbmMemorySpace : public PjRtStreamExecutorMemorySpace {
@@ -269,19 +267,17 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
-    int node_id);
+    int process_id);
 
 std::string MakeComputeCapabilityString(const se::DeviceDescription* desc);
 
 absl::Status BuildDistributedDevices(
     std::string_view platform_name,
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
-    int node_id, int num_nodes,
+    int process_id, int num_processes,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>* devices,
     gpu::GpuExecutableRunOptions* gpu_executable_run_options,
-    std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
-    absl::Duration get_local_topology_timeout = absl::Minutes(2),
-    absl::Duration get_global_topology_timeout = absl::Minutes(5));
+    std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl);
 
 std::vector<std::unique_ptr<PjRtStreamExecutorMemorySpace>> BuildMemorySpaces(
     absl::Span<const std::unique_ptr<PjRtStreamExecutorDevice>> devices);
@@ -289,9 +285,8 @@ std::vector<std::unique_ptr<PjRtStreamExecutorMemorySpace>> BuildMemorySpaces(
 struct GpuClientOptions {
   GpuAllocatorConfig allocator_config;
 
-  int node_id = 0;
-
-  int num_nodes = 1;
+  int process_id = 0;
+  int num_processes = 1;
 
   std::optional<std::set<int>> allowed_devices = std::nullopt;
 
@@ -299,7 +294,7 @@ struct GpuClientOptions {
 
   bool should_stage_host_to_device_transfers = true;
 
-  // kv_store must be non-null if num_nodes > 1.
+  // kv_store must be non-null if num_processes > 1.
   std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
 
   bool enable_mock_nccl = false;
