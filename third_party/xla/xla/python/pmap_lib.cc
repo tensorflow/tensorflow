@@ -125,8 +125,8 @@ struct ShardArgResult {
 // `arg`: The object to shard across `devices`. If a `Array`,
 //   a fast-path will be executed if it's already correctly sharded.
 //
-// Returns a failure Status when an unrecoverable error occurred, so we don't
-// need to fallback to Python.
+// Returns a failure absl::Status when an unrecoverable error occurred, so we
+// don't need to fallback to Python.
 //
 // Both `devices` and `sharding_spec` has the same length.
 absl::StatusOr<ShardArgResult> ShardArg(

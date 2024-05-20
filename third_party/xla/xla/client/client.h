@@ -151,8 +151,9 @@ class Client {
   // device_handle and replica_id together specify a particular device; a device
   // assigned for the given replica_id among the replicas that the given device
   // handle belongs to.
-  Status TransferToInfeed(const LiteralSlice& literal, int64_t replica_id = 0,
-                          const DeviceHandle* device_handle = nullptr);
+  absl::Status TransferToInfeed(const LiteralSlice& literal,
+                                int64_t replica_id = 0,
+                                const DeviceHandle* device_handle = nullptr);
 
   // Transfers from the Outfeed of the device.
   //
@@ -164,7 +165,7 @@ class Client {
       const DeviceHandle* device_handle = nullptr);
 
   // Resets the device, clearing all existing state on the device.
-  Status ResetDevice();
+  absl::Status ResetDevice();
 
   // Executes the computation with the given arguments and transfers the result
   // to the client as a literal. Parameters are defined the same as for
@@ -195,7 +196,7 @@ class Client {
       const Layout* output_layout = nullptr) const;
 
   // Unregister the memory for the given GlobalData on the device.
-  Status Unregister(const GlobalData& data);
+  absl::Status Unregister(const GlobalData& data);
 
   // Returns a vector of global data handles that point to the tuple elements.
   absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> DeconstructTuple(

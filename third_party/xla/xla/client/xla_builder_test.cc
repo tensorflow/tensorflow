@@ -754,7 +754,7 @@ TEST(XlaBuilderTest, BuildWithSpecificRootWithWrongBuilder) {
   Parameter(&b, 0, shape, "param");
   const XlaOp other_param = Parameter(&other_b, 0, shape, "other_param");
 
-  Status status = b.Build(other_param).status();
+  absl::Status status = b.Build(other_param).status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(
       status.message(),
@@ -1202,7 +1202,7 @@ TEST(XlaBuilderTest, DynamicSelectNotCompatible) {
   auto gte0 = GetTupleElement(p0, 0);  // f32[4,<=5,6]
   auto gte1 = GetTupleElement(p0, 1);  // f32[4,5,<=6]
   Select(pred, gte0, gte1);
-  Status status = BuildHloModule(b).status();
+  absl::Status status = BuildHloModule(b).status();
   ASSERT_IS_OK(status);
 }
 
@@ -1299,7 +1299,7 @@ TEST(XlaBuilderTest, ConvolutionWithPreferredElementType) {
 TEST(XlaBuilderTest, AfterAllWithNonTokenOperands) {
   XlaBuilder b(TestName());
   AfterAll(&b, {CreateToken(&b), ConstantR0<float>(&b, 1.0)});
-  Status status = b.Build().status();
+  absl::Status status = b.Build().status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(status.message(),
               ::testing::HasSubstr("All operands to AfterAll must be tokens"));

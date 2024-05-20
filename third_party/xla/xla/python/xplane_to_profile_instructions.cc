@@ -177,7 +177,7 @@ void GetXPlaneHloModuleInfo(
 
 }  // namespace
 
-Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
+absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
     const std::string& logdir, tensorflow::profiler::ProfiledInstructionsProto*
                                    profiled_instructions_proto) {
   // Find the xplane files for each host under logdir.
@@ -202,7 +202,7 @@ Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
                                                   profiled_instructions_proto);
 }
 
-Status ConvertXplaneToProfiledInstructionsProto(
+absl::Status ConvertXplaneToProfiledInstructionsProto(
     std::vector<tensorflow::profiler::XSpace> xspaces,
     tensorflow::profiler::ProfiledInstructionsProto*
         profiled_instructions_proto) {

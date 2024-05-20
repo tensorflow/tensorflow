@@ -336,7 +336,7 @@ class XlaBuilder {
       int num_spatial_dims = 2);
 
   // Returns an error if the convolution dimension numbers have conflicts.
-  static Status Validate(const ConvolutionDimensionNumbers& dnum);
+  static absl::Status Validate(const ConvolutionDimensionNumbers& dnum);
 
   // Returns a new XlaBuilder whose resultant Computation is used only by this
   // XlaBuilder. The sub-XlaBuilder has the same die_immediately_on_error
@@ -385,11 +385,11 @@ class XlaBuilder {
   // building the computation when they make a final call to Build().
   //
   // See also set_die_immediately_on_error().
-  Status first_error() const { return first_error_; }
+  absl::Status first_error() const { return first_error_; }
 
   // Returns the current status of the builder, complete with the stack trace
   // information.
-  Status GetCurrentStatus() const;
+  absl::Status GetCurrentStatus() const;
 
   // Returns the shape of the given op.
   absl::StatusOr<Shape> GetShape(XlaOp op) const;
@@ -416,15 +416,15 @@ class XlaBuilder {
   // * dying if die_immediately_on_error_ is true.
   // Returns an XlaOp with an invalid handle but a valid builder. This value can
   // be returned in place of a value in APIs that return an XlaOp.
-  XlaOp ReportError(const Status& error);
+  XlaOp ReportError(const absl::Status& error);
 
-  // A helper function that converts a StatusOr<XlaOp> into an XlaOp.
-  // If the Status was an error, reports the error to builder and returns an
-  // invalid XlaOp handle.
+  // A helper function that converts a absl::StatusOr<XlaOp> into an XlaOp.
+  // If the absl::Status was an error, reports the error to builder and returns
+  // an invalid XlaOp handle.
   XlaOp ReportErrorOrReturn(const absl::StatusOr<XlaOp>& op);
 
-  // A helper function that runs a function that returns a StatusOr<XlaOp> and
-  // returns an XlaOp.
+  // A helper function that runs a function that returns a absl::StatusOr<XlaOp>
+  // and returns an XlaOp.
   XlaOp ReportErrorOrReturn(
       absl::FunctionRef<absl::StatusOr<XlaOp>()> op_creator);
 
@@ -475,15 +475,15 @@ class XlaBuilder {
   // "value". If the attribute already existed, then its value is updated.
   //
   // The attribute is only added to the HloInstruction, not to the builder.
-  Status SetInstructionFrontendAttribute(XlaOp op, std::string attribute,
-                                         std::string value);
+  absl::Status SetInstructionFrontendAttribute(XlaOp op, std::string attribute,
+                                               std::string value);
 
   // Looks up the HloInstruction and sets the sharding. If the sharding already
   // existed, then its value is updated.
   //
   // The sharding is only added to the HloInstruction, not to the builder.
-  Status SetInstructionSharding(XlaOp op,
-                                const std::optional<OpSharding>& sharding);
+  absl::Status SetInstructionSharding(
+      XlaOp op, const std::optional<OpSharding>& sharding);
 
   // Returns shapes for the operands.
   absl::StatusOr<std::vector<Shape>> GetOperandShapes(
@@ -1117,7 +1117,7 @@ class XlaBuilder {
                          bool* is_constant) const;
 
   // Checks bounds for convolution parameters.
-  Status VerifyConvolution(
+  absl::Status VerifyConvolution(
       const Shape& lhs_shape, const Shape& rhs_shape,
       const ConvolutionDimensionNumbers& dimension_numbers) const;
 
@@ -1125,7 +1125,7 @@ class XlaBuilder {
 
   // Populates the module with the input/output alias information stored within
   // the input_output_aliases vector.
-  static Status PopulateInputOutputAliasAndBufferDonor(
+  static absl::Status PopulateInputOutputAliasAndBufferDonor(
       HloModuleProto* module, const ProgramShape& program_shape,
       const std::vector<InputOutputAlias>& input_output_aliases,
       const absl::flat_hash_set<HloBufferDonorConfig::BufferDonor>&
@@ -1139,7 +1139,7 @@ class XlaBuilder {
 
   // The first error encountered while building the computation.
   // This is OK until the first error is encountered.
-  Status first_error_;
+  absl::Status first_error_;
 
   // The saved stack trace from the point at which the first error occurred.
   tsl::SavedStackTrace first_error_backtrace_;
@@ -1661,7 +1661,7 @@ class XlaBuilder {
  protected:
   // Returns OK status if the given op was built using this builder. Otherwise,
   // returns an error.
-  Status CheckOpBuilder(XlaOp op) const;
+  absl::Status CheckOpBuilder(XlaOp op) const;
 
  private:
   XlaOp AllGatherImpl(XlaOp operand, int64_t all_gather_dimension,
@@ -1703,7 +1703,7 @@ class XlaBuilder {
   // Here, InstructionType is either const HloInstructionProto* or non-const
   // HloInstructionProto*.
   template <typename InstructionType>
-  StatusOr<InstructionType> LookUpInstructionByHandleInternal(
+  absl::StatusOr<InstructionType> LookUpInstructionByHandleInternal(
       int64_t handle) const {
     auto it = handle_to_index_.find(handle);
     if (it == handle_to_index_.end()) {
@@ -1723,11 +1723,11 @@ class XlaBuilder {
   // Here, InstructionType is either const HloInstructionProto* or non-const
   // HloInstructionProto*.
   //
-  // TODO(hinsu): Return const pointer within StatusOr and use
+  // TODO(hinsu): Return const pointer within absl::StatusOr and use
   // absl::implicit_cast at callsites. This requires implicit_cast support in
   // absl::StatusOr similar to absl::StatusOr.
   template <typename InstructionType>
-  StatusOr<InstructionType> LookUpInstructionInternal(XlaOp op) const {
+  absl::StatusOr<InstructionType> LookUpInstructionInternal(XlaOp op) const {
     TF_RETURN_IF_ERROR(CheckOpBuilder(op));
     return LookUpInstructionByHandleInternal<InstructionType>(op.handle());
   }
