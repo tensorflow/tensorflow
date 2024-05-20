@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/reduction_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 
 namespace xla {
