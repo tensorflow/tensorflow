@@ -233,8 +233,6 @@ class GpuExecutor : public StreamExecutor {
 
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;
 
-  absl::Status AllocateEvent(Event* event) override;
-
   absl::Status DeallocateEvent(Event* event) override;
 
   absl::Status RecordEvent(Stream* stream, Event* event) override;
@@ -271,7 +269,7 @@ class GpuExecutor : public StreamExecutor {
 
   dnn::DnnSupport* AsDnn() override;
 
-  std::unique_ptr<EventInterface> CreateEventImplementation() override;
+  absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override;
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority =

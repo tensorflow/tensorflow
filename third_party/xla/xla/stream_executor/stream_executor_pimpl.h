@@ -71,7 +71,6 @@ class StreamExecutor : public StreamExecutorInterface {
   const Platform* GetPlatform() const override { return platform_; }
   const DeviceDescription& GetDeviceDescription() const override;
   int64_t GetMemoryLimitBytes() const override { return memory_limit_bytes_; }
-  absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override;
 
  private:
   // Reader/writer lock for mutable data structures on this StreamExecutor.

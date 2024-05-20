@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 
 #include <cstdint>
+#include <memory>
+#include <utility>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -24,9 +26,9 @@ limitations under the License.
 
 namespace stream_executor {
 
-Event::Event(StreamExecutorInterface* stream_exec)
-    : stream_exec_(stream_exec),
-      implementation_(stream_exec_->CreateEventImplementation()) {}
+Event::Event(StreamExecutorInterface* stream_exec,
+             std::unique_ptr<EventInterface> implementation)
+    : stream_exec_(stream_exec), implementation_(std::move(implementation)) {}
 
 Event::~Event() {
   // Deal with nullptr implementation_, as this event may have been std::moved.
@@ -40,16 +42,6 @@ Event::~Event() {
 
 Event::Event(Event&&) = default;
 Event& Event::operator=(Event&&) = default;
-
-bool Event::Init() {
-  auto status = stream_exec_->AllocateEvent(this);
-  if (!status.ok()) {
-    LOG(ERROR) << status.message();
-    return false;
-  }
-
-  return true;
-}
 
 Event::Status Event::PollForStatus() {
   return stream_exec_->PollForEventStatus(this);

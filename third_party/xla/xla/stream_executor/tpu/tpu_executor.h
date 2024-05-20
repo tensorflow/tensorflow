@@ -66,8 +66,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
 
-  absl::Status AllocateEvent(Event* event) override;
-
   absl::Status BlockHostUntilDone(Stream* stream) override;
 
   absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
@@ -102,7 +100,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
       std::optional<std::variant<StreamPriority, int>> priority =
           std::nullopt) override;
 
-  std::unique_ptr<EventInterface> CreateEventImplementation() override;
+  absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override;
 
   bool HostCallback(Stream* stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;

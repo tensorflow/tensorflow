@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_stream.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
 #include "xla/tsl/c/tsl_status.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/status.h"
 
@@ -91,14 +92,6 @@ bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
       get_stream(other->implementation()));
 }
 
-absl::Status TpuExecutor::AllocateEvent(Event* event) {
-  StatusHelper status;
-  auto se_event = tpu_platform().LookupEvent(event->implementation());
-  ExecutorApiFn()->TpuExecutor_AllocateEventFn(executor_, se_event,
-                                               status.c_status);
-  return status.status();
-}
-
 absl::Status TpuExecutor::DeallocateEvent(Event* event) {
   tpu_platform().EraseEvent(event->implementation());
   return absl::OkStatus();
@@ -142,12 +135,17 @@ absl::StatusOr<std::unique_ptr<Stream>> TpuExecutor::CreateStream(
   return std::move(stream);
 }
 
-// Called by Event::Event
-std::unique_ptr<EventInterface> TpuExecutor::CreateEventImplementation() {
-  SE_Event* tpu_event = ExecutorApiFn()->TpuEvent_NewFn(executor_);
-  auto ptr = std::make_unique<TpuEvent>(tpu_event);
-  tpu_platform().InsertEvent(ptr.get(), tpu_event);
-  return ptr;
+absl::StatusOr<std::unique_ptr<Event>> TpuExecutor::CreateEvent() {
+  SE_Event* se_event = ExecutorApiFn()->TpuEvent_NewFn(executor_);
+  auto tpu_event = std::make_unique<TpuEvent>(se_event);
+  tpu_platform().InsertEvent(tpu_event.get(), se_event);
+
+  StatusHelper status;
+  ExecutorApiFn()->TpuExecutor_AllocateEventFn(executor_, se_event,
+                                               status.c_status);
+  TF_RETURN_IF_ERROR(status.status());
+
+  return std::make_unique<Event>(this, std::move(tpu_event));
 }
 
 DeviceMemoryBase TpuExecutor::Allocate(uint64_t size, int64_t memory_space) {

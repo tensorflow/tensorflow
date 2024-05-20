@@ -407,10 +407,6 @@ class CStreamExecutor : public StreamExecutor {
     return stream_executor_->host_callback(&device_, stream_handle,
                                            &HostCallbackTrampoline, ctx);
   }
-  absl::Status AllocateEvent(Event* event) override {
-    DCHECK(event != nullptr);
-    return static_cast<CEvent*>(event->implementation())->Create();
-  }
   absl::Status DeallocateEvent(Event* event) override {
     static_cast<CEvent*>(event->implementation())->Destroy();
     return absl::OkStatus();
@@ -551,12 +547,12 @@ class CStreamExecutor : public StreamExecutor {
     return builder.Build();
   }
 
-  // Each call creates a new instance of the platform-specific implementation of
-  // the corresponding interface type.
-  std::unique_ptr<EventInterface> CreateEventImplementation() override {
-    return std::unique_ptr<EventInterface>(
-        new CEvent(&device_, stream_executor_));
+  absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override {
+    auto c_event = std::make_unique<CEvent>(&device_, stream_executor_);
+    TF_RETURN_IF_ERROR(c_event->Create());
+    return std::make_unique<Event>(this, std::move(c_event));
   }
+
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority =
           std::nullopt) override {

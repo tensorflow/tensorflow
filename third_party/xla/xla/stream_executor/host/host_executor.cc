@@ -235,17 +235,13 @@ class HostEvent : public EventInterface {
   std::shared_ptr<absl::Notification> notification_;
 };
 
-std::unique_ptr<EventInterface> HostExecutor::CreateEventImplementation() {
-  return std::unique_ptr<EventInterface>(new HostEvent());
+absl::StatusOr<std::unique_ptr<Event>> HostExecutor::CreateEvent() {
+  return std::make_unique<Event>(this, std::make_unique<HostEvent>());
 }
 
 static HostEvent* AsHostEvent(Event* event) {
   DCHECK(event != nullptr);
   return static_cast<HostEvent*>(event->implementation());
-}
-
-absl::Status HostExecutor::AllocateEvent(Event* /*event*/) {
-  return absl::OkStatus();
 }
 
 absl::Status HostExecutor::DeallocateEvent(Event* /*event*/) {

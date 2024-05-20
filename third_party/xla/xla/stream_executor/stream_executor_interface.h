@@ -263,9 +263,6 @@ class StreamExecutorInterface {
   virtual bool HostCallback(Stream* stream,
                             absl::AnyInvocable<absl::Status() &&> callback) = 0;
 
-  // Performs platform-specific allocation and initialization of an event.
-  virtual absl::Status AllocateEvent(Event* event) = 0;
-
   // Performs platform-specific deallocation and cleanup of an event.
   virtual absl::Status DeallocateEvent(Event* event) = 0;
 
@@ -356,10 +353,6 @@ class StreamExecutorInterface {
   // Returns null if there was an error initializing the DNN support for the
   // underlying platform.
   virtual dnn::DnnSupport* AsDnn() { return nullptr; }
-
-  // Each call creates a new instance of the platform-specific implementation of
-  // the corresponding interface type.
-  virtual std::unique_ptr<EventInterface> CreateEventImplementation() = 0;
 
   // Creates a new Kernel object.
   // TODO(klucke) Combine with GetKernel.

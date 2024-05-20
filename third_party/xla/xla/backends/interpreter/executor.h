@@ -114,8 +114,6 @@ class XlaInterpreterExecutor : public StreamExecutor {
   bool HostCallback(Stream *stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
-  absl::Status AllocateEvent(Event *event) override { return absl::OkStatus(); }
-
   absl::Status DeallocateEvent(Event *event) override {
     return absl::OkStatus();
   }
@@ -156,9 +154,8 @@ class XlaInterpreterExecutor : public StreamExecutor {
   bool CanEnablePeerAccessTo(StreamExecutorInterface *other) override {
     return true;
   }
-
-  std::unique_ptr<EventInterface> CreateEventImplementation() override {
-    return nullptr;
+  absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override {
+    return std::make_unique<Event>(this, nullptr);
   }
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(

@@ -660,10 +660,6 @@ bool GpuExecutor::HostCallback(Stream* stream,
   delete callback;
 }
 
-absl::Status GpuExecutor::AllocateEvent(Event* event) {
-  return AsGpuEvent(event)->Init();
-}
-
 absl::Status GpuExecutor::DeallocateEvent(Event* event) {
   return AsGpuEvent(event)->Destroy();
 }
@@ -856,8 +852,10 @@ absl::Status FillBlockDimLimit(GpuDeviceHandle device,
   return absl::OkStatus();
 }
 
-std::unique_ptr<EventInterface> GpuExecutor::CreateEventImplementation() {
-  return std::unique_ptr<EventInterface>(new GpuEvent(this));
+absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
+  auto gpu_event = std::make_unique<GpuEvent>(this);
+  TF_RETURN_IF_ERROR(gpu_event->Init());
+  return std::make_unique<Event>(this, std::move(gpu_event));
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(
