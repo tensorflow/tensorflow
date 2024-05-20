@@ -281,47 +281,6 @@ TEST_P(FormattedTileAssignmentTest, TransposeIotaTileWithDegernateDims) {
       ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15));
 }
 
-TEST_P(FormattedTileAssignmentTest,
-       TransposeIotaTileSplittingCanonicalizedReshapeDims) {
-  TileAssignment tile({8, 2, 16}, {16, 16}, {1, 0});
-  if (ShouldConvertToV1()) {
-    tile = TileAssignment(tile.shared_array());
-  }
-  TileAssignment xposed = tile.Transpose({0, 2, 1});
-  EXPECT_NE(xposed, tile);
-  EXPECT_EQ(xposed, TileAssignment({8, 16, 2}, {16, 8, 2}, {1, 0, 2}));
-  EXPECT_EQ(xposed.num_dimensions(), 3);
-  EXPECT_EQ(xposed.dim(0), 8);
-  EXPECT_EQ(xposed.dim(1), 16);
-  EXPECT_EQ(xposed.dim(2), 2);
-  EXPECT_EQ(xposed(0, 0, 0), 0);
-  EXPECT_EQ(xposed({2, 7, 1}), 117);
-  EXPECT_EQ(xposed.iota().has_value(), !ShouldConvertToV1());
-  EXPECT_TRUE(xposed.UsesDevice(0));
-  EXPECT_TRUE(xposed.UsesDevice(255));
-  EXPECT_FALSE(xposed.UsesDevice(256));
-  EXPECT_THAT(
-      ToVectorUsingEach(xposed),
-      ElementsAre(
-          0, 1, 16, 17, 32, 33, 48, 49, 64, 65, 80, 81, 96, 97, 112, 113, 128,
-          129, 144, 145, 160, 161, 176, 177, 192, 193, 208, 209, 224, 225, 240,
-          241, 2, 3, 18, 19, 34, 35, 50, 51, 66, 67, 82, 83, 98, 99, 114, 115,
-          130, 131, 146, 147, 162, 163, 178, 179, 194, 195, 210, 211, 226, 227,
-          242, 243, 4, 5, 20, 21, 36, 37, 52, 53, 68, 69, 84, 85, 100, 101, 116,
-          117, 132, 133, 148, 149, 164, 165, 180, 181, 196, 197, 212, 213, 228,
-          229, 244, 245, 6, 7, 22, 23, 38, 39, 54, 55, 70, 71, 86, 87, 102, 103,
-          118, 119, 134, 135, 150, 151, 166, 167, 182, 183, 198, 199, 214, 215,
-          230, 231, 246, 247, 8, 9, 24, 25, 40, 41, 56, 57, 72, 73, 88, 89, 104,
-          105, 120, 121, 136, 137, 152, 153, 168, 169, 184, 185, 200, 201, 216,
-          217, 232, 233, 248, 249, 10, 11, 26, 27, 42, 43, 58, 59, 74, 75, 90,
-          91, 106, 107, 122, 123, 138, 139, 154, 155, 170, 171, 186, 187, 202,
-          203, 218, 219, 234, 235, 250, 251, 12, 13, 28, 29, 44, 45, 60, 61, 76,
-          77, 92, 93, 108, 109, 124, 125, 140, 141, 156, 157, 172, 173, 188,
-          189, 204, 205, 220, 221, 236, 237, 252, 253, 14, 15, 30, 31, 46, 47,
-          62, 63, 78, 79, 94, 95, 110, 111, 126, 127, 142, 143, 158, 159, 174,
-          175, 190, 191, 206, 207, 222, 223, 238, 239, 254, 255));
-}
-
 TEST_P(FormattedTileAssignmentTest, TransposeNoopIotaTile) {
   TileAssignment tile({4, 4}, {4, 4}, {1, 0});
   if (ShouldConvertToV1()) {

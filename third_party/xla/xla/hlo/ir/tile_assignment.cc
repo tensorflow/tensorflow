@@ -22,8 +22,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/util.h"
@@ -129,52 +127,6 @@ TransposeKind GetTransposeKind(absl::Span<const int64_t> dims,
     prev_non_one_dim = d;
   }
   return kind;
-}
-
-// Try to split canonicalized reshape_dims and transpose_perm so that
-// reshape_dims transposed with split_transpose_perm will result in
-// non_one_dims (must not contain 1s, as the name suggests), returns true iff
-// such a split is found, and fills the results in split_transpose_perm.
-bool TryDecanonicalize(absl::Span<const int64_t> non_one_dims,
-                       absl::Span<const int64_t> reshape_dims,
-                       absl::Span<const int> transpose_perm,
-                       absl::InlinedVector<int, 6>& split_transpose_perm) {
-  DCHECK_LT(reshape_dims.size(), non_one_dims.size());
-  DCHECK_EQ(transpose_perm.size(), reshape_dims.size());
-  split_transpose_perm.clear();
-  absl::InlinedVector<int, 6> split_counts(reshape_dims.size());
-  int non_one_idx = 0;
-  for (int i = 0; i < reshape_dims.size() && non_one_idx < non_one_dims.size();
-       ++i) {
-    int split_dim = transpose_perm[i];
-    int64_t target = reshape_dims[transpose_perm[i]];
-    int64_t cand = non_one_dims[non_one_idx];
-    int start_idx = non_one_idx;
-    while (target % cand == 0) {
-      target /= cand;
-      if (++non_one_idx >= non_one_dims.size()) {
-        break;
-      }
-      cand = non_one_dims[non_one_idx];
-    }
-    if (target != 1) {
-      return false;
-    }
-    split_counts[split_dim] = non_one_idx - start_idx;
-  }
-  absl::InlinedVector<int, 6> old_to_new_dims(split_counts.size());
-  for (int i = 1; i < old_to_new_dims.size(); ++i) {
-    old_to_new_dims[i] = old_to_new_dims[i - 1] + split_counts[i - 1];
-  }
-  split_transpose_perm.reserve(non_one_dims.size());
-  for (int i = 0; i < old_to_new_dims.size(); ++i) {
-    const int old_dim = transpose_perm[i];
-    for (int j = 0; j < split_counts[old_dim]; ++j) {
-      split_transpose_perm.push_back(old_to_new_dims[old_dim] + j);
-    }
-  }
-  CHECK_EQ(split_transpose_perm.size(), non_one_dims.size());
-  return true;
 }
 
 }  // namespace
@@ -293,23 +245,7 @@ std::optional<IotaTileAssignment> IotaTileAssignment::Transpose(
     CHECK_EQ(reshape_ndims_, new_perm.size());
     return IotaTileAssignment::Create(new_dims, reshape_dims, new_perm);
   }
-  absl::InlinedVector<int, 6> split_transpose_perm;
-  if (TryDecanonicalize(non_one_dims, reshape_dims, transpose_perm,
-                        split_transpose_perm)) {
-    absl::InlinedVector<int, 6> new_perm;
-    new_perm.reserve(non_one_dims.size());
-    for (int i = 0; i < ndims_; ++i) {
-      if (dims[perm[i]] == 1) continue;
-      new_perm.push_back(split_transpose_perm[one_to_non_one[perm[i]]]);
-    }
-    absl::InlinedVector<int64_t, 6> new_reshape_dims(
-        split_transpose_perm.size());
-    for (int i = 0; i < non_one_dims.size(); ++i) {
-      new_reshape_dims[split_transpose_perm[i]] = non_one_dims[i];
-    }
-    return IotaTileAssignment::Create(new_dims, new_reshape_dims, new_perm);
-  }
-  // TODO(b/341371396): Handle remaining patterns and remove nullopt path.
+  // TODO(b/281892190): Handle remaining patterns and remove nullopt path.
   return std::nullopt;
 }
 
