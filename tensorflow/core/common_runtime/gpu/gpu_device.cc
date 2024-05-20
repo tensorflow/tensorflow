@@ -1923,11 +1923,9 @@ Status BaseGPUDeviceFactory::CreateDevices(
 #else   // TENSORFLOW_USE_ROCM
       auto platform_name = xla::CudaName();
 #endif  // TENSORFLOW_USE_ROCM
-      auto memory_spaces = xla::BuildMemorySpaces(pjrt_devices);
       std::unique_ptr<xla::PjRtClient> pjrt_client =
           std::make_unique<xla::StreamExecutorGpuClient>(
               platform_name, xla_client, std::move(pjrt_devices),
-              std::move(memory_spaces),
               /*process_index=*/numa_node,
               /*allocator=*/std::move(allocator_adapter),
               /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),

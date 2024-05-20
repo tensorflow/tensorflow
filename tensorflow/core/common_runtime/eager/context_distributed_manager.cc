@@ -351,11 +351,9 @@ absl::Status CreateClientOnce(
   }
 
   if (use_creation_info) {
-    auto memory_spaces = xla::BuildMemorySpaces(pjrt_devices);
     std::unique_ptr<xla::PjRtClient> pjrt_client =
         std::make_unique<xla::StreamExecutorGpuClient>(
             platform_name, info->local_client, std::move(pjrt_devices),
-            std::move(memory_spaces),
             /*process_index=*/node_id,
             /*allocator=*/std::move(info->allocator),
             /*host_memory_allocator=*/std::move(info->host_memory_allocator),
