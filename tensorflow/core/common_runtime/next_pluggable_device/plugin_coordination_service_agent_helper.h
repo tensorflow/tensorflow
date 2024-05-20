@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/flags/flag.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c_plugin_coordination_service_agent.h"
