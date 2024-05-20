@@ -27,10 +27,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 #include "tsl/platform/retrying_utils.h"
+#include "tsl/platform/tracing.h"
 
 namespace tensorflow {
 
@@ -116,7 +116,7 @@ class GrpcRemoteMaster : public MasterInterface {
   // Start tracing, attaching a unique ID to both the trace and the RPC.
   tsl::profiler::TraceMe* NewTraceRpc(StringPiece name,
                                       ::grpc::ClientContext* ctx) {
-    string trace_id = strings::StrCat(tracing::GetUniqueArg());
+    string trace_id = strings::StrCat(tsl::tracing::GetUniqueArg());
     ctx->AddMetadata(GrpcIdKey(), trace_id);
     return new tsl::profiler::TraceMe(
         [&] { return strings::StrCat(name, ":", trace_id); },
