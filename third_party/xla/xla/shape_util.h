@@ -583,7 +583,7 @@ class ShapeUtil {
     ForEachSubshapeWithStatus(shape, [&](const Shape& subshape,
                                          const ShapeIndex& index) {
       fn(subshape, index);
-      return OkStatus();
+      return absl::OkStatus();
     }).IgnoreError();
   }
   template <typename Fn>
@@ -591,7 +591,7 @@ class ShapeUtil {
     ForEachMutableSubshapeWithStatus(shape, [&](Shape* subshape,
                                                 const ShapeIndex& index) {
       fn(subshape, index);
-      return OkStatus();
+      return absl::OkStatus();
     }).IgnoreError();
   }
 
@@ -648,7 +648,7 @@ class ShapeUtil {
     ForEachSubshapePostOrderWithStatus(shape, [&](const Shape& subshape,
                                                   const ShapeIndex& index) {
       fn(subshape, index);
-      return OkStatus();
+      return absl::OkStatus();
     }).IgnoreError();
   }
   template <typename Fn>
@@ -657,7 +657,7 @@ class ShapeUtil {
         shape,
         [&](Shape* subshape, const ShapeIndex& index) {
           fn(subshape, index);
-          return OkStatus();
+          return absl::OkStatus();
         })
         .IgnoreError();
   }
@@ -1057,7 +1057,7 @@ class ShapeUtil {
         index->pop_back();
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Helper for ForEachSubshapePost which visits the subshapes of the given
@@ -1074,7 +1074,7 @@ class ShapeUtil {
       }
     }
     TF_RETURN_IF_ERROR(fn(shape, *index));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Keeps track of the iteration state for the ForEach...Internal routines

@@ -33,7 +33,7 @@ absl::Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
                            ShapeUtil::HumanString(shape()));
   }
   shape_ = other_shape;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
@@ -43,7 +43,7 @@ absl::Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
                            ShapeUtil::HumanString(shape()));
   }
   *to_shape = shape_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ShapeLayout::SetToDefaultLayout() {
