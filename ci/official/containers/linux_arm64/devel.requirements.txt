@@ -1,4 +1,0 @@
-portpicker==1.6.0
-# For wheel verification, and uploading
-auditwheel ~= 5.4.0
-twine ~= 4.0.2
