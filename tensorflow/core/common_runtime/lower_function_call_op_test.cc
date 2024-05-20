@@ -146,15 +146,23 @@ TEST(LowerFunctionCallTest, InlineFunctionCallAfterPruning) {
   // execute because it is in `control_ret`.
   // The `div` node and the unused arguments `j` and `k` should be pruned.
   *(f_lib_proto.add_function()) = FDH::Create(
-      "AddAndMul", {"i: int32", "j: int32", "k: int32"}, {"o: int32"}, {},
+      "AddAndMul", {"i: int32", "j: int32", "k: int32", "r: resource"},
+      {"o: int32"}, {},
       {{{"add"}, "Add", {"i", "i"}, {{"T", DT_INT32}}},
        {{"div"}, "FloorDiv", {"i", "i"}, {{"T", DT_INT32}}},
+       {{"gather"},
+        "ResourceGather",
+        {"r", "i"},
+        {{"Tindices", DT_INT32}, {"dtype", DT_FLOAT}}},
        {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_INT32}}}},
       /*ret_def=*/{{"o", "ret:z:0"}},
       /*control_ret_def=*/{{"must_execute", "add"}});
 
   // Construct a graph:
-  //   A = Placeholder[dtype=int32]
+  //   X = Placeholder[dtype=int32]
+  //   Y = Placeholder[dtype=int32]
+  //   Z = Placeholder[dtype=int32]
+  //   R = Placeholder[dtype=resource]
   //   F = PartitionedCall[f=AddAndMul](a)
   //   B = Identity(func, ^func)
   Scope root = Scope::NewRootScope().ExitOnError();
@@ -162,13 +170,14 @@ TEST(LowerFunctionCallTest, InlineFunctionCallAfterPruning) {
   auto x = ops::Placeholder(root.WithOpName("X"), DT_INT32);
   auto y = ops::Placeholder(root.WithOpName("Y"), DT_INT32);
   auto z = ops::Placeholder(root.WithOpName("Z"), DT_INT32);
+  auto r = ops::Placeholder(root.WithOpName("R"), DT_RESOURCE);
   Node* function_call;
-  std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(x.node()),
-                                            NodeBuilder::NodeOut(y.node()),
-                                            NodeBuilder::NodeOut(z.node())});
+  std::vector<NodeBuilder::NodeOut> inputs(
+      {NodeBuilder::NodeOut(x.node()), NodeBuilder::NodeOut(y.node()),
+       NodeBuilder::NodeOut(z.node()), NodeBuilder::NodeOut(r.node())});
   TF_ASSERT_OK(NodeBuilder("F", "PartitionedCall", &root.graph()->flib_def())
                    .Input(inputs)
-                   .Attr("Tin", {DT_INT32, DT_INT32, DT_INT32})
+                   .Attr("Tin", {DT_INT32, DT_INT32, DT_INT32, DT_RESOURCE})
                    .Attr("Tout", {DT_INT32})
                    .Attr("f", FuncAttr("AddAndMul"))
                    .Finalize(root.graph(), &function_call));
@@ -186,17 +195,20 @@ TEST(LowerFunctionCallTest, InlineFunctionCallAfterPruning) {
   int add_count = 0;
   int mul_count = 0;
   int floor_div_count = 0;
+  int resource_gather_count = 0;
   for (const auto* op : graph->op_nodes()) {
     if (op->IsPartitionedCall()) partitioned_call_count++;
     if (op->type_string() == "Add") add_count++;
     if (op->type_string() == "Mul") mul_count++;
     if (op->type_string() == "FloorDiv") floor_div_count++;
+    if (op->type_string() == "ResourceGather") resource_gather_count++;
   }
 
   ASSERT_EQ(partitioned_call_count, 0);
   ASSERT_EQ(add_count, 1);
   ASSERT_EQ(mul_count, 1);
   ASSERT_EQ(floor_div_count, 0);
+  ASSERT_EQ(resource_gather_count, 0);
 
   // Verify execution.
   ClientSession session(root, SessionOptionsWithInlining());
