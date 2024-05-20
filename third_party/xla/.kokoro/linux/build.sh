@@ -73,9 +73,6 @@ else
 
     if is_linux_cpu_arm64_job ; then
         TAGS_FILTER="$TAGS_FILTER,-no_aarch64"
-        # Some cross-compile tests are not working for XLA Linux Aarch64.
-        # TODO(ddunleavy): Revisit these when hermetic python is available.
-        TARGET_FILTERS="$TARGET_FILTERS -//xla/python_api:xla_shape_test -//xla/python_api:xla_literal_test -//xla/service:xla_aot_compile_stablehlo_cpu_test -//xla/tests:local_client_aot_test"
         RBE_FLAGS="--config=rbe_cross_compile_linux_arm64_xla --jobs=150"
     else
         RBE_FLAGS="--config=rbe_linux_cpu --jobs=150"
