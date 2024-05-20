@@ -6,12 +6,10 @@ load("//tensorflow/compiler/mlir/quantization/stablehlo:internal_visibility_allo
 package_group(
     name = "internal_visibility_allowlist_package",
     packages = [
-        "//learning/brain/mlir/quantization/stablehlo/python/integration_test/...",
         "//tensorflow/compiler/mlir/lite/...",
         "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/tf2xla/transforms/...",
         "//tensorflow/lite/...",
-        "//third_party/cloud_tpu/inference_converter/...",  # TPU Inference Converter V1
     ] + internal_visibility_allowlist(),
 )
 
@@ -80,7 +78,6 @@ tf_cc_binary(
 glob_lit_tests(
     name = "all_tests",
     data = [":test_utilities"],
-    # TODO: b/288344501 - Enable OSS tests again when stable-quant-opt works well.
     default_tags = [
         "no_oss",
         "no_pip",
