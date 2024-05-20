@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -26,14 +25,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/InitAllDialects.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -48,33 +39,23 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
-#include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
-#include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
-#include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
-#include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
-#include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable_test_util.h"
 #include "tsl/framework/serving_device_selector.h"
 #include "tsl/framework/test_util/mock_serving_device_selector.h"
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
-#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
 namespace {
 
-using tensorflow::ifrt_serving::IfrtLoadedVariableRegistry;
-using tensorflow::ifrt_serving::IfrtRestoreTensorRegistry;
-using tensorflow::ifrt_serving::IfrtServingCoreSelector;
-using tensorflow::ifrt_serving::IfrtServingExecutable;
 using tensorflow::ifrt_serving::ServingExecutableRegistry;
+using tensorflow::ifrt_serving::test_utils::GetMlirModulePath;
+using tensorflow::ifrt_serving::test_utils::IfrtServingExecutableTestHelper;
 using tensorflow::test::AsTensor;
 using tensorflow::test::TensorEq;
 using ::testing::Return;
@@ -115,50 +96,13 @@ TEST_F(IfrtCallOpTest, Basic) {
       /*variable_arg_indices=*/{},
       /*output_type_list=*/{DT_INT32}));
 
-  // TODO(b/324451111): Extract the executable creation to a common function
-  // to be shared by all tests (e.g.
-  // tensorflow/core/tfrt/ifrt/ifrt_serving_executable_test.cc)
   tsl::test_util::MockServingDeviceSelector selector;
+  IfrtServingExecutableTestHelper helper(&selector);
   EXPECT_CALL(selector, ReserveDevice(absl::StrCat(program_id)))
       .Times(1)
       .WillOnce(Return(tsl::DeviceReservation(0, /*selector=*/nullptr)));
-
-  auto core_selector = std::make_unique<IfrtServingCoreSelector>(&selector);
-
-  constexpr absl::string_view kDataDirectory =
-      "tensorflow/core/tfrt/ifrt/testdata";
-  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
-      absl::StrCat(kDataDirectory, "/executable.mlir"));
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-  mlir::MLIRContext context(registry);
-  auto mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
-
-  constexpr int kMaxParallelism = 16;
-  auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
-      tsl::Env::Default(), tsl::ThreadOptions(), "IfrtSharding",
-      kMaxParallelism);
-
-  auto work_queue = tfrt::CreateMultiThreadedWorkQueue(
-      /*num_threads=*/4, /*num_blocking_threads=*/4);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto device_mgr,
-                          ifrt_serving::CreateTfStaticDeviceMgr());
-
-  IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
-  IfrtRestoreTensorRegistry ifrt_restore_tensor_registry;
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      IfrtServingExecutable::Create(
-          program_id, "test", "main", std::move(mlir_module), client,
-          thread_pool.get(), &ifrt_loaded_variable_registry,
-          &ifrt_restore_tensor_registry, work_queue.get(), device_mgr_.get(),
-          tensorflow::IdentityShapeRepresentationFn(), core_selector.get()));
+  auto executable =
+      helper.MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ServingExecutableRegistry::Handle handle,
