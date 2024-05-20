@@ -1864,7 +1864,9 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
 # this file is OSSed.
 def extract_variable_info(
     kwargs: Any,
-) -> Tuple[str, Tuple[int, ...], dtypes.DType, Callable[[], Any]]:
+) -> Tuple[
+    str, Tuple[int, ...], dtypes.DType, Callable[[], Any], Optional[int]
+]:
   """Extracts the variable creation attributes from the kwargs.
 
   Args:
@@ -1872,8 +1874,13 @@ def extract_variable_info(
       scope.
 
   Returns:
-    A tuple of variable name, shape, dtype, initialization function.
+    A tuple of variable name, shape, dtype, initialization function,
+    restore_uid.
   """
+
+  def get_restore_uid(initial_value: Callable[..., Any]) -> int | None:
+    return getattr(initial_value, "restore_uid", None)
+
   if isinstance(kwargs["initial_value"], functools.partial) and (
       "shape" in kwargs["initial_value"].keywords
       or kwargs["initial_value"].args
@@ -1888,6 +1895,7 @@ def extract_variable_info(
         shape,
         kwargs["initial_value"].keywords.get("dtype", kwargs["dtype"]),
         kwargs["initial_value"].func,
+        get_restore_uid(kwargs["initial_value"].func),
     )
   elif (
       "shape" not in kwargs
@@ -1909,6 +1917,7 @@ def extract_variable_info(
         kwargs["shape"],
         kwargs["dtype"],
         kwargs["initial_value"],
+        get_restore_uid(kwargs["initial_value"]),
     )
 
 
@@ -1962,7 +1971,9 @@ def make_sharded_variable_creator(
           "shard_info must be in arguments of the init function."
       )
 
-    name, shape, dtype, unwrapped_initial_value = extract_variable_info(kwargs)
+    name, shape, dtype, unwrapped_initial_value, restore_uid = (
+        extract_variable_info(kwargs)
+    )
 
     shape = ops.tensor_shape.TensorShape(shape)
     num_devices = num_replicas * num_cores_per_replica
@@ -2006,6 +2017,9 @@ def make_sharded_variable_creator(
     result = TPUEmbeddingShardedVariable(
         strategy, variables, tf_variables.VariableAggregation.NONE, None
     )
+    if restore_uid is not None:
+      result._maybe_initialize_trackable()  # pylint: disable=protected-access
+      result._update_uid = restore_uid  # pylint: disable=protected-access
     return result
 
   return _create_sharded_variable
