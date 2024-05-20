@@ -295,7 +295,7 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
 
       BenchmarkParams xnnpack_params;
       xnnpack_params.AddParam("use_xnnpack",
-                              BenchmarkParam::Create<bool>(true));
+                              BenchmarkParam::Create<bool>(false));
       xnnpack_params.AddParam("xnnpack_force_fp16",
                               BenchmarkParam::Create<bool>(false));
       xnnpack_params.AddParam("num_threads",
