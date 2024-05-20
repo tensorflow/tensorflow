@@ -25,11 +25,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/convert_mover.h"
 #include "xla/service/dot_dimension_merger.h"
 #include "xla/service/float_normalization.h"
+#include "xla/service/float_support.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/conv_algorithm_picker.h"
 #include "xla/service/gpu/cublas_pad_for_gemms.h"
@@ -70,7 +72,8 @@ namespace gpu {
 
 namespace {
 
-struct ConvBfloat16Support : public FloatSupport {
+class ConvBfloat16Support : public FloatSupport {
+ public:
   explicit ConvBfloat16Support(const se::RocmComputeCapability& rocm)
       : FloatSupport(BF16),
         // TODO: MIOpen does not support bf16 convolutions yet
