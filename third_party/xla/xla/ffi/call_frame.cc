@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/dynamic_annotations.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
@@ -83,12 +84,16 @@ void CallFrameBuilder::AddBufferArg(se::DeviceMemoryBase memory,
                                     PrimitiveType type,
                                     absl::Span<const int64_t> dims) {
   args_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+      args_.back().dims.data(), sizeof(int64_t) * args_.back().dims.size());
 }
 
 void CallFrameBuilder::AddBufferRet(se::DeviceMemoryBase memory,
                                     PrimitiveType type,
                                     absl::Span<const int64_t> dims) {
   rets_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+      rets_.back().dims.data(), sizeof(int64_t) * rets_.back().dims.size());
 }
 
 void CallFrameBuilder::AddAttributes(AttributesMap attrs) {
