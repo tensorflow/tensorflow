@@ -322,6 +322,33 @@ TEST_P(FormattedTileAssignmentTest,
           175, 190, 191, 206, 207, 222, 223, 238, 239, 254, 255));
 }
 
+TEST_P(FormattedTileAssignmentTest,
+       TransposeIotaTileGroupingCanonicalizedReshapeDims) {
+  TileAssignment tile({1, 4, 16}, {4, 4, 4}, {1, 0, 2});
+  if (ShouldConvertToV1()) {
+    tile = TileAssignment(tile.shared_array());
+  }
+  TileAssignment xposed = tile.Transpose({2, 0, 1});
+  EXPECT_NE(xposed, tile);
+  EXPECT_EQ(xposed, TileAssignment({16, 1, 4}, {4, 4, 4}, {0, 2, 1}));
+  EXPECT_EQ(xposed.num_dimensions(), 3);
+  EXPECT_EQ(xposed.dim(0), 16);
+  EXPECT_EQ(xposed.dim(1), 1);
+  EXPECT_EQ(xposed.dim(2), 4);
+  EXPECT_EQ(xposed(0, 0, 0), 0);
+  EXPECT_EQ(xposed({7, 0, 3}), 31);
+  EXPECT_EQ(xposed.iota().has_value(), !ShouldConvertToV1());
+  EXPECT_TRUE(xposed.UsesDevice(0));
+  EXPECT_TRUE(xposed.UsesDevice(63));
+  EXPECT_FALSE(xposed.UsesDevice(64));
+  EXPECT_THAT(ToVectorUsingEach(xposed),
+              ElementsAre(0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15,
+                          16, 20, 24, 28, 17, 21, 25, 29, 18, 22, 26, 30, 19,
+                          23, 27, 31, 32, 36, 40, 44, 33, 37, 41, 45, 34, 38,
+                          42, 46, 35, 39, 43, 47, 48, 52, 56, 60, 49, 53, 57,
+                          61, 50, 54, 58, 62, 51, 55, 59, 63));
+}
+
 TEST_P(FormattedTileAssignmentTest, TransposeNoopIotaTile) {
   TileAssignment tile({4, 4}, {4, 4}, {1, 0});
   if (ShouldConvertToV1()) {

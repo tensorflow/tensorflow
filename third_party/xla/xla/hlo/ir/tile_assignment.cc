@@ -293,21 +293,62 @@ std::optional<IotaTileAssignment> IotaTileAssignment::Transpose(
     CHECK_EQ(reshape_ndims_, new_perm.size());
     return IotaTileAssignment::Create(new_dims, reshape_dims, new_perm);
   }
-  absl::InlinedVector<int, 6> split_transpose_perm;
-  if (TryDecanonicalize(non_one_dims, reshape_dims, transpose_perm,
-                        split_transpose_perm)) {
-    absl::InlinedVector<int, 6> new_perm;
-    new_perm.reserve(non_one_dims.size());
-    for (int i = 0; i < ndims_; ++i) {
-      if (dims[perm[i]] == 1) continue;
-      new_perm.push_back(split_transpose_perm[one_to_non_one[perm[i]]]);
+  if (reshape_ndims_ > non_one_dims.size()) {
+    // If there are fewer non-one tile dimensions than reshape dimensions,
+    // try grouping reshape dimensions together to see if they form the
+    // identical tile dimensions, then transpose them in groups.
+    absl::InlinedVector<absl::InlinedVector<int, 2>, 6> grouped_reshape_dims(
+        non_one_dims.size());
+    int transpose_perm_idx = 0;
+    for (int i = 0, n = non_one_dims.size();
+         i < n && transpose_perm_idx < reshape_ndims_; ++i) {
+      int reshape_dim_idx = transpose_perm[transpose_perm_idx];
+      int64_t cand = reshape_dims[reshape_dim_idx];
+      int64_t target = non_one_dims[i];
+      while (target % cand == 0) {
+        target /= cand;
+        grouped_reshape_dims[i].push_back(reshape_dim_idx);
+        if (++transpose_perm_idx >= reshape_ndims_) {
+          break;
+        }
+        reshape_dim_idx = transpose_perm[transpose_perm_idx];
+        cand = reshape_dims[reshape_dim_idx];
+      }
+      if (target != 1) {
+        return std::nullopt;
+      }
     }
-    absl::InlinedVector<int64_t, 6> new_reshape_dims(
-        split_transpose_perm.size());
-    for (int i = 0; i < non_one_dims.size(); ++i) {
-      new_reshape_dims[split_transpose_perm[i]] = non_one_dims[i];
+    absl::InlinedVector<int, 6> flattened_transpose_perm;
+    flattened_transpose_perm.reserve(reshape_ndims_);
+    for (int i = 0; i < perm.size(); ++i) {
+      const int dim = perm[i];
+      if (one_to_non_one[dim] < 0) {
+        continue;
+      }
+      auto& group = grouped_reshape_dims[one_to_non_one[dim]];
+      flattened_transpose_perm.insert(flattened_transpose_perm.end(),
+                                      group.begin(), group.end());
     }
-    return IotaTileAssignment::Create(new_dims, new_reshape_dims, new_perm);
+    CHECK_EQ(flattened_transpose_perm.size(), reshape_ndims_);
+    return IotaTileAssignment::Create(new_dims, reshape_dims,
+                                      flattened_transpose_perm);
+  } else {
+    absl::InlinedVector<int, 6> split_transpose_perm;
+    if (TryDecanonicalize(non_one_dims, reshape_dims, transpose_perm,
+                          split_transpose_perm)) {
+      absl::InlinedVector<int, 6> new_perm;
+      new_perm.reserve(non_one_dims.size());
+      for (int i = 0; i < ndims_; ++i) {
+        if (dims[perm[i]] == 1) continue;
+        new_perm.push_back(split_transpose_perm[one_to_non_one[perm[i]]]);
+      }
+      absl::InlinedVector<int64_t, 6> new_reshape_dims(
+          split_transpose_perm.size());
+      for (int i = 0; i < non_one_dims.size(); ++i) {
+        new_reshape_dims[split_transpose_perm[i]] = non_one_dims[i];
+      }
+      return IotaTileAssignment::Create(new_dims, new_reshape_dims, new_perm);
+    }
   }
   // TODO(b/341371396): Handle remaining patterns and remove nullopt path.
   return std::nullopt;
