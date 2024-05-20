@@ -825,7 +825,7 @@ absl::StatusOr<HloInstruction*> PartitionGather(
 
 }  // namespace
 
-Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return DefaultAction(hlo);
   }
@@ -1613,7 +1613,7 @@ absl::StatusOr<HloInstruction*> PartitionScatter(
 
 }  // namespace
 
-Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return DefaultAction(hlo);
   }

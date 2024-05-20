@@ -40,7 +40,7 @@ class StatefulRngSpmdPartitioningVisitor
                                       collective_ops_creator, next_channel_id,
                                       logger, std::move(options), partitioner,
                                       call_graph) {}
-  Status HandleRngGetAndUpdateState(HloInstruction* hlo) override;
+  absl::Status HandleRngGetAndUpdateState(HloInstruction* hlo) override;
 };
 
 class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
@@ -66,7 +66,7 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
       spmd::SpmdPartitionerOptions options,
       const CallGraph& call_graph) override;
 
-  Status PreprocessSharding(
+  absl::Status PreprocessSharding(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
   bool CanSideEffectingHaveReplicatedSharding(

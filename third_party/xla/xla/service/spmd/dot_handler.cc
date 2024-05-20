@@ -64,7 +64,7 @@ namespace {
 using hlo_sharding_util::GroupedSharding;
 }  // namespace
 
-Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
   DotConvDimsMapping mapping;
   const auto& dnums = hlo->dot_dimension_numbers();
   int64_t next_output_dim = 0;
@@ -4264,7 +4264,7 @@ absl::StatusOr<HloInstruction*> PartitionDot(
 
 }  // namespace
 
-Status SpmdPartitioningVisitor::HandleDotHelper(
+absl::Status SpmdPartitioningVisitor::HandleDotHelper(
     HloInstruction* hlo, const DotConvDimsMapping& dims_mapping,
     absl::FunctionRef<absl::StatusOr<HloInstruction*>(
         HloInstruction*, HloInstruction*, SpmdBuilder*,
@@ -4362,7 +4362,7 @@ FindInputNodesIfOnlyDependOnSmallOperands(HloInstruction* hlo) {
 //
 // Later optimization passes (TpuPadSliceMover) will merge the dynamic slice
 // with the input nodes.
-Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
+absl::Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
     HloInstruction* loop, int64_t non_windowed_operand_index) {
   auto input_tuple = loop->mutable_operand(0);
   auto old_operand = input_tuple->mutable_operand(non_windowed_operand_index);
@@ -4496,7 +4496,7 @@ bool CheckOperandsRecursive(
 //
 // Later optimization passes (TpuPadSliceMover) will merge the dynamic slice
 // with the input nodes (broadcast).
-Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
+absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
     HloInstruction* loop, const SpmdPartitionerOptions& options) {
   CHECK_EQ(loop->user_count(), 1);
   // There should be a single direct user of the while loop, which is the
@@ -4954,7 +4954,7 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
 
 }  // namespace
 
-Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
+absl::Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
     HloComputation* computation, const SpmdPartitionerOptions& options) {
   for (auto& loop : windowed_dot_general_loops_) {
     if (loop.windowed_in_contracting_dims || loop.windowed_in_batch_dims ||

@@ -62,7 +62,7 @@ class TpuExecutable : public xla::TpuExecutableInterface {
       absl::string_view serialized);
 
  private:
-  Status LoadProgramAndEnqueueToStream(
+  absl::Status LoadProgramAndEnqueueToStream(
       const ServiceExecutableRunOptions& run_options,
       absl::Span<const stream_executor::DeviceMemoryBase> arguments,
       stream_executor::DeviceMemoryBase result,

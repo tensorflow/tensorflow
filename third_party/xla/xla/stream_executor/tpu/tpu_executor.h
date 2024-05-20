@@ -51,8 +51,6 @@ namespace tpu {
 
 class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
  public:
-  template <typename T>
-  using StatusOr = ::absl::StatusOr<T>;
   using StatusCallback = std::function<void(const absl::Status&)>;
 
   TpuExecutor(::tensorflow::tpu::TpuPlatformInterface* platform,
@@ -72,7 +70,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   absl::Status BlockHostUntilDone(Stream* stream) override;
 
-  StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+  absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override;
 
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;
@@ -147,7 +145,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   int device_ordinal() const override { return device_ordinal_; }
   // TODO(henrytan): convert this to override once the base interface is changed
   // to TpuExecutorInterface.
-  StatusOr<std::unique_ptr<
+  absl::StatusOr<std::unique_ptr<
       tensorflow::tpu::TpuExecutorInterface::TemporaryDeviceMemory>>
   CreateTemporaryDeviceMemory(int64_t memory_space, int64_t byte_offset,
                               int64_t size) override {

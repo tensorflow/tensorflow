@@ -326,7 +326,7 @@ class SpmdPartitioner : public HloModulePass {
 
   // Verifies that the sharding of instructions in the module are valid, and
   // also fill in missing sharding information.
-  virtual Status PreprocessSharding(
+  virtual absl::Status PreprocessSharding(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
@@ -347,7 +347,7 @@ class SpmdPartitioner : public HloModulePass {
   // Preprocesses the graph to simplify some communication patterns. E.g., merge
   // pad->slice into a single pad with potentially negative padding to avoid
   // multiple halo exchanges.
-  Status PreprocessHlos(
+  absl::Status PreprocessHlos(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
@@ -552,59 +552,59 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   SpmdPartitioningVisitor(const SpmdPartitioningVisitor& src);
 
-  Status DefaultAction(HloInstruction* hlo) override;
-  Status HandleAllReduce(HloInstruction* hlo) override;
-  Status HandleBroadcast(HloInstruction* hlo) override;
-  Status HandleCall(HloInstruction* hlo) override;
-  Status HandleConstant(HloInstruction* hlo) override;
-  Status HandleCustomCall(HloInstruction* hlo) override;
-  Status HandleDot(HloInstruction* hlo) override;
-  Status HandleDynamicSlice(HloInstruction* hlo) override;
-  Status HandleDynamicUpdateSlice(HloInstruction* hlo) override;
-  Status HandleFft(HloInstruction* hlo) override;
-  Status HandleGather(HloInstruction* hlo) override;
-  Status HandleGetTupleElement(HloInstruction* hlo) override;
-  Status HandleInfeed(HloInstruction* hlo) override;
-  Status HandleOptimizationBarrier(HloInstruction* hlo) override;
-  Status HandleOutfeed(HloInstruction* hlo) override;
-  Status HandlePad(HloInstruction* hlo) override;
-  Status HandleParameter(HloInstruction* hlo) override;
-  Status HandleReduce(HloInstruction* hlo) override;
-  Status HandleReverse(HloInstruction* hlo) override;
-  Status HandleWhile(HloInstruction* hlo) override;
-  Status HandleConditional(HloInstruction* hlo) override;
-  Status HandleReduceWindow(HloInstruction* hlo) override;
-  Status HandleSelectAndScatter(HloInstruction* hlo) override;
-  Status HandleTuple(HloInstruction* hlo) override;
-  Status HandleRng(HloInstruction* hlo) override;
-  Status HandleConvolution(HloInstruction* hlo) override;
-  Status HandleConcatenate(HloInstruction* hlo) override;
-  Status HandleScatter(HloInstruction* hlo) override;
-  Status HandleSlice(HloInstruction* hlo) override;
-  Status HandleSort(HloInstruction* hlo) override;
-  Status HandleTranspose(HloInstruction* hlo) override;
-  Status HandleReshape(HloInstruction* hlo) override;
-  Status HandleIota(HloInstruction* hlo) override;
-  Status HandlePartitionId(HloInstruction* hlo) override;
+  absl::Status DefaultAction(HloInstruction* hlo) override;
+  absl::Status HandleAllReduce(HloInstruction* hlo) override;
+  absl::Status HandleBroadcast(HloInstruction* hlo) override;
+  absl::Status HandleCall(HloInstruction* hlo) override;
+  absl::Status HandleConstant(HloInstruction* hlo) override;
+  absl::Status HandleCustomCall(HloInstruction* hlo) override;
+  absl::Status HandleDot(HloInstruction* hlo) override;
+  absl::Status HandleDynamicSlice(HloInstruction* hlo) override;
+  absl::Status HandleDynamicUpdateSlice(HloInstruction* hlo) override;
+  absl::Status HandleFft(HloInstruction* hlo) override;
+  absl::Status HandleGather(HloInstruction* hlo) override;
+  absl::Status HandleGetTupleElement(HloInstruction* hlo) override;
+  absl::Status HandleInfeed(HloInstruction* hlo) override;
+  absl::Status HandleOptimizationBarrier(HloInstruction* hlo) override;
+  absl::Status HandleOutfeed(HloInstruction* hlo) override;
+  absl::Status HandlePad(HloInstruction* hlo) override;
+  absl::Status HandleParameter(HloInstruction* hlo) override;
+  absl::Status HandleReduce(HloInstruction* hlo) override;
+  absl::Status HandleReverse(HloInstruction* hlo) override;
+  absl::Status HandleWhile(HloInstruction* hlo) override;
+  absl::Status HandleConditional(HloInstruction* hlo) override;
+  absl::Status HandleReduceWindow(HloInstruction* hlo) override;
+  absl::Status HandleSelectAndScatter(HloInstruction* hlo) override;
+  absl::Status HandleTuple(HloInstruction* hlo) override;
+  absl::Status HandleRng(HloInstruction* hlo) override;
+  absl::Status HandleConvolution(HloInstruction* hlo) override;
+  absl::Status HandleConcatenate(HloInstruction* hlo) override;
+  absl::Status HandleScatter(HloInstruction* hlo) override;
+  absl::Status HandleSlice(HloInstruction* hlo) override;
+  absl::Status HandleSort(HloInstruction* hlo) override;
+  absl::Status HandleTranspose(HloInstruction* hlo) override;
+  absl::Status HandleReshape(HloInstruction* hlo) override;
+  absl::Status HandleIota(HloInstruction* hlo) override;
+  absl::Status HandlePartitionId(HloInstruction* hlo) override;
 
   // Implementation of dot partitioning given DotGeneralDimsMapping.
-  Status HandleDotHelper(HloInstruction* hlo,
-                         const DotConvDimsMapping& dims_mapping,
-                         absl::FunctionRef<absl::StatusOr<HloInstruction*>(
-                             HloInstruction*, HloInstruction*, SpmdBuilder*,
-                             const Window& conv_window)>
-                             create_sharded_dot);
+  absl::Status HandleDotHelper(
+      HloInstruction* hlo, const DotConvDimsMapping& dims_mapping,
+      absl::FunctionRef<absl::StatusOr<HloInstruction*>(
+          HloInstruction*, HloInstruction*, SpmdBuilder*,
+          const Window& conv_window)>
+          create_sharded_dot);
 
   // Common handle for elementwise HLOs.
-  Status HandleElementwise(HloInstruction* hlo);
+  absl::Status HandleElementwise(HloInstruction* hlo);
 
   // Common handle for HLOs that runs on a single device.
-  Status HandleSingleDevice(const HloInstruction* hlo);
+  absl::Status HandleSingleDevice(const HloInstruction* hlo);
 
   // CustomCall handlers per call target.
-  Status HandleCustomCallTopK(HloInstruction* hlo);
+  absl::Status HandleCustomCallTopK(HloInstruction* hlo);
   // Convenient custom ops defined by the partitioner itself.
-  Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
+  absl::Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
 
   virtual std::unique_ptr<SpmdPartitioningVisitor> Clone() const;
 
@@ -692,13 +692,13 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   };
 
  protected:
-  Status Preprocess(HloInstruction* hlo) override;
-  Status Postprocess(HloInstruction* hlo) override;
+  absl::Status Preprocess(HloInstruction* hlo) override;
+  absl::Status Postprocess(HloInstruction* hlo) override;
 
   // Performs code motion for windowed dot-general loops in
   // windowed_dot_general_loops_. Invoked after the visitor finishes traversing
   // the graph.
-  Status DoCodeMotionForWindowedDotGeneralLoops(
+  absl::Status DoCodeMotionForWindowedDotGeneralLoops(
       HloComputation* computation, const SpmdPartitionerOptions& options);
 
   bool changed_;

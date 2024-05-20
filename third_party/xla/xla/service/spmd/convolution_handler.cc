@@ -1017,7 +1017,7 @@ absl::StatusOr<HloInstruction*> PartitionConvolution(
   return nullptr;
 }
 
-Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return DefaultAction(hlo);
   }

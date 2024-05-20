@@ -51,9 +51,9 @@ namespace xla {
 namespace {
 
 // Write the tuple index buffers (arrays of pointers).
-static Status PopulateResultTupleBuffers(const ShapedBuffer& result,
-                                         se::Stream* stream,
-                                         se::Stream* transfer_stream) {
+static absl::Status PopulateResultTupleBuffers(const ShapedBuffer& result,
+                                               se::Stream* stream,
+                                               se::Stream* transfer_stream) {
   TF_ASSIGN_OR_RETURN(
       auto transfer_manager,
       TransferManager::GetForPlatform(stream->parent()->GetPlatform()));
