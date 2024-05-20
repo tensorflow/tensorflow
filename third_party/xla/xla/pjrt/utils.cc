@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -194,7 +195,7 @@ static StatusOr<std::vector<LayoutMode>> MlirAttrsToLayoutModes(
   result.reserve(all_attrs.size());
   for (const mlir::Attribute& dict_attr : all_attrs) {
     mlir::StringAttr attr =
-        dict_attr.cast<mlir::DictionaryAttr>().getAs<mlir::StringAttr>(
+        mlir::cast<mlir::DictionaryAttr>(dict_attr).getAs<mlir::StringAttr>(
             "mhlo.layout_mode");
     if (attr != nullptr) {
       TF_ASSIGN_OR_RETURN(LayoutMode mode,
@@ -242,7 +243,7 @@ static absl::StatusOr<std::vector<MemorySpaceColor>> MlirAttrsToMemoryKinds(
   result.reserve(all_attrs.size());
   for (const mlir::Attribute& dict_attr : all_attrs) {
     mlir::StringAttr attr =
-        dict_attr.cast<mlir::DictionaryAttr>().getAs<mlir::StringAttr>(
+        mlir::cast<mlir::DictionaryAttr>(dict_attr).getAs<mlir::StringAttr>(
             "mhlo.memory_kind");
     if (attr != nullptr) {
       TF_ASSIGN_OR_RETURN(MemorySpaceColor memory_space,
@@ -269,15 +270,14 @@ static StatusOr<std::optional<std::vector<LayoutMode>>> GetTupleLayoutModes(
           "GetTupleLayoutModes expected single tuple attr, got %d attrs",
           all_attrs.size());
     }
-    mlir::StringAttr attr =
-        all_attrs.begin()->cast<mlir::DictionaryAttr>().getAs<mlir::StringAttr>(
-            "mhlo.layout_mode");
+    mlir::StringAttr attr = mlir::cast<mlir::DictionaryAttr>(*all_attrs.begin())
+                                .getAs<mlir::StringAttr>("mhlo.layout_mode");
     if (attr != nullptr) {
       return Unimplemented("mhlo.layout_mode not supported with tupled values");
     }
   }
   // Use default layout for all outputs.
-  return std::vector<LayoutMode>(types[0].cast<mlir::TupleType>().size());
+  return std::vector<LayoutMode>(mlir::cast<mlir::TupleType>(types[0]).size());
 }
 
 // Helper function for getting default LayoutModes for tupled arguments or
@@ -295,16 +295,16 @@ GetTupleMemoryKinds(mlir::ArrayRef<mlir::Type> types,
           "GetTupleMemoryKinds expected single tuple attr, got %d attrs",
           all_attrs.size());
     }
-    mlir::StringAttr attr =
-        all_attrs.begin()->cast<mlir::DictionaryAttr>().getAs<mlir::StringAttr>(
-            "mhlo.memory_kind");
+    mlir::StringAttr attr = mlir::cast<mlir::DictionaryAttr>(*all_attrs.begin())
+                                .getAs<mlir::StringAttr>("mhlo.memory_kind");
     if (attr != nullptr) {
       return Unimplemented("mhlo.memory_kind not supported with tupled values");
     }
   }
   // Use default layout for all outputs.
-  return std::vector<MemorySpaceColor>(types[0].cast<mlir::TupleType>().size(),
-                                       xla::Layout::kDefaultMemorySpace);
+  return std::vector<MemorySpaceColor>(
+      mlir::cast<mlir::TupleType>(types[0]).size(),
+      xla::Layout::kDefaultMemorySpace);
 }
 
 StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(mlir::ModuleOp module) {

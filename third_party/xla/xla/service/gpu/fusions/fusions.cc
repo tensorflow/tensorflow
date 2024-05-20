@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/transpose_mlir.h"
 #include "xla/service/gpu/fusions/triton.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -76,10 +77,10 @@ bool IsParameterOrGteOfParameter(const HloInstruction* instr) {
 
 bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
   return absl::c_all_of(
-      analysis.fusion_roots(), [](const HloInstruction* root) {
-        return root->opcode() == HloOpcode::kDynamicUpdateSlice ||
-               (root->opcode() == HloOpcode::kBitcast &&
-                root->operand(0)->opcode() == HloOpcode::kDynamicUpdateSlice);
+      analysis.fusion_root_adaptors(), [](const HloInstructionAdaptor& root) {
+        return root.opcode() == HloOpcode::kDynamicUpdateSlice ||
+               (root.opcode() == HloOpcode::kBitcast &&
+                root.GetOperand(0).opcode() == HloOpcode::kDynamicUpdateSlice);
       });
 }
 
@@ -126,7 +127,7 @@ HloFusionInfo::GetCopyFusion() const {
 
 bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
   auto ret = CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-      instr_, buffer_assignment_, analysis().fusion_roots());
+      instr_, buffer_assignment_, analysis().fusion_root_adaptors());
   return ret.ok() && *ret;
 }
 
@@ -135,8 +136,11 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
 
-  const auto& opts =
-      analysis.fusion_roots().front()->GetModule()->config().debug_options();
+  const auto& opts = analysis.fusion_root(0)
+                         .instruction()
+                         .GetModule()
+                         ->config()
+                         .debug_options();
   auto check_mlir_emitters = [&](std::function<bool(const HloFusionAnalysis&)>
                                      support_check) {
     if (!opts.xla_gpu_enable_mlir_emitters()) {
@@ -194,8 +198,7 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       if (IsDynamicUpdateSliceFusion(analysis) &&
           fusion_info.CanEmitDynamicUpdateSliceInPlace()) {
-        if (check_mlir_emitters(
-                MlirInPlaceDynamicUpdateSliceFusion::IsSupported)) {
+        if (check_mlir_emitters(nullptr)) {
           return std::make_unique<MlirInPlaceDynamicUpdateSliceFusion>(
               analysis);
         }

@@ -2124,7 +2124,11 @@ TEST_F(OpTest, ClipByValue) {
   //                    compiled ClipByValue fails in this case.
   //                    --tf_xla_random_seed=200839030
   Repeatedly([this]() {
-    auto type = Choose<DataType>({DT_INT32, DT_INT64, DT_FLOAT});
+    auto type = Choose<DataType>({DT_INT32, 
+#if GOOGLE_CUDA
+                                  DT_INT64, 
+#endif 
+                                  DT_FLOAT});
     // ClipByValue requires that broadcasting min and max tensors do not cause
     // the returned shape to be larger than the input shape.
     auto input_dims = RandomDims();

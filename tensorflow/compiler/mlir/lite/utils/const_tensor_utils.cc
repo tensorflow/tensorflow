@@ -36,11 +36,11 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
 #include "tsl/platform/statusor.h"
 
@@ -131,11 +131,11 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
 
   if (!storage_type) {
     const mlir::Type raw_elem_type = ConvertElementType(tensor.type, builder);
-    if (!raw_elem_type.isa<mlir::IntegerType>()) {
+    if (!mlir::isa<mlir::IntegerType>(raw_elem_type)) {
       return absl::InvalidArgumentError(
           "Quantized tensors must be stored as integers");
     }
-    storage_type = raw_elem_type.cast<mlir::IntegerType>();
+    storage_type = mlir::cast<mlir::IntegerType>(raw_elem_type);
   }
 
   // TFlite uses narrow-range [u]int8 for constant buffers of quantized weights.
@@ -254,11 +254,11 @@ mlir::ElementsAttr GetSplat(RankedTensorType type, int unique_index,
     return DenseElementsAttr::get(
         type, builder.getIntegerAttr(element_ty, unique_index));
 
-  if (element_ty.isa<mlir::FloatType>())
+  if (mlir::isa<mlir::FloatType>(element_ty))
     return DenseElementsAttr::get(
         type, builder.getFloatAttr(element_ty, unique_index));
 
-  if (auto qtype = element_ty.dyn_cast<QuantizedType>()) {
+  if (auto qtype = mlir::dyn_cast<QuantizedType>(element_ty)) {
     mlir::RankedTensorType new_type = tensorflow::GetTypeFromTFTensorShape(
         type.getShape(), qtype.getStorageType());
     return DenseElementsAttr::get(
@@ -272,9 +272,10 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
     bool truncate) {
   mlir::Type elem_type = shaped_type.getElementType();
   unsigned bit_width;
-  if (auto itype = elem_type.dyn_cast<mlir::IntegerType>()) {
+  if (auto itype = mlir::dyn_cast<mlir::IntegerType>(elem_type)) {
     bit_width = itype.getWidth();
-  } else if (auto qtype = elem_type.dyn_cast<mlir::quant::QuantizedType>()) {
+  } else if (auto qtype =
+                 mlir::dyn_cast<mlir::quant::QuantizedType>(elem_type)) {
     bit_width = qtype.getStorageTypeIntegralWidth();
     shaped_type = tensorflow::GetTypeFromTFTensorShape(shaped_type.getShape(),
                                                        qtype.getStorageType());

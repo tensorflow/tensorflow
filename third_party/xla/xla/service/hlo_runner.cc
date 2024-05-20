@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -49,6 +50,14 @@ HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
 }
 
 HloRunner::~HloRunner() {}
+
+se::DeviceMemoryAllocator* HloRunner::GetAllocator() {
+  if (allocator_ == nullptr) {
+    allocator_ = std::make_unique<se::StreamExecutorMemoryAllocator>(
+        backend().default_stream_executor());
+  }
+  return allocator_.get();
+}
 
 absl::StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
     const Literal& literal, int64_t param_no) {
@@ -290,7 +299,7 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
       ExecutionInputsFromScopedShapedBuffers(
           arguments, executable->module().input_output_alias_config(),
           backend().default_stream_executor()->device_ordinal(),
-          backend().default_stream_executor()->GetAllocator());
+          GetAllocator());
   return ExecuteWithExecutionInputs(executable, std::move(execution_arguments),
                                     profile);
 }
@@ -329,8 +338,7 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithMovedDeviceBuffers(
   ExecutionInputsFromMovedScopedShapedBuffers(
       &execution_arguments, &owned_arguments, std::move(arguments),
       executable->module().input_output_alias_config(),
-      backend().default_stream_executor()->device_ordinal(),
-      backend().default_stream_executor()->GetAllocator());
+      backend().default_stream_executor()->device_ordinal(), GetAllocator());
 
   TF_ASSIGN_OR_RETURN(ExecutionOutput retval,
                       ExecuteWithExecutionInputs(

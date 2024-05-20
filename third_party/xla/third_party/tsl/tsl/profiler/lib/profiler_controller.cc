@@ -37,8 +37,8 @@ ProfilerController::~ProfilerController() {
   }
 }
 
-Status ProfilerController::Start() {
-  Status status;
+absl::Status ProfilerController::Start() {
+  absl::Status status;
   if (state_ == ProfilerState::kInit) {
     state_ = ProfilerState::kStart;
     if (status_.ok()) {
@@ -53,8 +53,8 @@ Status ProfilerController::Start() {
   return status;
 }
 
-Status ProfilerController::Stop() {
-  Status status;
+absl::Status ProfilerController::Stop() {
+  absl::Status status;
   if (state_ == ProfilerState::kStart) {
     state_ = ProfilerState::kStop;
     if (status_.ok()) {
@@ -69,8 +69,9 @@ Status ProfilerController::Stop() {
   return status;
 }
 
-Status ProfilerController::CollectData(tensorflow::profiler::XSpace* space) {
-  Status status;
+absl::Status ProfilerController::CollectData(
+    tensorflow::profiler::XSpace* space) {
+  absl::Status status;
   if (state_ == ProfilerState::kStop) {
     state_ = ProfilerState::kCollectData;
     if (status_.ok()) {

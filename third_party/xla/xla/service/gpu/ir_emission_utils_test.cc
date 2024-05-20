@@ -99,16 +99,22 @@ TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithIntermediateUnaryOpS8) {
   const char* hlo = R"(
 HloModule module
 
-ENTRY entry {
+fusion {
   p = f32[32,48,64]{2,1,0} parameter(0)
   t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
   ROOT c = s8[64,48,32]{2,1,0} convert(t)
+}
+
+ENTRY main {
+  p0 = f32[32,48,64]{2,1,0} parameter(0)
+  ROOT f = s8[64,48,32]{2,1,0} fusion(p0), kind=kInput, calls=fusion
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
 
-  HloInstruction* r = module->entry_computation()->root_instruction();
+  HloInstruction* r =
+      module->entry_computation()->root_instruction()->fused_expression_root();
   // TODO(b/284431534): Update this test when the shared memory transpose
   // emitter is fast for S8 output.
   EXPECT_FALSE(
@@ -146,8 +152,7 @@ TEST_F(IrEmissionUtilsTest, FindReduceHeroEpilogueFusion) {
 
   HloInstruction* r = module->entry_computation()->root_instruction();
   auto fusion = HloFusionAdaptor::ForInstruction(r);
-  const auto& result =
-      FindNonTrivialHero(fusion->GetRoots()[0].instruction(), *fusion);
+  const auto& result = FindNonTrivialHero(fusion->GetRoots()[0]);
   EXPECT_EQ(result.name(), "reduce.0");
 }
 
@@ -181,11 +186,9 @@ TEST_F(IrEmissionUtilsTest, FindReduceHeroEpilogueFusionTwoRootUsers) {
 
   HloInstruction* r = module->entry_computation()->root_instruction();
   auto fusion = HloFusionAdaptor::ForInstruction(r);
-  const auto& result =
-      FindNonTrivialHero(fusion->GetRoots()[1].instruction(), *fusion);
+  const auto& result = FindNonTrivialHero(fusion->GetRoots()[1]);
   EXPECT_EQ(result.name(), "reduce.1");
-  const auto& result2 =
-      FindNonTrivialHero(fusion->GetRoots()[2].instruction(), *fusion);
+  const auto& result2 = FindNonTrivialHero(fusion->GetRoots()[2]);
   EXPECT_EQ(result2.name(), "reduce.1");
 }
 
@@ -219,13 +222,11 @@ TEST_F(IrEmissionUtilsTest, FindReduceHeroEpilogueFusionHeroAlsoUsedAsNonHero) {
 
   HloInstruction* r = module->entry_computation()->root_instruction();
   auto fusion = HloFusionAdaptor::ForInstruction(r);
-  const auto& result =
-      FindNonTrivialHero(fusion->GetRoots()[1].instruction(), *fusion);
+  const auto& result = FindNonTrivialHero(fusion->GetRoots()[1]);
   // reduce.0 is also an operand of broadcast, but it is not a hero for that
   // root.
   EXPECT_EQ(result.name(), "broadcast");
-  const auto& result2 =
-      FindNonTrivialHero(fusion->GetRoots()[2].instruction(), *fusion);
+  const auto& result2 = FindNonTrivialHero(fusion->GetRoots()[2]);
   EXPECT_EQ(result2.name(), "reduce.0");
 }
 
@@ -252,11 +253,9 @@ TEST_F(IrEmissionUtilsTest, DoNotFindTransposeHeroEpilogueFusionTwoRootUsers) {
 
   HloInstruction* r = module->entry_computation()->root_instruction();
   auto fusion = HloFusionAdaptor::ForInstruction(r);
-  const auto& result =
-      FindNonTrivialHero(fusion->GetRoots()[0].instruction(), *fusion);
+  const auto& result = FindNonTrivialHero(fusion->GetRoots()[0]);
   EXPECT_EQ(result.name(), "bitcast.1");
-  const auto& result2 =
-      FindNonTrivialHero(fusion->GetRoots()[1].instruction(), *fusion);
+  const auto& result2 = FindNonTrivialHero(fusion->GetRoots()[1]);
   EXPECT_EQ(result2.name(), "sign.1");
 }
 
@@ -287,19 +286,25 @@ TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithTwoIntermediateBinaryOps) {
   const char* hlo = R"(
 HloModule module
 
-ENTRY entry {
+fusion {
   p = f32[32,48,64]{2,1,0} parameter(0)
   p2 = f32[64,48,32]{2,1,0} parameter(1)
-  p3 = f32[64,48,32]{2,1,0} parameter(2)
   t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
-  mul = f32[64,48,32]{2,1,0} multiply(t, p3)
-  ROOT add = f32[64,48,32]{2,1,0} add(mul, p3)
+  mul = f32[64,48,32]{2,1,0} multiply(t, p2)
+  ROOT add = f32[64,48,32]{2,1,0} add(mul, p2)
+}
+
+ENTRY main {
+  param0 = f32[32,48,64]{2,1,0} parameter(0)
+  param1 = f32[64,48,32]{2,1,0} parameter(1)
+  ROOT fusion = f32[64,48,32]{2,1,0} fusion(param0, param1), kind=kInput, calls=fusion
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
 
-  HloInstruction* r = module->entry_computation()->root_instruction();
+  HloInstruction* r =
+      module->entry_computation()->root_instruction()->fused_expression_root();
   auto result =
       GetDescriptionForTiledTransposeEmitter(*r, FindNonTrivialHero(*r));
   EXPECT_TRUE(result.has_value());
@@ -313,18 +318,25 @@ TEST_F(IrEmissionUtilsTest,
   const char* hlo = R"(
 HloModule module
 
-ENTRY entry {
+fusion {
   p = f32[32,48,64]{2,1,0} parameter(0)
   p2 = f32[48,32,64]{2,1,0} parameter(1)
   t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
   t2 = f32[64,48,32]{2,1,0} transpose(p2), dimensions={2,0,1}
   ROOT add = f32[64,48,32]{2,1,0} add(t, t2)
 }
+
+ENTRY main {
+  param0 = f32[32,48,64]{2,1,0} parameter(0)
+  param1 = f32[48,32,64]{2,1,0} parameter(1)
+  ROOT fusion = f32[64,48,32]{2,1,0} fusion(param0, param1), kind=kInput, calls=fusion
+}
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
 
-  HloInstruction* r = module->entry_computation()->root_instruction();
+  HloInstruction* r =
+      module->entry_computation()->root_instruction()->fused_expression_root();
   EXPECT_FALSE(
       GetDescriptionForTiledTransposeEmitter(*r, FindNonTrivialHero(*r))
           .has_value());
@@ -351,16 +363,16 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
 
-  HloInstruction* r = module->GetComputationWithName("f")->root_instruction();
   HloInstruction* transpose =
       module->entry_computation()->GetInstructionWithName("t");
   HloInstruction* fusion =
       module->entry_computation()->GetInstructionWithName("fusion");
-  EXPECT_EQ(
-      &FindNonTrivialHero(*r, ProducerConsumerFusion(
-                                  HloFusionAdaptor::ForInstruction(transpose),
-                                  HloFusionAdaptor::ForInstruction(fusion))),
-      transpose);
+  auto fusion_adaptor =
+      HloFusionAdaptor::ForProducerConsumer(transpose, fusion);
+  HloInstructionAdaptor r(
+      *module->GetComputationWithName("f")->root_instruction(),
+      fusion_adaptor.get());
+  EXPECT_EQ(&FindNonTrivialHero(r).instruction(), transpose);
 }
 
 TEST_F(IrEmissionUtilsTest, FindNonTrivialHeroInsideFusion) {
@@ -391,30 +403,35 @@ ENTRY entry {
                                   .front();
   HloInstruction* fusion =
       module->entry_computation()->GetInstructionWithName("fusion");
-  EXPECT_EQ(
-      &FindNonTrivialHero(
-          *r, ProducerConsumerFusion(HloFusionAdaptor::ForInstruction(fusion),
-                                     HloFusionAdaptor::ForInstruction(r))),
-      transpose);
+  auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(fusion, r);
+  EXPECT_EQ(&FindNonTrivialHero(HloInstructionAdaptor(*r, fusion_adaptor.get()))
+                 .instruction(),
+            transpose);
 }
 
 TEST_F(IrEmissionUtilsTest, TransposeReachableViaTrivialAndNontrivialOps) {
   const char* hlo = R"(
 HloModule module
 
-ENTRY entry {
+fusion {
   p = f64[16,16]{1,0} parameter(0)
   trans = f64[16,16]{1,0} transpose(p), dimensions={1,0}
   rev = f64[16,16]{1,0} reverse(trans), dimensions={0,1}
   sub = f64[16,16]{1,0} subtract(trans, trans)
   ROOT add = f64[16,16]{1,0} add(rev, sub)
 }
+
+ENTRY main {
+  param = f64[16,16]{1,0} parameter(0)
+  ROOT fusion = f64[16,16]{1,0} fusion(param), kind=kLoop, calls=fusion
+}
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
 
-  HloInstruction* r = module->entry_computation()->root_instruction();
+  HloInstruction* r =
+      module->entry_computation()->root_instruction()->fused_expression_root();
   EXPECT_FALSE(
       GetDescriptionForTiledTransposeEmitter(*r, FindNonTrivialHero(*r))
           .has_value());
@@ -425,15 +442,21 @@ TEST_F(IrEmissionUtilsTest, FindTiledTransposeOneSwapDimIsSmall) {
   const char* hlo = R"(
 HloModule module
 
-ENTRY entry {
+fusion {
   p = f32[100,11,12,8]{3,2,1,0} parameter(0)
   ROOT c = f32[100,11,12,8]{1,0,2,3} copy(p)
+}
+
+ENTRY main {
+  param = f32[100,11,12,8]{3,2,1,0} parameter(0)
+  ROOT fusion = f32[100,11,12,8]{1,0,2,3} fusion(param), kind=kInput, calls=fusion
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
 
-  HloInstruction* copy = module->entry_computation()->root_instruction();
+  HloInstruction* copy =
+      module->entry_computation()->root_instruction()->fused_expression_root();
   auto result =
       GetDescriptionForTiledTransposeEmitter(*copy, FindNonTrivialHero(*copy));
   EXPECT_TRUE(result.has_value());
@@ -446,15 +469,21 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOneSwapDimIsSmall) {
   const char* hlo = R"(
 HloModule module
 
-ENTRY entry {
+fusion {
   p = f32[100,11,12,8]{3,2,1,0} parameter(0)
   ROOT t = f32[8,12,100,11]{3,2,1,0} transpose(p), dimensions={3,2,0,1}
+}
+
+ENTRY main {
+  param = f32[100,11,12,8]{3,2,1,0} parameter(0)
+  ROOT fusion = f32[8,12,100,11]{3,2,1,0} fusion(param), kind=kInput, calls=fusion
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
 
-  HloInstruction* tr = module->entry_computation()->root_instruction();
+  HloInstruction* tr =
+      module->entry_computation()->root_instruction()->fused_expression_root();
   auto result =
       GetDescriptionForTiledTransposeEmitter(*tr, FindNonTrivialHero(*tr));
   EXPECT_TRUE(result.has_value());
@@ -467,15 +496,21 @@ TEST_F(IrEmissionUtilsTest, FindTiledTransposeOtherSwapDimIsSmall) {
   const char* hlo = R"(
 HloModule module
 
-ENTRY entry {
+fusion {
   p = f32[8,12,100,11]{3,2,1,0} parameter(0)
   ROOT c = f32[8,12,100,11]{0,1,3,2} copy(p)
+}
+
+ENTRY main {
+  param = f32[8,12,100,11]{3,2,1,0} parameter(0)
+  ROOT fusion = f32[8,12,100,11]{0,1,3,2} fusion(param), kind=kInput, calls=fusion
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
 
-  HloInstruction* copy = module->entry_computation()->root_instruction();
+  HloInstruction* copy =
+      module->entry_computation()->root_instruction()->fused_expression_root();
   auto result =
       GetDescriptionForTiledTransposeEmitter(*copy, FindNonTrivialHero(*copy));
   EXPECT_TRUE(result.has_value());
@@ -488,15 +523,21 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOtherSwapDimIsSmall) {
   const char* hlo = R"(
 HloModule module
 
-ENTRY entry {
+fusion {
   p = f32[8,12,100,11]{3,2,1,0} parameter(0)
   ROOT t = f32[100,11,12,8]{3,2,1,0} transpose(p), dimensions={2,3,1,0}
+}
+
+ENTRY main {
+  param = f32[8,12,100,11]{3,2,1,0} parameter(0)
+  ROOT fusion = f32[100,11,12,8]{3,2,1,0} fusion(param), kind=kInput, calls=fusion
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
 
-  HloInstruction* tr = module->entry_computation()->root_instruction();
+  HloInstruction* tr =
+      module->entry_computation()->root_instruction()->fused_expression_root();
   auto result =
       GetDescriptionForTiledTransposeEmitter(*tr, FindNonTrivialHero(*tr));
   EXPECT_TRUE(result.has_value());

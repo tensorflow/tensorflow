@@ -40,10 +40,8 @@ absl::StatusOr<bool> RunOptimizer(
     CollectivePipeliner::PipeliningDirection pipelining_direction =
         CollectivePipeliner::PipeliningDirection::kForward,
     bool pipeline_use_tree = false,
-    HloPredicate acceptable_formatting =
-        [](const HloInstruction*) { return true; },
-    HloPredicate reuse_pipelined_op_buffer =
-        [](const HloInstruction*) { return true; }) {
+    HloPredicate acceptable_formatting = HloPredicateTrue,
+    HloPredicate reuse_pipelined_op_buffer = HloPredicateTrue) {
   CollectivePipeliner::Config config = {
       /*level_to_operate_on=*/level_to_operate_on,
       /*max_pipelining_per_loop=*/INT64_MAX,

@@ -19,8 +19,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_join.h"
-
 namespace tensorflow {
 
 std::ostream& operator<<(std::ostream& os,
@@ -40,8 +38,7 @@ std::ostream& operator<<(std::ostream& os,
 }
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options) {
-  return os << "{"
-            << "variable_device = " << options.variable_device
+  return os << "{" << "variable_device = " << options.variable_device
             << ", default_device = " << options.default_device
             << ", enable_optimizer = " << options.enable_optimizer
             << ", enable_grappler = " << options.enable_grappler
@@ -58,6 +55,7 @@ std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options) {
             << ", enable_while_parallel_iterations = "
             << options.enable_while_parallel_iterations
             << ", cost_threshold = " << options.cost_threshold
+            << ", min_num_batch_threads = " << options.min_num_batch_threads
             << ", merge_inter_dependent_streams = "
             << options.merge_inter_dependent_streams
             << ", decompose_resource_ops = " << options.decompose_resource_ops

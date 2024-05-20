@@ -42,7 +42,6 @@ struct UnsupportedGpuFeature {};
 
 #if TENSORFLOW_USE_ROCM
 
-using GpuContextHandle = hipCtx_t;
 using GpuStreamHandle = hipStream_t;
 using GpuEventHandle = hipEvent_t;
 using GpuFunctionHandle = hipFunction_t;
@@ -64,7 +63,6 @@ using GpuGraphNodeHandle = hipGraphNode_t;
 using GpuGraphConditionalHandle = UnsupportedGpuFeature;
 #else  // CUDA
 
-using GpuContextHandle = CUcontext;
 using GpuStreamHandle = CUstream;
 using GpuEventHandle = CUevent;
 using GpuFunctionHandle = CUfunction;

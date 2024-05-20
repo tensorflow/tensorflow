@@ -1274,7 +1274,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@ml_dtypes//:float8",
-        "@ml_dtypes//:int4",
+        "@ml_dtypes//:intn",
     ] + if_static([":lib_internal_impl"]),
 )
 
@@ -1302,7 +1302,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@ml_dtypes//:float8",
-        "@ml_dtypes//:int4",
+        "@ml_dtypes//:intn",
     ],
 )
 
@@ -1451,7 +1451,7 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/lib/math:math_util",
         "@ml_dtypes//:float8",
-        "@ml_dtypes//:int4",
+        "@ml_dtypes//:intn",
         "@snappy",
         "@zlib",
     ] + select({

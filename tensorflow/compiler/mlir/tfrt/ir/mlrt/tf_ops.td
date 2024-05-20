@@ -172,7 +172,8 @@ def TFIfrtLoadVariableOp: TensorflowMlrt_Op<"tf_ifrt_load_variable", [Pure]> {
   let arguments = (ins
     TF_Tensor:$variable,
     StrAttr:$device_sharding_config_proto_text,
-    StrAttr:$name
+    StrAttr:$name,
+    DefaultValuedAttr<BoolAttr, "false">:$used_by_host
   );
 
   let results = (outs

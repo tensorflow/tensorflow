@@ -39,7 +39,7 @@ namespace {
 StatusOr<mlir::Value> ExpandIndices(mlir::OpBuilder& builder,
                                     mlir::Value indices) {
   int64_t num_dim =
-      indices.getType().dyn_cast<mlir::RankedTensorType>().getDimSize(1);
+      mlir::dyn_cast<mlir::RankedTensorType>(indices.getType()).getDimSize(1);
   if (num_dim != 2)
     return errors::Unimplemented(
         "Sparse tensors with dense rank not equal to 2 is not yet supported in "
@@ -47,7 +47,8 @@ StatusOr<mlir::Value> ExpandIndices(mlir::OpBuilder& builder,
   mlir::Location loc = indices.getLoc();
   auto indices_padded_type = mlir::RankedTensorType::get(
       {mlir::ShapedType::kDynamic, 3},
-      indices.getType().dyn_cast<mlir::RankedTensorType>().getElementType());
+      mlir::dyn_cast<mlir::RankedTensorType>(indices.getType())
+          .getElementType());
   // Little trick to make a rank-2 tensor of [[0,0], [0,1]] using rank 1
   // constants.
   mlir::Value indices_padding = builder.create<mlir::TF::ReshapeOp>(

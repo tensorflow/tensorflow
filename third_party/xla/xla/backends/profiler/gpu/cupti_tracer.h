@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "tsl/platform/types.h"
-#include "tsl/profiler/utils/buffer_pool.h"
 
 namespace xla {
 namespace profiler {
@@ -113,6 +112,17 @@ class CuptiTracer {
   // Buffer size and alignment, 32K and 8 as in CUPTI samples.
   static constexpr size_t kBufferSizeInBytes = 32 * 1024;
 
+  std::unique_ptr<CuptiActivityBufferManager> activity_buffers_;
+  static_assert(std::atomic<size_t>::is_always_lock_free,
+                "std::atomic<size_t> is not lock free! This may cause very bad"
+                " profiling overhead in some circumstances.");
+  std::atomic<size_t> cupti_dropped_activity_event_count_ = 0;
+  std::atomic<size_t> num_activity_events_in_dropped_buffer_ = 0;
+  std::atomic<size_t> num_activity_events_in_cached_buffer_ = 0;
+
+  // Clear activity_buffers, reset activity event counters.
+  void PrepareActivityStart();
+
   absl::Status EnableApiTracing();
   absl::Status EnableActivityTracing();
   absl::Status DisableApiTracing();
@@ -139,8 +149,6 @@ class CuptiTracer {
   bool activity_tracing_enabled_ = false;
 
   std::unique_ptr<CuptiDriverApiHook> cupti_driver_api_hook_;
-
-  tsl::profiler::BufferPool buffer_pool_;
 };
 
 }  // namespace profiler

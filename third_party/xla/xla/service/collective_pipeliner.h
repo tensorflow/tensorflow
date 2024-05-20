@@ -93,8 +93,12 @@ class CollectivePipeliner : public HloModulePass {
     // pipelinining.
     HloPredicate should_allow_loop_variant_parameter_in_chain =
         HloPredicateFalse;
+    // Whether we allow control dependencies on the Collective operation being
+    // pipelined. The control dependencies will be dropped when the operation is
+    // pipelined. This is currently only used to support kBackward pipelining.
+    bool should_allow_control_dependencies = false;
     HloPostprocessor postprocess_backward_peeled_op = std::nullopt;
-    HloPostprocessor postprocess_backward_rorated_op = std::nullopt;
+    HloPostprocessor postprocess_backward_rotated_op = std::nullopt;
   };
   static const char* const kInsertedByPreviousStep;
   static const char* const kSunkByPreviousStep;

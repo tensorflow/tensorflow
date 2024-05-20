@@ -41,25 +41,15 @@ limitations under the License.
 
 namespace stream_executor {
 
-Stream::Stream(StreamExecutor *parent)
-    : parent_(parent), implementation_(nullptr), status_(absl::OkStatus()) {}
+Stream::Stream(StreamExecutor *parent,
+               std::unique_ptr<StreamInterface> implementation)
+    : parent_(parent),
+      implementation_(std::move(implementation)),
+      status_(absl::OkStatus()) {}
 
 absl::Status Stream::Initialize(
     std::optional<std::variant<StreamPriority, int>> priority) {
   absl::MutexLock lock(&mu_);
-  if (implementation_ != nullptr) {
-    return absl::InternalError(
-        "stream appears to already have been initialized");
-  }
-  implementation_ = parent_->implementation()->GetStreamImplementation();
-  if (priority.has_value()) {
-    if (std::holds_alternative<StreamPriority>(*priority)) {
-      implementation_->SetPriority(std::get<StreamPriority>(*priority));
-    } else {
-      implementation_->SetPriority(std::get<int>(*priority));
-    }
-  }
-
   if (parent_->AllocateStream(this)) {
     // Successful initialization!
     return absl::OkStatus();
@@ -143,9 +133,9 @@ absl::StatusOr<Stream *> Stream::GetOrCreateSubStream() {
   }
 
   // No streams are reusable; create a new stream.
-  sub_streams_.emplace_back(std::make_unique<Stream>(parent_), false);
-  Stream *sub_stream = sub_streams_.back().first.get();
-  TF_RETURN_IF_ERROR(sub_stream->Initialize());
+  TF_ASSIGN_OR_RETURN(auto stream, parent_->CreateStream());
+  Stream *sub_stream = stream.get();
+  sub_streams_.emplace_back(std::move(stream), false);
   VLOG(1) << "stream=" << this << " created new sub_stream=" << sub_stream;
 
   return sub_stream;
@@ -204,18 +194,12 @@ absl::Status Stream::WaitFor(Event *event) {
 
 absl::Status Stream::Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
                             uint64_t size) {
-  if (parent_->Memcpy(this, host_dst, gpu_src, size)) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("failed to memcpy");
+  return parent_->Memcpy(this, host_dst, gpu_src, size);
 }
 
 absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
                             uint64_t size) {
-  if (parent_->Memcpy(this, gpu_dst, host_src, size)) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("failed to memcpy");
+  return parent_->Memcpy(this, gpu_dst, host_src, size);
 }
 
 absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst,

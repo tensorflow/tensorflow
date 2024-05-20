@@ -25,7 +25,7 @@ namespace tsl {
 void Set_TF_Status_from_Status(TF_Status* tf_status,
                                const absl::Status& status) {
   TF_SetStatus(tf_status, TSLCodeFromStatusCode(status.code()),
-               tsl::NullTerminatedMessage(status));
+               absl::StatusMessageAsCStr(status));
   status.ForEachPayload(
       [tf_status](absl::string_view key, const absl::Cord& value) {
         std::string key_str(key);

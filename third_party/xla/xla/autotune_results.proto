@@ -44,3 +44,9 @@ message AutotuneResults {
 // LINT.ThenChange(
 //   "service/gpu/autotuner_util.cc:version"
 // )
+
+message AutotuningLogs {
+  repeated AutotuningLog logs = 1;
+
+  // Next ID: 2
+}

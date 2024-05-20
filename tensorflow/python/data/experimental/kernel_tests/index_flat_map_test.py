@@ -126,6 +126,31 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset, _map_func, _index_map_func)
     self.assertDatasetProduces(dataset, list(range(dataset_range)))
 
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              input_range=[0, 10],
+              map_output=[
+                  [[1, 2], [3, 4], [5, 6]],
+                  [[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]]]
+              ],
+              use_tensors=[True, False])))
+  def test_nested_list(
+      self, input_range: int, map_output: list[Any], use_tensors: bool):
+
+    def _map_func(_) -> Union[tensor.Tensor, list[list[int]]]:
+      return (constant_op.constant(map_output, dtype=dtypes.int64)
+              if use_tensors else map_output)
+
+    def _index_map_func(i: int) -> tuple[int, int]:
+      return (i // len(map_output), i % len(map_output))
+
+    dataset = dataset_ops.Dataset.range(input_range)
+    dataset = index_flat_map_op.index_flat_map(
+        dataset, _map_func, _index_map_func)
+    self.assertDatasetProduces(dataset, map_output * input_range)
+
   @combinations.generate(test_base.default_test_combinations())
   def test_offset_out_of_range(self):
 
@@ -137,11 +162,11 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = index_flat_map_op.index_flat_map(dataset, _split, _index_map_func)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        "invalid `index_map_fn` which returns offset 1000"):
+        "invalid `index_map_func` which returns offset 1000"):
       self.getDatasetOutput(dataset)
 
   @combinations.generate(test_base.default_test_combinations())
-  def test_invalid_map_fn(self):
+  def test_invalid_map_fn_type(self):
 
     def _index_map_func(_) -> str:
       # Expected to return two integers.

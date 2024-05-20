@@ -249,6 +249,9 @@ void QuantizePass::runOnOperation() {
                        quant::CustomOpUpdateOptions::kWeightOnly,
                        quant_specs.custom_map);
   }
+  if (enable_float16_quantization_) {
+    quant_specs.inference_type = tensorflow::DT_HALF;
+  }
 
   const quant::QuantPassSpec quant_params = {
       {quant_specs.verify_numeric, error_tolerance_,

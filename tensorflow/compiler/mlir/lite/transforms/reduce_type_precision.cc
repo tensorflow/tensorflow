@@ -62,12 +62,12 @@ class CheckRangeAndConvertI8ToI4 : public OpRewritePattern<arith::ConstantOp> {
 
   LogicalResult matchAndRewrite(arith::ConstantOp op,
                                 PatternRewriter &rewriter) const override {
-    auto const_type = op.getType().dyn_cast<ShapedType>();
+    auto const_type = mlir::dyn_cast<ShapedType>(op.getType());
     if (!const_type || !const_type.getElementType().isSignlessInteger(8)) {
       return failure();
     }
 
-    auto attr = op.getValue().cast<ElementsAttr>();
+    auto attr = mlir::cast<ElementsAttr>(op.getValue());
     for (mlir::APInt v : attr.getValues<mlir::APInt>()) {
       auto v_int = static_cast<int8_t>(*(v.getRawData()));
       if (v_int > 7 || v_int < -8) {
@@ -79,7 +79,7 @@ class CheckRangeAndConvertI8ToI4 : public OpRewritePattern<arith::ConstantOp> {
     auto shaped_type =
         mlir::RankedTensorType::get(const_type.getShape(), builder.getI4Type());
     auto newAttr = DenseElementsAttr::getFromRawBuffer(
-        shaped_type, op.getValue().cast<DenseElementsAttr>().getRawData());
+        shaped_type, mlir::cast<DenseElementsAttr>(op.getValue()).getRawData());
     rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, newAttr);
 
     return success();
@@ -92,8 +92,8 @@ class SanitizeGatherOpOutputToI4 : public OpRewritePattern<TFL::GatherOp> {
 
   LogicalResult matchAndRewrite(TFL::GatherOp op,
                                 PatternRewriter &rewriter) const override {
-    auto const_type = op.getOperand(0).getType().dyn_cast<ShapedType>();
-    auto result_type = op.getResult().getType().dyn_cast<ShapedType>();
+    auto const_type = mlir::dyn_cast<ShapedType>(op.getOperand(0).getType());
+    auto result_type = mlir::dyn_cast<ShapedType>(op.getResult().getType());
     if (!const_type || !const_type.getElementType().isSignlessInteger(4) ||
         !result_type || !result_type.getElementType().isSignlessInteger(8)) {
       return failure();
@@ -109,7 +109,8 @@ class SanitizeGatherOpOutputToI4 : public OpRewritePattern<TFL::GatherOp> {
     auto new_gather_op = rewriter.create<TFL::GatherOp>(
         op.getLoc(),
         /*result=*/
-        op.getResult().getType().cast<TensorType>().clone(builder.getI4Type()),
+        mlir::cast<TensorType>(op.getResult().getType())
+            .clone(builder.getI4Type()),
         /*operand=*/op.getOperands(), op->getAttrs());
     rewriter.replaceAllUsesWith(op.getResult(), new_gather_op.getResult());
 

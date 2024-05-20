@@ -251,10 +251,6 @@ class GpuDriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g27a365aebb0eb548166309f58a1e8b8e
   static void DestroyContext(GpuContext* context);
 
-  // Returns the context handle (CUcontext for CUDA and hipCtx_t for ROCm) of a
-  // GpuContext.
-  static GpuContextHandle GetContextHandle(GpuContext* context);
-
   // Queries the runtime for the specified attribute of the specified function.
   // cuFuncGetAttribute (the underlying CUDA driver API routine) only operates
   // in terms of integer-sized values, so there's no potential for overrun (as

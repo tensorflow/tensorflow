@@ -94,6 +94,7 @@ cc_library(
     deps = [
         ":byte_order",
         ":stringpiece",
+        ":tstring",
         ":types",
     ],
 )
@@ -1024,7 +1025,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "@ml_dtypes//:float8",
-        "@ml_dtypes//:int4",
+        "@ml_dtypes//:intn",
     ],
 )
 
@@ -1704,6 +1705,12 @@ bzl_library(
     name = "rules_cc_bzl",
     srcs = ["rules_cc.bzl"],
     deps = tf_platform_alias("rules_cc_bzl"),
+)
+
+bzl_library(
+    name = "build_config_root_bzl",
+    srcs = ["build_config_root.bzl"],
+    deps = tf_platform_alias("build_config_root_bzl"),
 )
 
 cc_library(

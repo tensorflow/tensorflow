@@ -537,7 +537,7 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
         TensorHandleFromInterface(abstract_tensor_handle));
   }
 
-  StatusOr<std::string> hlo_str;
+  absl::StatusOr<std::string> hlo_str;
   std::vector<Device*> devices = context->local_device_mgr()->ListDevices();
   Device* selected_device =
       GetDevice(context, device_name, platform_name, devices);
@@ -902,7 +902,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
             tensorflow::FunctionDef function_def;
             return function_def;
           }
-          status->status = ::tensorflow::OkStatus();
+          status->status = absl::OkStatus();
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
           return *ctx_function_def;
         });

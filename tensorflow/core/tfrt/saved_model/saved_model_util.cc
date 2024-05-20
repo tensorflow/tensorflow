@@ -366,6 +366,22 @@ absl::Status DeserializeAoTMlirModule(
   return absl::OkStatus();
 }
 
+CallableOptions CombineSignatureDefs(
+    const google::protobuf::Map<std::string, SignatureDef>& signature_defs) {
+  CallableOptions callable_options;
+  for (const auto& sig_iter : signature_defs) {
+    const auto& signature_def = sig_iter.second;
+
+    for (const auto& p : signature_def.inputs()) {
+      callable_options.add_feed(p.second.name());
+    }
+    for (const auto& p : signature_def.outputs()) {
+      callable_options.add_fetch(p.second.name());
+    }
+  }
+  return callable_options;
+}
+
 void RegisterTfrtDialectsForAot(mlir::DialectRegistry& registry) {
   tfrt::RegisterTFRTDialects(registry);
   registry.insert<tfrt::fallback::FallbackDialect>();

@@ -72,5 +72,6 @@ cc_library(
         "//tensorflow/lite/python/metrics:converter_error_data_proto_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )

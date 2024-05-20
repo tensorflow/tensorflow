@@ -1561,6 +1561,8 @@ bool ConvolutionVisitor::IsOpcodeNonPropagatable(HloInstruction* consumer) {
   switch (consumer->opcode()) {
     case HloOpcode::kCustomCall:
       return true;
+    case HloOpcode::kDot:
+      return !ctrl_.enable_propagations_on_dots;
     default:
       return false;
   }

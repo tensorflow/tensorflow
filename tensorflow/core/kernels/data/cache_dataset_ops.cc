@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -139,29 +140,19 @@ class DatasetRandomAccessCache {
 };
 
 // Caches dataset elements when global shuffling is enabled.
-// TODO(b/325112575): Support save/load.
 class IteratorRandomAccessCache {
  public:
   explicit IteratorRandomAccessCache(const DatasetBase* input)
       : input_(input) {}
 
-  absl::Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                   bool* end_of_sequence) {
-    TF_ASSIGN_OR_RETURN(size_t element_position,
-                        ctx->index_mapper()(element_count_++));
+  absl::Status Get(AnyContext ctx, size_t element_position,
+                   std::vector<Tensor>* out_tensors) {
     if (element_position < cache_.size() && !cache_[element_position].empty()) {
       *out_tensors = cache_[element_position];
-      *end_of_sequence = false;
       return absl::OkStatus();
     }
 
-    absl::Status status =
-        input_->Get(AnyContext(ctx), element_position, out_tensors);
-    if (absl::IsOutOfRange(status)) {
-      *end_of_sequence = true;
-      return absl::OkStatus();
-    }
-
+    TF_RETURN_IF_ERROR(input_->Get(ctx, element_position, out_tensors));
     if (element_position >= cache_.size()) {
       cache_.resize(element_position + 1);
     }
@@ -170,7 +161,6 @@ class IteratorRandomAccessCache {
   }
 
  private:
-  int64_t element_count_ = 0;
   const DatasetBase* input_ = nullptr;
   std::vector<std::vector<Tensor>> cache_;
 };
@@ -828,6 +818,16 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     return dataset_random_access_cache_->Get(ctx, index, out_tensors);
   }
 
+  Status Get(AnyContext ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    mutex_lock l(mu_);
+    if (!iterator_random_access_cache_) {
+      iterator_random_access_cache_ =
+          std::make_unique<IteratorRandomAccessCache>(input_);
+    }
+    return iterator_random_access_cache_->Get(ctx, index, out_tensors);
+  }
+
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
@@ -845,7 +845,9 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
   class MemoryIterator : public DatasetIterator<MemoryDatasetBase> {
    public:
     explicit MemoryIterator(const Params& params, MemoryCache* cache)
-        : DatasetIterator<MemoryDatasetBase>(params), cache_(cache) {}
+        : DatasetIterator<MemoryDatasetBase>(params),
+          cache_(cache),
+          global_shuffle_iterator_(dataset()) {}
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
@@ -855,15 +857,11 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      mutex_lock l(mu_);
       if (ctx->index_mapper() != nullptr) {
-        if (!iterator_random_access_cache_) {
-          iterator_random_access_cache_ =
-              std::make_unique<IteratorRandomAccessCache>(dataset()->input_);
-        }
-        return iterator_random_access_cache_->Get(ctx, out_tensors,
-                                                  end_of_sequence);
+        return global_shuffle_iterator_.GetNext(ctx, out_tensors,
+                                                end_of_sequence);
       }
+      mutex_lock l(mu_);
       return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
     }
 
@@ -887,6 +885,9 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
+      if (ctx->restored_element_count().has_value()) {
+        return global_shuffle_iterator_.Restore(ctx);
+      }
       mutex_lock l(mu_);
       iterator_.reset();
       cache_->Reset();
@@ -1068,8 +1069,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     mutex mu_;
     MemoryCache* cache_ TF_GUARDED_BY(mu_);  // not owned.
     std::unique_ptr<IteratorBase> iterator_ TF_GUARDED_BY(mu_);
-    std::unique_ptr<IteratorRandomAccessCache> iterator_random_access_cache_
-        TF_GUARDED_BY(mu_);
+    GlobalShuffleIterator global_shuffle_iterator_;
   };  // MemoryIterator
 
   mutable mutex mu_;
@@ -1077,6 +1077,8 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
   const std::shared_ptr<MemoryCache> cache_;
   mutable std::unique_ptr<DatasetRandomAccessCache> dataset_random_access_cache_
       TF_GUARDED_BY(mu_);
+  mutable std::unique_ptr<IteratorRandomAccessCache>
+      iterator_random_access_cache_;
   absl::Status random_indexing_compatible_ = absl::OkStatus();
 };  // MemoryDatasetBase
 

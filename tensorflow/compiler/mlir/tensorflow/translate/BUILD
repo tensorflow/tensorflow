@@ -107,6 +107,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@local_xla//xla:status_macros",
     ],
 )
@@ -123,33 +124,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
         "@local_tsl//tsl/platform:protobuf",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "mlir_roundtrip_pass",
-    srcs = ["mlir_roundtrip_pass.cc"],
-    hdrs = ["mlir_roundtrip_pass.h"],
-    deps = [
-        ":export_graphdef",
-        ":import_model",
-        ":mlir_roundtrip_flags",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/core:core_cpu_lib",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@local_xla//xla:status_macros",
-    ],
-)
-
-cc_library(
-    name = "mlir_roundtrip_pass_registration",
-    srcs = ["mlir_roundtrip_pass_registration.cc"],
-    deps = [
-        ":mlir_roundtrip_pass",
     ],
     alwayslink = 1,
 )
@@ -209,6 +183,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
     ],
 )
 

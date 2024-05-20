@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/status.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -124,7 +124,7 @@ class LoadedExecutable
   // compilation work in the background. Implementations must still ensure that
   // all other methods can be used even without explicitly waiting for the ready
   // future (e.g., via blocking).
-  virtual Future<absl::Status> GetReadyFuture() const = 0;
+  virtual Future<> GetReadyFuture() const = 0;
 
   // The following APIs are taken from `xla::PjRtExecutable` for fast
   // prototyping.
@@ -206,7 +206,7 @@ class LoadedExecutable
   // The returned future will have the result of the deletion on the devices.
   // Implementations that do not track the completion of the deletion operation
   // may make the future immediately ready with an OK status.
-  virtual Future<Status> Delete() = 0;
+  virtual Future<> Delete() = 0;
   // Returns whether the executable has been enqueued for deletion from the
   // devices.
   virtual bool IsDeleted() const = 0;

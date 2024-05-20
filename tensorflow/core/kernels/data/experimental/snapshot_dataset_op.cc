@@ -919,7 +919,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         snapshot_util::DumpDatasetGraph(ctx->env(), path, hash, &graph_def);
     if (!dump_status.ok()) {
       LOG(WARNING) << "Unable to write graphdef to disk, error: "
-                   << dump_status.ToString();
+                   << dump_status;
     }
 
     std::string graph_hash =
@@ -1557,7 +1557,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               }
               curr_filenames_[i] = GetNextFilename();
             } else {
-              LOG(ERROR) << "Encountered an error: " << s.ToString();
+              LOG(ERROR) << "Encountered an error: " << s;
               BufferElement elem;
               elem.status = s;
               mutex_lock l(mu_);
@@ -2099,7 +2099,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               kCurrentVersion, dataset()->output_dtypes(), &writer);
           if (!s.ok()) {
             LOG(ERROR) << "Creating " << snapshot_data_filename
-                       << " failed: " << s.ToString();
+                       << " failed: " << s;
             mutex_lock l(mu_);
             snapshot_failed_ = true;
             cond_var_.notify_all();
@@ -2112,8 +2112,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 ProcessOneElement(env, &bytes_written, &snapshot_data_filename,
                                   &writer, &end_of_processing);
             if (!s.ok()) {
-              LOG(INFO) << "Error while writing snapshot data to disk: "
-                        << s.ToString();
+              LOG(INFO) << "Error while writing snapshot data to disk: " << s;
               mutex_lock l(mu_);
               snapshot_failed_ = true;
               cond_var_.notify_all();

@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "xla/mlir_hlo/utils/convert_op_folder.h"
@@ -68,11 +69,9 @@ StatusOr<mlir::Operation*> FillSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto int_type = mlir::RankedTensorType::get(
       static_cast<int64>(shard_values.size()), builder.getIntegerType(32));
   auto int_attr = mlir::DenseIntElementsAttr::get(int_type, shard_values);
-  auto target_type_attr =
-      mlir::hlo::convertElementsAttr(int_attr, original_fill.getDims()
-                                                   .getType()
-                                                   .cast<mlir::TensorType>()
-                                                   .getElementType());
+  auto target_type_attr = mlir::hlo::convertElementsAttr(
+      int_attr, mlir::cast<mlir::TensorType>(original_fill.getDims().getType())
+                    .getElementType());
 
   auto location = DT_LOC(op);
   auto num_shards =
@@ -82,7 +81,7 @@ StatusOr<mlir::Operation*> FillSPMDExpander::ExpandOp(mlir::Operation* op) {
                                              num_shards.getResult());
   // Copy over static shape information if available
   auto global_output_type =
-      original_fill.getResult().getType().cast<mlir::TensorType>();
+      mlir::cast<mlir::TensorType>(original_fill.getResult().getType());
   TF_ASSIGN_OR_RETURN(
       auto local_type,
       LocalTypeFromGlobalType(output_layout.value(), global_output_type));

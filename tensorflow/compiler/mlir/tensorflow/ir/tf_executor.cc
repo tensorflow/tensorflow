@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
@@ -119,11 +120,11 @@ Type TensorFlowExecutorDialect::parseType(DialectAsmParser &parser) const {
 
 void TensorFlowExecutorDialect::printType(Type type,
                                           DialectAsmPrinter &os) const {
-  if (type.isa<ControlType>()) {
+  if (mlir::isa<ControlType>(type)) {
     os << "control";
     return;
   }
-  if (type.isa<TokenType>()) {
+  if (mlir::isa<TokenType>(type)) {
     os << "token";
     return;
   }
@@ -141,7 +142,7 @@ namespace {
 LogicalResult VerifyControlOperandsAfterAllData(Operation *op) {
   bool found_control = false;
   for (int operand_idx : llvm::seq<int>(0, op->getNumOperands())) {
-    if (op->getOperand(operand_idx).getType().isa<ControlType>()) {
+    if (mlir::isa<ControlType>(op->getOperand(operand_idx).getType())) {
       found_control = true;
       continue;
     }
@@ -192,7 +193,7 @@ LogicalResult GraphOp::verify() {
     Value operand = fetch.getOperand(i);
     // Break out of the loop at the first control operand encountered.
     const int64_t num_results = graph.getNumResults();
-    if (operand.getType().isa<ControlType>()) {
+    if (mlir::isa<ControlType>(operand.getType())) {
       if (i != num_results)
         return fetch.emitOpError()
                << "operand #" << i
@@ -241,7 +242,7 @@ ParseResult GraphOp::parse(OpAsmParser &parser, OperationState &result) {
   // the fetch operation.
   result.types.reserve(fetch.getNumOperands());
   for (Type type : fetch.getOperandTypes()) {
-    if (type.isa<ControlType>()) break;
+    if (mlir::isa<ControlType>(type)) break;
     result.types.push_back(type);
   }
 
@@ -403,8 +404,8 @@ ParseResult SwitchOp::parse(OpAsmParser &parser, OperationState &result) {
   // fully qualified) or a short form with a single type (in which case the data
   // input and the outputs are all using this type and predicate is tensor<i1>
   // type).
-  if (types.front().isa<FunctionType>()) {
-    FunctionType type = types.front().cast<FunctionType>();
+  if (mlir::isa<FunctionType>(types.front())) {
+    FunctionType type = mlir::cast<FunctionType>(types.front());
     if (type.getNumInputs() < 2)
       return parser.emitError(parser.getNameLoc())
              << " expects a single data type and a predicate";
@@ -439,7 +440,7 @@ void SwitchOp::print(OpAsmPrinter &p) {
   p << " : ";
   if (getTrueOutput().getType() != data_operand_ty ||
       getFalseOutput().getType() != data_operand_ty ||
-      getPredicate().getType().isa<UnrankedTensorType>()) {
+      mlir::isa<UnrankedTensorType>(getPredicate().getType())) {
     p.printFunctionalType(getOperation());
   } else {
     p << getType(0);
@@ -465,16 +466,16 @@ LogicalResult SwitchNOp::verify() {
 
   // Check that operand can be broadcasted to each output type.
   auto operand0_type = switchn.getOperand(0).getType();
-  TensorType operand0_tensor_type = operand0_type.dyn_cast<TensorType>();
+  TensorType operand0_tensor_type = mlir::dyn_cast<TensorType>(operand0_type);
   if (!operand0_tensor_type) {
     return switchn.emitOpError()
            << "expects data operand to have tensor type but got "
            << operand0_type;
   }
   for (Type output_type : switchn.getResultTypes()) {
-    if (output_type.isa<ControlType>()) break;
+    if (mlir::isa<ControlType>(output_type)) break;
 
-    TensorType output_tensor_type = output_type.dyn_cast<TensorType>();
+    TensorType output_tensor_type = mlir::dyn_cast<TensorType>(output_type);
     if (!output_tensor_type) {
       return switchn.emitOpError()
              << "expects outputs to have tensor type but got " << output_type;
@@ -483,10 +484,10 @@ LogicalResult SwitchNOp::verify() {
     // If the output type is a ref type, then the operand type should also be of
     // the same ref type. However, if the output type is a non-ref type T, then
     // the operand can be tensor of type T or T_REF.
-    bool is_output_ref =
-        output_tensor_type.getElementType().isa<tf_type::TensorFlowRefType>();
-    if (is_output_ref && !operand0_tensor_type.getElementType()
-                              .isa<tf_type::TensorFlowRefType>()) {
+    bool is_output_ref = mlir::isa<tf_type::TensorFlowRefType>(
+        output_tensor_type.getElementType());
+    if (is_output_ref && !mlir::isa<tf_type::TensorFlowRefType>(
+                             operand0_tensor_type.getElementType())) {
       return switchn.emitOpError()
              << "expects same operand and output element type but got "
              << operand0_tensor_type << " vs " << output_tensor_type;
@@ -573,24 +574,24 @@ LogicalResult MergeOp::verify() {
     return merge.emitOpError() << "expects at least one operand";
 
   Type data_type = merge.getOperand(0).getType();
-  if (data_type.isa<ControlType>())
+  if (mlir::isa<ControlType>(data_type))
     return merge.emitOpError() << "expects a non-control input";
 
   // Check that each operand can be individually broadcasted to the output type.
   Type output_type = merge.getOutput().getType();
-  TensorType output_tensor_ty = output_type.dyn_cast<TensorType>();
+  TensorType output_tensor_ty = mlir::dyn_cast<TensorType>(output_type);
   if (!output_tensor_ty) {
     return merge.emitOpError()
            << "expects output to have tensor type but got " << output_type;
   }
   bool is_output_ref =
-      output_tensor_ty.getElementType().isa<tf_type::TensorFlowRefType>();
+      mlir::isa<tf_type::TensorFlowRefType>(output_tensor_ty.getElementType());
   for (Type operand_type : merge.getOperandTypes()) {
-    if (operand_type.isa<ControlType>()) break;
+    if (mlir::isa<ControlType>(operand_type)) break;
 
     // TODO(hinsu): Update ControlOperandsAfterAllData trait to verify this
     // constraint.
-    TensorType operand_tensor_ty = operand_type.dyn_cast<TensorType>();
+    TensorType operand_tensor_ty = mlir::dyn_cast<TensorType>(operand_type);
     if (!operand_tensor_ty)
       return merge.emitOpError()
              << "expects data operands to have tensor type but got "
@@ -599,8 +600,8 @@ LogicalResult MergeOp::verify() {
     // If output type is a ref type then all operand types should also be of the
     // same ref type. However, if the output type is a non-ref type T, operands
     // can be tensor of type T or T_REF.
-    if (is_output_ref &&
-        !operand_tensor_ty.getElementType().isa<tf_type::TensorFlowRefType>()) {
+    if (is_output_ref && !mlir::isa<tf_type::TensorFlowRefType>(
+                             operand_tensor_ty.getElementType())) {
       return merge.emitOpError()
              << "expects same operand and output element type but got "
              << operand_tensor_ty << " vs " << output_tensor_ty;
@@ -624,7 +625,7 @@ void MergeOp::print(OpAsmPrinter &p) {
 
   Type output_type = getOutput().getType();
   for (Type operand_type : getOperandTypes()) {
-    if (operand_type.isa<ControlType>()) break;
+    if (mlir::isa<ControlType>(operand_type)) break;
     num_data_operands++;
 
     if (operand_type != output_type) {
@@ -660,7 +661,7 @@ ParseResult MergeOp::parse(OpAsmParser &parser, OperationState &result) {
   // Support parsing either a functional type (in which case all the types are
   // fully qualified) or a short form with a single type (in which case the data
   // inputs and the output are all using this type).
-  if (FunctionType type = types.front().dyn_cast<FunctionType>()) {
+  if (FunctionType type = mlir::dyn_cast<FunctionType>(types.front())) {
     result.types.assign(type.getResults().begin(), type.getResults().end());
     types.assign(type.getInputs().begin(), type.getInputs().end());
   } else {
@@ -747,7 +748,7 @@ ParseResult EnterOp::parse(OpAsmParser &parser, OperationState &result) {
   // Support parsing either a functional type (in which case all the types are
   // fully qualified) or a short form with a single type (in which case the data
   // input and the outputs are all using this type).
-  if (FunctionType type = types.front().dyn_cast<FunctionType>()) {
+  if (FunctionType type = mlir::dyn_cast<FunctionType>(types.front())) {
     // One data input, and any number of control inputs.
     if (type.getNumInputs() >= 1) {
       result.types.assign(type.getResults().begin(), type.getResults().end());
@@ -876,7 +877,7 @@ ParseResult LoopCondOp::parse(OpAsmParser &parser, OperationState &result) {
   // fully qualified) or a short form with a single type (in which case the data
   // input and the outputs are all using this type).
   Type control_type = ControlType::get(parser.getBuilder().getContext());
-  if (FunctionType type = types.front().dyn_cast<FunctionType>()) {
+  if (FunctionType type = mlir::dyn_cast<FunctionType>(types.front())) {
     if (llvm::count_if(type.getInputs(),
                        [=](Type type) { return type != control_type; }) != 1)
       return parser.emitError(parser.getNameLoc())
@@ -959,14 +960,14 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
     llvm::SmallVector<Value, 8> new_rets;
     for (Value operand : fetch_op.getFetches()) {
       // Control results should not be propagated out.
-      if (operand.getType().isa<ControlType>()) break;
+      if (mlir::isa<ControlType>(operand.getType())) break;
 
       if (operand.getDefiningOp() != island_op) {
         // Operand is not from island, simply propagate it out.
         new_rets.push_back(operand);
       } else {
         // Lookup yield operand in island for inner op result.
-        auto result = operand.cast<OpResult>();
+        auto result = mlir::cast<OpResult>(operand);
         new_rets.push_back(yield_op.getOperand(result.getResultNumber()));
       }
     }

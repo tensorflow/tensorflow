@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/Passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
@@ -80,7 +81,7 @@ LogicalResult QuantizedConstRewrite::matchAndRewrite(
   }
 
   // Is the constant value a type expressed in a way that we support?
-  if (!value.isa<FloatAttr, DenseElementsAttr, SparseElementsAttr>()) {
+  if (!mlir::isa<FloatAttr, DenseElementsAttr, SparseElementsAttr>(value)) {
     return failure();
   }
 

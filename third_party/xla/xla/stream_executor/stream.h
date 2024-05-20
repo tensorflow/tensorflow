@@ -82,7 +82,8 @@ class Stream {
   // Instantiate a stream tied to parent as a platform executor. Work
   // entrained onto this stream will be launched/managed on that
   // StreamExecutor's platform.
-  explicit Stream(StreamExecutor *parent);
+  explicit Stream(StreamExecutor *parent,
+                  std::unique_ptr<StreamInterface> implementation);
 
   // Deallocates any stream resources that the parent StreamExecutor has
   // bestowed

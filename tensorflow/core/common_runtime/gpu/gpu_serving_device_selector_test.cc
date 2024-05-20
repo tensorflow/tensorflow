@@ -84,18 +84,18 @@ TEST(GpuServingDeviceSelector, DefaultPolicyOnlyEnqueueCall) {
   serving_device_selector->Enqueue(1, "4ms");
   serving_device_selector->Enqueue(0, "2ms");
   helper.ElapseNs(2e6);
-  serving_device_selector->Completed(0, false);
+  serving_device_selector->Completed(0);
   helper.ElapseNs(2e6);
-  serving_device_selector->Completed(0, false);
-  serving_device_selector->Completed(1, false);
+  serving_device_selector->Completed(0);
+  serving_device_selector->Completed(1);
   helper.ElapseNs(4e6);
-  serving_device_selector->Completed(1, false);
-  serving_device_selector->Completed(2, false);
+  serving_device_selector->Completed(1);
+  serving_device_selector->Completed(2);
   helper.ElapseNs(8e6);
-  serving_device_selector->Completed(2, false);
-  serving_device_selector->Completed(3, false);
+  serving_device_selector->Completed(2);
+  serving_device_selector->Completed(3);
   helper.ElapseNs(16e6);
-  serving_device_selector->Completed(3, false);
+  serving_device_selector->Completed(3);
 
   serving_device_selector->Enqueue(3, "16ms");
   EXPECT_EQ(
@@ -114,22 +114,22 @@ TEST(GpuServingDeviceSelector, DefaultPolicyOnlyEnqueueCall) {
       GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
       30e6);
   helper.ElapseNs(2e6);
-  serving_device_selector->Completed(0, false);
+  serving_device_selector->Completed(0);
   EXPECT_EQ(
       GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
       22e6);
   helper.ElapseNs(2e6);
-  serving_device_selector->Completed(1, false);
+  serving_device_selector->Completed(1);
   EXPECT_EQ(
       GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
       16e6);
   helper.ElapseNs(4e6);
-  serving_device_selector->Completed(2, false);
+  serving_device_selector->Completed(2);
   EXPECT_EQ(
       GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
       8e6);
   helper.ElapseNs(8e6);
-  serving_device_selector->Completed(3, false);
+  serving_device_selector->Completed(3);
   EXPECT_EQ(
       GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
       0e6);

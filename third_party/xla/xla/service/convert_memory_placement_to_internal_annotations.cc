@@ -56,10 +56,6 @@ absl::StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
         }
         if (is_to_host_case) {
           VLOG(1) << "Process forward case: " << instruction->ToString();
-          if (instruction->users().size() != 1) {
-            VLOG(1) << "Skip because of too many users on instruction";
-            continue;
-          }
           if (instruction->operand_count() != 1) {
             return Internal(
                 "Custom calls with target %s must have exactly one operand. %s "

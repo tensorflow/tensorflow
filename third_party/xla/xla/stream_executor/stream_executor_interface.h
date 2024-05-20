@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <variant>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_interface.h"
 
 namespace stream_executor {
@@ -48,11 +51,36 @@ class StreamExecutorInterface {
   StreamExecutorInterface() = default;
   virtual ~StreamExecutorInterface() = default;
 
+  // Returns a reference to the platform that created this executor.
+  virtual const Platform* GetPlatform() const = 0;
+
   // Initializes the device for use.
   virtual absl::Status Init() = 0;
 
   // Returns the device ordinal.
   virtual int device_ordinal() const { return -1; }
+
+  // Creates and initializes a Stream.
+  virtual absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority =
+          std::nullopt) = 0;
+
+  // Obtains metadata about the underlying device.
+  // The value is cached on first use.
+  virtual const DeviceDescription& GetDeviceDescription() const = 0;
+
+  // Synchronously allocates an array on the device of type T with element_count
+  // elements.
+  template <typename T>
+  DeviceMemory<T> AllocateArray(uint64_t element_count,
+                                int64_t memory_space = 0);
+
+  // Convenience wrapper that allocates space for a single element of type T in
+  // device memory.
+  template <typename T>
+  DeviceMemory<T> AllocateScalar() {
+    return AllocateArray<T>(1);
+  }
 
   // Retrieves (loads) a kernel, if one exists.
   //
@@ -171,12 +199,20 @@ class StreamExecutorInterface {
   virtual absl::Status SynchronousMemcpy(DeviceMemoryBase* device_dst,
                                          const void* host_src,
                                          uint64_t size) = 0;
+  absl::Status SynchronousMemcpyH2D(const void* host_src, int64_t size,
+                                    DeviceMemoryBase* device_dst) {
+    return SynchronousMemcpy(device_dst, host_src, size);
+  }
 
-  // Blocks the caller while "size" bytes are copied to the given location in
-  // host memory.
+  // Blocks the caller while "size" bytes are copied to the given location
+  // in host memory.
   virtual absl::Status SynchronousMemcpy(void* host_dst,
                                          const DeviceMemoryBase& device_src,
                                          uint64_t size) = 0;
+  absl::Status SynchronousMemcpyD2H(const DeviceMemoryBase& device_src,
+                                    int64_t size, void* host_dst) {
+    return SynchronousMemcpy(host_dst, device_src, size);
+  }
 
   // Enqueues an operation onto stream to zero out size bytes at the given
   // device memory location. Neither stream nor location may be null. Returns
@@ -283,19 +319,16 @@ class StreamExecutorInterface {
     return false;
   }
 
-  // Retrieves device pointer and size for a symbol. The device pointer is
-  // stored at mem, and the size is stored at size. Either mem or bytes can be
-  // null, however, both of them cannot be null at the same time. To use
-  // constant memory in CUDA, GetSymbol has to be used. Returns true if symbol
-  // is found.
+  // Retrieves device pointer and size for a symbol. To use
+  // constant memory in CUDA, GetSymbol has to be used. Returns DeviceMemoryBase
+  // describing the symbol in memory if symbol is found.
   //
   // If ModuleHandle is set then we search for `symbol_name` only within the
   // module corresponding to `module_handle`.  Otherwise all loaded modules are
   // searched.
-  virtual bool GetSymbol(const std::string& symbol_name,
-                         ModuleHandle module_handle, void** mem,
-                         size_t* bytes) {
-    return false;
+  virtual absl::StatusOr<DeviceMemoryBase> GetSymbol(
+      const std::string& symbol_name, ModuleHandle module_handle) {
+    return absl::UnimplementedError("Not implemented");
   }
 
   // Creates a new DeviceDescription object. Ownership is transferred to the
@@ -327,7 +360,6 @@ class StreamExecutorInterface {
   // Each call creates a new instance of the platform-specific implementation of
   // the corresponding interface type.
   virtual std::unique_ptr<EventInterface> CreateEventImplementation() = 0;
-  virtual std::unique_ptr<StreamInterface> GetStreamImplementation() = 0;
 
   // Creates a new Kernel object.
   // TODO(klucke) Combine with GetKernel.
@@ -359,10 +391,29 @@ class StreamExecutorInterface {
   // Returns a stream allocated by this executor, or nullptr if not found.
   virtual Stream* FindAllocatedStream(void* device_stream) { return nullptr; }
 
+  // Returns the memory limit in bytes supported by this executor.
+  virtual int64_t GetMemoryLimitBytes() const = 0;
+
  private:
   StreamExecutorInterface(const StreamExecutorInterface&) = delete;
   void operator=(const StreamExecutorInterface&) = delete;
 };
+
+template <typename T>
+inline DeviceMemory<T> StreamExecutorInterface::AllocateArray(
+    uint64_t element_count, int64_t memory_space) {
+  uint64_t bytes = sizeof(T) * element_count;
+  auto memory_limit_bytes = GetMemoryLimitBytes();
+  if (memory_limit_bytes > 0 &&
+      static_cast<int64_t>(bytes) > memory_limit_bytes) {
+    LOG(WARNING) << "Not enough memory to allocate " << bytes << " on device "
+                 << device_ordinal()
+                 << " within provided limit.  limit=" << memory_limit_bytes
+                 << "]";
+    return DeviceMemory<T>();
+  }
+  return DeviceMemory<T>(Allocate(bytes, memory_space));
+}
 
 }  // namespace stream_executor
 

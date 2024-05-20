@@ -4083,6 +4083,27 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
+  @test_util.run_v2_only
+  def testKerasRNNLSTMFloat16Quant(self):
+    input_data = tf.constant(
+        np.array(np.random.random_sample((4, 10, 10)), dtype=np.float32)
+    )
+    # Specify a fixed batch size(4) for the test model.
+    x = tf.keras.layers.Input(batch_shape=(4, 10, 10))
+    y = tf.keras.layers.LSTM(units=10, input_shape=(10, 10))(x)
+    model = tf.keras.Model(inputs=[x], outputs=[y])
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.target_spec.supported_types = [tf.float16]
+    tflite_model = converter.convert()
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
+
+    # Check values from converted model.
+    expected_value = model.predict(input_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-03)
+
   @parameterized.named_parameters(
       ('ForceToUseBatchSizeOne', True), ('DontForceToUseBatchSizeOne', False)
   )

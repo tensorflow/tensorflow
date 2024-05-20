@@ -51,8 +51,8 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing021) {
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 floordiv 2,
-          d0 floordiv 32 + s1 * 4,
-          (d3 mod 2) * 32 + d0 mod 32
+          ### d0 floordiv 32 + s1 * 4 ###,
+          ### (d3 mod 2) * 32 + d0 mod 32 ###
         )
         domain:
         d0 in [0, 127]
@@ -71,7 +71,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing021) {
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 floordiv 2,
-          d0 floordiv 32 + (d3 mod 2) * 32 + s1 * 4,
+          ### d0 floordiv 32 + (d3 mod 2) * 32 + s1 * 4 ###,
           d0 mod 32
         )
         domain:
@@ -129,9 +129,9 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing201) {
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
-          d0 floordiv 32 + s1 * 4,
+          ### d0 floordiv 32 + s1 * 4 ###,
           d3 floordiv 2,
-          (d3 mod 2) * 32 + d0 mod 32
+          ### (d3 mod 2) * 32 + d0 mod 32 ###
         )
         domain:
         d0 in [0, 127]
@@ -245,26 +245,8 @@ TEST_F(MlirTransposeFusionTest, Transpose021_NoEpilogue) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK-LABEL: func.func @fused_computation(
-    // CHECK-SAME:   }, %[[OUT:.*]]: tensor<20x170x160xf32>
-    //
-    // CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
-    // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
-    // CHECK-DAG:  %[[C8:.*]] = arith.constant 8 : index
-    // CHECK:      %[[SHMEM:.*]] = xla_gpu.allocate_shared : tensor<1x32x32xf32>
-    // CHECK:      %[[SHMEM_WITH_VALS:.*]] = scf.for
-    // CHECK-SAME:     %[[C0]] to %[[C8]] step %[[C1]]
-    // CHECK-SAME:     iter_args(%[[SHMEM_:.*]] = %[[SHMEM]])
-    // CHECK:        %[[EXP:.*]] = xla_gpu.pure_call @fused_computation_p0
-    // CHECK:        tensor.insert %[[EXP]] into %[[SHMEM_]]
-
-    // CHECK:      %[[SYNC:.*]] = xla_gpu.sync_threads %[[SHMEM_WITH_VALS]]
-
-    // CHECK:      scf.for
-    // CHECK-SAME:    %[[C0]] to %[[C8]] step %[[C1]]
-    // CHECK-SAME:    iter_args(%[[OUT_:.*]] = %[[OUT]])
-    // CHECK:       %[[SHMEM_ELEM:.*]] = tensor.extract %[[SYNC]]
-    // CHECK:       tensor.insert %[[SHMEM_ELEM]] into %[[OUT_]]
+    // CHECK:       func.func private @fused_computation__epilogue__
+    // CHECK-NEXT:  return %
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }

@@ -38,10 +38,10 @@ template <typename AttrType>
 bool EnsureAttribute(const DictionaryAttr& composite_attributes,
                      const std::string& attr_name, AttrType* out_attr) {
   Attribute attr = composite_attributes.get(attr_name);
-  if (!attr.isa_and_nonnull<AttrType>()) {
+  if (!mlir::isa_and_nonnull<AttrType>(attr)) {
     return false;
   }
-  if (AttrType content = attr.dyn_cast<AttrType>()) {
+  if (AttrType content = mlir::dyn_cast<AttrType>(attr)) {
     *out_attr = content;
     return true;
   } else {

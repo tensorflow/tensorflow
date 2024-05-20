@@ -16,29 +16,34 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_HUMAN_READABLE_JSON_H_
 #define TENSORFLOW_TSL_PLATFORM_HUMAN_READABLE_JSON_H_
 
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 
 // Converts a proto to a JSON-like string that's meant to be human-readable
 // but still machine-parseable.
 //
-// This string may not be strictly JSON-compliant, but it must be parseable by
+// This string may not be strictly JSON-compliant, but it must be parsable by
 // HumanReadableJSONToProto.
 //
 // When ignore_accuracy_loss = true, this function may ignore JavaScript
 // accuracy loss with large integers.
-Status ProtoToHumanReadableJson(const protobuf::Message& proto, string* result,
-                                bool ignore_accuracy_loss);
-Status ProtoToHumanReadableJson(const protobuf::MessageLite& proto,
-                                string* result, bool ignore_accuracy_loss);
+absl::StatusOr<std::string> ProtoToHumanReadableJson(
+    const protobuf::Message& proto, bool ignore_accuracy_loss);
+absl::StatusOr<std::string> ProtoToHumanReadableJson(
+    const protobuf::MessageLite& proto, bool ignore_accuracy_loss);
 
 // Converts a string produced by ProtoToHumanReadableJSON to a protobuf.  Not
 // guaranteed to work for general JSON.
-Status HumanReadableJsonToProto(const string& str, protobuf::Message* proto);
-Status HumanReadableJsonToProto(const string& str,
-                                protobuf::MessageLite* proto);
+absl::Status HumanReadableJsonToProto(const string& str,
+                                      protobuf::Message* proto);
+absl::Status HumanReadableJsonToProto(const string& str,
+                                      protobuf::MessageLite* proto);
 
 }  // namespace tsl
 

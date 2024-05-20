@@ -346,25 +346,10 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           self._input_saved_model_path, quantization_options=options
       )
 
-  @test_util.run_in_graph_and_eager_modes
   def test_force_graph_mode_calibration(self):
-    input_type = dtypes.int32
-    input_placeholder = self._create_and_save_tf1_gather_model(
-        self._input_saved_model_path,
-        signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
-        tags={tag_constants.SERVING},
-        input_key='x',
-        output_key='output',
-        input_type=input_type,
-    )
+    model = self.SimpleModel()
 
-    data_gen = self._create_data_generator(
-        input_key='x',
-        shape=input_placeholder.shape,
-        minval=0,
-        maxval=10,
-        dtype=input_type,
-    )
+    saved_model_save.save(model, self._input_saved_model_path)
 
     options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -383,7 +368,7 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
         quantize_model.quantize(
             self._input_saved_model_path,
             quantization_options=options,
-            representative_dataset=data_gen,
+            representative_dataset=self._simple_model_data_gen(),
         )
       finally:
         # Restore the logger verbosity.
@@ -6211,25 +6196,25 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
               stablehlo_quant_config_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
                   calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
-                      initial_num_bins=32,
+                      num_bins=32,
                   ),
               ),
               stablehlo_quant_config_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
                   calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
-                      initial_num_bins=32,
+                      num_bins=32,
                   ),
               ),
               stablehlo_quant_config_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
                   calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
-                      initial_num_bins=32,
+                      num_bins=32,
                   ),
               ),
               stablehlo_quant_config_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
                   calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
-                      initial_num_bins=32,
+                      num_bins=32,
                   ),
               ),
           ],
@@ -6376,7 +6361,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           'default_calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
               calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=256,
+                  num_bins=512,
                   min_percentile=0.001,
                   max_percentile=99.999,
               ),
@@ -6390,7 +6375,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           'default_calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
               calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=256
+                  num_bins=512
               ),
           ),
       },
@@ -6402,7 +6387,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           'default_calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
               calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=256
+                  num_bins=512
               ),
           ),
       },
@@ -6414,7 +6399,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           'default_calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
               calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=256
+                  num_bins=512
               ),
           ),
       },
@@ -6441,8 +6426,8 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
         default_calibration_options.calibration_method,
     )
     self.assertEqual(
-        quant_opts.calibration_options.calibration_parameters.initial_num_bins,
-        default_calibration_options.calibration_parameters.initial_num_bins,
+        quant_opts.calibration_options.calibration_parameters.num_bins,
+        default_calibration_options.calibration_parameters.num_bins,
     )
     self.assertEqual(
         quant_opts.calibration_options.calibration_parameters.min_percentile,

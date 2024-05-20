@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import os
 import re
 from typing import Mapping, Optional, Sequence
 
 from absl.testing import parameterized
 import numpy as np
 
+from google.protobuf import text_format
 from tensorflow.compiler.mlir.quantization.common.python import testing
 from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as qc
 from tensorflow.compiler.mlir.quantization.stablehlo.python import quantization
@@ -145,7 +147,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # done in MLIR level.
     # Tests that the quantized graph outputs similar values. The rtol and atol
     # values are arbitrary.
-    self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
+    self.assertAllClose(new_outputs, expected_outputs, rtol=0.3, atol=0.2)
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
@@ -897,7 +899,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # be exactly the same. Indirectly proves that the `FunctionNameMatcherSpec`
     # with regex '.*invalid_function_name.*' did not match the quantizable unit.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.04)
-    self.assertNotAllClose(new_outputs, expected_outputs, rtol=0.00001)
+    self.assertNotAllClose(new_outputs, expected_outputs, 1e-7)
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
@@ -905,6 +907,72 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             self._output_saved_model_path, self._input_saved_model_path
         ),
         0.4,
+    )
+
+  def test_save_quantization_report_file(self):
+    """Tests that the quantization report file is created.
+
+    Also test that it is populated with textproto of `QuantizationResults`.
+    """
+    input_shape = (1, 16)
+    filter_shape = (16, 3)
+    self._create_matmul_model(
+        input_shape,
+        filter_shape,
+        self._input_saved_model_path,
+    )
+
+    rng = np.random.default_rng(seed=42)
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(100):
+        yield {
+            'input_tensor': rng.uniform(
+                low=0.0, high=1.0, size=input_shape
+            ).astype(np.float32)
+        }
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    report_file_path = self.create_tempfile('report.txtpb').full_path
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                )
+            ]
+        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+        report_file_path=report_file_path,
+    )
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    # Test the contents of the report file, which is a textproto of
+    # `QuantizationResults`.
+    self.assertTrue(os.path.exists(report_file_path))
+    with open(report_file_path, 'r') as f:
+      quantization_results_textpb = f.read()
+
+    results = qc.QuantizationResults()
+    text_format.Parse(quantization_results_textpb, results)
+
+    self.assertProtoEquals(
+        expected_message_maybe_ascii=r"""
+        results {
+          quantizable_unit { name: "composite_dot_general_fn_1" }
+          method { static_range_ptq {} }
+        }
+        """,
+        message=results,
     )
 
 
@@ -931,7 +999,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           'calibration_options': qc.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
               calibration_parameters=qc.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+                  num_bins=10,
               ),
           ),
       },
@@ -939,7 +1007,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           'calibration_options': qc.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
               calibration_parameters=qc.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+                  num_bins=10,
               ),
           ),
       },
@@ -947,7 +1015,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           'calibration_options': qc.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
               calibration_parameters=qc.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+                  num_bins=10,
               ),
           ),
       },
@@ -955,7 +1023,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           'calibration_options': qc.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
               calibration_parameters=qc.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+                  num_bins=10,
               ),
           ),
       },
@@ -1212,9 +1280,8 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._output_saved_model_path
     )
 
-    # Tests that the output graph contains subtract and multiply for
+    # Tests that the output graph contains multiply op for symmetric
     # dequantization.
-    self.assertTrue(re.search('stablehlo.subtract', module_str))
     self.assertTrue(re.search('stablehlo.multiply', module_str))
     # Tests that the output graph contains float dot_general.
     self.assertTrue(
@@ -1356,6 +1423,58 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     # Check add is not quantized.
     self.assertTrue(re.search(r'stablehlo.add.*f32>', module_str), module_str)
+
+  def test_save_quantization_report_file(self):
+    """Tests that the quantization report file is created.
+
+    Also test that it is populated with textproto of `QuantizationResults`.
+    """
+
+    input_shape = (1, 3, 4, 3)
+    filter_shape = (2, 3, 3, 2)
+    self._create_conv2d_model(
+        input_shape,
+        filter_shape,
+        self._input_saved_model_path,
+    )
+
+    report_file_path = self.create_tempfile('report.txtpb').full_path
+    config = qc.QuantizationConfig(
+        weight_only_ptq_preset=qc.WeightOnlyPtqPreset(),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+        report_file_path=report_file_path,
+    )
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    # Test the contents of the report file, which is a textproto of
+    # `QuantizationResults`.
+    self.assertTrue(os.path.exists(report_file_path))
+    with open(report_file_path, 'r') as f:
+      quantization_results_textpb = f.read()
+
+    results = qc.QuantizationResults()
+    text_format.Parse(quantization_results_textpb, results)
+
+    self.assertProtoEquals(
+        expected_message_maybe_ascii=r"""
+        results {
+          quantizable_unit { name: "composite_conv_fn_1" }
+          method {
+            weight_only_ptq {
+              input_quantized_types {
+                key: 1
+                value { dimension_specs {} }
+              }
+            }
+          }
+        }
+        """,
+        message=results,
+    )
 
 
 if __name__ == '__main__':

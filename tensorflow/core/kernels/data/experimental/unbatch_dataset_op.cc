@@ -43,7 +43,6 @@ namespace {
 
 using tsl::mutex;
 using tsl::mutex_lock;
-using tsl::OkStatus;
 using tsl::Status;
 using tsl::strings::StrCat;
 

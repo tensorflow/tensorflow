@@ -35,13 +35,14 @@
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/types.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -71,6 +72,14 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
       ArrayCopySemantics semantics);
+
+  // `Array::RemapArrays()` implements `Client::RemapArrays()`.
+  // TODO(b/261226026): Implement logic directly in client.cc.
+  static absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+  RemapArrays(xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+              const RemapPlan& plan,
+              absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+              ArrayCopySemantics semantics);
 
   // Destructs the array associated with the given handle. The corresponding
   // array becomes unusable afterwards.

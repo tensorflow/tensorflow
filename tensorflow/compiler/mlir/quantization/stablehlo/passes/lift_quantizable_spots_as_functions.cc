@@ -66,7 +66,7 @@ Attribute DefaultOrNullAttr(OpBuilder& builder, const Attribute& attr) {
 // Checks whether the value of a constant equals the given float, regardless
 // of the tensor dimension.
 bool FloatValueEquals(const Attribute& attr, const double value) {
-  const auto fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
+  const auto fp_attr = mlir::dyn_cast_or_null<DenseFPElementsAttr>(attr);
   if (!fp_attr) return false;
 
   if (fp_attr.isSplat()) {
@@ -208,7 +208,9 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
   simple_patterns::populateWithGenerated(patterns);
   fusion_patterns::populateWithGenerated(patterns);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
-  for (auto func : module_op.getOps<func::FuncOp>()) {
+
+  // Iterate over the sorted list of functions to keep order deterministic.
+  for (func::FuncOp func : GetSortedFunctions(module_op)) {
     if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
       func.emitError()
           << "quant-stablehlo-lift-quantizable-spots-as-functions failed.";

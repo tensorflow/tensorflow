@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
@@ -58,12 +59,12 @@ namespace xla {
 namespace {
 
 static mlir::Attribute ArrayToElements(mlir::Attribute attr) {
-  if (auto array = attr.dyn_cast<mlir::DenseI64ArrayAttr>()) {
+  if (auto array = mlir::dyn_cast<mlir::DenseI64ArrayAttr>(attr)) {
     return mlir::DenseIntElementsAttr::get(
         mlir::RankedTensorType::get(array.size(), array.getElementType()),
         array.asArrayRef());
   }
-  if (auto array = attr.dyn_cast<mlir::DenseBoolArrayAttr>()) {
+  if (auto array = mlir::dyn_cast<mlir::DenseBoolArrayAttr>(attr)) {
     return mlir::DenseIntElementsAttr::get(
         mlir::RankedTensorType::get(array.size(), array.getElementType()),
         array.asArrayRef());

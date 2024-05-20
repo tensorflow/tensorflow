@@ -30,6 +30,7 @@ cc_library(
     name = "passes",
     srcs = [
         "ifrt_duplicated_callee_elimination_pass.cc",
+        "ifrt_verify_donation_pass.cc",
         "ifrt_verify_sharding_specified_pass.cc",
         "spmd_expandable_interface_verification_pass.cc",
         "spmd_expansion_pass.cc",

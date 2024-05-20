@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
@@ -156,8 +157,8 @@ LogicalResult SymbolizeCustomCallCalledIndex(
           return WalkResult::interrupt();
         }
 
-        auto called_index_attr = backend_config.get(kCalledIndexAttrName)
-                                     .dyn_cast_or_null<IntegerAttr>();
+        auto called_index_attr = mlir::dyn_cast_or_null<IntegerAttr>(
+            backend_config.get(kCalledIndexAttrName));
         if (!called_index_attr) {
           op->emitOpError()
               << "is missing attribute '" << kCalledIndexAttrName << "'";

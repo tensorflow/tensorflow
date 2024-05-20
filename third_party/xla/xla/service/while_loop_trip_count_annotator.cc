@@ -16,13 +16,13 @@ limitations under the License.
 #include "xla/service/while_loop_trip_count_annotator.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/while_loop_analysis.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 

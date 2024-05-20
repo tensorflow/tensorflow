@@ -296,8 +296,8 @@ TFE_TensorHandle* TFE_NewTensorHandle(const TF_Tensor* t, TF_Status* status) {
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) {
   if (h == nullptr) return;
 
-  tensorflow::profiler::TraceMe activity(
-      "TFE_DeleteTensorHandle", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TFE_DeleteTensorHandle",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   if (h) {
     tensorflow::unwrap(h)->Unref();
   }

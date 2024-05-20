@@ -55,8 +55,10 @@ StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient() {
   devices.push_back(std::move(device));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<PjRtStreamExecutorClient>(
-      "interpreter", client, std::move(devices), /*process_index=*/0,
-      /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
+      "interpreter", client, std::move(devices),
+      std::vector<std::unique_ptr<PjRtStreamExecutorMemorySpace>>(),
+      /*process_index=*/0, /*allocator=*/nullptr,
+      /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
       /*gpu_run_options=*/nullptr));
 }

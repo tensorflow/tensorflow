@@ -95,7 +95,7 @@ func.func @pushTposeBcastNoChange(%arg0: tensor<2x3x4x1xf32>) -> tensor<5x2x3x4x
 // CHECK: %cst = arith.constant dense<1.000000e+00> : tensor<5x2x3x4xf32>
 // CHECK: %cst_0 = arith.constant dense<[3, 0, 1, 2]> : tensor<4xi32>
 // CHECK: %0 = "tfl.transpose"(%arg0, %cst_0) : (tensor<2x3x4x1xf32>, tensor<4xi32>) -> tensor<1x2x3x4xf32>
-// CHECK: %1 = tfl.add(%0, %cst) {fused_activation_function = "NONE"} : (tensor<1x2x3x4xf32>, tensor<5x2x3x4xf32>) -> tensor<5x2x3x4xf32>
+// CHECK: %1 = tfl.add(%0, %cst) <{fused_activation_function = "NONE"}> : (tensor<1x2x3x4xf32>, tensor<5x2x3x4xf32>) -> tensor<5x2x3x4xf32>
 
 // -----
 
@@ -110,7 +110,7 @@ func.func @doubleTposeOneBroadcastInput(%arg0: tensor<2x3x4x1xf32>, %arg1: tenso
 }
 
 // CHECK: %cst = arith.constant dense<[3, 0, 1, 2]> : tensor<4xi32>
-// CHECK: %0 = tfl.add(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<2x3x4x1xf32>, tensor<2x3x4x5xf32>) -> tensor<2x3x4x5xf32>
+// CHECK: %0 = tfl.add(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<2x3x4x1xf32>, tensor<2x3x4x5xf32>) -> tensor<2x3x4x5xf32>
 // CHECK: %1 = "tfl.transpose"(%0, %cst) : (tensor<2x3x4x5xf32>, tensor<4xi32>) -> tensor<5x2x3x4xf32>
 // CHECK: return %1 : tensor<5x2x3x4xf32>
 
@@ -145,7 +145,7 @@ func.func @pushTposeBcastCstInput(%arg0: tensor<2x3x4x5xf32>) -> tensor<5x2x3x4x
 
 // CHECK: %cst = arith.constant dense<[3, 0, 1, 2]> : tensor<4xi32>
 // CHECK: %cst_0 = arith.constant dense<1.000000e+00> : tensor<2x3x4x1xf32>
-// CHECK: %0 = tfl.add(%arg0, %cst_0) {fused_activation_function = "NONE"} : (tensor<2x3x4x5xf32>, tensor<2x3x4x1xf32>) -> tensor<2x3x4x5xf32>
+// CHECK: %0 = tfl.add(%arg0, %cst_0) <{fused_activation_function = "NONE"}> : (tensor<2x3x4x5xf32>, tensor<2x3x4x1xf32>) -> tensor<2x3x4x5xf32>
 // CHECK: %1 = "tfl.transpose"(%0, %cst) : (tensor<2x3x4x5xf32>, tensor<4xi32>) -> tensor<5x2x3x4xf32>
 
 // -----
@@ -161,7 +161,7 @@ func.func @pushTposeBcastScalarCstInput(%arg0: tensor<2x3x4x5xf32>) -> tensor<5x
 
 // CHECK: %cst = arith.constant dense<1.000000e+00> : tensor<f32>
 // CHECK: %cst_0 = arith.constant dense<[3, 0, 1, 2]> : tensor<4xi32>
-// CHECK: %0 = tfl.add(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<2x3x4x5xf32>, tensor<f32>) -> tensor<2x3x4x5xf32>
+// CHECK: %0 = tfl.add(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3x4x5xf32>, tensor<f32>) -> tensor<2x3x4x5xf32>
 // CHECK: %1 = "tfl.transpose"(%0, %cst_0) : (tensor<2x3x4x5xf32>, tensor<4xi32>) -> tensor<5x2x3x4xf32>
 
 

@@ -41,7 +41,7 @@ class BEFFile;
 class ExecutionContext;
 class HostContext;
 
-typedef tensorflow::gtl::InlinedVector<tfrt::DType, 4> TfrtDataTypeVector;
+typedef absl::InlinedVector<tfrt::DType, 4UL> TfrtDataTypeVector;
 typedef absl::Span<const tfrt::DType> TfrtDataTypeSlice;
 
 DType ConvertTfDTypeToTfrtDType(tensorflow::DataType dtype);

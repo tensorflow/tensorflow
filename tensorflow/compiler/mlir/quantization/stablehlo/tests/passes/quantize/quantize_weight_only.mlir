@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -split-input-file -stablehlo-quantize=enable-weight-only=true | FileCheck %s
+// RUN: stablehlo-quant-opt %s -split-input-file -stablehlo-quantize | FileCheck %s
 
 // Test that hybrid quantized dot_general is produced when q/dq pair only exists
 // for weight.

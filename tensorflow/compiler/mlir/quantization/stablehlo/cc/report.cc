@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -26,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -33,8 +36,10 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 namespace {
 
+using ::stablehlo::quantization::Method;
 using ::stablehlo::quantization::QuantizationResult;
 using ::stablehlo::quantization::QuantizationResults;
+using ::stablehlo::quantization::io::WriteStringToFile;
 using ::tsl::protobuf::TextFormat;
 
 // Given a `quantized_func_name` that starts with `kQuantizedFuncPrefix`,
@@ -48,19 +53,27 @@ std::string GetCompositeFunctionName(const StringRef quantized_func_name) {
 // Retrieves `QuantizationResult` from `call_op`. If the callee's name starts
 // with `kQuantizedFuncPrefix` then a `QuantizationResult` will be returned with
 // its `name` field set to the callee's name reverted back to the lifted
-// function's name. Otherwise, returns `std::nullopt`.
+// function's name. Also, `call_op` must have the `kQuantizationMethodAttr`
+// attribute, which is deserialized as `Method` and set in the returned
+// `QuantizationResult`. Otherwise, it returns `std::nullopt`.
 std::optional<QuantizationResult> GetQuantizationResult(func::CallOp call_op) {
   const StringRef callee_name = call_op.getCalleeAttr().getValue();
+  if (!callee_name.starts_with(kQuantizedFuncPrefix)) {
+    return std::nullopt;  // `call_op` is not a quantized function call.
+  }
 
-  if (callee_name.starts_with(kQuantizedFuncPrefix)) {
-    // TODO: b/329554870 - Transfer the `Method` used to quantize the op.
-    QuantizationResult result{};
-    result.mutable_quantizable_unit()->set_name(
-        GetCompositeFunctionName(callee_name));
-    return result;
-  } else {
+  absl::StatusOr<Method> method = GetQuantizationMethod(call_op);
+  if (!method.ok()) {
+    call_op->emitError() << "Failed to get quantization method: "
+                         << method.status().ToString();
     return std::nullopt;
   }
+
+  QuantizationResult result{};
+  result.mutable_quantizable_unit()->set_name(
+      GetCompositeFunctionName(callee_name));
+  *result.mutable_method() = std::move(*method);
+  return result;
 }
 
 // Retrieves `QuantizationResult` from `xla_call_module_op`. If
@@ -72,9 +85,8 @@ std::optional<QuantizationResult> GetQuantizationResult(func::CallOp call_op) {
 std::optional<QuantizationResult> GetQuantizationResult(
     TF::XlaCallModuleOp xla_call_module_op) {
   const StringAttr callee_name_attr =
-      xla_call_module_op
-          ->getDiscardableAttr(kOriginalStablehloEntryFunctionAttrName)
-          .dyn_cast_or_null<StringAttr>();
+      mlir::dyn_cast_or_null<StringAttr>(xla_call_module_op->getDiscardableAttr(
+          kOriginalStablehloEntryFunctionAttrName));
 
   // `TF::XlaCallModuleOp` without the `_original_entry_function` means it is
   // not a quantizable unit.
@@ -150,6 +162,13 @@ std::string QuantizationReport::ToString() const {
 void QuantizationReport::Print() const {
   llvm::outs() << ToString();
   llvm::outs().flush();  // Show the report immediately.
+}
+
+absl::Status QuantizationReport::Save(const StringRef file_path) const {
+  std::string results_str{};
+  TextFormat::PrintToString(GetQuantizationResults(), &results_str);
+
+  return WriteStringToFile(file_path, results_str);
 }
 
 }  // namespace mlir::quant::stablehlo

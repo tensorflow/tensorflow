@@ -20,14 +20,13 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/stream_executor/event_interface.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 
 namespace stream_executor {
 
-Event::Event(StreamExecutor* stream_exec)
+Event::Event(StreamExecutorInterface* stream_exec)
     : stream_exec_(stream_exec),
-      implementation_(
-          stream_exec_->implementation()->CreateEventImplementation()) {}
+      implementation_(stream_exec_->CreateEventImplementation()) {}
 
 Event::~Event() {
   // Deal with nullptr implementation_, as this event may have been std::moved.

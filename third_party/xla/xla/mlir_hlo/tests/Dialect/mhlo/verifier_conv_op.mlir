@@ -330,8 +330,8 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
 
 // -----
 
-func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
-    %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
+func.func @invalid_conv_dimensions(%arg0: tensor<3x8x8x207xf32>,
+    %arg1: tensor<3x3x207x16xf32>) -> tensor<3x8x8x16xf32> {
   // expected-error@+1 {{expects output feature dimension size (16) to be a multiple of batch_group_count. Got batch_group_count = 3.}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
@@ -342,8 +342,8 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
            feature_group_count = 1 : i64,
            precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
-       (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
-  func.return %0 : tensor<1x8x8x16xf32>
+       (tensor<3x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<3x8x8x16xf32>
+  func.return %0 : tensor<3x8x8x16xf32>
 }
 
 // -----

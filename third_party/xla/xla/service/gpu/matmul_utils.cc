@@ -52,9 +52,6 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
-#if GOOGLE_CUDA
-#endif  // GOOGLE_CUDA
-
 namespace xla {
 namespace gpu {
 

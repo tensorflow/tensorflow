@@ -6,5 +6,6 @@ internal patch during the next triton integration process.
 """
 
 temporary_patch_list = [
-    "//third_party/triton/temporary:cl609333259.patch",
+    "//third_party/triton/temporary:pipelining.patch",
+    "//third_party/triton/temporary:support_ceil_op.patch",
 ]

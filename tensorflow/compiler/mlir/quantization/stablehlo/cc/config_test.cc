@@ -24,6 +24,7 @@ namespace {
 using ::testing::Eq;
 using ::testing::SizeIs;
 using ::testing::StrEq;
+using ::testing::Truly;
 
 TEST(PopulateDefaultsTest, PopulateDefaultsForEmptyConfig) {
   QuantizationConfig config{};
@@ -69,18 +70,16 @@ TEST(PopulateDefaultsTest, ExplicitCalibrationOptionsNotOverridden) {
       *config.mutable_calibration_options();
   calibration_options.set_calibration_method(
       CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX);
-  calibration_options.mutable_calibration_parameters()->set_initial_num_bins(
-      512);
+  calibration_options.mutable_calibration_parameters()->set_num_bins(512);
 
   // Test that if the user explicitly provided `calibration_options`, it is not
   // overridden.
   const QuantizationConfig new_config = PopulateDefaults(config);
   EXPECT_THAT(new_config.calibration_options().calibration_method(),
               Eq(CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX));
-  EXPECT_THAT(new_config.calibration_options()
-                  .calibration_parameters()
-                  .initial_num_bins(),
-              Eq(512));
+  EXPECT_THAT(
+      new_config.calibration_options().calibration_parameters().num_bins(),
+      Eq(512));
 }
 
 TEST(PopulateDefaultsTest, DefaultNumbersPopulatedForPartOfCalibrationOptions) {
@@ -89,18 +88,16 @@ TEST(PopulateDefaultsTest, DefaultNumbersPopulatedForPartOfCalibrationOptions) {
       *config.mutable_calibration_options();
   calibration_options.set_calibration_method(
       CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE);
-  calibration_options.mutable_calibration_parameters()->set_initial_num_bins(
-      512);
+  calibration_options.mutable_calibration_parameters()->set_num_bins(512);
 
   // Test that if the user explicitly provided part of the
   // `calibration_options`, it is not overridden, rest of the data are default.
   const QuantizationConfig new_config = PopulateDefaults(config);
   EXPECT_THAT(new_config.calibration_options().calibration_method(),
               Eq(CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE));
-  EXPECT_THAT(new_config.calibration_options()
-                  .calibration_parameters()
-                  .initial_num_bins(),
-              Eq(512));
+  EXPECT_THAT(
+      new_config.calibration_options().calibration_parameters().num_bins(),
+      Eq(512));
   EXPECT_THAT(new_config.calibration_options()
                   .calibration_parameters()
                   .min_percentile(),
@@ -123,10 +120,9 @@ TEST(PopulateDefaultsTest,
   EXPECT_THAT(
       new_config.calibration_options().calibration_method(),
       Eq(CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE));
-  EXPECT_THAT(new_config.calibration_options()
-                  .calibration_parameters()
-                  .initial_num_bins(),
-              Eq(256));
+  EXPECT_THAT(
+      new_config.calibration_options().calibration_parameters().num_bins(),
+      Eq(512));
   EXPECT_THAT(new_config.calibration_options()
                   .calibration_parameters()
                   .min_percentile(),
@@ -171,10 +167,12 @@ TEST(ExpandPresetsTest, ExpandStaticRangePtqEnableFullIntquantization) {
   const StaticRangePtq& srq_spec = conv_spec.method().static_range_ptq();
   ASSERT_THAT(srq_spec.input_quantized_types(), SizeIs(1));
   ASSERT_TRUE(srq_spec.input_quantized_types().contains(1));
+  ASSERT_TRUE(srq_spec.input_quantized_types().at(1).has_dimension_specs());
 
-  EXPECT_THAT(
-      srq_spec.input_quantized_types().at(1).dimension_specs().dimension(),
-      Eq(3));
+  const QuantizedDimension& dimension_specs =
+      srq_spec.input_quantized_types().at(1).dimension_specs();
+  ASSERT_TRUE(dimension_specs.has_dimension());
+  EXPECT_THAT(dimension_specs.dimension(), Eq(3));
 
   // Test that representative dataset config has been transferred to the
   // `CalibrationOptions`.
@@ -285,6 +283,15 @@ TEST(ExpandPresetsTest, ExpandWeightOnlyPtqPresetDefault) {
   EXPECT_THAT(spec.matcher().function_name().regex(),
               StrEq("^.*(conv|dot_general).*"));
   EXPECT_TRUE(spec.method().has_weight_only_ptq());
+
+  const WeightOnlyPtq& weight_only_ptq_spec = spec.method().weight_only_ptq();
+
+  EXPECT_THAT(weight_only_ptq_spec.input_quantized_types(),
+              UnorderedElementsAre(Pair(
+                  1, Truly([](const auto& quantized_type) {
+                    return quantized_type.has_dimension_specs() &&
+                           !quantized_type.dimension_specs().has_dimension();
+                  }))));
 }
 
 }  // namespace

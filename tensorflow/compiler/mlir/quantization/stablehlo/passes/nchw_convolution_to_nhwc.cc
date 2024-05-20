@@ -73,7 +73,7 @@ class RewriteNchwConvolutionToNhwc
     // Transpose the input tensor: [b, f, 0, 1] => [b, 0, 1, f]
     Value input = op->getOperand(0);
     const TensorType new_input_tensor_type = GetTransposedTensorType(
-        input.getType().cast<TensorType>(), kNchwToNhwcPermutation);
+        mlir::cast<TensorType>(input.getType()), kNchwToNhwcPermutation);
 
     auto input_transpose_op = rewriter.create<mlir::stablehlo::TransposeOp>(
         op.getLoc(), /*resultType0=*/new_input_tensor_type, /*operand=*/input,
@@ -82,7 +82,7 @@ class RewriteNchwConvolutionToNhwc
     // Transpose the filter tensor: [o, i, 0, 1] => [0, 1, i, o]
     Value filter = op->getOperand(1);
     const TensorType new_filter_tensor_type = GetTransposedTensorType(
-        filter.getType().cast<TensorType>(), kOihwToHwioPermutation);
+        mlir::cast<TensorType>(filter.getType()), kOihwToHwioPermutation);
 
     auto filter_transpose_op = rewriter.create<mlir::stablehlo::TransposeOp>(
         op.getLoc(), /*resultType0=*/new_filter_tensor_type, /*operand=*/filter,
@@ -98,7 +98,8 @@ class RewriteNchwConvolutionToNhwc
         /*outputSpatialDimensions=*/SmallVector<int64_t>{1, 2});
 
     // Determine the shape of the output tensor: [b, f, 0, 1] => [b, 0, 1, f]
-    auto output_tensor_type = op->getResult(0).getType().cast<TensorType>();
+    auto output_tensor_type =
+        mlir::cast<TensorType>(op->getResult(0).getType());
     const TensorType new_conv_output_tensor_type =
         GetTransposedTensorType(output_tensor_type, kNchwToNhwcPermutation);
 

@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -32,24 +33,28 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
 namespace ifrt {
 
 class PjRtCompatibleArray;
+class PjRtCompatibleDevice;
+class PjRtCompatibleMemory;
 class PjRtDevice;
 class PjRtMemory;
 
@@ -69,9 +74,9 @@ class PjRtCompatibleClient
       std::shared_ptr<PjRtBuffer> pjrt_buffer) = 0;
   virtual absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
       Shape shape, PjRtBuffers pjrt_buffers) = 0;
-  virtual absl::StatusOr<PjRtDevice*> LookupPjRtDevice(
+  virtual absl::StatusOr<PjRtCompatibleDevice*> LookupPjRtDevice(
       xla::PjRtDevice* pjrt_device) const = 0;
-  virtual absl::StatusOr<PjRtMemory*> LookupPjRtMemory(
+  virtual absl::StatusOr<PjRtCompatibleMemory*> LookupPjRtMemory(
       xla::PjRtMemorySpace* pjrt_memory) const = 0;
 
   static char ID;  // NOLINT
@@ -100,6 +105,12 @@ class PjRtClient final
 
   ~PjRtClient() override;
 
+  // For making Arrays with `dtype` as kString:
+  //   (1) the `data` argument should point to an array of `absl::string_view`
+  //   in major-to-minor order,
+  //   (2) `byte_strides` are not supported, and non-`nullopt` values cause this
+  //   function to fail.
+  //   (3) only the `kImmutableDuringCall` semantics is supported currently.
   absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
@@ -110,6 +121,11 @@ class PjRtClient final
   absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<Array>> arrays,
+      ArrayCopySemantics semantics) override;
+
+  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> RemapArrays(
+      const RemapPlan& plan,
+      absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
       ArrayCopySemantics semantics) override;
 
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
@@ -175,9 +191,9 @@ class PjRtClient final
       DType dtype, absl::Span<const int64_t> dims,
       Device* device) const override;
 
-  absl::StatusOr<PjRtDevice*> LookupPjRtDevice(
+  absl::StatusOr<PjRtCompatibleDevice*> LookupPjRtDevice(
       xla::PjRtDevice* pjrt_device) const override;
-  absl::StatusOr<PjRtMemory*> LookupPjRtMemory(
+  absl::StatusOr<PjRtCompatibleMemory*> LookupPjRtMemory(
       xla::PjRtMemorySpace* pjrt_memory) const override;
 
   // Transfer the given literal to the infeed queue.
@@ -202,6 +218,7 @@ class PjRtClient final
       device_map_;
   absl::flat_hash_map<xla::PjRtMemorySpace*, std::unique_ptr<PjRtMemory>>
       memory_map_;
+  absl::flat_hash_map<DeviceId, PjRtDevice*> device_id_map_;
 };
 
 }  // namespace ifrt

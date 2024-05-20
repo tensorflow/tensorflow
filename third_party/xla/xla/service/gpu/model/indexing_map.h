@@ -170,6 +170,9 @@ H AbslHashValue(H h, const RangeVar& range_var) {
 struct RTVar {
   Interval feasible_values;
   const HloInstruction* hlo;
+  // This is a map from the iteration space of the corresponding indexing map to
+  // the iteration space of `hlo`. It shows what element of `hlo` we need to
+  // extract to get the runtime value for the RTVar.
   mlir::AffineMap map;
 };
 bool operator==(const RTVar& lhs, const RTVar& rhs);
@@ -259,6 +262,10 @@ class IndexingMap {
 
   // Returns the affine map.
   mlir::AffineMap GetAffineMap() const { return affine_map_; }
+  mlir::AffineMap& GetMutableAffineMap() { return affine_map_; }
+
+  // Returns the range evaluator for the indexing map's domain.
+  RangeEvaluator GetRangeEvaluator() const;
 
   // Getters for dimension vars.
   const DimVar& GetDimVars(int64_t id) const { return dim_vars_[id]; }
@@ -319,12 +326,30 @@ class IndexingMap {
 
   bool IsUndefined() const { return affine_map_ == mlir::AffineMap(); }
 
+  // Removes unused dimensions from the `affine_map_` and constraints.
+  // Returns a bit vector of dimensions that were removed. If none of the
+  // dimensions were removed, returns {}.
+  llvm::SmallBitVector RemoveUnusedDimensions();
+
   // Removes unused symbols from the `affine_map_` and constraints.
-  void RemoveUnusedSymbols();
+  // Returns a bit vector of symbols that were removed. If none of the symbols
+  // were removed, returns {}.
+  llvm::SmallBitVector RemoveUnusedSymbols();
+
+  // Removes unused dimensions and symbols from the `affine_map_` and
+  // constraints. Returns a bit vector of all variables [dimensions, symbols]
+  // that were removed. If none of the symbols were removed, returns {}.
+  llvm::SmallBitVector RemoveUnusedVars();
 
   // Rescales all symbols that are sufficiently constrained through `s? mod x =
   // [N, N]` constraints. Returns true if a rescale took place, otherwise false.
   bool RescaleSymbols();
+
+  // Does `symbol` correspond to a range var?
+  bool IsRangeVarSymbol(mlir::AffineSymbolExpr symbol) const;
+
+  // Does `symbol` correspond to an RTVar?
+  bool IsRTVarSymbol(mlir::AffineSymbolExpr symbol) const;
 
  private:
   IndexingMap() = default;
@@ -344,6 +369,12 @@ class IndexingMap {
   // Returns true if a replacement was performed, otherwise false.
   bool ReplaceConstantRTVars(IndexingMapProvider indexing_map_provider);
 
+  // Removes DimVars, RangeVars, RTVars that correspond to the unused dimensions
+  // and symbols. If unused_dims is empty, then dims won't be removed. The same
+  // applies to unused_symbols. Returns true, if anything was removed.
+  bool CompressVars(const llvm::SmallBitVector& unused_dims,
+                    const llvm::SmallBitVector& unused_symbols);
+
   mlir::AffineMap affine_map_;
   std::vector<DimVar> dim_vars_;
   std::vector<RangeVar> range_vars_;
@@ -360,6 +391,21 @@ IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs);
 // Composes affine maps, i.e. second ∘ first.
 IndexingMap ComposeIndexingMaps(const IndexingMap& first,
                                 const IndexingMap& second);
+
+// Prints the RTVars.
+//
+// This is exposed to allow SymbolicTile to reuse it.
+//
+// `first_rt_var_symbol_index`: The index of the symbol associated with the
+// first RTVar. The RTVars will be printed with consequent symbol indices
+// starting with `first_rt_var_symbol_index`. For example, if `rt_vars.size()
+// == 3` and `first_rt_var_symbol_index == 4`, then the symbol names "s4",
+// "s5" and "s6" will be used.
+//
+// TODO(b/334043862): Unexpose this function if possible.
+void PrintRTVars(const std::vector<RTVar>& rt_vars,
+                 int first_rt_var_symbol_index, std::ostream& out,
+                 const AffineMapPrinter& printer);
 
 template <typename H>
 H AbslHashValue(H h, const IndexingMap& indexing_map) {

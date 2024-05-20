@@ -21,28 +21,40 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/TopologicalSortUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
-#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/constants.h"
-#include "tensorflow/dtensor/cc/dtensor_utils.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 
@@ -112,7 +124,7 @@ mlir::LogicalResult MergeAllReduceGroup(
   all_reduce_shapes.reserve(num_all_reduces);
   for (mlir::TF::DTensorAllReduceOp& all_reduce : all_reduce_group) {
     auto all_reduce_ranked_type =
-        all_reduce.getType().dyn_cast<mlir::RankedTensorType>();
+        mlir::dyn_cast<mlir::RankedTensorType>(all_reduce.getType());
     if (!all_reduce_ranked_type || !all_reduce_ranked_type.hasStaticShape()) {
       return all_reduce.emitOpError(llvm::formatv(
           "requires static shape for DTensorAllReduceOp, but got : {0}",
@@ -152,7 +164,7 @@ mlir::LogicalResult MergeAllReduceGroup(
     mlir::TF::DTensorAllReduceOp& all_reduce = all_reduce_group[i];
     mlir::Location loc = all_reduce.getLoc();
     auto all_reduce_ranked_type =
-        all_reduce.getType().dyn_cast<mlir::RankedTensorType>();
+        mlir::dyn_cast<mlir::RankedTensorType>(all_reduce.getType());
     if (!all_reduce_ranked_type || !all_reduce_ranked_type.hasStaticShape()) {
       return all_reduce.emitOpError(llvm::formatv(
           "requires static shape for DTensorAllReduceOp, but got : {0}",
@@ -201,7 +213,7 @@ mlir::LogicalResult MergeAllReduceGroup(
     mlir::TF::DTensorAllReduceOp& all_reduce = all_reduce_group[i];
     mlir::Location loc = all_reduce.getLoc();
     auto all_reduce_ranked_type =
-        all_reduce.getType().dyn_cast<mlir::RankedTensorType>();
+        mlir::dyn_cast<mlir::RankedTensorType>(all_reduce.getType());
     if (!all_reduce_ranked_type || !all_reduce_ranked_type.hasStaticShape()) {
       return all_reduce.emitOpError(llvm::formatv(
           "requires static shape for DTensorAllReduceOp, but got : {0}",
@@ -676,7 +688,7 @@ struct DTensorAllReduceCombineOptimization
         if (!all_reduce.getDeviceType().contains("TPU")) {
           // Only combine all reduces for GPU and CPU
           mlir::RankedTensorType all_reduce_ranked_type =
-              all_reduce.getType().dyn_cast<mlir::RankedTensorType>();
+              mlir::dyn_cast<mlir::RankedTensorType>(all_reduce.getType());
 
           if (all_reduce_ranked_type &&
               all_reduce_ranked_type.hasStaticShape()) {

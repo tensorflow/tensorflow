@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/union_find.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -129,6 +128,12 @@ static absl::StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
 void CopyFrontendAttributes(HloInstruction* old_while_op,
                             HloInstruction* new_while_op) {
   new_while_op->add_frontend_attributes(old_while_op->frontend_attributes());
+}
+
+// A helper function that copy the metadata from the old while op to
+// the new one.
+void CopyMetadata(HloInstruction* old_while_op, HloInstruction* new_while_op) {
+  new_while_op->set_metadata(old_while_op->metadata());
 }
 
 // This is a utility function that removes the given tuple indices from the
@@ -261,6 +266,7 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
       new_while_init));
   new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
+  CopyMetadata(while_op, new_while_op);
 
   // Create a tuple op that recreates the output of the old while op.  That is,
   // we transform to
@@ -305,14 +311,7 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   return new_while_op;
 }
 
-// Tries to remove elements in a while loop's tuple that aren't used within the
-// loop.
-//
-// Specifically, if a loop is tuple-shaped, and there exists some element of
-// that tuple that is not used by the loop condition and is not used by the loop
-// body except to pass it to the next iteration of the loop, then we can remove
-// that element from the loop's tuples.
-static absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
+absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
 
   // Don't try this transformation if the while loop isn't removable, since if
@@ -898,6 +897,7 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
       add_new_instr(remove_constant_elems(while_init))));
   new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
+  CopyMetadata(while_op, new_while_op);
   TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
       while_op, add_constant_elems(new_while_op)));
   for (auto& instr : new_instrs) {
@@ -1231,6 +1231,7 @@ static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
       computation->AddInstruction(flattened(while_init))));
   new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
+  CopyMetadata(while_op, new_while_op);
   TF_RETURN_IF_ERROR(
       computation->ReplaceWithNewInstruction(while_op, nested(new_while_op)));
   for (auto& instr : new_instrs) {
@@ -1472,6 +1473,7 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
       get_new_while_init(while_init)));
   new_while->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while);
+  CopyMetadata(while_op, new_while);
   TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
       while_op, convert_to_old_form(new_while)));
   for (auto& instr : new_instrs) {

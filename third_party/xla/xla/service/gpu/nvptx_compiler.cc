@@ -41,7 +41,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/convert_mover.h"
 #include "xla/service/dot_dimension_merger.h"
@@ -63,8 +62,10 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "xla/service/gpu/cudnn_workspace_rewriter.h"
 #include "xla/service/gpu/cusolver_rewriter.h"
+#include "xla/service/gpu/dot_sparsity_rewriter.h"
 #include "xla/service/gpu/gemm_algorithm_picker.h"
 #include "xla/service/gpu/gemm_fusion_autotuner.h"
+#include "xla/service/gpu/gpu_algebraic_simplifier.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_conv_padding_legalization.h"
@@ -147,6 +148,31 @@ class ConvBfloat16Support : public FloatSupport {
   bool is_conv_bf16_supported_;
 };
 
+class MatmulBfloat16Support : public FloatSupport {
+ public:
+  explicit MatmulBfloat16Support(
+      se::CudaComputeCapability cuda_compute_capability)
+      : FloatSupport(BF16),
+        is_matmul_bf16_supported_(cuda_compute_capability.IsAtLeast(
+            se::CudaComputeCapability::AMPERE)) {}
+
+  bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
+                                   int64_t operand_index) const override {
+    return (hlo.opcode() != HloOpcode::kDot) || is_matmul_bf16_supported_;
+  }
+
+  bool SupportsLowPrecisionOutput(const HloInstruction& hlo) const override {
+    return (hlo.opcode() != HloOpcode::kDot) || is_matmul_bf16_supported_;
+  }
+
+  bool SupportsMixedPrecisions(const HloInstruction& hlo) const override {
+    return true;
+  }
+
+ private:
+  bool is_matmul_bf16_supported_;
+};
+
 }  // namespace
 
 absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
@@ -166,6 +192,10 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   ConvBfloat16Support conv_bf16_support(dnn_version, cuda_compute_capability);
   pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
 
+  // Convert unsupported bf16 matmuls to f32.
+  MatmulBfloat16Support matmul_bf16_support(cuda_compute_capability);
+  pipeline.AddPass<FloatNormalization>(&matmul_bf16_support);
+
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability);
@@ -183,7 +213,8 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       GetAlgebraicSimplifierOptions(hlo_module->config());
   algsimp_options.set_enable_conv_operand_swap(false);
   algsimp_options.set_enable_unconditional_reduce_of_concat_replacement(false);
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
+  pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
+                                                       gpu_version);
 
   // CudnnSimplifyPadding gets rid of some padding introduced by
   // CudnnPadForConvolutions and used by CudnnVectorizeConvolutions.  The
@@ -199,8 +230,8 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
           "reshape_mover_after_conv_canonicalization")] {
     ReshapeMoverOptions reshape_mover_options;
     reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
-    pipeline.AddPass<HloPassFix<ReshapeMover>>(reshape_mover_options);
-    pipeline.AddPass<AlgebraicSimplifier>(algsimp_options);
+    pipeline.AddPass<ReshapeMover>(reshape_mover_options);
+    pipeline.AddPass<GpuAlgebraicSimplifier>(algsimp_options, gpu_version);
   }();
 
   // The reshapes and transposes can possibly be eliminated using
@@ -211,7 +242,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   [&, &pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
           "simplify_after_conv_canonicalization")] {
     pipeline.AddPass<ConvertMover>();
-    pipeline.AddPass<AlgebraicSimplifier>(algsimp_options);
+    pipeline.AddPass<GpuAlgebraicSimplifier>(algsimp_options, gpu_version);
   }();
 
   // GpuConvRewriter, GpuConvPaddingLegalization and
@@ -249,8 +280,10 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
         false);
 
     mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
-    mha_fusion_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-        alg_sim_options);
+    se::GpuComputeCapability gpu_version =
+        gpu_target_config.device_description.gpu_compute_capability();
+    mha_fusion_pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(
+        alg_sim_options, gpu_version);
     mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
     // Rewrite Multi-Headed Attention modules to Fused MHA custom-calls.
     if (stream_exec) {
@@ -260,7 +293,8 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(
           cuda_compute_capability, gpu_target_config.dnn_version_info);
     }
-    mha_fusion_pipeline.AddPass<AlgebraicSimplifier>(alg_sim_options);
+    mha_fusion_pipeline.AddPass<GpuAlgebraicSimplifier>(alg_sim_options,
+                                                        gpu_version);
     mha_fusion_pipeline.AddPass<CudnnFusedMHATransposeFusion>();
     mha_fusion_pipeline.AddPass<HloDCE>();
     mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
@@ -274,6 +308,7 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   }
 
   pre_pipeline.AddPass<DotDimensionMerger>();
+  pre_pipeline.AddPass<DotSparsityRewriter>();
 
   for (const CublasPaddingRequirement& requirement :
        CublasPaddingRequirements) {
@@ -350,6 +385,10 @@ absl::Status NVPTXCompiler::AddCustomKernelReplacementPasses(
 absl::Status NVPTXCompiler::RunCudnnFusionCompilerPass(
     HloModule* module, se::StreamExecutor* stream_exec,
     Thunk::BinaryMap* dnn_compiled_graphs) {
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaCompileCudnnFusion:#module=%s,program_id=%d#",
+                           module->name(), module->unique_id());
+  });
   CuDnnFusionCompiler cudnn_compiler(*stream_exec, *dnn_compiled_graphs);
   return cudnn_compiler.Run(module).status();
 }
@@ -641,6 +680,9 @@ NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
       absl::StrCat("NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ",
                    module_name),
       !options.is_autotuning_compilation);
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaCompileGpuAsm:#module=%s#", module_name);
+  });
   tsl::profiler::TraceMe activity("PTX->CUBIN",
                                   tsl::profiler::TraceMeLevel::kInfo);
   CompilationCacheValue* cache_value = nullptr;

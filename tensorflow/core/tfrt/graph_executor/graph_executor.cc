@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/update_op_cost_in_tfrt_mlir.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/function.h"
@@ -95,7 +96,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
-#include "tsl/concurrency/async_value_ref.h"
 #include "tsl/lib/monitoring/sampler.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/refcount.h"
@@ -168,6 +168,16 @@ tensorflow::Status RunMlrtFunction(
   execution_context.AddUserContext(std::make_unique<tf_mlrt::Context>(
       fallback_request_state, request_context->resource_context(),
       request_context->cancellation_context().get()));
+  execution_context.AddUserErrorLogger(
+      [fallback_request_state](absl::Status status) {
+        if (fallback_request_state) {
+          LOG(ERROR) << "Model "
+                     << fallback_request_state->session_metadata().name()
+                     << " version "
+                     << fallback_request_state->session_metadata().version()
+                     << " has error: " << status;
+        }
+      });
 
   absl::InlinedVector<mlrt::Value, 4> mlrt_inputs;
   mlrt_inputs.reserve(inputs.size());
@@ -686,6 +696,7 @@ GraphExecutor::ImportAndCompileClientGraph(
   // compilation.
   auto context = std::make_unique<mlir::MLIRContext>(
       registry, mlir::MLIRContext::Threading::DISABLED);
+  context->loadAllAvailableDialects();
   ASSIGN_OR_RETURN_IN_IMPORT(
       auto flib_def_and_module,
       ImportClientGraphToMlirModule(client_graph, context.get()));

@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_BUFFER_ALLOCATIONS_H_
 
 #include <cstddef>
-#include <cstdint>
 #include <set>
 #include <string>
 #include <vector>
@@ -36,45 +35,12 @@ namespace gpu {
 // allocated device buffers.
 class BufferAllocations {
  public:
-  // This special address is used to indicate that the allocation is not
-  // allocated at construction time and instead will be lazily allocated and
-  // owned by the XLA executable itself (we use this special marker to handle
-  // buffer allocations allocated within command buffers, which for CUDA
-  // backends means that buffer allocation is done via memory allocation node).
-  //
-  // TODO(ezhulenev): Replace magic bit pattern with std::optional or
-  // std::variant to distinguish external allocations from a regular ones.
-  static constexpr uintptr_t kExternalAllocationMarker = 0xDEADBEEF;
-
-  // A virtual base class for external allocations that provides a mapping
-  // from a buffer index to an externally-managed device memory.
-  class ExternalAllocations {
-   public:
-    virtual ~ExternalAllocations() = default;
-
-    // Return a device address for a given buffer allocation. Returns error if
-    // corresponding allocation is not yet allocated.
-    virtual absl::StatusOr<se::DeviceMemoryBase> GetDeviceAddress(
-        BufferAllocation::Index index) const = 0;
-
-    // Adds an external allocation for a given buffer index. Returns error if
-    // allocation already exists.
-    virtual absl::Status AddAllocation(BufferAllocation::Index index,
-                                       se::DeviceMemoryBase memory) = 0;
-
-    // Erases an external allocation for a given buffer index. Returns error if
-    // allocation does not exists.
-    virtual absl::Status EraseAllocation(BufferAllocation::Index index) = 0;
-  };
-
   BufferAllocations(absl::Span<se::DeviceMemoryBase const> buffers,
                     int device_ordinal,
-                    se::DeviceMemoryAllocator* memory_allocator,
-                    ExternalAllocations* external_allocations = nullptr)
+                    se::DeviceMemoryAllocator* memory_allocator)
       : buffers_(buffers.begin(), buffers.end()),
         device_ordinal_(device_ordinal),
-        memory_allocator_(memory_allocator),
-        external_allocations_(external_allocations) {}
+        memory_allocator_(memory_allocator) {}
 
   BufferAllocations(BufferAllocations&& other) = default;
   BufferAllocations& operator=(BufferAllocations&& other) = default;
@@ -83,9 +49,6 @@ class BufferAllocations {
 
   se::DeviceMemoryAllocator* memory_allocator() const {
     return memory_allocator_;
-  }
-  ExternalAllocations* external_allocations() const {
-    return external_allocations_;
   }
   int device_ordinal() const { return device_ordinal_; }
 
@@ -103,13 +66,6 @@ class BufferAllocations {
   // size contained in the given slice.
   se::DeviceMemoryBase GetDeviceAddress(
       const BufferAllocation::Slice& buffer_slice) const;
-
-  // Add new allocation allocated by external allocator.
-  absl::Status AddExternalAllocation(BufferAllocation::Index index,
-                                     se::DeviceMemoryBase memory) const;
-
-  // Remove allocation freed by external allocator.
-  absl::Status EraseExternalAllocation(BufferAllocation::Index index) const;
 
   // Tears down all buffers allocated by this object that are not in
   // `live_addresses`.
@@ -132,17 +88,9 @@ class BufferAllocations {
   // An array of device pointers that stores the address of each buffer
   // indexed by Index. Each element can point to a temporary buffer, an
   // input buffer, or nullptr if no buffer is needed for that Index.
-
-  // a special address (se::kExternalAllocationMarker) with non-zero size buffer
-  // is assumed to be lazily allocated buffer, and will be allocated through
-  // command buffer Allocate command during runtime.
   std::vector<se::DeviceMemoryBase> buffers_;
   int device_ordinal_;
   se::DeviceMemoryAllocator* memory_allocator_;
-
-  // For buffer address that marked as ExternalAllocations, tracks its real
-  // address here.
-  ExternalAllocations* external_allocations_;
 };
 
 }  // namespace gpu

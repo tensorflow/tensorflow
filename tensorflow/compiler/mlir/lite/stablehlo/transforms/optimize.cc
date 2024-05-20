@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -37,8 +38,8 @@ namespace odml {
 // Convert mhlo.dot to mhlo.dot_general.
 LogicalResult ConvertDotToDotGeneral(mhlo::DotOp op,
                                      PatternRewriter &rewriter) {
-  auto lhs_type = op.getLhs().getType().cast<ShapedType>();
-  auto rhs_type = op.getRhs().getType().cast<ShapedType>();
+  auto lhs_type = mlir::cast<ShapedType>(op.getLhs().getType());
+  auto rhs_type = mlir::cast<ShapedType>(op.getRhs().getType());
   if (!lhs_type.hasRank() || !rhs_type.hasRank()) {
     return rewriter.notifyMatchFailure(op, "unsupported unranked input type");
   }
@@ -264,7 +265,7 @@ LogicalResult LiftDotConcatLHS(mhlo::ConcatenateOp concat,
   new_concat_shape[new_concat_dim] = 0;
   for (auto v : all_dot_lhs) {
     new_concat_shape[new_concat_dim] +=
-        v.getType().dyn_cast<ShapedType>().getShape()[new_concat_dim];
+        mlir::dyn_cast<ShapedType>(v.getType()).getShape()[new_concat_dim];
   }
 
   auto new_concat = rewriter.create<mhlo::ConcatenateOp>(
@@ -353,7 +354,7 @@ LogicalResult LiftDotConcatLHSAndRHS(mhlo::ConcatenateOp concat,
   lhs_new_concat_shape[lhs_batch_dim] = 0;
   for (auto v : all_dot_lhs) {
     lhs_new_concat_shape[lhs_batch_dim] +=
-        v.getType().dyn_cast<ShapedType>().getShape()[lhs_batch_dim];
+        mlir::dyn_cast<ShapedType>(v.getType()).getShape()[lhs_batch_dim];
   }
   const int64_t rhs_batch_dim =
       first_dot.getDotDimensionNumbers().getRhsBatchingDimensions()[0];
@@ -362,7 +363,7 @@ LogicalResult LiftDotConcatLHSAndRHS(mhlo::ConcatenateOp concat,
   rhs_new_concat_shape[rhs_batch_dim] = 0;
   for (auto v : all_dot_rhs) {
     rhs_new_concat_shape[rhs_batch_dim] +=
-        v.getType().dyn_cast<ShapedType>().getShape()[rhs_batch_dim];
+        mlir::dyn_cast<ShapedType>(v.getType()).getShape()[rhs_batch_dim];
   }
 
   auto lhs_new_concat = rewriter.create<mhlo::ConcatenateOp>(

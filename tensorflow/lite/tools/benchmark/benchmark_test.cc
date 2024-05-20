@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/algorithm.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/interpreter.h"
@@ -43,6 +44,8 @@ namespace {
 const std::string* g_fp32_model_path = nullptr;
 const std::string* g_int8_model_path = nullptr;
 const std::string* g_string_model_path = nullptr;
+const std::string* g_string_model_path_no_signature = nullptr;
+const std::string* g_multi_signature_model_path = nullptr;
 }  // namespace
 
 namespace tflite {
@@ -55,7 +58,9 @@ enum class ModelReadOption { FROM_PATH, FROM_FD };
 void InitializeParams(
     BenchmarkParams& params, int32_t num_runs, float min_secs, float max_secs,
     ModelReadOption model_read_option = ModelReadOption::FROM_PATH,
-    ModelGraphType graph_type = ModelGraphType::FP32) {
+    ModelGraphType graph_type = ModelGraphType::FP32,
+    absl::string_view signature_key = "",
+    bool use_legacy_string_model = false) {
   params.Set<int32_t>("num_runs", num_runs);
   params.Set<float>("min_secs", min_secs);
   params.Set<float>("max_secs", max_secs);
@@ -65,7 +70,10 @@ void InitializeParams(
   if (graph_type == ModelGraphType::INT8) {
     graph_path = *g_int8_model_path;
   } else if (graph_type == ModelGraphType::STRING) {
-    graph_path = *g_string_model_path;
+    graph_path = use_legacy_string_model ? *g_string_model_path_no_signature
+                                         : *g_string_model_path;
+  } else if (!signature_key.empty()) {
+    graph_path = *g_multi_signature_model_path;
   }
   std::string fd_or_graph_path = graph_path;
 #ifndef _WIN32
@@ -81,6 +89,9 @@ void InitializeParams(
   }
 #endif  // !defined(_WIN32)
   params.Set<std::string>("graph", fd_or_graph_path);
+  if (!signature_key.empty()) {
+    params.Set<std::string>("signature_to_run_for", std::string(signature_key));
+  }
 }
 
 BenchmarkParams InitializeParams() {
@@ -110,11 +121,27 @@ BenchmarkParams CreateStringParams() {
       /*model_read_option=*/ModelReadOption::FROM_PATH, ModelGraphType::STRING);
   return params;
 }
+BenchmarkParams CreateLegacyStringParams() {
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  InitializeParams(
+      params, /*num_runs=*/2, /*min_secs=*/1.0f, /*max_secs=*/150.0f,
+      /*model_read_option=*/ModelReadOption::FROM_PATH, ModelGraphType::STRING,
+      /*signature_key=*/"", /*use_legacy_string_model=*/true);
+  return params;
+}
 BenchmarkParams CreateStringFdParams() {
   BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
   InitializeParams(
       params, /*num_runs=*/2, /*min_secs=*/1.0f, /*max_secs=*/150.0f,
       /*model_read_option=*/ModelReadOption::FROM_FD, ModelGraphType::STRING);
+  return params;
+}
+BenchmarkParams CreateMultiSignatureParams(std::string signature_key) {
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  InitializeParams(
+      params, /*num_runs=*/2, /*min_secs=*/1.0f, /*max_secs=*/150.0f,
+      /*model_read_option=*/ModelReadOption::FROM_PATH, ModelGraphType::FP32,
+      /*signature_key=*/signature_key);
   return params;
 }
 
@@ -175,9 +202,10 @@ class TestBenchmark : public BenchmarkTfLiteModel {
   }
 
   const TfLiteTensor* GetInputTensor(int index) {
-    return index >= interpreter_->inputs().size()
+    return index >= interpreter_runner_->inputs().size()
                ? nullptr
-               : interpreter_->input_tensor(index);
+               : interpreter_runner_->tensor(
+                     interpreter_runner_->inputs()[index]);
   }
 };
 
@@ -196,20 +224,47 @@ TEST(BenchmarkTest, DoesntCrashInt8Model) {
 }
 
 TEST(BenchmarkTest, DoesntCrashStringModel) {
-  ASSERT_THAT(g_int8_model_path, testing::NotNull());
+  ASSERT_THAT(g_string_model_path, testing::NotNull());
 
   TestBenchmark benchmark(CreateStringParams());
   benchmark.Run();
 }
 
+TEST(BenchmarkTest, DoesntCrashStringLegacyModel) {
+  ASSERT_THAT(g_string_model_path_no_signature, testing::NotNull());
+
+  TestBenchmark benchmark(CreateLegacyStringParams());
+  benchmark.Run();
+}
+
 #ifndef _WIN32
 TEST(BenchmarkTest, DoesntCrashStringModelWithFd) {
-  ASSERT_THAT(g_int8_model_path, testing::NotNull());
+  ASSERT_THAT(g_string_model_path, testing::NotNull());
 
   TestBenchmark benchmark(CreateStringFdParams());
   benchmark.Run();
 }
 #endif  // !defined(_WIN32)
+
+TEST(BenchmarkTest, DoesntCrashMultiSignatureModel) {
+  ASSERT_THAT(g_multi_signature_model_path, testing::NotNull());
+
+  TestBenchmark benchmark(CreateMultiSignatureParams("add"));
+  auto status = benchmark.Run();
+  EXPECT_EQ(kTfLiteOk, status);
+
+  TestBenchmark benchmark_sub(CreateMultiSignatureParams("sub"));
+  auto status_sub = benchmark_sub.Run();
+  EXPECT_EQ(kTfLiteOk, status_sub);
+}
+
+TEST(BenchmarkTest, MultiSignatureModelWithInvalidSignatureKeyFails) {
+  ASSERT_THAT(g_multi_signature_model_path, testing::NotNull());
+
+  TestBenchmark benchmark(CreateMultiSignatureParams("addisabbaba"));
+  auto status = benchmark.Run();
+  EXPECT_EQ(kTfLiteError, status);
+}
 
 TEST(BenchmarkTest, SplitInputLayerNameAndValueFile) {
   std::vector<std::string> input_layer_value_files = {
@@ -361,6 +416,44 @@ TEST(BenchmarkTest, DoesntCrashWithExplicitInputValueFilesInt8Model) {
   benchmark.Run();
 
   CheckInputTensorValue(benchmark.GetInputTensor(0), file_value);
+}
+
+TEST(BenchmarkTest, DoesntCrashWithExplicitInputValueFilesMultiSignatureModel) {
+  ASSERT_THAT(g_multi_signature_model_path, testing::NotNull());
+  const std::string file_path_add =
+      CreateFilePath("multi_signature_binary_add");
+  char file_value_add = 'a';
+  WriteInputLayerValueFile(file_path_add, ModelGraphType::FP32, 192,
+                           file_value_add);
+
+  // Note: the following input-related params are *specific* to model
+  // 'g_multi_signature_model_path' which is specified as
+  // 'lite:testdata/add_quantized_int8.bin for the test.
+  BenchmarkParams params = CreateMultiSignatureParams("add");
+  params.Set<std::string>("input_layer", "x");
+  params.Set<std::string>("input_layer_shape", "192");
+  params.Set<std::string>("input_layer_value_files", "x:" + file_path_add);
+  TestBenchmark benchmark(std::move(params));
+  benchmark.Run();
+
+  CheckInputTensorValue(benchmark.GetInputTensor(0), file_value_add);
+
+  const std::string file_path_sub =
+      CreateFilePath("multi_signature_binary_sub");
+  char file_value_sub = 'z';
+  WriteInputLayerValueFile(file_path_sub, ModelGraphType::FP32, 192,
+                           file_value_sub);
+  // Note: the following input-related params are *specific* to model
+  // 'g_multi_signature_model_path' which is specified as
+  // 'lite:testdata/add_quantized_int8.bin for the test.
+  BenchmarkParams params_2 = CreateMultiSignatureParams("sub");
+  params_2.Set<std::string>("input_layer", "x");
+  params_2.Set<std::string>("input_layer_shape", "192");
+  params_2.Set<std::string>("input_layer_value_files", "x:" + file_path_sub);
+  TestBenchmark benchmark_2(std::move(params_2));
+  benchmark_2.Run();
+
+  CheckInputTensorValue(benchmark_2.GetInputTensor(0), file_value_sub);
 }
 
 TEST(BenchmarkTest, DoesntCrashWithExplicitInputValueFilesStringModel) {
@@ -521,19 +614,30 @@ TEST(BenchmarkTest, InitializationFailedWhenInvalidGraphFdIsProvided) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  std::string fp32_model_path, int8_model_path, string_model_path;
+  std::string fp32_model_path, int8_model_path, string_model_path,
+      string_model_path_with_no_signature, multi_signature_model_path;
   std::vector<tflite::Flag> flags = {
       tflite::Flag::CreateFlag("fp32_graph", &fp32_model_path,
                                "Path to a fp32 model file."),
       tflite::Flag::CreateFlag("int8_graph", &int8_model_path,
                                "Path to a int8 model file."),
-      tflite::Flag::CreateFlag("string_graph", &string_model_path,
-                               "Path to a string model file."),
+      tflite::Flag::CreateFlag("string_graph_with_signature",
+                               &string_model_path,
+                               "Path to a string model file with a signature."),
+      tflite::Flag::CreateFlag(
+          "string_graph_without_signature",
+          &string_model_path_with_no_signature,
+          "Path to a string model file without signatures."),
+      tflite::Flag::CreateFlag("multi_signature_graph",
+                               &multi_signature_model_path,
+                               "Path to a multi-signature model file."),
   };
 
   g_fp32_model_path = &fp32_model_path;
   g_int8_model_path = &int8_model_path;
   g_string_model_path = &string_model_path;
+  g_multi_signature_model_path = &multi_signature_model_path;
+  g_string_model_path_no_signature = &string_model_path_with_no_signature;
 
   const bool parse_result =
       tflite::Flags::Parse(&argc, const_cast<const char**>(argv), flags);

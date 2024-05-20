@@ -17,6 +17,7 @@ cc_library(
     visibility = ["//xla/python/ifrt:friends"],
     deps = [
         "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:sharding_param",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

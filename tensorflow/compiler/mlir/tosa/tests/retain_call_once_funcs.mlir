@@ -4,7 +4,7 @@
 module {
   // CHECK-LABEL: @main
   func.func @main(%arg0: tensor<16x16xf32>) -> (tensor<16x16xf32>) {
-    // CHECK: "tfl.call_once"() {session_init_function = "NoOp", session_init_function_symbol = @NoOp} : () -> ()
+    // CHECK: "tfl.call_once"() <{session_init_function = "NoOp"}> {session_init_function_symbol = @NoOp} : () -> ()
     "tfl.call_once"() {session_init_function = "NoOp"} : () -> ()
     %0 = "tfl.var_handle"() {container = "", shared_name = "Variable"} : () -> tensor<*x!tf_type.resource>
     %1 = "tfl.read_variable"(%0) : (tensor<*x!tf_type.resource>) -> tensor<16x16xf32>

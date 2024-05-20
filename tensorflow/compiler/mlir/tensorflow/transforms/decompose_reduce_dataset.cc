@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
@@ -76,7 +77,7 @@ AnonymousIteratorV3Op CreateIterator(OpBuilder builder,
   llvm::SmallVector<Attribute, 2> type_attrs;
   for (Type type : dataset_types) {
     shape_attrs.push_back(
-        TF::ShapeAttr::get(builder.getContext(), type.cast<ShapedType>()));
+        TF::ShapeAttr::get(builder.getContext(), mlir::cast<ShapedType>(type)));
     type_attrs.push_back(TypeAttr::get(getElementTypeOrSelf(type)));
   }
 

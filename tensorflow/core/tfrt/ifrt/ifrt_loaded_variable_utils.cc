@@ -20,6 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -30,13 +32,13 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -88,41 +90,48 @@ std::string GetRuntimeNameFromVarHandle(const ResourceHandle& handle) {
   return absl::StrCat(handle.container(), "__", handle.name());
 }
 
-absl::Status LoadRestoredTensorAsIfrtLoadedVariable(
+absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     absl::string_view runtime_name,
     std::shared_ptr<xla::ifrt::Client> ifrt_client,
     const tsl::thread::ThreadPool& thread_pool,
-    ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry,
+    const ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry,
     ifrt_serving::IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry,
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
     const VariableDeviceShardingConfigProto& sharding_config) {
-  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_tensor_future =
+  absl::flat_hash_set<int> device_ids{sharding_config.device_ids().begin(),
+                                      sharding_config.device_ids().end()};
+  IfrtLoadedVariableRegistry::Key loaded_variable_key{
+      .device_ids = std::move(device_ids),
+      .input_name = std::string(runtime_name),
+  };
+  if (ifrt_loaded_variable_registry.GetLoadedVariable(loaded_variable_key)
+          .ok()) {
+    VLOG(1) << "Found alread registered variable for " << runtime_name;
+    return absl::OkStatus();
+  }
+  xla::ifrt::Future<tensorflow::Tensor> restored_tensor_future =
       ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
   if (!restored_tensor_future.IsValid()) {
     return absl::InternalError(absl::StrCat(
         "LoadVariableOp: failed to fetch variable tensor: ", runtime_name));
   }
-
-  auto loaded_variable_promise = xla::ifrt::Future<
-      absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>>::CreatePromise();
+  auto loaded_variable_promise =
+      xla::ifrt::Future<tsl::RCReference<xla::ifrt::Array>>::CreatePromise();
   auto loaded_variable_future =
-      xla::ifrt::Future<absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>>(
+      xla::ifrt::Future<tsl::RCReference<xla::ifrt::Array>>(
           loaded_variable_promise);
-
   TF_ASSIGN_OR_RETURN(
       absl::StatusOr<ifrt_serving::DtypeAndShape> dtype_and_shape,
       ifrt_restore_tensor_registry.GetDtypeAndShape(runtime_name));
-  // TODO(b/330360798) Load variable on devices from the result of core
-  // selection.
   TF_RETURN_IF_ERROR(ifrt_loaded_variable_registry.TryRegisterLoadedVariable(
-      runtime_name,
+      loaded_variable_key,
       [&]() -> absl::StatusOr<
                 ifrt_serving::IfrtLoadedVariableRegistry::LoadedVariable> {
         return ifrt_serving::IfrtLoadedVariableRegistry::LoadedVariable(
             {.array = loaded_variable_future});
       }));
   restored_tensor_future.OnReady(
-      [ifrt_client = ifrt_client, &thread_pool = thread_pool,
+      [ifrt_client = std::move(ifrt_client), &thread_pool = thread_pool,
        checkpoint_loader_queue = checkpoint_loader_queue,
        sharding_config = sharding_config,
        loaded_variable_promise = std::move(loaded_variable_promise)](

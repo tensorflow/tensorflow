@@ -62,6 +62,7 @@ from tensorflow.lite.python.util import freeze_graph as _freeze_graph
 from tensorflow.lite.python.util import get_debug_info as _get_debug_info
 from tensorflow.lite.python.util import get_grappler_config as _get_grappler_config
 from tensorflow.lite.python.util import get_model_hash as _get_model_hash
+from tensorflow.lite.python.util import get_save_spec as _get_save_spec
 from tensorflow.lite.python.util import get_sparsity_modes as _get_sparsity_modes
 from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
 from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
@@ -84,6 +85,7 @@ from tensorflow.python.framework import byte_swap_tensor as bst
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import versions
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
@@ -97,6 +99,7 @@ from tensorflow.python.saved_model.load import load as _load
 from tensorflow.python.saved_model.loader_impl import parse_saved_model_with_debug_info as _parse_saved_model_with_debug_info
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util import keras_deps
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
@@ -1580,11 +1583,57 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
       output_tensors: List of output tensors.
     """
     try:
-      _save.save(
-          self._keras_model,
-          output_dir,
-          options=_save_options.SaveOptions(save_debug_info=True),
-      )
+
+      def _is_keras_3():
+        """Returns true if _keras_model is a Keras 3+ model."""
+        try:
+          import keras  # pylint: disable=g-import-not-at-top
+
+          return keras.__version__.startswith("3") and isinstance(
+              self._keras_model, keras.layers.Layer
+          )
+        except ImportError:
+          return False
+
+      if _is_keras_3():
+        import keras  # pylint: disable=g-import-not-at-top
+
+        # Keras 3 model `export` by default saves model.__call__ with
+        # training=True. Need to export the model call with training=False for
+        # inference only and TFLite conversion.
+        export_archive = keras.export.ExportArchive()
+        export_archive.track(self._keras_model)
+        if isinstance(
+            self._keras_model,
+            (keras.src.models.Functional, keras.src.models.Sequential),
+        ):
+          input_signature = nest.map_structure(
+              lambda x: tensor_spec.TensorSpec(
+                  x.shape, dtype=x.dtype, name=x.name
+              ),
+              self._keras_model.inputs,
+          )
+          if isinstance(input_signature, list) and len(input_signature) > 1:
+            input_signature = [input_signature]
+        else:
+          save_spec = _get_save_spec(self._keras_model)
+          if not save_spec:
+            raise ValueError(
+                "The model provided has never been called. "
+                "It must be called at least once before export."
+            )
+          input_signature = [save_spec]
+        inference_fn = functools.partial(
+            self._keras_model.__call__, training=False
+        )
+        export_archive.add_endpoint("serve", inference_fn, input_signature)
+        export_archive.write_out(output_dir)
+      else:
+        _save.save(
+            self._keras_model,
+            output_dir,
+            options=_save_options.SaveOptions(save_debug_info=True),
+        )
     except Exception:  # pylint: disable=broad-except
       # When storing the given keras model to a saved model is failed, let's
       # use original keras model conversion pipeline.

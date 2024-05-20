@@ -15,9 +15,18 @@ limitations under the License.
 
 #include "xla/pjrt/host_callback.h"
 
+#include <cstddef>
 #include <memory>
 #include <utility>
 #include <vector>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/shape_util.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -28,9 +37,9 @@ void LeaveHostCallback() { --on_send_guard; }
 
 bool ThisThreadIsInsideHostCallback() { return on_send_guard > 0; }
 
-Status HostCallbackContext::OnSend(int arg_num,
-                                   const PjRtTransferMetadata& metadata,
-                                   PjRtChunk data) {
+absl::Status HostCallbackContext::OnSend(int arg_num,
+                                         const PjRtTransferMetadata& metadata,
+                                         PjRtChunk data) {
   if (!use_major_to_minor_data_layout_for_callbacks_) {
     const auto& arg_info = host_callback_.operands.at(arg_num);
     const auto& host_shape = arg_info.shape;
@@ -54,7 +63,7 @@ Status HostCallbackContext::OnSend(int arg_num,
 
   DCHECK_GE(ready_count_.load(), 1);
   if (ready_count_.fetch_sub(1) != 1) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // This atomic store won't race against the next invocation of OnSend()
@@ -107,17 +116,19 @@ void HostCallbackContext::Receive(int res_num,
   auto& result_channel = result_channels_.at(res_num);
   result_channel->Pop().OnReady(
       [this, res_num, metadata,
-       stream = std::move(stream)](PjRtChunk chunk) mutable {
+       stream = std::move(stream)](absl::StatusOr<PjRtChunk> chunk) mutable {
+        TF_CHECK_OK(chunk.status());
+
         if (!use_major_to_minor_data_layout_for_callbacks_) {
           const auto& host_shape = host_callback_.results.at(res_num).shape;
           const auto& device_shape = metadata.device_shape;
           auto statusor_linearized =
               host_memory_for_device_manager_->ToDeviceLayout(
-                  chunk.data(), chunk.size(), host_shape, device_shape);
+                  chunk->data(), chunk->size(), host_shape, device_shape);
           chunk = std::move(statusor_linearized.value());
         }
 
-        stream->AddChunk(std::move(chunk)).OnReady([](Status s) {
+        stream->AddChunk(*std::move(chunk)).OnReady([](absl::Status s) {
           TF_CHECK_OK(s);
         });
       });

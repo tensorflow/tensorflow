@@ -63,6 +63,7 @@ class HostOffloader : public HloModulePass {
   absl::flat_hash_set<HloInstruction*> annotations_for_copy_to_host_to_insert_;
   absl::flat_hash_set<HloInstruction*>
       annotations_for_copy_to_device_to_insert_;
+  absl::flat_hash_set<HloInstruction*> dus_for_streamed_buffer_;
   std::unique_ptr<CallGraph> call_graph_;
 
   // Positions of all HloValues of the given HloBuffer will be added to
@@ -72,6 +73,9 @@ class HostOffloader : public HloModulePass {
   // Process streamed inputs for the given computation, finding the relevant
   // move-to-device custom calls and inserting the appropriate copies.
   Status HandleInputStreaming(HloComputation* computation);
+  // Process streamed outputs for the given computation, finding the relevant
+  // move-to-host custom calls and inserting the appropriate copies.
+  Status HandleOutputStreaming(HloComputation* computation);
   // From a unique buffer on host memory, finds move-to-device custom calls
   // for this buffer and inserts the appropriate copies.
   Status HandleStreamedBuffer(const HloBuffer& unique_buffer);

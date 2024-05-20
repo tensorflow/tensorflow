@@ -17,12 +17,16 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -61,6 +65,11 @@ TEST(FfiTest, DataTypeEnumValue) {
   EXPECT_EQ(encoded(PrimitiveType::F64), encoded(DataType::F64));
 
   EXPECT_EQ(encoded(PrimitiveType::BF16), encoded(DataType::BF16));
+
+  EXPECT_EQ(encoded(PrimitiveType::C64), encoded(DataType::C64));
+  EXPECT_EQ(encoded(PrimitiveType::C128), encoded(DataType::C128));
+
+  EXPECT_EQ(encoded(PrimitiveType::TOKEN), encoded(DataType::TOKEN));
 }
 
 TEST(FfiTest, BufferBaseArgument) {
@@ -166,6 +175,23 @@ TEST(FfiTest, WrongTypeBufferArgument) {
                HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
 }
 
+TEST(FfiTest, TokenArgument) {
+  CallFrameBuilder builder;
+  builder.AddBufferArg(se::DeviceMemoryBase(), PrimitiveType::TOKEN,
+                       /*dims=*/{});
+  auto call_frame = builder.Build();
+
+  auto fn = [&](Token tok) {
+    EXPECT_EQ(tok.data, nullptr);
+    EXPECT_EQ(tok.dimensions.size(), 0);
+    return ffi::Error::Success();
+  };
+
+  auto handler = Ffi::Bind().Arg<Token>().To(fn);
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
 TEST(FfiTest, AutoBinding) {
   static constexpr char kI32[] = "i32";
 
@@ -264,22 +290,36 @@ TEST(FfiTest, BindingPlatformStreamInference) {
 
 TEST(FfiTest, ArrayAttr) {
   CallFrameBuilder::AttributesBuilder attrs;
-  attrs.Insert("arr", std::vector<int32_t>({1, 2, 3, 4}));
+  attrs.Insert("arr0", std::vector<int8_t>({1, 2, 3, 4}));
+  attrs.Insert("arr1", std::vector<int16_t>({1, 2, 3, 4}));
+  attrs.Insert("arr2", std::vector<int32_t>({1, 2, 3, 4}));
+  attrs.Insert("arr3", std::vector<int64_t>({1, 2, 3, 4}));
+  attrs.Insert("arr4", std::vector<float>({1, 2, 3, 4}));
+  attrs.Insert("arr5", std::vector<double>({1, 2, 3, 4}));
 
   CallFrameBuilder builder;
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
-  auto fn = [&](Span<const int32_t> arr) {
-    EXPECT_EQ(arr.size(), 4);
-    EXPECT_EQ(arr[0], 1);
-    EXPECT_EQ(arr[1], 2);
-    EXPECT_EQ(arr[2], 3);
-    EXPECT_EQ(arr[3], 4);
+  auto fn = [&](auto arr0, auto arr1, auto arr2, auto arr3, auto arr4,
+                auto arr5) {
+    EXPECT_EQ(arr0, Span<const int8_t>({1, 2, 3, 4}));
+    EXPECT_EQ(arr1, Span<const int16_t>({1, 2, 3, 4}));
+    EXPECT_EQ(arr2, Span<const int32_t>({1, 2, 3, 4}));
+    EXPECT_EQ(arr3, Span<const int64_t>({1, 2, 3, 4}));
+    EXPECT_EQ(arr4, Span<const float>({1, 2, 3, 4}));
+    EXPECT_EQ(arr5, Span<const double>({1, 2, 3, 4}));
     return Error::Success();
   };
 
-  auto handler = Ffi::Bind().Attr<Span<const int32_t>>("arr").To(fn);
+  auto handler = Ffi::Bind()
+                     .Attr<Span<const int8_t>>("arr0")
+                     .Attr<Span<const int16_t>>("arr1")
+                     .Attr<Span<const int32_t>>("arr2")
+                     .Attr<Span<const int64_t>>("arr3")
+                     .Attr<Span<const float>>("arr4")
+                     .Attr<Span<const double>>("arr5")
+                     .To(fn);
   auto status = Call(*handler, call_frame);
 
   TF_ASSERT_OK(status);
@@ -307,6 +347,39 @@ TEST(FfiTest, PointerAttr) {
 
   auto handler = Ffi::Bind().Attr<Pointer<std::string>>("ptr").To(fn);
   auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+struct MyData {
+  std::string str;
+};
+
+TEST(FfiTest, UserData) {
+  static constexpr char kId[] = "my_data";
+
+  MyData data{"foo"};
+  auto deleter = +[](void*) {};
+
+  ExecutionContext execution_context;
+  TF_ASSERT_OK(execution_context.Emplace(kId, &data, deleter));
+
+  CallFrameBuilder builder;
+  auto call_frame = builder.Build();
+
+  auto fn = [&](MyData* data) {
+    EXPECT_EQ(data->str, "foo");
+    return Error::Success();
+  };
+
+  auto handler = Ffi::Bind().Ctx<UserData<kId, MyData>>().To(fn);
+
+  ServiceExecutableRunOptions service_run_options;
+  service_run_options.mutable_run_options()->set_ffi_execution_context(
+      &execution_context);
+
+  CallOptions options = {&service_run_options};
+  auto status = Call(*handler, call_frame, options);
 
   TF_ASSERT_OK(status);
 }

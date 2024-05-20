@@ -194,8 +194,7 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
   // of bigger ones allocated elsewhere.
   BufferAllocations new_allocations(new_buffers,
                                     orig_allocations.device_ordinal(),
-                                    orig_allocations.memory_allocator(),
-                                    orig_allocations.external_allocations());
+                                    orig_allocations.memory_allocator());
 
   Thunk::ExecuteParams new_params =
       Thunk::ExecuteParams::CloneWithNewAllocations(params, new_allocations);

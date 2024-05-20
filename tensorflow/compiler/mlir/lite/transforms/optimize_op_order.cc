@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -66,9 +67,9 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
     // Only push down the dequantize op when the output is smaller, so that it
     // can have smaller memory usage.
     auto input_type =
-        dequantize_op.getOutput().getType().dyn_cast<RankedTensorType>();
-    auto output_type =
-        passthrough_op->getResult(0).getType().dyn_cast<RankedTensorType>();
+        mlir::dyn_cast<RankedTensorType>(dequantize_op.getOutput().getType());
+    auto output_type = mlir::dyn_cast<RankedTensorType>(
+        passthrough_op->getResult(0).getType());
     if (!input_type || !output_type ||
         get_num_elements(input_type) <= get_num_elements(output_type)) {
       return failure();
@@ -85,7 +86,7 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
 
     // Set the input type of the passthrough op and pull it up.
     Type new_output_type;
-    if (input_element_type.isa<quant::QuantizedType>()) {
+    if (mlir::isa<quant::QuantizedType>(input_element_type)) {
       new_output_type = QuantizedType::getQuantizedElementType(
                             dequantize_op.getInput().getType())
                             .castFromExpressedType(output_type);

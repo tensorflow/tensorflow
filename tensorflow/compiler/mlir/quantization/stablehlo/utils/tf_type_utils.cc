@@ -37,8 +37,8 @@ limitations under the License.
 namespace mlir::quant::tensorflow {
 
 bool IsTFQintType(const Type type) {
-  return type.isa<TF::Qint8Type, TF::Qint16Type, TF::Qint32Type, TF::Quint8Type,
-                  TF::Quint16Type>();
+  return mlir::isa<TF::Qint8Type, TF::Qint16Type, TF::Qint32Type,
+                   TF::Quint8Type, TF::Quint16Type>(type);
 }
 
 Type GetIntTypeFromTFQint(const Type type) {

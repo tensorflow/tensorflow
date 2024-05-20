@@ -31,6 +31,12 @@ class IfrtBackendCompiler : public tensorflow::BackendCompiler {
   explicit IfrtBackendCompiler(TpuCompiler* tpu_compiler = nullptr)
       : tpu_compiler_(tpu_compiler) {}
 
+  void GetDependentDialects(mlir::DialectRegistry& registry) const override {
+    if (tpu_compiler_) {
+      tpu_compiler_->RegisterTPUDialects(&registry);
+    }
+  }
+
   // Rewrites the tensorflow graph in MLIR for IFRT serving. The methods
   // extracts regions for IFRT execution on accelerator (e.g. TPU).
   absl::Status CompileTensorflow(

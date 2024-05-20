@@ -92,7 +92,7 @@ TransposeOperator* CreateTransposeFromReorderAxes(
   *modified = false;
   auto reorder_it = model->operators.begin() + op_index;
   if (reorder_it->get()->type != OperatorType::kReorderAxes)
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
 
   auto* reorder_op = static_cast<ReorderAxesOperator*>(reorder_it->get());
   CHECK_EQ(reorder_op->inputs.size(), 1);
@@ -118,8 +118,8 @@ TransposeOperator* CreateTransposeFromReorderAxes(
   // been adjusted to reflect the permutations in ReorderAxes. ReorderAxes will
   // be merged into a constant array when possible.
   if (IsConstantParameterArray(*model, constant_input_array_name))
-    return ::tensorflow::OkStatus();
-  if (!output_array.has_shape()) return ::tensorflow::OkStatus();
+    return absl::OkStatus();
+  if (!output_array.has_shape()) return absl::OkStatus();
 
   const auto input_axes_order = reorder_op->input_axes_order;
   const auto output_axes_order = reorder_op->output_axes_order;
@@ -145,7 +145,7 @@ TransposeOperator* CreateTransposeFromReorderAxes(
   DeleteOpAndArrays(model, reorder_op);
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

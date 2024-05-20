@@ -26,6 +26,8 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
+char PjRtCompatibleMemory::ID = 0;
+
 char PjRtMemory::ID = 0;
 
 PjRtMemory::PjRtMemory(PjRtClient* client, xla::PjRtMemorySpace* pjrt_memory)

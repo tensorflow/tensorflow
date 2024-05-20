@@ -26,8 +26,6 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
@@ -47,6 +45,15 @@ class IndexingMapTest : public HloTestBase {
   mlir::MLIRContext mlir_context_;
   AffineMapPrinter printer_;
 };
+
+std::vector<bool> ConvertToSTL(const llvm::SmallBitVector& bit_vector) {
+  std::vector<bool> result;
+  result.reserve(bit_vector.size());
+  for (int i = 0; i < bit_vector.size(); ++i) {
+    result.push_back(bit_vector[i]);
+  }
+  return result;
+}
 
 TEST_F(IndexingMapTest, RTVar) {
   auto zero_dim_map = AffineMap::get(&mlir_context_);
@@ -181,6 +188,92 @@ TEST_F(IndexingMapTest, Composition_ProducerAndConsumerHaveConstraints) {
                           s0 mod 3 in [1, 1]
                           s2 mod 4 in [0, 0]
                         )"));
+}
+
+TEST_F(IndexingMapTest, RemoveUnusedDimensions_ConstraintUsesDim) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1)[s0, s1] -> (d1, s0, s1)", &mlir_context_),
+      {50, 60}, {70, 20});
+  // This constraint cannot be removed, because it contains a "used dim".
+  indexing_map.AddConstraint(ParseAffineExpr("s0 + d0", &mlir_context_),
+                             Interval{1, 100});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 3", &mlir_context_),
+                             Interval{0, 0});
+  indexing_map.RemoveUnusedDimensions();
+  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
+                          (d0, d1)[s0, s1] -> (d1, s0, s1)
+                          domain:
+                          d0 in [0, 49]
+                          d1 in [0, 59]
+                          s0 in [0, 69]
+                          s1 in [0, 19]
+                          d0 + s0 in [1, 100]
+                          s0 mod 3 in [0, 0]
+                        )"));
+}
+
+TEST_F(IndexingMapTest, RemoveUnusedDimensions_ConstraintUsesOnlyUnusedDim) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1)[s0, s1] -> (s0, d1, s1)", &mlir_context_),
+      {50, 60}, {70, 20});
+  // This constraint can be removed, because it contains only the unused dim.
+  indexing_map.AddConstraint(ParseAffineExpr("d0 mod 3", &mlir_context_),
+                             Interval{0, 0});
+  indexing_map.RemoveUnusedDimensions();
+  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
+                          (d0)[s0, s1] -> (s0, d0, s1)
+                          domain:
+                          d0 in [0, 59]
+                          s0 in [0, 69]
+                          s1 in [0, 19]
+                        )"));
+}
+
+TEST_F(IndexingMapTest, RemoveUnusedDimensions_ConstraintsWithManyDims) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1, d2, d3, d4)[s0, s1] -> (s0 * 4 + d1 + d3 - 42)",
+                     &mlir_context_),
+      {1, 2, 3, 4, 5}, {32, 64});
+  indexing_map.AddConstraint(
+      ParseAffineExpr("s0 * 4 + d1 + d3", &mlir_context_), Interval{24, 459});
+  indexing_map.RemoveUnusedDimensions();
+  // dimensions d0, d2, d4 will be removed and d1 and d3 will become d0 and d1.
+  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
+                              (d0, d1)[s0, s1] -> (d0 + s0 * 4 + d1 - 42)
+                              domain:
+                              d0 in [0, 1]
+                              d1 in [0, 3]
+                              s0 in [0, 31]
+                              s1 in [0, 63]
+                              d0 + s0 * 4 + d1 in [24, 459]
+                            )"));
+}
+
+TEST_F(IndexingMapTest, RemoveUnusedVars_ConstraintsWithManyDims) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(
+          "(d0, d1, d2, d3, d4)[s0, s1, s2] -> (s0 * 4 + d1 + d3 - 42)",
+          &mlir_context_),
+      {1, 2, 3, 4, 5}, {32, 64, 96});
+  indexing_map.AddConstraint(
+      ParseAffineExpr("s0 * 4 + d1 + d3", &mlir_context_), Interval{24, 459});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 + s2", &mlir_context_),
+                             Interval{0, 512});
+  auto unused_vars = indexing_map.RemoveUnusedVars();
+  // dimensions d0, d2, d4 and symbol s1 will be removed.
+  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
+                              (d0, d1)[s0, s1] -> (d0 + s0 * 4 + d1 - 42)
+                              domain:
+                              d0 in [0, 1]
+                              d1 in [0, 3]
+                              s0 in [0, 31]
+                              s1 in [0, 95]
+                              d0 + s0 * 4 + d1 in [24, 459]
+                              s0 + s1 in [0, 512]
+                            )"));
+  EXPECT_THAT(ConvertToSTL(unused_vars),
+              ::testing::ElementsAreArray(
+                  {true, false, true, false, true, false, true, false}));
 }
 
 TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintUsesSymbol) {

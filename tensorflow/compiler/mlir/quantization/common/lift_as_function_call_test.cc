@@ -47,6 +47,8 @@ namespace {
 using ::stablehlo::quantization::Method;
 using ::testing::HasSubstr;
 using ::testing::NotNull;
+using ::testing::SizeIs;
+using ::testing::StrEq;
 using ::tsl::protobuf::util::MessageDifferencer;
 using ::tsl::testing::IsOk;
 using ::tsl::testing::StatusIs;
@@ -118,10 +120,11 @@ TEST_F(LiftAsFunctionCallTest, FunctionLiftedAsXlaCallModuleOp) {
       FindOperationOfType<mlir::stablehlo::DotGeneralOp>(entry_func);
 
   EXPECT_TRUE(isa<TF::XlaCallModuleOp>(lifted_op));
-  EXPECT_EQ(lifted_op->getAttr("_original_entry_function").cast<StringAttr>(),
-            "composite_dot_general_fn_1");
   EXPECT_EQ(
-      lifted_dot_general_op->getAttr("precision_config").cast<ArrayAttr>(),
+      mlir::cast<StringAttr>(lifted_op->getAttr("_original_entry_function")),
+      "composite_dot_general_fn_1");
+  EXPECT_EQ(
+      mlir::cast<ArrayAttr>(lifted_dot_general_op->getAttr("precision_config")),
       builder_.getArrayAttr(SmallVector<Attribute>(
           1, mlir::stablehlo::PrecisionAttr::get(
                  ctx_.get(), mlir::stablehlo::Precision::DEFAULT))));
@@ -144,8 +147,9 @@ TEST_F(LiftAsFunctionCallTest, FunctionNoAttrLiftedAsXlaCallModuleOp) {
                          "composite_dot_general_fn", operands, results)[0]
           .getDefiningOp();
   EXPECT_TRUE(isa<TF::XlaCallModuleOp>(lifted_op));
-  EXPECT_EQ(lifted_op->getAttr("_original_entry_function").cast<StringAttr>(),
-            "composite_dot_general_fn_1");
+  EXPECT_EQ(
+      mlir::cast<StringAttr>(lifted_op->getAttr("_original_entry_function")),
+      "composite_dot_general_fn_1");
 }
 
 TEST_F(LiftAsFunctionCallTest, EinsumSupportedForXlaDotV2Succeeds) {
@@ -350,6 +354,179 @@ TEST_F(
   // Test that `GetQuantizationMethodOrDefault` returns the default instance.
   const Method method = GetQuantizationMethodOrDefault(*xla_call_module_op);
   EXPECT_TRUE(MessageDifferencer::Equals(method, Method::default_instance()));
+}
+constexpr absl::string_view kModuleDotWeightOnlyPtq = R"mlir(
+  module {
+    func.func @main(%arg0: tensor<?x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<?x2xf32>) {
+      %0 = stablehlo.constant dense<[-0.211145893, -0.708605706]> : tensor<2xf32>
+      %1 = stablehlo.constant dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>
+      %2 = "tf.XlaCallModule"(%arg0, %1, %0) <{Sout = [#tf_type.shape<?x2>], module = "", version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _tfl_quant_trait = "fully_quantizable", _quantization_method = "weight_only_ptq { }"} : (tensor<?x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+      return %2 : tensor<?x2xf32>
+    }
+    func.func private @composite_dot_general_fn_1(%arg0: tensor<?x2xf32>, %arg1: tensor<2x2xf32>, %arg2: tensor<2xf32>) -> tensor<?x2xf32> attributes {_from_xla_call_module, tf_quant.composite_function} {
+      %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0] : (tensor<?x2xf32>, tensor<2x2xf32>) -> tensor<?x2xf32>
+      return %0 : tensor<?x2xf32>
+    }
+  }
+)mlir";
+
+TEST_F(LiftAsFunctionCallTest, HasWeightOnlyPtqMethodExists) {
+  OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kModuleDotWeightOnlyPtq);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto call_op = *main_fn.getOps<TF::XlaCallModuleOp>().begin();
+  EXPECT_TRUE(HasWeightOnlyPtqMethod(call_op));
+}
+
+TEST_F(LiftAsFunctionCallTest, HasWeightOnlyPtqMethodDifferentMethod) {
+  const absl::string_view kModuleDotNoQuantization = R"mlir(
+    module {
+      func.func @main(%arg0: tensor<?x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<?x2xf32>) {
+        %0 = stablehlo.constant dense<[-0.211145893, -0.708605706]> : tensor<2xf32>
+        %1 = stablehlo.constant dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>
+        %2 = "tf.XlaCallModule"(%arg0, %1, %0) <{Sout = [#tf_type.shape<?x2>], module = "", version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _tfl_quant_trait = "fully_quantizable", _quantization_method = "no_quantization { }"} : (tensor<?x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+        return %2 : tensor<?x2xf32>
+      }
+      func.func private @composite_dot_general_fn_1(%arg0: tensor<?x2xf32>, %arg1: tensor<2x2xf32>, %arg2: tensor<2xf32>) -> tensor<?x2xf32> attributes {_from_xla_call_module, tf_quant.composite_function} {
+        %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0] : (tensor<?x2xf32>, tensor<2x2xf32>) -> tensor<?x2xf32>
+        return %0 : tensor<?x2xf32>
+      }
+    }
+  )mlir";
+  OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kModuleDotNoQuantization);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto call_op = *main_fn.getOps<TF::XlaCallModuleOp>().begin();
+  EXPECT_FALSE(HasWeightOnlyPtqMethod(call_op));
+}
+
+TEST_F(LiftAsFunctionCallTest, HasWeightOnlyPtqMethodNoMethod) {
+  const absl::string_view kModuleXlaCallModule = R"mlir(
+    module {
+      func.func @main(%arg0: tensor<?x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<?x2xf32>) {
+        %0 = stablehlo.constant dense<[-0.211145893, -0.708605706]> : tensor<2xf32>
+        %1 = stablehlo.constant dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>
+        %2 = "tf.XlaCallModule"(%arg0, %1, %0) <{Sout = [#tf_type.shape<?x2>], module = "", version = 9 : i64}> {_entry_function = @composite_fn_1, _original_entry_function = "composite_fn_1", _tfl_quant_trait = "fully_quantizable"} : (tensor<?x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+        return %2 : tensor<?x2xf32>
+      }
+      func.func private @composite_fn_1(%arg0: tensor<?x2xf32>, %arg1: tensor<2x2xf32>, %arg2: tensor<2xf32>) -> tensor<?x2xf32> attributes {_from_xla_call_module, tf_quant.composite_function} {
+        return %arg0 : tensor<?x2xf32>
+      }
+    }
+  )mlir";
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleXlaCallModule);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto call_op = *main_fn.getOps<TF::XlaCallModuleOp>().begin();
+  EXPECT_FALSE(HasWeightOnlyPtqMethod(call_op));
+}
+
+TEST_F(LiftAsFunctionCallTest, IsWeightOnlyQuantizableOpDot) {
+  OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kModuleDotWeightOnlyPtq);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto call_op = *main_fn.getOps<TF::XlaCallModuleOp>().begin();
+  EXPECT_TRUE(IsWeightOnlyQuantizableOp(*call_op));
+}
+
+TEST_F(LiftAsFunctionCallTest, IsWeightOnlyQuantizableOpNotTfXlaCallModuleOp) {
+  const absl::string_view kModulePartitionedCallDot = R"mlir(
+    module {
+      func.func @main(%arg0: tensor<?x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<?x2xf32>) {
+        %0 = stablehlo.constant dense<[-0.211145893, -0.708605706]> : tensor<2xf32>
+        %1 = stablehlo.constant dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>
+        %2 = "tf.PartitionedCall"(%arg0, %1, %0)  {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_dot_general_fn_1, _quantization_method = "weight_only_ptq { }"} : (tensor<?x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+        return %2 : tensor<?x2xf32>
+      }
+      func.func private @composite_dot_general_fn_1(%arg0: tensor<?x2xf32>, %arg1: tensor<2x2xf32>, %arg2: tensor<2xf32>) -> tensor<?x2xf32> attributes {_from_xla_call_module, tf_quant.composite_function} {
+        %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0] : (tensor<?x2xf32>, tensor<2x2xf32>) -> tensor<?x2xf32>
+        return %0 : tensor<?x2xf32>
+      }
+    }
+  )mlir";
+  OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kModulePartitionedCallDot);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto call_op = *main_fn.getOps<TF::PartitionedCallOp>().begin();
+  EXPECT_FALSE(IsWeightOnlyQuantizableOp(*call_op));
+}
+
+TEST_F(LiftAsFunctionCallTest, IsWeightOnlyQuantizableOpNoConvNoDot) {
+  constexpr absl::string_view kModuleXlaCallModule = R"mlir(
+    module {
+      func.func @main(%arg0: tensor<?x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<?x2xf32>) {
+        %0 = stablehlo.constant dense<[-0.211145893, -0.708605706]> : tensor<2xf32>
+        %1 = stablehlo.constant dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>
+        %2 = "tf.XlaCallModule"(%arg0, %1, %0) <{Sout = [#tf_type.shape<?x2>], module = "", version = 9 : i64}> {_entry_function = @composite_fn_1, _original_entry_function = "composite_fn_1", _tfl_quant_trait = "fully_quantizable", _quantization_method = "weight_only_ptq { }"} : (tensor<?x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+        return %2 : tensor<?x2xf32>
+      }
+      func.func private @composite_fn_1(%arg0: tensor<?x2xf32>, %arg1: tensor<2x2xf32>, %arg2: tensor<2xf32>) -> tensor<?x2xf32> attributes {_from_xla_call_module, tf_quant.composite_function} {
+        return %arg0 : tensor<?x2xf32>
+      }
+    }
+  )mlir";
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleXlaCallModule);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto call_op = *main_fn.getOps<TF::XlaCallModuleOp>().begin();
+  EXPECT_FALSE(IsWeightOnlyQuantizableOp(*call_op));
+}
+
+TEST_F(LiftAsFunctionCallTest, GetSortedFunctions) {
+  constexpr absl::string_view kModuleXlaCallModule = R"mlir(
+    module {
+      func.func @conv_3_fn(%arg0: tensor<1x3x3x4xf32>) -> tensor<1x3x3x4xf32> {
+        %0 = stablehlo.constant dense<2.000000e+00> : tensor<3x3x4x4xf32>
+        %1 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x4x4xf32>) -> tensor<1x3x3x4xf32>
+        %2 = stablehlo.convolution(%1, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x4x4xf32>) -> tensor<1x3x3x4xf32>
+        func.return %2: tensor<1x3x3x4xf32>
+      }
+
+      func.func @conv_1_fn(%arg0: tensor<1x3x3x4xf32>) -> tensor<1x3x3x4xf32> {
+        %0 = stablehlo.constant dense<2.000000e+00> : tensor<3x3x4x4xf32>
+        %1 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x4x4xf32>) -> tensor<1x3x3x4xf32>
+        %2 = stablehlo.convolution(%1, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x4x4xf32>) -> tensor<1x3x3x4xf32>
+        func.return %2: tensor<1x3x3x4xf32>
+      }
+
+      func.func @conv_2_fn(%arg0: tensor<1x3x3x4xf32>) -> tensor<1x3x3x4xf32> {
+        %0 = stablehlo.constant dense<2.000000e+00> : tensor<3x3x4x4xf32>
+        %1 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x4x4xf32>) -> tensor<1x3x3x4xf32>
+        %2 = stablehlo.convolution(%1, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x4x4xf32>) -> tensor<1x3x3x4xf32>
+        func.return %2: tensor<1x3x3x4xf32>
+      }
+    }
+  )mlir";
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleXlaCallModule);
+  ASSERT_TRUE(module_op);
+
+  SmallVector<func::FuncOp> funcs = GetSortedFunctions(*module_op);
+  ASSERT_THAT(funcs, SizeIs(3));
+  EXPECT_THAT(funcs[0].getSymName(), StrEq("conv_1_fn"));
+  EXPECT_THAT(funcs[1].getSymName(), StrEq("conv_2_fn"));
+  EXPECT_THAT(funcs[2].getSymName(), StrEq("conv_3_fn"));
 }
 
 }  // namespace

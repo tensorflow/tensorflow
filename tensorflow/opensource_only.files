@@ -182,6 +182,7 @@ tf_staging/tensorflow/tools/toolchains/java/BUILD:
 tf_staging/tensorflow/tools/toolchains/python/BUILD:
 tf_staging/tensorflow/tools/toolchains/remote/BUILD:
 tf_staging/tensorflow/tools/toolchains/remote_config/BUILD:
+tf_staging/tensorflow/tools/toolchains/win/20240424/BUILD:
 tf_staging/tensorflow/tools/toolchains/win/BUILD:
 tf_staging/tensorflow/tools/toolchains/win/bazel_211/BUILD:
 tf_staging/tensorflow/tools/toolchains/win/tf_win_05022023/BUILD:

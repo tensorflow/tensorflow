@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -867,7 +868,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   // ready set is not empty.
   virtual Status SchedulingStep(SchedulingState* sched_state);
   // Pick a node to schedule according to cost model.
-  virtual HloGraphNode* FindAndExtractBestNodeAvailable(
+  virtual absl::StatusOr<HloGraphNode*> FindAndExtractBestNodeAvailable(
       SchedulingState& sched_state,
       DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node);
   void DumpLatencyHidingSchedule(

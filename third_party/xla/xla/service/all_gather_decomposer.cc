@@ -71,7 +71,7 @@ HloInstruction* TranslateAllGatherToAllReducePerOperand(
   auto ar = comp->AddInstruction(HloInstruction::CreateAllReduce(
       dus->shape(), {dus},
       MakeBinaryAdd(dus->shape().element_type(), comp->parent()),
-      ag.replica_groups(),
+      ag.device_list(),
       /*constrain_layout=*/ag.constrain_layout(), ag.channel_id(),
       ag.use_global_device_ids()));
   return ar;

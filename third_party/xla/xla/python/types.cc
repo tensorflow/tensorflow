@@ -278,6 +278,17 @@ absl::StatusOr<ifrt::DType> DtypeToIfRtDType(nb_dtype dtype) {
   return ifrt::ToDType(primitive_type);
 }
 
+absl::StatusOr<nb_dtype> IfrtDtypeToDtypeWithTokenCanonicalization(
+    ifrt::DType dtype) {
+  if (dtype.kind() == ifrt::DType::kToken) {
+    // Treat token as bool.
+    return nb::steal<nb_dtype>(
+        reinterpret_cast<PyObject*>(PyArray_DescrFromType(NPY_BOOL)));
+  }
+
+  return IfrtDtypeToNbDtype(dtype);
+}
+
 const NumpyScalarTypes& GetNumpyScalarTypes() {
   static const NumpyScalarTypes* singleton = []() {
     NumpyScalarTypes* dtypes = new NumpyScalarTypes();

@@ -163,7 +163,7 @@ TYPED_TEST_SUITE(CompareTest, SupportedTypes, TestParamNames);
 TYPED_TEST(CompareTest, SupportedTestTypesTensorsWork) {
   using StorageT = typename TypeParam::StorageT;
 
-  absl::SharedBitGen bit_gen;
+  absl::BitGen bit_gen;
   const Shape shape({2, 3, 4});
   Vector<StorageT> lhs_data =
       RandomBuffer<TypeParam::kStorage>(shape, /*min=*/-50, /*max=*/50);
@@ -204,7 +204,7 @@ TYPED_TEST(QuantizedCompareTest, PerTensorWorks) {
   using StorageT = typename TypeParam::StorageT;
   using ExpressedT = typename TypeParam::ExpressedT;
 
-  absl::SharedBitGen bit_gen;
+  absl::BitGen bit_gen;
   const Shape shape({2, 2, 2});
   const ExpressedT scale = static_cast<ExpressedT>(1.5);
   const StorageT zero_point = static_cast<StorageT>(2);

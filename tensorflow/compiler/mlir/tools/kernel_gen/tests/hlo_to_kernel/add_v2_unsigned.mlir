@@ -46,7 +46,7 @@ func.func @AddV2(%arg0: tensor<*xui32>, %arg1: tensor<*xui32>) -> tensor<*xui32>
         %cast = tensor.cast %23 : tensor<?xui32> to tensor<*xui32>
         scf.yield %cast : tensor<*xui32>
       } else {
-        %19:2 = chlo.minimum_broadcast_shapes %5, %6 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
+        %19:2 = mhlo.minimum_broadcast_shapes %5, %6 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
         %20 = shape.rank %19#0 : tensor<?xindex> -> index
         %21 = shape.rank %19#1 : tensor<?xindex> -> index
         %22 = arith.cmpi sgt, %20, %21 : index

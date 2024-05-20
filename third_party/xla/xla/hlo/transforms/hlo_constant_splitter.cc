@@ -18,7 +18,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -34,9 +44,19 @@ bool IsSupportedConstant(const HloInstruction* instruction,
 // Return if this is one of the constant expressions that we consider for
 // duplication.
 bool IsSupportedConstantExpression(const HloInstruction* instruction) {
-  return !instruction->HasSideEffect() &&
-         (instruction->opcode() == HloOpcode::kBroadcast ||
-          instruction->IsElementwise());
+  if (instruction->HasSideEffect()) {
+    return false;
+  }
+  if (instruction->IsElementwise()) {
+    return true;
+  }
+  switch (instruction->opcode()) {
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kSlice:
+      return true;
+    default:
+      return false;
+  }
 }
 
 // Perform duplication of a certain constant expression and replace the

@@ -2397,7 +2397,8 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
         if (!tpu_metadata->device_assignment.empty() && device_ordinal > 0) {
           return absl::InvalidArgumentError(
               "`device_assignment` shouldn't be set manually in the graph when "
-              "round-robin core selection is enabled.");
+              "core selector is enabled or device_ordinal of the op is "
+              "non-zero.");
         }
 
         tpu_metadata->topology = GetTPUTopology();
@@ -2426,8 +2427,8 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
           // The auto generated device assignment should be the same as or a
           // slice of TPU topology device_coordinates. This guarantees the
           // logical device IDs order the same as the physical device IDs order.
-          // It is important for round-robin core selection, as we assume
-          // the TPU device group for one inference request is
+          // It is important for core selection, as we assume the TPU device
+          // group for one inference request is
           // [TPU:device_ordinal, TPU:device_ordinal + num_cores_per_replica].
 
           auto coordinates_start =

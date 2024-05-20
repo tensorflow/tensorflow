@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -32,7 +33,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/xla.pb.h"
@@ -42,14 +45,15 @@ limitations under the License.
 namespace xla {
 
 HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
-                                     bool import_all_computation)
+                                     bool import_all_computation,
+                                     bool flatten_computation_args_result)
     : import_all_computation_(import_all_computation),
+      flatten_computation_args_result_(flatten_computation_args_result),
       symbol_table_(module),
       builder_(module.getContext()) {
   module.getContext()->loadDialect<mlir::arith::ArithDialect>();
   module.getContext()->loadDialect<mlir::func::FuncDialect>();
   module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
-  module.getContext()->loadDialect<mlir::quant::QuantizationDialect>();
   module.getContext()->loadDialect<mlir::quant::QuantizationDialect>();
 }
 
@@ -59,16 +63,36 @@ constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 
 mlir::ArrayAttr ConvertCrossProgramPrefetches(
     const absl::Span<const HloModule::CrossProgramPrefetchInfo> prefetches,
-    mlir::Builder* builder) {
+    const HloComputation& entryComputation, mlir::Builder* builder,
+    bool flatten_computation_args_result) {
   llvm::SmallVector<mlir::Attribute, 4> shapes;
-  for (auto [parameter, index, alt_memory_offset] : prefetches) {
-    llvm::SmallVector<int64_t, 4> dims;
-    for (auto dim : index) dims.push_back(dim);
-    std::optional<int64_t> offset =
-        alt_memory_offset ? std::optional<int64_t>(*alt_memory_offset)
-                          : std::nullopt;
-    shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
-        builder->getContext(), parameter, dims, offset));
+  shapes.reserve(prefetches.size());
+  if (flatten_computation_args_result) {
+    llvm::SmallVector<absl::flat_hash_map<ShapeIndex, int64_t>>
+        original_param_index_to_flattened_arg_index;
+    int64_t arg_index = 0;
+    for (HloInstruction* param_instruction :
+         entryComputation.parameter_instructions()) {
+      auto& param_map =
+          original_param_index_to_flattened_arg_index.emplace_back();
+      ShapeUtil::ForEachLeafShape(param_instruction->shape(),
+                                  [&](const Shape&, const ShapeIndex& index) {
+                                    param_map[index] = arg_index++;
+                                  });
+    }
+    for (const auto& [parameter, index, alt_memory_offset] : prefetches) {
+      shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
+          builder->getContext(),
+          original_param_index_to_flattened_arg_index[parameter][index],
+          /*indices=*/{}, alt_memory_offset));
+    }
+  } else {
+    for (const auto& [parameter, index, alt_memory_offset] : prefetches) {
+      shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
+          builder->getContext(), parameter,
+          llvm::ArrayRef<int64_t>(index.data(), index.size()),
+          alt_memory_offset));
+    }
   }
 
   return mlir::ArrayAttr::get(builder->getContext(), shapes);
@@ -78,9 +102,11 @@ mlir::ArrayAttr ConvertCrossProgramPrefetches(
 Status HloModuleImporter::Import(const HloModule& hlo_module) {
   auto module = llvm::cast<mlir::ModuleOp>(symbol_table_.getOp());
   module.setName(hlo_module.name());
-  module->setAttr("mhlo.cross_program_prefetches",
-                  ConvertCrossProgramPrefetches(
-                      hlo_module.CrossProgramPrefetches(), &builder_));
+  module->setAttr(
+      "mhlo.cross_program_prefetches",
+      ConvertCrossProgramPrefetches(hlo_module.CrossProgramPrefetches(),
+                                    *hlo_module.entry_computation(), &builder_,
+                                    flatten_computation_args_result_));
   module->setAttr(
       "mhlo.is_dynamic",
       mlir::BoolAttr::get(builder_.getContext(), hlo_module.is_dynamic()));
@@ -96,8 +122,15 @@ Status HloModuleImporter::Import(const HloModule& hlo_module) {
 
   if (hlo_module.has_spmd_parameters_shardings()) {
     llvm::SmallVector<mlir::Attribute> parameter_shardings;
-    for (const auto& sharding : hlo_module.spmd_parameters_shardings()) {
-      parameter_shardings.push_back(ConvertSharding(sharding, &builder_));
+    parameter_shardings.reserve(hlo_module.spmd_parameters_shardings().size());
+    for (const auto& root_sharding : hlo_module.spmd_parameters_shardings()) {
+      llvm::ArrayRef<HloSharding> shardings = root_sharding;
+      if (root_sharding.IsTuple() && flatten_computation_args_result_) {
+        shardings = root_sharding.tuple_elements();
+      }
+      for (const auto& sharding : shardings) {
+        parameter_shardings.push_back(ConvertSharding(sharding, &builder_));
+      }
     }
     module->setAttr("mhlo.spmd_parameters_shardings",
                     builder_.getArrayAttr(parameter_shardings));
@@ -106,10 +139,10 @@ Status HloModuleImporter::Import(const HloModule& hlo_module) {
   if (!import_all_computation_)
     // Only import the entry computation, any reachable one will be imported
     // unless turned into a region operation.
-    return HloFunctionImporter::ImportAsFunc(*hlo_module.entry_computation(),
-                                             symbol_table_, &function_map_,
-                                             &builder_,
-                                             /*is_main*/ true)
+    return HloFunctionImporter::ImportAsFunc(
+               *hlo_module.entry_computation(), symbol_table_, &function_map_,
+               &builder_,
+               /*is_main*/ true, flatten_computation_args_result_)
         .status();
 
   auto* module_entry_computation = hlo_module.entry_computation();
@@ -117,7 +150,8 @@ Status HloModuleImporter::Import(const HloModule& hlo_module) {
     TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
                            *computation, symbol_table_, &function_map_,
                            &builder_,
-                           /*is_main*/ computation == module_entry_computation)
+                           /*is_main*/ computation == module_entry_computation,
+                           flatten_computation_args_result_)
                            .status());
 
   return OkStatus();

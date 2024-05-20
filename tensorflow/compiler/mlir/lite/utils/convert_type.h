@@ -19,9 +19,9 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "xla/statusor.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {
 class Builder;

@@ -14,12 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/post_calibration.h"
 
+#include <memory>
+
 #include "absl/base/nullability.h"
 #include "absl/log/die_if_null.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/instrumentations/save_report.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -27,6 +31,7 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
+using ::stablehlo::quantization::GetReportFilePath;
 using ::stablehlo::quantization::PipelineConfig;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::QuantizationSpecs;
@@ -41,6 +46,11 @@ absl::StatusOr<ModuleOp> PostCalibrationComponent::Run(
   TF_RETURN_IF_ERROR(RunPasses(
       kName, /*add_passes_func=*/
       [&config](PassManager& pm) {
+        // Add instrumentation to save quantization report after quantization.
+        pm.addInstrumentation(
+            std::make_unique<SaveQuantizationReportInstrumentation>(
+                GetReportFilePath(config)));
+
         AddPostCalibrationPasses(pm, config.pipeline_config(), config.specs());
       },
       *ctx_, module_op));

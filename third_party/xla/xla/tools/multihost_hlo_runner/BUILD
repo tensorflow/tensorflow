@@ -68,6 +68,7 @@ cc_library(
         "//xla:statusor",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
@@ -79,6 +80,7 @@ cc_library(
         "//xla/service:hlo_pass_pipeline",
         "//xla/tests:test_utils",
         "//xla/tools:hlo_control_flow_flattening",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -115,7 +117,10 @@ xla_test(
             "notap",
         ],
     },
-    backends = ["gpu"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
     data = [
         "data/sharded_16_devices.hlo",
         "data/sharded_2_devices.hlo",
@@ -125,6 +130,8 @@ xla_test(
     tags = ["nomac"],
     deps = [
         ":functional_hlo_runner",
+        "//xla:statusor",
+        "//xla/pjrt:pjrt_client",
         "//xla/tests:filecheck",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/lib/core:status_test_util",

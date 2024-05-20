@@ -696,4 +696,14 @@ REGISTER_OP("FinalizeTPUEmbeddingV2")
       return absl::OkStatus();
     });
 
+REGISTER_OP("GetTpuTaskId")
+    .Output("tpu_task_id: int32")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
+
+REGISTER_OP("UpdateTaskIdAndGlobalCoreArray")
+    .Input("tpu_task_id_to_shard_id: task_count * int32")
+    .Attr("task_count: int >= 1")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape);
+
 }  // namespace tensorflow

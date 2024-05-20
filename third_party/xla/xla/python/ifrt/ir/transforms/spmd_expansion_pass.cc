@@ -176,7 +176,7 @@ mlir::LogicalResult UpdateFunctionArgsUsingSharding(
     auto value = function.getFunctionType().getInput(i);
 
     mlir::RankedTensorType ranked_type =
-        value.dyn_cast<mlir::RankedTensorType>();
+        mlir::dyn_cast<mlir::RankedTensorType>(value);
     if (ranked_type == nullptr) {
       return function.emitOpError()
              << "requires `mlir::RankedTensorType` for arg " << i;
@@ -225,7 +225,8 @@ mlir::LogicalResult UpdateFunctionWithLocalInputShapes(
     mlir::func::FuncOp function) {
   for (auto& operand : function_operands) {
     const int index = operand.getOperandNumber();
-    auto arg_type = operand.get().getType().dyn_cast<mlir::RankedTensorType>();
+    auto arg_type =
+        mlir::dyn_cast<mlir::RankedTensorType>(operand.get().getType());
     if (!arg_type) continue;
 
     llvm::ArrayRef<int64_t> arg_local_shape = arg_type.getShape();

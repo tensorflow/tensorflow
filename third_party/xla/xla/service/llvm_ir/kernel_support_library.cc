@@ -33,28 +33,16 @@ Status KernelSupportLibrary::ForWithStatus(
 
 Status KernelSupportLibrary::ForWithStatus(
     absl::string_view name, llvm::Value* start, llvm::Value* end,
-    llvm::Value* step, bool peel_first_iteration,
-    const std::function<Status(llvm::Value*, llvm::Value*)>&
-        for_body_generator) {
-  if (peel_first_iteration) {
-    return ForWithStatus(
-        name, start, end, step, true,
-        [&](llvm::Value* indvar, bool is_first_iteration) -> Status {
-          return for_body_generator(indvar, b_->getInt1(is_first_iteration));
-        });
-  } else {
-    std::unique_ptr<llvm_ir::ForLoop> loop = llvm_ir::ForLoop::EmitForLoop(
-        name, start, end, step, b_,
-        /*unroll_mode=*/unroll_mode_,
-        /*prevent_vectorization=*/prevent_vectorization_);
-    b_->SetInsertPoint(&loop->GetBodyBasicBlock()->back());
-    TF_RETURN_IF_ERROR(
-        for_body_generator(loop->GetIndVarValue(),
-                           /*is_first_iteration=*/b_->CreateICmpEQ(
-                               loop->GetIndVarValue(), start)));
-    llvm_ir::SetToLastInsertPoint(loop->GetExitBasicBlock(), b_);
-    return OkStatus();
-  }
+    llvm::Value* step,
+    const std::function<Status(llvm::Value*)>& for_body_generator) {
+  std::unique_ptr<llvm_ir::ForLoop> loop = llvm_ir::ForLoop::EmitForLoop(
+      name, start, end, step, b_,
+      /*unroll_mode=*/unroll_mode_,
+      /*prevent_vectorization=*/prevent_vectorization_);
+  b_->SetInsertPoint(&loop->GetBodyBasicBlock()->back());
+  TF_RETURN_IF_ERROR(for_body_generator(loop->GetIndVarValue()));
+  llvm_ir::SetToLastInsertPoint(loop->GetExitBasicBlock(), b_);
+  return OkStatus();
 }
 
 Status KernelSupportLibrary::IfWithStatus(

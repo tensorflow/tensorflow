@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_WHILE_LOOP_INVARIANT_CODE_MOTION_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"

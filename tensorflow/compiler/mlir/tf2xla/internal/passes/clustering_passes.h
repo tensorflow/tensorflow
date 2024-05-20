@@ -62,11 +62,17 @@ CreateHoistBroadcastReadPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateXlaBroadcastPass();
 
+// Creates a pass that identifies XLASharding ops in launch op for TPU
+// computation.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateTPUShardingIdentificationPass();
+
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_MARKOPSFOROUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_TPUCLUSTERFORMATIONPASS
 #define GEN_PASS_DECL_TPUEXTRACTHEADTAILOUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_TPUEXTRACTOUTSIDECOMPILATIONPASS
+#define GEN_PASS_DECL_TPUSHARDINGIDENTIFICATIONPASS
 #define GEN_PASS_DECL_VERIFYCLUSTERINGPASS
 #define GEN_PASS_DECL_XLACLUSTERFORMATIONPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"

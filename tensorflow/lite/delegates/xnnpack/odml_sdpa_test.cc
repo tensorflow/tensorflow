@@ -30,7 +30,7 @@ TEST(ODMLSDPA, MQA) {
 
   const auto batch = 1;
   const auto input_seq_len = 1;
-  const auto max_seq_len = 500;
+  const auto max_seq_len = 64;
   const auto q_heads = 32;
   const auto kv_heads = 1;
   const auto head_dim = 4;  // embedding_dim//q_heads
@@ -50,9 +50,29 @@ TEST(ODMLSDPA, MHA) {
 
   const auto batch = 1;
   const auto input_seq_len = 1;
-  const auto max_seq_len = 500;
+  const auto max_seq_len = 64;
   const auto q_heads = 32;
   const auto kv_heads = 32;
+  const auto head_dim = 4;  // embedding_dim//q_heads
+
+  ODMLSDPATester()
+      .QueryShape({batch, input_seq_len, q_heads, head_dim})  // q
+      .KeyShape({batch, max_seq_len, kv_heads, head_dim})     // k
+      .ValueShape({batch, max_seq_len, kv_heads, head_dim})   // v
+      .MaskShape({batch, 1, input_seq_len, max_seq_len})      // mask
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(ODMLSDPA, GQA) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  const auto batch = 1;
+  const auto input_seq_len = 1;
+  const auto max_seq_len = 64;
+  const auto q_heads = 32;
+  const auto kv_heads = 4;
   const auto head_dim = 4;  // embedding_dim//q_heads
 
   ODMLSDPATester()

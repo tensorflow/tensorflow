@@ -194,7 +194,7 @@ bool DecodeStringList(const absl::Cord& src, tstring* strings, int64_t n) {
 }
 
 void CopyFromArray(absl::Cord* c, const char* base, size_t bytes) {
-  c->CopyFrom(base, bytes);
+  *c = absl::string_view(base, bytes);
 }
 
 class CordStringListEncoderImpl : public StringListEncoder {

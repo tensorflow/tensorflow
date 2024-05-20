@@ -23,16 +23,21 @@ namespace xla {
 
 Status ConvertHloToMlirHlo(mlir::ModuleOp module,
                            xla::HloModuleProto const* hlo_module_proto,
-                           bool import_all_computation) {
+                           bool import_all_computation,
+                           bool flatten_computation_args_result) {
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
-  return HloModuleImporter(module, import_all_computation)
+  return HloModuleImporter(module, import_all_computation,
+                           flatten_computation_args_result)
       .Import(*hlo_module_proto);
 }
 
 Status ConvertHloToMlirHlo(mlir::ModuleOp module, xla::HloModule* hlo_module,
-                           bool import_all_computation) {
+                           bool import_all_computation,
+                           bool flatten_computation_args_result) {
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
-  return HloModuleImporter(module, import_all_computation).Import(*hlo_module);
+  return HloModuleImporter(module, import_all_computation,
+                           flatten_computation_args_result)
+      .Import(*hlo_module);
 }
 
 }  // namespace xla

@@ -1,20 +1,17 @@
 # Description:
 #   Base testing infrastructure for XLA.
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
-)
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
+load("//xla:xla.bzl", "tests_build_defs_bzl_deps", "xla_cc_binary", "xla_cc_test")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
@@ -547,9 +544,10 @@ xla_test(
 xla_test(
     name = "xla_hlo_profile_test",
     srcs = ["xla_hlo_profile_test.cc"],
-    disabled_backends = [
-        # Hlo profiles are not supported on the interpreter backend.
-        "interpreter",
+    backends = [
+        # Hlo profiles are only supported on CPU/GPU.
+        "cpu",
+        "gpu",
     ],
     tags = ["no_aarch64"],
     deps = [
@@ -1014,10 +1012,6 @@ xla_test(
 xla_test(
     name = "scatter_test",
     srcs = ["scatter_test.cc"],
-    backend_tags = {
-        # TODO(b/305008247)
-        "ghostfish_grm": ["broken"],
-    },
     tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":client_library_test_base",
@@ -1409,10 +1403,6 @@ xla_test(
 xla_test(
     name = "float8_test",
     srcs = ["float8_test.cc"],
-    backend_tags = {
-        # TODO(b/305009586)
-        "ghostfish_grm": ["broken"],
-    },
     deps = [
         ":client_library_test_base",
         ":xla_internal_test_main",
@@ -1604,6 +1594,24 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "reduce_window_rewriter_execution_test",
+    srcs = ["reduce_window_rewriter_execution_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":xla_internal_test_main",
+        "//xla:error_spec",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
 # External xla_test targets can add "reduce_window_test_library" to xla_test_library_deps, in order
 # to refer to the cc_library compiled with the correct backend macros. The following test target
 # "reduce_window_test" is an example.
@@ -1786,6 +1794,7 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
@@ -2121,6 +2130,7 @@ xla_test(
         ":hlo_test_base",
         ":literal_test_util",
         ":test_macros_header",
+        ":test_utils",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla/hlo/ir:hlo",
@@ -2177,10 +2187,6 @@ xla_test(
 xla_test(
     name = "bitcast_convert_test",
     srcs = ["bitcast_convert_test.cc"],
-    backend_tags = {
-        # TODO(b/305008729)
-        "ghostfish_grm": ["broken"],
-    },
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -2378,7 +2384,7 @@ xla_cc_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM",
     ]),
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = if_gpu_is_configured([
         ":verified_hlo_module",
         "//xla:literal_util",
@@ -2426,6 +2432,11 @@ xla_test(
 xla_test(
     name = "cpu_gpu_fusion_test",
     srcs = ["cpu_gpu_fusion_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+        "interpreter",
+    ],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -2689,7 +2700,7 @@ xla_cc_test(
     name = "sample_file_test",
     srcs = ["sample_file_test.cc"],
     data = ["isolated_convolution.hlo"],
-    tags = tf_cuda_tests_tags(),
+    use_gpu = True,
     deps = [
         ":hlo_test_base",
         ":xla_internal_test_main",  # fixdeps: keep
@@ -2724,10 +2735,6 @@ xla_test(
 xla_test(
     name = "iota_test",
     srcs = ["iota_test.cc"],
-    backend_tags = {
-        # TODO(b/305011394)
-        "ghostfish_grm": ["broken"],
-    },
     shard_count = 30,
     tags = [
         # Require optimized builds, iota_test_cpu is very slow in fastbuild.
@@ -2942,4 +2949,21 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "@local_tsl//tsl/platform:test",
     ],
+)
+
+bzl_library(
+    name = "plugin_bzl",
+    srcs = ["plugin.bzl"],
+    deps = [],
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    deps = [
+        ":plugin_bzl",
+        "//xla:xla_bzl",
+        "//xla/stream_executor:build_defs_bzl",
+        "@local_tsl//tsl/platform:build_config_root_bzl",
+    ] + tests_build_defs_bzl_deps(),
 )

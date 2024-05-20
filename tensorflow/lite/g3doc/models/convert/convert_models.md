@@ -204,7 +204,7 @@ You are required to provide the `--output_file` flag and either the `--saved_mod
 
 If you have the
 [TensorFlow 2.x source](https://www.tensorflow.org/install/source)
-donwloaded and want to run the converter from that source without building and
+downloaded and want to run the converter from that source without building and
 installing the package,
 you can replace '`tflite_convert`' with
 '`bazel run tensorflow/lite/python:tflite_convert --`' in the command.

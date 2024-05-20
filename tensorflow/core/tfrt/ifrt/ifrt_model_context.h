@@ -29,11 +29,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
-#include "tsl/concurrency/ref_count.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tsl/platform/threadpool.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
@@ -55,14 +56,19 @@ struct DeviceConfig {
 class IfrtModelContext {
  public:
   explicit IfrtModelContext(std::shared_ptr<xla::ifrt::Client> client,
+                            IfrtServingCoreSelector* ifrt_serving_core_selector,
                             const tsl::thread::ThreadPool* thread_pool)
-      : client_(std::move(client)), thread_pool_(*thread_pool) {}
+      : client_(std::move(client)),
+        ifrt_serving_core_selector_(ifrt_serving_core_selector),
+        thread_pool_(*thread_pool) {}
   IfrtModelContext(
       std::shared_ptr<xla::ifrt::Client> client,
+      IfrtServingCoreSelector* ifrt_serving_core_selector,
       const tsl::thread::ThreadPool* thread_pool,
       std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
       : client_(std::move(client)),
+        ifrt_serving_core_selector_(ifrt_serving_core_selector),
         thread_pool_(*thread_pool),
         device_mgr_(std::move(device_mgr)),
         shape_representation_fn_(shape_representation_fn) {}
@@ -97,6 +103,9 @@ class IfrtModelContext {
   tensorflow::StaticDeviceMgr* GetDeviceMgr() const {
     return device_mgr_.get();
   }
+  IfrtServingCoreSelector* GetIfrtServingCoreSelector() const {
+    return ifrt_serving_core_selector_;
+  }
 
   tfrt::ConcurrentWorkQueue* checkpoint_loader_queue() const {
     return checkpoint_loader_queue_;
@@ -105,8 +114,17 @@ class IfrtModelContext {
     checkpoint_loader_queue_ = work_queue;
   }
 
+  // Freeze the model: release the resources such as host tensors that are used
+  // by the device only. The caller guarantees all resources released in this
+  // function is no longer in use in regular execution path.
+  // After Freeze() is called, no new model signature will be compiled. Using a
+  // signature or an input shape that wasn't compiled before the freeze will
+  // leads to an error.
+  absl::Status Freeze();
+
  private:
   std::shared_ptr<xla::ifrt::Client> client_;
+  IfrtServingCoreSelector* ifrt_serving_core_selector_;  // May be nullptr
   const tsl::thread::ThreadPool& thread_pool_;
 
   std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr_;
