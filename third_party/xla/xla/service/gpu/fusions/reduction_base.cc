@@ -309,6 +309,21 @@ ReductionInfo ReductionInfo::Create(const HloFusionAnalysis& analysis,
   absl::InlinedVector<int64_t, 4> tile_per_thread{
       reduction_tiling[0], reduction_tiling[1],
       reduction_tiling[2] / vector_size};
+  if (for_mlir) {
+    // The indexing map simplifier does not currently handle this correctly,
+    // leading to loop bounds that are too large.
+    // TODO(jreiffers): Implement tightening of ranges based on constraints
+    // instead. For example, based on:
+    //
+    //   s1 in [0, 127]
+    //   d0 floordiv 32 + s1 * 32 in [0, 63]
+    //
+    // Tighten the bound of s1 to [0, 1].
+    for (int i = 0; i < num_threads.size(); ++i) {
+      tile_per_thread[i] = std::min(
+          tile_per_thread[i], CeilOfRatio(tiled_shape[i], num_threads[i]));
+    }
+  }
   if (rows_per_warp > 1) {
     // If we produce more than one element per thread, that means the reduced
     // dimension is small and it can't be tiled - we already have more threads
