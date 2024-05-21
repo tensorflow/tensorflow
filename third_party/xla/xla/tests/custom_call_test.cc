@@ -583,8 +583,12 @@ static absl::Status FfiF32ReduceSum(F32Buffer in, R0F32ResultBuffer out) {
   auto out_data = out->data.base();
 
   // Calculate the total size of the vector
-  const auto size =
-      absl::c_accumulate(in.dimensions, 1, std::multiplies<int>());
+  // Manual calculation is used here instead of absl::c_accumulate to trigger
+  // sanitizer check for dimensions
+  auto size = 1;
+  for (auto dim : in.dimensions) {
+    size *= dim;
+  }
 
   // Calculate the sum of the vector
   *out_data = absl::c_accumulate(absl::MakeSpan(in_data, size), 0.0f);

@@ -51,9 +51,8 @@ absl::Span<const int64_t> DecodeDims(int64_t* encoded_dims_data) {
   // suppress false positives from msan sanitizer.
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded_dims_data, sizeof(int64_t));
   auto dims_count = encoded_dims_data[0];
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded_dims_data,
-                                      dims_count * sizeof(int64_t));
   auto dims_begin = encoded_dims_data + 1;
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(dims_begin, dims_count * sizeof(int64_t));
   return absl::MakeSpan(dims_begin, dims_begin + dims_count);
 }
 
