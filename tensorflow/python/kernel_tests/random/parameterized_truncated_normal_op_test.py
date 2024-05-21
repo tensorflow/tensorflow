@@ -198,21 +198,21 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testRightTail(self):
-    self.validateMoments([int(1e5)], 0.0, 1.0, 4.0, np.infty)
+    self.validateMoments([int(1e5)], 0.0, 1.0, 4.0, np.inf)
     self.validateMoments([int(1e5)],
                          0.0,
                          1.0,
                          4.0,
-                         np.infty,
+                         np.inf,
                          use_stateless=True)
 
   @test_util.run_deprecated_v1
   def testLeftTail(self):
-    self.validateMoments([int(1e5)], 0.0, 1.0, -np.infty, -4.0)
+    self.validateMoments([int(1e5)], 0.0, 1.0, -np.inf, -4.0)
     self.validateMoments([int(1e5)],
                          0.0,
                          1.0,
-                         -np.infty,
+                         -np.inf,
                          -4.0,
                          use_stateless=True)
 
@@ -235,34 +235,34 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
   @test_util.run_deprecated_v1
   @test_util.disable_xla("Low probability region")
   def testRightTailShifted(self):
-    self.validateMoments([int(1e5)], -5.0, 1.0, 2.0, np.infty)
+    self.validateMoments([int(1e5)], -5.0, 1.0, 2.0, np.inf)
     self.validateMoments([int(1e5)],
                          -5.0,
                          1.0,
                          2.0,
-                         np.infty,
+                         np.inf,
                          use_stateless=True)
 
   # Take the normal distribution around the mean, but truncating the left tail
   # far from the mean.
   @test_util.run_deprecated_v1
   def testTruncateOnLeft_entireTailOnRight(self):
-    self.validateKolmogorovSmirnov([int(1e5)], 10.0, 1.0, 4.0, np.infty)
+    self.validateKolmogorovSmirnov([int(1e5)], 10.0, 1.0, 4.0, np.inf)
     self.validateKolmogorovSmirnov([int(1e5)],
                                    10.0,
                                    1.0,
                                    4.0,
-                                   np.infty,
+                                   np.inf,
                                    use_stateless=True)
 
   # Take the normal distribution around the mean, but truncating the right tail.
   @test_util.run_deprecated_v1
   def testTruncateOnRight_entireTailOnLeft(self):
-    self.validateKolmogorovSmirnov([int(1e5)], -8, 1.0, -np.infty, -4.0)
+    self.validateKolmogorovSmirnov([int(1e5)], -8, 1.0, -np.inf, -4.0)
     self.validateKolmogorovSmirnov([int(1e5)],
                                    -8.,
                                    1.0,
-                                   -np.infty,
+                                   -np.inf,
                                    -4.0,
                                    use_stateless=True)
 

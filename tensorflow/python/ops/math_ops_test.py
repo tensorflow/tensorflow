@@ -1041,7 +1041,7 @@ class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                             (dtypes.float32), (dtypes.float64),
                             (dtypes.complex64), (dtypes.complex128))
   def testNonFiniteInNumerator(self, dtype):
-    nums = constant_op.constant([np.nan, np.inf, np.NINF], dtype=dtype)
+    nums = constant_op.constant([np.nan, np.inf, -np.inf], dtype=dtype)
     zeros = constant_op.constant([0, 0, 0], dtype=dtype)
     ones = constant_op.constant([1, 1, 1], dtype=dtype)
     with test_util.use_gpu():
@@ -1056,7 +1056,7 @@ class MultiplyNoNanTest(test_util.TensorFlowTestCase):
 
   def testBasic(self):
     for dtype in [np.float32, np.float64]:
-      values = [0, 1, np.nan, np.inf, np.NINF]
+      values = [0, 1, np.nan, np.inf, -np.inf]
       x = constant_op.constant(values, dtype=dtype)
       zeros = constant_op.constant(np.zeros((5,)), dtype=dtype)
       ones = constant_op.constant(np.ones((5,)), dtype=dtype)

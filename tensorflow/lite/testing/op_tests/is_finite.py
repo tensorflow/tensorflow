@@ -50,8 +50,8 @@ def make_is_finite_tests(options):
         result.append(np.random.randint(low=0, high=dim))
       return tuple(result)
 
-    input_values[random_index(input_values.shape)] = np.Inf
-    input_values[random_index(input_values.shape)] = -np.Inf
+    input_values[random_index(input_values.shape)] = np.inf
+    input_values[random_index(input_values.shape)] = -np.inf
     input_values[random_index(input_values.shape)] = np.NAN
     input_values[random_index(input_values.shape)] = tf.float32.max
     input_values[random_index(input_values.shape)] = tf.float32.min
