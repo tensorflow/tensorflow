@@ -58,10 +58,10 @@ bool ValidEmptyOutputShape(int64_t num_inputs, int64_t num_indices,
   return (num_inputs != 0 && num_indices != 0 && num_updates != 0);
 }
 
-template <typename Device, typename T, typename Index>
-class ScatterNdOp : public OpKernel {
+template <typename Device, typename T, typename Index, bool kDropBadIndices>
+class ScatterNdOpBase : public OpKernel {
  public:
-  explicit ScatterNdOp(OpKernelConstruction* c) : OpKernel(c) {
+  explicit ScatterNdOpBase(OpKernelConstruction* c) : OpKernel(c) {
     const DataType dt = DataTypeToEnum<T>::v();
     const DataType index_t = DataTypeToEnum<Index>::v();
     OP_REQUIRES_OK(c, c->MatchSignature({index_t, dt, index_t}, {dt}));
@@ -127,11 +127,19 @@ class ScatterNdOp : public OpKernel {
 
     Tensor out;
     OP_REQUIRES_OK(
-        c, functor::DoScatterNd<Device, T, Index, scatter_nd_op::UpdateOp::ADD>(
-               c, indices, updates, shape, &out, true /*allocate*/));
+        c, functor::DoScatterNd<Device, T, Index, scatter_nd_op::UpdateOp::ADD,
+                                kDropBadIndices>(c, indices, updates, shape,
+                                                 &out, true /*allocate*/));
     c->set_output(0, out);
   }
 };
+
+template <typename Device, typename T, typename Index>
+using ScatterNdOp =
+    ScatterNdOpBase<Device, T, Index, /*kDropBadIndices=*/false>;
+template <typename Device, typename T, typename Index>
+using ScatterNdGpuCompatibleOp =
+    ScatterNdOpBase<Device, T, Index, /*kDropBadIndices=*/true>;
 
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp op>
@@ -228,10 +236,10 @@ class TensorScatterOp : public OpKernel {
 };
 
 template <typename Device, typename T, typename Index,
-          scatter_nd_op::UpdateOp op>
-class ScatterNdUpdateOp : public OpKernel {
+          scatter_nd_op::UpdateOp op, bool kDropBadIndices>
+class ScatterNdUpdateOpBase : public OpKernel {
  public:
-  explicit ScatterNdUpdateOp(OpKernelConstruction* c) : OpKernel(c) {
+  explicit ScatterNdUpdateOpBase(OpKernelConstruction* c) : OpKernel(c) {
     const DataType dt = DataTypeToEnum<T>::v();
     const DataType dt_ref = DataTypeToEnum<T>::ref();
     const DataType index_t = DataTypeToEnum<Index>::v();
@@ -308,10 +316,19 @@ class ScatterNdUpdateOp : public OpKernel {
     }
 
     OP_REQUIRES_OK(
-        c, functor::DoScatterNd<Device, T, Index, op>(
+        c, functor::DoScatterNd<Device, T, Index, op, kDropBadIndices>(
                c, indices, updates, params_shape, &params, false /*allocate*/));
   }
 };
+
+template <typename Device, typename T, typename Index,
+          scatter_nd_op::UpdateOp op>
+using ScatterNdUpdateOp =
+    ScatterNdUpdateOpBase<Device, T, Index, op, /*kDropBadIndices=*/false>;
+template <typename Device, typename T, typename Index,
+          scatter_nd_op::UpdateOp op>
+using ScatterNdUpdateGpuCompatibleOp =
+    ScatterNdUpdateOpBase<Device, T, Index, op, /*kDropBadIndices=*/true>;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -340,6 +357,16 @@ REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(complex128)
                               .HostMemory("shape"),                   \
                           ScatterNdOp<dev##Device, type, index_type>)
 
+#define REGISTER_SCATTER_ND_GPU_COMPATIBLE_KERNEL_INDEX(type, index_type, dev, \
+                                                        name)                  \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name(name)                                                               \
+          .Device(DEVICE_##dev)                                                \
+          .TypeConstraint<type>("T")                                           \
+          .TypeConstraint<index_type>("Tindices")                              \
+          .HostMemory("shape"),                                                \
+      ScatterNdGpuCompatibleOp<dev##Device, type, index_type>)
+
 #define REGISTER_SCATTER_ND_KERNEL_INDEX_INT32_GPU(index_type, name)  \
   REGISTER_KERNEL_BUILDER(Name(name)                                  \
                               .Device(DEVICE_DEFAULT)                 \
@@ -359,6 +386,15 @@ REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(complex128)
           .TypeConstraint<type>("T")                                         \
           .TypeConstraint<index_type>("Tindices"),                           \
       ScatterNdUpdateOp<dev##Device, type, index_type, op>)
+
+#define REGISTER_SCATTER_ND_UPDATE_GPU_COMPATIBLE_KERNEL_INDEX( \
+    type, index_type, dev, name, op)                            \
+  REGISTER_KERNEL_BUILDER(                                      \
+      Name(name)                                                \
+          .Device(DEVICE_##dev)                                 \
+          .TypeConstraint<type>("T")                            \
+          .TypeConstraint<index_type>("Tindices"),              \
+      ScatterNdUpdateGpuCompatibleOp<dev##Device, type, index_type, op>)
 
 #define REGISTER_SCATTER_ND_UPDATE_KERNEL_INDEX_INT32_GPU(index_type, name, \
                                                           op)               \
@@ -394,6 +430,16 @@ REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(complex128)
           .HostMemory("ref"),                                              \
       ScatterNdUpdateOp<dev##Device, type, index_type, op>)
 
+#define REGISTER_RESOURCE_SCATTER_ND_UPDATE_GPU_COMPATIBLE_KERNEL_INDEX( \
+    type, index_type, dev, name, op)                                     \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name(name)                                                         \
+          .Device(DEVICE_##dev)                                          \
+          .TypeConstraint<type>("T")                                     \
+          .TypeConstraint<index_type>("Tindices")                        \
+          .HostMemory("ref"),                                            \
+      ScatterNdUpdateGpuCompatibleOp<dev##Device, type, index_type, op>)
+
 #define REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL_INDEX_INT32_GPU(index_type, \
                                                                    name, op)   \
   REGISTER_KERNEL_BUILDER(Name(name)                                           \
@@ -409,6 +455,10 @@ REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(complex128)
   REGISTER_SCATTER_ND_KERNEL_INDEX(type, int32, dev, name); \
   REGISTER_SCATTER_ND_KERNEL_INDEX(type, int64_t, dev, name)
 
+#define REGISTER_SCATTER_ND_GPU_COMPATIBLE_KERNEL(type, dev, name)         \
+  REGISTER_SCATTER_ND_GPU_COMPATIBLE_KERNEL_INDEX(type, int32, dev, name); \
+  REGISTER_SCATTER_ND_GPU_COMPATIBLE_KERNEL_INDEX(type, int64_t, dev, name)
+
 #define REGISTER_SCATTER_ND_KERNEL_INT32_GPU(name)         \
   REGISTER_SCATTER_ND_KERNEL_INDEX_INT32_GPU(int32, name); \
   REGISTER_SCATTER_ND_KERNEL_INDEX_INT32_GPU(int64_t, name)
@@ -421,6 +471,12 @@ REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(complex128)
   REGISTER_SCATTER_ND_UPDATE_KERNEL_INDEX_INT32_GPU(int32, name, op); \
   REGISTER_SCATTER_ND_UPDATE_KERNEL_INDEX_INT32_GPU(int64_t, name, op)
 
+#define REGISTER_SCATTER_ND_UPDATE_GPU_COMPATIBLE_KERNEL(type, dev, name, op) \
+  REGISTER_SCATTER_ND_UPDATE_GPU_COMPATIBLE_KERNEL_INDEX(type, int32, dev,    \
+                                                         name, op);           \
+  REGISTER_SCATTER_ND_UPDATE_GPU_COMPATIBLE_KERNEL_INDEX(type, int64_t, dev,  \
+                                                         name, op)
+
 #define REGISTER_SCATTER_ND_NON_ALIASING_UPDATE_KERNEL_INT32_GPU(name, op)    \
   REGISTER_SCATTER_ND_NON_ALIASING_UPDATE_KERNEL_INDEX_INT32_GPU(int32, name, \
                                                                  op);         \
@@ -431,6 +487,13 @@ REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(complex128)
   REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL_INDEX(type, int32, dev, name, \
                                                    op);                    \
   REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL_INDEX(type, int64_t, dev, name, op)
+
+#define REGISTER_RESOURCE_SCATTER_ND_UPDATE_GPU_COMPATIBLE_KERNEL(type, dev, \
+                                                                  name, op)  \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_GPU_COMPATIBLE_KERNEL_INDEX(           \
+      type, int32, dev, name, op);                                           \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_GPU_COMPATIBLE_KERNEL_INDEX(           \
+      type, int64_t, dev, name, op)
 
 #define REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL_INT32_GPU(name, op)         \
   REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL_INDEX_INT32_GPU(int32, name, op); \
@@ -463,6 +526,10 @@ REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(complex128)
 #define REGISTER_SCATTER_ND(type, dev) \
   REGISTER_SCATTER_ND_KERNEL(type, dev, "ScatterNd");
 
+#define REGISTER_SCATTER_ND_GPU_COMPATIBLE(type, dev)  \
+  REGISTER_SCATTER_ND_GPU_COMPATIBLE_KERNEL(type, dev, \
+                                            "ScatterNdGpuCompatible");
+
 #define REGISTER_SCATTER_ND_INT32_GPU() \
   REGISTER_SCATTER_ND_KERNEL_INT32_GPU("ScatterNd");
 
@@ -471,6 +538,14 @@ REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(complex128)
                                     scatter_nd_op::UpdateOp::ASSIGN); \
   REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                         \
       type, dev, "ResourceScatterNdUpdate", scatter_nd_op::UpdateOp::ASSIGN);
+
+#define REGISTER_SCATTER_ND_UPDATE_GPU_COMPATIBLE(type, dev) \
+  REGISTER_SCATTER_ND_UPDATE_GPU_COMPATIBLE_KERNEL(          \
+      type, dev, "ScatterNdUpdateGpuCompatible",             \
+      scatter_nd_op::UpdateOp::ASSIGN);                      \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_GPU_COMPATIBLE_KERNEL( \
+      type, dev, "ResourceScatterNdUpdateGpuCompatible",     \
+      scatter_nd_op::UpdateOp::ASSIGN);
 
 #define REGISTER_SCATTER_ND_UPDATE_INT32_GPU()             \
   REGISTER_SCATTER_ND_UPDATE_KERNEL_INT32_GPU(             \
@@ -505,15 +580,23 @@ REGISTER_SCATTER_ND_ASSIGN_FUNCTION_GPU(complex128)
 #define REGISTER_SCATTER_ND_UPDATE_CPU(type) \
   REGISTER_SCATTER_ND_UPDATE(type, CPU);
 
+#define REGISTER_SCATTER_ND_UPDATE_GPU_COMPATIBLE_CPU(type) \
+  REGISTER_SCATTER_ND_UPDATE_GPU_COMPATIBLE(type, CPU);
+
 #define REGISTER_SCATTER_ND_MIN_MAX_CPU(type) \
   REGISTER_SCATTER_ND_MIN_MAX(type, CPU);
 
 #define REGISTER_SCATTER_ND_CPU(type) REGISTER_SCATTER_ND(type, CPU);
 #define REGISTER_SCATTER_ND_GPU(type) REGISTER_SCATTER_ND(type, GPU);
 
+#define REGISTER_SCATTER_ND_GPU_COMPATIBLE_CPU(type) \
+  REGISTER_SCATTER_ND_GPU_COMPATIBLE(type, CPU);
+
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_ADD_SUB_CPU);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_UPDATE_CPU);
+TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_UPDATE_GPU_COMPATIBLE_CPU);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_CPU);
+TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_GPU_COMPATIBLE_CPU);
 TF_CALL_tstring(REGISTER_SCATTER_ND_CPU);
 TF_CALL_tstring(REGISTER_SCATTER_ND_UPDATE_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_ADD_SUB_CPU);
@@ -787,6 +870,16 @@ TF_CALL_COMPLEX_TYPES(REGISTER_SCATTER_ND_TENSOR_GPU);
 #undef REGISTER_SCATTER_ND_UPDATE_KERNEL_INDEX_INT32_GPU
 #undef REGISTER_SCATTER_ND_KERNEL_INT32_GPU
 #undef REGISTER_SCATTER_ND_KERNEL_INDEX_INT32_GPU
+#undef REGISTER_SCATTER_ND_GPU_COMPATIBLE_KERNEL_INDEX
+#undef REGISTER_SCATTER_ND_UPDATE_GPU_COMPATIBLE_KERNEL_INDEX
+#undef REGISTER_RESOURCE_SCATTER_ND_UPDATE_GPU_COMPATIBLE_KERNEL_INDEX
+#undef REGISTER_SCATTER_ND_GPU_COMPATIBLE_KERNEL
+#undef REGISTER_SCATTER_ND_UPDATE_GPU_COMPATIBLE_KERNEL
+#undef REGISTER_RESOURCE_SCATTER_ND_UPDATE_GPU_COMPATIBLE_KERNEL
+#undef REGISTER_SCATTER_ND_GPU_COMPATIBLE
+#undef REGISTER_SCATTER_ND_UPDATE_GPU_COMPATIBLE
+#undef REGISTER_SCATTER_ND_UPDATE_GPU_COMPATIBLE_CPU
+#undef REGISTER_SCATTER_ND_GPU_COMPATIBLE_CPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

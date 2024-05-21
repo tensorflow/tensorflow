@@ -240,6 +240,147 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedIndicesAndUpdateDimensions) {
       << s;
 }
 
+REGISTER_OP("ScatterNdUpdateGpuCompatible")
+    .Input("ref: Ref(T)")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Output("output_ref: Ref(T)")
+    .Attr("T: type")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = true")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle input_shape = c->input(0);
+      if (c->input_handle_shapes_and_types(0) != nullptr) {
+        const auto& shape_and_type = *(c->input_handle_shapes_and_types(0));
+        if (!shape_and_type.empty()) {
+          input_shape = shape_and_type[0].shape;
+        }
+      }
+      shape_inference::ShapeHandle indices_shape;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices_shape));
+      shape_inference::ShapeHandle updates_shape;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &updates_shape));
+      return shape_inference::ScatterNdShapeHelper(c, indices_shape,
+                                                   updates_shape, input_shape);
+    });
+
+class ScatterNdUpdateGpuCompatibleOpTest : public OpsTestBase {
+ protected:
+  void MakeOp(DataType variable_ref_type, DataType index_type) {
+    TF_ASSERT_OK(NodeDefBuilder("myop", "ScatterNdUpdateGpuCompatible")
+                     .Input(FakeInput(variable_ref_type))
+                     .Input(FakeInput(index_type))
+                     .Input(FakeInput(RemoveRefType(variable_ref_type)))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+};
+
+TEST_F(ScatterNdUpdateGpuCompatibleOpTest, DropIndexOutOfRange) {
+  MakeOp(DT_FLOAT_REF, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<float>(TensorShape({5}), {0, 0, 0, 0, 0});
+  // Put the bad index in the middle to make sure we don't drop the other
+  // updates.
+  AddInputFromArray<int32>(TensorShape({3, 1}), {3, 5, 1});
+  AddInputFromArray<float>(TensorShape({3}), {101, 202, 303});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the new state of the input
+  Tensor params_tensor = *mutable_input(0).tensor;
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({5}));
+  test::FillValues<float>(&expected, {0, 303, 0, 101, 0});
+  test::ExpectTensorEqual<float>(expected, params_tensor);
+}
+
+class ScatterNdOpTest : public OpsTestBase {
+ protected:
+  void MakeOp(DataType variable_ref_type, DataType index_type) {
+    TF_ASSERT_OK(NodeDefBuilder("myop", "ScatterNd")
+                     .Input(FakeInput(index_type))
+                     .Input(FakeInput(RemoveRefType(variable_ref_type)))
+                     .Input(FakeInput(DT_INT32))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+};
+
+TEST_F(ScatterNdOpTest, Simple) {
+  MakeOp(DT_FLOAT_REF, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<int32>(TensorShape({2, 1}), {3, 1});
+  AddInputFromArray<float>(TensorShape({2}), {101, 202});
+  AddInputFromArray<int32>(TensorShape({1}), {5});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({5}));
+  test::FillValues<float>(&expected, {0, 202, 0, 101, 0});
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+TEST_F(ScatterNdOpTest, Error_IndexOutOfRange) {
+  MakeOp(DT_FLOAT_REF, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<int32>(TensorShape({2, 1}), {3, -1});
+  AddInputFromArray<float>(TensorShape({2}), {101, 202});
+  AddInputFromArray<int32>(TensorShape({1}), {5});
+  // TF_ASSERT_OK(RunOpKernel());
+
+  Status s = RunOpKernel();
+  EXPECT_TRUE(absl::StrContains(
+      s.ToString(), "indices[1] = [-1] does not index into shape [5]"))
+      << s;
+}
+
+REGISTER_OP("ScatterNdGpuCompatible")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Input("shape: Tindices")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tindices: {int16, int32, int64}")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle indices_shape;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &indices_shape));
+      shape_inference::ShapeHandle updates_shape;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &updates_shape));
+      shape_inference::ShapeHandle output_shape;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output_shape));
+      return shape_inference::ScatterNdShapeHelper(c, indices_shape,
+                                                   updates_shape, output_shape);
+    });
+
+class ScatterNdGpuCompatibleOpTest : public OpsTestBase {
+ protected:
+  void MakeOp(DataType variable_ref_type, DataType index_type) {
+    TF_ASSERT_OK(NodeDefBuilder("myop", "ScatterNdGpuCompatible")
+                     .Input(FakeInput(index_type))
+                     .Input(FakeInput(RemoveRefType(variable_ref_type)))
+                     .Input(FakeInput(DT_INT32))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+};
+
+TEST_F(ScatterNdGpuCompatibleOpTest, DropIndexOutOfRange) {
+  MakeOp(DT_FLOAT_REF, DT_INT32);
+
+  // Feed and run
+  // Put the bad index in the middle to make sure we don't drop the other
+  // updates.
+  AddInputFromArray<int32>(TensorShape({3, 1}), {3, -1, 4});
+  AddInputFromArray<float>(TensorShape({3}), {101, 202, 303});
+  AddInputFromArray<int32>(TensorShape({1}), {5});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({5}));
+  test::FillValues<float>(&expected, {0, 0, 0, 101, 303});
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
 class ScatterNdUpdateBM : public ScatterNdUpdateOpTest {
  public:
   void TestBody() override {}
