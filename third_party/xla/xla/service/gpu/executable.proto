@@ -20,25 +20,6 @@ package xla.gpu;
 import "xla/service/hlo.proto";
 import "xla/xla.proto";
 
-message XlaRuntimeGpuExecutableProto {
-  message ConstantInfoProto {
-    string symbol_name = 1;
-    bytes content = 2;
-    int32 allocation_index = 3;
-  }
-
-  XlaRuntimeExecutableProto xla_runtime_executable = 1;
-
-  // PTX for the compiled GPU kernels.
-  string gpu_asm_text = 3;
-
-  // Corresponding CUBIN for the above PTX.
-  bytes gpu_binary = 4;
-
-  // Constants required by the serialized executable.
-  repeated ConstantInfoProto constants = 5;
-}
-
 message CompilationResultProto {
   HloModuleProtoWithConfig hlo_module_with_config = 1;
   BufferAssignmentProto buffer_assignment = 2;
