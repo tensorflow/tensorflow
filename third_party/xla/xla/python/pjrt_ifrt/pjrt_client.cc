@@ -444,6 +444,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
       device->default_memory_ = memory.status();
     }
   }
+  client->kv_store_ = std::move(options.kv_store);
   return client;
 }
 

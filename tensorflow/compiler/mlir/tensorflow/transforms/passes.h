@@ -321,6 +321,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePrintPass(
 // Moves TPUCompileMlir ops as far to the front as possible.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateMoveTpuCompileToFrontPass();
 
+// Decomposes OptionalFromValue, OptionalGetValue, OptionalNone,
+// and OptionalHasValue
+std::unique_ptr<OperationPass<ModuleOp>> CreateDecomposeOptionalsPass();
+
 //===----------------------------------------------------------------------===//
 // XlaCallModule
 //===----------------------------------------------------------------------===//

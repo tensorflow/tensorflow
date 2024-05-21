@@ -375,17 +375,20 @@ NB_MODULE(xla_extension, m_nb) {
          std::shared_ptr<DistributedRuntimeClient> distributed_client)
           -> nb_class_ptr<PyClient> {
         std::unique_ptr<ifrt::PjRtClient> ifrt_client;
+        ifrt::PjRtClient::CreateOptions ifrt_options;
         {
           nb::gil_scoped_release gil_release;
-          std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
           if (distributed_client != nullptr) {
-            kv_store = GetDistributedKeyValueStore(
+            ifrt_options.kv_store = GetDistributedKeyValueStore(
                 distributed_client,
                 /*key_prefix=*/absl::StrCat(platform_name, ":"));
           }
-          std::unique_ptr<PjRtClient> c_api_client = xla::ValueOrThrow(
-              GetCApiClient(platform_name, options, kv_store));
-          ifrt_client = ifrt::PjRtClient::Create(std::move(c_api_client));
+          std::unique_ptr<PjRtClient> c_api_client =
+              xla::ValueOrThrow(GetCApiClient(platform_name, options));
+          ifrt_options.pjrt_client =
+              std::shared_ptr<PjRtClient>(std::move(c_api_client));
+          ifrt_client =
+              ValueOrThrow(ifrt::PjRtClient::Create(std::move(ifrt_options)));
         }
         return PyClient::Make(std::move(ifrt_client));
       },

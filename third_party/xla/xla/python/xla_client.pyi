@@ -119,7 +119,9 @@ def get_topology_for_devices(devices: list[Device]) -> DeviceTopology:
   ...
 
 def make_tpu_client(
-    library_path: str | None, options: _NameValueMapping | None = None
+    library_path: str | None,
+    options: _NameValueMapping | None = None,
+    distributed_client: DistributedRuntimeClient | None = None,
 ) -> Client:
   ...
 

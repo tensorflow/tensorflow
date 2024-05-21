@@ -232,6 +232,7 @@ class PjRtClient final
   // Transfer and return a value of the given shape from the outfeed queue.
   absl::Status TransferFromOutfeed(PjRtDevice* device,
                                    MutableBorrowingLiteral literal);
+  KeyValueStoreInterface* kv_store() const { return kv_store_.get(); }
 
   static char ID;  // NOLINT
 
@@ -249,6 +250,7 @@ class PjRtClient final
   absl::flat_hash_map<xla::PjRtDevice*, PjRtDevice*> device_map_;
   absl::flat_hash_map<xla::PjRtMemorySpace*, PjRtMemory*> memory_map_;
   absl::flat_hash_map<DeviceId, PjRtDevice*> device_id_map_;
+  std::shared_ptr<KeyValueStoreInterface> kv_store_;
 };
 
 }  // namespace ifrt
