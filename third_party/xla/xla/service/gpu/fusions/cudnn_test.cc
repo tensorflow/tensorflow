@@ -522,6 +522,9 @@ ENTRY e {
 }
 
 TEST_F(CuDnnFusionLevel2Test, ConstantExecutesCorrectly) {
+  if (!IsAtLeastCuDnn91()) {
+    GTEST_SKIP() << "Fused scalar constants require cuDNN 9.1+.";
+  }
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
   x = bf16[16,32] parameter(0)
