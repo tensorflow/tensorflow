@@ -46,8 +46,8 @@ namespace m = ::xla::match;
 class GpuConvRewriterTest : public HloTestBase {
  public:
   GpuConvRewriterTest()
-      : HloTestBase(/*layout_sensitive=*/true,
-                    /*allow_mixed_precision=*/false) {
+      : HloTestBase(/*verifier_layout_sensitive=*/true,
+                    /*allow_mixed_precision_in_hlo_verifier=*/false) {
     for (int i = 0; i < 2; ++i) {
       WindowDimension* window_dim = default_conv_window_.add_dimensions();
       window_dim->set_size(1);
