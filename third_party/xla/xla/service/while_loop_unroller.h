@@ -26,7 +26,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/statusor.h"
 
 namespace xla {
@@ -40,6 +42,18 @@ struct WhileLoopConfig {
   // The index of the induction variable in the input tuple of the while loop.
   int64_t induction_var_idx;
 };
+
+// Check if `instr` is a dynamic index instruction, i.e., dynamic-slice or
+// dynamic-update-slice with the given input that operates on the entire
+// shape of the instruction. To satisfy this:
+// 1. All start indices must be constant zero except only a single dimension.
+// 2. The start index of that dimension should be equal to the enclosing loop
+// induction variable.
+// 3. And, the size of that dimension must match the loop trip count.
+bool MatchShapeCoveringDynamicIndexInstruction(HloInstruction* instr,
+                                               HloInstruction* input,
+                                               HloOpcode opcode,
+                                               const WhileLoopConfig& config);
 
 // This pass unrolls while loops with the given unrolling factor. The value of
 // unroll_factor = -1 will fully unroll the loop.
