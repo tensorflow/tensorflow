@@ -2248,8 +2248,10 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       }
       RET_CHECK_RANK(in);
       for (int i = 0; i < fft_rank; i++) {
-        if (in.dimensions(in.dimensions_size() - fft_rank + i) !=
-            fft_length[i]) {
+        if (!IsUnboundedDynamicSize(
+                in.dimensions(in.dimensions_size() - fft_rank + i)) &&
+            in.dimensions(in.dimensions_size() - fft_rank + i) !=
+                fft_length[i]) {
           return InvalidArgument(
               "RFFT requires innermost dimensions match fft_length but "
               "dimension %d is %d and should be %d.",
@@ -2264,6 +2266,9 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       if (fft_length[fft_rank - 1] != 0) {
         result.set_dimensions(result.dimensions_size() - 1,
                               fft_length[fft_rank - 1] / 2 + 1);
+        if (in.is_unbounded_dynamic_dimension(result.dimensions_size() - 1)) {
+          result.set_dynamic_dimension(result.dimensions_size() - 1, false);
+        }
       }
       return result;
     }
@@ -2286,18 +2291,21 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         }
       }
       // The size of zero-sized dimensions is preserved.
-      if ((in.dimensions(in.dimensions_size() - 1) != 0 ||
-           fft_length[fft_rank - 1] != 0) &&
-          in.dimensions(in.dimensions_size() - 1) !=
-              fft_length[fft_rank - 1] / 2 + 1) {
+      int64_t last_in_dimension_size = in.dimensions(in.dimensions_size() - 1);
+      if ((last_in_dimension_size != 0 || fft_length[fft_rank - 1] != 0) &&
+          !IsUnboundedDynamicSize(last_in_dimension_size) &&
+          last_in_dimension_size != fft_length[fft_rank - 1] / 2 + 1) {
         return InvalidArgument(
             "IRFFT requires innermost dimension matches fft_length/2+1, but "
             "dimension %d is %d and should be %d.",
-            in.dimensions_size() - 1, in.dimensions(in.dimensions_size() - 1),
+            in.dimensions_size() - 1, last_in_dimension_size,
             fft_length[fft_rank - 1] / 2 + 1);
       }
       result.set_dimensions(result.dimensions_size() - 1,
                             fft_length[fft_rank - 1]);
+      if (in.is_unbounded_dynamic_dimension(result.dimensions_size() - 1)) {
+        result.set_dynamic_dimension(result.dimensions_size() - 1, false);
+      }
       return result;
     }
     default:
