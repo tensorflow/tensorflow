@@ -965,6 +965,23 @@ cc_library(
 )
 
 cc_library(
+    name = "profiler_utils",
+    srcs = ["profiler_utils.cc"],
+    hdrs = ["profiler_utils.h"],
+    compatible_with = ["//buildenv/target:libtpu"],
+    deps = [
+        "//xla/backends/profiler:profiler_backends",
+        "//xla/backends/profiler/plugin:plugin_tracer",
+        "//xla/backends/profiler/plugin:profiler_c_api_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_helpers",
+        "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
+        "@local_tsl//tsl/profiler/lib:profiler_factory",
+        "@local_tsl//tsl/profiler/lib:profiler_interface",
+    ],
+)
+
+cc_library(
     name = "profiler",
     srcs = ["profiler.cc"],
     hdrs = ["profiler.h"],
@@ -976,6 +993,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":profiler_utils",
         ":types",
         ":xplane_to_profile_instructions",
         # placeholder for index annotation deps
