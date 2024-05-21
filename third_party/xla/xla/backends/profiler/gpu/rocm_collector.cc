@@ -224,13 +224,8 @@ class PerDeviceCollector {
     stats.occupancy_pct /= device_properties_.maxThreadsPerMultiProcessor;
 
     err = hipOccupancyMaxPotentialBlockSize(
-<<<<<<< HEAD
-        &stats.min_grid_size, &stats.suggested_block_size, static_cast<const void*>(params.func_ptr),
-        params.dynamic_smem_size, 0);
-=======
         &stats.min_grid_size, &stats.suggested_block_size,
         static_cast<const void*>(params.func_ptr), params.dynamic_smem_size, 0);
->>>>>>> upstream/master
 
     if (err != hipError_t::hipSuccess) {
       return {};
