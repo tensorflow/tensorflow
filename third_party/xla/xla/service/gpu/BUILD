@@ -3869,6 +3869,9 @@ xla_test(
         "//xla/hlo/utils:hlo_query",
         "//xla/service:backend",
         "//xla/service:buffer_assignment",
+        "//xla/service:buffer_value",
+        "//xla/service:hlo_ordering",
+        "//xla/service:logical_buffer",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
@@ -3876,6 +3879,7 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
