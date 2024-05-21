@@ -578,7 +578,8 @@ bool MightTrace(const tsl::tracing::EventCollector* event_collector,
 
   if (tsl::profiler::ScopedAnnotation::IsEnabled()) return true;
 
-  return profiler::TraceMe::Active(profiler::GetTFTraceMeLevel(is_expensive));
+  return tsl::profiler::TraceMe::Active(
+      tsl::profiler::GetTFTraceMeLevel(is_expensive));
 }
 
 template <class PropagatorStateType>
@@ -599,9 +600,9 @@ Status ExecutorState<PropagatorStateType>::ProcessSync(
     profiler::AnnotatedTraceMe activity(
         [op_kernel, &ctx] {
           return op_kernel->TraceString(
-              ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
+              ctx, /*verbose=*/tsl::profiler::TfOpDetailsEnabled());
         },
-        profiler::GetTFTraceMeLevel(is_expensive));
+        tsl::profiler::GetTFTraceMeLevel(is_expensive));
     device->Compute(op_kernel, &ctx);
   } else if (kernel_stats_->HasExpensiveMarker(item)) {
     KernelTimer timer;
@@ -641,9 +642,9 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
     profiler::AnnotatedTraceMe activity(
         [async_kernel, state] {
           return async_kernel->TraceString(
-              state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
+              state->ctx, /*verbose=*/tsl::profiler::TfOpDetailsEnabled());
         },
-        profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
+        tsl::profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
     // Trace async op start.
     profiler::TraceMeProducer producer(
@@ -654,7 +655,7 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
                {"kernel_type", async_kernel->type_string()},
                {"step_id", step_id_}});
         },
-        profiler::ContextType::kTfExecutor);
+        tsl::profiler::ContextType::kTfExecutor);
 
     auto done = [this, state, activity_id, ctx_id = producer.GetContextId()]() {
       // Trace async op done.
@@ -666,7 +667,7 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
                  {"kernel_type", state->item->kernel->type_string()},
                  {"step_id", step_id_}});
           },
-          profiler::ContextType::kTfExecutor, ctx_id);
+          tsl::profiler::ContextType::kTfExecutor, ctx_id);
 
       Device* device = immutable_state_.params().device;
       NodeExecStatsInterface* stats = state->stats;  // Shorthand
@@ -728,8 +729,8 @@ void ExecutorState<PropagatorStateType>::ProcessConstTensor(
 template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::Process(const TaggedNode& tagged_node,
                                                  int64_t scheduled_nsec) {
-  profiler::TraceMe traceme("ExecutorState::Process Scheduled",
-                            profiler::TraceMeLevel::kVerbose);
+  tsl::profiler::TraceMe traceme("ExecutorState::Process Scheduled",
+                                 tsl::profiler::TraceMeLevel::kVerbose);
   TaggedNodeReadyQueue inline_ready;
   inline_ready.push_back(tagged_node);
   return ProcessInline(&inline_ready, scheduled_nsec);
@@ -824,8 +825,8 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
                 "ExecutorState::Process",
                 {{"id", step_id_}, {"iter_num", tagged_node.get_iter_num()}});
           },
-          profiler::ContextType::kTfExecutor, trace_id_,
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::ContextType::kTfExecutor, trace_id_,
+          tsl::profiler::TraceMeLevel::kInfo);
       last_iter_num = current_iter_num;
     }
     inline_ready->pop_front();
@@ -1265,7 +1266,7 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
 template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::ScheduleReady(
     TaggedNodeSeq* ready, TaggedNodeReadyQueue* inline_ready) {
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&]() {
         return strings::StrCat(
             "ExecutorState::ScheduleReady#",
@@ -1273,7 +1274,7 @@ void ExecutorState<PropagatorStateType>::ScheduleReady(
             ",inline_ready_size=",
             (inline_ready == nullptr ? -1 : inline_ready->size()), "#");
       },
-      profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
+      tsl::profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
   DCHECK(!ready->empty());
 
   int64_t scheduled_nsec = 0;
@@ -1352,14 +1353,14 @@ void ExecutorState<PropagatorStateType>::ScheduleReady(
           TaggedNodeSeq ready_chunk{it, end};
           RunTask(
               [this, ready_chunk = std::move(ready_chunk), scheduled_nsec]() {
-                profiler::TraceMe activity(
+                tsl::profiler::TraceMe activity(
                     [&]() {
                       return strings::StrCat(
                           "ExecutorState::ScheduleReady::"
                           "ChildThreadExpensiveNodes#",
                           "ready_chunk_size=", ready_chunk.size(), "#");
                     },
-                    profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
+                    tsl::profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
                 for (auto& tagged_node : ready_chunk) {
                   RunTask(std::bind(&ExecutorState::Process, this, tagged_node,
                                     scheduled_nsec),
@@ -1465,8 +1466,8 @@ void ExecutorState<PropagatorStateType>::Finish() {
             return profiler::TraceMeEncode("ExecutorDoneCallback",
                                            {{"id", step_id}});
           },
-          profiler::ContextType::kTfExecutor, trace_id,
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::ContextType::kTfExecutor, trace_id,
+          tsl::profiler::TraceMeLevel::kInfo);
       done_cb(status);
     });
     return;
@@ -1488,8 +1489,8 @@ void ExecutorState<PropagatorStateType>::Finish() {
               return profiler::TraceMeEncode("ExecutorDoneCallback",
                                              {{"id", step_id}});
             },
-            profiler::ContextType::kTfExecutor, trace_id,
-            profiler::TraceMeLevel::kInfo);
+            tsl::profiler::ContextType::kTfExecutor, trace_id,
+            tsl::profiler::TraceMeLevel::kInfo);
         done_cb(status);
       });
     });
@@ -1503,8 +1504,8 @@ void ExecutorState<PropagatorStateType>::Finish() {
             return profiler::TraceMeEncode("ExecutorDoneCallback",
                                            {{"id", step_id}});
           },
-          profiler::ContextType::kTfExecutor, trace_id,
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::ContextType::kTfExecutor, trace_id,
+          tsl::profiler::TraceMeLevel::kInfo);
       done_cb(status);
     });
   }

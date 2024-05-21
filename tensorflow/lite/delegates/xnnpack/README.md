@@ -14,14 +14,7 @@ for floating-point inference.
 ### Enable XNNPACK via Java API on Android (recommended on Android)
 
 Pre-built [nightly TensorFlow Lite binaries for Android](https://www.tensorflow.org/lite/guide/android#use_the_tensorflow_lite_aar_from_mavencentral)
-include XNNPACK, albeit it is disabled by default. Use the `setUseXNNPACK`
-method in `Interpreter.Options` class to enable it:
-
-```java
-Interpreter.Options interpreterOptions = new Interpreter.Options();
-interpreterOptions.setUseXNNPACK(true);
-Interpreter interpreter = new Interpreter(model, interpreterOptions);
-```
+include XNNPACK.
 
 ### Enable XNNPACK via Swift/Objective-C API on iOS (recommended on iOS)
 
@@ -535,24 +528,7 @@ inference on ARM processors.
 
 ### Quantized Operators
 
-By default, quantized inference in XNNPACK delegate is disabled, and XNNPACK is
-used only for floating-point models. Support for quantized inference in XNNPACK
-must be enabled by adding extra Bazel flags when building TensorFlow Lite.
-
-* `--define tflite_with_xnnpack_qs8=true` flag enables XNNPACK inference for
-  quantized operators using signed quantization schema. This schema is used by
-  models produced by [Model Optimization
-  Toolkit](https://www.tensorflow.org/model_optimization) through either
-  post-training integer quantization or quantization-aware training.
-  Post-training dynamic range quantization is not supported in XNNPACK.
-
-* `--define tflite_with_xnnpack_qu8=true` flag enables XNNPACK inference for
-  quantized operators using unsigned quantization schema, produced via the
-  legacy TensorFlow 1.X quantization tooling. This option is experimental and
-  may perform suboptimally on mobile processors with NEON DOT product
-  instructions.
-
-Below is the list of currently supported quantized operators:
+Quantized inference in XNNPACK delegate is enabled by default.
 
 #### `ADD`
 
