@@ -1055,8 +1055,8 @@ tf_native_cc_binary(
     name = "flatbuffer_to_string",
     srcs = ["flatbuffer_to_string.cc"],
     deps = [
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_reflection",
         "//tensorflow/lite/core:model_builder",
-        "//tensorflow/lite/schema:schema_fbs_with_reflection",
         "@flatbuffers",
     ],
 )

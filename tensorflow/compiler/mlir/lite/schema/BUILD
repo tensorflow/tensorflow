@@ -30,3 +30,17 @@ flatbuffer_cc_library(
     ],
     out_prefix = "mutable/",
 )
+
+# Generic schema for inference on device (but with reflections makes bigger).
+flatbuffer_cc_library(
+    name = "schema_fbs_with_reflection",
+    srcs = ["schema.fbs"],
+    compatible_with = get_compatible_with_portable(),
+    flatc_args = [
+        "--reflect-types",
+        "--reflect-names",
+        "--no-union-value-namespacing",
+        "--gen-object-api",
+    ],
+    out_prefix = "reflection/",
+)
