@@ -30,15 +30,7 @@ Event::Event(StreamExecutorInterface* stream_exec,
              std::unique_ptr<EventInterface> implementation)
     : stream_exec_(stream_exec), implementation_(std::move(implementation)) {}
 
-Event::~Event() {
-  // Deal with nullptr implementation_, as this event may have been std::moved.
-  if (stream_exec_ && implementation_) {
-    auto status = stream_exec_->DeallocateEvent(this);
-    if (!status.ok()) {
-      LOG(ERROR) << status.message();
-    }
-  }
-}
+Event::~Event() = default;
 
 Event::Event(Event&&) = default;
 Event& Event::operator=(Event&&) = default;
