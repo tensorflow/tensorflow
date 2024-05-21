@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
@@ -492,8 +493,8 @@ TEST_F(ReductionTest, TwoGroups) {
   FakeReductionFusion fusion(analysis);
 
   EXPECT_THAT(fusion.reduction_info().GetGroups().grouped_roots,
-              ElementsAre(ElementsAre(analysis.fusion_roots()[0]),
-                          ElementsAre(analysis.fusion_roots()[1])));
+              ElementsAre(ElementsAre(&analysis.fusion_root(0).instruction()),
+                          ElementsAre(&analysis.fusion_root(1).instruction())));
 }
 
 TEST_F(ReductionTest, OneGroup) {

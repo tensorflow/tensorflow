@@ -47,10 +47,12 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/type_util.h"
 #include "xla/service/gpu/fusions/reduction_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/reduction_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 
 namespace xla {
@@ -80,9 +82,9 @@ struct MlirReductionFusion::EmitterState {
         computation(computations.FindPartitionedComputation(
             fusion.fused_instructions_computation())) {
     int index = 0;
-    for (auto root : owner.analysis().fusion_roots()) {
-      fusion_result_index_starts[root] = index;
-      index += root->shape().IsTuple() ? root->shape().tuple_shapes_size() : 1;
+    for (const auto& root : owner.analysis().fusion_roots()) {
+      fusion_result_index_starts[&root.instruction()] = index;
+      index += root.shape().IsTuple() ? root.shape().tuple_shapes_size() : 1;
     }
   }
 
@@ -132,9 +134,11 @@ MlirReductionFusion::MlirReductionFusion(const HloFusionAnalysis& analysis)
   reduction_roots_.resize(num_groups);
 
   absl::flat_hash_set<const HloInstruction*> seen_heroes;
-  for (auto [root, hero, is_reduction, group_id] :
+  for (auto [root_adaptor, hero_adaptor, is_reduction, group_id] :
        llvm::zip(analysis.fusion_roots(), analysis.fusion_heroes(),
                  groups.is_reduction_root, groups.group_id_per_root)) {
+    const HloInstruction* root = &root_adaptor.instruction();
+    const HloInstruction* hero = &hero_adaptor.instruction();
     if (is_reduction) {
       if (seen_heroes.insert(hero).second) {
         reduction_heroes_[group_id].push_back(hero);

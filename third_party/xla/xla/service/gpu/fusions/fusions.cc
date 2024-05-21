@@ -77,7 +77,7 @@ bool IsParameterOrGteOfParameter(const HloInstruction* instr) {
 
 bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
   return absl::c_all_of(
-      analysis.fusion_root_adaptors(), [](const HloInstructionAdaptor& root) {
+      analysis.fusion_roots(), [](const HloInstructionAdaptor& root) {
         return root.opcode() == HloOpcode::kDynamicUpdateSlice ||
                (root.opcode() == HloOpcode::kBitcast &&
                 root.GetOperand(0).opcode() == HloOpcode::kDynamicUpdateSlice);
@@ -89,7 +89,8 @@ bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
 std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
 HloFusionInfo::GetCopyFusion() const {
   std::vector<BufferAllocation::Slice> src_buffers;
-  for (auto* root : analysis().fusion_roots()) {
+  for (const HloInstructionAdaptor& root_adaptor : analysis().fusion_roots()) {
+    const HloInstruction* root = &root_adaptor.instruction();
     if (root->opcode() != HloOpcode::kCopy ||
         root->operand(0)->opcode() != HloOpcode::kParameter ||
         !LayoutUtil::Equal(root->operand(0)->shape().layout(),
@@ -127,7 +128,7 @@ HloFusionInfo::GetCopyFusion() const {
 
 bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
   auto ret = CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-      instr_, buffer_assignment_, analysis().fusion_root_adaptors());
+      instr_, buffer_assignment_, analysis().fusion_roots());
   return ret.ok() && *ret;
 }
 
