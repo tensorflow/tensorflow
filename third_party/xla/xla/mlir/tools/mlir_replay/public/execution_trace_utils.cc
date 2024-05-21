@@ -318,7 +318,7 @@ absl::StatusOr<InterpreterValue> LiteralToValue(
   return {DispatchScalarType(type, [&](auto dummy) -> InterpreterValue {
     TensorOrMemref<decltype(dummy)> cast;
     cast.view = result.View();
-    cast.buffer = result.Buffer();
+    cast.buffer = result.GetBuffer();
     return {cast};
   })};
 }
