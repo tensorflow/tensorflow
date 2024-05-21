@@ -92,6 +92,8 @@ class AffineExprSimplifier {
   // on `a+b`.
   mlir::AffineExpr RemoveSummands(
       mlir::AffineExpr expr, const std::function<bool(mlir::AffineExpr)>& pred);
+  void VisitSummands(mlir::AffineExpr expr,
+                     const std::function<void(mlir::AffineExpr)>& visit);
 
   // Attempts to simplify the expression, but doesn't attempt to simplify the
   // result further.
@@ -147,9 +149,6 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
            *mul;
   }
 
-  Interval no_multiplier_range{0, 0};
-  int64_t multiplier_gcd = -1;
-
   int64_t extracted_constant = 0;
   auto new_lhs = RemoveSummands(lhs_simplified, [&](AffineExpr expr) {
     if (auto cst = mlir::dyn_cast<AffineConstantExpr>(expr);
@@ -161,20 +160,26 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
       if (*multiplier % m == 0) {
         return true;
       }
+    }
+    return false;
+  });
+  new_lhs = new_lhs + (extracted_constant % m);
 
+  Interval no_multiplier_range{0, 0};
+  int64_t multiplier_gcd = -1;
+  VisitSummands(new_lhs, [&](AffineExpr expr) {
+    if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul)) {
       if (multiplier_gcd == -1) {
         multiplier_gcd = *multiplier;
       } else {
         multiplier_gcd = std::gcd(multiplier_gcd, *multiplier);
       }
-      return false;
+    } else {
+      auto range = range_evaluator_->ComputeExpressionRange(expr);
+      no_multiplier_range.lower += range.lower;
+      no_multiplier_range.upper += range.upper;
     }
-    auto range = range_evaluator_->ComputeExpressionRange(expr);
-    no_multiplier_range.lower += range.lower;
-    no_multiplier_range.upper += range.upper;
-    return false;
   });
-  new_lhs = new_lhs + (extracted_constant % m);
 
   mlir::AffineExpr extracted = getAffineConstantExpr(0, mod.getContext());
   if (m % multiplier_gcd == 0 && no_multiplier_range.lower >= 0 &&
@@ -240,9 +245,6 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   }
 
   Interval no_multiplier_range{0, 0};
-  int64_t multiplier_gcd = -1;
-  // The maximum GCD of any remaining multiplier inside the div and the divisor.
-  int64_t max_remaining_multiplier_gcd = -1;
   AffineExpr zero = getAffineConstantExpr(0, mlir_context);
   AffineExpr extracted = zero;
   auto new_dividend = RemoveSummands(lhs_simplified, [&](AffineExpr expr) {
@@ -256,21 +258,7 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
         // Remove from dividend.
         return true;
       }
-
-      if (*multiplier > 0) {
-        if (multiplier_gcd == -1) {
-          multiplier_gcd = *multiplier;
-        } else {
-          multiplier_gcd = std::gcd(multiplier_gcd, *multiplier);
-        }
-        max_remaining_multiplier_gcd =
-            std::max(max_remaining_multiplier_gcd, std::gcd(*multiplier, d));
-        return false;
-      }
     }
-    auto range = range_evaluator_->ComputeExpressionRange(expr);
-    no_multiplier_range.lower += range.lower;
-    no_multiplier_range.upper += range.upper;
     // Not a constant multiplier, keep in dividend.
     return false;
   });
@@ -279,6 +267,25 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   if (new_dividend == zero) {
     return extracted;
   }
+
+  int64_t multiplier_gcd = -1;
+  // The maximum GCD of any remaining multiplier inside the div and the divisor.
+  int64_t max_remaining_multiplier_gcd = -1;
+  VisitSummands(new_dividend, [&](AffineExpr summand) {
+    if (auto multiplier = GetConstantRhs(summand, AffineExprKind::Mul)) {
+      if (multiplier_gcd == -1) {
+        multiplier_gcd = *multiplier;
+      } else {
+        multiplier_gcd = std::gcd(multiplier_gcd, *multiplier);
+      }
+      max_remaining_multiplier_gcd =
+          std::max(max_remaining_multiplier_gcd, std::gcd(*multiplier, d));
+    } else {
+      auto range = range_evaluator_->ComputeExpressionRange(summand);
+      no_multiplier_range.lower += range.lower;
+      no_multiplier_range.upper += range.upper;
+    }
+  });
 
   if ((d % multiplier_gcd) == 0) {
     if (no_multiplier_range.lower >= 0 &&
@@ -347,6 +354,17 @@ AffineExpr AffineExprSimplifier::RemoveSummands(
     return lhs + rhs;
   }
   return pred(expr) ? mlir::getAffineConstantExpr(0, expr.getContext()) : expr;
+}
+
+void AffineExprSimplifier::VisitSummands(
+    mlir::AffineExpr expr, const std::function<void(mlir::AffineExpr)>& visit) {
+  if (expr.getKind() == AffineExprKind::Add) {
+    auto add = mlir::dyn_cast<AffineBinaryOpExpr>(expr);
+    VisitSummands(add.getLHS(), visit);
+    VisitSummands(add.getRHS(), visit);
+  } else {
+    visit(expr);
+  }
 }
 
 // Compares the two expression by their AST. The ordering is arbitrary but
