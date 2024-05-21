@@ -235,8 +235,7 @@ ENTRY bf16gemm {
 }
   )";
 
-  if (!IsCuda() ||
-      HasCudaComputeCapability(se::CudaComputeCapability::Hopper())) {
+  if (HasCudaComputeCapability(se::CudaComputeCapability::Hopper())) {
     // The Hopper optimized HLO has a BF16 multiply instruction since Hopper has
     // native BF16 multiply support.
     MatchOptimizedHlo(hlo_text, R"(
