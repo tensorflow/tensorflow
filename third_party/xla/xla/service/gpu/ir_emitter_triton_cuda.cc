@@ -83,12 +83,7 @@ absl::Status CreateTritonPipeline(
   }
 
   pm.addPass(mt::gpu::createOptimizeDotOperandsPass(ccCuda.IsAtLeastAmpere()));
-  // We need to disable this pass because it undoes the hoisting of dot_operand
-  // layout conversion done in
-  // triton/lib/Dialect/TritonGPU/Transforms/OptimizeDotOperands.cpp in
-  // HoistLayoutConversion pattern.
-  // Bug: b/331360119
-  // pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
+  pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
   pm.addPass(mt::gpu::createReduceDataDuplicationPass());
   pm.addPass(mt::gpu::createReorderInstructionsPass());
   pm.addPass(mlir::createCSEPass());

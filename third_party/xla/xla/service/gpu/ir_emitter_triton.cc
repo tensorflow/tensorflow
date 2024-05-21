@@ -2034,7 +2034,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
         if (node->opcode() != HloOpcode::kConvert) {
           return false;
         }
-        auto in_type =
+        Type in_type =
             TritonType(builder, node->operand(0)->shape().element_type());
         Type out_type = TritonType(builder, node->shape().element_type());
         return in_type.getIntOrFloatBitWidth() <= 8 && out_type.isF32();
