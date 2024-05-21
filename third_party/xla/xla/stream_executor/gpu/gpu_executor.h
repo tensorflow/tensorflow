@@ -233,8 +233,6 @@ class GpuExecutor : public StreamExecutor {
 
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;
 
-  absl::Status DeallocateEvent(Event* event) override;
-
   absl::Status RecordEvent(Stream* stream, Event* event) override;
 
   absl::Status WaitForEvent(Stream* stream, Event* event) override;
