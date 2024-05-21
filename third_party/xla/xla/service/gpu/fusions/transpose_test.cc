@@ -19,13 +19,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"

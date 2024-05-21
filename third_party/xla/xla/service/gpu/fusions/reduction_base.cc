@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/union_find.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
