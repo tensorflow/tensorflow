@@ -2413,6 +2413,7 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla:test_helpers",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status",
         "//xla/service:backend",
         "//xla/service:cpu_plugin",
         "//xla/service:gpu_plugin",
@@ -2427,10 +2428,7 @@ xla_cc_test(
         "//xla/stream_executor/cuda:cuda_platform_id",
     ]) + if_rocm_is_configured([
         "//xla/stream_executor/rocm:rocm_platform_id",
-    ]) + [
-        "//xla/stream_executor/rocm:rocm_platform_id",
-        "@com_google_absl//absl/status",
-    ],
+    ]),
 )
 
 xla_test(
