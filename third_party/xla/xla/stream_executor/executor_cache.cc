@@ -43,7 +43,7 @@ absl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   Entry* entry = nullptr;
   {
     absl::MutexLock lock{&mutex_};
-    entry = &cache_[config.ordinal];
+    entry = &cache_[{config.ordinal, config.stream_id}];
     // Release the map lock; the address of 'entry' is stable because
     // absl::node_hash_map guarantees reference stability.
   }
@@ -90,18 +90,21 @@ absl::StatusOr<StreamExecutor*> ExecutorCache::Get(
           absl::StrFormat("No executors own stream %p", config.gpu_stream));
     }
 
-    if (auto it = cache_.find(config.ordinal); it != cache_.end()) {
+    if (auto it = cache_.find({config.ordinal, config.stream_id});
+        it != cache_.end()) {
       entry = &it->second;
     } else {
       return absl::NotFoundError(absl::StrFormat(
-          "No executors registered for ordinal %d", config.ordinal));
+          "No executors registered for ordinal %d, stream group %d",
+          config.ordinal, config.stream_id));
     }
   }
 
   absl::ReaderMutexLock lock{&entry->configurations_mutex};
   if (entry->configurations.empty()) {
     return absl::NotFoundError(absl::StrFormat(
-        "No executors registered for ordinal %d", config.ordinal));
+        "No executors registered for ordinal %d, stream group %d",
+        config.ordinal, config.stream_id));
   }
 
   for (auto& [entry_config, entry_executor] : entry->configurations) {

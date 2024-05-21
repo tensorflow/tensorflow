@@ -112,9 +112,11 @@ CudaPlatform::DescriptionForDevice(int ordinal) const {
   return GpuExecutor::CreateDeviceDescription(ordinal);
 }
 
-absl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
+absl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDeviceAndStream(
+    int ordinal, int stream_id) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
+  config.stream_id = stream_id;
   return GetExecutor(config);
 }
 
@@ -132,12 +134,14 @@ absl::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = std::make_unique<GpuExecutor>(this, config.ordinal);
+  auto executor =
+      std::make_unique<GpuExecutor>(this, config.ordinal, config.stream_id);
   auto init_status = executor->Init();
   if (!init_status.ok()) {
     return absl::InternalError(absl::StrFormat(
-        "failed initializing StreamExecutor for CUDA device ordinal %d: %s",
-        config.ordinal, init_status.ToString()));
+        "failed initializing StreamExecutor for CUDA device "
+        "ordinal %d stream group %d: %s",
+        config.ordinal, config.stream_id, init_status.ToString()));
   }
 
   return std::move(executor);
