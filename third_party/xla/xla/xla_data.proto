@@ -1039,6 +1039,7 @@ message ParameterReplication {
 message WhileLoopBackendConfig {
   message KnownTripCount {
     int64 n = 1;
+    optional int64 step = 2;  // Value of k if the update operation is i+=k
   }
   // This indirection lets us distinguish between known-trip-count == 0 and
   // unknown-trip-count.

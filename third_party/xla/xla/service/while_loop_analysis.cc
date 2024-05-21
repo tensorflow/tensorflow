@@ -351,9 +351,9 @@ optional<int64_t> CheckedSubtract(int64_t a, int64_t b) {
   return result;
 }
 
-optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
-                                            int64_t indvar_tuple_idx,
-                                            const Literal& indvar_init) {
+optional<WhileLoopTripCount> MatchTrivialLoopTripCount(
+    const HloInstruction* while_op, int64_t indvar_tuple_idx,
+    const Literal& indvar_init) {
   // First, find the scalar constant init that `i` is initialized to.
   optional<int64_t> indvar_init_val =
       LiteralUtil::LiteralAsScalarInt64(indvar_init);
@@ -446,7 +446,7 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
       const int64_t remainder = std::remainder(*trips, trip_count_step);
       const int64_t div = std::floor(*trips / trip_count_step);
       if (remainder == 0) {
-        return std::max(int64_t{0}, div);
+        return WhileLoopTripCount(std::max(int64_t{0}, div), trip_count_step);
       }
       trips = CheckedAdd(div, 1);
       if (!trips) {
@@ -454,9 +454,10 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
         return nullopt;
       }
       if (*trips < *while_cond_bound_val) {
-        return std::max(int64_t{0}, *trips);
+        return WhileLoopTripCount(std::max(int64_t{0}, *trips),
+                                  trip_count_step);
       }
-      return std::max(int64_t{0}, div);
+      return WhileLoopTripCount(std::max(int64_t{0}, div), trip_count_step);
     }
     VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
     return nullopt;
@@ -480,7 +481,7 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
       return nullopt;
     }
-    return std::max<int64_t>(0, *trips);
+    return WhileLoopTripCount(std::max<int64_t>(0, *trips), trip_count_step);
   }
 
   VLOG(2) << "Pattern-match failed: while condition follows unknown pattern: "
@@ -488,8 +489,8 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
   return nullopt;
 }
 
-optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
-                                            int64_t max_brute_force_iters) {
+optional<WhileLoopTripCount> ComputeWhileLoopTripCount(
+    const HloInstruction* while_op, int64_t max_brute_force_iters) {
   VLOG(2) << "Getting trip count for loop " << while_op->ToString();
 
   // The loop's induction variable is found at
@@ -542,7 +543,7 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
     }
     if (result.value().data<bool>() == absl::Span<const bool>{false}) {
       VLOG(2) << "Loop has static trip count of " << trip_count;
-      return trip_count;
+      return WhileLoopTripCount(trip_count);
     }
 
     // Calculate the value of the induction variable after one iteration of the
@@ -578,7 +579,7 @@ static HloInstruction* GetOnlyGTE(HloInstruction* inst) {
   return user;
 }
 
-optional<int64_t> ComputeWhileLoopTripCountUpperBound(
+optional<WhileLoopTripCount> ComputeWhileLoopTripCountUpperBound(
     const HloInstruction* while_op) {
   // If we know the exact trip count, it's also the upper bound.
   auto exact_trip_count = ComputeWhileLoopTripCount(while_op);
@@ -662,7 +663,7 @@ optional<int64_t> ComputeWhileLoopTripCountUpperBound(
   bool cond_returns_true = cond_result_pred.GetFirstElement<bool>();
   if (!cond_returns_true) {
     VLOG(2) << "Upper bound on the trip count is 1";
-    return 1;
+    return WhileLoopTripCount(1);
   }
 
   VLOG(2) << "Loop has no known upper bound on the trip count.";
