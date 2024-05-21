@@ -567,6 +567,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:custom_call_sharding_helper",
         "//xla/service/spmd:spmd_partitioner",
+        "@com_google_absl//absl/status",
     ],
     # Always register 'InspectSharding' custom partitioning handler.
     alwayslink = 1,

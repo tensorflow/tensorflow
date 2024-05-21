@@ -43,6 +43,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status",
     ],
 )
 

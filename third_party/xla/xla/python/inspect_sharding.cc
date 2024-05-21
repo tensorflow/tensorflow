@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 
@@ -85,7 +86,7 @@ class InspectShardingCallPartitioner : public xla::CustomCallPartitioner {
     partitioner->SetPartitionedHlo(
         instruction,
         partitioner->GetPartitionedHlo(instruction->mutable_operand(0)));
-    return xla::OkStatus();
+    return absl::OkStatus();
   }
   HloSharding PropagateUserSharding(
       const HloInstruction* instruction, const HloInstruction* user,
