@@ -105,13 +105,18 @@ cc_library(
     hdrs = ["copy.h"],
     deps = [
         ":fusion_emitter",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:hlo_traversal",
         "//xla/service/gpu:ir_emitter_context",
         "//xla/service/gpu/runtime:copy_thunk",
         "//xla/service/gpu/runtime:thunk",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

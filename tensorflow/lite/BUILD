@@ -1067,7 +1067,6 @@ cc_test(
     deps = [
         ":framework",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
