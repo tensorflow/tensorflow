@@ -390,6 +390,10 @@ absl::StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
 // adding and removing reshapes that changes only a single dimension.
 HloInstruction* ExpandDegenerateReshape(HloInstruction* inst);
 
+// Creates an integral constant with the given shape and integer value.
+std::unique_ptr<HloInstruction> MakeConstantWithShape(const Shape& shape,
+                                                      int64_t value);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_HLO_CREATION_UTILS_H_
