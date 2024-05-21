@@ -541,7 +541,7 @@ def result_type_unary(a, dtype):  # pylint: disable=missing-function-docstring
   # np_utils.result_type treats string inputs as dtype strings, not as strings.
   # but for unary we want to treat it as a string input.
   if isinstance(a, str):
-    return np.unicode_
+    return np.str_
   elif isinstance(a, bytes):
     return np.bytes_
 

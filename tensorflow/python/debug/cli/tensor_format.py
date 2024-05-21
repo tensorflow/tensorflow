@@ -149,7 +149,7 @@ def format_tensor(tensor,
     np.set_printoptions(**np_printoptions)
 
   array_lines = repr(tensor).split("\n")
-  if tensor.dtype.type is not np.string_:
+  if tensor.dtype.type is not np.bytes_:
     # Parse array lines to get beginning indices for each line.
 
     # TODO(cais): Currently, we do not annotate string-type tensors due to

@@ -54,7 +54,7 @@ class UnsortedSegmentJoinOpTest(UnicodeTestCase, parameterized.TestCase):
     self.assertAllEqualUnicode(res, output_array)
 
   def test_segment_id_and_input_empty(self):
-    inputs = np.array([], dtype=np.string_)
+    inputs = np.array([], dtype=np.bytes_)
     segment_ids = np.array([], dtype=np.int32)
     num_segments = 3
     separator = ':'
@@ -273,7 +273,7 @@ class UnsortedSegmentJoinOpTest(UnicodeTestCase, parameterized.TestCase):
               separator=separator))
 
   def test_empty_input(self):
-    inputs = np.array([], dtype=np.string_)
+    inputs = np.array([], dtype=np.bytes_)
     segment_ids = [1, 0, 1]
     num_segments = 2
     separator = ':'
