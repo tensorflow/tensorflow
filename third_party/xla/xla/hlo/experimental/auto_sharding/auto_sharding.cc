@@ -3289,7 +3289,7 @@ absl::Status GenerateReduceScatter(
             .output_sharding);
     TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(replace_with));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AnnotateShardingWithSimpleHeuristic(
@@ -3447,7 +3447,7 @@ absl::Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
       << ins->ToString() << " does not have any valid strategies";
   strategy_group->strategies = std::move(new_strategies);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Return the output sharding of the reduce-scatter variant of a given strategy.
@@ -3744,7 +3744,7 @@ absl::Status AutoShardingImplementation::CanonicalizeLayouts(
     HloModule* module) {
   if (!module->layout_canonicalization_callback()) {
     LOG(INFO) << "There is no registered layout_canonicalization_callback.";
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(auto layouts,
                       module->layout_canonicalization_callback()(*module));
@@ -3763,7 +3763,7 @@ absl::Status AutoShardingImplementation::CanonicalizeLayouts(
   }
   *module->mutable_config().mutable_entry_computation_layout() =
       entry_computation_layout;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Computes the set of instructions that lie outside any manually partitioned
