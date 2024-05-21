@@ -307,6 +307,7 @@ xla_cc_binary(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_parser",
         "//xla/tools:hlo_module_loader",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:platform_port",
     ],
 )
