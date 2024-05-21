@@ -298,7 +298,7 @@ TEST(WeightCacheBuilderTest, NonExistingPathFails) {
   EXPECT_TRUE(builder.ShouldWrite());
 
   EXPECT_FALSE(builder.Write(""));
-  EXPECT_FALSE(builder.Write("/selktjdsljf"));
+  EXPECT_FALSE(builder.Write("/selkt/jdsljf"));
 }
 
 struct FakeContext {
