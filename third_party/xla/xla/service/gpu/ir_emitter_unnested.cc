@@ -29,6 +29,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -55,7 +56,6 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
-#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -758,9 +758,9 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
 
   TF_ASSIGN_OR_RETURN(bool has_vector_bias,
                       xla::gpu::gpublas_lt::EpilogueAddsVectorBias(epilogue));
-  bool has_damax = instr->shape().IsTuple();
-  xla::ShapeIndex output_index =
-      has_damax ? xla::ShapeIndex{0} : xla::ShapeIndex{};
+
+  TF_RET_CHECK(instr->shape().IsTuple());
+  xla::ShapeIndex output_index = xla::ShapeIndex{0};
 
   TF_ASSIGN_OR_RETURN(
       bool has_aux_output,
@@ -805,7 +805,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   }
 
   BufferAllocation::Slice d_amax;
-  if (has_damax) {
+  if (config.damax_output()) {
     TF_ASSIGN_OR_RETURN(d_amax, GetAllocationSliceForHlo(instr, {1}));
   }
 
@@ -822,10 +822,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   BufferAllocation::Slice aux;  // Not used.
   TF_RET_CHECK(!has_aux_output);
   std::optional<BufferAllocation::Slice> workspace_buffer;
-  if (instr->shape().IsTuple() &&
-      (instr->shape().tuple_shapes_size() - has_aux_output - 1)) {
-    TF_RET_CHECK((has_aux_output && instr->shape().tuple_shapes_size() == 3) ||
-                 (!has_aux_output && instr->shape().tuple_shapes_size() == 2));
+  if (instr->shape().tuple_shapes_size() - config.damax_output() == 2) {
     TF_ASSIGN_OR_RETURN(workspace_buffer,
                         GetAllocationSliceForHlo(
                             instr, {instr->shape().tuple_shapes_size() - 1}));

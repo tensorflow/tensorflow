@@ -1391,6 +1391,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *gemm_and_damax =
         instr->AddInstruction(existing_gemm->CloneWithNewShape(tuple_shape));
 
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        gemm_and_damax->backend_config<GpuBackendConfig>());
+    GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
+    config.set_damax_output(true);
+    TF_RETURN_IF_ERROR(gemm_and_damax->set_backend_config(gpu_config));
+
     // Obtain D and DAmax separately from the output tuple.
     HloInstruction *d =
         instr->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -2262,9 +2268,10 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
           has_aux_output,
           xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(epilogue));
 
-      if (!((has_aux_output && instr->shape().IsTuple() &&
-             instr->shape().tuple_shapes_size() == 2) ||
-            (!has_aux_output && instr->shape().IsArray()))) {
+      if (!((instr->shape().IsTuple() &&
+             instr->shape().tuple_shapes_size() ==
+                 has_aux_output + config.damax_output() + 1) ||
+            instr->shape().IsArray())) {
         return absl::OkStatus();
       }
     } else if (instr->custom_call_target() != kGemmCallTarget ||
@@ -2314,7 +2321,7 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
       custom_call->set_output_to_operand_aliasing({{{0}, {2, {}}}});
     }
 
-    if (has_aux_output) {
+    if (instr->shape().IsTuple()) {
       for (auto user : instr->users()) {
         auto user_get_tuple =
             dynamic_cast<HloGetTupleElementInstruction *>(user);
