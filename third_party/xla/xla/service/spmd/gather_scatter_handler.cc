@@ -846,7 +846,7 @@ absl::Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
                       gather->gather_slice_sizes(), this));
   SetPartitionedHlo(gather, PartitionedHlo(pgather, gather->shape(),
                                            MakePartitioningState()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1694,7 +1694,7 @@ absl::Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   }
   SetPartitionedHlo(scatter, PartitionedHlo(pscatter, scatter->shape(),
                                             MakePartitioningState()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace spmd

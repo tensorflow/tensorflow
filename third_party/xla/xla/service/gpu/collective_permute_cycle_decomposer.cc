@@ -136,7 +136,7 @@ absl::Status GetFrontendAttributes(HloCollectivePermuteInstruction* cp,
       cp->frontend_attributes().map().find(kSendRecvValidationAttr);
   if (validation_it == cp->frontend_attributes().map().end() ||
       validation_it->second == "invalid") {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   auto statusor_bounds = ParseReplicaGroupsOnly(validation_it->second);
@@ -172,7 +172,7 @@ absl::Status GetFrontendAttributes(HloCollectivePermuteInstruction* cp,
   std::string cp2_validation_str = bounds_to_string(cp2_bounds);
   (*cp1_attr.mutable_map())[kSendRecvValidationAttr] = cp1_validation_str;
   (*cp2_attr.mutable_map())[kSendRecvValidationAttr] = cp2_validation_str;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Decomposes a CollectivePermute instruction with a cycle in its source-target
@@ -238,7 +238,7 @@ absl::Status DecomposeCollectivePermuteCycle(
   TF_RETURN_IF_ERROR(cp->ReplaceAllUsesWith(recv_data));
   TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(cp));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

@@ -252,7 +252,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
       hlo, PartitionedHlo(create_tuple, hlo->shape(), MakePartitioningState())
                .Reshard(hlo->sharding()));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
@@ -282,7 +282,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
   amount %= full_size;
   if (amount == 0) {
     SetPartitionedHlo(hlo, input);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // First step: rotate `amount` on padded data. E.g., before
@@ -345,7 +345,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
   HloInstruction* rotated0 = rotate_with_padding(amount);
   if (right_padding == 0) {
     SetPartitionedHlo(hlo, [&] { return rotated0; });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Second step: perform another rotate from input, with `right_padding` added
@@ -381,7 +381,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
     return b_.AddInstruction(HloInstruction::CreateTernary(
         rotated0->shape(), HloOpcode::kSelect, pred, rotated1, rotated0));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
@@ -409,7 +409,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     auto copy = b_.AddInstruction(
         HloInstruction::CreateUnary(input->shape(), HloOpcode::kCopy, input));
     SetPartitionedHlo(hlo, [&] { return copy; });
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (hlo->custom_call_target() == "SPMDShardToFullShape") {
     // This op switches from manual partitioning to auto partitioning.
@@ -420,7 +420,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     CHECK(ShapeUtil::Compatible(
         copy->shape(), MakePartitionedShape(hlo->shape(), hlo->sharding())));
     SetPartitionedHlo(hlo, [&] { return copy; });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (hlo->custom_call_target() == kSPMDOpRotateRight) {
@@ -452,7 +452,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
       }
       return instr;
     });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (hlo->custom_call_target() == "TopK") {
@@ -477,7 +477,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     SetPartitionedHlo(hlo, PartitionedHlo(move_to_device, hlo->shape(),
                                           MakePartitioningState())
                                .Reshard(hlo->sharding()));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return DefaultAction(hlo);

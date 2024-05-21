@@ -217,7 +217,7 @@ absl::Status ProcessWindowedEinsumLoopForActivationCaching(
   }
   TF_RETURN_IF_ERROR(root->ReplaceOperandWith(full_cache_buffer_index,
                                               new_full_buffer_output));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
