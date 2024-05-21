@@ -32,6 +32,8 @@
 * Replace `DebuggerOptions` of TensorFlow Quantizer, and migrate to
   `DebuggerConfig` of StableHLO Quantizer.
 * Add TensorFlow to StableHLO converter to TensorFlow pip package.
+* TensorRT support: this is the last release supporting TensorRT. It will be
+removed in the next release.
 
 ## Keras
 
