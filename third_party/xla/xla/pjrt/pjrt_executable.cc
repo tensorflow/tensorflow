@@ -572,31 +572,31 @@ absl::Status CompileOptions::ApplyOption(const std::string& key,
     if (xla_field->type() == tsl::protobuf::FieldDescriptor::TYPE_BOOL &&
         std::holds_alternative<bool>(value)) {
       reflection->SetBool(&debug_options, xla_field, std::get<bool>(value));
-      return OkStatus();
+      return absl::OkStatus();
     } else if (std::holds_alternative<std::string>(value)) {
       TF_RETURN_IF_ERROR(
           ApplyOptionFromString(xla_field, std::get<std::string>(value)));
-      return OkStatus();
+      return absl::OkStatus();
     } else if (xla_field->type() ==
                    tsl::protobuf::FieldDescriptor::TYPE_INT32 &&
                std::holds_alternative<int64_t>(value)) {
       reflection->SetInt32(&debug_options, xla_field, std::get<int64_t>(value));
-      return OkStatus();
+      return absl::OkStatus();
     } else if (xla_field->type() ==
                    tsl::protobuf::FieldDescriptor::TYPE_INT64 &&
                std::holds_alternative<int64_t>(value)) {
       reflection->SetInt64(&debug_options, xla_field, std::get<int64_t>(value));
-      return OkStatus();
+      return absl::OkStatus();
     } else if (xla_field->type() ==
                    tsl::protobuf::FieldDescriptor::TYPE_FLOAT &&
                std::holds_alternative<double>(value)) {
       reflection->SetFloat(&debug_options, xla_field, std::get<double>(value));
-      return OkStatus();
+      return absl::OkStatus();
     } else if (xla_field->type() ==
                    tsl::protobuf::FieldDescriptor::TYPE_DOUBLE &&
                std::holds_alternative<double>(value)) {
       reflection->SetDouble(&debug_options, xla_field, std::get<double>(value));
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       return InvalidArgument(
           "While setting option %s, '%s' is not a valid %s value.", key,
@@ -612,7 +612,7 @@ absl::Status CompileOptions::ApplyAllOptionOverrides() {
   for (auto& option : env_option_overrides) {
     TF_RETURN_IF_ERROR(ApplyOption(option.first, option.second));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status CompileOptions::ApplyOptionFromString(
@@ -622,30 +622,30 @@ absl::Status CompileOptions::ApplyOptionFromString(
   const tsl::protobuf::Reflection* reflection = debug_options.GetReflection();
   if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_STRING) {
     reflection->SetString(&debug_options, field, value);
-    return OkStatus();
+    return absl::OkStatus();
   } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_INT32) {
     int int_value;
     if (absl::SimpleAtoi(value, &int_value)) {
       reflection->SetInt32(&debug_options, field, int_value);
-      return OkStatus();
+      return absl::OkStatus();
     }
   } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_INT64) {
     int int_value;
     if (absl::SimpleAtoi(value, &int_value)) {
       reflection->SetInt64(&debug_options, field, int_value);
-      return OkStatus();
+      return absl::OkStatus();
     }
   } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_FLOAT) {
     float float_value;
     if (absl::SimpleAtof(value, &float_value)) {
       reflection->SetFloat(&debug_options, field, float_value);
-      return OkStatus();
+      return absl::OkStatus();
     }
   } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_BOOL) {
     bool bvalue = value == "True";
     if (value == "True" || value == "False") {
       reflection->SetBool(&debug_options, field, bvalue);
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   return InvalidArgument(

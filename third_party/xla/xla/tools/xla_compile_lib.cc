@@ -363,7 +363,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   if (options.repo_options.wait_for_uploads) {
     MaybeWaitForUploads();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

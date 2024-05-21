@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tests/filecheck.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -93,7 +94,7 @@ LLVMCompiler* LlvmIrGenTestBase::GetLLVMCompiler() {
 
 absl::Status LlvmIrGenTestBase::IrHook(const llvm::Module& module) {
   ir_ = llvm_ir::DumpToString(&module);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

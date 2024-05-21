@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/array2d.h"
 #include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
@@ -158,7 +159,7 @@ XLA_TEST_F(ParamsTest, MissingParameter) {
   Parameter(&builder, 2, ShapeUtil::MakeShape(F32, {}), "param2");
   auto computation_status = builder.Build();
 
-  ASSERT_NE(computation_status.status(), OkStatus());
+  ASSERT_NE(computation_status.status(), absl::OkStatus());
 }
 
 XLA_TEST_F(ParamsTest, UnusedParameter) {

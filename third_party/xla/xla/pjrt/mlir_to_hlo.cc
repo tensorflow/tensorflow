@@ -224,7 +224,7 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
       ConvertMlirHloToHlo(module, &proto, use_tuple_args, return_tuple));
 
   xla_computation = XlaComputation(std::move(*proto.mutable_hlo_module()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
@@ -343,7 +343,7 @@ absl::Status UpgradeVersionedStablehlo(mlir::ModuleOp mlir_module) {
   mlir::stablehlo::createStablehloDeserializePipeline(pm);
   if (!mlir::succeeded(pm.run(mlir_module)))
     return xla::InvalidArgument("Failed to upgrade versioned StableHLO.");
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

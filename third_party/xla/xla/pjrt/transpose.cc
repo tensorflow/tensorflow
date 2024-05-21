@@ -87,6 +87,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/blocking_counter.h"
@@ -694,12 +695,12 @@ static absl::Status ParseTilingSpecification(
   if (ndim == 1) {
     // Tiling doesn't do anything for a rank-1 array, except add padding. Since
     // we're not going to touch any padding elements, we can ignore it.
-    return OkStatus();
+    return absl::OkStatus();
   }
   int offset = ndim;
   offset -= tiling_spec.size();
   absl::c_copy(tiling_spec, tiling.begin() + offset);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Helper function that builds a plan.

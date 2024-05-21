@@ -100,6 +100,7 @@ cc_library(
         "//xla/service:hlo_dataflow_analysis",
         "//xla/service:hlo_verifier",
         "//xla/service:transfer_manager",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -145,6 +146,7 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_verifier",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
@@ -283,6 +285,7 @@ cc_library(
         "//xla/service:interpreter_plugin",  # reference backend
         "//xla/service:platform_util",
         "//xla/stream_executor",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:bitmap",
@@ -302,6 +305,7 @@ cc_library(
         ":filecheck",
         "//xla/service:llvm_compiler",
         "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:test",
     ],
@@ -564,6 +568,7 @@ xla_test(
         "//xla/service:stream_pool",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:regexp",
@@ -633,6 +638,7 @@ xla_test(
         "//xla/client:local_client",
         "//xla/client:xla_builder",
         "//xla/client:xla_computation",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:test",
     ],
@@ -2421,7 +2427,10 @@ xla_cc_test(
         "//xla/stream_executor/cuda:cuda_platform_id",
     ]) + if_rocm_is_configured([
         "//xla/stream_executor/rocm:rocm_platform_id",
-    ]),
+    ]) + [
+        "//xla/stream_executor/rocm:rocm_platform_id",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 xla_test(

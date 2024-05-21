@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/tests/verified_hlo_module.h"
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/hlo_parser.h"
@@ -48,7 +49,7 @@ void VerifiedHloModule::VerifyOrAddFailure(absl::string_view message) {
 absl::Status VerifiedHloModule::Verify() {
   if (computation_count() == 0) {
     // The computation was never built. Nothing to verify.
-    return OkStatus();
+    return absl::OkStatus();
   }
   return verifier_.Run(this).status();
 }

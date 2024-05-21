@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -173,7 +174,7 @@ absl::Status ParseDeviceAssignmentCompileOptions(
     *device_assignment =
         std::make_shared<DeviceAssignment>(build_options->device_assignment());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Helper method that takes an ArrayAttr of DictionaryAttrs for each arg or
@@ -403,7 +404,7 @@ absl::Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
                               ->mutable_map();
   frontend_attrs["arg_layout_modes"] = GetFrontendAttr(arg_layout_modes);
   frontend_attrs["out_layout_modes"] = GetFrontendAttr(out_layout_modes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static std::string GetFrontendAttrForMemorySpace(
@@ -431,7 +432,7 @@ absl::Status AddMemoryKindsToFrontendAttrs(mlir::ModuleOp module,
       GetFrontendAttrForMemorySpace(arg_memory_spaces);
   frontend_attrs["out_memory_spaces"] =
       GetFrontendAttrForMemorySpace(out_memory_spaces);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static absl::StatusOr<std::vector<LayoutMode>> GetLayoutModesFromFrontendAttr(
@@ -746,7 +747,7 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
                 choose_compact_layout_for_shape_function(sharded_subshape));
             *subshape->mutable_layout() = layout.layout();
           }
-          return OkStatus();
+          return absl::OkStatus();
         });
   };
   TF_ASSIGN_OR_RETURN(auto sharded_shapes,
@@ -768,7 +769,7 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
   }
   TF_RETURN_IF_ERROR(assign_layouts(sharded_shapes.second, &result_layout));
   build_options->set_result_layout(result_layout);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
@@ -821,7 +822,7 @@ absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
           }
           parameters_to_donate.push_back(this_parameter);
         }
-        return OkStatus();
+        return absl::OkStatus();
       }));
   absl::c_sort(parameters_to_donate);
   return parameters_to_donate;

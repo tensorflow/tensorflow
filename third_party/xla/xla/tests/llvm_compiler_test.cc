@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal_util.h"
 #include "xla/service/backend.h"
@@ -63,14 +64,14 @@ class GpuDummyCompiler : public GpuCompiler {
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_executor,
       const CompileOptions& options, const TargetConfig& gpu_target_config,
       tsl::thread::ThreadPool* thread_pool) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::StatusOr<GpuCompiler::BackendCompileResult> CompileTargetBinary(
@@ -112,11 +113,11 @@ class LLVMCompilerTest : public ::testing::Test {
 
     auto pre_opt_hook = [&pre_opt_hook_call_count](const llvm::Module&) {
       ++pre_opt_hook_call_count;
-      return OkStatus();
+      return absl::OkStatus();
     };
     auto post_opt_hook = [&post_opt_hook_call_count](const llvm::Module&) {
       ++post_opt_hook_call_count;
-      return OkStatus();
+      return absl::OkStatus();
     };
 
     // Create HLO module, and run the compiler.
