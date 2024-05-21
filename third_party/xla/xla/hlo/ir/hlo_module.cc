@@ -83,7 +83,7 @@ absl::Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
   TF_RETURN_IF_ERROR(schedule.Verify());
   schedule_ = std::move(schedule);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void HloModule::ReplaceEntryComputation(HloComputation* entry_computation) {
@@ -199,7 +199,7 @@ absl::Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
   TF_RET_CHECK(it != computations_.end());
   TF_RET_CHECK(it->get() == to_remove);
   computations_.erase(it);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HloComputation* HloModule::AddEmbeddedComputation(
@@ -537,7 +537,7 @@ absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
       instruction_ids.insert(instruction->unique_id());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /* static */
@@ -1136,7 +1136,7 @@ absl::Status HloModule::RemoveUnusedComputations() {
   for (auto computation : to_remove) {
     TF_RETURN_IF_ERROR(RemoveEmbeddedComputation(computation));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HloComputation* HloModule::DeepCloneComputation(HloComputation* computation,

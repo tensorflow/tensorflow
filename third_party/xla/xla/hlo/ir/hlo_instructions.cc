@@ -2518,7 +2518,7 @@ std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
 
 absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   if (IsCustomFusion()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   absl::flat_hash_map<const HloInstruction*, int> operand_indices;
   std::vector<int> operands_to_remove;
@@ -2533,12 +2533,12 @@ absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
     }
   }
   if (operands_to_remove.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_RETURN_IF_ERROR(fused_instructions_computation()
                          ->RemoveUnusedParametersFromFusedComputation());
   RemoveOperandsAtAscendingIndices(operands_to_remove);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HloCallInstruction::HloCallInstruction(const Shape& shape,

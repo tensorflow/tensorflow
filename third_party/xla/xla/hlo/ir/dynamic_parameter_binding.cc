@@ -36,7 +36,7 @@ absl::Status DynamicParameterBinding::Bind(
     const DynamicDimension& dynamic_dimension) {
   auto result = bindings_.emplace(dynamic_dimension, dynamic_parameter);
   TF_RET_CHECK(result.second);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::optional<DynamicParameterBinding::DynamicSizeParameter>
@@ -71,7 +71,7 @@ absl::Status DynamicParameterBinding::ForEachBinding(BindingFn fn) const {
   for (const auto& binding : bindings_) {
     TF_RETURN_IF_ERROR(fn(binding.second, binding.first));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status DynamicParameterBinding::Verify(
@@ -99,7 +99,7 @@ absl::Status DynamicParameterBinding::Verify(
                 ->shape(),
             dynamic_dimension.parameter_index)
             .rank());
-    return OkStatus();
+    return absl::OkStatus();
   });
 }
 
