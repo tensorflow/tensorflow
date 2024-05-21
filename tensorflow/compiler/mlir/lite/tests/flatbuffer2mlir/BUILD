@@ -57,8 +57,8 @@ tf_native_cc_binary(
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],

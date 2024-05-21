@@ -32,8 +32,8 @@ limitations under the License.
 #if FLATBUFFERS_LITTLEENDIAN == 0
 #include "tensorflow/lite/core/model_builder.h"
 #endif
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/tools/serialization/enum_mapping.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
