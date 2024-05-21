@@ -244,10 +244,6 @@ static HostEvent* AsHostEvent(Event* event) {
   return static_cast<HostEvent*>(event->implementation());
 }
 
-absl::Status HostExecutor::DeallocateEvent(Event* /*event*/) {
-  return absl::OkStatus();
-}
-
 absl::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {
   std::shared_ptr<absl::Notification> notification =
       AsHostEvent(event)->notification();

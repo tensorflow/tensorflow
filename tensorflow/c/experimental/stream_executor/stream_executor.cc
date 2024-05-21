@@ -407,10 +407,6 @@ class CStreamExecutor : public StreamExecutor {
     return stream_executor_->host_callback(&device_, stream_handle,
                                            &HostCallbackTrampoline, ctx);
   }
-  absl::Status DeallocateEvent(Event* event) override {
-    static_cast<CEvent*>(event->implementation())->Destroy();
-    return absl::OkStatus();
-  }
   absl::Status RecordEvent(Stream* stream, Event* event) override {
     SP_Stream stream_handle =
         static_cast<CStream*>(stream->implementation())->Handle();

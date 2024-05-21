@@ -114,10 +114,6 @@ class XlaInterpreterExecutor : public StreamExecutor {
   bool HostCallback(Stream *stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
-  absl::Status DeallocateEvent(Event *event) override {
-    return absl::OkStatus();
-  }
-
   absl::Status RecordEvent(Stream *stream, Event *event) override {
     return absl::Status{absl::StatusCode::kUnimplemented, "RecordEvent"};
   }

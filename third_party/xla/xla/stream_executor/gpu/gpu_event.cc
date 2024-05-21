@@ -27,7 +27,7 @@ namespace gpu {
 GpuEvent::GpuEvent(GpuExecutor* parent)
     : parent_(parent), gpu_event_(nullptr) {}
 
-GpuEvent::~GpuEvent() {}
+GpuEvent::~GpuEvent() { Destroy().IgnoreError(); }
 
 absl::Status GpuEvent::Init() {
   return GpuDriver::InitEvent(parent_->gpu_context(), &gpu_event_,

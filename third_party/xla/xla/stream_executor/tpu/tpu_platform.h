@@ -108,7 +108,7 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
     mutex().Unlock();
     return stream;
   }
-  void EraseEvent(stream_executor::EventInterface* key);
+  void EraseEvent(stream_executor::EventInterface* key) override;
 
   SE_Platform* se_platform() const { return platform_; }
 

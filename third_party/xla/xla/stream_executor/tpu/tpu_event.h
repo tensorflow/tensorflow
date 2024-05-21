@@ -17,19 +17,25 @@ limitations under the License.
 
 #include "xla/stream_executor/event_interface.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
+#include "xla/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace stream_executor {
 namespace tpu {
 
 class TpuEvent : public EventInterface {
  public:
-  explicit TpuEvent(SE_Event* event) : event_(event) {}
-  ~TpuEvent() override { ExecutorApiFn()->TpuEvent_FreeFn(event_); }
+  explicit TpuEvent(SE_Event* event,
+                    tensorflow::tpu::TpuPlatformInterface* platform)
+      : event_(event), platform_(platform) {}
+  ~TpuEvent() override {
+    platform_->EraseEvent(this);
+    ExecutorApiFn()->TpuEvent_FreeFn(event_);
+  }
 
  private:
   SE_Event* event_;
+  tensorflow::tpu::TpuPlatformInterface* platform_;
 };
 
 }  // namespace tpu
