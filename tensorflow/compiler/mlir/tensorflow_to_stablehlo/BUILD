@@ -8,6 +8,7 @@ package_group(
     packages = [
         "//tensorflow/compiler/mlir/lite/...",
         "//tensorflow/compiler/mlir/quantization/...",
+        "//tensorflow/compiler/mlir/tensorflow_to_stablehlo/...",
         "//tensorflow/compiler/mlir/tf2xla/transforms/...",
         "//tensorflow/lite/...",
     ] + internal_visibility_allowlist(),
@@ -82,7 +83,7 @@ glob_lit_tests(
         "no_oss",
         "no_pip",
     ],
-    driver = "//tensorflow/compiler/mlir/quantization/tensorflow_to_stablehlo:run_lit.sh",
+    driver = "//tensorflow/compiler/mlir/tensorflow_to_stablehlo:run_lit.sh",
     size_override = {
     },
     tags_override = {

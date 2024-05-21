@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/quantization/tensorflow_to_stablehlo/python/pywrap_tensorflow_to_stablehlo_lib.h"
+#include "tensorflow/compiler/mlir/tensorflow_to_stablehlo/python/pywrap_tensorflow_to_stablehlo_lib.h"
 
 #include <string>
 #include <vector>
@@ -32,8 +32,8 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/tensorflow_to_stablehlo/tf_to_stablehlo.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow_to_stablehlo/tf_to_stablehlo.h"
 #include "tensorflow/core/platform/path.h"
 
 namespace mlir::tensorflow_to_stablehlo::pywrap {

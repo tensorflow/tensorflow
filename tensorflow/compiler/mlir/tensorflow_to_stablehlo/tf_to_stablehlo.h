@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_TO_STABLEHLO_TF_TO_STABLEHLO_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_TO_STABLEHLO_TF_TO_STABLEHLO_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TO_STABLEHLO_TF_TO_STABLEHLO_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TO_STABLEHLO_TF_TO_STABLEHLO_H_
 
 #include <string>
 #include <vector>
@@ -53,4 +53,4 @@ absl::StatusOr<OwningOpRef<ModuleOp>> TfToStablehlo(
 
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_TO_STABLEHLO_TF_TO_STABLEHLO_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TO_STABLEHLO_TF_TO_STABLEHLO_H_

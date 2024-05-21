@@ -18,7 +18,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil    // IWYU pragma: keep
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/quantization/tensorflow_to_stablehlo/python/pywrap_tensorflow_to_stablehlo_lib.h"
+#include "tensorflow/compiler/mlir/tensorflow_to_stablehlo/python/pywrap_tensorflow_to_stablehlo_lib.h"
 
 namespace py = pybind11;
 

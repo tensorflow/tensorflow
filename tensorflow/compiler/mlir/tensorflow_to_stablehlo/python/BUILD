@@ -77,8 +77,8 @@ cc_library(
         "//tensorflow/python:__pkg__",  # For lib_pywrap_tensorflow_internal.so.
     ],
     deps = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow_to_stablehlo:tf_to_stablehlo",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow_to_stablehlo:tf_to_stablehlo",
         "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/status",

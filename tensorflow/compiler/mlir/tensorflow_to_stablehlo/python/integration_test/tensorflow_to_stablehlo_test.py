@@ -17,7 +17,7 @@ import tempfile
 from mlir import ir
 from mlir.dialects import stablehlo
 import tensorflow as tf
-from tensorflow.compiler.mlir.quantization.tensorflow_to_stablehlo.python import pywrap_tensorflow_to_stablehlo as tensorflow_to_stablehlo
+from tensorflow.compiler.mlir.tensorflow_to_stablehlo.python import pywrap_tensorflow_to_stablehlo as tensorflow_to_stablehlo
 from tensorflow.python.platform import test
 
 

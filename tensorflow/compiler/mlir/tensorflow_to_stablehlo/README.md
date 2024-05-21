@@ -65,7 +65,7 @@ tf-to-stablehlo-translate <saved-model-path> --input-arg-shapes=1,12:1,12:1,12
 Converts a TensorFlow SavedModel into StableHLO bytecode.
 
 ```Python
-from tensorflow.compiler.mlir.quantization.tensorflow_to_stablehlo.python import pywrap_tensorflow_to_stablehlo as tf2shlo
+from tensorflow.compiler.mlir.tensorflow_to_stablehlo.python import pywrap_tensorflow_to_stablehlo as tf2shlo
 
 stablehlo_bytes = tf2shlo.savedmodel_to_stablehlo(
         input_path="/path/to/your/savedmodel",
@@ -99,7 +99,7 @@ An exception will be raised with details about the error.
 Converts a TensorFlow MLIR module string into StableHLO bytecode.
 
 ```Python
-from tensorflow.compiler.mlir.quantization.tensorflow_to_stablehlo.python import pywrap_tensorflow_to_stablehlo as tf2shlo
+from tensorflow.compiler.mlir.tensorflow_to_stablehlo.python import pywrap_tensorflow_to_stablehlo as tf2shlo
 
 stablehlo_bytes = tf2shlo.tensorflow_module_to_stablehlo(
     module_op_str="your_tensorflow_mlir_module_string",
