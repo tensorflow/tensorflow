@@ -1,0 +1,18 @@
+==== triton/lib/Tools/LinearLayout.cpp#2 - /google/src/cloud/shyshkov/triton_asan/triton/lib/Tools/LinearLayout.cpp ====
+# action=edit type=text
+--- triton/lib/Tools/LinearLayout.cpp	2024-05-17 09:15:25.000000000 -0700
++++ triton/lib/Tools/LinearLayout.cpp	2024-05-21 06:27:58.000000000 -0700
+@@ -397,9 +397,11 @@
+       for (auto [outDim, b] : llvm::zip(getOutDimNames(), basis)) {
+         bases.push_back({outDim, b});
+       }
+-      auto newBases = llvm::make_second_range(outer.apply(bases));
++
++      auto outerBases =
++          llvm::to_vector(llvm::make_second_range(outer.apply(bases)));
+       newInDimBases.push_back(
+-          std::vector<int32_t>(newBases.begin(), newBases.end()));
++          std::vector<int32_t>(outerBases.begin(), outerBases.end()));
+     }
+   }
+   return LinearLayout(std::move(newBases), outer.getOutDimNames());
