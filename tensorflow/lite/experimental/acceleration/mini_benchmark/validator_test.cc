@@ -26,6 +26,7 @@ limitations under the License.
 #if FLATBUFFERS_LITTLEENDIAN == 0
 #include "tensorflow/lite/core/model_builder.h"
 #endif
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/acceleration/configuration/configuration.pb.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/acceleration/configuration/proto_to_flatbuffer.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/custom_validation_embedder.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
-#include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/tools/model_loader.h"
 
 // Note that these tests are not meant to be completely exhaustive, but to test

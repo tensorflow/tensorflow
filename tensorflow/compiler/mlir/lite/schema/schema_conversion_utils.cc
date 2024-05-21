@@ -12,11 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/schema/schema_conversion_utils.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
 
 #include <algorithm>
-
-#include "tensorflow/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
 

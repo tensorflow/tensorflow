@@ -169,28 +169,18 @@ cc_test(
 
 cc_library(
     name = "schema_utils",
-    srcs = ["schema_utils.cc"],
     hdrs = ["schema_utils.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
-    deps = [
-        ":schema_fbs",
-        "//tensorflow/lite/kernels/internal:compatibility",
-        "@flatbuffers//:runtime_cc",
-    ],
+    deps = ["//tensorflow/compiler/mlir/lite/schema:schema_utils"],
 )
 
 cc_library(
     name = "schema_conversion_utils",
-    srcs = ["schema_conversion_utils.cc"],
     hdrs = ["schema_conversion_utils.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
-    deps = [
-        ":schema_fbs",
-        "//tensorflow/lite/kernels/internal:compatibility",
-        "@flatbuffers",
-    ],
+    deps = ["//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils"],
 )
 
 flatbuffer_cc_library(

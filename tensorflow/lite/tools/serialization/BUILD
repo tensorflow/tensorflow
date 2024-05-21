@@ -20,8 +20,8 @@ cc_library(
     name = "writer_lib_enum",
     hdrs = ["enum_mapping.h"],
     deps = [
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite:builtin_op_data",
-        "//tensorflow/lite/schema:schema_fbs",
     ],
 )
 
@@ -38,6 +38,7 @@ cc_library(
     ],
     textual_hdrs = ["option_writer_generated.h"],
     deps = [
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
@@ -45,7 +46,6 @@ cc_library(
         "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_conversion_utils",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/tools/serialization:writer_lib_enum",
         "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/container:flat_hash_map",
