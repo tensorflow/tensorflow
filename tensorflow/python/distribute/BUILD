@@ -658,13 +658,13 @@ cuda_py_strict_test(
     srcs_version = "PY3",
     tags = [
         "multi_and_single_gpu",
-        "notap",  # TODO(b/341375925): Re-enable this test when flakiness is fixed.
     ],
     xla_enabled = True,
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
