@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_TRACING_IMPL_H_
 #define TENSORFLOW_TSL_PLATFORM_DEFAULT_TRACING_IMPL_H_
 
+#ifndef IS_MOBILE_PLATFORM
+#include "tsl/profiler/backends/cpu/threadpool_listener_state.h"
+#endif
 // Stub implementations of tracing functionality.
 
 // Definitions that do nothing for platforms that don't have underlying thread
@@ -33,7 +36,13 @@ limitations under the License.
 namespace tsl {
 namespace tracing {
 
-inline bool EventCollector::IsEnabled() { return false; }
+inline bool EventCollector::IsEnabled() {
+#ifndef IS_MOBILE_PLATFORM
+  return tsl::profiler::threadpool_listener::IsEnabled();
+#else
+  return false;
+#endif
+}
 
 }  // namespace tracing
 }  // namespace tsl
