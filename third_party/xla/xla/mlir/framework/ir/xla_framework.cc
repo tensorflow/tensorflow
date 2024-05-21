@@ -16,11 +16,6 @@ limitations under the License.
 // This file defines the operations used in the xla_framework dialect.
 #include "xla/mlir/framework/ir/xla_framework.h"
 
-#include "llvm/ADT/TypeSwitch.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-
 // Generated dialect definitions.
 #include "xla/mlir/framework/ir/xla_framework_dialect.cc.inc"
 #define GET_TYPEDEF_CLASSES
