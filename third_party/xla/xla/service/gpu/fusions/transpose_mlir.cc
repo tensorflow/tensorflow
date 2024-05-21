@@ -72,7 +72,6 @@ using mlir::func::FuncOp;
 using mlir::func::ReturnOp;
 using mlir::tensor::ExtractOp;
 using mlir::tensor::InsertOp;
-using mlir_converter::ApplyAffineMap;
 using mlir_converter::ApplyIndexing;
 
 constexpr int kNumRows = 4;
@@ -286,7 +285,7 @@ void MlirTransposeFusion::EmitReadFromShMemMlir(
                        computations.epilogues().front().root_indexing,
                        shmem_transpose_root_indices_)) {
           llvm::SmallVector<Value> indices =
-              ApplyAffineMap(indexing, dim_values, symbol_values, builder);
+              ApplyIndexing(indexing, dim_values, symbol_values, builder);
           results[root_index] = builder.create<InsertOp>(
               result_scalars.at(root).front(), results[root_index], indices);
         }

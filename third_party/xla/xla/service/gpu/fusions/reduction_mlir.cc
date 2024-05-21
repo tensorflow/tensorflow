@@ -208,10 +208,12 @@ llvm::SmallVector<Value> MlirReductionFusion::EmitReduction(
   auto thread_id = state.thread_and_block_ids[0];
   Value cst_true = b.create<ma::ConstantOp>(b.getOneAttr(b.getI1Type()));
 
-  auto delinearized = DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx),
-                                               threads_per_block);
-  auto thread_ids = mlir_converter::ApplyAffineMap(
-      mlir::AffineMap::get(1, 0, delinearized, ctx), {thread_id}, {}, b);
+  auto thread_indexing = GetBitcastMap(
+      ShapeUtil::MakeShapeWithDescendingLayout(
+          U8, {tiling.GetNumThreadsPerBlock()}),
+      ShapeUtil::MakeShapeWithDescendingLayout(U8, threads_per_block), ctx);
+  auto thread_ids =
+      mlir_converter::ApplyIndexing(thread_indexing, {thread_id}, {}, b);
 
   auto warp_id = b.create<ma::DivUIOp>(
       reduction_info().IsRowReduction()
@@ -246,7 +248,7 @@ llvm::SmallVector<Value> MlirReductionFusion::EmitReduction(
     if (epilogue.roots.empty()) return outputs;
 
     llvm::SmallVector<Value> epilogue_input_symbols(
-        epilogue.root_indexing.front().getNumSymbols(), zero);
+        epilogue.root_indexing.front().GetAffineMap().getNumSymbols(), zero);
     auto epilogue_input_indices = state.thread_and_block_ids;
     epilogue_input_indices.append(epilogue_input_symbols);
     auto values =
@@ -257,7 +259,7 @@ llvm::SmallVector<Value> MlirReductionFusion::EmitReduction(
         *ComputeThreadIdToOutputIndexing(first_root_index, ctx),
         state.thread_and_block_ids, {}, b);
     for (auto [index, root] : llvm::enumerate(epilogue.roots)) {
-      auto output_indices = mlir_converter::ApplyAffineMap(
+      auto output_indices = mlir_converter::ApplyIndexing(
           epilogue.root_indexing[index], state.thread_and_block_ids,
           epilogue_input_symbols, b);
       for (auto [result_index, result] : llvm::enumerate(values.at(root))) {
@@ -373,16 +375,16 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
 
   auto body_builder = [&](ValueRange iter_args, ValueRange dim_values,
                           ValueRange symbol_values) -> SmallVector<Value> {
-    auto tile_indices = mlir_converter::ApplyAffineMap(
-        tile_indexing.GetAffineMap(), dim_values, symbol_values, builder);
+    auto tile_indices = mlir_converter::ApplyIndexing(tile_indexing, dim_values,
+                                                      symbol_values, builder);
 
     llvm::SmallVector<Value> results(iter_args.size(), nullptr);
     auto get_input_indices = [&](auto* hero, bool is_reduction) {
       const auto& input_shape =
           is_reduction ? hero->operand(0)->shape() : hero->shape();
-      return mlir_converter::ApplyAffineMap(
-          GetBitcastMap(tiling.GetXlaShape(), input_shape, builder.getContext())
-              .GetAffineMap(),
+      return mlir_converter::ApplyIndexing(
+          GetBitcastMap(tiling.GetXlaShape(), input_shape,
+                        builder.getContext()),
           tile_indices, {}, builder);
     };
     for (auto* reduction : reductions) {

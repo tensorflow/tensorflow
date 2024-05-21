@@ -113,8 +113,8 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
       builder, output_tensor_args, input_indexing,
       [&](ValueRange output_tensors, ValueRange dim_values,
           ValueRange symbol_values) -> SmallVector<Value> {
-        auto input_indices = mlir_converter::ApplyAffineMap(
-            input_indexing.GetAffineMap(), dim_values, symbol_values, builder);
+        auto input_indices = mlir_converter::ApplyIndexing(
+            input_indexing, dim_values, symbol_values, builder);
         SmallVector<Value> input_operands(
             entry_function.getArguments().take_front(num_inputs));
         absl::c_copy(input_indices, std::back_inserter(input_operands));
@@ -141,9 +141,8 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
               [&, output_index = output_index, output = output](
                   mlir::OpBuilder b, mlir::Location loc) {
                 mlir::ImplicitLocOpBuilder then_builder(loc, b);
-                auto output_indices = mlir_converter::ApplyAffineMap(
-                    output_indexing->GetAffineMap(), dim_values, symbol_values,
-                    then_builder);
+                auto output_indices = mlir_converter::ApplyIndexing(
+                    *output_indexing, dim_values, symbol_values, then_builder);
                 const auto* arg = analysis_.fusion_root(output_index)
                                       .instruction()
                                       .operand(0);
