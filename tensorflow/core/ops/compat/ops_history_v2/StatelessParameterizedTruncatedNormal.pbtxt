@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "StatelessParameterizedTruncatedNormal"
   input_arg {
     name: "shape"

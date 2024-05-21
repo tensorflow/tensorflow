@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "UnsortedSegmentMax"
   input_arg {
     name: "data"

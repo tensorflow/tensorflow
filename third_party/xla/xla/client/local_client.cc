@@ -51,7 +51,7 @@ LocalExecutable::LocalExecutable(std::unique_ptr<Executable> executable,
       << "Must have a valid device ordinal that the executable was built for.";
 }
 
-Status LocalExecutable::ValidateExecutionOptions(
+absl::Status LocalExecutable::ValidateExecutionOptions(
     const ExecutableRunOptions& run_options, const Backend& backend) {
   if (run_options.stream() != nullptr) {
     if (!run_options.stream()->ok()) {
@@ -207,7 +207,7 @@ static std::shared_ptr<HloSnapshot> DumpArguments(
   for (const ShapedBuffer* arg : arguments) {
     auto literal = std::make_shared<Literal>(arg->on_host_shape());
     backend->transfer_manager()->TransferLiteralFromDevice(
-        stream, *arg, literal.get(), [snapshot, literal](Status status) {
+        stream, *arg, literal.get(), [snapshot, literal](absl::Status status) {
           if (!status.ok()) {
             LOG(ERROR) << "TransferLiteralFromDevice for HLO snapshot inputs "
                           "failed: "
@@ -227,7 +227,7 @@ static void DumpOutputsAndSaveSnapshot(const Backend* backend,
   auto literal = std::make_shared<Literal>(outputs.on_host_shape());
   backend->transfer_manager()->TransferLiteralFromDevice(
       stream, outputs, literal.get(),
-      [snapshot{std::move(snapshot)}, literal](Status status) {
+      [snapshot{std::move(snapshot)}, literal](absl::Status status) {
         if (status.ok()) {
           *snapshot->mutable_result() = literal->ToProto();
         } else {
@@ -471,16 +471,16 @@ absl::StatusOr<const ShapedBuffer*> LocalClient::GlobalDataToShapedBuffer(
   return local_service_->GlobalDataToShapedBuffer(data, replica_number);
 }
 
-Status LocalClient::TransferToInfeedLocal(const LiteralSlice& literal,
-                                          int device_ordinal) {
+absl::Status LocalClient::TransferToInfeedLocal(const LiteralSlice& literal,
+                                                int device_ordinal) {
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
   return backend().transfer_manager()->TransferLiteralToInfeed(executor,
                                                                literal);
 }
 
-Status LocalClient::TransferFromOutfeedLocal(int device_ordinal,
-                                             MutableBorrowingLiteral literal) {
+absl::Status LocalClient::TransferFromOutfeedLocal(
+    int device_ordinal, MutableBorrowingLiteral literal) {
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
   return backend().transfer_manager()->TransferLiteralFromOutfeed(executor,

@@ -38,16 +38,16 @@ using ::tsl::profiler::XPlane;
 using ::tsl::profiler::XPlaneBuilder;
 using ::tsl::profiler::XSpace;
 
-void MutateXPlane(XPlane* plane,
+void MutateXPlane(XPlane& plane,
                   const std::vector<std::unique_ptr<XplaneEventMutatorFactory>>&
                       mutator_factories) {
-  XPlaneBuilder plane_builder(plane);
+  XPlaneBuilder plane_builder(&plane);
 
   absl::flat_hash_map<int64_t, std::vector<std::unique_ptr<XplaneEventMutator>>>
       mutators_from_event_metadata_id;
   std::vector<std::unique_ptr<XplaneEventMutator>> line_mutators;
   for (const auto& mutator_factory : mutator_factories) {
-    auto mutators = mutator_factory->CreateMutators(&plane_builder);
+    auto mutators = mutator_factory->CreateMutators(plane_builder);
     for (auto& mutator : mutators) {
       if (mutator->event_metadata()) {
         auto id = mutator->event_metadata()->id();
@@ -63,7 +63,7 @@ void MutateXPlane(XPlane* plane,
 
   plane_builder.ForEachLine([&](XLineBuilder line_builder) {
     for (const auto& mutator : line_mutators) {
-      mutator->MutateEventsInLine(&line_builder);
+      mutator->MutateEventsInLine(line_builder);
     }
     if (mutators_from_event_metadata_id.empty()) return;
     line_builder.ForEachEvent([&](XEventBuilder event_builder) {
@@ -71,7 +71,7 @@ void MutateXPlane(XPlane* plane,
           mutators_from_event_metadata_id.find(event_builder.MetadataId());
       if (event_mutators != mutators_from_event_metadata_id.end()) {
         for (const auto& mutator : event_mutators->second) {
-          mutator->Mutate(&event_builder);
+          mutator->Mutate(event_builder);
         }
       }
     });
@@ -150,14 +150,18 @@ CreateMutatorFactories() {
 }  // namespace
 
 void PreprocessXPlane(XPlane* plane) {
+  if (plane == nullptr) return;
+
   auto mutator_factories = CreateMutatorFactories();
-  MutateXPlane(plane, mutator_factories);
+  MutateXPlane(*plane, mutator_factories);
 }
 
 void PreprocessXSpace(XSpace* space) {
+  if (space == nullptr) return;
+
   auto mutator_factories = CreateMutatorFactories();
   for (XPlane& plane : *space->mutable_planes()) {
-    MutateXPlane(&plane, mutator_factories);
+    MutateXPlane(plane, mutator_factories);
   }
 }
 

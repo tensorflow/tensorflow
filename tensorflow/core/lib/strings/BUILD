@@ -43,6 +43,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
+        "@local_tsl//tsl/lib/core:bits",
     ],
 )
 

@@ -45,7 +45,8 @@ class WholeGraphManualPassTest : public HloTestBase {
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
-  Status RunPassOnModule(HloModule* module, int64_t distance_threshold = 100) {
+  absl::Status RunPassOnModule(HloModule* module,
+                               int64_t distance_threshold = 100) {
     HloPassPipeline pipeline("all-gather-cse");
     pipeline.AddPass<WholeGraphManualPass>();
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());

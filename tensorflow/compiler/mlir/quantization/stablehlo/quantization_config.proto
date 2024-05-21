@@ -77,8 +77,8 @@ message StaticRangePtqPreset {
   bool enable_full_int_quantization = 3;
 }
 
-// Applies int8 per-tensor weight-only post-training quantization for all
-// dot_general op.
+// Applies int8 per-channel weight-only post-training quantization for all
+// dot_general and convolution ops.
 message WeightOnlyPtqPreset {}
 
 // Metadata specific to the input TensorFlow SavedModel, which may be required
@@ -278,7 +278,7 @@ message DebuggerConfig {
 }
 
 // Defines various calibration options.
-// Next ID: 5
+// Next ID: 6
 message CalibrationOptions {
   // Configurations for calibration methods.
   // Next ID: 7
@@ -332,8 +332,13 @@ message CalibrationOptions {
   // representative dataset used to calibrate a function.
   repeated RepresentativeDatasetConfig representative_datasets = 3;
 
-  // The path to save calibration statistics data.
+  // The path to save calibration statistics data. If not set, use a temporary
+  // directory.
   string calibration_data_dir = 4;
+
+  // Whether to reuse the existing calibration data in `calibration_data_dir`.
+  // Default to False.
+  bool force_regenerate_calibration_data = 5;
 }
 
 // Quantization configuration for StableHLO Quantizer. This is the primary

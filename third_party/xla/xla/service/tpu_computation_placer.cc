@@ -23,9 +23,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-template <typename T>
-using StatusOr = TpuComputationPlacer::StatusOr<T>;
-
 TpuComputationPlacer::TpuComputationPlacer() {
   placer_ = stream_executor::tpu::ExecutorApiFn()->TpuComputationPlacer_NewFn();
 }
@@ -34,13 +31,13 @@ TpuComputationPlacer::~TpuComputationPlacer() {
   stream_executor::tpu::ExecutorApiFn()->TpuComputationPlacer_FreeFn(placer_);
 }
 
-StatusOr<int> TpuComputationPlacer::DeviceId(int replica, int computation,
-                                             int replica_count,
-                                             int computation_count) {
+absl::StatusOr<int> TpuComputationPlacer::DeviceId(int replica, int computation,
+                                                   int replica_count,
+                                                   int computation_count) {
   LOG(FATAL) << "Unimplemented.";
 }
 
-StatusOr<xla::DeviceAssignment> TpuComputationPlacer::AssignDevices(
+absl::StatusOr<xla::DeviceAssignment> TpuComputationPlacer::AssignDevices(
     int replica_count, int computation_count) {
   StatusHelper status;
   xla::DeviceAssignment result(replica_count, computation_count);
@@ -59,7 +56,7 @@ StatusOr<xla::DeviceAssignment> TpuComputationPlacer::AssignDevices(
   return result;
 }
 
-/*static*/ StatusOr<xla::DeviceAssignment>
+/*static*/ absl::StatusOr<xla::DeviceAssignment>
 TpuComputationPlacer::AssignLocalDevices(TpuHostLocationExternal host_location,
                                          int replica_count,
                                          int computation_count) {

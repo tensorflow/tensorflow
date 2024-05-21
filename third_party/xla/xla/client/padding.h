@@ -41,9 +41,9 @@ enum class Padding {
 // Validates that the slices are acceptable for determining padding -- this can
 // be used to check the preconditions of MakePadding below to produce an error
 // message that can be returned to the user.
-Status ValidatePaddingValues(absl::Span<const int64_t> input_dimensions,
-                             absl::Span<const int64_t> window_dimensions,
-                             absl::Span<const int64_t> window_strides);
+absl::Status ValidatePaddingValues(absl::Span<const int64_t> input_dimensions,
+                                   absl::Span<const int64_t> window_dimensions,
+                                   absl::Span<const int64_t> window_strides);
 
 // Returns the padding needed for the base area, given the base area dimensions,
 // window dimensions, strides, and the type of padding.

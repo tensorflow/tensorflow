@@ -224,7 +224,10 @@ cc_library(
         "frontend_attributes.h",
     ],
     visibility = internal_visibility([":friends"]),
-    deps = ["//xla/hlo/ir:hlo"],
+    deps = [
+        ":xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+    ],
 )
 
 cc_library(
@@ -341,6 +344,7 @@ cc_library(
     hdrs = [
         "iterator_util.h",
         "map_util.h",
+        "maybe_owning.h",
         "overflow_util.h",
         "util.h",
     ],

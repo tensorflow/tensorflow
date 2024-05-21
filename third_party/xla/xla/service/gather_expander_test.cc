@@ -43,9 +43,9 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
 
-  Status status = GatherExpander{GatherExpander::kEliminateAllGathers}
-                      .Run(module.get())
-                      .status();
+  absl::Status status = GatherExpander{GatherExpander::kEliminateAllGathers}
+                            .Run(module.get())
+                            .status();
   EXPECT_EQ(status.code(), tsl::error::UNIMPLEMENTED);
 
   ASSERT_THAT(

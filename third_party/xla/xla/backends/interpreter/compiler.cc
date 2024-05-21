@@ -89,7 +89,7 @@ absl::StatusOr<Literal> HandleEvaluatorCustomCall(
 
 }  // namespace
 
-Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
+absl::Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("Interpreter");
 
   // The TopkDecomposer generates a compare op with type=TOTALORDER and must

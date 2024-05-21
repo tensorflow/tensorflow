@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <optional>
 
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_fix.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/tests/hlo_test_base.h"
@@ -152,7 +154,7 @@ TEST_F(ScatterSimplifierTest, MovesIndexVectorDim) {
     })";
 
   RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
-           CHECK: %[[TRANSPOSED_INDICES:.*]] = s32[1,2]{0,1}
+           CHECK: %[[TRANSPOSED_INDICES:.*]] = s32[1,2]{1,0}
       CHECK-SAME:     transpose(%indices), dimensions={1,0}
            CHECK: scatter(%operand, %[[TRANSPOSED_INDICES]], %update),
       CHECK-SAME:     index_vector_dim=1
@@ -183,9 +185,9 @@ TEST_F(ScatterSimplifierTest, TransformsUpdatesAndOperandUsingScatterDims) {
     })";
 
   RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
-           CHECK: %[[T_OPERAND:.*]] = f32[5,3,4]{0,2,1} transpose(%operand),
+           CHECK: %[[T_OPERAND:.*]] = f32[5,3,4]{2,1,0} transpose(%operand),
       CHECK-SAME:     dimensions={2,0,1}
-           CHECK: %[[T_UPDATES:.*]] = f32[2,3,1,1]{1,3,2,0} transpose(%update),
+           CHECK: %[[T_UPDATES:.*]] = f32[2,3,1,1]{3,2,1,0} transpose(%update),
       CHECK-SAME:     dimensions={0,3,1,2}
            CHECK: %[[SCATTER:.*]] = {{.*}} scatter(
       CHECK-SAME:     %[[T_OPERAND]], %indices, %[[T_UPDATES]])
@@ -218,7 +220,7 @@ TEST_F(ScatterSimplifierTest, MakesScatterDimensionsLeadingInUpdates) {
     })";
 
   RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
-           CHECK: %[[TRANSPOSED_UPDATES:.*]] = f32[1,2]{0,1}
+           CHECK: %[[TRANSPOSED_UPDATES:.*]] = f32[1,2]{1,0}
       CHECK-SAME:     transpose(%update), dimensions={1,0}
            CHECK: scatter(
       CHECK-SAME:     %[[TRANSPOSED_UPDATES]]
@@ -250,6 +252,33 @@ TEST_F(ScatterSimplifierTest, ZeroDimScatterIndices) {
   RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
       CHECK: scatter(
     )");
+}
+
+TEST_F(ScatterSimplifierTest,
+       IsSimplifiedScatterReturnsFalseForUnsortedWindowDims) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      %p0 = f32[] parameter(0)
+      ROOT result = f32[] parameter(1)
+    }
+
+    ENTRY kernel_entry {
+      operand = f32[3,2] parameter(0)
+      indices = s32[1,1] parameter(1)
+      update = f32[1,2,2] parameter(2)
+      ROOT scatter = f32[3,2] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={2,1},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    })";
+  auto module = ParseAndReturnUnverifiedModule(kModuleStr).value();
+  auto scatter = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(ScatterSimplifier::IsSimplifiedScatter(
+      Cast<HloScatterInstruction>(scatter)));
 }
 
 }  // namespace

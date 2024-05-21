@@ -25,14 +25,14 @@ limitations under the License.
 namespace xla {
 
 template <typename HloInstructionPtr>
-Status DfsHloVisitorBase<HloInstructionPtr>::HandleElementwiseUnary(
+absl::Status DfsHloVisitorBase<HloInstructionPtr>::HandleElementwiseUnary(
     HloInstructionPtr hlo) {
   return Unimplemented("DfsHloVisitor::HandleElementwiseUnary: %s",
                        HloOpcodeString(hlo->opcode()));
 }
 
 template <typename HloInstructionPtr>
-Status DfsHloVisitorBase<HloInstructionPtr>::HandleElementwiseBinary(
+absl::Status DfsHloVisitorBase<HloInstructionPtr>::HandleElementwiseBinary(
     HloInstructionPtr hlo) {
   return Unimplemented("DfsHloVisitor::HandleElementwiseBinary: %s",
                        HloOpcodeString(hlo->opcode()));
@@ -62,12 +62,14 @@ void DfsHloVisitorBase<HloInstructionPtr>::SetVisited(
 }
 
 template <typename HloInstructionPtr>
-Status DfsHloVisitorBase<HloInstructionPtr>::Preprocess(HloInstructionPtr) {
+absl::Status DfsHloVisitorBase<HloInstructionPtr>::Preprocess(
+    HloInstructionPtr) {
   return OkStatus();
 }
 
 template <typename HloInstructionPtr>
-Status DfsHloVisitorBase<HloInstructionPtr>::Postprocess(HloInstructionPtr) {
+absl::Status DfsHloVisitorBase<HloInstructionPtr>::Postprocess(
+    HloInstructionPtr) {
   return OkStatus();
 }
 

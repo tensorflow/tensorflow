@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "MatMul"
   input_arg {
     name: "a"

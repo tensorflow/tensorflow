@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/status.h"

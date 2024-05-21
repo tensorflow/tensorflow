@@ -47,9 +47,6 @@ namespace tpu {
 const ::stream_executor::Platform::Id TpuPlatform::kId = GetTpuPlatformId();
 TpuPlatform* tpu_registered_platform = nullptr;
 
-template <typename T>
-using StatusOr = ::absl::StatusOr<T>;
-
 TpuPlatform::TpuPlatform() : name_("TPU") {
   platform_ = stream_executor::tpu::ExecutorApiFn()->TpuPlatform_NewFn();
   CHECK(platform_ != nullptr);
@@ -99,13 +96,13 @@ int TpuPlatform::VisibleDeviceCount() const {
       ->TpuPlatform_VisibleDeviceCountFn(platform_);
 }
 
-StatusOr<::stream_executor::StreamExecutor*> TpuPlatform::GetExecutor(
+absl::StatusOr<::stream_executor::StreamExecutor*> TpuPlatform::GetExecutor(
     const ::stream_executor::StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
       config, [&]() { return GetUncachedExecutor(config); });
 }
 
-StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
+absl::StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
 TpuPlatform::GetUncachedExecutor(
     const ::stream_executor::StreamExecutorConfig& config) {
   SE_StreamExecutorConfig* c_config = stream_executor::tpu::ExecutorApiFn()

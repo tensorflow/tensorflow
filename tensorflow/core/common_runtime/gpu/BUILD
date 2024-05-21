@@ -329,6 +329,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/platform:test",
         "@local_tsl//tsl/framework:device_id",
         "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator_header",
+        "@local_xla//xla/tests:test_macros_header",
     ],
 )
 
@@ -391,6 +392,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:test",
         "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator_header",
+        "@local_xla//xla/tests:test_macros_header",
     ],
 )
 

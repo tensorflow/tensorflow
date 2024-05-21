@@ -2832,7 +2832,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(kHlo));
-  Status status = verifier().Run(module.get()).status();
+  absl::Status status = verifier().Run(module.get()).status();
 
   TF_ASSERT_OK(status);
 }
@@ -2850,7 +2850,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(kHlo));
-  Status status = verifier().Run(module.get()).status();
+  absl::Status status = verifier().Run(module.get()).status();
 
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(), HasSubstr("should be compatible"));
@@ -2869,7 +2869,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(kHlo));
-  Status status = verifier().Run(module.get()).status();
+  absl::Status status = verifier().Run(module.get()).status();
 
   TF_ASSERT_OK(status);
 }
@@ -2887,7 +2887,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(kHlo));
-  Status status = verifier().Run(module.get()).status();
+  absl::Status status = verifier().Run(module.get()).status();
 
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(), HasSubstr("should be compatible"));
@@ -2905,7 +2905,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(kHlo));
-  Status status = verifier().Run(module.get()).status();
+  absl::Status status = verifier().Run(module.get()).status();
 
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -2925,7 +2925,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(kHlo));
-  Status status = verifier().Run(module.get()).status();
+  absl::Status status = verifier().Run(module.get()).status();
 
   TF_ASSERT_OK(status);
 }
@@ -2942,7 +2942,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(kHlo));
-  Status status = verifier().Run(module.get()).status();
+  absl::Status status = verifier().Run(module.get()).status();
 
   TF_ASSERT_OK(status);
 }

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "StatelessCase"
   input_arg {
     name: "branch_index"

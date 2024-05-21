@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/frontend_attributes.h"
 
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/xla_data.pb.h"
+
 namespace xla {
 
 void SetDisjointReadWriteRegionsAttr(HloInstruction* instruction) {

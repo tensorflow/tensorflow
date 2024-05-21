@@ -227,8 +227,9 @@ class DataProducer {
   std::queue<std::function<std::string()>> produce_funcs_;
 };
 
-static Status WriteStringToFile(tsl::Env* env, const std::string& fname,
-                                DataProducer& data_producer, bool compressed) {
+static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
+                                      DataProducer& data_producer,
+                                      bool compressed) {
   std::unique_ptr<tsl::WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
   if (compressed) {
@@ -248,8 +249,8 @@ static Status WriteStringToFile(tsl::Env* env, const std::string& fname,
   }
 }
 
-static Status WriteStringToFile(tsl::Env* env, const std::string& fname,
-                                absl::string_view data, bool compressed) {
+static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
+                                      absl::string_view data, bool compressed) {
   if (!compressed) {
     return tsl::WriteStringToFile(env, fname, data);
   }
@@ -665,7 +666,7 @@ void DumpProtobufToFile(const tsl::protobuf::Message& proto,
     return;
   }
   const std::string path = tsl::io::JoinPath(dir, filename);
-  Status status;
+  absl::Status status;
   if (opts.dump_as_text) {
     if (text_formatter) {
       auto written_proto = text_formatter(env, proto);

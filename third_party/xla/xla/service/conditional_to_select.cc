@@ -73,7 +73,7 @@ absl::StatusOr<bool> ConditionalToSelect::Run(
   bool did_mutate = false;
   VLOG(1) << "Running conditional-to-select pass";
   TF_RETURN_IF_ERROR(
-      call_graph->VisitNodes([&](const CallGraphNode& node) -> Status {
+      call_graph->VisitNodes([&](const CallGraphNode& node) -> absl::Status {
         std::vector<HloInstruction*> ToInline;
         if (node.context() != CallContext::kEmbedded) {
           return OkStatus();

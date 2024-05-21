@@ -48,8 +48,8 @@ bazel run extract_collective_operations -- --input=path/to/hlo_module
 }  // namespace
 
 namespace xla {
-Status ExtractCollectiveOperations(const std::string& input,
-                                   const std::string& output) {
+absl::Status ExtractCollectiveOperations(const std::string& input,
+                                         const std::string& output) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> test_module,
       LoadModuleFromFile(input, std::string(tsl::io::Extension(input)),

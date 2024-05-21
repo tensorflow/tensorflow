@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ResourceApplyRMSProp"
   input_arg {
     name: "var"

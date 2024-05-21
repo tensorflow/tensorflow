@@ -342,11 +342,10 @@ TEST_F(StreamExecutorTest, CreateEvent) {
 
   StreamExecutor* executor = GetExecutor(0);
   ASSERT_FALSE(event_created);
-  Event* event = new Event(executor);
-  event->Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto event, executor->CreateEvent());
   ASSERT_TRUE(event_created);
   ASSERT_FALSE(event_deleted);
-  delete event;
+  event.reset();
   ASSERT_TRUE(event_deleted);
 }
 
@@ -365,11 +364,10 @@ TEST_F(StreamExecutorTest, PollForEventStatus) {
   };
 
   StreamExecutor* executor = GetExecutor(0);
-  Event event(executor);
-  event.Init();
-  ASSERT_EQ(event.PollForStatus(), Event::Status::kComplete);
+  TF_ASSERT_OK_AND_ASSIGN(auto event, executor->CreateEvent());
+  ASSERT_EQ(event->PollForStatus(), Event::Status::kComplete);
   event_status = SE_EVENT_ERROR;
-  ASSERT_EQ(event.PollForStatus(), Event::Status::kError);
+  ASSERT_EQ(event->PollForStatus(), Event::Status::kError);
 }
 
 TEST_F(StreamExecutorTest, RecordAndWaitForEvent) {
@@ -403,14 +401,13 @@ TEST_F(StreamExecutorTest, RecordAndWaitForEvent) {
   };
 
   StreamExecutor* executor = GetExecutor(0);
-  Event event(executor);
-  event.Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto event, executor->CreateEvent());
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   ASSERT_FALSE(record_called);
-  TF_ASSERT_OK(stream->RecordEvent(&event));
+  TF_ASSERT_OK(stream->RecordEvent(event.get()));
   ASSERT_TRUE(record_called);
   ASSERT_FALSE(wait_called);
-  TF_ASSERT_OK(stream->WaitFor(&event));
+  TF_ASSERT_OK(stream->WaitFor(event.get()));
   ASSERT_TRUE(wait_called);
 }
 

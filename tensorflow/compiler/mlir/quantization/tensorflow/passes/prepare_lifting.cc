@@ -157,8 +157,8 @@ LogicalResult MatchSupportedAffineOp(Operation* op, Value& binding_output,
   bool is_supported_affine_op = false;
   if (llvm::isa<TF::Conv2DOp, TF::Conv3DOp, TF::DepthwiseConv2dNativeOp>(op)) {
     if (const auto data_format = op->getAttrOfType<StringAttr>("data_format")) {
-      is_supported_affine_op = data_format.getValue().equals("NHWC") ||
-                               data_format.getValue().equals("NDHWC");
+      is_supported_affine_op =
+          data_format.getValue() == "NHWC" || data_format.getValue() == "NDHWC";
     }
   } else if (llvm::isa<TF::BatchMatMulV2Op>(op)) {
     if (const auto adj_y = op->getAttrOfType<BoolAttr>("adj_y")) {

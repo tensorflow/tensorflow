@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "DeserializeIterator"
   input_arg {
     name: "resource_handle"

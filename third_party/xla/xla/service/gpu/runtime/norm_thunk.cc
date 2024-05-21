@@ -106,5 +106,14 @@ absl::Status NormThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
+absl::Status NormThunk::Initialize(const InitializeParams& params) {
+  // Create the runner at initialization time to avoid hangs if we try to build
+  // the execution plan while a NCCL collective is running.
+  se::dnn::LazyOpRunner<se::dnn::NormOp>* lazy_runner =
+      GetOrCreateRunner(params.stream).AsNormRunner();
+  TF_ASSIGN_OR_RETURN(auto ln_config, config_.AsDnnNormOpConfig());
+  return lazy_runner->GetOrCreateRunner(ln_config, params.stream).status();
+}
+
 }  // namespace gpu
 }  // namespace xla

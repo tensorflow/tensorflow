@@ -78,7 +78,7 @@ struct ParsedProfileOutputLine {
          << parsed_line.trops << "'";
 }
 
-Status ParseOneProfileOutputLine(
+absl::Status ParseOneProfileOutputLine(
     const std::string& line, bool expect_hlo,
     absl::flat_hash_map<std::string, ParsedProfileOutputLine>* parsed_results,
     absl::Span<const absl::string_view> opcodes_to_ignore = {}) {

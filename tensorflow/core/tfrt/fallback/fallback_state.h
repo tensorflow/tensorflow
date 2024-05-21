@@ -62,6 +62,7 @@ class FallbackState {
   const SessionOptions &session_options() const { return session_options_; }
 
   const DeviceMgr &device_manager() const { return device_manager_; }
+  DeviceMgr &device_manager() { return device_manager_; }
 
   const DeviceSet &device_set() const { return device_set_; }
 

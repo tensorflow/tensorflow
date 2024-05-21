@@ -320,19 +320,19 @@ class AbstractAsyncHostToHostMemoryTransferManager
 
   std::unique_ptr<PjRtBuffer> RetrieveBuffer(int buffer_index) override;
 
-  Status TransferLiteralToBuffer(
+  absl::Status TransferLiteralToBuffer(
       int buffer_index, const LiteralSlice& literal,
       absl::AnyInvocable<void() &&> on_done) override;
 
-  Status TransferRawDataToBuffer(
+  absl::Status TransferRawDataToBuffer(
       int buffer_index, absl::string_view data,
       absl::AnyInvocable<void() &&> on_done) override;
 
-  Status TransferRawDataToSubBuffer(
+  absl::Status TransferRawDataToSubBuffer(
       int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
       bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) override;
 
-  void SetBufferError(int buffer_index, Status error) override;
+  void SetBufferError(int buffer_index, absl::Status error) override;
 
   void AddTransferMetadata(const TransferMetadata& meta) override {
     LOG(WARNING) << "AddTransferMetadata not implemented for "
@@ -351,7 +351,7 @@ class AbstractAsyncHostToHostMemoryTransferManager
 
   // Initialize `device_buffers`, `buffer_sizes`, `buffer_transfers_in_flight`,
   // and `last_transfer_finished` from `buffers`.
-  static Status PopulateAsyncTransferManagerData(
+  static absl::Status PopulateAsyncTransferManagerData(
       absl::Span<const std::unique_ptr<AbstractTfrtCpuBuffer>> buffers,
       absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4>& device_buffers,
       absl::InlinedVector<size_t, 4>& buffer_sizes,

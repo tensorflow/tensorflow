@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 
-#include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/function.pb.h"
+#include <utility>
+
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
@@ -52,6 +56,38 @@ TEST(FallbackStateTest, CreateRendezvous) {
 
   EXPECT_THAT(status, Not(StatusIs(error::FAILED_PRECONDITION,
                                    HasSubstr("rendezvous"))));
+}
+
+TEST(FallbackStateTest, CreateGraphExecutionState) {
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tfrt_stub::FallbackState::CreateWithCpuDevice(session_options, fdef_lib));
+
+  GraphDef graphdef;
+  {
+    auto scope = tensorflow::Scope::NewRootScope().WithDevice(
+        "/job:localhost/replica:0/task:0/device:CPU:0");
+
+    Output a = ops::Const(scope.WithOpName("a"), 2.0, {1, 1});
+
+    TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      fallback_state->CreateGraphExecutionState(std::move(graphdef)));
+}
+
+TEST(FallbackStateTest, CreateWithMockGpuDevice) {
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state,
+                          tfrt_stub::FallbackState::CreateWithMockGpuDevice(
+                              session_options, fdef_lib));
+  const auto& device_manager = fallback_state->device_manager();
+  EXPECT_GT(device_manager.NumDeviceType("GPU"), 0);
 }
 
 }  // namespace

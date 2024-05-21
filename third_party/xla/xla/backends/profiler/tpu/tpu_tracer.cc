@@ -95,11 +95,11 @@ class TpuTracer : public ProfilerInterface {
   explicit TpuTracer();
   ~TpuTracer() override;
 
-  Status Start() override;
+  absl::Status Start() override;
 
-  Status Stop() override;
+  absl::Status Stop() override;
 
-  Status CollectData(XSpace* space) override;
+  absl::Status CollectData(XSpace* space) override;
 
  private:
   TpuProfiler* tpu_profiler_;
@@ -118,7 +118,7 @@ TpuTracer::~TpuTracer() {
   stream_executor::tpu::ProfilerApiFn()->TpuProfiler_DestroyFn(tpu_profiler_);
 }
 
-Status TpuTracer::Start() {
+absl::Status TpuTracer::Start() {
   ProfilerStatusHelper status;
   stream_executor::tpu::ProfilerApiFn()->TpuProfiler_StartFn(tpu_profiler_,
                                                              status.c_status);
@@ -126,10 +126,10 @@ Status TpuTracer::Start() {
     LOG(ERROR) << "TPU tracer failed to start.";
     return status.status();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TpuTracer::Stop() {
+absl::Status TpuTracer::Stop() {
   ProfilerStatusHelper status;
   stream_executor::tpu::ProfilerApiFn()->TpuProfiler_StopFn(tpu_profiler_,
                                                             status.c_status);
@@ -137,10 +137,10 @@ Status TpuTracer::Stop() {
     LOG(ERROR) << "TPU tracer failed to stop.";
     return status.status();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TpuTracer::CollectData(XSpace* space) {
+absl::Status TpuTracer::CollectData(XSpace* space) {
   ProfilerStatusHelper status;
   // Get size of buffer required for TPU driver to serialize XSpace into.
   size_t size_in_bytes;
@@ -164,7 +164,7 @@ Status TpuTracer::CollectData(XSpace* space) {
     LOG(ERROR) << "TPU tracer failed to collect data.";
     return status.status();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Initializes TpuProfilerApiFns. The initialization may not be successful if

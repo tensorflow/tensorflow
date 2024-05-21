@@ -286,7 +286,7 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
   // TODO(b/176997538): Skip checking dtypes for tf._BatchFunctionFallback op
   // due to b/176997538. Remove the skipping once the SavedModel lowering
   // problem is fixed.
-  if (!status.ok() && !op_name.equals("_BatchFunctionFallback")) {
+  if (!status.ok() && op_name != "_BatchFunctionFallback") {
     KernelFallbackEmitError(exec_ctx, &fallback_request_state, op_name,
                             &op_chain, results, status);
     return op_chain;

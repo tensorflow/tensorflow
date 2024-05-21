@@ -49,23 +49,19 @@ void DynamicallyQuantizedTransposeConvTester::Test(
   const std::vector<int8_t> kernel_data = GenerateKernelData();
   const std::vector<float> bias_data = GenerateBiasData();
   const std::vector<float> kernel_scale_data = GenerateKernelScaleData();
-  std::vector<char> drq_buffer =
-      CreateDRQTfLiteModel(kernel_data, bias_data, kernel_scale_data);
-  std::vector<char> dequantize_buffer =
-      CreateDequantizeTfLiteModel(kernel_data, bias_data, kernel_scale_data);
-  const Model* drq_model = GetModel(drq_buffer.data());
-  const Model* dequantize_model = GetModel(dequantize_buffer.data());
+  std::vector<char> buffer =
+      CreateTfLiteModel(kernel_data, bias_data, kernel_scale_data);
+  const Model* model = GetModel(buffer.data());
 
   std::unique_ptr<Interpreter> delegate_interpreter;
-  ASSERT_EQ(
-      InterpreterBuilder(
-          drq_model, ::tflite::ops::builtin::BuiltinOpResolverWithXNNPACK())(
-          &delegate_interpreter),
-      kTfLiteOk);
+  ASSERT_EQ(InterpreterBuilder(
+                model, ::tflite::ops::builtin::BuiltinOpResolverWithXNNPACK())(
+                &delegate_interpreter),
+            kTfLiteOk);
   std::unique_ptr<Interpreter> default_interpreter;
   ASSERT_EQ(
       InterpreterBuilder(
-          dequantize_model,
+          model,
           ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
           &default_interpreter),
       kTfLiteOk);
@@ -79,10 +75,10 @@ void DynamicallyQuantizedTransposeConvTester::Test(
   ASSERT_EQ(delegate_interpreter->outputs().size(), 1);
   ASSERT_EQ(default_interpreter->outputs().size(), 1);
 
-  ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
-
   ASSERT_EQ(delegate_interpreter->AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
+
+  ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
   if (weights_cache_ != nullptr) {
     TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
@@ -110,12 +106,11 @@ void DynamicallyQuantizedTransposeConvTester::Test(
   int different_output_values = 0;
   for (size_t i = 0; i < num_output_values; i++) {
     if (std::abs(default_output_data[i] - xnnpack_output_data[i]) >
-        0.1 * std::abs(default_output_data[i])) {
+        0.005 * std::abs(default_output_data[i])) {
       ++different_output_values;
     }
   }
-
-  if (different_output_values > 0.055 * num_output_values) {
+  if (different_output_values > 0.05 * num_output_values) {
     GTEST_FAIL() << (float)different_output_values / num_output_values * 100.f
                  << "% of output values differ";
   }
@@ -182,7 +177,7 @@ DynamicallyQuantizedTransposeConvTester::GenerateKernelScaleData() const {
   return kernel_scale;
 }
 
-std::vector<char> DynamicallyQuantizedTransposeConvTester::CreateDRQTfLiteModel(
+std::vector<char> DynamicallyQuantizedTransposeConvTester::CreateTfLiteModel(
     const std::vector<int8_t>& filter_data, const std::vector<float>& bias_data,
     const std::vector<float>& kernel_scale) const {
   /*************************** Define operator codes **************************/
@@ -284,148 +279,6 @@ std::vector<char> DynamicallyQuantizedTransposeConvTester::CreateDRQTfLiteModel(
 
   const flatbuffers::Offset<flatbuffers::String> description =
       builder.CreateString("Dynamically Quantized Transpose Conv2D model");
-
-  const flatbuffers::Offset<Model> model_buffer = CreateModel(
-      builder, TFLITE_SCHEMA_VERSION,
-      builder.CreateVector(operator_codes.data(), operator_codes.size()),
-      builder.CreateVector(&subgraph, 1), description,
-      builder.CreateVector(buffers.data(), buffers.size()));
-
-  builder.Finish(model_buffer);
-
-  return std::vector<char>(builder.GetBufferPointer(),
-                           builder.GetBufferPointer() + builder.GetSize());
-}
-
-std::vector<char>
-DynamicallyQuantizedTransposeConvTester::CreateDequantizeTfLiteModel(
-    const std::vector<int8_t>& filter_data, const std::vector<float>& bias_data,
-    const std::vector<float>& kernel_scale) const {
-  /*************************** Define operator codes **************************/
-  flatbuffers::FlatBufferBuilder builder;
-  std::vector<flatbuffers::Offset<OperatorCode>> operator_codes{
-      {CreateOperatorCode(builder, BuiltinOperator_TRANSPOSE_CONV)}};
-  const int dequantize_operator_code = operator_codes.size();
-  operator_codes.emplace_back(
-      CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
-
-  /****************************** Define buffers ******************************/
-  std::vector<flatbuffers::Offset<tflite::Buffer>> buffers{
-      {CreateBuffer(builder, builder.CreateVector({}))}};
-
-  int filter_buffer_id = 0;
-  const int quantized_filter_buffer_id = buffers.size();
-  buffers.emplace_back(CreateBuffer(
-      builder,
-      builder.CreateVector(reinterpret_cast<const uint8_t*>(filter_data.data()),
-                           sizeof(int8_t) * filter_data.size())));
-
-  int bias_buffer_id = buffers.size();
-  buffers.emplace_back(CreateBuffer(
-      builder,
-      builder.CreateVector(reinterpret_cast<const uint8_t*>(bias_data.data()),
-                           sizeof(float) * bias_data.size())));
-  const std::array<int32_t, 4> output_shape{
-      {BatchSize(), OutputHeight(), OutputWidth(), OutputChannels()}};
-  const int output_shape_buffer_id = buffers.size();
-  buffers.emplace_back(CreateBuffer(
-      builder, builder.CreateVector(
-                   reinterpret_cast<const uint8_t*>(output_shape.data()),
-                   sizeof(int32_t) * output_shape.size())));
-
-  /****************************** Define tensors ******************************/
-  const std::vector<int32_t> filter_shape = {OutputChannels(), KernelHeight(),
-                                             KernelWidth(), InputChannels()};
-  const std::vector<int32_t> bias_shape = {OutputChannels()};
-  const std::array<int32_t, 4> input_shape{
-      {BatchSize(), InputHeight(), InputWidth(), InputChannels()}};
-
-  std::vector<flatbuffers::Offset<tflite::Tensor>> tensors;
-  const int quantized_filter_tensor_id = tensors.size();
-  tensors.emplace_back(CreateTensor(
-      builder,
-      builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
-      /*type=*/TensorType_INT8,
-      /*buffer=*/quantized_filter_buffer_id,
-      /*name=*/0,
-      CreateQuantizationParameters(
-          builder, /*min=*/0, /*max=*/0,
-          builder.CreateVector<float>(kernel_scale),
-          builder.CreateVector<int64_t>(
-              std::vector<int64_t>(OutputChannels(), 0)))));
-
-  const int input_tensor_id = tensors.size();
-  tensors.emplace_back(CreateTensor(
-      builder,
-      builder.CreateVector<int32_t>(input_shape.data(), input_shape.size()),
-      TensorType_FLOAT32));
-
-  const int filter_tensor_id = tensors.size();
-  tensors.emplace_back(CreateTensor(
-      builder,
-      builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
-      TensorType_FLOAT32,
-      /*buffer=*/filter_buffer_id));
-
-  const int bias_tensor_id = tensors.size();
-  tensors.emplace_back(CreateTensor(
-      builder,
-      builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
-      TensorType_FLOAT32, bias_buffer_id));
-
-  const int output_tensor_id = tensors.size();
-  tensors.emplace_back(CreateTensor(
-      builder,
-      builder.CreateVector<int32_t>(output_shape.data(), output_shape.size()),
-      TensorType_FLOAT32));
-
-  const int output_shape_tensor_id = tensors.size();
-  const std::array<int32_t, 1> output_shape_shape{{4}};
-  tensors.emplace_back(
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(output_shape_shape.data(),
-                                                 output_shape_shape.size()),
-                   TensorType_INT32, output_shape_buffer_id));
-
-  /***************************** Define operators *****************************/
-  std::vector<flatbuffers::Offset<tflite::Operator>> operators;
-
-  const std::array<int32_t, 1> dequantize_filter_inputs{
-      {quantized_filter_tensor_id}};
-  const std::array<int32_t, 1> dequantize_filter_outputs{{filter_tensor_id}};
-  operators.emplace_back(CreateOperator(
-      builder, /*opcode_index=*/dequantize_operator_code,
-      builder.CreateVector<int32_t>(dequantize_filter_inputs.data(),
-                                    dequantize_filter_inputs.size()),
-      builder.CreateVector<int32_t>(dequantize_filter_outputs.data(),
-                                    dequantize_filter_outputs.size())));
-
-  std::vector<int32_t> op_inputs{
-      {output_shape_tensor_id, filter_tensor_id, input_tensor_id}};
-  op_inputs.push_back(bias_tensor_id);
-  const std::array<int32_t, 1> op_outputs{{output_tensor_id}};
-  const flatbuffers::Offset<TransposeConvOptions> transpose_conv_options =
-      CreateTransposeConvOptions(builder, Padding(), StrideWidth(),
-                                 StrideHeight());
-  operators.emplace_back(CreateOperator(
-      builder, /*opcode_index=*/0,
-      builder.CreateVector<int32_t>(op_inputs.data(), op_inputs.size()),
-      builder.CreateVector<int32_t>(op_outputs.data(), op_outputs.size()),
-      BuiltinOptions_TransposeConvOptions, transpose_conv_options.Union()));
-
-  /****************************** Define subgraph *****************************/
-  const std::array<int32_t, 1> subgraph_inputs{{input_tensor_id}};
-  const std::array<int32_t, 1> subgraph_outputs{{output_tensor_id}};
-  const flatbuffers::Offset<SubGraph> subgraph = CreateSubGraph(
-      builder, builder.CreateVector(tensors.data(), tensors.size()),
-      builder.CreateVector<int32_t>(subgraph_inputs.data(),
-                                    subgraph_inputs.size()),
-      builder.CreateVector<int32_t>(subgraph_outputs.data(),
-                                    subgraph_outputs.size()),
-      builder.CreateVector(operators.data(), operators.size()));
-
-  const flatbuffers::Offset<flatbuffers::String> description =
-      builder.CreateString("TransposeConv model");
 
   const flatbuffers::Offset<Model> model_buffer = CreateModel(
       builder, TFLITE_SCHEMA_VERSION,

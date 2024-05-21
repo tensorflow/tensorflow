@@ -37,8 +37,8 @@ class HloDomainRemover : public HloModulePass {
   // function is tasked at applying attribute normalization on the instructions
   // within such domain.
   HloDomainRemover(absl::string_view kind,
-                   std::function<Status(const DomainMetadata::Domain&,
-                                        const DomainMetadata* metadata)>
+                   std::function<absl::Status(const DomainMetadata::Domain&,
+                                              const DomainMetadata* metadata)>
                        normalizer)
       : kind_(kind), normalizer_(std::move(normalizer)) {}
 
@@ -58,8 +58,8 @@ class HloDomainRemover : public HloModulePass {
   class RunContext;
 
   std::string kind_;
-  std::function<Status(const DomainMetadata::Domain&,
-                       const DomainMetadata* metadata)>
+  std::function<absl::Status(const DomainMetadata::Domain&,
+                             const DomainMetadata* metadata)>
       normalizer_;
 };
 

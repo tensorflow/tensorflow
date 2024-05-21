@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RngReadAndSkip"
   input_arg {
     name: "resource"

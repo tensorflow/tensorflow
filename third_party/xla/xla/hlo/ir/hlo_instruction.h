@@ -1498,19 +1498,19 @@ class HloInstruction {
   // This is used to enforce an additional ordering requirement that is not
   // captured by normal data dependencies, such as ordering among Send or Recv
   // operations to avoid deadlock.
-  Status AddControlDependencyTo(HloInstruction* instruction);
+  absl::Status AddControlDependencyTo(HloInstruction* instruction);
 
   // Removes a previously added control dependency from this instruction to
   // 'instruction'.
-  Status RemoveControlDependencyTo(HloInstruction* instruction);
+  absl::Status RemoveControlDependencyTo(HloInstruction* instruction);
 
   // Drops all control predecessors and successors from this HLO instruction.
-  Status DropAllControlDeps();
+  absl::Status DropAllControlDeps();
 
   // Drops all control predecessors and successors from this HLO instruction,
   // and the maintain the transitivie control dependencies between
   // control predecessors and control successors.
-  Status SafelyDropAllControlDependencies();
+  absl::Status SafelyDropAllControlDependencies();
 
   // Returns if instruction has any control dependencies.
   bool HasControlDependencies() const;
@@ -1522,7 +1522,7 @@ class HloInstruction {
   // Depending on the use cases we see in practice, in the future we may
   // consider folding the logic here into Clone, CloneWithNewOperands and
   // ReplaceAllUsesWith by treating control dependencies like data dependencies.
-  Status CopyAllControlDepsFrom(const HloInstruction* inst) {
+  absl::Status CopyAllControlDepsFrom(const HloInstruction* inst) {
     return inst->CopyAllControlDepsTo(this, this);
   }
 
@@ -1530,7 +1530,8 @@ class HloInstruction {
   // all control predecessors of this instruction to control predecessors of
   // `start` and copies all control successors of this instruction to control
   // successors of `end`.
-  Status CopyAllControlDepsTo(HloInstruction* start, HloInstruction* end) const;
+  absl::Status CopyAllControlDepsTo(HloInstruction* start,
+                                    HloInstruction* end) const;
 
   // Returns the set of control predecessors (successors) of this
   // instruction. Control predecessors (successors) must execute before (after)
@@ -1626,32 +1627,35 @@ class HloInstruction {
   //
   // If user is a fusion instruction, this function will remove any duplicated
   // operands of it which could be created due to this replacement.
-  Status ReplaceUseWith(HloInstruction* user, HloInstruction* new_producer);
+  absl::Status ReplaceUseWith(HloInstruction* user,
+                              HloInstruction* new_producer);
 
   // Same as ReplaceUseWith(), but new_producer can have a different shape.
-  Status ReplaceUseWithDifferentShape(HloInstruction* user,
-                                      HloInstruction* new_producer);
+  absl::Status ReplaceUseWithDifferentShape(HloInstruction* user,
+                                            HloInstruction* new_producer);
 
   // Same as ReplaceUseWith but only replaces the use at the given operand
   // number.
-  Status ReplaceUseWith(HloInstruction* user, int operand_number,
-                        HloInstruction* new_producer);
-  Status ReplaceUseWithDifferentShape(HloInstruction* user, int operand_number,
-                                      HloInstruction* new_producer);
+  absl::Status ReplaceUseWith(HloInstruction* user, int operand_number,
+                              HloInstruction* new_producer);
+  absl::Status ReplaceUseWithDifferentShape(HloInstruction* user,
+                                            int operand_number,
+                                            HloInstruction* new_producer);
 
   // Replaces the specified operand with new_operand. The old and new operands
   // must have compatible shapes ignoring floating-point precision.
   //
   // This function does NOT remove duplicated operands even if this instruction
   // is a fusion, so that the existing operand numbers do not change.
-  Status ReplaceOperandWith(int64_t operand_num, HloInstruction* new_operand);
+  absl::Status ReplaceOperandWith(int64_t operand_num,
+                                  HloInstruction* new_operand);
 
   // Same as ReplaceOperandWith(), but new_operand can have a different shape.
-  Status ReplaceOperandWithDifferentShape(int64_t operand_num,
-                                          HloInstruction* new_operand);
+  absl::Status ReplaceOperandWithDifferentShape(int64_t operand_num,
+                                                HloInstruction* new_operand);
 
   // Decomposes fusion back to individual parts.
-  Status Defuse();
+  absl::Status Defuse();
 
   // Replaces all uses of this instruction with the new producer. If
   // new_producer is a user of this instruction then new_producer remains a use
@@ -1668,16 +1672,16 @@ class HloInstruction {
   //
   // trigger is a string used in the error message if the new and the
   // current instruction don't have a compatible shape.
-  Status ReplaceAllUsesWith(HloInstruction* new_producer,
-                            absl::string_view trigger = "");
+  absl::Status ReplaceAllUsesWith(HloInstruction* new_producer,
+                                  absl::string_view trigger = "");
 
   // Same as ReplaceAllUsesWith, but new_producer can have a different shape.
-  Status ReplaceAllUsesWithDifferentShape(HloInstruction* new_producer);
+  absl::Status ReplaceAllUsesWithDifferentShape(HloInstruction* new_producer);
 
   // Same as ReplaceAllUsesWith, but only replace given set of users.
-  Status ReplaceUsesWith(absl::Span<HloInstruction* const> users,
-                         HloInstruction* new_producer);
-  Status ReplaceAllUsesWithDifferentShape(
+  absl::Status ReplaceUsesWith(absl::Span<HloInstruction* const> users,
+                               HloInstruction* new_producer);
+  absl::Status ReplaceAllUsesWithDifferentShape(
       absl::Span<HloInstruction* const> users, HloInstruction* new_producer);
 
   // Performs a postorder DFS visit using this node as the root. If
@@ -1689,13 +1693,14 @@ class HloInstruction {
   // true, DFS will go across the computation boundary (i.e., from an
   // instruction to the root instruction of a computation it calls).
   template <typename HloInstructionPtr>
-  Status Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
-                bool call_finish_visit = true,
-                bool ignore_control_predecessors = false,
-                bool cross_computation = false);
-  Status Accept(ConstDfsHloVisitor* visitor, bool call_finish_visit = true,
-                bool ignore_control_predecessors = false,
-                bool cross_computation = false) const {
+  absl::Status Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
+                      bool call_finish_visit = true,
+                      bool ignore_control_predecessors = false,
+                      bool cross_computation = false);
+  absl::Status Accept(ConstDfsHloVisitor* visitor,
+                      bool call_finish_visit = true,
+                      bool ignore_control_predecessors = false,
+                      bool cross_computation = false) const {
     return const_cast<HloInstruction*>(this)->Accept(
         visitor, call_finish_visit, ignore_control_predecessors,
         cross_computation);
@@ -1706,14 +1711,14 @@ class HloInstruction {
   // true, A is visited before B.
   using CompareFunction =
       absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>;
-  Status AcceptWithOperandOrder(DfsHloVisitor* visitor,
-                                CompareFunction operand_order,
-                                bool call_finish_visit = true);
+  absl::Status AcceptWithOperandOrder(DfsHloVisitor* visitor,
+                                      CompareFunction operand_order,
+                                      bool call_finish_visit = true);
 
   // Visit this instruction and only this instruction with the given visitor.
   template <typename HloInstructionPtr>
-  Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
-  Status Visit(ConstDfsHloVisitor* visitor) const {
+  absl::Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
+  absl::Status Visit(ConstDfsHloVisitor* visitor) const {
     return const_cast<HloInstruction*>(this)->Visit(visitor);
   }
 
@@ -2130,13 +2135,13 @@ class HloInstruction {
   //
   // ConfigProto should be a protobuf Message type.
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
-  StatusOr<ConfigProto> backend_config() const {
+  absl::StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
     TF_RETURN_IF_ERROR(backend_config_.GetProto(&proto));
     return std::move(proto);
   }
 
-  Status set_backend_config(const tsl::protobuf::Message& proto) {
+  absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
     backend_config_ = BackendConfigWrapper(proto);
     return OkStatus();
   }
@@ -2631,7 +2636,7 @@ class HloInstruction {
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.
-  Status GetBackendConfigInternal(tsl::protobuf::Message* proto) const;
+  absl::Status GetBackendConfigInternal(tsl::protobuf::Message* proto) const;
 
   // Mark this instruction as dead. Accessed by friend class HloInstruction.
   void MarkAsDead() { marked_as_dead_ = true; }
@@ -2789,11 +2794,12 @@ class HloInstruction {
 };
 
 // Explicit instantiations in hlo_instruction.cc.
-extern template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool, bool);
-extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool,
-                                              bool);
-extern template Status HloInstruction::Visit(DfsHloVisitor* visitor);
-extern template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
+extern template absl::Status HloInstruction::Accept(DfsHloVisitor*, bool, bool,
+                                                    bool);
+extern template absl::Status HloInstruction::Accept(ConstDfsHloVisitor*, bool,
+                                                    bool, bool);
+extern template absl::Status HloInstruction::Visit(DfsHloVisitor* visitor);
+extern template absl::Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
 absl::string_view ToString(HloInstruction::FusionKind kind);
 absl::StatusOr<HloInstruction::FusionKind> StringToFusionKind(

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "AnonymousMultiDeviceIteratorV3"
   output_arg {
     name: "handle"

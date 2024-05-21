@@ -64,7 +64,7 @@ TestClientFactory& GetGlobalTestClientFactory() {
   return *factory;
 }
 
-StatusOr<std::unique_ptr<PjRtClient>> GetClient() {
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetClient() {
   return GetGlobalTestClientFactory().Get()();
 }
 
@@ -486,7 +486,7 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
   }
 }
 
-StatusOr<std::unique_ptr<PjRtBuffer>> MakeFloatBuffer(
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> MakeFloatBuffer(
     PjRtClient* client, const std::vector<float>& data,
     absl::Span<const int64_t> dimensions) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 2});

@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -47,13 +48,14 @@ struct ReduceDetails {
 
 // Compute common reduce parameters that'll be used for SparseTensor
 // reductions. Usage:
-// ReduceDetails reduction = SparseTensorReduceHelper(sp, axes, keep_dims);
-// sp.Reorder(reduction.reorder_dims);
-// for (const auto& g : sp.group(reduction.group_by_dims)) {
+// StatusOr<ReduceDetails> reduction =
+//     SparseTensorReduceHelper(sp, axes, keep_dims);
+// sp.Reorder(reduction->reorder_dims);
+// for (const auto& g : sp.group(reduction->group_by_dims)) {
 //   ...
 // }
-// // Set output shape to reduction.reduced_shape.
-ReduceDetails SparseTensorReduceHelper(const SparseTensor &sp,
+// // Set output shape to reduction->reduced_shape.
+absl::StatusOr<ReduceDetails> SparseTensorReduceHelper(const SparseTensor &sp,
                                        absl::Span<const int32> axes_slice,
                                        bool keep_dims) {
   ReduceDetails reduction;
@@ -101,7 +103,11 @@ ReduceDetails SparseTensorReduceHelper(const SparseTensor &sp,
     out_dim_sizes = sp.PickDims(reduction.group_by_dims);
   }
 
-  reduction.reduced_shape = TensorShape(out_dim_sizes);
+  absl::Status success =
+      TensorShape::BuildTensorShape(out_dim_sizes, &reduction.reduced_shape);
+  if (!success.ok()) {
+    return success;
+  }
   return reduction;
 }
 
@@ -181,8 +187,10 @@ class SparseReduceOp : public OpKernel {
     OP_REQUIRES_OK(ctx, SparseTensor::Create(
         tensor::DeepCopy(*indices_t), tensor::DeepCopy(*values_t),
                     shape, &sp));
-    ReduceDetails reduction = SparseTensorReduceHelper(
+    absl::StatusOr<ReduceDetails> reduction_or = SparseTensorReduceHelper(
         sp, reduction_axes_t->flat<int32>(), keep_dims_);
+    OP_REQUIRES_OK(ctx, reduction_or.status());
+    ReduceDetails reduction = *reduction_or;
 
     Tensor *out_values;
     OP_REQUIRES_OK(
@@ -287,8 +295,10 @@ class SparseReduceSparseOp : public OpKernel {
     OP_REQUIRES_OK(ctx, SparseTensor::Create(tensor::DeepCopy(*indices_t),
                                          tensor::DeepCopy(*values_t),
                     shape, &sp));
-    ReduceDetails reduction = SparseTensorReduceHelper(
+    absl::StatusOr<ReduceDetails> reduction_or = SparseTensorReduceHelper(
         sp, reduction_axes_t->flat<int32>(), keep_dims_);
+    OP_REQUIRES_OK(ctx, reduction_or.status());
+    ReduceDetails reduction = *reduction_or;
 
     sp.Reorder<T>(reduction.reorder_dims);
     // Count nnzs in the output SparseTensor.

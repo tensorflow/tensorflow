@@ -521,37 +521,36 @@ cc_library(
 
 cc_library(
     name = "command_buffer",
-    srcs = ["command_buffer.cc"],
     hdrs = ["command_buffer.h"],
     visibility = ["//visibility:private"],
     deps = [
         ":device_memory",
+        ":kernel",
         ":launch_dim",
         ":platform",
-        ":stream_executor_headers",
-        ":stream_executor_interface",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/gtl:int_type",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
     alwayslink = True,
 )
 
 cc_library(
-    name = "event",
-    srcs = ["event.cc"],
-    hdrs = ["event.h"],
-    visibility = ["//visibility:private"],
+    name = "trace_command_buffer_factory",
+    srcs = ["trace_command_buffer_factory.cc"],
+    hdrs = ["trace_command_buffer_factory.h"],
+    visibility = [":internal"],
     deps = [
-        ":event_interface",
+        ":command_buffer",
         ":stream_executor_headers",
         ":stream_executor_interface",
-        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -577,7 +576,7 @@ cc_library(
     name = "kernel_spec",
     srcs = ["kernel_spec.cc"],
     hdrs = ["kernel_spec.h"],
-    visibility = ["//visibility:private"],
+    visibility = [":internal"],
     deps = [
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -594,8 +593,9 @@ cc_library(
     deps = [
         ":device_memory",
         ":kernel_spec",
+        ":launch_dim",
         ":platform",
-        ":stream_executor_headers",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/status",
@@ -608,6 +608,35 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "kernel_factory",
+    hdrs = ["kernel_factory.h"],
+    deps = [
+        ":kernel",
+        ":kernel_spec",
+        ":stream_executor_interface",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "typed_kernel_factory",
+    hdrs = ["typed_kernel_factory.h"],
+    deps = [
+        ":kernel",
+        ":kernel_factory",
+        ":kernel_spec",
+        ":stream_executor_interface",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
 )
 
 cc_library(
@@ -640,6 +669,7 @@ transitive_hdrs(
 cc_library(
     name = "stream_executor_pimpl",
     srcs = [
+        "event.cc",
         "stream.cc",
         "stream_executor_pimpl.cc",
     ],
@@ -650,6 +680,7 @@ cc_library(
         ":blas",  # build_cleaner: keep
         ":command_buffer",  # build_cleaner: keep
         ":dnn",  # build_cleaner: keep
+        ":event_interface",
         ":fft",
         ":host_memory_allocation",  # build_cleaner: keep
         ":kernel_spec",
@@ -689,7 +720,6 @@ cc_library(
         ":device_description",
         ":device_memory",
         ":dnn",
-        ":event",
         ":executor_cache",
         ":kernel",
         ":kernel_spec",
@@ -713,6 +743,7 @@ xla_cc_test(
     deps = [
         ":device_memory",
         ":stream_executor",
+        ":typed_kernel_factory",
         "//xla/stream_executor/host:host_platform",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
@@ -803,7 +834,6 @@ cc_library(
     visibility = [":internal"],
     deps = [
         ":dnn",
-        ":event",
         ":platform_manager",
         ":scratch_allocator",
         ":stream_executor",

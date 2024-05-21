@@ -57,25 +57,20 @@ limitations under the License.
 namespace xla {
 
 // Calls tsl::Flags::Parse(argc, argv, flag_list) against any as yet
-// unrecognized flags passed in the environment variable `envvar`, and returns
-// its return value.
+// unrecognized flags passed in the environment variable `envvar`.
 //
-// Raises a fatal error if any flags in `envvar` were not recognized.
-bool ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
+// Raises a fatal error if any flags in `envvar` were not recognized, or if flag
+// parsing failed.
+void ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
                                       const std::vector<tsl::Flag>& flag_list);
 
 // Calls tsl::Flags::Parse(argc, argv, flag_list) against any as yet
 // unrecognized flags passed in the environment variable `envvar`, and returns
 // its return value.
 //
-// Best effort and ignores unknown flags
-bool ParseFlagsFromEnvAndIgnoreUnknown(absl::string_view envvar,
+// Ignores unknown flags, raises a fatal if flag parsing failed.
+void ParseFlagsFromEnvAndIgnoreUnknown(absl::string_view envvar,
                                        const std::vector<tsl::Flag>& flag_list);
-
-// Raises a fatal error if there are unrecognized flags left in the specified
-// environment variable `envvar`, besides the fake argv[0]. Returns false if
-// there are no unrecognized flags.
-bool DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar);
 
 // Used only for testing.  Not to be used by clients.
 void ResetFlagsFromEnvForTesting(absl::string_view envvar, int** pargc,

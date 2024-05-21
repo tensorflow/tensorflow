@@ -754,7 +754,7 @@ TEST(XlaBuilderTest, BuildWithSpecificRootWithWrongBuilder) {
   Parameter(&b, 0, shape, "param");
   const XlaOp other_param = Parameter(&other_b, 0, shape, "other_param");
 
-  Status status = b.Build(other_param).status();
+  absl::Status status = b.Build(other_param).status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(
       status.message(),
@@ -1202,7 +1202,7 @@ TEST(XlaBuilderTest, DynamicSelectNotCompatible) {
   auto gte0 = GetTupleElement(p0, 0);  // f32[4,<=5,6]
   auto gte1 = GetTupleElement(p0, 1);  // f32[4,5,<=6]
   Select(pred, gte0, gte1);
-  Status status = BuildHloModule(b).status();
+  absl::Status status = BuildHloModule(b).status();
   ASSERT_IS_OK(status);
 }
 
@@ -1238,6 +1238,54 @@ TEST(XlaBuilderTest, DotWithPreferredElementType) {
       module->entry_computation()->root_instruction()->shape();
   ASSERT_TRUE(
       ShapeUtil::Equal(ShapeUtil::MakeShape(U32, {2, 2}), result_shape));
+}
+
+TEST(XlaBuilderTest, FftWithFFT) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("c64[5, <=10]"));
+  const std::vector<int64_t> fft_length = {5, 10};
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("c64[5, <=10]"));
+  Fft(Parameter(&b, 0, operand, "operand"), /*fft_type=*/FftType::FFT,
+      fft_length);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, FftWithIFFT) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("c64[5, <=10]"));
+  const std::vector<int64_t> fft_length = {5, 10};
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("c64[5, <=10]"));
+  Fft(Parameter(&b, 0, operand, "operand"), /*fft_type=*/FftType::IFFT,
+      fft_length);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, FftWithRFFT) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f64[10, <=5]"));
+  const std::vector<int64_t> fft_length = {5};
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("c128[10, <=3]"));
+  Fft(Parameter(&b, 0, operand, "operand"), /*fft_type=*/FftType::RFFT,
+      fft_length);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, FftWithIRFFT) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("c128[10, <=3]"));
+  const std::vector<int64_t> fft_length = {5};
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f64[10, <=5]"));
+  Fft(Parameter(&b, 0, operand, "operand"), /*fft_type=*/FftType::IRFFT,
+      fft_length);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
 TEST(XlaBuilderTest, SparseDot) {
@@ -1299,7 +1347,7 @@ TEST(XlaBuilderTest, ConvolutionWithPreferredElementType) {
 TEST(XlaBuilderTest, AfterAllWithNonTokenOperands) {
   XlaBuilder b(TestName());
   AfterAll(&b, {CreateToken(&b), ConstantR0<float>(&b, 1.0)});
-  Status status = b.Build().status();
+  absl::Status status = b.Build().status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(status.message(),
               ::testing::HasSubstr("All operands to AfterAll must be tokens"));
@@ -1999,6 +2047,126 @@ TEST(XlaBuilderTest, UnboundedAllReduce) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
+TEST(XlaBuilderTest, UnboundedAllToAllDynamicSplitDimension) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 15]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 45]"));
+  AllToAll(/*operand=*/Parameter(&b, 0, operand, "operand"),
+           /*split_dimension=*/0,
+           /*concat_dimension=*/1,
+           /*split_count=*/3,
+           /*replica_groups=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedAllToAllDynamicConcatDimension) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 15]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 5]"));
+  AllToAll(/*operand=*/Parameter(&b, 0, operand, "operand"),
+           /*split_dimension=*/1,
+           /*concat_dimension=*/0,
+           /*split_count=*/3,
+           /*replica_groups=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedAllToAllDynamicSplitAndConcatDimensionEqual) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 15]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 15]"));
+  AllToAll(/*operand=*/Parameter(&b, 0, operand, "operand"),
+           /*split_dimension=*/0,
+           /*concat_dimension=*/0,
+           /*split_count=*/3,
+           /*replica_groups=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedAllToAllFullyDynamic) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, ?]"));
+  AllToAll(/*operand=*/Parameter(&b, 0, operand, "operand"),
+           /*split_dimension=*/0,
+           /*concat_dimension=*/1,
+           /*split_count=*/3,
+           /*replica_groups=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedAllToAllTupleVariadicUnsupported) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 15]{1,0}"));
+  b.ReportErrorOrReturn(
+      AllToAllTuple(/*operands=*/{Parameter(&b, 0, operand, "operand0"),
+                                  Parameter(&b, 1, operand, "operand1")},
+                    /*replica_groups=*/{}));
+  EXPECT_THAT(
+      BuildHloModule(b),
+      StatusIs(_,
+               HasSubstr(
+                   "AllToAllTuple does not support unbounded dynamic shapes")));
+}
+
+TEST(XlaBuilderTest, UnboundedAllToAllTupleUnsupported) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 15]{1,0}"));
+  b.ReportErrorOrReturn(
+      AllToAllTuple(/*operand=*/Parameter(&b, 0, operand, "operand"),
+                    /*split_dimension=*/0,
+                    /*concat_dimension=*/1,
+                    /*split_count=*/3,
+                    /*replica_groups=*/{}));
+  EXPECT_THAT(
+      BuildHloModule(b),
+      StatusIs(_,
+               HasSubstr(
+                   "AllToAllTuple does not support unbounded dynamic shapes")));
+}
+
+TEST(XlaBuilderTest, BoundedAllToAllTupleUnsupported) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[3, <=15]{1,0}"));
+  b.ReportErrorOrReturn(
+      AllToAllTuple(/*operand=*/Parameter(&b, 0, operand, "operand"),
+                    /*split_dimension=*/0,
+                    /*concat_dimension=*/1,
+                    /*split_count=*/3,
+                    /*replica_groups=*/{}));
+  EXPECT_THAT(
+      BuildHloModule(b),
+      StatusIs(_,
+               HasSubstr("AllToAll does not support bounded dynamic shapes")));
+}
+
+TEST(XlaBuilderTest, BoundedAllToAllUnsupported) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[3, <=15]{1,0}"));
+  b.ReportErrorOrReturn(
+      AllToAllTuple(/*operand=*/Parameter(&b, 0, operand, "operand"),
+                    /*split_dimension=*/0,
+                    /*concat_dimension=*/1,
+                    /*split_count=*/3,
+                    /*replica_groups=*/{}));
+  EXPECT_THAT(
+      BuildHloModule(b),
+      StatusIs(_,
+               HasSubstr("AllToAll does not support bounded dynamic shapes")));
+}
+
 TEST(XlaBuilderTest, UnboundedAnd) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape lhs,
@@ -2389,6 +2557,54 @@ TEST(XlaBuilderTest, UnboundedDynamicUpdateSlice) {
                       Parameter(&b, 3, start_indices, "start_indices1")});
   TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
                           BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedFftWithFFT) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("c64[2, <=5, ?]"));
+  const std::vector<int64_t> fft_length = {5, 10};
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("c64[2, <=5, ?]"));
+  Fft(Parameter(&b, 0, operand, "operand"), /*fft_type=*/FftType::FFT,
+      fft_length);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedFftWithIFFT) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("c64[2, <=5, ?]"));
+  const std::vector<int64_t> fft_length = {5, 10};
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("c64[2, <=5, ?]"));
+  Fft(Parameter(&b, 0, operand, "operand"), /*fft_type=*/FftType::IFFT,
+      fft_length);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedFftWithRFFT) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f64[2, <=5, ?]"));
+  const std::vector<int64_t> fft_length = {5, 10};
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("c128[2, <=5, 6]"));
+  Fft(Parameter(&b, 0, operand, "operand"), /*fft_type=*/FftType::RFFT,
+      fft_length);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedFftWithIRFFT) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("c128[2, <=5, ?]"));
+  const std::vector<int64_t> fft_length = {5, 10};
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f64[2, <=5, 10]"));
+  Fft(Parameter(&b, 0, operand, "operand"), /*fft_type=*/FftType::IRFFT,
+      fft_length);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }

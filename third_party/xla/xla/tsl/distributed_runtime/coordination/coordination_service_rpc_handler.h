@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef XLA_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 #define XLA_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/protobuf/coordination_service.pb.h"
@@ -26,7 +27,7 @@ limitations under the License.
 namespace tsl {
 class CoordinationServiceRpcHandler {
  public:
-  explicit CoordinationServiceRpcHandler() {}
+  explicit CoordinationServiceRpcHandler() = default;
 
   void SetAgentInstance(CoordinationServiceAgent* agent);
 
@@ -92,7 +93,7 @@ class CoordinationServiceRpcHandler {
                           StatusCallback done);
 
  private:
-  mutex mu_;
+  absl::Mutex mu_;
   CoordinationServiceAgent* agent_ TF_GUARDED_BY(mu_) = nullptr;
   CoordinationServiceInterface* service_ TF_GUARDED_BY(mu_) = nullptr;
 };

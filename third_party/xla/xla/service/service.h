@@ -84,28 +84,30 @@ class Service : public ServiceInterface {
   //
   // If the handle given is not currently allocated, a NOT_FOUND status is
   // returned.
-  Status Unregister(const UnregisterRequest* arg,
-                    UnregisterResponse* result) override;
+  absl::Status Unregister(const UnregisterRequest* arg,
+                          UnregisterResponse* result) override;
 
   // Deconstructs a tuple. Returns a newly created GlobalDataHandle for each
   // element in the tuple.
-  Status DeconstructTuple(const DeconstructTupleRequest* arg,
-                          DeconstructTupleResponse* result) override;
+  absl::Status DeconstructTuple(const DeconstructTupleRequest* arg,
+                                DeconstructTupleResponse* result) override;
 
   // Compiles a computation into an executable. The request contains the whole
   // computation graph. Returns the handle to the executable.
-  Status Compile(const CompileRequest* arg, CompileResponse* result) override;
+  absl::Status Compile(const CompileRequest* arg,
+                       CompileResponse* result) override;
 
   // Executes an executable with the provided global data passes as immutable
   // arguments. The request contains the handle to the executable. Returns
   // global data output and execution timing.
-  Status Execute(const ExecuteRequest* arg, ExecuteResponse* result) override;
+  absl::Status Execute(const ExecuteRequest* arg,
+                       ExecuteResponse* result) override;
 
   // Executes one or more computations in parallel with the provided global data
   // passed as immutable arguments. Returns global data output for each
   // computation.
-  Status ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
-                              ExecuteParallelResponse* result) override;
+  absl::Status ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
+                                    ExecuteParallelResponse* result) override;
 
   // Requests one or more device handles from the target.
   //
@@ -115,26 +117,27 @@ class Service : public ServiceInterface {
   // the first set of replicas, and the next R devices to the second set of
   // replicas, etc. Each returned device handle represents the device with the
   // replica id 0.
-  Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
-                          GetDeviceHandlesResponse* result) override;
+  absl::Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
+                                GetDeviceHandlesResponse* result) override;
 
   // Requests that global data be transferred to the client in literal form.
-  Status TransferToClient(const TransferToClientRequest* arg,
-                          TransferToClientResponse* result) override;
+  absl::Status TransferToClient(const TransferToClientRequest* arg,
+                                TransferToClientResponse* result) override;
 
   // Transfers data from a literal provided by the client, into device memory.
-  Status TransferToServer(const TransferToServerRequest* arg,
-                          TransferToServerResponse* result) override;
+  absl::Status TransferToServer(const TransferToServerRequest* arg,
+                                TransferToServerResponse* result) override;
 
   // Transfers data from a literal provided by the client, into the Infeed
   // buffer of the device.
-  Status TransferToInfeed(const TransferToInfeedRequest* arg,
-                          TransferToInfeedResponse* result) override;
+  absl::Status TransferToInfeed(const TransferToInfeedRequest* arg,
+                                TransferToInfeedResponse* result) override;
 
   // Transfers data from the Outfeed othe device to the literal provided by the
   // client.
-  Status TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
-                             TransferFromOutfeedResponse* result) override;
+  absl::Status TransferFromOutfeed(
+      const TransferFromOutfeedRequest* arg,
+      TransferFromOutfeedResponse* result) override;
 
   // Resets devices, clearing all existing state on all the devices associated
   // with this service (including memory allocated on the devices).
@@ -145,25 +148,27 @@ class Service : public ServiceInterface {
   // ResetDevice should be called before an Execution that expect the device to
   // be in the reset state. For example, if the prior Execution modifies device
   // state (e.g., architectural state) that the next Execution depends on.
-  Status ResetDevice(const ResetDeviceRequest* arg,
-                     ResetDeviceResponse* result) override;
+  absl::Status ResetDevice(const ResetDeviceRequest* arg,
+                           ResetDeviceResponse* result) override;
 
-  Status ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
-                              ComputeConstantResponse* result) override;
+  absl::Status ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
+                                    ComputeConstantResponse* result) override;
 
   // Returns the shape (with layout) of an array associated with a given data
   // handle.
-  Status GetShape(const GetShapeRequest* arg,
-                  GetShapeResponse* result) override;
+  absl::Status GetShape(const GetShapeRequest* arg,
+                        GetShapeResponse* result) override;
 
   // Retrieves the statistics of a computation.
-  Status GetComputationGraphStats(const ComputationGraphStatsRequest* arg,
-                                  ComputationStatsResponse* result) override;
+  absl::Status GetComputationGraphStats(
+      const ComputationGraphStatsRequest* arg,
+      ComputationStatsResponse* result) override;
 
   // Creates a unique channel handle that can be used for Send/Recv
   // instructions.
-  Status CreateChannelHandle(const CreateChannelHandleRequest* arg,
-                             CreateChannelHandleResponse* result) override;
+  absl::Status CreateChannelHandle(
+      const CreateChannelHandleRequest* arg,
+      CreateChannelHandleResponse* result) override;
 
   // Returns the backend used to execute computations.
   const Backend& backend() const { return *execute_backend_; }
@@ -180,8 +185,8 @@ class Service : public ServiceInterface {
   // Convenience function which checks whether the given client_shape
   // (presumably passed by the client to set the result layout) is valid for the
   // given computation result shape.
-  static Status ValidateResultShape(const Shape& client_shape,
-                                    const Shape& result_shape);
+  static absl::Status ValidateResultShape(const Shape& client_shape,
+                                          const Shape& result_shape);
 
  private:
   // A private overload for Service itself, used by other methods within this

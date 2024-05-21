@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ConvertToSparseCoreCsrWrappedCooTensor"
   input_arg {
     name: "sorted_row_ids_list"

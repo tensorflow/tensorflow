@@ -43,10 +43,10 @@ class HloModuleImporter {
                              bool flatten_computation_args_result = false);
 
   // Import the HloModule into the MLIR Module.
-  Status Import(const xla::HloModule& module);
+  absl::Status Import(const xla::HloModule& module);
 
   // Import the HloModuleProto into the MLIR Module.
-  Status Import(const xla::HloModuleProto& module);
+  absl::Status Import(const xla::HloModuleProto& module);
 
  private:
   void ImportFrontendAttributes(const xla::HloModule& hlo_module,

@@ -18,3 +18,29 @@ flatbuffer_cc_library(
     srcs = ["schema.fbs"],
     compatible_with = get_compatible_with_portable(),
 )
+
+# Generic schema for flatbuffer converter (but with mutable makes bigger).
+flatbuffer_cc_library(
+    name = "schema_fbs_with_mutable",
+    srcs = ["schema.fbs"],
+    compatible_with = get_compatible_with_portable(),
+    flatc_args = [
+        "--gen-mutable",
+        "--gen-object-api",
+    ],
+    out_prefix = "mutable/",
+)
+
+# Generic schema for inference on device (but with reflections makes bigger).
+flatbuffer_cc_library(
+    name = "schema_fbs_with_reflection",
+    srcs = ["schema.fbs"],
+    compatible_with = get_compatible_with_portable(),
+    flatc_args = [
+        "--reflect-types",
+        "--reflect-names",
+        "--no-union-value-namespacing",
+        "--gen-object-api",
+    ],
+    out_prefix = "reflection/",
+)

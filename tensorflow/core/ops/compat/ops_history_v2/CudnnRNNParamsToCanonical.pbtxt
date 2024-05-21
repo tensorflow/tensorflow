@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "CudnnRNNParamsToCanonical"
   input_arg {
     name: "num_layers"

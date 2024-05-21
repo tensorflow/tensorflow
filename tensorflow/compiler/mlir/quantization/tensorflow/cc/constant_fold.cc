@@ -71,7 +71,7 @@ LogicalResult FoldOperation(OpBuilder& builder, Operation* op,
 bool IsOperationFoldable(Operation* op) {
   if (isa<TF::ConstOp>(op)) return true;
 
-  if (!op->getDialect()->getNamespace().equals("tf") || !TF::CanBeFolded(op)) {
+  if (op->getDialect()->getNamespace() != "tf" || !TF::CanBeFolded(op)) {
     return false;
   }
 

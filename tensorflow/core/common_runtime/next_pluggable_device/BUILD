@@ -304,6 +304,7 @@ cc_library(
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/common_runtime/next_pluggable_device:flags",
+        "@com_google_absl//absl/flags:flag",
     ],
 )
 

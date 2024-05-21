@@ -34,6 +34,46 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_cc_test(
+    name = "ifrt_program_ops_test",
+    srcs = ["ifrt_program_ops_test.cc"],
+    data = [
+        "//tensorflow/core/tfrt/ifrt/testdata",
+    ],
+    tags = ["no_oss"],
+    deps = [
+        ":ifrt_program_ops",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:tensor_matcher",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/lib/gtl:cleanup",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/tfrt/ifrt:ifrt_executable_registry",
+        "//tensorflow/core/tfrt/ifrt:ifrt_serving_executable_test_util",
+        "//tensorflow/core/tfrt/ops:ifrt_program_ops_op_lib",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/framework:serving_device_selector",
+        "@local_tsl//tsl/framework/test_util:mock_serving_device_selector",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/pjrt/cpu:cpu_client",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt:test_util",
+        "@local_xla//xla/python/pjrt_ifrt",
+    ],
+)
+
 cc_library(
     name = "stream_ops",
     srcs = ["stream_ops.cc"],

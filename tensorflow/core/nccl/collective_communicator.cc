@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {

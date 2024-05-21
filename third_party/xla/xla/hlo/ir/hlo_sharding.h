@@ -164,8 +164,8 @@ class HloSharding {
   std::string ToString(bool include_metadata = false) const;
 
   // Validate that this sharding can be applied to a tensor with shape `shape`.
-  Status Validate(const Shape& shape,
-                  std::optional<int64_t> num_devices = {}) const;
+  absl::Status Validate(const Shape& shape,
+                        std::optional<int64_t> num_devices = {}) const;
 
   // Returns true if the sharding has tuple type.
   bool IsTuple() const { return tuple_; }
@@ -629,15 +629,15 @@ class HloSharding {
 
   // Checks that the number of elements in tuple_elements_ is consistent with
   // the tuple shape passes as argument.
-  Status CheckLeafCount(const Shape& shape) const;
+  absl::Status CheckLeafCount(const Shape& shape) const;
 
   // Internal helper to validate a tuple sharding.
-  Status ValidateTuple(const Shape& shape,
-                       std::optional<int64_t> num_devices) const;
+  absl::Status ValidateTuple(const Shape& shape,
+                             std::optional<int64_t> num_devices) const;
 
   // Internal helper to validate a non-tuple (leaf) sharding.
-  Status ValidateNonTuple(const Shape& shape,
-                          std::optional<int64_t> num_devices) const;
+  absl::Status ValidateNonTuple(const Shape& shape,
+                                std::optional<int64_t> num_devices) const;
 
   // This field is only used if replicated_ is false. If maximal_ is true, then
   // the field contains a rank 1 array with a single element, which is the

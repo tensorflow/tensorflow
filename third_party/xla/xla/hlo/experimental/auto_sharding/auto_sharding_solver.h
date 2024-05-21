@@ -142,7 +142,7 @@ class StrategyShaver {
 
 // Check fail if `request` is invalid (e.g., because of negative node costs).
 // Note: This does not include checks for valid variable aliasing yet.
-Status ValidateRequest(const AutoShardingSolverRequest& request);
+absl::Status ValidateRequest(const AutoShardingSolverRequest& request);
 
 }  // namespace spmd
 }  // namespace xla

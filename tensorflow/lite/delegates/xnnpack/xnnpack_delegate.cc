@@ -38,13 +38,16 @@ limitations under the License.
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
+#include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
@@ -487,6 +490,8 @@ class VariableHolder {
   std::map<uint32_t, const TfLiteTensor*> global_id_to_dims_and_type_;
 };
 
+class Subgraph;
+
 class Delegate {
   friend class Subgraph;
 
@@ -518,13 +523,38 @@ class Delegate {
     }
 
 #endif
-    TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
-                         "Created TensorFlow Lite XNNPACK delegate for CPU.");
+    TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
+                    "Created TensorFlow Lite XNNPACK delegate for CPU.");
 
     options_ =
         options != nullptr ? *options : TfLiteXNNPackDelegateOptionsDefault();
     delegate_.flags = GetXNNPackDelegateFlags();
     workspace_.reset(workspace);
+
+    // If no weight cache is provided, add one when requested.
+    if (!options_.weights_cache) {
+      if (options_.experimental_weight_cache_file_path) {
+        if (weight_cache_provider_.Load(
+                options_.experimental_weight_cache_file_path)) {
+          TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
+                          "XNNPack weight cache loaded from '%s'.",
+                          options_.experimental_weight_cache_file_path);
+        } else {
+          TFLITE_LOG_PROD(
+              tflite::TFLITE_LOG_INFO,
+              "XNNPack weight cache not found at '%s', building it.",
+              options_.experimental_weight_cache_file_path);
+        }
+        options_.weights_cache =
+            reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(
+                weight_cache_provider_.GetCacheProvider().context);
+        options_.experimental_weight_cache_file_path =
+            weight_cache_provider_.GetFilePath().data();
+      } else {
+        TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
+                        "XNNPack weight cache not enabled.");
+      }
+    }
   }
 
   TfLiteIntArray* PrepareOpsToDelegate(TfLiteContext* context);
@@ -664,7 +694,7 @@ class Delegate {
 #endif
   }
 
-  TfLiteXNNPackDelegateOptions options() const { return options_; }
+  const TfLiteXNNPackDelegateOptions& options() const { return options_; }
 
   int64_t GetXNNPackDelegateFlags() {
     if (enable_subgraph_reshaping()) {
@@ -711,6 +741,10 @@ class Delegate {
   TfLiteXNNPackDelegateOptions options_{};
   VariableHolder variable_holder_;
   std::mutex workspace_mutex_;
+
+  // If no weight cache is provided and a cache is set in the delegate options,
+  // this will be used as a weight cache.
+  MMapWeightCacheProvider weight_cache_provider_;
 };
 
 class Subgraph {
@@ -781,6 +815,13 @@ class Subgraph {
   static Subgraph* Create(TfLiteContext* context,
                           const TfLiteDelegateParams* params,
                           Delegate& delegate) {
+    // Map tensors identifiers before packing anything.
+    if (delegate.weight_cache_provider_.IsActive()) {
+      delegate.weight_cache_provider_.MapTensorIdentifiers(
+          context->tensors, context->tensors_size,
+          reinterpret_cast<tflite::Subgraph*>(context->impl_)
+              ->GetTensorBufferIdentifiers());
+    }
     // Convert subgraph inputs and outputs to hash sets for faster lookup.
     const std::unordered_set<int> inputs(
         &params->input_tensors->data[0],
@@ -1121,6 +1162,18 @@ class Subgraph {
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node,
                        bool enable_subgraph_reshaping, Delegate* delegate) {
     std::lock_guard<std::mutex> lock(delegate->workspace_mutex_);
+
+    // The weights cache needs to be finalized only once. Prepare will be called
+    // for each partition after all the partitions have been created (therefore
+    // all the weights are known and have been packed).
+    if (delegate->weight_cache_provider_.IsActive()) {
+      if (!delegate->weight_cache_provider_.Finalize()) {
+        TF_LITE_KERNEL_LOG(context,
+                           "XNNPack delegate failed to finalize cache.");
+        return kTfLiteError;
+      }
+    }
+
     if (enable_subgraph_reshaping) {
       xnn_status status = xnn_status_invalid_state;
       for (int i = 0; i < inputs_.size(); ++i) {
@@ -1170,10 +1223,8 @@ class Subgraph {
           return kTfLiteError;
         }
       }
-      return kTfLiteOk;
-    } else {
-      return kTfLiteOk;
     }
+    return kTfLiteOk;
   }
 
   TfLiteStatus Invoke(TfLiteContext* context, bool enable_subgraph_reshaping,
@@ -7798,7 +7849,6 @@ void TfLiteXNNPackDelegateWeightsCacheDelete(
   }
   auto weights_cache = reinterpret_cast<xnn_weights_cache_t>(cache);
   xnn_delete_weights_cache(weights_cache);
-  xnn_deinitialize();
 }
 
 TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
@@ -7830,14 +7880,6 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
   return options;
 }
 
-TfLiteXNNPackDelegateOptions GetOptions(const void* delegate_data) {
-  if (delegate_data == nullptr) {
-    return TfLiteXNNPackDelegateOptionsDefault();
-  }
-  return static_cast<const tflite::xnnpack::Delegate*>(delegate_data)
-      ->options();
-}
-
 TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     const TfLiteXNNPackDelegateOptions* options) {
   return TfLiteXNNPackDelegateCreateWithThreadpool(options, nullptr);
@@ -7867,6 +7909,15 @@ void* TfLiteXNNPackDelegateGetThreadPool(TfLiteDelegate* delegate) {
 
   return static_cast<void*>(
       static_cast<::tflite::xnnpack::Delegate*>(delegate->data_)->threadpool());
+}
+
+const TfLiteXNNPackDelegateOptions* TfLiteXNNPackDelegateGetOptions(
+    TfLiteDelegate* delegate) {
+  if (delegate == nullptr) {
+    return nullptr;
+  }
+  return &(static_cast<const tflite::xnnpack::Delegate*>(delegate->data_)
+               ->options());
 }
 
 int TfLiteXNNPackDelegateGetFlags(TfLiteDelegate* delegate) {

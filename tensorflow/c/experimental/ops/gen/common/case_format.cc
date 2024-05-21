@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/common/case_format.h"
 
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/types.h"
+
 namespace tensorflow {
 namespace generator {
 

@@ -15,22 +15,28 @@ limitations under the License.
 
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "grpcpp/channel.h"
+#include "grpcpp/completion_queue.h"
+#include "grpcpp/generic/generic_stub.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/log/log.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_channel.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_state.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
-#include "tsl/platform/mutex.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
-#include "tsl/platform/thread_annotations.h"
 #include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tsl {
@@ -281,7 +287,7 @@ class GrpcCoordinationClientCache : public CoordinationClientCache {
   ~GrpcCoordinationClientCache() override = default;
 
   CoordinationClient* GetClient(const std::string& target) override {
-    mutex_lock l(clients_mu_);
+    absl::MutexLock l(&clients_mu_);
     auto it = clients_.find(target);
     if (it == clients_.end()) {
       SharedGrpcChannelPtr channel = channel_cache_->FindWorkerChannel(target);
@@ -306,15 +312,15 @@ class GrpcCoordinationClientCache : public CoordinationClientCache {
   }
 
  private:
-  mutex assignment_mu_;
+  absl::Mutex assignment_mu_;
   std::unordered_map<std::string, size_t> target_assignments_
-      TF_GUARDED_BY(assignment_mu_);
-  size_t next_round_robin_assignment_ TF_GUARDED_BY(assignment_mu_);
+      ABSL_GUARDED_BY(assignment_mu_);
+  size_t next_round_robin_assignment_ ABSL_GUARDED_BY(assignment_mu_);
 
   size_t AssignClientToThread(const std::string& target) {
     // Round-robin target assignment, but keeps the same target on the same
     // polling thread always, as this is important for gRPC performance
-    mutex_lock lock(assignment_mu_);
+    absl::MutexLock l(&assignment_mu_);
     auto it = target_assignments_.find(target);
     if (it == target_assignments_.end()) {
       it = target_assignments_
@@ -326,9 +332,9 @@ class GrpcCoordinationClientCache : public CoordinationClientCache {
   }
 
   std::shared_ptr<GrpcChannelCache> channel_cache_;
-  mutable mutex clients_mu_;
+  mutable absl::Mutex clients_mu_;
   std::unordered_map<std::string, std::unique_ptr<CoordinationClient>> clients_
-      TF_GUARDED_BY(clients_mu_);
+      ABSL_GUARDED_BY(clients_mu_);
   std::vector<GrpcCoordinationClientThread> threads_;
 };
 

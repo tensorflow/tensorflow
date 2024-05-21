@@ -450,7 +450,7 @@ struct FeatureProtos {
 // Map from feature name to FeatureProtos for that feature.
 using FeatureProtosMap = absl::flat_hash_map<StringPiece, FeatureProtos>;
 
-string ExampleName(const gtl::ArraySlice<tstring> example_names, int n);
+string ExampleName(const absl::Span<const tstring> example_names, int n);
 
 // Return the number of bytes elements parsed, or -1 on error. If out is null,
 // this method simply counts the number of elements without any copying.

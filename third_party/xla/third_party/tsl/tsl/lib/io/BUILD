@@ -18,6 +18,7 @@ package(
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/io:__subpackages__",
         "//tsl/profiler:__subpackages__",
+        "//tensorflow/core/profiler:__subpackages__",
     ]),
     licenses = ["notice"],
 )

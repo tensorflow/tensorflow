@@ -658,6 +658,7 @@ cuda_py_strict_test(
     srcs_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "notap",  # TODO(b/341375925): Re-enable this test when flakiness is fixed.
     ],
     xla_enabled = True,
     deps = [

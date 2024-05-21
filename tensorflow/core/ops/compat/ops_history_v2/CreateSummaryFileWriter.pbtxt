@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "CreateSummaryFileWriter"
   input_arg {
     name: "writer"

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_COPY_H_
 #define XLA_SERVICE_GPU_FUSIONS_COPY_H_
 
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"

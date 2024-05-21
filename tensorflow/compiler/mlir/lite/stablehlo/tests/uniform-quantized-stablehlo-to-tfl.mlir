@@ -393,13 +393,13 @@ func.func @dot_general_upstream_srq_float_operands(%arg0: tensor<1x2x3x4xf32>, %
 
 // CHECK-LABEL: dot_general_upstream_srq_asym_weight
 func.func @dot_general_upstream_srq_asym_weight(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
-  %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0:5>>
-  %1 = "stablehlo.dot_general"(%arg0, %0) {dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0, 1], rhs_batching_dimensions = [0, 1], lhs_contracting_dimensions = [3], rhs_contracting_dimensions = [2]>, precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0:5>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
+  %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0:0>>
+  %1 = "stablehlo.dot_general"(%arg0, %0) {dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0, 1], rhs_batching_dimensions = [0, 1], lhs_contracting_dimensions = [3], rhs_contracting_dimensions = [2]>, precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0:0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
   return %1 : tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
 }
 // CHECK-SAME: %[[ARG:.+]]: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>
-// CHECK: %[[QCONST_0:.+]] =  "tfl.pseudo_qconst"() <{qtype = tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00:5>>, value = dense<1> : tensor<1x2x4x5xi8>}> : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00:5>>
-// CHECK: %[[BMM:.+]] = "tfl.batch_matmul"(%[[ARG]], %[[QCONST_0]]) <{adj_x = false, adj_y = false}> : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00:5>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+00>>
+// CHECK: %[[QCONST_0:.+]] =  "tfl.pseudo_qconst"() <{qtype = tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>, value = dense<1> : tensor<1x2x4x5xi8>}> : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>
+// CHECK: %[[BMM:.+]] = "tfl.batch_matmul"(%[[ARG]], %[[QCONST_0]]) <{adj_x = false, adj_y = false}> : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+00>>
 
 // -----
 
@@ -427,8 +427,8 @@ func.func @dot_general_upstream_srq_per_axis_quantized_filter(%arg0: tensor<1x3x
 
 // CHECK-LABEL: dot_general_upstream_srq_per_axis_quantized_filter_with_batch_dim
 func.func @dot_general_upstream_srq_per_axis_quantized_filter_with_batch_dim(%arg0: tensor<1x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>> {
-  %0 = stablehlo.constant() {value = dense<1> : tensor<1x3x2xi8>} : () -> tensor<1x3x2x!quant.uniform<i8:f32:2,{2.000000e+02, 3.000000e+03}>>
-  %1 = stablehlo.dot_general %arg0, %0, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<1x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<1x3x2x!quant.uniform<i8:f32:2,{2.000000e+02, 3.000000e+03}>>) -> tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
+  %0 = stablehlo.constant() {value = dense<1> : tensor<1x3x2xi8>} : () -> tensor<1x3x2x!quant.uniform<i8:f32:0,{2.000000e+02}>>
+  %1 = stablehlo.dot_general %arg0, %0, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<1x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<1x3x2x!quant.uniform<i8:f32:0,{2.000000e+02}>>) -> tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
   return %1 : tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
 }
 // Nothing changes.
@@ -459,8 +459,8 @@ func.func @dot_general_upstream_srq_per_axis_quantized_filter_multibatch(%arg0: 
 
 // CHECK-LABEL: dot_general_upstream_srq_per_axis_quantized_filter_with_multiple_contracting_dims
 func.func @dot_general_upstream_srq_per_axis_quantized_filter_with_multiple_contracting_dims(%arg0: tensor<1x2x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>> {
-  %0 = stablehlo.constant() {value = dense<1> : tensor<1x3x2xi8>} : () -> tensor<1x3x2x!quant.uniform<i8:f32:2,{2.000000e+02, 3.000000e+03}>>
-  %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [1, 2] x [2, 1] : (tensor<1x2x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<1x3x2x!quant.uniform<i8:f32:2,{2.000000e+02, 3.000000e+03}>>) -> tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>>
+  %0 = stablehlo.constant() {value = dense<1> : tensor<1x3x2xi8>} : () -> tensor<1x3x2x!quant.uniform<i8:f32:0,{2.000000e+02}>>
+  %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [1, 2] x [2, 1] : (tensor<1x2x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<1x3x2x!quant.uniform<i8:f32:0,{2.000000e+02}>>) -> tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>>
   return %1 : tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>>
 }
 // Nothing changes.
@@ -557,9 +557,9 @@ func.func @dot_general_srq_constant_transpose_rhs(%arg0: tensor<1x3x!quant.unifo
 // (e.g. argument), the conversion to `tfl.fully_connected` doesn't happen.
 
 // CHECK-LABEL: dot_general_srq_arg_transpose_rhs
-func.func @dot_general_srq_arg_transpose_rhs(%arg0: tensor<1x3x!quant.uniform<i8:f32, 5.000000e+00:-128>>, %arg1: tensor<2x3x!quant.uniform<i8:f32, 3.000000e+00:-23>>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+00:7>> {
-  %1 = stablehlo.transpose %arg1, dims = [1, 0] : (tensor<2x3x!quant.uniform<i8:f32, 3.000000e+00:-23>>) -> tensor<3x2x!quant.uniform<i8:f32, 3.000000e+00:-23>>
-  %2 = stablehlo.dot_general %arg0, %1, contracting_dims = [1] x [0] : (tensor<1x3x!quant.uniform<i8:f32, 5.000000e+00:-128>>, tensor<3x2x!quant.uniform<i8:f32, 3.000000e+00:-23>>) -> tensor<1x2x!quant.uniform<i32:f32, 2.000000e+00>>
+func.func @dot_general_srq_arg_transpose_rhs(%arg0: tensor<1x3x!quant.uniform<i8:f32, 5.000000e+00:-128>>, %arg1: tensor<2x3x!quant.uniform<i8:f32, 3.000000e+00>>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+00:7>> {
+  %1 = stablehlo.transpose %arg1, dims = [1, 0] : (tensor<2x3x!quant.uniform<i8:f32, 3.000000e+00>>) -> tensor<3x2x!quant.uniform<i8:f32, 3.000000e+00>>
+  %2 = stablehlo.dot_general %arg0, %1, contracting_dims = [1] x [0] : (tensor<1x3x!quant.uniform<i8:f32, 5.000000e+00:-128>>, tensor<3x2x!quant.uniform<i8:f32, 3.000000e+00>>) -> tensor<1x2x!quant.uniform<i32:f32, 2.000000e+00>>
   %3 = stablehlo.uniform_quantize %2 : (tensor<1x2x!quant.uniform<i32:f32, 2.000000e+00>>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+00:7>>
   return %3 : tensor<1x2x!quant.uniform<i8:f32, 4.000000e+00:7>>
 }
@@ -577,7 +577,7 @@ func.func @dot_general_srq_arg_transpose_rhs(%arg0: tensor<1x3x!quant.uniform<i8
 // Tests static range quantized dot_general with qi32 -> qi8 requantization is
 // properly lowered to `tfl.batch_matmul`.
 
-func.func @dot_general_srq_to_batch_matmul(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:3>>, %arg1: tensor<1x2x4x5x!quant.uniform<i8:f32, 2.000000e+00:4>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 6.000000e+00:5>> {
+func.func @dot_general_srq_to_batch_matmul(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:3>>, %arg1: tensor<1x2x4x5x!quant.uniform<i8:f32, 2.000000e+00>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 6.000000e+00:5>> {
   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #stablehlo.dot<
       lhs_batching_dimensions = [0, 1],
@@ -586,14 +586,14 @@ func.func @dot_general_srq_to_batch_matmul(%arg0: tensor<1x2x3x4x!quant.uniform<
       rhs_contracting_dimensions = [2]
     >,
     precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
-  } : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:3>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 2.000000e+00:4>>) -> tensor<1x2x3x5x!quant.uniform<i32:f32, 4.000000e+00:1>>
+  } : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:3>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 2.000000e+00>>) -> tensor<1x2x3x5x!quant.uniform<i32:f32, 4.000000e+00:1>>
   %1 = stablehlo.uniform_quantize %0 : (tensor<1x2x3x5x!quant.uniform<i32:f32, 4.000000e+00:1>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 6.000000e+00:5>>
   return %1 : tensor<1x2x3x5x!quant.uniform<i8:f32, 6.000000e+00:5>>
 }
 
 // CHECK-LABEL: dot_general_srq_to_batch_matmul
-// CHECK-SAME: (%[[ARG_0:.+]]: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:3>>, %[[ARG_1:.+]]: tensor<1x2x4x5x!quant.uniform<i8:f32, 2.000000e+00:4>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 6.000000e+00:5>>
-// CHECK: %[[BMM:.+]] = "tfl.batch_matmul"(%[[ARG_0]], %[[ARG_1]]) <{adj_x = false, adj_y = false}> : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:3>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 2.000000e+00:4>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 6.000000e+00:5>>
+// CHECK-SAME: (%[[ARG_0:.+]]: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:3>>, %[[ARG_1:.+]]: tensor<1x2x4x5x!quant.uniform<i8:f32, 2.000000e+00>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 6.000000e+00:5>>
+// CHECK: %[[BMM:.+]] = "tfl.batch_matmul"(%[[ARG_0]], %[[ARG_1]]) <{adj_x = false, adj_y = false}> : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:3>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 2.000000e+00>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 6.000000e+00:5>>
 // CHECK-NOT: stablehlo.dot_general
 // CHECK-NOT: stablehlo.uniform_quantize
 // CHECK-NOT: tfl.fully_connected
@@ -606,7 +606,7 @@ func.func @dot_general_srq_to_batch_matmul(%arg0: tensor<1x2x3x4x!quant.uniform<
 // not converted to `tfl.batch_matmul` when there are multiple use of the
 // intermediate result.
 
-func.func @dot_general_srq_multiple_use_of_intermediate_result(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:3>>, %arg1: tensor<1x2x4x5x!quant.uniform<i8:f32, 2.000000e+00:4>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 6.000000e+00:5>> {
+func.func @dot_general_srq_multiple_use_of_intermediate_result(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:3>>, %arg1: tensor<1x2x4x5x!quant.uniform<i8:f32, 2.000000e+00>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 6.000000e+00:5>> {
   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #stablehlo.dot<
       lhs_batching_dimensions = [0, 1],
@@ -615,7 +615,7 @@ func.func @dot_general_srq_multiple_use_of_intermediate_result(%arg0: tensor<1x2
       rhs_contracting_dimensions = [2]
     >,
     precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
-  } : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:3>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 2.000000e+00:4>>) -> tensor<1x2x3x5x!quant.uniform<i32:f32, 4.000000e+00:1>>
+  } : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:3>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 2.000000e+00>>) -> tensor<1x2x3x5x!quant.uniform<i32:f32, 4.000000e+00:1>>
   %1 = stablehlo.uniform_quantize %0 : (tensor<1x2x3x5x!quant.uniform<i32:f32, 4.000000e+00:1>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 6.000000e+00:5>>
   %2 = stablehlo.uniform_quantize %0 : (tensor<1x2x3x5x!quant.uniform<i32:f32, 4.000000e+00:1>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 6.000000e+00:5>>
   %3 = stablehlo.add %1, %2 : tensor<1x2x3x5x!quant.uniform<i8:f32, 6.000000e+00:5>>

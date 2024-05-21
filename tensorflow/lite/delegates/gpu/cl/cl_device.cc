@@ -344,21 +344,20 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
     }
   }
 
-  if (info.IsIntel()) {
-    if (info.SupportsExtension("cl_intel_required_subgroup_size")) {
-      size_t sub_groups_count;
-      cl_int status =
-          clGetDeviceInfo(id, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/, 0,
-                          nullptr, &sub_groups_count);
+  if (info.SupportsExtension("cl_intel_required_subgroup_size")) {
+    size_t sub_groups_ret_size;
+    cl_int status =
+        clGetDeviceInfo(id, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/, 0,
+                        nullptr, &sub_groups_ret_size);
+    if (status == CL_SUCCESS) {
+      size_t sub_groups_count = sub_groups_ret_size / sizeof(size_t);
+      std::vector<size_t> sub_group_sizes(sub_groups_count);
+      status =
+          clGetDeviceInfo(id, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/,
+                          sub_groups_ret_size, sub_group_sizes.data(), nullptr);
       if (status == CL_SUCCESS) {
-        std::vector<size_t> sub_group_sizes(sub_groups_count);
-        status = clGetDeviceInfo(id, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/,
-                                 sizeof(size_t) * sub_groups_count,
-                                 sub_group_sizes.data(), nullptr);
-        if (status == CL_SUCCESS) {
-          for (int i = 0; i < sub_groups_count; ++i) {
-            info.supported_subgroup_sizes.push_back(sub_group_sizes[i]);
-          }
+        for (int i = 0; i < sub_groups_count; ++i) {
+          info.supported_subgroup_sizes.push_back(sub_group_sizes[i]);
         }
       }
     }

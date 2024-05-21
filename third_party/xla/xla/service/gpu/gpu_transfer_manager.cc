@@ -318,10 +318,7 @@ GpuTransferManager::GetOrCreateStagingBuffer(se::StreamExecutor* executor) {
   TF_ASSIGN_OR_RETURN(auto staging_buffer,
                       executor->HostMemoryAllocate(kStagingBufferSize));
 
-  auto transfer_completed = std::make_unique<se::Event>(executor);
-  if (!transfer_completed->Init()) {
-    return absl::InternalError("Failed to initialize transfer completed event");
-  }
+  TF_ASSIGN_OR_RETURN(auto transfer_completed, executor->CreateEvent());
 
   auto emplaced = staging_buffers_.try_emplace(
       executor, std::move(staging_buffer), std::move(transfer_completed));

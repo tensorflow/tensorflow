@@ -309,7 +309,7 @@ XLA_TEST_F(TransferManagerTest, TransferTokenFromDevice) {
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateToken(), result));
 }
 
-XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
+XLA_TEST_F(TransferManagerTest, OVERSIZE_ON_GRM(MultiStreamRoundTripSoak)) {
   const int64_t kIterationCount = 5000;
   Literal literal1 = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR0<float>(123.0f),

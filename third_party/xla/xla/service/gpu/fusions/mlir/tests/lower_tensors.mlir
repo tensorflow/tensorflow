@@ -163,8 +163,8 @@ module {
     return %0 : f32
   }
 }
-// CHECK: llvm.mlir.global private constant @global_cst_0(dense<[
-// CHECK-SAME: [1.000000e+00], [2.000000e+00]]> : tensor<2x1xf32>) {addr_space = 0 : i32} : !llvm.array<2 x f32>
+// CHECK: llvm.mlir.global private constant @global_cst_0(dense<
+// CHECK-SAME: [1.000000e+00, 2.000000e+00]> : tensor<2xf32>) {addr_space = 0 : i32} : !llvm.array<2 x f32>
 // CHECK: @extract_from_constant
 // CHECK: %[[ADDR_OF:.*]] = llvm.mlir.addressof @global_cst_0 : !llvm.ptr
 // CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ADDR_OF]][%{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, f32

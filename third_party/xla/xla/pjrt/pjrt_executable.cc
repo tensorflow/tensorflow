@@ -29,14 +29,17 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/layout.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/execute_options.pb.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
@@ -69,7 +72,7 @@ void SetOptionOverride(OptionOverrideProto& option, double value) {
 
 }  // namespace
 
-StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
+absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
   CompileOptionsProto output;
   if (argument_layouts.has_value()) {
     for (const auto& layout : *argument_layouts) {
@@ -107,7 +110,7 @@ void CompileOptions::SerializeEnvOptionOverrides(
   }
 }
 
-StatusOr<CompileOptions> CompileOptions::FromProto(
+absl::StatusOr<CompileOptions> CompileOptions::FromProto(
     const CompileOptionsProto& proto) {
   if (!proto.serialized_multi_slice_config().empty()) {
     return Unimplemented(
@@ -216,6 +219,114 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
   return options;
 }
 
+CompiledMemoryStatsProto CompiledMemoryStats::ToProto() {
+  CompiledMemoryStatsProto proto;
+  proto.set_generated_code_size_in_bytes(generated_code_size_in_bytes);
+  proto.set_argument_size_in_bytes(argument_size_in_bytes);
+  proto.set_output_size_in_bytes(output_size_in_bytes);
+  proto.set_alias_size_in_bytes(alias_size_in_bytes);
+  proto.set_temp_size_in_bytes(temp_size_in_bytes);
+  proto.mutable_hlo_proto()->ParseFromString(serialized_hlo_proto);
+  proto.set_host_generated_code_size_in_bytes(
+      host_generated_code_size_in_bytes);
+  proto.set_host_argument_size_in_bytes(host_argument_size_in_bytes);
+  proto.set_host_output_size_in_bytes(host_output_size_in_bytes);
+  proto.set_host_alias_size_in_bytes(host_alias_size_in_bytes);
+  proto.set_host_temp_size_in_bytes(host_temp_size_in_bytes);
+  return proto;
+}
+
+CompiledMemoryStats CompiledMemoryStats::FromProto(
+    const CompiledMemoryStatsProto& proto) {
+  CompiledMemoryStats stats;
+  stats.generated_code_size_in_bytes = proto.generated_code_size_in_bytes();
+  stats.argument_size_in_bytes = proto.argument_size_in_bytes();
+  stats.output_size_in_bytes = proto.output_size_in_bytes();
+  stats.alias_size_in_bytes = proto.alias_size_in_bytes();
+  stats.temp_size_in_bytes = proto.temp_size_in_bytes();
+  stats.serialized_hlo_proto = proto.hlo_proto().SerializeAsString();
+  stats.host_generated_code_size_in_bytes =
+      proto.host_generated_code_size_in_bytes();
+  stats.host_argument_size_in_bytes = proto.host_argument_size_in_bytes();
+  stats.host_output_size_in_bytes = proto.host_output_size_in_bytes();
+  stats.host_alias_size_in_bytes = proto.host_alias_size_in_bytes();
+  stats.host_temp_size_in_bytes = proto.host_temp_size_in_bytes();
+  return stats;
+}
+
+// Recomputes the memory stats from allocations. Why recompute?
+// Firstly, there are cases in which gpu::Executable inherits its allocations
+// from elsewhere, and no buffer assignment is available.
+// Secondly, exec->buffer_assignment()->GetStats() provides the statistics we
+// want, but does not distinguish between device and host memory, and does
+// not account for aliased memory.
+void CompiledMemoryStats::PopulateBufferStatsFromAllocations(
+    absl::Span<const BufferAllocation> allocs) {
+  argument_size_in_bytes = 0;
+  output_size_in_bytes = 0;
+  temp_size_in_bytes = 0;
+  alias_size_in_bytes = 0;
+  host_argument_size_in_bytes = 0;
+  host_output_size_in_bytes = 0;
+  host_temp_size_in_bytes = 0;
+  host_alias_size_in_bytes = 0;
+
+  for (auto& alloc : allocs) {
+    // All logical buffers assigned to a buffer allocation share a color.
+    // With buffer assigner's default colorer the color happens to be the
+    // memory space of the underlying HLO value. Callers may choose other
+    // colorers, however, e.g.:
+    // https://github.com/openxla/xla/blob/50c6489cb058881cc65622605c9c55029abebc5b/xla/service/gpu/compile_module_to_llvm_ir.cc#L152
+    // Until buffer allocations provide a stronger guarantee about colors,
+    // we sanity-check that the default coloring behavior was used.
+    int64_t alloc_memory_space = -1;
+    for (const auto& [value, _] : alloc.assigned_buffers()) {
+      const HloPosition& defining_position = value->defining_position();
+      int64_t memory_space = Layout::kDefaultMemorySpace;
+      if (defining_position.shape().has_layout()) {
+        memory_space = defining_position.shape().layout().memory_space();
+      }
+      if (alloc_memory_space == -1) {
+        alloc_memory_space = memory_space;
+      } else {
+        CHECK(alloc_memory_space == memory_space &&
+              "expected same memory space for all assignments in allocation");
+      }
+    }
+
+    bool is_host = alloc_memory_space == Layout::kHostMemorySpace;
+    int64_t size = alloc.size();
+    if (alloc.is_entry_computation_parameter()) {
+      if (is_host) {
+        host_argument_size_in_bytes += size;
+      } else {
+        argument_size_in_bytes += size;
+      }
+      if (alloc.is_parameter_aliased_with_output()) {
+        if (is_host) {
+          host_alias_size_in_bytes += size;
+        } else {
+          alias_size_in_bytes += size;
+        }
+      }
+    }
+    if (alloc.maybe_live_out()) {
+      if (is_host) {
+        host_output_size_in_bytes += size;
+      } else {
+        output_size_in_bytes += size;
+      }
+    }
+    if (alloc.IsPreallocatedTempBuffer()) {
+      if (is_host) {
+        host_temp_size_in_bytes += size;
+      } else {
+        temp_size_in_bytes += size;
+      }
+    }
+  }
+}
+
 void GetOpSharding(std::vector<OpSharding>& out, const OpSharding& sharding) {
   if (sharding.type() == OpSharding::TUPLE) {
     for (const OpSharding& s : sharding.tuple_shardings()) {
@@ -254,7 +365,7 @@ std::optional<std::vector<OpSharding>> PjRtExecutable::GetParameterShardings()
   return out;
 }
 
-StatusOr<std::vector<Shape>> PjRtExecutable::GetOutputShapes() const {
+absl::StatusOr<std::vector<Shape>> PjRtExecutable::GetOutputShapes() const {
   TF_ASSIGN_OR_RETURN(auto modules, GetHloModules());
   std::vector<Shape> output_shapes;
   output_shapes.reserve(modules.size());
@@ -264,7 +375,7 @@ StatusOr<std::vector<Shape>> PjRtExecutable::GetOutputShapes() const {
   return output_shapes;
 }
 
-StatusOr<std::vector<std::vector<PrimitiveType>>>
+absl::StatusOr<std::vector<std::vector<PrimitiveType>>>
 PjRtExecutable::GetOutputElementTypes() const {
   TF_ASSIGN_OR_RETURN(auto output_shapes, GetOutputShapes());
   std::vector<std::vector<PrimitiveType>> output_element_types;
@@ -292,7 +403,7 @@ PjRtExecutable::GetOutputElementTypes() const {
   return output_element_types;
 }
 
-StatusOr<std::vector<std::vector<DimensionVector>>>
+absl::StatusOr<std::vector<std::vector<DimensionVector>>>
 PjRtExecutable::GetOutputDimensions() const {
   TF_ASSIGN_OR_RETURN(auto output_shapes, GetOutputShapes());
   std::vector<std::vector<DimensionVector>> output_dimensions;
@@ -372,7 +483,7 @@ PjRtExecutable::GetOutputLayouts() const {
   return result;
 }
 
-StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
 PjRtExecutableUtil::RunHloCostAnalysis(const PjRtExecutable& executable,
                                        HloCostAnalysis* hlo_cost_analysis) {
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> modules,
@@ -391,7 +502,7 @@ PjRtExecutableUtil::RunHloCostAnalysis(const PjRtExecutable& executable,
   return RunHloCostAnalysis(modules, hlo_cost_analysis);
 }
 
-StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
 PjRtExecutableUtil::RunHloCostAnalysis(
     const std::vector<std::shared_ptr<xla::HloModule>>& hlo_modules,
     HloCostAnalysis* hlo_cost_analysis) {
@@ -413,7 +524,8 @@ PjRtExecutableUtil::RunHloCostAnalysis(
   return ret;
 }
 
-StatusOr<std::vector<std::pair<std::string, CompileOptions::OptionOverride>>>
+absl::StatusOr<
+    std::vector<std::pair<std::string, CompileOptions::OptionOverride>>>
 CompileOptions::LoadEnvOptionOverrides(
     const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
         env_option_overrides) {
@@ -447,8 +559,8 @@ CompileOptions::LoadEnvOptionOverrides(
   return result;
 }
 
-Status CompileOptions::ApplyOption(const std::string& key,
-                                   const OptionOverride& value) {
+absl::Status CompileOptions::ApplyOption(const std::string& key,
+                                         const OptionOverride& value) {
   if (auto* xla_field = xla::DebugOptions::descriptor()->FindFieldByName(key)) {
     xla::DebugOptions& debug_options =
         *executable_build_options.mutable_debug_options();
@@ -496,14 +608,14 @@ Status CompileOptions::ApplyOption(const std::string& key,
   }
 }
 
-Status CompileOptions::ApplyAllOptionOverrides() {
+absl::Status CompileOptions::ApplyAllOptionOverrides() {
   for (auto& option : env_option_overrides) {
     TF_RETURN_IF_ERROR(ApplyOption(option.first, option.second));
   }
   return OkStatus();
 }
 
-Status CompileOptions::ApplyOptionFromString(
+absl::Status CompileOptions::ApplyOptionFromString(
     const tsl::protobuf::FieldDescriptor* field, const std::string& value) {
   xla::DebugOptions& debug_options =
       *executable_build_options.mutable_debug_options();

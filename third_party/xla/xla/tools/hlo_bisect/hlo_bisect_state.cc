@@ -55,8 +55,8 @@ std::vector<HloInstruction*> GetModifiedInstructionPostOrder(
 // Changes the module by replacing the original root instruction of the entry
 // computation with a new root instruction that is a tuple containing the values
 // in `outputs`.
-Status MorphModuleWithOutputs(HloModule* module,
-                              absl::Span<HloInstruction* const> outputs) {
+absl::Status MorphModuleWithOutputs(HloModule* module,
+                                    absl::Span<HloInstruction* const> outputs) {
   HloComputation* entry_computation = module->entry_computation();
   HloInstruction* new_root = outputs.size() == 1
                                  ? outputs[0]
@@ -75,7 +75,7 @@ Status MorphModuleWithOutputs(HloModule* module,
 // Changes the module by keeping only the provided instructions of the entry
 // computation (should be sorted in the modified instruction post order),
 // inserting a new root instruction to keep all values live.
-Status MorphModuleWithInstructions(
+absl::Status MorphModuleWithInstructions(
     HloModule* module, absl::Span<HloInstruction* const> instructions) {
   ConstHloInstructionSet in_range_instructions(instructions.begin(),
                                                instructions.end());
@@ -94,7 +94,8 @@ Status MorphModuleWithInstructions(
   return MorphModuleWithOutputs(module, outputs);
 }
 
-Status MorphModuleWithInstructions(HloModule* module, size_t num_instructions) {
+absl::Status MorphModuleWithInstructions(HloModule* module,
+                                         size_t num_instructions) {
   std::vector<HloInstruction*> ordered_instructions =
       GetModifiedInstructionPostOrder(module->entry_computation());
   HloInstruction* const* instructions_begin = &ordered_instructions.front();
@@ -104,7 +105,7 @@ Status MorphModuleWithInstructions(HloModule* module, size_t num_instructions) {
 
 // Changes the module by replacing some instructions in the entry computation
 // with literals.
-Status MorphModuleWithLiterals(
+absl::Status MorphModuleWithLiterals(
     HloModule* module, absl::flat_hash_map<std::string, Literal> literal_map) {
   HloComputation* entry_computation = module->entry_computation();
 
@@ -120,7 +121,7 @@ Status MorphModuleWithLiterals(
     if (!instruction->IsDead()) {
       HloInstruction* new_instruction = entry_computation->AddInstruction(
           HloInstruction::CreateConstant(std::move(literal)));
-      Status replace_status =
+      absl::Status replace_status =
           entry_computation->ReplaceInstruction(instruction, new_instruction);
       TF_RETURN_IF_ERROR(replace_status);
     }
@@ -320,11 +321,11 @@ absl::StatusOr<bool> HloBisectState::TrimByUsingConstants() {
   return has_bug;
 }
 
-Status HloBisectState::ExpectModuleIsBuggy() {
+absl::Status HloBisectState::ExpectModuleIsBuggy() {
   // Verify that the current module has a bug.
   TF_ASSIGN_OR_RETURN(bool has_bug, RunModule(*module_));
   if (has_bug) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Check for the bug checker stability.

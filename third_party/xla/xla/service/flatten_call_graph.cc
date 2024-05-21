@@ -68,7 +68,7 @@ void ReplaceCalledComputation(HloInstruction* instruction,
 }
 
 // Flatten a single call graph node. Expects to visit nodes in postorder.
-Status FlattenNode(const CallGraphNode& node) {
+absl::Status FlattenNode(const CallGraphNode& node) {
   HloComputation* computation = node.computation();
   HloModule* module = computation->parent();
   // Clone callee for all call-sites except the first one.

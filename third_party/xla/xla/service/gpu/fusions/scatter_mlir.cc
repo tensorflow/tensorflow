@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -52,7 +53,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace ma = mlir::arith;
+namespace ma = ::mlir::arith;
+namespace scf = ::mlir::scf;
 
 using llvm::SmallVector;
 using mlir::Location;
@@ -61,12 +63,9 @@ using mlir::Value;
 using mlir::ValueRange;
 using mlir::func::ReturnOp;
 using mlir::tensor::InsertOp;
-using mlir_converter::ApplyAffineMap;
 using mlir_converter::CallTargetProvider;
 using mlir_converter::PartitionedComputations;
 using mlir_converter::ProvideParameter;
-
-namespace scf = ::mlir::scf;
 
 }  // namespace
 
@@ -211,9 +210,8 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
       [&](ValueRange output_tensors, ValueRange dim_values,
           ValueRange symbol_values) -> SmallVector<Value> {
         // Extract input element.
-        auto update_tensor_indices =
-            ApplyAffineMap(thread_id_to_update_map.GetAffineMap(), dim_values,
-                           symbol_values, b);
+        auto update_tensor_indices = mlir_converter::ApplyIndexing(
+            thread_id_to_update_map, dim_values, symbol_values, b);
         auto update_elem = ProvideParameter(
             root_computation, scatter, kScatterUpdateIndex,
             update_tensor_indices, call_targets, entry_function, b)[0];
@@ -237,17 +235,15 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
             index = b.create<ma::IndexCastUIOp>(b.getIndexType(), index);
           } else {
             index = b.create<ma::IndexCastOp>(b.getIndexType(), index);
-            auto c0 = b.create<ma::ConstantIndexOp>(0);
-            in_bounds = b.create<ma::AndIOp>(
-                in_bounds,
-                b.create<ma::CmpIOp>(ma::CmpIPredicate::sge, index, c0));
           }
           Value ub = b.create<ma::ConstantIndexOp>(
               scatter_operand->shape().dimensions(i) -
               scatter_update->shape().dimensions(i + 1));
+          // One bounds check is enough even for signed indices: `sge 0` is
+          // implied by `ule ub`, because `ub >= 0`.
           in_bounds = b.create<ma::AndIOp>(
               in_bounds,
-              b.create<ma::CmpIOp>(ma::CmpIPredicate::sle, index, ub));
+              b.create<ma::CmpIOp>(ma::CmpIPredicate::ule, index, ub));
           indices[i] = b.create<ma::AddIOp>(index, indices[i]);
         }
         // Call scatter's computation if is_in_bounds.

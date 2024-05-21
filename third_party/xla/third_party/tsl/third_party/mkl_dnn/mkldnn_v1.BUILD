@@ -94,8 +94,8 @@ expand_template(
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "3",
-        "@DNNL_VERSION_MINOR@": "3",
-        "@DNNL_VERSION_PATCH@": "4",
+        "@DNNL_VERSION_MINOR@": "4",
+        "@DNNL_VERSION_PATCH@": "1",
         "@DNNL_VERSION_HASH@": "N/A",
     },
     template = "include/oneapi/dnnl/dnnl_version.h.in",

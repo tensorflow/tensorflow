@@ -25,13 +25,14 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 
-// Error utilities for MLIR when interacting with code using Status returns.
+// Error utilities for MLIR when interacting with code using absl::Status
+// returns.
 namespace mlir {
 // Diagnostic handler that collects all the diagnostics reported and can
-// produce a Status to return to callers. This is for the case where MLIR
-// functions are called from a function that will return a Status: MLIR code
-// still uses the default error reporting, and the final return function can
-// return the Status constructed from the diagnostics collected.
+// produce a absl::Status to return to callers. This is for the case where MLIR
+// functions are called from a function that will return a absl::Status: MLIR
+// code still uses the default error reporting, and the final return function
+// can return the absl::Status constructed from the diagnostics collected.
 class BaseScopedDiagnosticHandler : public SourceMgrDiagnosticHandler {
  public:
   explicit BaseScopedDiagnosticHandler(MLIRContext* context,
@@ -42,10 +43,10 @@ class BaseScopedDiagnosticHandler : public SourceMgrDiagnosticHandler {
   // Returns whether any errors were reported.
   bool ok() const;
 
-  // Returns Status corresponding to the diagnostics reported. This consumes
-  // the diagnostics reported and returns a Status of type Unknown. It is
-  // required to consume the error status, if there is one, before destroying
-  // the object.
+  // Returns absl::Status corresponding to the diagnostics reported. This
+  // consumes the diagnostics reported and returns a absl::Status of type
+  // Unknown. It is required to consume the error status, if there is one,
+  // before destroying the object.
   absl::Status ConsumeStatus();
 
   // Returns the combination of the passed in status and consumed diagnostics.

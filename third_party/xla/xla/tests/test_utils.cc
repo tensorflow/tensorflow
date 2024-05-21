@@ -261,7 +261,7 @@ absl::StatusOr<Literal> MakeFakeLiteralInternal(
   Literal literal(new_shape);
 
   TF_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+      [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
           if constexpr (primitive_util::IsFloatingPointType(
@@ -639,8 +639,8 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
   return std::move(arguments);
 }
 
-Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
-                       bool allow_mixed_precision) {
+absl::Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
+                             bool allow_mixed_precision) {
   return HloVerifier(/*layout_sensitive=*/layout_sensitive,
                      /*allow_mixed_precision=*/allow_mixed_precision)
       .Run(module)

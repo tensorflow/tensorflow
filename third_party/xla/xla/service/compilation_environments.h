@@ -84,7 +84,7 @@ class CompilationEnvironments {
   // All added environments are processed via registered ProcessNewEnvFns. If
   // such a function was not regitered for env's proto descriptor or env's
   // proto type is unknown, an error will be returned.
-  Status AddEnv(std::unique_ptr<tsl::protobuf::Message> env);
+  absl::Status AddEnv(std::unique_ptr<tsl::protobuf::Message> env);
 
   // Returns the CompilationEnvironment corresponding to T. If such an
   // environment has not been added, ProcessNewEnvFn(nullptr) will be added and
@@ -122,8 +122,8 @@ class CompilationEnvironments {
   // are added to CompilationEnvironments.
   static void EnvAdded(std::string_view env_type);
 
-  Status AddEnvImpl(const tsl::protobuf::Descriptor& descriptor,
-                    std::unique_ptr<tsl::protobuf::Message> env);
+  absl::Status AddEnvImpl(const tsl::protobuf::Descriptor& descriptor,
+                          std::unique_ptr<tsl::protobuf::Message> env);
 
   absl::flat_hash_map<const tsl::protobuf::Descriptor*,
                       std::unique_ptr<tsl::protobuf::Message>>

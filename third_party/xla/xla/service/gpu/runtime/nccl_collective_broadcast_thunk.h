@@ -32,9 +32,9 @@ namespace xla::gpu {
 // Thunk that performs a NCCL-based collective broadcast.
 class NcclCollectiveBroadcastStartThunk : public NcclCollectiveThunk {
  public:
-  static Status CheckImplementable(const HloInstruction* instr,
-                                   int64_t replica_count,
-                                   int64_t partition_count);
+  static absl::Status CheckImplementable(const HloInstruction* instr,
+                                         int64_t replica_count,
+                                         int64_t partition_count);
 
   static CollectiveOpGroupMode GetGroupMode(
       const HloCollectiveBroadcastInstruction* inst);
@@ -50,17 +50,19 @@ class NcclCollectiveBroadcastStartThunk : public NcclCollectiveThunk {
       std::vector<Buffer> buffers);
 
  protected:
-  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
-                           NcclCommHandleWrapper comm_wrapper) override;
+  absl::Status RunNcclCollective(const ExecuteParams& params,
+                                 se::Stream& stream,
+                                 NcclCommHandleWrapper comm_wrapper) override;
 
  private:
   const NcclCollectiveConfig config_;
   const std::vector<Buffer> buffers_;
 };
 
-Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, NcclApi::NcclCommHandle comm,
-                              NcclApi* nccl_api);
+absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
+                                    se::Stream& stream,
+                                    NcclApi::NcclCommHandle comm,
+                                    NcclApi* nccl_api);
 
 }  // namespace xla::gpu
 

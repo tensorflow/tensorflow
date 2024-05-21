@@ -26,24 +26,24 @@ limitations under the License.
 
 namespace xla {
 
-Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
+absl::Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
   if (!ShapeUtil::Compatible(other_shape, shape_)) {
     return InvalidArgument("Shape %s is not compatible with shape %s",
                            ShapeUtil::HumanString(other_shape),
                            ShapeUtil::HumanString(shape()));
   }
   shape_ = other_shape;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
+absl::Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
   if (!ShapeUtil::Compatible(*to_shape, shape_)) {
     return InvalidArgument("Shape %s is not compatible with shape %s",
                            ShapeUtil::HumanString(*to_shape),
                            ShapeUtil::HumanString(shape()));
   }
   *to_shape = shape_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ShapeLayout::SetToDefaultLayout() {

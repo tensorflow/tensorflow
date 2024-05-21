@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "FusedResizeAndPadConv2D"
   input_arg {
     name: "input"

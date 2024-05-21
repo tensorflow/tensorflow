@@ -244,6 +244,11 @@ XLA_TEST_F(MultiOutputFusionTest,
 }
 
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
+#ifdef XLA_TEST_BACKEND_GPU
+  if (GetDebugOptionsForTest().xla_gpu_enable_mlir_emitters()) {
+    GTEST_SKIP() << "Nested fusions not supported on GPU with MLIR emitters.";
+  }
+#endif
   const char* testcase = R"(
     HloModule m, is_scheduled=true
 

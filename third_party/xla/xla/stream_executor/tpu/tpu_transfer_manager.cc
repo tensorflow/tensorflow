@@ -48,9 +48,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-template <typename T>
-using StatusOr = absl::StatusOr<T>;
-
 TpuTransferManager::TpuTransferManager() {
   manager_ = stream_executor::tpu::ExecutorApiFn()->TpuTransferManager_NewFn();
 }
@@ -246,7 +243,7 @@ int64_t TpuTransferManager::GetByteSizeRequirement(
   return size_in_bytes;
 }
 
-StatusOr<xla::Shape> TpuTransferManager::ChooseCompactLayoutForShape(
+absl::StatusOr<xla::Shape> TpuTransferManager::ChooseCompactLayoutForShape(
     const xla::Shape& host_shape) const {
   XLA_Shape c_host_shape;
   ApiConverter::ToC(host_shape, &c_host_shape);

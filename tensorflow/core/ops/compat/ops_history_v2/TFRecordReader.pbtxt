@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TFRecordReader"
   output_arg {
     name: "reader_handle"

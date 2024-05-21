@@ -49,9 +49,6 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   static const ::stream_executor::Platform::Id kId;
 
-  template <typename T>
-  using StatusOr = ::absl::StatusOr<T>;
-
   TpuPlatform();
 
   ~TpuPlatform() override;
@@ -82,22 +79,22 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
     LOG(FATAL) << "Not yet implemented";
   }
 
-  StatusOr<std::unique_ptr<::stream_executor::DeviceDescription>>
+  absl::StatusOr<std::unique_ptr<::stream_executor::DeviceDescription>>
   DescriptionForDevice(int ordinal) const override {
     LOG(FATAL) << "Not yet implemented";
   }
 
-  StatusOr<::stream_executor::StreamExecutor*> ExecutorForDevice(
+  absl::StatusOr<::stream_executor::StreamExecutor*> ExecutorForDevice(
       int ordinal) override {
     stream_executor::StreamExecutorConfig config;
     config.ordinal = ordinal;
     return GetExecutor(config);
   }
 
-  StatusOr<::stream_executor::StreamExecutor*> GetExecutor(
+  absl::StatusOr<::stream_executor::StreamExecutor*> GetExecutor(
       const ::stream_executor::StreamExecutorConfig& config) override;
 
-  StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
+  absl::StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
   GetUncachedExecutor(
       const ::stream_executor::StreamExecutorConfig& config) override;
 

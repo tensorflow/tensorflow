@@ -314,32 +314,32 @@ class Array {
 
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array. If a callback returns a non-OK status, returns that else returns
-  // OkStatus().
-  Status EachStatus(
-      absl::FunctionRef<Status(absl::Span<const int64_t>, T*)> f) {
+  // absl::OkStatus().
+  absl::Status EachStatus(
+      absl::FunctionRef<absl::Status(absl::Span<const int64_t>, T*)> f) {
     OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
-      Status s = f(index.span(), &values_[i]);
+      absl::Status s = f(index.span(), &values_[i]);
       if (!s.ok()) {
         return s;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Invokes a callback with the (indices, value) for each cell in the array.
   // If a callback returns a non-OK status, returns that else returns
-  // OkStatus().
-  Status EachStatus(
-      absl::FunctionRef<Status(absl::Span<const int64_t>, T)> f) const {
+  // absl::OkStatus().
+  absl::Status EachStatus(
+      absl::FunctionRef<absl::Status(absl::Span<const int64_t>, T)> f) const {
     OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
-      Status s = f(index.span(), values_[i]);
+      absl::Status s = f(index.span(), values_[i]);
       if (!s.ok()) {
         return s;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns the value at the cell specified by the indexes. The number of

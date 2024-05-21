@@ -62,7 +62,7 @@ class InstructionListVisitor : public DfsHloVisitorWithDefault {
  public:
   explicit InstructionListVisitor(const HloInstruction* root) : root_(root) {}
 
-  Status DefaultAction(HloInstruction* hlo) override {
+  absl::Status DefaultAction(HloInstruction* hlo) override {
     // For each instruction, just push it on the list after walking the
     // operands.
     instructions_.push_back(hlo);

@@ -87,15 +87,17 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
       : platform_id_(platform_id),
         platform_name_(platform_name),
         platform_version_(platform_version),
-        gpu_topology_(gpu_device_ids, platform_version),
+        // TODO(b/331224674): Add support for multi-host.
+        gpu_topology_(gpu_device_ids, platform_version, /*num_slices=*/1,
+                      /*num_hosts_per_slice=*/1,
+                      /*num_devices_per_host=*/gpu_device_ids.size()),
         attributes_(attributes) {}
 
   bool operator==(const StreamExecutorGpuTopologyDescription& other) const {
     return this->platform_id() == other.platform_id() &&
            this->platform_name() == other.platform_name() &&
            this->platform_version() == other.platform_version() &&
-           this->gpu_topology().device_ids() ==
-               other.gpu_topology().device_ids();
+           this->gpu_topology() == other.gpu_topology();
   }
 
   PjRtPlatformId platform_id() const override { return platform_id_; }
@@ -150,7 +152,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
     return attributes_;
   }
 
-  StatusOr<Layout> GetDefaultLayout(
+  absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
 
@@ -203,19 +205,10 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   StreamExecutorGpuClient(
       std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-      std::vector<std::unique_ptr<PjRtStreamExecutorMemorySpace>> memory_spaces,
       int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tsl::Allocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
-      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
-      : xla::PjRtStreamExecutorClient(
-            platform_name, client, std::move(devices), std::move(memory_spaces),
-            process_index, std::move(allocator),
-            std::move(host_memory_allocator),
-            should_stage_host_to_device_transfers, std::move(gpu_run_options)),
-        topology_(xla::StreamExecutorGpuTopologyDescription::Create(
-            tsl::Fingerprint64(platform_name), platform_name,
-            devices_.back()->device_kind(), devices_)) {}
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
 
   absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -280,9 +273,6 @@ absl::Status BuildDistributedDevices(
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
     absl::Duration get_local_topology_timeout = absl::Minutes(2),
     absl::Duration get_global_topology_timeout = absl::Minutes(5));
-
-std::vector<std::unique_ptr<PjRtStreamExecutorMemorySpace>> BuildMemorySpaces(
-    absl::Span<const std::unique_ptr<PjRtStreamExecutorDevice>> devices);
 
 struct GpuClientOptions {
   GpuAllocatorConfig allocator_config;

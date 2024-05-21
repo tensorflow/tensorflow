@@ -891,7 +891,7 @@ bool RemoveShardingMetadata(
 // instructions with a device assignment are on D. Further, annotate the root
 // instruction of the while body to ensure that HLO partitioning will keep the
 // entire while instruction on D.
-Status CheckAndUpdateDeviceAssignmentsInWhileBody(
+absl::Status CheckAndUpdateDeviceAssignmentsInWhileBody(
     HloInstruction* while_instruction) {
   auto bad_status = [](HloInstruction* instruction, int64_t device,
                        HloInstruction* channel_instruction,
@@ -1770,7 +1770,7 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
   return non_root_users;
 }
 
-/*static*/ Status ShardingPropagation::NormalizeDomain(
+/*static*/ absl::Status ShardingPropagation::NormalizeDomain(
     const DomainMetadata::Domain& domain, const DomainMetadata* metadata) {
   if (metadata != nullptr) {
     TF_ASSIGN_OR_RETURN(const auto& sharding_metadata,
@@ -3281,6 +3281,14 @@ absl::StatusOr<bool> ShardingPropagation::Run(
           }
           for (auto user : hlo_for_users->users()) {
             already_inferred_from_operands.erase(user);
+            // If the user has called computations, then the parameter
+            // instructions of these called computations are also removed from
+            // already_inferred_from_operands.
+            for (auto c : user->called_computations()) {
+              for (auto parameter : c->parameter_instructions()) {
+                already_inferred_from_operands.erase(parameter);
+              }
+            }
           }
           if (instruction_to_shard_group_id.contains(hlo)) {
             const int64_t shard_group_id =

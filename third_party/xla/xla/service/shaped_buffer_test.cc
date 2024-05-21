@@ -72,7 +72,8 @@ class TestAllocator : public se::DeviceMemoryAllocator {
                                   device_ordinal, this);
   }
 
-  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override {
+  absl::Status Deallocate(int device_ordinal,
+                          se::DeviceMemoryBase mem) override {
     if (mem.is_null()) {
       return OkStatus();
     }

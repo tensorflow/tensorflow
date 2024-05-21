@@ -143,7 +143,7 @@ cublasFillMode_t GpuBlasUpperLower(se::blas::UpperLower uplo) {
   }
 }
 
-// Converts a cuSolver absl::Status to a Status.
+// Converts a cuSolver absl::Status to a absl::Status.
 absl::Status ConvertStatus(cusolverStatus_t status) {
   switch (status) {
     case CUSOLVER_STATUS_SUCCESS:

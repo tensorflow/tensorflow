@@ -50,13 +50,13 @@ struct CallOptions {
 
 // Takes ownership of the XLA FFI error and returns underlying status. Frees
 // `error` if it's not nullptr; returns OK status otherwise.
-Status TakeStatus(XLA_FFI_Error* error);
+absl::Status TakeStatus(XLA_FFI_Error* error);
 
-Status Call(Ffi& handler, CallFrame& call_frame,
-            const CallOptions& options = {});
+absl::Status Call(Ffi& handler, CallFrame& call_frame,
+                  const CallOptions& options = {});
 
-Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
-            const CallOptions& options = {});
+absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
+                  const CallOptions& options = {});
 
 namespace internal {
 // This is an internal workaround to override FFI execution context for FFI

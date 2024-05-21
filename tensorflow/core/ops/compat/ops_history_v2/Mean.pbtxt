@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Mean"
   input_arg {
     name: "input"

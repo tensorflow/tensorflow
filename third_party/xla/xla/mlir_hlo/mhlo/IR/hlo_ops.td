@@ -120,12 +120,12 @@ def MHLO_IotaOp : MHLO_Op<"iota", [Pure]> {
 def MHLO_DynamicIotaOp: MHLO_ShapedInterfaceOp<"dynamic_iota", [Pure]> {
   let summary = "DynamicIota operation";
   let description = [{
-    This operation is a work in progress, so it is not yet included in
-    the specification: https://github.com/openxla/stablehlo/issues/8.
+    This operation is functionally identical to
+    [iota](https://github.com/openxla/stablehlo/blob/main/docs/spec.md#iota)
+    op, but the result shape is specified dynamically via `output_shape`.
 
-    Informally, this operation does the same thing as IotaOp except that the
-    result shape is specified dynamically via `output_shape`:
-    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#iota
+    See:
+    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dynamic_iota
 
     Example:
     ```mlir
@@ -2126,19 +2126,30 @@ def MHLO_DynamicBroadcastInDimOp : MHLO_ShapedInterfaceOp<
     "dynamic_broadcast_in_dim", [Pure]> {
   let summary = "DynamicBroadcastInDim operation";
   let description = [{
-    This operation is a work in progress, so it is not yet included in
-    the specification: https://github.com/openxla/stablehlo/issues/8.
-
-    Informally, this operation does the same thing as BroadcastInDimOp except
-    that the result shape is specified dynamically via `output_dimensions`:
-    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#broadcast_in_dim
+    This operation is functionally identical to
+    [broadcast_in_dim](https://github.com/openxla/stablehlo/blob/main/docs/spec.md#broadcast_in_dim)
+    op, but the result shape is specified dynamically via `output_dimensions`.
 
     It also accepts optional attributes to express static knowledge about the
     expanding behavior of dimensions. If not specified, all dimensions are
     assumed to be possibly expanding. The sets of dimensions that are known to
     be expanding and the set of dimensions that are known to be non-expanding
     must be disjoint and they must be a subset of the operand's dimensions.
+
+    See: https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dynamic_broadcast_in_dim
+
+    Example:
+    ```mlir
+    %operand = mhlo.constant dense<[[1, 2, 3]]> : tensor<1x3xi64>
+    %output_dimensions = mhlo.constant dense<[2, 3, 2]> : tensor<3xi64>
+    %result = "mhlo.dynamic_broadcast_in_dim"(%operand, %output_dimensions) {
+      broadcast_dimensions = array<i64: 2, 1>,
+      known_expanding_dimensions = array<i64: 0>,
+      known_non_expanding_dimensions = array<i64: 1>
+    } : (tensor<1x3xi64>, tensor<3xi64>) -> tensor<2x3x2xi64>
+    ```
   }];
+
   let arguments = (ins
     MHLO_Tensor:$operand,
     MHLO_DimensionTensor:$output_dimensions,
@@ -2854,16 +2865,17 @@ def MHLO_ReshapeOp: MHLO_Op<"reshape",
 def MHLO_DynamicReshapeOp: MHLO_ShapedInterfaceOp<"dynamic_reshape", [Pure]> {
   let summary = "DynamicReshape operation";
   let description = [{
-    This operation is a work in progress, so it is not yet included in
-    the specification: https://github.com/openxla/stablehlo/issues/8.
+    This operation is functionally identical to
+    [reshape](https://github.com/openxla/stablehlo/blob/main/docs/spec.md#reshape)
+    op, but the result shape is specified dynamically via `output_shape`.
 
-    Informally, this operation does the same thing as ReshapeOp except that the
-    result shape is specified dynamically via `output_shape`:
-    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#reshape
+    See:
+    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dynamic_reshape
 
     Example:
     ```mlir
-    %0 = mhlo.dynamic_reshape %arg0, %shape : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+    %output_shape = mhlo.constant dense<[3, 2]> : tensor<2xi64>
+    %result = mhlo.dynamic_reshape %operand, %output_shape : (tensor<2x3xi64>, tensor<2xi64>) -> tensor<3x2xi64>
     ```
   }];
 
@@ -3795,7 +3807,7 @@ def MHLO_DynamicGatherOp: MHLO_Op<"dynamic_gather",
   let arguments = (ins
     MHLO_Tensor:$operand,
     MHLO_IntTensor:$start_indices,
-    MHLO_IntTensor:$slice_sizes,
+    MHLO_Static1DIntTensor:$slice_sizes,
     MHLO_GatherDimensionNumbers:$dimension_numbers,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$indices_are_sorted
   );

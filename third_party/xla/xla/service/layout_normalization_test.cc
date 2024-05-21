@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "xla/service/layout_normalization.h"
 
+#include <functional>
 #include <optional>
 #include <utility>
 
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/scatter_simplifier.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -26,9 +31,11 @@ namespace {
 
 class LayoutNormalizationTest : public HloTestBase {
  public:
-  void CheckLayoutNormalization(absl::string_view hlo,
-                                std::optional<absl::string_view> expected) {
-    RunAndFilecheckHloRewrite(hlo, LayoutNormalization{}, expected);
+  void CheckLayoutNormalization(
+      absl::string_view hlo, std::optional<absl::string_view> expected,
+      std::function<void(HloModule*)> after_pass_checks = nullptr) {
+    RunAndFilecheckHloRewrite(hlo, LayoutNormalization{}, expected,
+                              after_pass_checks);
   }
 };
 
@@ -231,6 +238,24 @@ ENTRY main {
 
   CheckLayoutNormalization(hlo, R"(
 // CHECK: [[broadcast_0:%[^ ]+]] = f32[5,2,3,4]{3,2,1,0} broadcast([[bitcast_1:%[^ ]+]]), dimensions={0,3}
+// CHECK: [[abs_2:%[^ ]+]] = f32[5,2,3,4]{3,2,1,0} abs([[broadcast_0]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, BroadcastOperandLayoutNotInverseOfItself) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[4,3,5]{0,2,1} parameter(0)
+  b = f32[4,3,2,5]{0,1,2,3} broadcast(a), dimensions={0,1,3}
+  ROOT out = abs(b)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[3,5,4]{2,1,0} bitcast
+// CHECK: [[broadcast_0:%[^ ]+]] = f32[5,2,3,4]{3,2,1,0} broadcast([[bitcast_1]]), dimensions={2,0,3}
 // CHECK: [[abs_2:%[^ ]+]] = f32[5,2,3,4]{3,2,1,0} abs([[broadcast_0]])
 )");
 }
@@ -749,6 +774,102 @@ ENTRY main {
   CheckLayoutNormalization(hlo, R"(
 // CHECK: bitcast-convert({{.*}}), metadata={op_name="test"}
 )");
+}
+
+TEST_F(LayoutNormalizationTest, Scatter) {
+  const char* hlo = R"(
+HloModule simplified_scatter
+
+region_0.10 {
+  Arg_0.11 = s16[] parameter(0)
+  Arg_1.12 = s16[] parameter(1)
+  ROOT maximum.13 = s16[] maximum(Arg_0.11, Arg_1.12)
+}
+
+ENTRY main.17 {
+  p0 = s16[3,2,2,14,16]{0,1,4,3,2} parameter(0)
+  p1 = s32[2,11]{0,1} parameter(1)
+  p2 = s16[11,3,5]{2,0,1} parameter(2)
+  ROOT scatter = s16[3,2,2,14,16]{0,1,4,3,2} scatter(p0, p1, p2), update_window_dims={1,2}, inserted_window_dims={1,2,3}, scatter_dims_to_operand_dims={4,0}, index_vector_dim=0, to_apply=region_0.10
+}
+)";
+
+  CheckLayoutNormalization(
+      hlo, R"(
+// CHECK: scatter({{.*}}),
+// CHECK-SAME: update_window_dims={2,0}, inserted_window_dims={0,1,3}, scatter_dims_to_operand_dims={2,4}, index_vector_dim=1, to_apply=%region_0.10
+)",
+      // Run the ScatterSimplifier afterwards, otherwise the verifier will
+      // complain!
+      [](HloModule* module) {
+        TF_CHECK_OK(ScatterSimplifier().Run(module).status());
+      });
+}
+
+TEST_F(LayoutNormalizationTest, SimplifiedScatter) {
+  const char* hlo = R"(
+HloModule simplified_scatter
+
+region_0.10 {
+  Arg_0.11 = s16[] parameter(0)
+  Arg_1.12 = s16[] parameter(1)
+  ROOT maximum.13 = s16[] maximum(Arg_0.11, Arg_1.12)
+}
+
+ENTRY main.17 {
+  p0 = s16[16,3,2,2,14]{0,4,3,2,1} parameter(0)
+  p1 = s32[528,2]{1,0} parameter(1)
+  p2 = s16[528,5,3,1,1,1]{1,2,0,5,4,3} parameter(2)
+  ROOT scatter = s16[16,3,2,2,14]{0,4,3,2,1} scatter(p0, p1, p2), update_window_dims={1,2,3,4,5}, inserted_window_dims={}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=1, to_apply=region_0.10
+}
+)";
+
+  CheckLayoutNormalization(
+      hlo, R"(
+// CHECK: scatter({{.*}}),
+// CHECK-SAME: update_window_dims={4,0,1,2,5}, inserted_window_dims={}, scatter_dims_to_operand_dims={4,0}, index_vector_dim=1, to_apply=%region_0.10
+)",
+      // Run the ScatterSimplifier afterwards, otherwise the verifier will
+      // complain!
+      [](HloModule* module) {
+        TF_CHECK_OK(ScatterSimplifier().Run(module).status());
+      });
+}
+
+TEST_F(LayoutNormalizationTest, VariadicScatter) {
+  const char* hlo = R"(
+HloModule simplified_scatter
+
+region_0.10 {
+  Arg_0.11 = s16[] parameter(0)
+  Arg_1.12 = s16[] parameter(1)
+  Arg_2.13 = s16[] parameter(2)
+  Arg_3.14 = s16[] parameter(3)
+  maximum.15 = s16[] maximum(Arg_0.11, Arg_1.12)
+  maximum.16 = s16[] maximum(Arg_2.13, Arg_3.14)
+  ROOT res = (s16[], s16[]) tuple(maximum.15, maximum.16)
+}
+
+ENTRY main.17 {
+  p0 = s16[16,3,2,2,14]{0,4,3,2,1} parameter(0)
+  p1 = s16[16,3,2,2,14]{0,4,3,2,1} parameter(1)
+  p2 = s32[528,2]{1,0} parameter(2)
+  p3 = s16[528,5,3,1,1,1]{1,2,0,5,4,3} parameter(3)
+  p4 = s16[528,5,3,1,1,1]{1,2,0,5,4,3} parameter(4)
+  ROOT scatter = (s16[16,3,2,2,14]{0,4,3,2,1}, s16[16,3,2,2,14]{0,4,3,2,1}) scatter(p0, p1, p2, p3, p4), update_window_dims={1,2,3,4,5}, inserted_window_dims={}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=1, to_apply=region_0.10
+}
+)";
+
+  CheckLayoutNormalization(
+      hlo, R"(
+// CHECK: scatter({{.*}}),
+// CHECK-SAME: update_window_dims={4,0,1,2,5}, inserted_window_dims={}, scatter_dims_to_operand_dims={4,0}, index_vector_dim=1, to_apply=%region_0.10
+)",
+      // Run the ScatterSimplifier afterwards, otherwise the verifier will
+      // complain!
+      [](HloModule* module) {
+        TF_CHECK_OK(ScatterSimplifier().Run(module).status());
+      });
 }
 
 }  // namespace

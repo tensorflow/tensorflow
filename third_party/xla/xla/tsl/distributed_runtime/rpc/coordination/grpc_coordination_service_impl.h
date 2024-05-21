@@ -21,13 +21,15 @@ limitations under the License.
 #include "grpcpp/alarm.h"
 #include "grpcpp/completion_queue.h"
 #include "grpcpp/server_builder.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_rpc_handler.h"
 #include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_call.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
-#include "tsl/platform/mutex.h"
-#include "tsl/platform/thread_annotations.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/protobuf/coordination_service.grpc.pb.h"
 #include "tsl/protobuf/coordination_service.pb.h"
@@ -59,15 +61,15 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
 #define HANDLER(method)                                                       \
   void method##Handler(CoordCall<tensorflow::method##Request,                 \
                                  tensorflow::method##Response>* call) {       \
-    tf_shared_lock l(shutdown_mu_);                                           \
+    absl::ReaderMutexLock l(&shutdown_mu_);                                   \
     if (shutdown_) {                                                          \
       call->SendResponse(ToGrpcStatus(                                        \
-          errors::Internal("Coordination service has been shut down.")));     \
+          absl::InternalError("Coordination service has been shut down.")));  \
       return;                                                                 \
     }                                                                         \
     compute_pool_.Schedule([this, call]() {                                   \
       rpc_handler_.method##Async(&call->request, &call->response,             \
-                                 [call](const Status& s) {                    \
+                                 [call](const absl::Status& s) {              \
                                    call->ClearCancelCallback();               \
                                    call->SendResponse(ToGrpcStatus(s));       \
                                  });                                          \
@@ -101,8 +103,8 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   thread::ThreadPool& compute_pool_;
   CoordinationServiceRpcHandler rpc_handler_;
 
-  mutex shutdown_mu_;
-  bool shutdown_ TF_GUARDED_BY(shutdown_mu_);
+  absl::Mutex shutdown_mu_;
+  bool shutdown_ ABSL_GUARDED_BY(shutdown_mu_);
   std::unique_ptr<::grpc::Alarm> shutdown_alarm_;
 
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;

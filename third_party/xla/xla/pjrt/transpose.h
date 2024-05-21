@@ -98,7 +98,7 @@ class TransposePlan {
     int num_threads = 1;
   };
 
-  static StatusOr<std::unique_ptr<TransposePlan>> Create(
+  static absl::StatusOr<std::unique_ptr<TransposePlan>> Create(
       const Options& options);
 
   TransposePlan();
@@ -282,13 +282,14 @@ class TransposePlanCache {
   TransposePlanCache& operator=(TransposePlanCache&&) = delete;
 
   // Creates or returns a cached copy of a transpose plan.
-  StatusOr<std::shared_ptr<TransposePlan>> GetOrCreate(
+  absl::StatusOr<std::shared_ptr<TransposePlan>> GetOrCreate(
       const TransposePlan::Options& options);
 
  private:
   LRUCache<TransposePlanCacheKey,
-           StatusOr<std::shared_ptr<TransposePlan>>>::LRUList lru_list_;
-  LRUCache<TransposePlanCacheKey, StatusOr<std::shared_ptr<TransposePlan>>>
+           absl::StatusOr<std::shared_ptr<TransposePlan>>>::LRUList lru_list_;
+  LRUCache<TransposePlanCacheKey,
+           absl::StatusOr<std::shared_ptr<TransposePlan>>>
       cache_;
 };
 

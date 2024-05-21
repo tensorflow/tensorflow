@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -34,6 +35,8 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/client/xla_computation.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
@@ -43,12 +46,15 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -134,6 +140,41 @@ TEST(StreamExecutorGpuClientTest, MemorySpace) {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, PropagateError) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
+  absl::Status input_error = absl::InvalidArgumentError("input error");
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->CreateErrorBuffer(
+          input_error, shape,
+          *client->addressable_devices()[0]->default_memory_space()));
+
+  static constexpr char const* kAddProgram =
+      R"(
+HloModule Add.6, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
+
+ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
+  %a.1 = f32[] parameter(0)
+  %b.2 = f32[] parameter(1)
+  %add.3 = f32[] add(f32[] %a.1, f32[] %b.2)
+  %add.4 = f32[] add(f32[] %add.3, f32[] %add.3)
+  ROOT %tuple.5 = (f32[], f32[]) tuple(f32[] %add.3, f32[] %add.4)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kAddProgram, *client));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result,
+      executable->Execute({{buffer.get(), buffer.get()}}, /*options=*/{}));
+
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 1);
+  EXPECT_EQ(result[0][0]->GetReadyFuture().Await(), input_error);
+}
+
 TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
@@ -150,7 +191,7 @@ TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
         float* data = reinterpret_cast<float*>(chunk.data());
         sent_value[0] = data[0];
         sent_value[1] = data[1];
-        return OkStatus();
+        return absl::OkStatus();
       }};
 
   // Recv buffer from host.
@@ -165,7 +206,7 @@ TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
         *reinterpret_cast<float*>(chunk1.data()) = 6.0f;
         TF_CHECK_OK(stream->AddChunk(std::move(chunk1)).Await());
 
-        return OkStatus();
+        return absl::OkStatus();
       }};
 
   // Callbacks for point-to-point communication ops.
@@ -202,9 +243,10 @@ TEST(StreamExecutorGpuClientTest, SendErrorNoDeadLock) {
 
   // No-op Recv handler.
   RecvCallback recv_callback = {
-      /*channel_id=*/2,
-      [&](const PjRtTransferMetadata& m,
-          std::unique_ptr<CopyToDeviceStream> stream) { return OkStatus(); }};
+      /*channel_id=*/2, [&](const PjRtTransferMetadata& m,
+                            std::unique_ptr<CopyToDeviceStream> stream) {
+        return absl::OkStatus();
+      }};
 
   // Callbacks for point-to-point communication ops.
   std::vector<std::vector<SendCallback>> send_callbacks = {{send_callback}};
@@ -230,7 +272,7 @@ TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
   // No-op Send handler.
   SendCallback send_callback = {
       /*channel_id=*/1, [&](const PjRtTransferMetadata&, PjRtChunk, int64_t,
-                            bool) { return OkStatus(); }};
+                            bool) { return absl::OkStatus(); }};
 
   // Invalid Recv handler that tries to add invalid chunk.
   RecvCallback recv_callback = {
@@ -239,7 +281,7 @@ TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
         auto chunk = PjRtChunk::AllocateDefault(10 * sizeof(float));
         stream->AddChunk(std::move(chunk)).Await().IgnoreError();
         // Return ok status to proceed to corresponding recv-done call.
-        return OkStatus();
+        return absl::OkStatus();
       }};
 
   // Callbacks for point-to-point communication ops.
@@ -255,6 +297,62 @@ TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
   EXPECT_TRUE(absl::StrContains(result.status().message(),
                                 "Adding chunk of size 40 would overflow buffer "
                                 "of size 8 (0 already transferred)"));
+}
+
+// User-defined data type to be passed to FFI handler via the execute context
+// side channel.
+struct MemsetValue {
+  explicit MemsetValue(float value) : value(value) {}
+  float value;
+};
+
+static absl::Status MemsetFromValue(
+    se::Stream* stream, ffi::Result<ffi::BufferR1<PrimitiveType::F32>> result,
+    MemsetValue* memset_value) {
+  uint32_t pattern;
+  std::memcpy(&pattern, &memset_value->value, sizeof(pattern));
+
+  se::DeviceMemoryBase base = result->data;
+  return stream->Memset32(&base, pattern, result->data.size());
+}
+
+XLA_FFI_DEFINE_HANDLER(kMemsetFromValue, MemsetFromValue,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Ret<ffi::BufferR1<PrimitiveType::F32>>()
+                           .Ctx<ffi::UserData<MemsetValue>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "MemsetFromValue",
+                         PlatformUtil::CanonicalPlatformName("GPU").value(),
+                         kMemsetFromValue);
+
+TEST(StreamExecutorGpuClientTest, ForwardUserDataToFfiHandler) {
+  static constexpr char const* kProgram = R"(
+    HloModule ffi_handler
+    ENTRY main {
+      ROOT %custom-call = f32[4] custom-call(),
+                          custom_call_target="MemsetFromValue",
+                          api_version=API_VERSION_TYPED_FFI
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kProgram, *client));
+
+  ExecuteContext context;
+  TF_ASSERT_OK(context.ffi_context().Emplace<MemsetValue>(42.0f));
+
+  ExecuteOptions opts;
+  opts.context = &context;
+
+  auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                          ExtractSingleResult(result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f, 42.0f}),
+      *result_literal));
 }
 
 TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
@@ -277,7 +375,7 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
   TF_ASSERT_OK(
       transfer_manager->TransferLiteralToBuffer(0, src_literal, [&]() {}));
 
-  buffer->ToLiteral(literal.get()).OnReady([&](Status s) {
+  buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
     absl::MutexLock l(&mu);
     TF_ASSERT_OK(s);
     got_literal = true;
@@ -311,7 +409,7 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
   bool got_literal = false;
 
-  buffer->ToLiteral(literal.get()).OnReady([&](Status s) {
+  buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
     absl::MutexLock l(&mu);
     TF_ASSERT_OK(s);
     got_literal = true;
@@ -371,12 +469,12 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
   for (auto& buffer : buffers) {
     literals.push_back(std::make_shared<Literal>(
         ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape())));
-    buffer->ToLiteral(literals.back().get()).OnReady([&](Status s) {
+    buffer->ToLiteral(literals.back().get()).OnReady([&](absl::Status s) {
       absl::MutexLock l(&mu);
       TF_ASSERT_OK(s);
       ++got_literal_count;
     });
-    buffer->GetReadyFuture().OnReady([&](Status s) {
+    buffer->GetReadyFuture().OnReady([&](absl::Status s) {
       absl::MutexLock l(&mu);
       TF_ASSERT_OK(s);
       ++got_callback_count;
@@ -578,20 +676,32 @@ TEST(GpuTopology, FromProto) {
       R"pb(
         device_ids: [ 3, 2, 1 ]
         platform_version: "platform_version"
+        num_slices: 2
+        num_hosts_per_slice: 1
+        num_devices_per_host: 3
       )pb",
       &msg));
 
   std::unique_ptr<const GpuTopology> gpu_topology = GpuTopology::FromProto(msg);
   EXPECT_THAT(gpu_topology->device_ids(), ElementsAre(3, 2, 1));
   EXPECT_THAT(gpu_topology->platform_version(), "platform_version");
+  EXPECT_THAT(gpu_topology->num_slices(), 2);
+  EXPECT_THAT(gpu_topology->num_hosts_per_slice(), 1);
+  EXPECT_THAT(gpu_topology->num_devices_per_host(), 3);
 }
 
 TEST(GpuTopology, ToProto) {
   GpuTopology gpu_topology(/*gpu_device_ids=*/{3, 2, 1},
-                           /*platform_version=*/"platform_version");
+                           /*platform_version=*/"platform_version",
+                           /*num_slices=*/2,
+                           /*num_hosts_per_slice=*/1,
+                           /*num_devices_per_host=*/3);
   GpuTopologyProto msg = gpu_topology.ToProto();
   EXPECT_THAT(msg.device_ids(), ElementsAre(3, 2, 1));
   EXPECT_THAT(msg.platform_version(), "platform_version");
+  EXPECT_THAT(msg.num_slices(), 2);
+  EXPECT_THAT(msg.num_hosts_per_slice(), 1);
+  EXPECT_THAT(msg.num_devices_per_host(), 3);
 }
 
 TEST(StreamExecutorGpuClientTest, DistributedInit) {

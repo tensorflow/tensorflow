@@ -32,13 +32,13 @@ limitations under the License.
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/setround.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_util.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
+#include "tsl/platform/tracing.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 
 namespace tfrt {
@@ -72,10 +72,10 @@ RunHandlerEnvironment::EnvThread* RunHandlerEnvironment::CreateThread(
 
 RunHandlerEnvironment::Task RunHandlerEnvironment::CreateTask(TaskFunction f) {
   uint64_t id = 0;
-  if (tensorflow::tracing::EventCollector::IsEnabled()) {
-    id = tensorflow::tracing::GetUniqueArg();
-    tensorflow::tracing::RecordEvent(
-        tensorflow::tracing::EventCategory::kScheduleClosure, id);
+  if (tsl::tracing::EventCollector::IsEnabled()) {
+    id = tsl::tracing::GetUniqueArg();
+    tsl::tracing::RecordEvent(tsl::tracing::EventCategory::kScheduleClosure,
+                              id);
   }
   return Task{
       std::unique_ptr<TaskImpl>(new TaskImpl{
@@ -88,8 +88,8 @@ RunHandlerEnvironment::Task RunHandlerEnvironment::CreateTask(TaskFunction f) {
 
 void RunHandlerEnvironment::ExecuteTask(const Task& t) {
   tensorflow::WithContext wc(t.f->context);
-  tensorflow::tracing::ScopedRegion region(
-      tensorflow::tracing::EventCategory::kRunClosure, t.f->trace_id);
+  tsl::tracing::ScopedRegion region(tsl::tracing::EventCategory::kRunClosure,
+                                    t.f->trace_id);
   t.f->f();
 }
 

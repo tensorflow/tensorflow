@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "CollectiveBcastRecv"
   output_arg {
     name: "data"

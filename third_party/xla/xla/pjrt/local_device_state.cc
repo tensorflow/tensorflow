@@ -80,6 +80,10 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   for (int i = 0; i < num_device_to_device_streams; ++i) {
     device_to_device_streams_.emplace_back(create_stream());
   }
+  fixed_size_pool_usage_streams_.reserve(kNumFixedSizePoolUsageStreams);
+  for (int i = 0; i < kNumFixedSizePoolUsageStreams; ++i) {
+    fixed_size_pool_usage_streams_.emplace_back(create_stream());
+  }
   external_ready_event_streams_.reserve(kNumExternalReadyEventStreams);
   for (int i = 0; i < kNumExternalReadyEventStreams; ++i) {
     external_ready_event_streams_.emplace_back(create_stream());
@@ -91,14 +95,14 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
 }
 
 LocalDeviceState::~LocalDeviceState() {
-  Status status = SynchronizeAllActivity();
+  absl::Status status = SynchronizeAllActivity();
   if (!status.ok()) {
     LOG(ERROR) << "Error when closing device: " << status;
   }
 }
 
-Status LocalDeviceState::SynchronizeAllActivity() {
-  Status status;
+absl::Status LocalDeviceState::SynchronizeAllActivity() {
+  absl::Status status;
   // TODO(phawkins): in theory the call to SynchronizeAllActivity below should
   // suffice. However on the Host platform SynchronizeAllActivity is a dummy
   // implementation that doesn't actually block. To make sure activity has
@@ -121,7 +125,7 @@ Status LocalDeviceState::SynchronizeAllActivity() {
   return status;
 }
 
-Status LocalDeviceState::ThenMemcpyDeviceToDevice(
+absl::Status LocalDeviceState::ThenMemcpyDeviceToDevice(
     se::Stream* transfer_stream, se::Stream* dst_stream,
     se::DeviceMemoryBase src_buffer, se::DeviceMemoryBase dst_buffer) {
   // The default implementation simply calls MemcpyD2D, and assumes that
@@ -167,6 +171,15 @@ se::Stream* LocalDeviceState::GetDeviceToDeviceStream() {
   return device_to_device_streams_.at(i).get();
 }
 
+se::Stream* LocalDeviceState::GetFixedSizePoolUsageStream() {
+  absl::MutexLock lock(&mu_);
+  int i = next_fixed_size_pool_usage_stream_;
+  next_fixed_size_pool_usage_stream_ =
+      (next_fixed_size_pool_usage_stream_ + 1) %
+      fixed_size_pool_usage_streams_.size();
+  return fixed_size_pool_usage_streams_.at(i).get();
+}
+
 se::Stream* LocalDeviceState::GetExternalReadyEventStream() {
   absl::MutexLock lock(&mu_);
   int i = next_external_ready_event_stream_;
@@ -175,7 +188,7 @@ se::Stream* LocalDeviceState::GetExternalReadyEventStream() {
   return external_ready_event_streams_.at(i).get();
 }
 
-StatusOr<se::Stream*> LocalDeviceState::GetStreamFromExternalStream(
+absl::StatusOr<se::Stream*> LocalDeviceState::GetStreamFromExternalStream(
     std::intptr_t stream) {
   // TODO(skyewm): replace with map lookup if performance is an issue (currently
   // it just iterates over 4 streams).

@@ -1418,7 +1418,7 @@ InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
   return *value_sets_.find(instruction)->second;
 }
 
-Status HloDataflowAnalysis::InitializeInstructionValueSets() {
+absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
   for (const HloComputation* computation : module_.MakeComputationSorted()) {
     if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
                                           execution_threads_)) {
@@ -1731,7 +1731,7 @@ absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
   return std::move(dataflow_analysis);
 }
 
-Status HloDataflowAnalysis::Verify() const {
+absl::Status HloDataflowAnalysis::Verify() const {
   // Verify each HloValue appears in the value sets that the value's positions()
   // indicate.
   for (const HloValue* value : values()) {

@@ -25,9 +25,9 @@ limitations under the License.
 
 namespace xla {
 
-Status ValidatePaddingValues(absl::Span<const int64_t> input_dimensions,
-                             absl::Span<const int64_t> window_dimensions,
-                             absl::Span<const int64_t> window_strides) {
+absl::Status ValidatePaddingValues(absl::Span<const int64_t> input_dimensions,
+                                   absl::Span<const int64_t> window_dimensions,
+                                   absl::Span<const int64_t> window_strides) {
   bool ok = input_dimensions.size() == window_dimensions.size() &&
             input_dimensions.size() == window_strides.size();
   if (!ok) {

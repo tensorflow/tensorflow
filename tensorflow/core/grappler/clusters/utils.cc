@@ -135,6 +135,7 @@ DeviceProperties GetLocalGPUInfo(PlatformDeviceId platform_device_id) {
   device.set_bandwidth(properties.memoryBusWidth / 8 *
                        properties.memoryClockRate * 2);
 
+<<<<<<< HEAD
   std::string gcnFullName = properties.gcnArchName;
   std::vector<std::string> tokens = absl::StrSplit(gcnFullName, ':');
   std::string gcnName = gcnFullName;
@@ -142,6 +143,10 @@ DeviceProperties GetLocalGPUInfo(PlatformDeviceId platform_device_id) {
       gcnName = tokens[0];
   }
   (*device.mutable_environment())["architecture"] = gcnName;
+=======
+  (*device.mutable_environment())["architecture"] =
+      strings::StrCat("gfx", properties.gcnArchName);
+>>>>>>> upstream/master
 #endif
 
   return device;

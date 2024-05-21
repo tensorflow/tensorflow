@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ResizeBilinear"
   input_arg {
     name: "images"

@@ -97,6 +97,8 @@ enum Delegate {
   CORE_ML = 7;
   // Arm NN Delegate.
   ARMNN = 8;
+  // MediaTek Neuron Delegate.
+  MTK_NEURON = 9;
 }
 
 enum NNAPIExecutionPreference {
@@ -662,6 +664,111 @@ message ArmNNSettings {
   optional string additional_parameters = 3;
 }
 
+// MediaTek Neuron Delegate Settings.
+// See https://neuropilot.mediatek.com/ for more information.
+message MtkNeuronSettings {
+  enum ExecutionPreference {
+    PREFERENCE_UNDEFINED = 0;
+
+    // Prefer execution in a power-efficient mode, optimizing for low power
+    // consumption.
+    PREFERENCE_LOW_POWER = 1;
+
+    // Prefer execution that provides shorter single-shot latency, optimizing
+    // for fast response times.
+    PREFERENCE_FAST_SINGLE_ANSWER = 2;
+
+    // Prefer execution that provides sustained speed for continuous operation
+    // and higher throughput, optimizing for overall performance in ongoing or
+    // repetitive tasks.
+    PREFERENCE_SUSTAINED_SPEED = 3;
+
+    // Prefer execution in the turbo boost mode, which may boost the frequencies
+    // of APU and other system components such as CPU and DRAM, to achieve
+    // maximum performance. If boosting is not supported in the underlying
+    // system, it falls back to the behavior of PREFERENCE_FAST_SINGLE_ANSWER.
+    PREFERENCE_TURBO_BOOST = 4;
+  }
+
+  enum ExecutionPriority {
+    PRIORITY_UNDEFINED = 0;
+    PRIORITY_LOW = 90;
+    PRIORITY_MEDIUM = 100;
+    PRIORITY_HIGH = 110;
+  }
+
+  enum OptimizationHint {
+    OPTIMIZATION_NONE = 0;
+
+    // Optimization hint for reducing latency. This hint may distribute the
+    // workload across multiple APU cores in the compiled model to achieve
+    // faster execution.
+    OPTIMIZATION_LOW_LATENCY = 1;
+
+    // Optimization hint for reducing DRAM access and minimizing memory
+    // bandwidth usage through kernel fusion and data fusion techniques.
+    OPTIMIZATION_DEEP_FUSION = 2;
+
+    // Optimization hint for processing multiple input samples in parallel
+    // across available APU cores in the batch dimension. This optimization is
+    // effective for models with a batch size greater than 1.
+    OPTIMIZATION_BATCH_PROCESSING = 3;
+  }
+
+  // How to check the operator compatibility with the underlying accelerator.
+  enum OperationCheckMode {
+    NO_OPERATION_CHECK = 0;
+
+    // Checks each node separately with multiple queries to the backend.
+    PER_NODE_OPERATION_CHECK = 1;
+
+    // Checks all nodes in the graph at once with a batched query to the
+    // backend.
+    PRE_OPERATION_CHECK = 2;
+  }
+
+  // The preferred execution mode. The system-wide default will be used when
+  // PREFERENCE_UNDEFINED is passed to the delegate.
+  optional ExecutionPreference execution_preference = 1;
+
+  // The execution priority of the inference request. The system-wide default
+  // will be used when PRIORITY_UNDEFINED is passed to the delegate.
+  optional ExecutionPriority execution_priority = 2;
+
+  // The optimization hints that will instruct the model compiler.
+  repeated OptimizationHint optimization_hints = 3 [packed = true];
+
+  // Whether and how to check the operator compatibility with the underlying
+  // accelerator.
+  optional OperationCheckMode operation_check_mode = 4;
+
+  // Whether to allow the accelerator to optionally use lower-precision FP16
+  // arithmetic when performing calculations on FP32 data.
+  optional bool allow_fp16_precision_for_fp32 = 5;
+
+  // Whether to use AHardwareBuffer_* API to manage buffers. Requires Android
+  // API level >= 26, or a dedicated AHardwareBuffer API shim on non-Android
+  // platforms.
+  optional bool use_ahwb = 6;
+
+  // Whether to use cachable (consistent / coherent) memory. This will affect
+  // both buffer allocation and buffer importing behaviors.
+  optional bool use_cacheable_buffer = 7 [default = true];
+
+  // Extra options for the Neuron compiler, such as "--opt-bw".
+  // See docs at https://neuropilot.mediatek.com/ for available options.
+  repeated string compile_options = 8;
+
+  // Optional list of target accelerator device names.
+  // If empty, the delegate will automatically select the accelerator.
+  // See docs at https://neuropilot.mediatek.com/ for available accelerators.
+  repeated string accelerator_names = 9;
+
+  // Optional path to the platform-dependent Neuron configuration file.
+  // See docs at https://neuropilot.mediatek.com/ for more details.
+  optional string neuron_config_path = 10;
+}
+
 // How to configure TFLite.
 message TFLiteSettings {
   // Which delegate to use.
@@ -719,6 +826,9 @@ message TFLiteSettings {
 
   // For configuring the Arm NN delegate.
   optional ArmNNSettings armnn_settings = 16;
+
+  // For configuring MediaTek Neuron delegate.
+  optional MtkNeuronSettings mtk_neuron_settings = 17;
 }
 
 // Whether to automatically fallback to TFLite CPU path on delegation errors.

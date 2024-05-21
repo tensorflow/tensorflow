@@ -65,7 +65,7 @@ class CollectivePipeliner : public HloModulePass {
   // Postprocessing cloned collective instructions, such as for modifying loop
   // iteration related frontend attributes to reflect loop pipelining.
   using HloPostprocessor =
-      std::optional<std::function<Status(HloInstruction* instr)>>;
+      std::optional<std::function<absl::Status(HloInstruction* instr)>>;
 
   struct Config {
     int64_t level_to_operate_on = 0;

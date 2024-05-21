@@ -132,11 +132,11 @@ Status ExtractDims<mlir::TF::BiasAddGradOp>(
   auto data_format = bias_add_grad_op.getDataFormat();
   // rank is at least 2 (required by BiasAddGrad).
   int rank = ValueRank(bias_add_grad_op->getOperand(0));
-  if (data_format.equals("NHWC")) {
+  if (data_format == "NHWC") {
     for (int dim = 0; dim < rank - 1; ++dim) {
       reduced_dims->push_back(dim);
     }
-  } else if (data_format.equals("NCHW")) {
+  } else if (data_format == "NCHW") {
     for (int dim = 0; dim < rank; ++dim) {
       if (dim == 1) continue;
       reduced_dims->push_back(dim);

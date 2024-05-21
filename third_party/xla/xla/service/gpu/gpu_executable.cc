@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/runtime/annotation.h"
+#include "xla/service/gpu/runtime/for_all_thunks.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/thunk.h"
@@ -109,19 +110,6 @@ namespace gpu {
 
 using ::tsl::profiler::ScopedAnnotation;
 
-bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config) {
-  bool enabled = config.debug_options().xla_gpu_enable_xla_runtime_executable();
-  if (enabled) {
-    LOG(ERROR)
-        << "XLA:GPU tried to use deprecated xla runtime by setting "
-           "--xla_gpu_enable_xla_runtime_executable flag to `true` but the "
-           "flag value was ignored as XLA:GPU uses default runtime. This flag "
-           "together with the deprecated code will be removed soon. Please "
-           "report bugs to XLA team if this breaks your workloads.";
-  }
-  return false;
-}
-
 static bool NeedsAsyncCommsStream(Thunk& thunk) {
   switch (thunk.kind()) {
     case Thunk::Kind::kNcclAllReduceStart:
@@ -132,28 +120,19 @@ static bool NeedsAsyncCommsStream(Thunk& thunk) {
   }
 }
 
-// Traverses operations in HLO module and collects execution stream ids
-// requested by HLO operations. At run time thunks may use additional streams to
-// launch compute operations in addition to a main one.
-//
-// TODO(ezhulenev): Execution stream requirements should be queried from thunks
-// directly and not from HLO module that might be missing.
+// Returns the set of `ExecutionStreamIds` requested by all `Thunks` in the
+// `GpuExecutable`. At run time `Thunks` may use additional streams to launch
+// compute operations in parallel.
 static absl::flat_hash_set<ExecutionStreamId> GetExecutionStreamIds(
-    const HloModule& module) {
+    const ThunkSequence& thunks) {
   absl::flat_hash_set<ExecutionStreamId> stream_ids;
-  for (const HloComputation* comp : module.computations()) {
-    for (const HloInstruction* hlo : comp->instructions()) {
-      if (hlo->has_backend_config() &&
-          hlo->backend_config<GpuBackendConfig>().ok()) {
-        int64_t op_queue_id = hlo->backend_config<GpuBackendConfig>()
-                                  .value()
-                                  .operation_queue_id();
-        if (op_queue_id > 0) {
-          stream_ids.insert(ExecutionStreamId(op_queue_id));
+  ForAllThunks(
+      [&](const Thunk* thunk) {
+        if (thunk->execution_stream_id() > 0) {
+          stream_ids.insert(thunk->execution_stream_id());
         }
-      }
-    }
-  }
+      },
+      &thunks);
   return stream_ids;
 }
 
@@ -171,9 +150,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       dnn_compiled_graphs_(std::move(params.dnn_compiled_graphs)),
       gpu_version_(params.gpu_version),
       thunks_(std::move(params.executable)),
-      execution_stream_ids_(has_module()
-                                ? GetExecutionStreamIds(module())
-                                : absl::flat_hash_set<ExecutionStreamId>()),
+      execution_stream_ids_(GetExecutionStreamIds(*thunks_)),
       module_name_(params.module_name),
       output_shape_(params.output_shape),
       allocations_(std::move(params.mlir_allocations)),
@@ -471,9 +448,14 @@ absl::Status ExecuteThunks(
 
   {  // Initialize thunks using prepared resources before execution.
     Thunk::InitializeParams initialize_params{
-        executor,           executable_source,           &buffer_allocations,
-        main_stream,        command_buffer_trace_stream, &collective_params,
-        &collective_cliques};
+        executor,
+        executable_source,
+        &buffer_allocations,
+        main_stream,
+        command_buffer_trace_stream,
+        &collective_params,
+        &collective_cliques,
+        run_options->run_options().ffi_execution_context()};
 
     tsl::profiler::TraceMe trace([&] { return "Thunks::Initialize"; });
     for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
@@ -754,16 +736,12 @@ absl::StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     const int64_t buffer_size = allocation.size();
     se::DeviceMemoryBase buffer_address;
     if (buffer_size > 0) {
-      absl::StatusOr<se::OwningDeviceMemory> buffer =
+      TF_ASSIGN_OR_RETURN(
+          se::OwningDeviceMemory buffer,
           memory_allocator->Allocate(device_ordinal, buffer_size,
                                      /*retry_on_failure=*/true,
-                                     /*memory_space=*/allocation.color());
-      if (!buffer.ok()) {
-        return ResourceExhausted("%s\n%s\n", buffer.status().message(),
-                                 buffer_assignment_->ToVerboseString(
-                                     debug_buffer_assignment_show_max_));
-      }
-      buffer_address = buffer->Release();
+                                     /*memory_space=*/allocation.color()));
+      buffer_address = buffer.Release();
     }
     return buffer_address;
   }

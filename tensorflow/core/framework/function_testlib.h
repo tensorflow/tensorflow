@@ -74,6 +74,8 @@ FunctionDef XTimesTwo();
 FunctionDef XTimesTwoWithControlInput();
 // Same as `XTimesTwo` above, but with a `dummy` control output node.
 FunctionDef XTimesTwoWithControlOutput();
+// Same as `XTimesTwo` above, but with a dangling `FloorDiv` node.
+FunctionDef XTimesTwoWithDanglingFloorDivNode();
 
 // x: T -> cpu(x * 2) + cpu(x * 3).
 FunctionDef TwoDeviceTimesFive();

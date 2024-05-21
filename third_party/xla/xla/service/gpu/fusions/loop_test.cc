@@ -90,7 +90,7 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
               MatchIndexingString(R"(
   (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
    (((bl_x * 16 + th_x floordiv 8) floordiv 3 + chunk_id * 5376) floordiv 625) mod 100,
-   (((th_x + bl_x * 128) floordiv 3 + chunk_id * 43008) floordiv 25) mod 200,
+   (((bl_x * 128 + th_x) floordiv 3 + chunk_id * 43008) floordiv 25) mod 200,
    (th_x * 4 + bl_x * 512 + chunk_id * 516096) mod 300 + unroll_id
   )
   domain:
@@ -186,7 +186,7 @@ TEST_F(LoopTest, Broadcast) {
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
                 ((bl_x * 16 + th_x floordiv 8) floordiv 75) mod 10,
                 ((bl_x * 64 + th_x floordiv 2) floordiv 15) mod 20,
-                (th_x + bl_x * 128) mod 30)
+                (bl_x * 128 + th_x) mod 30)
                 domain:
                 th_x in [0, 127]
                 th_y in [0, 0]

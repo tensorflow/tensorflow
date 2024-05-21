@@ -192,12 +192,12 @@ FailureOr<ElementsAttr> ConvertPaddingAttr(
 
   const int64_t padding_nums_size = 2 * (rhs_shape.getRank() - 2);
   padding_nums.reserve(padding_nums_size);
-  if (conv_padding.strref().equals("EXPLICIT")) {
+  if (conv_padding.strref() == "EXPLICIT") {
     for (auto padding_elem :
          op.getExplicitPaddingAttr().template getAsRange<IntegerAttr>()) {
       padding_nums.push_back(padding_elem.getInt());
     }
-  } else if (conv_padding.strref().equals("VALID")) {
+  } else if (conv_padding.strref() == "VALID") {
     padding_nums.resize(padding_nums_size, 0);
   } else {
     padding_nums.resize(padding_nums_size);

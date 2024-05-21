@@ -21,6 +21,7 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -68,9 +69,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/protobuf/dnn.pb.h"
 
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif
 
 namespace xla {
 namespace gpu {
@@ -508,8 +506,11 @@ auto OptionalBitcast(HloInstruction **optional_bitcast, Pattern pattern) {
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
   explicit GemmRewriterVisitor(const se::GpuComputeCapability &gpu_version,
+                               const int32_t toolkit_version,
                                const bool f8_rewrite)
-      : gpu_version_(gpu_version), f8_rewrite_(f8_rewrite) {}
+      : gpu_version_(gpu_version),
+        toolkit_version_(toolkit_version),
+        f8_rewrite_(f8_rewrite) {}
 
   absl::Status HandleDot(HloInstruction *instr) override {
     if (!IsMatrixMultiplication(*instr) &&
@@ -534,10 +535,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     CHECK(!instr->IsRank2Transpose());
-    if (instr->operand(0)->IsRank2Transpose() ||
-        instr->operand(1)->IsRank2Transpose()) {
-      return absl::OkStatus();
-    }
+    CHECK(!instr->mutable_operand(0)->IsRank2Transpose());
+    CHECK(!instr->mutable_operand(1)->IsRank2Transpose());
     // Create a GemmBackendConfig based on the instruction.
     TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                         instr->backend_config<GpuBackendConfig>());
@@ -598,13 +597,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                              const_cast<HloInstruction *>(instr), b, b_scale,
                              b_mult_scale, b_ops);
                        })))) {
-#if TENSORFLOW_USE_ROCM
-        if (instr->shape().element_type() != F16 &&
+        if (IsRocm(gpu_version_) && instr->shape().element_type() != F16 &&
             instr->shape().element_type() != F32) {
           TF_ASSIGN_OR_RETURN(instr,
                               TurnF8DotWithUnsupportedOutputTypeIntoF32(instr));
         }
-#endif  // TENSORFLOW_USE_ROCM
         TF_ASSIGN_OR_RETURN(
             bool created_call,
             CreateF8CustomCall(instr, gpu_backend_config, a, b, a_scale,
@@ -925,6 +922,32 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
+  static bool IsCuda(const se::GpuComputeCapability &gpu_version) {
+    return std::holds_alternative<se::CudaComputeCapability>(gpu_version);
+  }
+
+  static absl::StatusOr<se::CudaComputeCapability> GetCudaComputeCapability(
+      const se::GpuComputeCapability &gpu_version) {
+    auto *cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
+    if (cuda_cc == nullptr) {
+      return absl::InvalidArgumentError("Compute Capability is not CUDA.");
+    }
+    return *cuda_cc;
+  }
+
+  static bool IsRocm(const se::GpuComputeCapability &gpu_version) {
+    return std::holds_alternative<se::RocmComputeCapability>(gpu_version);
+  }
+
+  static absl::StatusOr<se::RocmComputeCapability> GetRocmComputeCapability(
+      const se::GpuComputeCapability &gpu_version) {
+    auto rocm_cc = std::get_if<se::RocmComputeCapability>(&gpu_version);
+    if (rocm_cc == nullptr) {
+      return absl::InvalidArgumentError("Compute Capability is not ROCm.");
+    }
+    return *rocm_cc;
+  }
+
   absl::StatusOr<bool> CreateF8CustomCall(
       HloInstruction *instr, GpuBackendConfig &gpu_backend_config,
       HloInstruction *a, HloInstruction *b, HloInstruction *a_scale,
@@ -933,84 +956,82 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       std::vector<std::pair<HloInstruction *, int>> b_ops) {
     GemmBackendConfig &gemm_backend_config =
         *gpu_backend_config.mutable_gemm_backend_config();
-#if GOOGLE_CUDA
-    auto cuda_compute_capability_ =
-        std::get<se::CudaComputeCapability>(gpu_version_);
-    // FP8 GEMM kernels are only available on Ada, Hopper, and later
-    // architectures.
-    if (!cuda_compute_capability_.IsAtLeast(8, 9)) {
-      VLOG(1)
-          << "FP8 Custom Calls require Ada, Hopper, or later architectures.";
-      return false;
+    if (IsCuda(gpu_version_)) {
+      TF_ASSIGN_OR_RETURN(auto cuda_compute_capability,
+                          GetCudaComputeCapability(gpu_version_));
+      // FP8 GEMM kernels are only available on Ada, Hopper, and later
+      // architectures.
+      if (!cuda_compute_capability.IsAtLeast(8, 9)) {
+        VLOG(1) << "FP8 Custom Calls require Ada, Hopper, or later "
+                   "architectures. Got: "
+                << cuda_compute_capability.ToString()
+                << " and toolkit version: " << toolkit_version_;
+        return false;
+      }
+      // FP8 GEMM kernels are only available with CUDA 12.0 and above
+      if (toolkit_version_ < 12000) {
+        VLOG(1) << "FP8 Custom Calls require CUDA 12.0 or newer.";
+        return false;
+      }
     }
 
-#if CUDA_VERSION < 12000
-    // FP8 GEMM kernels are only available with CUDA 12.0 and above
-    VLOG(1) << "FP8 Custom Calls require CUDA 12.0 or newer.";
-    return false;
-#endif  // CUDA_VERSION < 12000
-
-#endif  // GOOGLE_CUDA
-
-#if TENSORFLOW_USE_ROCM
-    auto isrocm = std::get_if<se::RocmComputeCapability>(&gpu_version_);
-    if (!isrocm->has_fp8_support()) {
-      VLOG(1) << "FP8 Custom Calls require MI300, or later architectures.";
-      return false;
+    if (IsRocm(gpu_version_)) {
+      TF_ASSIGN_OR_RETURN(auto rocm_compute_capability,
+                          GetRocmComputeCapability(gpu_version_));
+      if (!rocm_compute_capability.has_fp8_support()) {
+        VLOG(1) << "FP8 Custom Calls require MI300, or later architectures.";
+        return false;
+      }
+      if (toolkit_version_ < 60000) {
+        // FP8 GEMM kernels are only available with ROCm 6.0 and above
+        VLOG(1) << "FP8 Custom Calls require ROCm 6.0 or newer.";
+        return false;
+      }
     }
 
-#if TF_ROCM_VERSION < 60000
-    // FP8 GEMM kernels are only available with ROCm 6.0 and above
-    VLOG(1) << "FP8 Custom Calls require ROCm 6.0 or newer.";
-    return false;
-#endif  // TF_ROCM_VERSION < 60000
-
-#endif  // TENSORFLOW_USE_ROCM
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     PrimitiveType a_type = a->shape().element_type();
     PrimitiveType b_type = b->shape().element_type();
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
     // cuBLASLt FP8 GEMM kernels require one of the two operands to be in
     // F8E4M3FN format.
-#if GOOGLE_CUDA
-    if (a_type == F8E5M2 && b_type == F8E5M2) {
-      VLOG(1)
-          << "Failed to rewrite " << instr->ToShortString()
-          << " into FP8 Custom Call. The element type of one of the operands "
-             "must be F8E4M3FN.";
-      return false;
+    if (IsCuda(gpu_version_)) {
+      if (a_type == F8E5M2 && b_type == F8E5M2) {
+        VLOG(1)
+            << "Failed to rewrite " << instr->ToShortString()
+            << " into FP8 Custom Call. The element type of one of the operands "
+               "must be F8E4M3FN.";
+        return false;
+      }
+      if ((a_type != F8E5M2 && a_type != F8E4M3FN) ||
+          (b_type != F8E5M2 && b_type != F8E4M3FN)) {
+        VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                << " into FP8 Custom Call. The input types must be F8E5M2 or "
+                   "F8E4M3FN, but got "
+                << PrimitiveType_Name(a_type) << " and "
+                << PrimitiveType_Name(b_type);
+        return false;
+      }
     }
-    if ((a_type != F8E5M2 && a_type != F8E4M3FN) ||
-        (b_type != F8E5M2 && b_type != F8E4M3FN)) {
-      VLOG(1) << "Failed to rewrite " << instr->ToShortString()
-              << " into FP8 Custom Call. The input types must be F8E5M2 or "
-                 "F8E4M3FN, but got "
-              << PrimitiveType_Name(a_type) << " and "
-              << PrimitiveType_Name(b_type);
-      return false;
-    }
-#endif  // GOOGLE_CUDA
 
-#if TENSORFLOW_USE_ROCM
-    if (a_type == F8E5M2FNUZ && b_type == F8E5M2FNUZ) {
-      VLOG(1)
-          << "Failed to rewrite " << instr->ToShortString()
-          << " into FP8 Custom Call. The element type of one of the operands "
-             "must be F8E4M3FNUZ.";
-      return false;
+    if (IsRocm(gpu_version_)) {
+      if (a_type == F8E5M2FNUZ && b_type == F8E5M2FNUZ) {
+        VLOG(1)
+            << "Failed to rewrite " << instr->ToShortString()
+            << " into FP8 Custom Call. The element type of one of the operands "
+               "must be F8E4M3FNUZ.";
+        return false;
+      }
+      if ((a_type != F8E5M2FNUZ && a_type != F8E4M3FNUZ) ||
+          (b_type != F8E5M2FNUZ && b_type != F8E4M3FNUZ)) {
+        VLOG(1)
+            << "Failed to rewrite " << instr->ToShortString()
+            << " into FP8 Custom Call. The input types must be F8E5M2FNUZ or "
+               "F8E4M3FNUZ, but got "
+            << PrimitiveType_Name(a_type) << " and "
+            << PrimitiveType_Name(b_type);
+        return false;
+      }
     }
-    if ((a_type != F8E5M2FNUZ && a_type != F8E4M3FNUZ) ||
-        (b_type != F8E5M2FNUZ && b_type != F8E4M3FNUZ)) {
-      VLOG(1) << "Failed to rewrite " << instr->ToShortString()
-              << " into FP8 Custom Call. The input types must be F8E5M2FNUZ or "
-                 "F8E4M3FNUZ, but got "
-              << PrimitiveType_Name(a_type) << " and "
-              << PrimitiveType_Name(b_type);
-      return false;
-    }
-#endif  // TENSORFLOW_USE_ROCM
 
     absl::Span<const int64_t> batch_dims =
         gemm_backend_config.dot_dimension_numbers().rhs_batch_dimensions();
@@ -1370,6 +1391,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *gemm_and_damax =
         instr->AddInstruction(existing_gemm->CloneWithNewShape(tuple_shape));
 
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        gemm_and_damax->backend_config<GpuBackendConfig>());
+    GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
+    config.set_damax_output(true);
+    TF_RETURN_IF_ERROR(gemm_and_damax->set_backend_config(gpu_config));
+
     // Obtain D and DAmax separately from the output tuple.
     HloInstruction *d =
         instr->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -1695,16 +1722,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
       return absl::OkStatus();
     }
-
-#if CUDA_VERSION < 12040
     // For CUDA versions less than 12.3.2, cuBLAS LT returns
     // CUBLAS_STATUS_NOT_SUPPORTED in some cases when fusing gelu into an FP8
     // matmul. We cannot check the patch version, so disable this fusion with
     // CUDA versions less than 12.4.
-    if (IsCublasLtMatmulF8(*gemm)) {
+    if (toolkit_version_ < 12040 && IsCublasLtMatmulF8(*gemm)) {
       return absl::OkStatus();
     }
-#endif
 
     // There are four users of the gemm output within the GELU calculation.
     bool has_aux = gemm->user_count() > 4;
@@ -1748,6 +1772,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
  private:
   se::GpuComputeCapability gpu_version_;
+  int32_t toolkit_version_;
   bool f8_rewrite_;
 
   // Choose cublas or cublasLt for the target of the custom call that instr will
@@ -1909,131 +1934,136 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     using se::blas::ComputationType;
     using se::blas::DataType;
+    using TypeCombinations = std::initializer_list<std::tuple<
+        ComputationType, DataType /*scale_type*/, PrimitiveType /*a_dtype*/,
+        PrimitiveType /*b_dtype*/, DataType /*output_dtype*/>>;
     // This matrix of supported types is taken directly from cublasLt
     // documentation.
     // https://docs.nvidia.com/cuda/cublas/index.html#cublasLtMatmul
-    const std::array<
-        std::tuple<ComputationType, DataType /*scale_type*/,
-                   PrimitiveType /*a_dtype*/, PrimitiveType /*b_dtype*/,
-                   DataType /*output_dtype*/>,
-        32>
-        supported_type_combinations = {{
-#if GOOGLE_CUDA
-            // FP8 types:
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
-             PrimitiveType::F8E4M3FN, DataType::kBF16},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
-             PrimitiveType::F8E4M3FN, DataType::kF8E4M3FN},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
-             PrimitiveType::F8E4M3FN, DataType::kHalf},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
-             PrimitiveType::F8E4M3FN, DataType::kFloat},
+    const TypeCombinations supported_cublas_type_combinations = {
+        // FP8 types:
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E4M3FN, DataType::kBF16},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E4M3FN, DataType::kF8E4M3FN},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E4M3FN, DataType::kHalf},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E4M3FN, DataType::kFloat},
 
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
-             PrimitiveType::F8E5M2, DataType::kBF16},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
-             PrimitiveType::F8E5M2, DataType::kF8E4M3FN},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
-             PrimitiveType::F8E5M2, DataType::kF8E5M2},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
-             PrimitiveType::F8E5M2, DataType::kHalf},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
-             PrimitiveType::F8E5M2, DataType::kFloat},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E5M2, DataType::kBF16},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E5M2, DataType::kF8E4M3FN},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E5M2, DataType::kF8E5M2},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E5M2, DataType::kHalf},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+         PrimitiveType::F8E5M2, DataType::kFloat},
 
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
-             PrimitiveType::F8E4M3FN, DataType::kBF16},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
-             PrimitiveType::F8E4M3FN, DataType::kF8E4M3FN},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
-             PrimitiveType::F8E4M3FN, DataType::kF8E5M2},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
-             PrimitiveType::F8E4M3FN, DataType::kHalf},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
-             PrimitiveType::F8E4M3FN, DataType::kFloat},
-#endif  // GOOGLE_CUDA
-#if TENSORFLOW_USE_ROCM
-            // FP8 types:
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
-             PrimitiveType::F8E4M3FNUZ, DataType::kBF16},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
-             PrimitiveType::F8E4M3FNUZ, DataType::kF8E4M3FNUZ},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
-             PrimitiveType::F8E4M3FNUZ, DataType::kHalf},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
-             PrimitiveType::F8E4M3FNUZ, DataType::kFloat},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+         PrimitiveType::F8E4M3FN, DataType::kBF16},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+         PrimitiveType::F8E4M3FN, DataType::kF8E4M3FN},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+         PrimitiveType::F8E4M3FN, DataType::kF8E5M2},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+         PrimitiveType::F8E4M3FN, DataType::kHalf},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+         PrimitiveType::F8E4M3FN, DataType::kFloat},
+        // There would be an entry here for A/BType complex int8, but we do
+        // not support that type.
+        {ComputationType::kF32, DataType::kComplexFloat, PrimitiveType::C64,
+         PrimitiveType::C64, DataType::kComplexFloat},
 
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
-             PrimitiveType::F8E5M2FNUZ, DataType::kBF16},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
-             PrimitiveType::F8E5M2FNUZ, DataType::kF8E4M3FNUZ},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
-             PrimitiveType::F8E5M2FNUZ, DataType::kF8E5M2FNUZ},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
-             PrimitiveType::F8E5M2FNUZ, DataType::kHalf},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
-             PrimitiveType::F8E5M2FNUZ, DataType::kFloat},
+        {ComputationType::kF16AsF32, DataType::kFloat, PrimitiveType::F32,
+         PrimitiveType::F32, DataType::kFloat},
+        {ComputationType::kF16AsF32, DataType::kComplexFloat,
+         PrimitiveType::C64, PrimitiveType::C64, DataType::kComplexFloat},
+        // The next 4 may be supported by hipblaslt, but they are not
+        // covered by any unit tests
+        {ComputationType::kBF16AsF32, DataType::kFloat, PrimitiveType::F32,
+         PrimitiveType::F32, DataType::kFloat},
+        {ComputationType::kBF16AsF32, DataType::kComplexFloat,
+         PrimitiveType::C64, PrimitiveType::C64, DataType::kComplexFloat},
 
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2FNUZ,
-             PrimitiveType::F8E4M3FNUZ, DataType::kBF16},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2FNUZ,
-             PrimitiveType::F8E4M3FNUZ, DataType::kF8E4M3FNUZ},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2FNUZ,
-             PrimitiveType::F8E4M3FNUZ, DataType::kF8E5M2FNUZ},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2FNUZ,
-             PrimitiveType::F8E4M3FNUZ, DataType::kHalf},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2FNUZ,
-             PrimitiveType::F8E4M3FNUZ, DataType::kFloat},
-#endif  // TENSORFLOW_USE_ROCM
+        {ComputationType::kTF32AsF32, DataType::kFloat, PrimitiveType::F32,
+         PrimitiveType::F32, DataType::kFloat},
+        {ComputationType::kTF32AsF32, DataType::kComplexFloat,
+         PrimitiveType::C64, PrimitiveType::C64, DataType::kComplexFloat},
+
+        {ComputationType::kF64, DataType::kDouble, PrimitiveType::F64,
+         PrimitiveType::F64, DataType::kDouble},
+        {ComputationType::kF64, DataType::kComplexDouble, PrimitiveType::C128,
+         PrimitiveType::C128, DataType::kComplexDouble},
+    };
+    if (absl::c_linear_search(supported_cublas_type_combinations,
+                              std::make_tuple(compute_type, scale_type, a_dtype,
+                                              b_dtype, output_dtype))) {
+      return true;
+    }
+    const TypeCombinations supported_hipblas_type_combinations = {
+        // FP8 types:
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
+         PrimitiveType::F8E4M3FNUZ, DataType::kBF16},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
+         PrimitiveType::F8E4M3FNUZ, DataType::kF8E4M3FNUZ},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
+         PrimitiveType::F8E4M3FNUZ, DataType::kHalf},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
+         PrimitiveType::F8E4M3FNUZ, DataType::kFloat},
+
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
+         PrimitiveType::F8E5M2FNUZ, DataType::kBF16},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
+         PrimitiveType::F8E5M2FNUZ, DataType::kF8E4M3FNUZ},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
+         PrimitiveType::F8E5M2FNUZ, DataType::kF8E5M2FNUZ},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
+         PrimitiveType::F8E5M2FNUZ, DataType::kHalf},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FNUZ,
+         PrimitiveType::F8E5M2FNUZ, DataType::kFloat},
+
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2FNUZ,
+         PrimitiveType::F8E4M3FNUZ, DataType::kBF16},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2FNUZ,
+         PrimitiveType::F8E4M3FNUZ, DataType::kF8E4M3FNUZ},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2FNUZ,
+         PrimitiveType::F8E4M3FNUZ, DataType::kF8E5M2FNUZ},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2FNUZ,
+         PrimitiveType::F8E4M3FNUZ, DataType::kHalf},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2FNUZ,
+         PrimitiveType::F8E4M3FNUZ, DataType::kFloat},
+    };
+    if (absl::c_linear_search(supported_hipblas_type_combinations,
+                              std::make_tuple(compute_type, scale_type, a_dtype,
+                                              b_dtype, output_dtype))) {
+      return true;
+    }
+    const TypeCombinations supported_type_combinations = {
         // Other data types:
-            {ComputationType::kF16, DataType::kHalf, PrimitiveType::F16,
-             PrimitiveType::F16, DataType::kHalf},
+        {ComputationType::kF16, DataType::kHalf, PrimitiveType::F16,
+         PrimitiveType::F16, DataType::kHalf},
 
-            {ComputationType::kI32, DataType::kInt32, PrimitiveType::S8,
-             PrimitiveType::S8, DataType::kInt32},
-            {ComputationType::kI32, DataType::kFloat, PrimitiveType::S8,
-             PrimitiveType::S8, DataType::kInt8},
+        {ComputationType::kI32, DataType::kInt32, PrimitiveType::S8,
+         PrimitiveType::S8, DataType::kInt32},
+        {ComputationType::kI32, DataType::kFloat, PrimitiveType::S8,
+         PrimitiveType::S8, DataType::kInt8},
 
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::BF16,
-             PrimitiveType::BF16, DataType::kBF16},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F16,
-             PrimitiveType::F16, DataType::kHalf},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::S8,
-             PrimitiveType::S8, DataType::kFloat},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::BF16,
-             PrimitiveType::BF16, DataType::kFloat},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F16,
-             PrimitiveType::F16, DataType::kFloat},
-            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F32,
-             PrimitiveType::F32, DataType::kFloat},
-#if GOOGLE_CUDA
-            // There would be an entry here for A/BType complex int8, but we do
-            // not support that type.
-            {ComputationType::kF32, DataType::kComplexFloat, PrimitiveType::C64,
-             PrimitiveType::C64, DataType::kComplexFloat},
-
-            {ComputationType::kF16AsF32, DataType::kFloat, PrimitiveType::F32,
-             PrimitiveType::F32, DataType::kFloat},
-            {ComputationType::kF16AsF32, DataType::kComplexFloat,
-             PrimitiveType::C64, PrimitiveType::C64, DataType::kComplexFloat},
-            // The next 4 may be supported by hipblaslt, but they are not
-            // covered by any unit tests
-            {ComputationType::kBF16AsF32, DataType::kFloat, PrimitiveType::F32,
-             PrimitiveType::F32, DataType::kFloat},
-            {ComputationType::kBF16AsF32, DataType::kComplexFloat,
-             PrimitiveType::C64, PrimitiveType::C64, DataType::kComplexFloat},
-
-            {ComputationType::kTF32AsF32, DataType::kFloat, PrimitiveType::F32,
-             PrimitiveType::F32, DataType::kFloat},
-            {ComputationType::kTF32AsF32, DataType::kComplexFloat,
-             PrimitiveType::C64, PrimitiveType::C64, DataType::kComplexFloat},
-
-            {ComputationType::kF64, DataType::kDouble, PrimitiveType::F64,
-             PrimitiveType::F64, DataType::kDouble},
-            {ComputationType::kF64, DataType::kComplexDouble,
-             PrimitiveType::C128, PrimitiveType::C128,
-             DataType::kComplexDouble},
-#endif  // GOOGLE_CUDA
-        }};
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::BF16,
+         PrimitiveType::BF16, DataType::kBF16},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F16,
+         PrimitiveType::F16, DataType::kHalf},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::S8,
+         PrimitiveType::S8, DataType::kFloat},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::BF16,
+         PrimitiveType::BF16, DataType::kFloat},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F16,
+         PrimitiveType::F16, DataType::kFloat},
+        {ComputationType::kF32, DataType::kFloat, PrimitiveType::F32,
+         PrimitiveType::F32, DataType::kFloat},
+    };
 
     return absl::c_linear_search(
         supported_type_combinations,
@@ -2170,7 +2200,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return lhs_non_contracting_dimension_size <= kMaxDimensionSize;
   }
 
-#if TENSORFLOW_USE_ROCM
   // Turns an F8 dot with unsupported output type into an F8 dot with F32
   // output, and converting the F32 output to unsupported output types.
   absl::StatusOr<HloInstruction *> TurnF8DotWithUnsupportedOutputTypeIntoF32(
@@ -2184,7 +2213,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(ReplaceInstruction(instr, convert));
     return f32_dot;
   }
-#endif  // TENSORFLOW_USE_ROCM
 
   // Turns an F8 dot into an F16 dot, converting operands to F16 and
   // converting the output back to F8.
@@ -2240,9 +2268,10 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
           has_aux_output,
           xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(epilogue));
 
-      if (!((has_aux_output && instr->shape().IsTuple() &&
-             instr->shape().tuple_shapes_size() == 2) ||
-            (!has_aux_output && instr->shape().IsArray()))) {
+      if (!((instr->shape().IsTuple() &&
+             instr->shape().tuple_shapes_size() ==
+                 has_aux_output + config.damax_output() + 1) ||
+            instr->shape().IsArray())) {
         return absl::OkStatus();
       }
     } else if (instr->custom_call_target() != kGemmCallTarget ||
@@ -2292,7 +2321,7 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
       custom_call->set_output_to_operand_aliasing({{{0}, {2, {}}}});
     }
 
-    if (has_aux_output) {
+    if (instr->shape().IsTuple()) {
       for (auto user : instr->users()) {
         auto user_get_tuple =
             dynamic_cast<HloGetTupleElementInstruction *>(user);
@@ -2316,8 +2345,9 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
 
 absl::StatusOr<bool> RunOnComputation(HloComputation *computation,
                                       se::GpuComputeCapability gpu_version,
+                                      int32_t toolkit_version,
                                       bool f8_rewrite) {
-  GemmRewriterVisitor visitor(gpu_version, f8_rewrite);
+  GemmRewriterVisitor visitor(gpu_version, toolkit_version, f8_rewrite);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   GemmWorkspaceRewriteVisitor workspace_visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&workspace_visitor));
@@ -2327,8 +2357,10 @@ absl::StatusOr<bool> RunOnComputation(HloComputation *computation,
 }  // anonymous namespace
 
 GemmRewriter::GemmRewriter(se::GpuComputeCapability gpu_version,
-                           bool f8_rewrite)
-    : gpu_version_(gpu_version), f8_rewrite_(f8_rewrite) {}
+                           int32_t toolkit_version, bool f8_rewrite)
+    : gpu_version_(gpu_version),
+      toolkit_version_(toolkit_version),
+      f8_rewrite_(f8_rewrite) {}
 
 absl::StatusOr<bool> GemmRewriter::Run(
     HloModule *module,
@@ -2336,8 +2368,9 @@ absl::StatusOr<bool> GemmRewriter::Run(
   bool changed = false;
   for (HloComputation *computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(
-        bool result, RunOnComputation(computation, gpu_version_, f8_rewrite_));
+    TF_ASSIGN_OR_RETURN(bool result,
+                        RunOnComputation(computation, gpu_version_,
+                                         toolkit_version_, f8_rewrite_));
     changed |= result;
   }
   return changed;

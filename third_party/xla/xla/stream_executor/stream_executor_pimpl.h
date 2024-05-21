@@ -87,10 +87,6 @@ class StreamExecutor : public StreamExecutorInterface {
   mutable std::unique_ptr<DeviceDescription> device_description_
       ABSL_GUARDED_BY(mu_);
 
-  // Only one worker thread is needed; little work will be done by the
-  // executor.
-  static constexpr int kNumBackgroundThreads = 1;
-
   // Memory limit in bytes. Value less or equal to 0 indicates there is no
   // limit.
   int64_t memory_limit_bytes_;

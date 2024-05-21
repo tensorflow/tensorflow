@@ -307,6 +307,20 @@ PartitionedCsrFormatTensor = collections.namedtuple(
 )
 
 
+def _clone_feature_config(feature_config):
+  old_to_new_table = {}
+  new_features = []
+
+  for old_feature in nest.flatten(feature_config):
+    feature = copy.copy(old_feature)
+    if feature.table not in old_to_new_table:
+      old_to_new_table[feature.table] = copy.copy(feature.table)
+    feature.table = old_to_new_table[feature.table]
+    new_features.append(feature)
+
+  return nest.pack_sequence_as(feature_config, new_features)
+
+
 def _stack_tables_with_same_table_dim_and_optimizer(
     table_config: Sequence[TableConfig],
     flat_features: Sequence[Tuple[Any, FeatureConfig]],
@@ -496,7 +510,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     # We do a clone on the feature_config here as we will alter settings in it
     # and we don't want the user to see these. We can't just use clone here
     # as we need to maintain some object relationships.
-    super().__init__(self._clone_feature_config(feature_config), optimizer)
+    super().__init__(_clone_feature_config(feature_config), optimizer)
     self._strategy = distribute_lib.get_strategy()
     if not isinstance(
         self._strategy, (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2)
@@ -620,19 +634,6 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
                 table_name
             ]
         )
-
-  def _clone_feature_config(self, feature_config):
-    old_to_new_table = {}
-    new_features = []
-
-    for old_feature in nest.flatten(feature_config):
-      feature = copy.copy(old_feature)
-      if feature.table not in old_to_new_table:
-        old_to_new_table[feature.table] = copy.copy(feature.table)
-      feature.table = old_to_new_table[feature.table]
-      new_features.append(feature)
-
-    return nest.pack_sequence_as(feature_config, new_features)
 
   @property
   def embedding_tables(
@@ -1094,16 +1095,16 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       sparse_core_embedding_config: Optional[SparseCoreEmbeddingConfig] = None,
   ) -> Tuple[Any, Any]:
     """Computes the max_ids/unique ids settings from the input features."""
-
+    copy_feature_config = _clone_feature_config(feature_config)
     table_config = []
-    for feature in nest.flatten(feature_config):
+    for feature in nest.flatten(copy_feature_config):
       table_config.append(feature.table)
 
     for table in table_config:
       if table.optimizer is None:
         table.optimizer = optimizer
 
-    flat_features = nest.flatten_with_joined_string_paths(feature_config)
+    flat_features = nest.flatten_with_joined_string_paths(copy_feature_config)
 
     s = _stack_tables_with_same_table_dim_and_optimizer(
         table_config,
@@ -1863,7 +1864,9 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
 # this file is OSSed.
 def extract_variable_info(
     kwargs: Any,
-) -> Tuple[str, Tuple[int, ...], dtypes.DType, Callable[[], Any]]:
+) -> Tuple[
+    str, Tuple[int, ...], dtypes.DType, Callable[[], Any], Optional[int]
+]:
   """Extracts the variable creation attributes from the kwargs.
 
   Args:
@@ -1871,8 +1874,13 @@ def extract_variable_info(
       scope.
 
   Returns:
-    A tuple of variable name, shape, dtype, initialization function.
+    A tuple of variable name, shape, dtype, initialization function,
+    restore_uid.
   """
+
+  def get_restore_uid(initial_value: Callable[..., Any]) -> int | None:
+    return getattr(initial_value, "restore_uid", None)
+
   if isinstance(kwargs["initial_value"], functools.partial) and (
       "shape" in kwargs["initial_value"].keywords
       or kwargs["initial_value"].args
@@ -1887,6 +1895,7 @@ def extract_variable_info(
         shape,
         kwargs["initial_value"].keywords.get("dtype", kwargs["dtype"]),
         kwargs["initial_value"].func,
+        get_restore_uid(kwargs["initial_value"].func),
     )
   elif (
       "shape" not in kwargs
@@ -1908,6 +1917,7 @@ def extract_variable_info(
         kwargs["shape"],
         kwargs["dtype"],
         kwargs["initial_value"],
+        get_restore_uid(kwargs["initial_value"]),
     )
 
 
@@ -1961,7 +1971,9 @@ def make_sharded_variable_creator(
           "shard_info must be in arguments of the init function."
       )
 
-    name, shape, dtype, unwrapped_initial_value = extract_variable_info(kwargs)
+    name, shape, dtype, unwrapped_initial_value, restore_uid = (
+        extract_variable_info(kwargs)
+    )
 
     shape = ops.tensor_shape.TensorShape(shape)
     num_devices = num_replicas * num_cores_per_replica
@@ -2005,6 +2017,9 @@ def make_sharded_variable_creator(
     result = TPUEmbeddingShardedVariable(
         strategy, variables, tf_variables.VariableAggregation.NONE, None
     )
+    if restore_uid is not None:
+      result._maybe_initialize_trackable()  # pylint: disable=protected-access
+      result._update_uid = restore_uid  # pylint: disable=protected-access
     return result
 
   return _create_sharded_variable

@@ -1803,10 +1803,10 @@ AliasSet BuildAliasSet(const HloModule* module,
   return alias_set;
 }
 
-Status CheckAliasSetCompatibility(const AliasSet& alias_set,
-                                  const StrategyGroups& strategy_groups,
-                                  const HloInstructionSequence& sequence,
-                                  bool crash_on_error) {
+absl::Status CheckAliasSetCompatibility(const AliasSet& alias_set,
+                                        const StrategyGroups& strategy_groups,
+                                        const HloInstructionSequence& sequence,
+                                        bool crash_on_error) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
   // Checks the compatibility
   for (const auto& pair : alias_set) {

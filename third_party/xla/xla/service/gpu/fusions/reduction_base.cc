@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/union_find.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -134,7 +136,7 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
     disjoint_sets[root].Get() = root;
     reachable_outputs[root].insert(root);
     result.is_reduction_root.push_back(
-        IsRealReductionHero(root.instruction(), *hero));
+        IsRealReductionHero(root.instruction(), hero.instruction()));
     if (result.is_reduction_root.back()) {
       roots_with_reduction.insert(root);
     } else if (first_non_reduction_root) {
@@ -307,6 +309,21 @@ ReductionInfo ReductionInfo::Create(const HloFusionAnalysis& analysis,
   absl::InlinedVector<int64_t, 4> tile_per_thread{
       reduction_tiling[0], reduction_tiling[1],
       reduction_tiling[2] / vector_size};
+  if (for_mlir) {
+    // The indexing map simplifier does not currently handle this correctly,
+    // leading to loop bounds that are too large.
+    // TODO(jreiffers): Implement tightening of ranges based on constraints
+    // instead. For example, based on:
+    //
+    //   s1 in [0, 127]
+    //   d0 floordiv 32 + s1 * 32 in [0, 63]
+    //
+    // Tighten the bound of s1 to [0, 1].
+    for (int i = 0; i < num_threads.size(); ++i) {
+      tile_per_thread[i] = std::min(
+          tile_per_thread[i], CeilOfRatio(tiled_shape[i], num_threads[i]));
+    }
+  }
   if (rows_per_warp > 1) {
     // If we produce more than one element per thread, that means the reduced
     // dimension is small and it can't be tiled - we already have more threads
@@ -337,7 +354,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
     auto map = ComposeIndexingMaps(
         GetIndexingMapForTiling(tiling_, ctx),
         GetBitcastMap(tiling_.GetXlaShape(),
-                      analysis_.fusion_roots()[root_index]->shape(), ctx));
+                      analysis_.fusion_root(root_index).shape(), ctx));
     AddGroupIdConstraint(map, root_index, ctx);
     return map;
   }
@@ -345,8 +362,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
 
   auto block_offsets = GetBlockOffsetsForTiling(tiling_, ctx);
   auto thread_ids = DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx),
-                                             tiling_.GetThreadsPerBlock(),
-                                             tiling_.GetThreadStrides());
+                                             tiling_.GetThreadsPerBlock());
 
   auto physical_shape =
       ShapeUtil::DeleteDimensions(hero.dimensions(), hero.operand(0)->shape());
@@ -432,8 +448,8 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToInputIndexing(
   if (!groups_.is_reduction_root[root_index]) {
     return ComposeIndexingMaps(
         *ComputeThreadIdToOutputIndexing(root_index, ctx),
-        *ComputeOutputToInputIndexing(analysis_.fusion_roots()[root_index], 0,
-                                      ctx)
+        *ComputeOutputToInputIndexing(
+             &analysis_.fusion_root(root_index).instruction(), 0, ctx)
              .indexing_maps[hero_operand_index]
              .begin());
   }

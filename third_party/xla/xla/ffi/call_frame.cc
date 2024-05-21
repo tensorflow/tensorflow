@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/dynamic_annotations.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
@@ -83,12 +84,16 @@ void CallFrameBuilder::AddBufferArg(se::DeviceMemoryBase memory,
                                     PrimitiveType type,
                                     absl::Span<const int64_t> dims) {
   args_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+      args_.back().dims.data(), sizeof(int64_t) * args_.back().dims.size());
 }
 
 void CallFrameBuilder::AddBufferRet(se::DeviceMemoryBase memory,
                                     PrimitiveType type,
                                     absl::Span<const int64_t> dims) {
   rets_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+      rets_.back().dims.data(), sizeof(int64_t) * rets_.back().dims.size());
 }
 
 void CallFrameBuilder::AddAttributes(AttributesMap attrs) {
@@ -135,19 +140,19 @@ struct CallFrame::Dictionary {
 struct CallFrame::Array {
   CallFrameBuilder::Array value;  // XLA_FFI_Array::data
 
-  XLA_FFI_Array array = {XLA_FFI_Array_STRUCT_SIZE, nullptr};
+  XLA_FFI_Array array = {};
 };
 
 struct CallFrame::Scalar {
   CallFrameBuilder::Scalar value;  // XLA_FFI_Scalar::value
 
-  XLA_FFI_Scalar scalar = {XLA_FFI_Scalar_STRUCT_SIZE, nullptr};
+  XLA_FFI_Scalar scalar = {};
 };
 
 struct CallFrame::String {
   std::string value;  // XLA_FFI_ByteSpan::ptr
 
-  XLA_FFI_ByteSpan span = {XLA_FFI_ByteSpan_STRUCT_SIZE, nullptr};
+  XLA_FFI_ByteSpan span = {};
 };
 
 struct CallFrame::NamedAttribute {

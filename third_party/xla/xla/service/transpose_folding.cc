@@ -78,7 +78,7 @@ using InstructionOperandsPair =
     std::pair<HloInstruction*, TransposeFolding::OperandIndices>;
 
 // Folds the operands of `dot` that are foldable transposes.
-Status FoldTransposeIntoDot(InstructionOperandsPair& pair) {
+absl::Status FoldTransposeIntoDot(InstructionOperandsPair& pair) {
   HloInstruction* dot = pair.first;
 
   DotDimensionNumbers new_dot_dims = dot->dot_dimension_numbers();

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseSegmentSqrtNGradV2"
   input_arg {
     name: "grad"

@@ -27,7 +27,7 @@ namespace xla {
 
 // Requests if given buffers are ready, awaits for results and returns OK if
 // all of the buffers are ready or the last non-ok status.
-Status AwaitBuffersReady(absl::Span<ifrt::Array* const> ifrt_arrays);
+absl::Status AwaitBuffersReady(absl::Span<ifrt::Array* const> ifrt_arrays);
 
 }  // namespace xla
 

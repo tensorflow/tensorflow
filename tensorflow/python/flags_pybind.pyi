@@ -21,6 +21,7 @@ class Flag:
 class Flags:
     enable_aggressive_constant_replication: Flag
     enable_colocation_key_propagation_in_while_op_lowering: Flag
+    enable_function_pruning_before_inlining: Flag
     enable_nested_function_shape_inference: Flag
     enable_quantized_dtypes_training: Flag
     enable_tf2min_ici_weight: Flag

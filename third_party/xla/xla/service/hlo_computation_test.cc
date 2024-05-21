@@ -253,14 +253,14 @@ TEST_F(HloComputationTest, VisitWithMultipleRoots) {
     explicit TestVisitor(HloComputation* computation)
         : computation_(computation) {}
 
-    Status DefaultAction(HloInstruction* hlo_instruction) override {
+    absl::Status DefaultAction(HloInstruction* hlo_instruction) override {
       EXPECT_FALSE(visited_set_.contains(hlo_instruction));
       visited_set_.insert(hlo_instruction);
       last_visited_ = hlo_instruction;
       return OkStatus();
     }
 
-    Status FinishVisit(HloInstruction* root) override {
+    absl::Status FinishVisit(HloInstruction* root) override {
       EXPECT_EQ(computation_->root_instruction(), root);
       ++finish_visit_calls_;
       return OkStatus();

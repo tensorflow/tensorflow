@@ -50,7 +50,7 @@ std::string LayoutMode::ToString() const {
   }
 }
 
-StatusOr<LayoutMode> LayoutMode::FromString(std::string s) {
+absl::StatusOr<LayoutMode> LayoutMode::FromString(std::string s) {
   if (s == "default") {
     return LayoutMode(Mode::kDefault);
   }
@@ -58,11 +58,12 @@ StatusOr<LayoutMode> LayoutMode::FromString(std::string s) {
     return LayoutMode(Mode::kAuto);
   }
   // LayoutMode is user-specified; parse Layout string
-  StatusOr<Layout> layout = ParseLayout(s);
+  absl::StatusOr<Layout> layout = ParseLayout(s);
   if (!layout.ok()) {
-    Status new_status(layout.status().code(),
-                      absl::StrCat("Error parsing user-specified layout mode '",
-                                   s, "': ", layout.status().message()));
+    absl::Status new_status(
+        layout.status().code(),
+        absl::StrCat("Error parsing user-specified layout mode '", s,
+                     "': ", layout.status().message()));
     return new_status;
   }
   return LayoutMode(*layout);

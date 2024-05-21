@@ -455,6 +455,7 @@ tsl_cc_test(
         "//tsl/platform/cloud/testdata:service_account_credentials",
         "//tsl/platform/cloud/testdata:service_account_public_key",
     ],
+    tags = ["no_oss"],  # TODO(b/327036247): revisit after this moves to XLA
     deps = [
         ":http_request_fake",
         ":oauth_client",
@@ -478,6 +479,7 @@ tsl_cc_test(
         "//tsl/platform/cloud/testdata:application_default_credentials",
         "//tsl/platform/cloud/testdata:service_account_credentials",
     ],
+    tags = ["no_oss"],  # TODO(b/327036247): revisit after this moves to XLA
     deps = [
         ":google_auth_provider",
         ":http_request_fake",

@@ -35,6 +35,7 @@ limitations under the License.
 #include "Eigen/ThreadPool"  // from @eigen_archive
 #include "llvm/ADT/STLExtras.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/local_session_selection.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
@@ -218,6 +219,7 @@ class TfrtSession : public tensorflow::Session {
         &options, /*export_dir=*/"unknown_export_dir", resource_context.get());
     // TODO(b/334641254): Offer a Session option that prunes the graph_def.
     model_context.set_graph_def(&graph);
+    model_context.set_device_mgr(&fallback_state->device_manager());
     // In the multi-host case, this prevents local Sessions from running
     // global resource creation functions.
     model_context.set_is_local_session(

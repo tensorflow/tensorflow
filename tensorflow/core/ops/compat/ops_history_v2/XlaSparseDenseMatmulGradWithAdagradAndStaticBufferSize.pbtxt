@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSize"
   input_arg {
     name: "row_pointers"

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ResourceScatterNdSub"
   input_arg {
     name: "ref"

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseSplit"
   input_arg {
     name: "split_dim"

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "MergeV2Checkpoints"
   input_arg {
     name: "checkpoint_prefixes"

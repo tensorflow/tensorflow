@@ -577,6 +577,8 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
         CombineSignatureDefs(meta_graph_def.signature_def());
     model_context.set_graph_def(&meta_graph_def.graph_def());
     model_context.set_callable_options(&callable_options);
+    model_context.set_device_mgr(&fallback_state->device_manager());
+
     TF_RETURN_IF_ERROR(
         options.graph_execution_options.runtime->CreateRuntimeResources(
             model_context));

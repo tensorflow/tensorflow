@@ -121,18 +121,19 @@ static inline int GetFirstGlobbingEntry(const std::vector<std::string>& dirs) {
 
 }  // namespace
 
-Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
-                        std::vector<string>* results) {
+absl::Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
+                              std::vector<string>* results) {
   // Check that `fs`, `env` and `results` are non-null.
   if (fs == nullptr || env == nullptr || results == nullptr) {
-    return Status(absl::StatusCode::kInvalidArgument,
-                  "Filesystem calls GetMatchingPaths with nullptr arguments");
+    return absl::Status(
+        absl::StatusCode::kInvalidArgument,
+        "Filesystem calls GetMatchingPaths with nullptr arguments");
   }
 
   // By design, we don't match anything on empty pattern
   results->clear();
   if (pattern.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // The pattern can contain globbing characters at multiple levels, e.g.:
@@ -155,7 +156,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
     if (fs->FileExists(pattern).ok()) {
       results->emplace_back(pattern);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // To expand the globbing, we do a BFS from `dirs[matching_index-1]`.
@@ -205,7 +206,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
 
       // Get all children of `parent`. If this fails, return early.
       std::vector<std::string> children;
-      Status s = fs->GetChildren(parent, &children);
+      absl::Status s = fs->GetChildren(parent, &children);
       if (s.code() == absl::StatusCode::kPermissionDenied) {
         return;
       }
@@ -220,13 +221,13 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
       // We also check that children match the pattern in parallel, for speedup.
       // We store the status of the match and `IsDirectory` in
       // `children_status` array, one element for each children.
-      std::vector<Status> children_status(children.size());
+      std::vector<absl::Status> children_status(children.size());
       auto handle_children = [&fs, &match_pattern, &parent, &children,
                               &children_status](int j) {
         const std::string path = io::JoinPath(parent, children[j]);
         if (!fs->Match(path, match_pattern)) {
-          children_status[j] =
-              Status(absl::StatusCode::kCancelled, "Operation not needed");
+          children_status[j] = absl::Status(absl::StatusCode::kCancelled,
+                                            "Operation not needed");
         } else {
           children_status[j] = fs->IsDirectory(path);
         }
@@ -263,11 +264,11 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
     std::swap(expand_queue, next_expand_queue);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<bool> FileExists(Env* env, const string& fname) {
-  Status status = env->FileExists(fname);
+absl::StatusOr<bool> FileExists(Env* env, const string& fname) {
+  absl::Status status = env->FileExists(fname);
   if (errors::IsNotFound(status)) {
     return false;
   }

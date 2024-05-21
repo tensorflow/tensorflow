@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "CompositeTensorVariantFromComponents"
   input_arg {
     name: "components"

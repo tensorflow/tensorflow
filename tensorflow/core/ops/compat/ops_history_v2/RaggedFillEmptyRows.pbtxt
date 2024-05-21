@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RaggedFillEmptyRows"
   input_arg {
     name: "value_rowids"

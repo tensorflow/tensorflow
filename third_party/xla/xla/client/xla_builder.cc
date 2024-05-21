@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/client/xla_builder.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -111,8 +112,8 @@ bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
   return false;
 }
 
-Status NormalizeAndAssignSharing(HloInstructionProto* instr,
-                                 const OpSharding& op_sharding) {
+absl::Status NormalizeAndAssignSharing(HloInstructionProto* instr,
+                                       const OpSharding& op_sharding) {
   // Normalize tuple sharding and fail the call if the sharding is invalid.
   Shape shape(instr->shape());
   TF_ASSIGN_OR_RETURN(HloSharding sharding,
@@ -531,7 +532,7 @@ XlaBuilder::XlaBuilder(const std::string& computation_name)
 
 XlaBuilder::~XlaBuilder() = default;
 
-XlaOp XlaBuilder::ReportError(const Status& error) {
+XlaOp XlaBuilder::ReportError(const absl::Status& error) {
   CHECK(!error.ok());
   if (die_immediately_on_error_) {
     LOG(FATAL) << "error building computation: " << error;
@@ -686,16 +687,16 @@ void XlaBuilder::IsConstantVisitor(const int64_t op_handle, int depth,
   visited->insert(op_handle);
 }
 
-Status XlaBuilder::SetInstructionFrontendAttribute(const XlaOp op,
-                                                   std::string attribute,
-                                                   std::string value) {
+absl::Status XlaBuilder::SetInstructionFrontendAttribute(const XlaOp op,
+                                                         std::string attribute,
+                                                         std::string value) {
   TF_ASSIGN_OR_RETURN(auto instr_proto, LookUpMutableInstruction(op));
   auto* frontend_attributes = instr_proto->mutable_frontend_attributes();
   (*frontend_attributes->mutable_map())[attribute] = std::move(value);
   return OkStatus();
 }
 
-Status XlaBuilder::SetInstructionSharding(
+absl::Status XlaBuilder::SetInstructionSharding(
     XlaOp op, const std::optional<OpSharding>& sharding) {
   TF_ASSIGN_OR_RETURN(auto instr_proto, LookUpMutableInstruction(op));
   if (!sharding.has_value()) {
@@ -716,7 +717,7 @@ XlaComputation XlaBuilder::BuildAndNoteError() {
   return std::move(build_status).value();
 }
 
-Status XlaBuilder::GetCurrentStatus() const {
+absl::Status XlaBuilder::GetCurrentStatus() const {
   if (!first_error_.ok()) {
     std::string backtrace;
     first_error_backtrace_.Dump(tsl::DebugWriteToString, &backtrace);
@@ -803,7 +804,7 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(
   return std::move(computation);
 }
 
-/* static */ Status XlaBuilder::PopulateInputOutputAliasAndBufferDonor(
+/* static */ absl::Status XlaBuilder::PopulateInputOutputAliasAndBufferDonor(
     HloModuleProto* module, const ProgramShape& program_shape,
     const std::vector<InputOutputAlias>& input_output_aliases,
     const absl::flat_hash_set<HloBufferDonorConfig::BufferDonor>&
@@ -1986,7 +1987,7 @@ XlaOp XlaBuilder::SparseDot(
   });
 }
 
-Status XlaBuilder::VerifyConvolution(
+absl::Status XlaBuilder::VerifyConvolution(
     const Shape& lhs_shape, const Shape& rhs_shape,
     const ConvolutionDimensionNumbers& dimension_numbers) const {
   if (lhs_shape.rank() != rhs_shape.rank()) {
@@ -3332,7 +3333,7 @@ XlaOp XlaBuilder::ConditionalImpl(
   });
 }
 
-Status XlaBuilder::CheckOpBuilder(XlaOp op) const {
+absl::Status XlaBuilder::CheckOpBuilder(XlaOp op) const {
   if (this != op.builder()) {
     return InvalidArgument(
         "XlaOp with handle %d is built by builder '%s', but is trying to use "
@@ -3789,15 +3790,55 @@ XlaOp XlaBuilder::AllToAllArray(
       return all_to_all;
     }
     DimensionVector sizes;
+    const bool is_unbounded = operand_shape->is_unbounded_dynamic();
+    std::vector<XlaOp> dynamic_sizes;
+    auto GetR1DimensionSizeOrConstant = [&](XlaOp operand,
+                                            int64_t dimension) -> XlaOp {
+      if (operand_shape->is_unbounded_dynamic_dimension(dimension)) {
+        return Reshape(GetDimensionSize(operand, dimension), {1});
+      }
+      return ConstantR1<int32_t>(
+          this, {static_cast<int32_t>(operand_shape->dimensions(dimension))});
+    };
+    XlaOp r1_split_count =
+        ConstantR1<int32_t>(this, {static_cast<int32_t>(split_count)});
     for (int64_t i = 0; i < operand_shape->rank(); ++i) {
       if (i != split_dimension) {
         sizes.push_back(operand_shape->dimensions(i));
+        if (is_unbounded) {
+          dynamic_sizes.push_back(GetR1DimensionSizeOrConstant(operand, i));
+        }
         continue;
       }
       sizes.push_back(split_count);
-      sizes.push_back(operand_shape->dimensions(i) / split_count);
+      sizes.push_back(operand_shape->is_unbounded_dynamic_dimension(i)
+                          ? Shape::kUnboundedSize
+                          : operand_shape->dimensions(i) / split_count);
+
+      if (is_unbounded) {
+        dynamic_sizes.push_back(r1_split_count);
+        dynamic_sizes.push_back(
+            operand_shape->is_unbounded_dynamic_dimension(i)
+                ? Div(GetR1DimensionSizeOrConstant(operand, i), r1_split_count)
+                : ConstantR1<int32_t>(this,
+                                      {static_cast<int32_t>(sizes.back())}));
+      }
     }
-    all_to_all = Reshape(all_to_all, sizes);
+
+    if (is_unbounded) {
+      std::vector<bool> dynamic_dimensions;
+      std::transform(
+          sizes.begin(), sizes.end(), std::back_inserter(dynamic_dimensions),
+          [](int64_t size) { return size == Shape::kUnboundedSize; });
+      TF_ASSIGN_OR_RETURN(
+          const Shape shape,
+          ShapeUtil::MakeValidatedShape(all_to_all_shape.element_type(), sizes,
+                                        dynamic_dimensions));
+      all_to_all =
+          MhloDynamicReshape(all_to_all, ConcatInDim(dynamic_sizes, 0), shape);
+    } else {
+      all_to_all = Reshape(all_to_all, sizes);
+    }
 
     std::vector<int64_t> permutation;
     const auto rank = operand_shape->rank();
@@ -3810,6 +3851,21 @@ XlaOp XlaBuilder::AllToAllArray(
       permutation.push_back(dim_after_reshape);
     }
     all_to_all = Transpose(all_to_all, permutation);
+
+    if (is_unbounded) {
+      std::vector<XlaOp> new_dimensions;
+      for (int64_t i = 0; i < operand_shape->rank(); ++i) {
+        new_dimensions.push_back(GetR1DimensionSizeOrConstant(operand, i));
+      }
+      new_dimensions[split_dimension] =
+          Div(new_dimensions[split_dimension], r1_split_count);
+      new_dimensions[concat_dimension] =
+          Mul(new_dimensions[concat_dimension], r1_split_count);
+
+      return MhloDynamicReshape(all_to_all, ConcatInDim(new_dimensions, 0),
+                                all_to_all_shape);
+    }
+
     return Reshape(all_to_all_shape, all_to_all);
   });
 }
@@ -3865,6 +3921,13 @@ XlaOp XlaBuilder::AllToAllTuple(
     const std::optional<ChannelHandle>& channel_id) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    if (operand_shape->is_unbounded_dynamic() ||
+        split_dimension == Shape::kUnboundedSize ||
+        concat_dimension == Shape::kUnboundedSize ||
+        split_count == Shape::kUnboundedSize) {
+      return InvalidArgument(
+          "AllToAllTuple does not support unbounded dynamic shapes");
+    }
 
     // The HloInstruction for AllToAll currently only handles the data
     // communication: it accepts N already split parts and scatters them to N
@@ -3890,14 +3953,14 @@ XlaOp XlaBuilder::AllToAllTuple(
     }
 
     // Handle data communication.
-    XlaOp alltoall =
+    XlaOp all_to_all =
         this->AllToAllTuple(slices, replica_groups, layout, channel_id);
 
     // Concat the N received parts.
     std::vector<XlaOp> received;
     received.reserve(split_count);
     for (int i = 0; i < split_count; i++) {
-      received.push_back(this->GetTupleElement(alltoall, i));
+      received.push_back(this->GetTupleElement(all_to_all, i));
     }
     return this->ConcatInDim(received, concat_dimension);
   });
@@ -4542,7 +4605,7 @@ XlaBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
   return dimension_numbers;
 }
 
-/* static */ Status XlaBuilder::Validate(
+/* static */ absl::Status XlaBuilder::Validate(
     const ConvolutionDimensionNumbers& dnum) {
   if (dnum.input_spatial_dimensions_size() < 2) {
     return FailedPrecondition("input spacial dimension < 2: %d",

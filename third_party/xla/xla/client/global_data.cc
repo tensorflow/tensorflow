@@ -37,7 +37,7 @@ void ReleaseHandles(ServiceInterface* parent,
     *request.add_data() = handle;
   }
   UnregisterResponse response;
-  Status status = parent->Unregister(&request, &response);
+  absl::Status status = parent->Unregister(&request, &response);
   VLOG(1) << "Done with request";
   if (!status.ok()) {
     LOG(WARNING) << "Failed to unregister handles: " << status

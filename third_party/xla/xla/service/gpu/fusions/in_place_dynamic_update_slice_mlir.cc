@@ -55,7 +55,7 @@ using mlir::ValueRange;
 using mlir::arith::AddIOp;
 using mlir::func::ReturnOp;
 using mlir::tensor::InsertOp;
-using mlir_converter::ApplyAffineMap;
+using mlir_converter::ApplyIndexing;
 using mlir_converter::CallTargetProvider;
 using mlir_converter::ClampIndex;
 using mlir_converter::PartitionedComputations;
@@ -122,8 +122,8 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
       b, output_tensor_args, indexing,
       [&](ValueRange output_tensors, ValueRange dim_values,
           ValueRange symbol_values) -> llvm::SmallVector<Value> {
-        auto input_indices = ApplyAffineMap(indexing.GetAffineMap(), dim_values,
-                                            symbol_values, b);
+        auto input_indices =
+            ApplyIndexing(indexing, dim_values, symbol_values, b);
         llvm::SmallVector<Value> results;
         for (auto [instr, root, output] :
              llvm::zip(dus_ops_, analysis_.fusion_roots(), output_tensors)) {
@@ -153,10 +153,9 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
               ProvideParameter(root_computation, dus_instr, kDUSUpdateIndex,
                                input_indices, call_targets, entry_function, b);
           // Handle bitcasts under the DUS.
-          if (dus_instr->shape() != root->shape()) {
-            update_indices = ApplyAffineMap(
-                GetBitcastMap(dus_instr->shape(), root->shape(), b.getContext())
-                    .GetAffineMap(),
+          if (dus_instr->shape() != root.shape()) {
+            update_indices = ApplyIndexing(
+                GetBitcastMap(dus_instr->shape(), root.shape(), b.getContext()),
                 update_indices, {}, b);
           }
           results.push_back(

@@ -1746,7 +1746,7 @@ absl::Status HloValueSemanticsPropagation::HandleConditional(
   std::vector<HloValueSemantics> merged_semantics_leaves;
   TF_RETURN_IF_ERROR(semantics_tree_vec[0].ForEachElementWithStatus(
       [&](const ShapeIndex& index,
-          const HloValueSemantics* semantics) -> Status {
+          const HloValueSemantics* semantics) -> absl::Status {
         std::vector<HloValueSemantics> semantics_vector;
         for (size_t i = 0; i < semantics_tree_vec.size(); ++i) {
           semantics_vector.push_back(

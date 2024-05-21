@@ -52,11 +52,11 @@ using std::optional;
 // operations into smaller operations.
 class BatchNormExpanderVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
+  absl::Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
 
-  Status HandleBatchNormInference(HloInstruction* batch_norm) override;
+  absl::Status HandleBatchNormInference(HloInstruction* batch_norm) override;
 
-  Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
+  absl::Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
 
   // Runs the visitor on a computation.
   static bool Run(HloComputation* computation, bool rewrite_training_op,
@@ -150,7 +150,7 @@ bool BatchNormExpanderVisitor::Run(HloComputation* computation,
   return visitor.changed();
 }
 
-Status BatchNormExpanderVisitor::HandleBatchNormTraining(
+absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
     HloInstruction* batch_norm) {
   if (!rewrite_training_op_) {
     return OkStatus();
@@ -298,7 +298,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   return OkStatus();
 }
 
-Status BatchNormExpanderVisitor::HandleBatchNormInference(
+absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
     HloInstruction* batch_norm) {
   if (!rewrite_inference_op_) {
     return OkStatus();
@@ -390,7 +390,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
   return OkStatus();
 }
 
-Status BatchNormExpanderVisitor::HandleBatchNormGrad(
+absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
     HloInstruction* batch_norm) {
   // Use the following formulas to calculate gradients:
   // scale_grad =
