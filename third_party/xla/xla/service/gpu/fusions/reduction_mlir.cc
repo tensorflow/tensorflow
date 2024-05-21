@@ -204,9 +204,8 @@ llvm::SmallVector<Value> MlirReductionFusion::EmitReduction(
   auto thread_id = state.thread_and_block_ids[0];
   Value cst_true = b.create<ma::ConstantOp>(b.getOneAttr(b.getI1Type()));
 
-  auto delinearized =
-      DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx),
-                               threads_per_block, tiling.GetThreadStrides());
+  auto delinearized = DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx),
+                                               threads_per_block);
   auto thread_ids = mlir_converter::ApplyAffineMap(
       mlir::AffineMap::get(1, 0, delinearized, ctx), {thread_id}, {}, b);
 

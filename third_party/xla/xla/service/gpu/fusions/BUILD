@@ -457,7 +457,7 @@ cc_library(
     srcs = ["transpose_mlir.cc"],
     hdrs = ["transpose_mlir.h"],
     deps = [
-        ":tiling_util",
+        ":fusion_emitter",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:status",
@@ -475,16 +475,14 @@ cc_library(
         "//xla/service/gpu/model:indexing_analysis",
         "//xla/service/gpu/model:indexing_map",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

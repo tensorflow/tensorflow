@@ -699,6 +699,13 @@ SmallVector<Value> ApplyAffineMap(mlir::AffineMap map, ValueRange dims,
   return result;
 }
 
+SmallVector<Value> ApplyIndexing(const IndexingMap& map, ValueRange dims,
+                                 ValueRange symbols, ImplicitLocOpBuilder& b) {
+  SmallVector<Value> results;
+  b.createOrFold<ApplyIndexingOp>(results, dims, symbols, map);
+  return results;
+}
+
 Value CheckConstraint(mlir::Value constrained_value, Interval range,
                       ImplicitLocOpBuilder& b) {
   auto lb = b.create<ConstantOp>(b.getIndexAttr(range.lower));

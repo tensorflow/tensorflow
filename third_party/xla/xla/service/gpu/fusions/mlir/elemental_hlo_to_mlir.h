@@ -91,6 +91,10 @@ llvm::SmallVector<mlir::Value> ApplyAffineMap(mlir::AffineMap map,
                                               mlir::ValueRange dims,
                                               mlir::ValueRange symbols,
                                               mlir::ImplicitLocOpBuilder& b);
+llvm::SmallVector<mlir::Value> ApplyIndexing(const IndexingMap& map,
+                                             mlir::ValueRange dims,
+                                             mlir::ValueRange symbols,
+                                             mlir::ImplicitLocOpBuilder& b);
 
 // Checks all the constraints and dimension ranges in the map.
 mlir::Value CheckConstraints(const IndexingMap& map, mlir::ValueRange dims,
