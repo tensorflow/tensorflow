@@ -186,4 +186,19 @@ TEST(CheckGpuDelegateCompatibility, Add2Dto4DBroadcastSuccess2) {
   EXPECT_TRUE(CheckGpuDelegateCompatibility(op_sig).message().empty());
 }
 
+TEST(CheckGpuDelegateCompatibility, Add2Dto4DBroadcastSuccess3) {
+  OpSignature op_sig = OpSignature();
+  op_sig.op = BuiltinOperator_ADD;
+  auto params = std::make_unique<TfLiteAddParams>();
+  op_sig.builtin_data = static_cast<void*>(params.get());
+  op_sig.inputs = std::vector<OpSignatureTensorSpec>(2);
+  op_sig.inputs[0] = OpSignatureTensorSpec();
+  op_sig.inputs[0].dims = {1, 4, 4, 10};
+  op_sig.inputs[1] = OpSignatureTensorSpec();
+  // Can be broadcasted to {1, 1, 1, 10}
+  op_sig.inputs[1].dims = {1, 10};
+
+  EXPECT_TRUE(CheckGpuDelegateCompatibility(op_sig).message().empty());
+}
+
 }  // namespace tflite
