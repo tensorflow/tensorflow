@@ -1,3 +1,4 @@
+#include "xla/stream_executor/event_interface.h"
 /* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,6 +58,8 @@ class TpuPlatformInterface : public stream_executor::Platform {
   virtual const TpuHostLocationExternal GetTpuHostLocation() const = 0;
 
   virtual TpuRuntimeVersion version() const = 0;
+
+  virtual void EraseEvent(stream_executor::EventInterface* key) {};
 
   TpuTopologyExternal topology() {
     return TpuTopologyExternal(GetTopologyPtr());

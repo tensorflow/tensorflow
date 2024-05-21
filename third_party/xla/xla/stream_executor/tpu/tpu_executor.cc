@@ -92,11 +92,6 @@ bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
       get_stream(other->implementation()));
 }
 
-absl::Status TpuExecutor::DeallocateEvent(Event* event) {
-  tpu_platform().EraseEvent(event->implementation());
-  return absl::OkStatus();
-}
-
 stream_executor::Event::Status TpuExecutor::PollForEventStatus(
     stream_executor::Event* event) {
   auto se_event = tpu_platform().LookupEvent(event->implementation());
@@ -137,7 +132,7 @@ absl::StatusOr<std::unique_ptr<Stream>> TpuExecutor::CreateStream(
 
 absl::StatusOr<std::unique_ptr<Event>> TpuExecutor::CreateEvent() {
   SE_Event* se_event = ExecutorApiFn()->TpuEvent_NewFn(executor_);
-  auto tpu_event = std::make_unique<TpuEvent>(se_event);
+  auto tpu_event = std::make_unique<TpuEvent>(se_event, platform_);
   tpu_platform().InsertEvent(tpu_event.get(), se_event);
 
   StatusHelper status;

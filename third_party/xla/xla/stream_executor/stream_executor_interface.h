@@ -263,9 +263,6 @@ class StreamExecutorInterface {
   virtual bool HostCallback(Stream* stream,
                             absl::AnyInvocable<absl::Status() &&> callback) = 0;
 
-  // Performs platform-specific deallocation and cleanup of an event.
-  virtual absl::Status DeallocateEvent(Event* event) = 0;
-
   // Inserts the specified event at the end of the specified stream.
   virtual absl::Status RecordEvent(Stream* stream, Event* event) = 0;
 

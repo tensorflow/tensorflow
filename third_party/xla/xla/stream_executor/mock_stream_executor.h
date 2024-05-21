@@ -133,7 +133,6 @@ class MockStreamExecutor : public StreamExecutorInterface {
   MOCK_METHOD(bool, HostCallback,
               (Stream * stream, absl::AnyInvocable<absl::Status() &&> callback),
               (override));
-  MOCK_METHOD(absl::Status, DeallocateEvent, (Event * event), (override));
   MOCK_METHOD(absl::Status, RecordEvent, (Stream * stream, Event* event),
               (override));
   MOCK_METHOD(absl::Status, WaitForEvent, (Stream * stream, Event* event),

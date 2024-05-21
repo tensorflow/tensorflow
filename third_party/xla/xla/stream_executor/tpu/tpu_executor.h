@@ -79,8 +79,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   void Deallocate(DeviceMemoryBase* memory) override;
 
-  absl::Status DeallocateEvent(Event* event) override;
-
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
   void DequeueOutfeed(int32_t outfeed_queue_index, absl::Span<uint8_t> bytes,
