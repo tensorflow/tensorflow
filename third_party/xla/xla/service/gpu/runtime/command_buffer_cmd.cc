@@ -856,6 +856,8 @@ absl::Status IfCmd::Record(const Thunk::ExecuteParams& execute_params,
       CreateBuilder(&then_commands_, &execute_params, &record_params));
 }
 
+bool IfCmd::force_update() { return then_commands_.force_update(); }
+
 CommandBufferCmd::BufferUsageVector IfCmd::buffers() {
   absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
   buffers.emplace(pred_, MemoryAccess::kRead);
@@ -898,6 +900,10 @@ absl::Status IfElseCmd::Record(const Thunk::ExecuteParams& execute_params,
       execution_scope_id, se::DeviceMemory<bool>(pred),
       CreateBuilder(&then_commands_, &execute_params, &record_params),
       CreateBuilder(&else_commands_, &execute_params, &record_params));
+}
+
+bool IfElseCmd::force_update() {
+  return (then_commands_.force_update() || else_commands_.force_update());
 }
 
 CommandBufferCmd::BufferUsageVector IfElseCmd::buffers() {
@@ -945,6 +951,11 @@ absl::Status CaseCmd::Record(const Thunk::ExecuteParams& execute_params,
                                              &execute_params, &record_params));
 }
 
+bool CaseCmd::force_update() {
+  return absl::c_any_of(branches_commands_,
+                        [](const auto& seq) { return seq.force_update(); });
+}
+
 CommandBufferCmd::BufferUsageVector CaseCmd::buffers() {
   absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
   buffers.emplace(index_, MemoryAccess::kRead);
@@ -990,6 +1001,8 @@ absl::Status ForCmd::Record(const Thunk::ExecuteParams& execute_params,
       CreateBuilder(&body_commands_, &execute_params, &record_params));
 }
 
+bool ForCmd::force_update() { return body_commands_.force_update(); }
+
 CommandBufferCmd::BufferUsageVector ForCmd::buffers() {
   absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
   buffers.emplace(loop_counter_, MemoryAccess::kWrite);
@@ -1034,6 +1047,10 @@ absl::Status WhileCmd::Record(const Thunk::ExecuteParams& execute_params,
       CreateExecutionScopeBuilder(&cond_commands_, &execute_params,
                                   &record_params),
       CreateBuilder(&body_commands_, &execute_params, &record_params));
+}
+
+bool WhileCmd::force_update() {
+  return (cond_commands_.force_update() || body_commands_.force_update());
 }
 
 CommandBufferCmd::BufferUsageVector WhileCmd::buffers() {
