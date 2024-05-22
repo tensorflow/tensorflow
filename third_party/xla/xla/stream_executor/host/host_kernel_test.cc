@@ -30,8 +30,11 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/test_benchmark.h"
+#include "tsl/platform/threadpool.h"
 
 namespace stream_executor::host {
 
@@ -44,8 +47,12 @@ static SE_HOST_KernelError* AddI32(const SE_HOST_KernelCallFrame* call_frame) {
   int32_t* rhs_ptr = reinterpret_cast<int32_t*>(rhs.data);
   int32_t* out_ptr = reinterpret_cast<int32_t*>(out.data);
 
-  uint64_t x = call_frame->thread->x;
-  *(out_ptr + x) = *(lhs_ptr + x) + *(rhs_ptr + x);
+  const auto zstep = call_frame->thread_dims->x * call_frame->thread_dims->y;
+  const auto ystep = call_frame->thread_dims->x;
+
+  uint64_t i = call_frame->thread->x + call_frame->thread->y * ystep +
+               call_frame->thread->z * zstep;
+  *(out_ptr + i) = *(lhs_ptr + i) + *(rhs_ptr + i);
 
   return nullptr;
 }
@@ -82,8 +89,11 @@ static std::unique_ptr<StreamExecutor> NewStreamExecutor() {
   return platform->GetUncachedExecutor(config).value();
 }
 
-TEST(HostKernelTest, Addition) {
-  HostKernel kernel(/*arity=*/3, AddI32);
+TEST(HostKernelTest, Addition1D) {
+  auto tp = std::make_shared<tsl::thread::ThreadPool>(tsl::Env::Default(),
+                                                      "XLAEigen", 2);
+
+  HostKernel kernel(/*arity=*/3, AddI32, tp);
 
   std::vector<int32_t> lhs = {1, 2, 3, 4};
   std::vector<int32_t> rhs = {5, 6, 7, 8};
@@ -97,6 +107,29 @@ TEST(HostKernelTest, Addition) {
   TF_ASSERT_OK(kernel.Launch(ThreadDim(4), args));
 
   std::vector<int32_t> expected = {6, 8, 10, 12};
+  EXPECT_EQ(out, expected);
+}
+
+TEST(HostKernelTest, Addition3D) {
+  auto tp = std::make_shared<tsl::thread::ThreadPool>(tsl::Env::Default(),
+                                                      "XLAEigen", 2);
+
+  HostKernel kernel(/*arity=*/3, AddI32, tp);
+
+  // Lets pretend there is a 3-dimensional 2x2x3 data
+  std::vector<int32_t> lhs = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  std::vector<int32_t> rhs = {10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21};
+  std::vector<int32_t> out = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+  DeviceMemoryBase lhs_mem(lhs.data(), lhs.size() * sizeof(int32_t));
+  DeviceMemoryBase rhs_mem(rhs.data(), rhs.size() * sizeof(int32_t));
+  DeviceMemoryBase out_mem(out.data(), out.size() * sizeof(int32_t));
+  std::vector<DeviceMemoryBase> args = {lhs_mem, rhs_mem, out_mem};
+
+  TF_ASSERT_OK(kernel.Launch(ThreadDim(2, 2, 3), args));
+
+  std::vector<int32_t> expected = {11, 13, 15, 17, 19, 21,
+                                   23, 25, 27, 29, 31, 33};
   EXPECT_EQ(out, expected);
 }
 
@@ -126,5 +159,40 @@ TEST(HostKernelTest, JitAddition) {
   // EXPECT_EQ(out, expected);
   // EXPECT_TRUE(true);
 }
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below
+//===----------------------------------------------------------------------===//
+
+static void BM_ThreadpoolKernel(benchmark::State& state) {
+  auto tp = std::make_shared<tsl::thread::ThreadPool>(tsl::Env::Default(),
+                                                      "XLAEigen", 2);
+
+  HostKernel kernel(/*arity=*/3, AddI32, tp);
+
+  const int input_size = state.range(0);
+  std::vector<int32_t> lhs(input_size);
+  std::vector<int32_t> rhs(input_size);
+  std::vector<int32_t> out(input_size);
+
+  DeviceMemoryBase lhs_mem(lhs.data(), lhs.size() * sizeof(int32_t));
+  DeviceMemoryBase rhs_mem(rhs.data(), rhs.size() * sizeof(int32_t));
+  DeviceMemoryBase out_mem(out.data(), out.size() * sizeof(int32_t));
+  std::vector<DeviceMemoryBase> args = {lhs_mem, rhs_mem, out_mem};
+
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(kernel.Launch(ThreadDim(input_size), args));
+  }
+}
+
+BENCHMARK(BM_ThreadpoolKernel)
+    ->MeasureProcessCPUTime()
+    ->Arg(10)
+    ->Arg(1023)
+    ->Arg(1024)
+    ->Arg(2048)
+    ->Arg(4096)
+    ->Arg(8192)
+    ->Arg(10000);
 
 }  // namespace stream_executor::host
