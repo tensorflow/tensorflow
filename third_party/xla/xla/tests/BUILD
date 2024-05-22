@@ -553,7 +553,7 @@ xla_test(
         "cpu",
         "gpu",
     ],
-    tags = ["no_aarch64"],
+    tags = ["not_run:arm"],
     deps = [
         ":client_library_test_base",
         ":test_macros_header",
@@ -2516,7 +2516,7 @@ xla_cc_test(
         ":local_client_aot_test_computation.o",
     ],
     linkstatic = 1,
-    tags = ["no_aarch64"],  # b/341355246
+    tags = ["not_run:arm"],  # b/341355246
     deps = [
         "//xla:executable_run_options",
         "@com_google_absl//absl/base:dynamic_annotations",

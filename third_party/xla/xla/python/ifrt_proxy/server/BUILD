@@ -44,7 +44,7 @@ cc_library(
 ifrt_proxy_cc_test(
     name = "grpc_server_test",
     srcs = ["grpc_server_test.cc"],
-    tags = ["no_aarch64"],  # TODO(b/326080238): Fix this.
+    tags = ["not_run:arm"],  # TODO(b/326080238): Fix this.
     deps = [
         ":grpc_server",
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
@@ -90,7 +90,7 @@ ifrt_proxy_cc_test(
     name = "grpc_service_impl_test",
     size = "small",
     srcs = ["grpc_service_impl_test.cc"],
-    tags = ["no_aarch64"],  # TODO(b/326080238): Fix this.
+    tags = ["not_run:arm"],  # TODO(b/326080238): Fix this.
     deps = [
         ":grpc_server",
         ":grpc_service_impl",
