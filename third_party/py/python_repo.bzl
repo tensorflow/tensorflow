@@ -7,15 +7,14 @@ Defaults to 3.11.
 To set wheel name, add "--repo_env=WHEEL_NAME=tensorflow_cpu"
 """
 
-VERSIONS = ["3.9", "3.10", "3.11", "3.12", "3.13"]
 DEFAULT_VERSION = "3.11"
 WARNING = """
-HERMETIC_PYTHON_VERSION variable was not set correctly, using default version. 
+HERMETIC_PYTHON_VERSION variable was not set correctly, using default version.
 Python {} will be used.
-To select Python version, either set HERMETIC_PYTHON_VERSION env variable in 
+To select Python version, either set HERMETIC_PYTHON_VERSION env variable in
 your shell:
   export HERMETIC_PYTHON_VERSION=3.12
-OR pass it as an argument to bazel command directly or inside your .bazelrc 
+OR pass it as an argument to bazel command directly or inside your .bazelrc
 file:
   --repo_env=HERMETIC_PYTHON_VERSION=3.12
 """.format(DEFAULT_VERSION)
@@ -38,7 +37,7 @@ def _python_repository_impl(ctx):
 
     wheel_name = ctx.os.environ.get("WHEEL_NAME", "tensorflow")
     wheel_collab = ctx.os.environ.get("WHEEL_COLLAB", False)
-    if version not in VERSIONS:
+    if not version:
         print(WARNING)  # buildifier: disable=print
         version = DEFAULT_VERSION
     else:
