@@ -106,7 +106,7 @@ namespace gpu {
 
 static GpuEvent* AsGpuEvent(Event* event) {
   DCHECK(event != nullptr);
-  return static_cast<GpuEvent*>(event->implementation());
+  return static_cast<GpuEvent*>(event);
 }
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
@@ -945,7 +945,7 @@ absl::Status FillBlockDimLimit(GpuDeviceHandle device,
 absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
   auto gpu_event = std::make_unique<GpuEvent>(this);
   TF_RETURN_IF_ERROR(gpu_event->Init());
-  return std::make_unique<Event>(this, std::move(gpu_event));
+  return std::move(gpu_event);
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(

@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/event_interface.h"
 #include "xla/stream_executor/host/host_kernel.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -222,9 +221,11 @@ bool HostExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
   return true;
 }
 
-class HostEvent : public EventInterface {
+class HostEvent : public Event {
  public:
-  HostEvent() : notification_(std::make_shared<absl::Notification>()) {}
+  HostEvent(StreamExecutorInterface* executor)
+      : Event(executor),
+        notification_(std::make_shared<absl::Notification>()) {}
 
   std::shared_ptr<absl::Notification>& notification() { return notification_; }
 
@@ -236,12 +237,12 @@ class HostEvent : public EventInterface {
 };
 
 absl::StatusOr<std::unique_ptr<Event>> HostExecutor::CreateEvent() {
-  return std::make_unique<Event>(this, std::make_unique<HostEvent>());
+  return std::make_unique<HostEvent>(this);
 }
 
 static HostEvent* AsHostEvent(Event* event) {
   DCHECK(event != nullptr);
-  return static_cast<HostEvent*>(event->implementation());
+  return static_cast<HostEvent*>(event);
 }
 
 absl::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {

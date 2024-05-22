@@ -223,7 +223,6 @@ cc_library(
     deps = [
         ":device_description",
         ":device_memory",
-        ":event_interface",
         ":kernel_spec",
         ":module_spec",
         ":stream_executor_headers",
@@ -488,13 +487,6 @@ cc_library(
 )
 
 cc_library(
-    name = "event_interface",
-    hdrs = ["event_interface.h"],
-    deps = [
-    ],
-)
-
-cc_library(
     name = "stream_interface",
     hdrs = ["stream_interface.h"],
     deps = [
@@ -677,7 +669,6 @@ cc_library(
         ":blas",  # build_cleaner: keep
         ":command_buffer",  # build_cleaner: keep
         ":dnn",  # build_cleaner: keep
-        ":event_interface",
         ":fft",
         ":host_memory_allocation",  # build_cleaner: keep
         ":kernel_spec",

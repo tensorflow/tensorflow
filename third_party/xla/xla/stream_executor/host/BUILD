@@ -134,7 +134,6 @@ cc_library(
         ":host_kernel",
         ":host_stream",
         "//xla/stream_executor",
-        "//xla/stream_executor:event_interface",
         "//xla/stream_executor:stream_executor_interface",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",

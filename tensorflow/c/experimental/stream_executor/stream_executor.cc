@@ -410,13 +410,12 @@ class CStreamExecutor : public StreamExecutor {
   absl::Status RecordEvent(Stream* stream, Event* event) override {
     SP_Stream stream_handle =
         static_cast<CStream*>(stream->implementation())->Handle();
-    return static_cast<CEvent*>(event->implementation())->Record(stream_handle);
+    return static_cast<CEvent*>(event)->Record(stream_handle);
   }
   absl::Status WaitForEvent(Stream* stream, Event* event) override {
     SP_Stream stream_handle =
         static_cast<CStream*>(stream->implementation())->Handle();
-    SP_Event event_handle =
-        static_cast<CEvent*>(event->implementation())->Handle();
+    SP_Event event_handle = static_cast<CEvent*>(event)->Handle();
     OwnedTFStatus c_status(TF_NewStatus());
     stream_executor_->wait_for_event(&device_, stream_handle, event_handle,
                                      c_status.get());
@@ -424,8 +423,7 @@ class CStreamExecutor : public StreamExecutor {
     return s;
   }
   Event::Status PollForEventStatus(Event* event) override {
-    SP_Event event_handle =
-        static_cast<CEvent*>(event->implementation())->Handle();
+    SP_Event event_handle = static_cast<CEvent*>(event)->Handle();
     SE_EventStatus event_status =
         stream_executor_->get_event_status(&device_, event_handle);
     return SEEventStatusToEventStatus(event_status);
@@ -449,8 +447,7 @@ class CStreamExecutor : public StreamExecutor {
   }
   absl::Status BlockHostForEvent(Stream* stream, Event* event) {
     OwnedTFStatus c_status(TF_NewStatus());
-    SP_Event event_handle =
-        static_cast<CEvent*>(event->implementation())->Handle();
+    SP_Event event_handle = static_cast<CEvent*>(event)->Handle();
     stream_executor_->block_host_for_event(&device_, event_handle,
                                            c_status.get());
     return StatusFromTF_Status(c_status.get());
@@ -544,9 +541,9 @@ class CStreamExecutor : public StreamExecutor {
   }
 
   absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override {
-    auto c_event = std::make_unique<CEvent>(&device_, stream_executor_);
+    auto c_event = std::make_unique<CEvent>(&device_, stream_executor_, this);
     TF_RETURN_IF_ERROR(c_event->Create());
-    return std::make_unique<Event>(this, std::move(c_event));
+    return std::move(c_event);
   }
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(

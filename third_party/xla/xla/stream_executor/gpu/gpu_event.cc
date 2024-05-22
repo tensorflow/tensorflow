@@ -25,7 +25,7 @@ namespace stream_executor {
 namespace gpu {
 
 GpuEvent::GpuEvent(GpuExecutor* parent)
-    : parent_(parent), gpu_event_(nullptr) {}
+    : Event(parent), parent_(parent), gpu_event_(nullptr) {}
 
 GpuEvent::~GpuEvent() { Destroy().IgnoreError(); }
 

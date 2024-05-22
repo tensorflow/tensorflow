@@ -94,7 +94,7 @@ bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
 
 stream_executor::Event::Status TpuExecutor::PollForEventStatus(
     stream_executor::Event* event) {
-  auto se_event = tpu_platform().LookupEvent(event->implementation());
+  auto se_event = tpu_platform().LookupEvent(event);
   return stream_executor::Event::Status(
       ExecutorApiFn()->TpuExecutor_PollForEventStatusFn(executor_, se_event));
 }
@@ -102,7 +102,7 @@ stream_executor::Event::Status TpuExecutor::PollForEventStatus(
 absl::Status TpuExecutor::RecordEvent(Stream* stream,
                                       ::stream_executor::Event* event) {
   StatusHelper status;
-  auto se_event = tpu_platform().LookupEvent(event->implementation());
+  auto se_event = tpu_platform().LookupEvent(event);
   ExecutorApiFn()->TpuExecutor_RecordEventFn(
       executor_, get_stream(stream->implementation()), se_event,
       status.c_status);
@@ -112,7 +112,7 @@ absl::Status TpuExecutor::RecordEvent(Stream* stream,
 absl::Status TpuExecutor::WaitForEvent(Stream* stream,
                                        ::stream_executor::Event* event) {
   StatusHelper status;
-  auto se_event = tpu_platform().LookupEvent(event->implementation());
+  auto se_event = tpu_platform().LookupEvent(event);
   ExecutorApiFn()->TpuExecutor_WaitForEventFn(
       executor_, get_stream(stream->implementation()), se_event,
       status.c_status);
@@ -132,7 +132,7 @@ absl::StatusOr<std::unique_ptr<Stream>> TpuExecutor::CreateStream(
 
 absl::StatusOr<std::unique_ptr<Event>> TpuExecutor::CreateEvent() {
   SE_Event* se_event = ExecutorApiFn()->TpuEvent_NewFn(executor_);
-  auto tpu_event = std::make_unique<TpuEvent>(se_event, platform_);
+  auto tpu_event = std::make_unique<TpuEvent>(se_event, platform_, this);
   tpu_platform().InsertEvent(tpu_event.get(), se_event);
 
   StatusHelper status;
@@ -140,7 +140,7 @@ absl::StatusOr<std::unique_ptr<Event>> TpuExecutor::CreateEvent() {
                                                status.c_status);
   TF_RETURN_IF_ERROR(status.status());
 
-  return std::make_unique<Event>(this, std::move(tpu_event));
+  return std::move(tpu_event);
 }
 
 DeviceMemoryBase TpuExecutor::Allocate(uint64_t size, int64_t memory_space) {

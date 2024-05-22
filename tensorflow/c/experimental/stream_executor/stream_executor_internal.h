@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "xla/stream_executor/event_interface.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -128,10 +127,12 @@ class CStream : public StreamInterface {
   SP_Stream stream_handle_;
 };
 
-class CEvent : public EventInterface {
+class CEvent : public Event {
  public:
-  CEvent(SP_Device* device, SP_StreamExecutor* stream_executor)
-      : device_(device),
+  CEvent(SP_Device* device, SP_StreamExecutor* stream_executor,
+         StreamExecutorInterface* executor_interface)
+      : Event(executor_interface),
+        device_(device),
         stream_executor_(stream_executor),
         event_handle_(nullptr) {}
   ~CEvent() override { Destroy(); }

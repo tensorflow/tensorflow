@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/event_interface.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
@@ -151,7 +150,7 @@ class XlaInterpreterExecutor : public StreamExecutor {
     return true;
   }
   absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override {
-    return std::make_unique<Event>(this, nullptr);
+    return std::make_unique<Event>(this);
   }
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
