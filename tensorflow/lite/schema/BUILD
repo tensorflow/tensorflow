@@ -15,7 +15,6 @@ filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
     srcs = [
         ":schema_fbs_srcs",
-        ":schema_utils.cc",
         ":schema_utils.h",
     ],
     visibility = [
