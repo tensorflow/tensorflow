@@ -2283,9 +2283,11 @@ Status SpmdPartitioningVisitor::HandleCall(HloInstruction* hlo) {
                                                 call_graph_)
                          .status());
   SetPartitionedHlo(hlo, [&] {
-    return b_.AddInstruction(HloInstruction::CreateCall(
+    auto* call = b_.AddInstruction(HloInstruction::CreateCall(
         MakePartitionedShape(hlo->shape(), hlo->sharding()), call_args,
         hlo->called_computations()[0]));
+    call->set_raw_backend_config_string(hlo->raw_backend_config_string());
+    return call;
   });
   return OkStatus();
 }
