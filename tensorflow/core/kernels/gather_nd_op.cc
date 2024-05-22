@@ -30,10 +30,10 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename Device, typename T, typename Index>
-class GatherNdOp : public OpKernel {
+template <typename Device, typename T, typename Index, bool kDropBadIndices>
+class GatherNdOpBase : public OpKernel {
  public:
-  explicit GatherNdOp(OpKernelConstruction* c) : OpKernel(c) {
+  explicit GatherNdOpBase(OpKernelConstruction* c) : OpKernel(c) {
     const DataType dt = DataTypeToEnum<T>::v();
     const DataType index_t = DataTypeToEnum<Index>::v();
     OP_REQUIRES_OK(c, c->MatchSignature({dt, index_t}, {dt}));
@@ -44,11 +44,17 @@ class GatherNdOp : public OpKernel {
     const Tensor& indices = c->input(1);
 
     Tensor out;
-    OP_REQUIRES_OK(
-        c, functor::DoGatherNd<Device, T, Index>(c, params, indices, &out));
+    OP_REQUIRES_OK(c, functor::DoGatherNd<Device, T, Index, kDropBadIndices>(
+                          c, params, indices, &out));
     c->set_output(0, out);
   }
 };
+
+template <typename Device, typename T, typename Index>
+using GatherNdOp = GatherNdOpBase<Device, T, Index, /*kDropBadIndices=*/false>;
+template <typename Device, typename T, typename Index>
+using GatherNdGpuCompatibleOp =
+    GatherNdOpBase<Device, T, Index, /*kDropBadIndices=*/true>;
 
 #define REGISTER_GATHER_ND_FULL(dev, type, index_type)                 \
   REGISTER_KERNEL_BUILDER(Name("GatherNd")                             \
@@ -62,6 +68,19 @@ class GatherNdOp : public OpKernel {
   REGISTER_GATHER_ND_FULL(CPU, type, int32); \
   REGISTER_GATHER_ND_FULL(CPU, type, int64_t)
 
+#define REGISTER_GATHER_ND_GPU_COMPATIBLE_FULL(dev, type, index_type) \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("GatherNdGpuCompatible")                                   \
+          .Device(DEVICE_##dev)                                       \
+          .TypeConstraint<type>("Tparams")                            \
+          .TypeConstraint<index_type>("Tindices"),                    \
+      GatherNdGpuCompatibleOp<dev##Device, type, index_type>)
+
+#define REGISTER_GATHER_ND_GPU_COMPATIBLE_CPU(type)         \
+  REGISTER_GATHER_ND_GPU_COMPATIBLE_FULL(CPU, type, int16); \
+  REGISTER_GATHER_ND_GPU_COMPATIBLE_FULL(CPU, type, int32); \
+  REGISTER_GATHER_ND_GPU_COMPATIBLE_FULL(CPU, type, int64_t)
+
 // TODO(ebrevdo): This is a pure data-movement kernel. It shouldn't be
 // instantiated for all different types. Instead, all the types should
 // be coalesced. So we should only have int8, int16, int32, int64 support.
@@ -71,6 +90,7 @@ class GatherNdOp : public OpKernel {
 //
 // Same for the GPU kernel.
 TF_CALL_ALL_TYPES(REGISTER_GATHER_ND_CPU);
+TF_CALL_ALL_TYPES(REGISTER_GATHER_ND_GPU_COMPATIBLE_CPU);
 TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_ND_CPU);
 TF_CALL_float8_e5m2(REGISTER_GATHER_ND_CPU);
 TF_CALL_float8_e4m3fn(REGISTER_GATHER_ND_CPU);

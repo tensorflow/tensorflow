@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -118,6 +119,39 @@ TEST_F(GatherNdOpTest, Quantized_INT8) {
   Tensor expected(allocator(), DT_QINT8, TensorShape({2}));
   test::FillValues<qint8>(&expected, {8, 4});
   test::ExpectTensorEqual<qint8>(expected, *GetOutput(0));
+}
+
+REGISTER_OP("GatherNdGpuCompatible")
+    .Input("params: Tparams")
+    .Input("indices: Tindices")
+    .Output("output: Tparams")
+    .Attr("Tparams: type")
+    .Attr("Tindices: {int16,int32,int64}")
+    .SetShapeFn(shape_inference::GatherNdShape);
+
+class GatherNdGpuCompatibleOpTest : public OpsTestBase {
+ protected:
+  void MakeOp(DataType param_type, DataType index_type) {
+    TF_ASSERT_OK(NodeDefBuilder("myop", "GatherNdGpuCompatible")
+                     .Input(FakeInput(param_type))
+                     .Input(FakeInput(index_type))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+};
+
+TEST_F(GatherNdGpuCompatibleOpTest, DropIndexOutOfRange) {
+  MakeOp(DT_FLOAT, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<float>(TensorShape({5}), {9, 1, 2, 8, 4});
+  AddInputFromArray<int32>(TensorShape({3, 1}), {3, 5, 2});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output.
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
+  test::FillValues<float>(&expected, {8, 0, 2});
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
 constexpr int kLookups = 2000;
