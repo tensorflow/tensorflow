@@ -136,6 +136,11 @@ class DataTransferServer {
   virtual absl::StatusOr<std::string> GetCompatibilityInfo() const {
     return std::string();
   }
+
+  // If `true`, data service clients should fall back to gRPC if they fail to
+  // establish a connection to this server and/or fail to fetch an element from
+  // this server in a way that doesn't indicate a preemption or downscaling.
+  static bool FallBackToGrpc() { return true; }
 };
 
 }  // namespace data
