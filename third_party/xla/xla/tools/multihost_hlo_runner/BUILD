@@ -5,7 +5,7 @@ load("@local_tsl//tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_binary")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm")
+load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm", "if_google")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -54,6 +54,37 @@ xla_cc_binary(
         "//xla/stream_executor:cuda_platform",
     ]) + if_rocm([
         "//xla/stream_executor:rocm_platform",
+    ]),
+)
+
+xla_cc_binary(
+    name = "cuda_hlo_runner_main",
+    testonly = True,
+    srcs = ["hlo_runner_main.cc"],
+    tags = [
+        "gpu",
+        "nomac",
+    ],
+    deps = [
+        ":functional_hlo_runner",
+        ":hlo_runner_flags",
+        "//xla:debug_options_flags",
+        "//xla:status",
+        "//xla:statusor",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt/distributed",
+        "//xla/service:cpu_plugin",
+        "//xla/service:gpu_plugin",
+        "//xla/stream_executor:cuda_platform",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ] + if_google([
+        "//third_party/py/jax/jaxlib:gpu_kernels",  # fixdeps: keep
     ]),
 )
 
