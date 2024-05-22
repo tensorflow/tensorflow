@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/group_events.h"
 #include "tsl/profiler/utils/timespan.h"
 

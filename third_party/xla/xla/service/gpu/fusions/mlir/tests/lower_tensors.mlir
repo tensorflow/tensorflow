@@ -86,10 +86,12 @@ module {
   }
 }
 
-// CHECK:      #[[MAP:.*]] = affine_map<(d0, d1) -> (d0 + d1 * 2)>
-// CHECK:      @layout(%[[ARG0:.*]]: !llvm.ptr,
-// CHECK-SAME:     %[[X:.*]]: index, %[[Y:.*]]: index
-// CHECK:        %[[IDX:.*]] = affine.apply #[[MAP]](%[[X]], %[[Y]])
+// CHECK:        #[[$MAP:.*]] = affine_map<(d0, d1) -> (d1 * 2 + d0)>
+// CHECK-LABEL:  @layout(
+// CHECK-SAME:      %[[ARG0:.*]]: !llvm.ptr,
+// CHECK-SAME:      %[[X:.*]]: index, %[[Y:.*]]: index
+// CHECK:        %[[IDX:.*]] = xla_gpu.apply_indexing #[[$MAP]]
+// CHECK-SAME:      (%[[X]] in [0, 1], %[[Y]] in [0, 2])
 // CHECK:        %[[IDX_CAST:.*]] = arith.index_castui %[[IDX]] : index to i64
 // CHECK:        %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][%[[IDX_CAST]]]
 // CHECK:        llvm.load %[[PTR]]

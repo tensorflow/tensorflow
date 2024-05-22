@@ -317,11 +317,8 @@ MlirFusionEmitterBase::CreateLLVMModule(
   // simplify-affine has maximally folded expressions to work with.
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateSimplifyArithPass());
   pm.addPass(CreateSimplifyAffinePass());
-  // Replace comparisons that result in constant values (e.g. due to ranges not
-  // overlapping). This pass must run after SimplifyAffinePass, since that
-  // generates the range information.
-  pm.addPass(CreateSimplifyArithPass());
 
   // simplify-affine lowers most affine.apply ops, but if it can't prove a
   // division or modulo is unsigned, affine.apply ops will remain.
@@ -442,7 +439,7 @@ MlirFusionEmitterBase::CreateMLIRModule(
 
   // Run a minimal simplification pipeline.
   mlir::PassManager pm(&context);
-  pm.addPass(CreateSimplifyArithPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateSimplifyArithPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   // We won't dump the trace here if the pipeline fails. This is acceptable,

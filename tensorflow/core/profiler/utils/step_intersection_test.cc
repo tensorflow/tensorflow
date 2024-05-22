@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 
 namespace tensorflow {
 namespace profiler {

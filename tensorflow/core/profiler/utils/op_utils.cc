@@ -19,11 +19,13 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tsl/profiler/utils/tf_op_utils.h"
+#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
