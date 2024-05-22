@@ -6261,7 +6261,14 @@ class Subgraph {
         node_index));
     const int dims_count = NumElements(&perm_tensor);
     std::array<size_t, XNN_MAX_TENSOR_DIMS> perm;
-    std::copy(&perm_data[0], &perm_data[dims_count], perm.begin());
+    for (int i = 0; i < dims_count; ++i) {
+      if (perm_data[i] < 0) {
+        perm[i] = perm_data[i] + dims_count;
+      } else {
+        perm[i] = perm_data[i];
+      }
+    }
+
     if (subgraph != nullptr) {
       const xnn_status status = xnn_define_static_transpose(
           subgraph, dims_count, perm.data(),
