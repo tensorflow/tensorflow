@@ -672,6 +672,7 @@ class TFLiteConverterBase:
     self._experimental_qdq_conversion_mode = None
     self._experimental_disable_per_channel_quantization_for_dense_layers = False
     self._experimental_enable_composite_direct_lowering = False
+    self._experimental_canonicalizing_inf_as_min_max_float = False
 
     # Debug parameters
     self.ir_dump_dir = None
@@ -831,6 +832,9 @@ class TFLiteConverterBase:
         ),
         "enable_composite_direct_lowering": (
             self._experimental_enable_composite_direct_lowering
+        ),
+        "canonicalizing_inf_as_min_max_float": (
+            self._experimental_canonicalizing_inf_as_min_max_float
         ),
     }
 
@@ -1545,7 +1549,6 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
           _convert_debug_info_func(self._trackable_obj.graph_debug_info),
           graph_def,
       )
-
     return self._convert_from_saved_model(graph_def)
 
 

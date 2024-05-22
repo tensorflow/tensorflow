@@ -41,7 +41,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 64.
+// Next ID to use: 65.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -360,4 +360,8 @@ message TocoFlags {
   // Enables the attempt to directly lower composites into tflite ops.
   // WARNING: Experimental interface, subject to change.
   optional bool enable_composite_direct_lowering = 63 [default = false];
+
+  // When set to true, convert +Inf/-Inf to MIN/MAX float value and output of
+  // convert only contains finite values.
+  optional bool canonicalizing_inf_as_min_max_float = 64 [default = false];
 }

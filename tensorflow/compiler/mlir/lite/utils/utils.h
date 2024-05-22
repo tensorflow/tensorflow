@@ -41,6 +41,18 @@ using mlir::Operation;
 using mlir::ShapedType;
 using mlir::Value;
 
+// Returns true if the value is the min float value.
+inline bool IsMinFloatValue(APFloat value) {
+  if (!value.isNegative()) return false;
+  return value.isLargest() || value.isInfinity();
+}
+
+// Returns true if the value is the max float value.
+inline bool IsMaxFloatValue(APFloat value) {
+  if (value.isNegative()) return false;
+  return value.isLargest() || value.isInfinity();
+}
+
 // Returns true if all tensor value in `values` has static shape and same shape.
 inline bool OpHasSameStaticShapes(Operation* op) {
   auto values = op->getOperands();

@@ -360,6 +360,8 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
     return status_handler.ConsumeStatus();
   }
   pass_manager.clear();
+  if (pass_config.canonicalizing_inf_as_min_max_float)
+    pass_manager.addPass(mlir::TFL::CreateCanonicalizeBoundaryValuePass());
   pass_manager.addPass(mlir::odml::createLegalizeStablehloToVhloPass());
   if (failed(pass_manager.run(module))) {
     return status_handler.Combine(
@@ -391,7 +393,6 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     const PyFunctionLibrary* quantization_py_function_lib) {
   // Explicitly disable dumping Op details on failures.
   module.getContext()->printOpOnDiagnostic(false);
-
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
   module.getContext()->appendDialectRegistry(registry);
@@ -455,6 +456,15 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   pass_manager.clear();
+
+  if (pass_config.canonicalizing_inf_as_min_max_float) {
+    pass_manager.addPass(mlir::TFL::CreateCanonicalizeBoundaryValuePass());
+    if (failed(pass_manager.run(module))) {
+      return status_handler.Combine(
+          absl::InvalidArgumentError("CanonicalizeBoundaryValuePass failed"));
+    }
+    pass_manager.clear();
+  }
 
   AddPostVariableFreezingTFToTFLConversionPasses(saved_model_dir, toco_flags,
                                                  pass_config, &pass_manager);
