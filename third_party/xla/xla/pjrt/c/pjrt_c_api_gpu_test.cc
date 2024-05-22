@@ -31,10 +31,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/ffi/api/ffi.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_ffi_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_gpu_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_test.h"
@@ -158,9 +160,30 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
   create_arg.extension_start = nullptr;
   create_arg.context = nullptr;
 
-  PJRT_Error* error = api_->PJRT_ExecuteContext_Create(&create_arg);
-  EXPECT_EQ(error, nullptr);
+  EXPECT_EQ(api_->PJRT_ExecuteContext_Create(&create_arg), nullptr);
   EXPECT_NE(create_arg.context, nullptr);
+
+  const PJRT_FFI_Extension* ffi_extension =
+      pjrt::FindExtension<PJRT_FFI_Extension>(
+          api_, PJRT_Extension_Type::PJRT_Extension_Type_FFI);
+  ASSERT_NE(ffi_extension, nullptr);
+
+  std::string string_data = "string_data";
+
+  PJRT_FFI_UserData_Add_Args add_args;
+  add_args.struct_size = PJRT_FFI_UserData_Add_Args_STRUCT_SIZE;
+  add_args.extension_start = nullptr;
+  add_args.user_data.type_id = 42;
+  add_args.user_data.data = &string_data;
+  add_args.user_data.deleter = nullptr;
+  add_args.context = create_arg.context;
+  EXPECT_EQ(ffi_extension->user_data_add(&add_args), nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto lookup_user_data,
+      create_arg.context->execute_context->ffi_context().Lookup(
+          xla::ffi::ExecutionContext::TypeId(42)));
+  EXPECT_EQ(lookup_user_data, &string_data);
 
   PJRT_ExecuteContext_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
