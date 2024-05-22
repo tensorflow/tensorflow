@@ -946,7 +946,7 @@ xla_test(
     name = "gpu_fused_mha_test",
     srcs = ["gpu_fused_mha_test.cc"],
     backend_tags = {"gpu": [
-        "requires-gpu-sm90",
+        "requires-gpu-sm80",
     ]},
     backends = [
         "gpu",
