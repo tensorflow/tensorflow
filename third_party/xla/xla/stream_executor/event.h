@@ -41,7 +41,7 @@ class Event {
     kComplete,
   };
 
-  Event(StreamExecutorInterface* stream_exec);
+  explicit Event(StreamExecutorInterface* stream_exec);
 
   // Releases any resources held by the Event object.
   virtual ~Event() = default;
@@ -51,7 +51,9 @@ class Event {
 
   // Blocks `stream` on this event. `stream` is a raw platform-specific
   // stream (e.g. GpuStreamHandle).
-  absl::Status WaitForEventOnExternalStream(std::intptr_t stream);
+  virtual absl::Status WaitForEventOnExternalStream(std::intptr_t stream) {
+    return absl::UnimplementedError("Not supported for this Event.");
+  }
 
   Event(Event&&) = default;
   Event& operator=(Event&&) = default;

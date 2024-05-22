@@ -32,8 +32,4 @@ Event::Status Event::PollForStatus() {
   return stream_exec_->PollForEventStatus(this);
 }
 
-absl::Status Event::WaitForEventOnExternalStream(std::intptr_t stream) {
-  return stream_exec_->WaitForEventOnExternalStream(stream, this);
-}
-
 }  // namespace stream_executor

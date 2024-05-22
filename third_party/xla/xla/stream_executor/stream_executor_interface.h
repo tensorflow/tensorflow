@@ -269,14 +269,6 @@ class StreamExecutorInterface {
   // Waits for the specified event at the end of the specified stream.
   virtual absl::Status WaitForEvent(Stream* stream, Event* event) = 0;
 
-  // Waits for the specified event at the end of the raw platform-specific
-  // stream.
-  virtual absl::Status WaitForEventOnExternalStream(std::intptr_t stream,
-                                                    Event* event) {
-    return absl::UnimplementedError(
-        "WaitForEventOnExternalStream not supported on this executor.");
-  }
-
   // Requests the current status of the event from the underlying platform.
   virtual Event::Status PollForEventStatus(Event* event) = 0;
 

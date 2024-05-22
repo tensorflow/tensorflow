@@ -197,6 +197,7 @@ gpu_only_cc_library(
         ":gpu_stream",
         ":gpu_types_header",
         "//xla/stream_executor:stream_executor_headers",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
     ],
 )
