@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/kernels/callback.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
