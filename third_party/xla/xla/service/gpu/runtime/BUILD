@@ -1139,7 +1139,7 @@ cc_library(
     ],
 )
 
-cc_test(
+xla_cc_test(
     name = "for_all_thunks_test",
     srcs = ["for_all_thunks_test.cc"],
     deps = [
