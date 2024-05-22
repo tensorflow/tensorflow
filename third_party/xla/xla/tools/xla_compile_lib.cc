@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"

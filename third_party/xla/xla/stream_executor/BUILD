@@ -248,12 +248,10 @@ cc_library(
 
 cc_library(
     name = "device_memory_allocator",
-    srcs = ["device_memory_allocator.cc"],
     hdrs = ["device_memory_allocator.h"],
     deps = [
         ":device_memory",
         ":platform",
-        ":stream_executor_headers",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -265,6 +263,28 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "stream_executor_memory_allocator",
+    srcs = ["stream_executor_memory_allocator.cc"],
+    hdrs = ["stream_executor_memory_allocator.h"],
+    deps = [
+        ":device_memory",
+        ":device_memory_allocator",
+        ":platform",
+        ":stream_executor_headers",
+        ":stream_executor_interface",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

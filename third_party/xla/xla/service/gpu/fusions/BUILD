@@ -706,6 +706,7 @@ xla_test(
         "//xla/service/gpu/runtime:thunk",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/tests:filecheck",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
