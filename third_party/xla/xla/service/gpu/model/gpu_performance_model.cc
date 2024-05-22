@@ -95,12 +95,9 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
       compute_time, read_time + write_time, config);
 
-  VLogResult(flops, bytes_read, bytes_written, num_threads, compute_time,
-             read_time, write_time, exec_time);
-
-  EstimateRunTimeData runtime_data = {flops,     bytes_written, num_threads,
-                                      read_time, write_time,    compute_time,
-                                      exec_time};
+  EstimateRunTimeData runtime_data = {flops,        bytes_read, bytes_written,
+                                      num_threads,  read_time,  write_time,
+                                      compute_time, exec_time};
   VLOG(3) << "Runtime data for HLO: " << instr->name() << "\n"
           << runtime_data.ToString();
   return runtime_data;
@@ -240,8 +237,18 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
   auto exec_time = CombineComputeAndMemoryAccessTime(
       compute_time, read_time + consumer_runtime.write_time, config);
 
-  VLogResult(flops, bytes_read, consumer_runtime.bytes_written, num_threads,
-             compute_time, read_time, consumer_runtime.write_time, exec_time);
+  VLOG(3) << "Runtime data for producer-consumer fusion:\n"
+          << " producer: " << producer->name() << "\n"
+          << " consumer: " << consumer->name() << "\n"
+          << EstimateRunTimeData{flops,
+                                 bytes_read,
+                                 consumer_runtime.bytes_written,
+                                 num_threads,
+                                 compute_time,
+                                 read_time,
+                                 consumer_runtime.write_time,
+                                 exec_time}
+                 .ToString();
 
   return exec_time;
 }

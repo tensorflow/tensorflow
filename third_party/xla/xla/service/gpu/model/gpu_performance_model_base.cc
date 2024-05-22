@@ -411,22 +411,5 @@ void GpuPerformanceModelBase::VLogOperandRead(const HloInstruction* operand,
           << ", n_bytes_net: " << n_bytes_net << ", coalesced: " << coalesced;
 }
 
-/*static*/
-void GpuPerformanceModelBase::VLogResult(
-    int64_t flops, int64_t bytes_read, int64_t bytes_written,
-    int64_t num_threads, absl::Duration compute_time, absl::Duration read_time,
-    absl::Duration write_time, absl::Duration exec_time) {
-  if (VLOG_IS_ON(8)) {
-    LOG(INFO) << "FLOPs: " << flops;
-    LOG(INFO) << "Bytes read: " << bytes_read;
-    LOG(INFO) << "Bytes written: " << bytes_written;
-    LOG(INFO) << "Num threads: " << num_threads;
-    LOG(INFO) << "Compute time: " << compute_time;
-    LOG(INFO) << "Input read time: " << read_time;
-    LOG(INFO) << "Output write time: " << write_time;
-    LOG(INFO) << "Exec time: " << exec_time;
-  }
-}
-
 }  // namespace gpu
 }  // namespace xla
