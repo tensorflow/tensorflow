@@ -1324,6 +1324,8 @@ absl::Status TfrtCpuExecutable::CheckBufferCompatibilities(
   for (int i = 0; i < input_buffers.size(); ++i) {
     const auto& buffer = input_buffers[i].second;
     if (input_buffer_sizes_in_bytes_[i] != buffer->BufferSizes()[0]) {
+      // why is the size here wrong?
+      LOG(INFO) << "<<<<<<<<<<<<";
       return InvalidArgument(
           "Executable expected parameter %d of size %lld but got buffer with "
           "incompatible size %lld",

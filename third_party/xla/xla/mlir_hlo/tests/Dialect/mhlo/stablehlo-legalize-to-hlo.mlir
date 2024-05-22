@@ -1672,6 +1672,13 @@ func.func @type_i1(%arg0: tensor<i1>, %arg1: tensor<i1>) -> tensor<i1> {
   func.return %0 : tensor<i1>
 }
 
+// CHECK-LABEL: "type_i2"
+func.func @type_i2(%arg0: tensor<i2>, %arg1: tensor<i2>) -> tensor<i2> {
+  // CHECK: "mhlo.add"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<i2>, tensor<i2>) -> tensor<i2>
+  %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<i2>, tensor<i2>) -> tensor<i2>
+  func.return %0 : tensor<i2>
+}
+
 // CHECK-LABEL: "type_i4"
 func.func @type_i4(%arg0: tensor<i4>, %arg1: tensor<i4>) -> tensor<i4> {
   // CHECK: "mhlo.add"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<i4>, tensor<i4>) -> tensor<i4>
@@ -1705,6 +1712,13 @@ func.func @type_i64(%arg0: tensor<i64>, %arg1: tensor<i64>) -> tensor<i64> {
   // CHECK: "mhlo.add"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<i64>, tensor<i64>) -> tensor<i64>
   %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<i64>, tensor<i64>) -> tensor<i64>
   func.return %0 : tensor<i64>
+}
+
+// CHECK-LABEL: "type_ui2"
+func.func @type_ui2(%arg0: tensor<ui2>, %arg1: tensor<ui2>) -> tensor<ui2> {
+  // CHECK: "mhlo.add"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<ui2>, tensor<ui2>) -> tensor<ui2>
+  %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<ui2>, tensor<ui2>) -> tensor<ui2>
+  func.return %0 : tensor<ui2>
 }
 
 // CHECK-LABEL: "type_ui4"
