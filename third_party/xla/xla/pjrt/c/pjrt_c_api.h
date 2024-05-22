@@ -44,6 +44,7 @@ typedef enum {
   PJRT_Extension_Type_Custom_Partitioner,
   PJRT_Extension_Type_Stream,
   PJRT_Extension_Type_Layouts,
+  PJRT_Extension_Type_FFI,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
@@ -78,7 +79,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 52
+#define PJRT_API_MINOR 53
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
