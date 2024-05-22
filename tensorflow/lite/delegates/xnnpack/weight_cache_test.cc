@@ -49,12 +49,15 @@ namespace {
 using testing::ElementsAreArray;
 using testing::Ge;
 
-#ifndef XNN_TEST_WEIGHT_CACHE_TEMP_FILE_TEMPATE
-#define XNN_TEST_WEIGHT_CACHE_TEMP_FILE_TEMPATE \
-  "/tmp/weight_cache_test_file.XXXXXX"
-#endif
+#if defined(XNN_TEST_WEIGHT_CACHE_TMP_DIR)
 constexpr const char kTempFileTemplate[] =
-    XNN_TEST_WEIGHT_CACHE_TEMP_FILE_TEMPATE;
+    XNN_TEST_WEIGHT_CACHE_TMP_DIR "/weight_cache_test_file.XXXXXX";
+#elif defined(__ANDROID__)
+constexpr const char kTempFileTemplate[] =
+    "/data/local/tmp/weight_cache_test_file.XXXXXX";
+#else
+constexpr const char kTempFileTemplate[] = "/tmp/weight_cache_test_file.XXXXXX";
+#endif  // XNN_TEST_WEIGHT_CACHE_TMP_DIR
 
 // Wraps a call to `mkstemp` to create temporary files.
 class TempFileDesc {
