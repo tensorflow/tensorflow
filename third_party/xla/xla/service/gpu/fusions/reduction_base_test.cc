@@ -556,22 +556,23 @@ TEST_F(ReductionTest, MlirColumnReduction) {
   EXPECT_THAT(
       fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
       MatchIndexingString(R"(
-        (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
-          d3 floordiv 48,
+        (d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> (
+          d3 floordiv 24,
           d0 floordiv 32 + s1 * 32,
-          (d3 mod 48) * 32 + d0 mod 32
+          ((d3 mod 24) * 32 + d0 mod 32) * 2 + s3
         )
         domain:
         d0 in [0, 1023]
         d1 in [0, 0]
         d2 in [0, 0]
-        d3 in [0, 9215]
+        d3 in [0, 4607]
         d4 in [0, 0]
         d5 in [0, 0]
         s0 in [0, 0]
         s1 in [0, 1]
         s2 in [0, 0]
-        (d3 mod 48) * 32 + d0 mod 32 in [0, 1535]
+        s3 in [0, 1]
+        (d3 mod 24) * 32 + d0 mod 32 in [0, 767]
         d0 floordiv 32 + s1 * 32 in [0, 63]
       )"));
 }
