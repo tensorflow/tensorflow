@@ -41,7 +41,7 @@ absl::Status AsyncExecution::BlockUntilDone() const {
   for (auto& stream : streams_) {
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 ExecutionTracker::ExecutionTracker() : next_handle_(1) {}
@@ -70,7 +70,7 @@ absl::Status ExecutionTracker::Unregister(const ExecutionHandle& handle) {
                     handle.handle());
   }
   handle_to_execution_.erase(handle.handle());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<const AsyncExecution*> ExecutionTracker::Resolve(

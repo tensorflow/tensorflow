@@ -43,7 +43,7 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
   bool Changed() const { return changed_; }
 
   absl::Status DefaultAction(HloInstruction* hlo_instruction) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Replace all dynamic-slice ops which slice from host memory to device memory
@@ -70,12 +70,12 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
     if (dynamic_slice_operand->shape().layout().memory_space() !=
         kHostMemorySpaceColor) {
       // Only care about dynamic-slice from host memory.
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (dynamic_slice->shape().layout().memory_space() !=
         xla::Layout::kDefaultMemorySpace) {
       // Only care about dynamic-slice to device memory.
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Everything is as expected. Replace this dynamic-slice with the async
@@ -90,7 +90,7 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
             dynamic_slice, {context_shape, transfer_bytes_shape}));
     (void)async_done;
     MarkAsChanged();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Replace all dynamic-update-slice ops which update into host memory from
@@ -123,12 +123,12 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
     if (dynamic_update_slice_update->shape().layout().memory_space() !=
         xla::Layout::kDefaultMemorySpace) {
       // Only care about dynamic-update-slice from device memory.
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (dynamic_update_slice->shape().layout().memory_space() !=
         kHostMemorySpaceColor) {
       // Only care about dynamic-update-slice to host memory.
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (dynamic_update_slice_operand->shape().layout().memory_space() !=
         dynamic_update_slice->shape().layout().memory_space()) {
@@ -147,7 +147,7 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
                             dynamic_update_slice, {context_shape}));
     (void)async_done;
     MarkAsChanged();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Replace all copy ops which copy from host memory to device memory or from
@@ -172,7 +172,7 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
              "host memory: "
           << copy->ToString();
       // Only care about copies between device memory and host memory.
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Everything is as expected. Replace this copy with the async equivalent.
@@ -185,7 +185,7 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
         copy->parent()->CreateAsyncInstructions(copy, {context_shape}));
     (void)async_done;
     MarkAsChanged();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

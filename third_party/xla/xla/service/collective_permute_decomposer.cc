@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -178,7 +179,7 @@ absl::Status DecomposeCollectivePermute(
     recv_done->add_frontend_attributes(attributes);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns true if the (source, target) pairs form a forward cycle with all

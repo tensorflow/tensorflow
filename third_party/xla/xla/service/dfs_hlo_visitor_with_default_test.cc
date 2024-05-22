@@ -44,20 +44,20 @@ TEST_F(DfsHloVisitorWithDefaultTest, DefaultElementwiseTest) {
           << hlo->ToString();
       TF_RET_CHECK(!(hlo->IsElementwise() && hlo->operand_count() == 1))
           << hlo->ToString();
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     absl::Status HandleElementwiseBinary(HloInstruction* hlo) override {
       // HLO should be elementwise binary.
       TF_RET_CHECK(hlo->IsElementwise() && hlo->operand_count() == 2)
           << hlo->ToString();
-      return OkStatus();
+      return absl::OkStatus();
     }
     absl::Status HandleElementwiseUnary(HloInstruction* hlo) override {
       // HLO should be elementwise unary.
       TF_RET_CHECK(hlo->IsElementwise() && hlo->operand_count() == 1)
           << hlo->ToString();
-      return OkStatus();
+      return absl::OkStatus();
     }
   };
 

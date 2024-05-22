@@ -188,7 +188,7 @@ absl::Status SinkSlices(
              << " to replace: " << user->ToString();
     TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(user_slice));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

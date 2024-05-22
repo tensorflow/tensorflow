@@ -63,7 +63,7 @@ absl::Status HloDomainVerifier::RunContext::PopulateDomainKinds(
     verifier_->kinds_.insert(verifier_->kinds_.end(), kinds.begin(),
                              kinds.end());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HloDomainVerifier::RunContext::Run(
@@ -82,7 +82,7 @@ absl::Status HloDomainVerifier::RunContext::Run(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> HloDomainVerifier::Run(

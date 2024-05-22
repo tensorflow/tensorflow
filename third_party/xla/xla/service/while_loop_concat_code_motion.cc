@@ -688,7 +688,7 @@ absl::Status AddCopiesToRoot(HloComputation* body,
                               param_group.inserted_concat_dim))
               .first);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status RemoveCopiesFromRoot(HloComputation* body) {
@@ -700,7 +700,7 @@ absl::Status RemoveCopiesFromRoot(HloComputation* body) {
       TF_RETURN_IF_ERROR(root->ReplaceOperandWith(i, copy->mutable_operand(0)));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status RewriteLoopWithConcatGroups(
@@ -941,7 +941,7 @@ absl::Status RewriteLoopWithConcatGroups(
     TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(slice->mutable_operand(0)));
     TF_RETURN_IF_ERROR(body->RemoveInstruction(slice));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> RunOnLoop(HloInstruction* loop,

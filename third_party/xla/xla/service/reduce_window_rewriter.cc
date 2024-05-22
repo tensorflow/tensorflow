@@ -151,7 +151,7 @@ absl::Status ReduceWindowRewriter::ReplaceReduceWindowWithReshape(
   TF_RETURN_IF_ERROR(
       new_reduce_window->parent()->RemoveInstruction(reduce_window));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
@@ -438,7 +438,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
           const ShapeIndex& shape_index) -> absl::Status {
         if (!ShapeUtil::IsLeafIndex(outer_reduce_window->shape(),
                                     shape_index)) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         size_t idx = FlattenShapeIndex(shape_index);
         auto source = sources[idx];
@@ -496,7 +496,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
               init_values[idx], padding_config));
         }
         scans.push_back(scan);
-        return OkStatus();
+        return absl::OkStatus();
       });
   TF_RETURN_IF_ERROR(status);
 

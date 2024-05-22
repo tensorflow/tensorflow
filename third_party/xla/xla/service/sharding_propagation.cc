@@ -960,7 +960,7 @@ absl::Status CheckAndUpdateDeviceAssignmentsInWhileBody(
                         *unique_device);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Refines a pair of auto/manual shardings based on auto sharding `to_merge`
@@ -1800,7 +1800,7 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
             operand->set_sharding(std::move(operand_sharding));
           }
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
   }
@@ -3461,7 +3461,7 @@ absl::StatusOr<bool> ShardingPropagation::Run(
               << "\n  aggressiveness: " << aggressiveness;
       ++iterations;
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
   for (int64_t aggressiveness = 0; aggressiveness < 4; ++aggressiveness) {
     TF_RETURN_IF_ERROR(

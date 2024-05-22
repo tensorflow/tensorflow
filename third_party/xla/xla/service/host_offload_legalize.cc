@@ -249,7 +249,7 @@ WalkDownMemoryOffload(const std::pair<HloInstruction*, int64_t>& current_value,
       }
       results.push_back(std::make_pair(user, -1));
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
   if (current_value.first->user_count() == 0) {
     if (current_value.first->parent()->root_instruction() ==
