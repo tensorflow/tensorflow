@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -115,6 +116,11 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+// Used to clean up all cpu clients' thread pools when cpu clients are not
+// destroyed before the process terminates.
+static auto* client_thread_pool_map =
+    new absl::flat_hash_map<TfrtCpuClient*, tsl::thread::ThreadPool*>();
 
 absl::StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBuffer(
     const Shape& on_device_shape,
@@ -471,10 +477,29 @@ TfrtCpuClient::TfrtCpuClient(
     owned_memory_spaces_.push_back(std::move(memory_space));
   }
 
+  (*client_thread_pool_map)[this] = pjrt_client_thread_pool_.get();
+  std::atexit([]() {
+    if (!client_thread_pool_map->empty()) {
+      // Will only do this once.
+      for (auto& [_, thread_pool] : *client_thread_pool_map) {
+        if (thread_pool != nullptr) {
+          thread_pool->~ThreadPool();
+        }
+      }
+      client_thread_pool_map->clear();
+      LOG(INFO) << "All TfrtCpuClient thread pools have been destroyed.";
+    }
+  });
+
   LOG(INFO) << "TfrtCpuClient created.";
 }
 
-TfrtCpuClient::~TfrtCpuClient() { LOG(INFO) << "TfrtCpuClient destroyed."; }
+TfrtCpuClient::~TfrtCpuClient() {
+  // To prevent calling `~ThreadPool()` twice when the cpu client is destroyed
+  // before the process terminates.
+  (*client_thread_pool_map)[this] = nullptr;
+  LOG(INFO) << "TfrtCpuClient destroyed.";
+}
 
 absl::StatusOr<PjRtDevice*> TfrtCpuClient::LookupDevice(
     xla::PjRtGlobalDeviceId global_device_id) const {
