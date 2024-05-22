@@ -35,13 +35,11 @@ namespace tsl::profiler {
 // TraceCollector until PopAnnotation() is called.
 template <typename T>
 void PushAnnotation(const T& generator) {
-#if GOOGLE_CUDA
   if (auto domain = DefaultProfilerDomain();
       TF_PREDICT_FALSE(domain != nullptr)) {
     RangePush(domain, generator());
     return;
   }
-#endif
 
 #if !defined(IS_MOBILE_PLATFORM)
   if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
@@ -62,13 +60,11 @@ inline void PopAnnotation() {
   // fail probably due to compiler in that presubmit config.
   std::atomic_thread_fence(std::memory_order_acquire);
 
-#if GOOGLE_CUDA
   if (auto domain = DefaultProfilerDomain();
       TF_PREDICT_FALSE(domain != nullptr)) {
     RangePop(domain);
     return;
   }
-#endif
 
 #if !defined(IS_MOBILE_PLATFORM)
   if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
