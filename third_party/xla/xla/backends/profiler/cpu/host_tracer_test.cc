@@ -163,17 +163,23 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
 }
 
 TEST(HostTracerTest, CollectEventsFromThreadPool) {
-  tsl::thread::ThreadPool thread_pool(/*env=*/Env::Default(),
-                                      /*name=*/"HostTracerTest",
-                                      /*num_threads=*/1);
+  auto thread_pool =
+      std::make_unique<tsl::thread::ThreadPool>(/*env=*/Env::Default(),
+                                                /*name=*/"HostTracerTest",
+                                                /*num_threads=*/1);
   tsl::BlockingCounter counter(1);
   auto tracer = CreateHostTracer({});
   TF_EXPECT_OK(tracer->Start());
-  thread_pool.Schedule([&counter] {
+  thread_pool->Schedule([&counter] {
     TraceMe traceme("hello");
     counter.DecrementCount();
   });
   counter.Wait();
+  // Explicitly delete the thread_pool before trying to collect performance data
+  // to ensure that there's no window between the ThreadPool ending the region
+  // and collecting the trace data.  This was the cause of this test being racy
+  // in the past.
+  thread_pool.reset();
   TF_EXPECT_OK(tracer->Stop());
   tensorflow::profiler::XSpace space;
   TF_EXPECT_OK(tracer->CollectData(&space));
