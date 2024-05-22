@@ -202,6 +202,9 @@ class GpuCompiler : public LLVMCompiler {
   absl::Status SerializeAutotuneResultsToFile(
       const DebugOptions& debug_options);
 
+  absl::Status RunPreSchedulingPasses(HloModule* module,
+                                      se::StreamExecutor* stream_exec);
+
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and
   // autotune_results != null.
