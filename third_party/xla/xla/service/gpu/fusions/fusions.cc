@@ -98,8 +98,8 @@ bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
   return ret.ok() && *ret;
 }
 
-absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
-    const FusionInfo& fusion_info, bool is_emission_phase) {
+std::unique_ptr<FusionInterface> GetFusionEmitter(const FusionInfo& fusion_info,
+                                                  bool is_emission_phase) {
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
 

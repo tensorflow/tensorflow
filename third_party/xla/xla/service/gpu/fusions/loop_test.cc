@@ -54,8 +54,7 @@ class LoopTest : public HloTestBase {
 
 absl::StatusOr<std::unique_ptr<KernelFusionInterface>> GetFusion(
     const HloFusionAnalysis& analysis) {
-  TF_ASSIGN_OR_RETURN(
-      auto emitter, GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}));
+  auto emitter = GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
   auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.get());
   TF_RET_CHECK(fusion != nullptr);
 

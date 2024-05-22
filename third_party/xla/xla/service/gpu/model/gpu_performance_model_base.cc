@@ -153,11 +153,9 @@ LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
     const se::DeviceDescription& device_info) {
   auto emitter =
       GetFusionEmitter(PreBufferAssignmentFusionInfo{fusion_analysis});
-  if (emitter.ok()) {
-    if (const auto* kernel_emitter =
-            dynamic_cast<const KernelFusionInterface*>(emitter->get())) {
-      return kernel_emitter->launch_dimensions();
-    }
+  if (const auto* kernel_emitter =
+          dynamic_cast<const KernelFusionInterface*>(emitter.get())) {
+    return kernel_emitter->launch_dimensions();
   }
   int64_t block_size = 128;  // Result for default LaunchDimensionsConfig.
   int64_t num_blocks = CeilOfRatio(estimated_num_threads, block_size);

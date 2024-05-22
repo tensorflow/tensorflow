@@ -54,8 +54,8 @@ class CoalescingTest : public HloTestBase {
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
     auto analysis = AnalyzeFusion(*root, device_info_);
     auto emitter = GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
-    auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.value().get());
-    EXPECT_TRUE(emitter.ok());
+    auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.get());
+    EXPECT_NE(fusion, nullptr);
 
     CoalescingAnalysis coalescing_analysis(root, root->operands(), analysis,
                                            fusion, &mlir_context_,

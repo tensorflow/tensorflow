@@ -42,8 +42,7 @@ class TransposeTest : public HloTestBase {
 
 absl::StatusOr<std::unique_ptr<TransposeFusion>> GetTransposeFusion(
     const HloFusionAnalysis& analysis) {
-  TF_ASSIGN_OR_RETURN(
-      auto emitter, GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}));
+  auto emitter = GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
   auto fusion = dynamic_cast<TransposeFusion*>(emitter.get());
   TF_RET_CHECK(fusion != nullptr);
 

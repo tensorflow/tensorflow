@@ -71,9 +71,8 @@ TEST_F(InPlaceDynamicUpdateSliceFusionTest, ThreadIndexing) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis_fused = AnalyzeFusion(*root, device_info_);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto emitter,
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused}));
+  auto emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused});
   auto fusion = dynamic_cast<InPlaceDynamicUpdateSliceFusion*>(emitter.get());
   ASSERT_NE(fusion, nullptr);
 
@@ -126,9 +125,8 @@ TEST_F(InPlaceDynamicUpdateSliceFusionTest, ProduceConsumerFusion) {
   auto analysis_fused =
       AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info_);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto emitter,
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused}));
+  auto emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused});
 
   auto fusion = dynamic_cast<InPlaceDynamicUpdateSliceFusion*>(emitter.get());
 
