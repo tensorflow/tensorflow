@@ -393,6 +393,9 @@ struct RewriteNonScalarConstants
   mlir::LogicalResult matchAndRewrite(
       mlir::arith::ConstantOp op,
       mlir::PatternRewriter& rewriter) const override {
+    if (mlir::isa<mlir::VectorType>(op.getType())) {
+      return rewriter.notifyMatchFailure(op, "the op is a vector constant");
+    }
     auto shaped_ty = mlir::dyn_cast<mlir::ShapedType>(op.getValue().getType());
     // We only need to rewrite non-scalar constants.
     if (!shaped_ty || shaped_ty.getNumElements() < 2) {

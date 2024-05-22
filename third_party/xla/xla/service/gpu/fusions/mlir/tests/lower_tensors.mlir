@@ -175,6 +175,19 @@ module {
 // -----
 
 module {
+  func.func @vector_constant() -> vector<2xindex> {
+    %c1 = arith.constant dense<[1, 2]> : vector<2xindex>
+    func.return %c1 : vector<2xindex>
+  }
+}
+
+// vector constants should not be rewritten.
+// CHECK: @vector_constant
+// CHECK-NEXT: arith.constant
+
+// -----
+
+module {
   func.func @complex_tensor_insert(
       %arg0: tensor<10xcomplex<f32>>) -> tensor<10xcomplex<f32>> {
     %c1 = arith.constant 1 : index

@@ -515,7 +515,7 @@ absl::Status RewritePipelinedP2PWhileBody(
   CHECK(inserted);  // There are Send/Recv in the while-body, expect inserted.
   CHECK(idx_end == instruction_sequence.size());
 
-  TF_RETURN_IF_ERROR(computation->parent()->schedule().Update());
+  // The module schedule will be updated at the end of the pass.
   return absl::OkStatus();
 }
 
