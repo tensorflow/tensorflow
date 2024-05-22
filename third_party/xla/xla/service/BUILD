@@ -7657,8 +7657,11 @@ xla_cc_test(
     srcs = ["gather_simplifier_test.cc"],
     deps = [
         ":gather_simplifier",
+        ":hlo_parser",
+        "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
