@@ -899,18 +899,16 @@ int64_t HloModule::instruction_count() const {
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     const absl::flat_hash_set<HloComputation*>& allow_list) const {
-  std::vector<HloComputation*> filtered_post_order(allow_list.size());
-  auto post_order = this->MakeComputationPostOrder(execution_threads);
+  std::vector<HloComputation*> post_order =
+      this->MakeComputationPostOrder(execution_threads);
 
-  int filtered_idx = 0;
-  for (auto& computation : post_order) {
-    if (allow_list.contains(computation)) {
-      filtered_post_order[filtered_idx] = computation;
-      filtered_idx += 1;
-    }
-  }
+  post_order.erase(std::remove_if(post_order.begin(), post_order.end(),
+                                  [&allow_list](HloComputation* computation) {
+                                    return !allow_list.contains(computation);
+                                  }),
+                   post_order.end());
 
-  return filtered_post_order;
+  return post_order;
 }
 
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
@@ -947,9 +945,8 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     }
     for (HloComputation* embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
-      if (!added_computations.contains(embedded_computation)) {
+      if (added_computations.insert(embedded_computation).second) {
         post_order.push_back(embedded_computation);
-        added_computations.insert(embedded_computation);
       }
     }
     // Root computations should only be encountered once.
@@ -969,17 +966,15 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     LOG(FATAL) << "Mismatch computation count: post_order=" << post_order.size()
                << " computation_count=" << computations_.size();
   }
-  if (execution_threads.empty()) {
-    return post_order;
+  if (!execution_threads.empty()) {
+    post_order.erase(std::remove_if(post_order.begin(), post_order.end(),
+                                    [&](HloComputation* computation) {
+                                      return !execution_threads.contains(
+                                          computation->execution_thread());
+                                    }),
+                     post_order.end());
   }
-  std::vector<HloComputation*> post_order_with_execution_threads;
-  absl::c_copy_if(
-      post_order, std::back_inserter(post_order_with_execution_threads),
-      [&execution_threads](HloComputation* computation) {
-        return execution_threads.find(computation->execution_thread()) !=
-               execution_threads.end();
-      });
-  return post_order_with_execution_threads;
+  return post_order;
 }
 
 namespace {
