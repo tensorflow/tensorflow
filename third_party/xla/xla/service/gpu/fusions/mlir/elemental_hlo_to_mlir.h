@@ -99,13 +99,26 @@ mlir::Value CheckConstraints(const IndexingMap& map, mlir::ValueRange dims,
 
 // Emits a loop nest over the entire domain of the indexing_map at a point
 // `dim_values`.
+// If `vectorize` is set, the loop essentially turns into multiple independent
+// loops, and the results of all the loops are returned as a vector. The last
+// symbol dimension is used as the vectorized dimension.
+// If `vectorize` is set:
+// - the body will still be called with scalars and should return scalars.
+// - the loop for the last symbol in `indexing_map` will be vectorized
+// - the symbol range should be [0, 2] or [0, 4] for vectorization to work.
+//   [0, 1] is supported and will have no effect. The lower bound must be 0.
+// - all scalar results of `EmitLoopNest` will become vectors instead. Scalar
+//   inits will be initialized with a vector splat. Passing a vector init is
+//   supported.
+// - Tensor arguments and results are unaffected.
 llvm::SmallVector<mlir::Value> EmitLoopNest(
     mlir::ImplicitLocOpBuilder& b, mlir::ValueRange dim_values,
     mlir::ValueRange iter_args_inits, const IndexingMap& indexing_map,
     mlir::function_ref<llvm::SmallVector<mlir::Value>(
         mlir::ValueRange iter_args, mlir::ValueRange dim_values,
         mlir::ValueRange symbol_values)>
-        create_body);
+        create_body,
+    bool vectorize = false);
 
 // Same as EmitLoopNest, but the body building function can return an error
 // which gets returned from EmitLoopNestWithStatus.

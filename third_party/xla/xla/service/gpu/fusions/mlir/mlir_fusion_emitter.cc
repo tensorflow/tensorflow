@@ -56,6 +56,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/Dialect/Vector/IR/VectorOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -361,7 +362,8 @@ MlirFusionEmitterBase::CreateMLIRModule(
                       mlir::arith::ArithDialect, mlir::cf::ControlFlowDialect,
                       mlir::math::MathDialect, mlir::scf::SCFDialect,
                       mlir::mhlo::MhloDialect, mlir::gpu::GPUDialect,
-                      mlir::NVVM::NVVMDialect, xla::gpu::XlaGpuDialect>();
+                      mlir::vector::VectorDialect, mlir::NVVM::NVVMDialect,
+                      xla::gpu::XlaGpuDialect>();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
   mlir::registerBuiltinDialectTranslation(registry);
@@ -456,9 +458,10 @@ SmallVector<Value> MlirFusionEmitterBase::EmitThreadLoopNest(
     const IndexingMap& indexing_map,
     const std::function<
         SmallVector<Value>(ValueRange outputs_tensors, ValueRange dim_values,
-                           ValueRange symbol_values)>& create_body) const {
+                           ValueRange symbol_values)>& create_body,
+    bool vectorize) const {
   return mlir_converter::EmitLoopNest(b, EmitThreadAndBlockIds(b), outputs,
-                                      indexing_map, create_body);
+                                      indexing_map, create_body, vectorize);
 }
 
 absl::Status MlirFusionEmitterBase::EmitMlir(
