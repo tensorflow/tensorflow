@@ -31,6 +31,8 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate_lib",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tf_tfl_passes",
+        "//tensorflow/compiler/mlir/lite/debug",
+        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow:error_util",

@@ -231,6 +231,7 @@ def mlir_quantize(
     denylisted_nodes=None,
     enable_variable_quantization=False,
     disable_per_channel_for_dense_layers=False,
+    debug_options_str="",
 ):
   """Quantize `input_data_str` with calibration results.
 
@@ -259,6 +260,8 @@ def mlir_quantize(
     disable_per_channel_for_dense_layers: Bool indicating whether to do
       per-channel or per-tensor quantization in Fully Connected layers. Default
       value is False meaning per-channel quantization is enabled.
+    debug_options_str: Serialized proto describing TFLite converter debug
+      options, see `debug/debug_options.proto`.
 
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
@@ -277,6 +280,7 @@ def mlir_quantize(
       denylisted_nodes,
       enable_variable_quantization,
       disable_per_channel_for_dense_layers,
+      debug_options_str,
   )
 
 
