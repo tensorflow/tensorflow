@@ -269,9 +269,6 @@ class StreamExecutorInterface {
   // Waits for the specified event at the end of the specified stream.
   virtual absl::Status WaitForEvent(Stream* stream, Event* event) = 0;
 
-  // Requests the current status of the event from the underlying platform.
-  virtual Event::Status PollForEventStatus(Event* event) = 0;
-
   // Deallocates stream resources on the underlying platform.
   virtual void DeallocateStream(Stream* stream) = 0;
 

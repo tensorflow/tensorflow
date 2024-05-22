@@ -237,8 +237,6 @@ class GpuExecutor : public StreamExecutor {
 
   absl::Status WaitForEvent(Stream* stream, Event* event) override;
 
-  Event::Status PollForEventStatus(Event* event) override;
-
   absl::Status BlockHostUntilDone(Stream* stream) override;
 
   absl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override;

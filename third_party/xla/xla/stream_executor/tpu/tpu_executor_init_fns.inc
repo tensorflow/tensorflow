@@ -27,7 +27,6 @@ absl::Status SetExecutorStructFn(
   TFTPU_SET_FN(executor_fn, TpuExecutor_GetStatus);
   TFTPU_SET_FN(executor_fn, TpuExecutor_GetCoreLocation);
   TFTPU_SET_FN(executor_fn, TpuExecutor_AllocateEvent);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_PollForEventStatus);
   TFTPU_SET_FN(executor_fn, TpuExecutor_RecordEvent);
   TFTPU_SET_FN(executor_fn, TpuExecutor_WaitForEvent);
   TFTPU_SET_FN(executor_fn, TpuExecutor_SynchronousMemcpyToHost);

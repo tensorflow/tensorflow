@@ -122,7 +122,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
                                  const DeviceMemoryBase& device_src,
                                  uint64_t size) override;
 
-  Event::Status PollForEventStatus(Event* event) override;
   absl::Status RecordEvent(Stream* stream, Event* event) override;
   absl::Status WaitForEvent(Stream* stream, Event* event) override;
 

@@ -22,8 +22,6 @@ limitations under the License.
 
 namespace stream_executor {
 
-class StreamExecutorInterface;
-
 // The Event class, when supported by a platform, enables low-overhead status
 // reporting for a Stream. An Event is inserted at a location in a stream via
 // the Stream::RecordEvent() API. From then on, the Event's status can be
@@ -41,30 +39,17 @@ class Event {
     kComplete,
   };
 
-  explicit Event(StreamExecutorInterface* stream_exec);
-
   // Releases any resources held by the Event object.
   virtual ~Event() = default;
 
   // Returns the current Status for the event.
-  Status PollForStatus();
+  virtual Status PollForStatus() { return Status::kError; }
 
   // Blocks `stream` on this event. `stream` is a raw platform-specific
   // stream (e.g. GpuStreamHandle).
   virtual absl::Status WaitForEventOnExternalStream(std::intptr_t stream) {
     return absl::UnimplementedError("Not supported for this Event.");
   }
-
-  Event(Event&&) = default;
-  Event& operator=(Event&&) = default;
-
- private:
-  // Pointer to the StreamExecutorInterface interface used to create this
-  // object. Not owned.
-  StreamExecutorInterface* stream_exec_;
-
-  Event(const Event&) = delete;
-  void operator=(const Event&) = delete;
 };
 
 }  // namespace stream_executor

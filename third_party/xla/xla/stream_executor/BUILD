@@ -658,7 +658,6 @@ transitive_hdrs(
 cc_library(
     name = "stream_executor_pimpl",
     srcs = [
-        "event.cc",
         "stream.cc",
         "stream_executor_pimpl.cc",
     ],

@@ -136,7 +136,6 @@ class MockStreamExecutor : public StreamExecutorInterface {
               (override));
   MOCK_METHOD(absl::Status, WaitForEvent, (Stream * stream, Event* event),
               (override));
-  MOCK_METHOD(Event::Status, PollForEventStatus, (Event * event), (override));
   MOCK_METHOD(void, DeallocateStream, (Stream * stream), (override));
   MOCK_METHOD(bool, CreateStreamDependency, (Stream * dependent, Stream* other),
               (override));

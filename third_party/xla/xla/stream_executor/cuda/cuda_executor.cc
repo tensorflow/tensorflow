@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_driver.h"
+#include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
@@ -772,10 +773,6 @@ absl::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
   }
 }
 
-Event::Status GpuExecutor::PollForEventStatus(Event* event) {
-  return AsGpuEvent(event)->PollForStatus();
-}
-
 void GpuExecutor::DeallocateStream(Stream* stream) {
   {
     absl::MutexLock lock(&mu_);
@@ -931,7 +928,7 @@ absl::Status FillBlockDimLimit(GpuDeviceHandle device,
 }
 
 absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
-  auto gpu_event = std::make_unique<GpuEvent>(this);
+  auto gpu_event = std::make_unique<CudaEvent>(this);
   TF_RETURN_IF_ERROR(gpu_event->Init());
   return std::move(gpu_event);
 }

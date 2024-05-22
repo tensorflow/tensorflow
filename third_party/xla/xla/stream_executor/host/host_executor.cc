@@ -223,11 +223,14 @@ bool HostExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
 
 class HostEvent : public Event {
  public:
-  HostEvent(StreamExecutorInterface* executor)
-      : Event(executor),
-        notification_(std::make_shared<absl::Notification>()) {}
+  HostEvent() : notification_(std::make_shared<absl::Notification>()) {}
 
   std::shared_ptr<absl::Notification>& notification() { return notification_; }
+
+  Status PollForStatus() override {
+    return notification_->HasBeenNotified() ? Event::Status::kComplete
+                                            : Event::Status::kPending;
+  }
 
  private:
   // We use a std::shared_ptr here because the client may delete the HostEvent
@@ -237,7 +240,7 @@ class HostEvent : public Event {
 };
 
 absl::StatusOr<std::unique_ptr<Event>> HostExecutor::CreateEvent() {
-  return std::make_unique<HostEvent>(this);
+  return std::make_unique<HostEvent>();
 }
 
 static HostEvent* AsHostEvent(Event* event) {
@@ -261,12 +264,6 @@ absl::Status HostExecutor::WaitForEvent(Stream* stream, Event* event) {
   AsHostStream(stream)->EnqueueTask(
       [notification]() { notification->WaitForNotification(); });
   return absl::OkStatus();
-}
-
-Event::Status HostExecutor::PollForEventStatus(Event* event) {
-  absl::Notification& notification = *AsHostEvent(event)->notification();
-  return notification.HasBeenNotified() ? Event::Status::kComplete
-                                        : Event::Status::kPending;
 }
 
 absl::Status HostExecutor::BlockHostUntilDone(Stream* stream) {

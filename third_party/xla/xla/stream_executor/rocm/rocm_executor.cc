@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_diagnostics.h"
 #include "xla/stream_executor/rocm/rocm_driver.h"
+#include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -676,10 +677,6 @@ absl::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
   }
 }
 
-Event::Status GpuExecutor::PollForEventStatus(Event* event) {
-  return AsGpuEvent(event)->PollForStatus();
-}
-
 void GpuExecutor::DeallocateStream(Stream* stream) {
   {
     absl::MutexLock lock(&mu_);
@@ -837,7 +834,7 @@ absl::Status FillBlockDimLimit(GpuDeviceHandle device,
 }
 
 absl::StatusOr<std::unique_ptr<Event>> GpuExecutor::CreateEvent() {
-  auto gpu_event = std::make_unique<GpuEvent>(this);
+  auto gpu_event = std::make_unique<RocmEvent>(this);
   TF_RETURN_IF_ERROR(gpu_event->Init());
   return std::move(gpu_event);
 }

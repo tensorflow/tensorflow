@@ -43,13 +43,13 @@ class GpuEvent : public Event {
   // Inserts the event at the current position into the specified stream.
   absl::Status Record(GpuStream* stream);
 
-  // Polls the CUDA platform for the event's current status.
-  Event::Status PollForStatus();
-
   // The underlying CUDA event element.
   GpuEventHandle gpu_event();
 
   absl::Status WaitForEventOnExternalStream(std::intptr_t stream) override;
+
+ protected:
+  GpuExecutor* parent() const { return parent_; }
 
  private:
   // The Executor used to which this object and GpuEventHandle are bound.

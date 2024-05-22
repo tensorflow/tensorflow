@@ -154,20 +154,6 @@ absl::Status ValidateSEPlatformRegistrationParams(
 }
 #undef TF_VALIDATE_NOT_NULL
 
-// Converts SE_EventStatus to Event::Status.
-Event::Status SEEventStatusToEventStatus(SE_EventStatus s) {
-  switch (s) {
-    case SE_EVENT_ERROR:
-      return Event::Status::kError;
-    case SE_EVENT_PENDING:
-      return Event::Status::kPending;
-    case SE_EVENT_COMPLETE:
-      return Event::Status::kComplete;
-    default:
-      return Event::Status::kUnknown;
-  }
-}
-
 // Converts DeviceMemoryBase to a C struct.
 SP_DeviceMemoryBase DeviceMemoryBaseToC(const DeviceMemoryBase* mem) {
   SP_DeviceMemoryBase device_memory_base{SP_DEVICE_MEMORY_BASE_STRUCT_SIZE};
@@ -422,12 +408,6 @@ class CStreamExecutor : public StreamExecutor {
     absl::Status s = StatusFromTF_Status(c_status.get());
     return s;
   }
-  Event::Status PollForEventStatus(Event* event) override {
-    SP_Event event_handle = static_cast<CEvent*>(event)->Handle();
-    SE_EventStatus event_status =
-        stream_executor_->get_event_status(&device_, event_handle);
-    return SEEventStatusToEventStatus(event_status);
-  }
   void DeallocateStream(Stream* stream) override {
     static_cast<CStream*>(stream->implementation())->Destroy();
   }
@@ -541,7 +521,7 @@ class CStreamExecutor : public StreamExecutor {
   }
 
   absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override {
-    auto c_event = std::make_unique<CEvent>(&device_, stream_executor_, this);
+    auto c_event = std::make_unique<CEvent>(&device_, stream_executor_);
     TF_RETURN_IF_ERROR(c_event->Create());
     return std::move(c_event);
   }
