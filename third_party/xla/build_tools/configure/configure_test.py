@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import os
+
 from absl.testing import absltest
 
 from xla.build_tools import test_utils
@@ -55,7 +57,11 @@ class ConfigureTest(absltest.TestCase):
       cls.clang_bazelrc_lines = [line.strip() for line in f.readlines()]
 
     with (testdata / "gcc.bazelrc").open() as f:
-      cls.gcc_bazelrc_lines = [line.strip() for line in f.readlines()]
+      resolved_gcc_path = os.path.realpath(_GCC_PATH)
+      cls.gcc_bazelrc_lines = [
+          line.strip().replace(_GCC_PATH, resolved_gcc_path)
+          for line in f.readlines()
+      ]
 
     with (testdata / "cuda_clang.bazelrc").open() as f:
       cls.cuda_clang_bazelrc_lines = [line.strip() for line in f.readlines()]
@@ -64,7 +70,11 @@ class ConfigureTest(absltest.TestCase):
       cls.nvcc_clang_bazelrc_lines = [line.strip() for line in f.readlines()]
 
     with (testdata / "nvcc_gcc.bazelrc").open() as f:
-      cls.nvcc_gcc_bazelrc_lines = [line.strip() for line in f.readlines()]
+      resolved_gcc_path = os.path.realpath(_GCC_PATH)
+      cls.nvcc_gcc_bazelrc_lines = [
+          line.strip().replace(_GCC_PATH, resolved_gcc_path)
+          for line in f.readlines()
+      ]
 
   def test_clang_bazelrc(self):
     config = XLAConfigOptions(
