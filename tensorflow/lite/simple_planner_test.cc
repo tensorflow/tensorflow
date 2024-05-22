@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/graph_info.h"
-#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace {
