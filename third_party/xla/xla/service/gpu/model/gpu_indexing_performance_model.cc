@@ -113,8 +113,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
   auto root_shape = roots.front().shape();
 
   LaunchDimensions launch_dimensions =
-      EstimateFusionLaunchDimensions(ShapeUtil::ElementsInRecursive(root_shape),
-                                     fusion_analysis, *device_info_);
+      EstimateFusionLaunchDimensions(fusion_analysis);
 
   int64_t num_threads = launch_dimensions.launch_bound();
   int64_t num_blocks = launch_dimensions.num_blocks();

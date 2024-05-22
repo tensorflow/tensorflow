@@ -150,8 +150,7 @@ class GpuPerformanceModelBase {
   // Uses HloFusionAnalysis for computing the actual number of threads and
   // blocks that the IR emitter will use.
   static LaunchDimensions EstimateFusionLaunchDimensions(
-      int64_t estimated_num_threads, const HloFusionAnalysis& fusion_analysis,
-      const se::DeviceDescription& device_info);
+      const HloFusionAnalysis& fusion_analysis);
 
   // Returns bytes accessed of operand output by instruction. Returns 0, if the
   // operand is not used by the instruction.
