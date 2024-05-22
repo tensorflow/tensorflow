@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "tsl/lib/random/philox_random.h"
 #include "tsl/lib/random/simple_philox.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/test.h"
