@@ -178,6 +178,11 @@ TEST_F(WorkerClientTest, LocalReadEmptyDataset) {
 }
 
 TEST_F(WorkerClientTest, GrpcRead) {
+  // To test transfer over fake gRPC, remove the worker from `LocalWorkers`.
+  // If we don't do this, the local server will be used, even with gRPC
+  // specified as below (see `DataServiceWorkerClient::DataTransferProtocol`).
+  LocalWorkers::Remove(GetWorkerAddress());
+
   const int64_t range = 5;
   TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id, RegisterDataset(range));
   TF_ASSERT_OK_AND_ASSIGN(const int64_t iteration_client_id,
@@ -192,13 +197,6 @@ TEST_F(WorkerClientTest, GrpcRead) {
     test::ExpectEqual(result.components[0], Tensor(int64_t{i * i}));
     EXPECT_FALSE(result.end_of_sequence);
   }
-
-  // Remove the local worker from `LocalWorkers`. Since the client reads from a
-  // local server, this should cause the request to fail.
-  LocalWorkers::Remove(GetWorkerAddress());
-  EXPECT_THAT(GetElement(*client, task_id),
-              StatusIs(error::CANCELLED,
-                       MatchesRegex("Local worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, LocalServerShutsDown) {
