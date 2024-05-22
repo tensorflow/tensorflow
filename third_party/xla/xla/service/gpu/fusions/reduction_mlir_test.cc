@@ -463,6 +463,30 @@ TEST_F(ReductionTest, VariadicMOF) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(ReductionTest, ColumnReductionVectorization) {
+  constexpr auto kHloString = R"(
+    HloModule Test, is_scheduled=true
+    Add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    fused_computation {
+      param_0 = f32[2048,16384] parameter(0)
+      param_1 = f32[] parameter(1)
+      ROOT reduce = f32[16384] reduce(param_0, param_1), dimensions={0}, to_apply=Add
+    }
+    ENTRY main {
+      a = f32[2048,16384] parameter(0)
+      c = f32[] constant(0)
+      ROOT fusion = f32[16384] fusion(a, c), kind=kInput, calls=fused_computation
+    })";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: vector<2xf32>
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
