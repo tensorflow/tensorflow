@@ -232,9 +232,9 @@ def _tf_repositories():
             "//third_party/compute_library:compute_library.patch",
             "//third_party/compute_library:acl_thread_local_scheduler.patch",
         ],
-        sha256 = "c4ca329a78da380163b2d86e91ba728349b6f0ee97d66e260a694ef37f0b0d93",
-        strip_prefix = "ComputeLibrary-23.05.1",
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v23.05.1.tar.gz"),
+        sha256 = "6d7aebfa9be74d29ecd2dbeb17f69e00c667c36292401f210121bf26a30b38a5",
+        strip_prefix = "ComputeLibrary-24.04",
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v24.04.tar.gz"),
     )
 
     tf_http_archive(
