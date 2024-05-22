@@ -29,8 +29,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "xla/pjrt/cpu/cpu_topology.h"
+#include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/service/custom_call_status_internal.h"
 
 #define EIGEN_USE_THREADS
 

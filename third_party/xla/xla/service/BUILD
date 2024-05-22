@@ -6868,7 +6868,7 @@ cc_library(
     visibility = internal_visibility([
         ":__subpackages__",
         "//tensorflow/compiler/tf2xla:__pkg__",
-    ]),
+    ]) + ["//xla/pjrt/cpu:__pkg__"],
     deps = [
         ":custom_call_status",
         "@com_google_absl//absl/strings",

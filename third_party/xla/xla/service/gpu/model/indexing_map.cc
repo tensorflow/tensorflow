@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>  // IWYU pragma: keep
 #include <numeric>
 #include <optional>
 #include <ostream>
@@ -43,6 +44,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
+
+#ifdef __has_builtin
+#define XLA_GPU_MODEL_HAS_BUILTIN(x) __has_builtin(x)
+#else
+#define XLA_GPU_MODEL_HAS_BUILTIN(x) 0
+#endif
+
+#if !XLA_GPU_MODEL_HAS_BUILTIN(__builtin_add_overflow) || \
+    !XLA_GPU_MODEL_HAS_BUILTIN(__builtin_mul_overflow)
+#include "absl/numeric/int128.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -758,26 +770,124 @@ void Interval::Print(std::ostream& out) const {
   out << '[' << lower << ", " << upper << "]";
 }
 
+Interval::ComparisonResult Interval::operator>(const Interval& b) const {
+  if (NumElements() == 0 || b.NumElements() == 0) {
+    return {std::nullopt};
+  }
+  if (lower > b.upper) {
+    return {true};
+  }
+  if (upper <= b.lower) {
+    return {false};
+  }
+  return {std::nullopt};
+}
+
+Interval::ComparisonResult Interval::operator==(const Interval& b) const {
+  Interval intersection = Intersect(b);
+  if (intersection.NumElements() == 0) return {false};
+  if (intersection.IsPoint() && IsPoint() && b.IsPoint()) {
+    return {true};
+  }
+  return {std::nullopt};
+}
+
+Interval Interval::operator+(const Interval& rhs) const {
+  int64_t out_lower;
+  int64_t out_upper;
+
+  constexpr int64_t kMin = std::numeric_limits<int64_t>::min();
+  constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
+
+  auto add_overflow = [](int64_t a, int64_t b, int64_t* out) {
+#if XLA_GPU_MODEL_HAS_BUILTIN(__builtin_add_overflow)
+    return __builtin_add_overflow(a, b, out);
+#else
+    auto sum = static_cast<absl::int128>(a) + static_cast<absl::int128>(b);
+    bool overflow = sum < kMin || sum > kMax;
+    *out = static_cast<int64_t>(sum);
+    return overflow;
+#endif
+  };
+
+  bool lower_overflow = add_overflow(lower, rhs.lower, &out_lower);
+  bool upper_overflow = add_overflow(upper, rhs.upper, &out_upper);
+
+  if (lower_overflow || lower == kMin || rhs.lower == kMin) {
+    if (lower < 0 || rhs.lower < 0) {
+      out_lower = kMin;
+    } else {
+      out_lower = kMax;
+      out_upper = kMax;
+    }
+  }
+
+  if (upper_overflow || upper == kMax || rhs.upper == kMax) {
+    if (upper > 0 || rhs.upper > 0) {
+      out_upper = kMax;
+    } else {
+      out_upper = kMin;
+      out_lower = kMin;
+    }
+  }
+
+  return {out_lower, out_upper};
+}
+
+Interval Interval::operator*(const Interval& rhs) const {
+  constexpr int64_t kMin = std::numeric_limits<int64_t>::min();
+  constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
+
+  auto mul_overflow = [](int64_t a, int64_t b, int64_t* out) {
+#if XLA_GPU_MODEL_HAS_BUILTIN(__builtin_mul_overflow)
+    return __builtin_mul_overflow(a, b, out);
+#else
+    auto sum = static_cast<absl::int128>(a) * static_cast<absl::int128>(b);
+    auto overflow = sum < kMin || sum > kMax;
+    *out = static_cast<int64_t>(sum);
+    return overflow;
+#endif
+  };
+
+  auto mul = [&](int64_t p) {
+    int64_t l = lower;
+    int64_t u = upper;
+    if (p < 0) {
+      std::swap(l, u);
+    }
+    int64_t out_lower;
+    int64_t out_upper;
+    if (mul_overflow(l, p, &out_lower) ||
+        // -1 * max is min + 1, and doesn't overflow. We consider max a
+        // special sentinel value, so the result should be min (= saturated).
+        (p == -1 && l == kMax)) {
+      out_lower = kMin;
+    }
+    if (mul_overflow(u, p, &out_upper)) {
+      out_upper = kMax;
+    }
+    return Interval{out_lower, out_upper};
+  };
+
+  return mul(rhs.lower).Union(mul(rhs.upper));
+}
+
 std::ostream& operator<<(std::ostream& out, const Interval& range) {
   range.Print(out);
   return out;
 }
 
-bool operator==(const Interval& lhs, const Interval& rhs) {
-  return lhs.lower == rhs.lower && lhs.upper == rhs.upper;
-}
-
 bool operator==(const DimVar& lhs, const DimVar& rhs) {
-  return lhs.bounds == rhs.bounds;
+  return lhs.bounds.Equals(rhs.bounds);
 }
 
 bool operator==(const RangeVar& lhs, const RangeVar& rhs) {
-  return lhs.range == rhs.range;
+  return lhs.range.Equals(rhs.range);
 }
 
 bool operator==(const RTVar& lhs, const RTVar& rhs) {
-  return lhs.feasible_values == rhs.feasible_values && lhs.hlo == rhs.hlo &&
-         lhs.map == rhs.map;
+  return lhs.feasible_values.Equals(rhs.feasible_values) &&
+         lhs.hlo == rhs.hlo && lhs.map == rhs.map;
 }
 
 std::vector<DimVar> DimVarsFromTensorSizes(
@@ -978,12 +1088,9 @@ Interval RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
       auto& result = expression_ranges_cache_[expr];
       switch (expr.getKind()) {
         case AffineExprKind::Add:
-          return result = {lhs.lower + rhs.lower, lhs.upper + rhs.upper};
-        case AffineExprKind::Mul: {
-          int64_t a = lhs.lower * rhs.lower;
-          int64_t b = lhs.upper * rhs.upper;
-          return result = {std::min(a, b), std::max(a, b)};
-        }
+          return result = lhs + rhs;
+        case AffineExprKind::Mul:
+          return result = lhs * rhs;
         case AffineExprKind::Mod: {
           CHECK(rhs.IsPoint()) << "RHS of mod must be a constant";
           int64_t m = rhs.lower;

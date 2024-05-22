@@ -47,20 +47,17 @@ absl::StatusOr<FlatAttributesMap> BuildAttributesMap(
     auto integer = [&](mlir::IntegerAttr integer) {
       if (integer.getType().isUnsignedInteger()) {
         switch (integer.getType().getIntOrFloatBitWidth()) {
-          case 1:
-            attributes[name] = static_cast<bool>(integer.getInt());
-            return absl::OkStatus();
           case 8:
-            attributes[name] = static_cast<uint8_t>(integer.getInt());
+            attributes[name] = static_cast<uint8_t>(integer.getUInt());
             return absl::OkStatus();
           case 16:
-            attributes[name] = static_cast<uint16_t>(integer.getInt());
+            attributes[name] = static_cast<uint16_t>(integer.getUInt());
             return absl::OkStatus();
           case 32:
-            attributes[name] = static_cast<uint32_t>(integer.getInt());
+            attributes[name] = static_cast<uint32_t>(integer.getUInt());
             return absl::OkStatus();
           case 64:
-            attributes[name] = static_cast<uint64_t>(integer.getInt());
+            attributes[name] = static_cast<uint64_t>(integer.getUInt());
             return absl::OkStatus();
           default:
             return absl::InvalidArgumentError(absl::StrCat(
@@ -69,9 +66,6 @@ absl::StatusOr<FlatAttributesMap> BuildAttributesMap(
         }
       } else {
         switch (integer.getType().getIntOrFloatBitWidth()) {
-          case 1:
-            attributes[name] = static_cast<bool>(integer.getInt());
-            return absl::OkStatus();
           case 8:
             attributes[name] = static_cast<int8_t>(integer.getInt());
             return absl::OkStatus();

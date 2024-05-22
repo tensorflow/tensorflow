@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_client.h"
 
+#include "absl/strings/string_view.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/xla_data.pb.h"
+
 #ifndef _WIN32
 #include <unistd.h>
 #endif
