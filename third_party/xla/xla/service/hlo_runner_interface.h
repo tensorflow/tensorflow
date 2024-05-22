@@ -218,6 +218,9 @@ class HloRunnerInterface {
   virtual absl::string_view Name() const = 0;
 
   typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
+
+  virtual DeviceShapeRepresentationFn device_shape_representation_fn()
+      const = 0;
 };
 
 }  // namespace xla

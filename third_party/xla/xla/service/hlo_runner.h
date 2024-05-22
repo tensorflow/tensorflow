@@ -187,7 +187,7 @@ class HloRunner : public HloRunnerInterface {
 
   absl::string_view Name() const override;
 
-  DeviceShapeRepresentationFn device_shape_representation_fn() {
+  DeviceShapeRepresentationFn device_shape_representation_fn() const override {
     return device_shape_representation_fn_;
   }
 

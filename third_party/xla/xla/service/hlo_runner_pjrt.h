@@ -97,6 +97,10 @@ class HloRunnerPjRt : public HloRunnerInterface {
 
   absl::string_view Name() const override;
 
+  DeviceShapeRepresentationFn device_shape_representation_fn() const override {
+    return device_shape_representation_fn_;
+  }
+
  private:
   std::unique_ptr<PjRtClient> pjrt_client_;
   DeviceShapeRepresentationFn device_shape_representation_fn_;
