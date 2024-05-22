@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_PLUGIN_OP_KERNEL_H_
 
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -82,9 +83,9 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
 
   int NumInputs() const override { return TF_NumInputs(ctx_); }
 
-  Status GetInput(int index, Tensor* tensor) const override;
+  absl::Status GetInput(int index, const Tensor** tensor) const override;
 
-  Status GetInput(const char* name, const Tensor** tensor) override;
+  absl::Status GetInput(const char* name, const Tensor** tensor) const override;
 
   Status GetInputRange(std::string_view name,
                        std::pair<int, int>* range) const override;
@@ -156,7 +157,11 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
 
   // A cache for tensors obtained from the ctx_. This is needed to extend the
   // lifetime of the c++ tensorflow::Tensor created from `TF_TensorToTensor`.
-  std::vector<Tensor> obtained_tensors_ TF_GUARDED_BY(mu_);
+  // Use std::deque here to make sure elements in the container are pointer
+  // stable.
+  // "insertion and deletion at either end of a deque never invalidates pointers
+  //  or references to the rest of the elements."
+  mutable std::deque<Tensor> obtained_tensors_ TF_GUARDED_BY(mu_);
   TF_OpKernelContext* ctx_;  // not owned.
 };
 
