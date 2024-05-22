@@ -442,6 +442,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "Log",
                                      "Log1p",
                                      "LogSoftmax",
+                                     "Mean",
                                      "Prod",
                                      "RealDiv",
                                      "Reciprocal",
@@ -458,6 +459,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "Sqrt",
                                      "Square",
                                      "SquaredDifference",
+                                     "Sum",
                                      "Tanh",
                                      "TanhGrad"};
     UpdateList("INFERLIST", &list);
