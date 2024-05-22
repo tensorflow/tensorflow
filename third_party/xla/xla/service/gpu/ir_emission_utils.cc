@@ -751,7 +751,8 @@ HloInstructionAdaptor FindNonTrivialHero(const HloInstructionAdaptor& instr) {
   // transpose and concat emitters also work if there are elementwise ops with
   // more than 1 operand on the path between root and the root op.
   auto is_transpose = [](const HloInstruction& node) {
-    return FindTiledLogicalTranspose(node).has_value();
+    return FindTiledLogicalTranspose(node).has_value() ||
+           FindTiledTranspose(node).has_value();
   };
   if (auto transpose = FindNonTrivialHero(hero, is_transpose)) {
     return *transpose;

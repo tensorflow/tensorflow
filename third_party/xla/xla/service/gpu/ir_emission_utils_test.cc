@@ -375,7 +375,7 @@ ENTRY entry {
   EXPECT_EQ(&FindNonTrivialHero(r).instruction(), transpose);
 }
 
-TEST_F(IrEmissionUtilsTest, FindNonTrivialHeroInsideFusion) {
+TEST_F(IrEmissionUtilsTest, FindNonTrivialTransposeHeroInsideFusion) {
   const char* hlo = R"(
 HloModule module
 
@@ -407,6 +407,40 @@ ENTRY entry {
   EXPECT_EQ(&FindNonTrivialHero(HloInstructionAdaptor(*r, fusion_adaptor.get()))
                  .instruction(),
             transpose);
+}
+
+TEST_F(IrEmissionUtilsTest, FindNonTrivialCopyHeroInsideFusion) {
+  const char* hlo = R"(
+HloModule module
+
+f {
+  p0 = f32[100,200,300]{2,1,0} parameter(0)
+  t = f32[100,200,300]{0,1,2} copy(p0)
+  ROOT add = f32[100,200,300]{0,1,2} add(t, t)
+}
+
+ENTRY entry {
+  p0 = f32[100,200,300]{2,1,0} parameter(0)
+  p1 = f32[100,200,300]{0,1,2} parameter(1)
+  fusion = f32[100,200,300]{0,1,2} fusion(p0), kind=kLoop, calls=f
+  ROOT add = f32[100,200,300]{0,1,2} add(p1, fusion)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  HloInstruction* copy = module->GetComputationWithName("f")
+                             ->parameter_instruction(0)
+                             ->users()
+                             .front();
+  HloInstruction* fusion =
+      module->entry_computation()->GetInstructionWithName("fusion");
+  auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(fusion, r);
+  EXPECT_EQ(&FindNonTrivialHero(HloInstructionAdaptor(*r, fusion_adaptor.get()))
+                 .instruction(),
+            copy);
 }
 
 TEST_F(IrEmissionUtilsTest, TransposeReachableViaTrivialAndNontrivialOps) {
