@@ -870,7 +870,6 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -880,7 +879,9 @@ cc_library(
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:VectorDialect",
     ],
 )
 
