@@ -221,7 +221,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexingVectorized210) {
         (d0, d1, d2, d3, d4, d5)[s0, s1] -> (
           d0 floordiv 32 + s0 * 4,
           d3 floordiv 128,
-          (d3 mod 128) * 64 + s1 + (d0 mod 32) * 2
+          (d0 mod 32) * 2 + s1 + (d3 mod 128) * 64
         )
         domain:
         d0 in [0, 127]
