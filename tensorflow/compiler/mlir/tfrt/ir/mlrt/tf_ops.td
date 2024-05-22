@@ -162,17 +162,12 @@ def TFIfrtLoadVariableOp: TensorflowMlrt_Op<"tf_ifrt_load_variable", [Pure]> {
     After a `tf.ReadVariableOp` is lowered into `tf.IfrtLoadVariableOp`, the `tf.IfrtCall` kernel
     will bind the loaded IFRT array by name with the tpu program's input.
 
-    `tf.IfrtLoadVariableOp` converts the tensor into an IFRT array based on device and sharding
-    configuration specified in `VariableDeviceShardingConfigProto`.
-
     This op returns a scalar string tensor as a key for user to look for the loaded array
     and a future containing the restored tensor.
   }];
 
   let arguments = (ins
     TF_Tensor:$variable,
-    StrAttr:$device_sharding_config_proto_text,
-    StrAttr:$name,
     DefaultValuedAttr<BoolAttr, "false">:$used_by_host
   );
 
