@@ -21,10 +21,22 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "xla/status_macros.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {

@@ -19,9 +19,21 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

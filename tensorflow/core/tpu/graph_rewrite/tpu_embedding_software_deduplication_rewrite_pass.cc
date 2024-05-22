@@ -17,19 +17,34 @@ limitations under the License.
 #include <iterator>
 #include <string>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/status_macros.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/graph_rewrite/tpu_embedding_rewrite_pass_utils.h"
 #include "tensorflow/core/tpu/tpu_embedding_configuration_utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {

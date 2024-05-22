@@ -20,8 +20,12 @@ limitations under the License.
 
 #include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {

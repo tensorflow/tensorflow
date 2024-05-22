@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_pass_internal.h"
 #include "tsl/platform/errors.h"
