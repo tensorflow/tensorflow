@@ -31,14 +31,16 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using Rewrite = HostOffloadingPrepare::Rewrite;
+
 class HostOffloadingPrepareTest : public HloTestBase {
  protected:
-  absl::StatusOr<bool> RunPass(HloModule* module) {
+  absl::StatusOr<bool> RunRewrite(HloModule* module, Rewrite rewrite) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
     }
-    HostOffloadingPrepare pass;
+    HostOffloadingPrepare pass(rewrite);
     TF_ASSIGN_OR_RETURN(bool changed, pass.Run(module));
     return changed;
   }
@@ -70,7 +72,7 @@ host_computation {
 
 async_computation {
   param_0 = s32[32]{0} parameter(0)
-  ROOT custom-call.cloned = s32[32]{0} custom-call(param_0), custom_call_target="HostExecute", called_computations={host_computation}, frontend_attributes={_xla_compute_type="host"}
+  ROOT call = s32[32]{0} call(param_0), to_apply=host_computation, frontend_attributes={_xla_compute_type="host"}
 }, execution_thread="host"
 
 ENTRY main {
@@ -78,16 +80,17 @@ ENTRY main {
   constant.2 = s32[]{:T(128)} constant(2)
   broadcast.3 = s32[32]{0:T(128)} broadcast(constant.2), dimensions={}
   multiply.4 = s32[32]{0:T(128)} multiply(Arg_0.1, broadcast.3)
-  custom-call.1 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToHost"
-  custom-call.cloned.call-start = ((s32[32]{0:T(128)}), s32[32]{0:T(128)}, u32[]{:T(128)}) async-start(custom-call.1), async_execution_thread="host", calls=async_computation
-  ROOT custom-call.cloned.call-done = s32[32]{0:T(128)} async-done(custom-call.cloned.call-start), frontend_attributes={_xla_compute_type="host"}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
+  move_to_host = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToHost"
+  start = ((s32[32]{0:T(128)}), s32[32]{0:T(128)}, u32[]{:T(128)}) async-start(move_to_host), async_execution_thread="host", calls=async_computation
+  ROOT done = s32[32]{0:T(128)} async-done(start), frontend_attributes={_xla_compute_type="host"}
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunPass(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunRewrite(module.get(), Rewrite::kElideMoveToHost));
 
   EXPECT_TRUE(changed);
 
@@ -119,7 +122,7 @@ host_computation {
 async_computation {
   param_0 = s32[32]{0} parameter(0)
   param_1 = s32[32]{0} parameter(1)
-  ROOT custom-call.cloned = s32[32]{0} custom-call(param_0, param_1), custom_call_target="HostExecute", called_computations={host_computation}, frontend_attributes={_xla_compute_type="host"}
+  ROOT call = s32[32]{0} call(param_0, param_1), to_apply=host_computation, frontend_attributes={_xla_compute_type="host"}
 }, execution_thread="host"
 
 ENTRY main {
@@ -127,16 +130,17 @@ ENTRY main {
   constant.2 = s32[]{:T(128)} constant(2)
   broadcast.3 = s32[32]{0:T(128)} broadcast(constant.2), dimensions={}
   multiply.4 = s32[32]{0:T(128)} multiply(Arg_0.1, broadcast.3)
-  custom-call.1 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToHost"
-  custom-call.cloned.call-start = ((s32[32]{0:T(128)}, s32[32]{0:T(128)}), s32[32]{0:T(128)}, u32[]{:T(128)}) async-start(custom-call.1, custom-call.1), async_execution_thread="host", calls=async_computation
-  ROOT custom-call.cloned.call-done = s32[32]{0:T(128)} async-done(custom-call.cloned.call-start), frontend_attributes={_xla_compute_type="host"}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
+  move_to_host = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToHost"
+  start = ((s32[32]{0:T(128)}, s32[32]{0:T(128)}), s32[32]{0:T(128)}, u32[]{:T(128)}) async-start(move_to_host, move_to_host), async_execution_thread="host", calls=async_computation
+  ROOT done = s32[32]{0:T(128)} async-done(start), frontend_attributes={_xla_compute_type="host"}
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunPass(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunRewrite(module.get(), Rewrite::kElideMoveToHost));
 
   EXPECT_TRUE(changed);
 
@@ -168,7 +172,7 @@ host_computation {
 async_computation {
   param_0 = s32[32]{0} parameter(0)
   param_1 = s32[32]{0} parameter(1)
-  ROOT custom-call.cloned = s32[32]{0} custom-call(param_0, param_1), custom_call_target="HostExecute", called_computations={host_computation}, frontend_attributes={_xla_compute_type="host"}
+  ROOT call = s32[32]{0} call(param_0, param_1), to_apply=host_computation, frontend_attributes={_xla_compute_type="host"}
 }, execution_thread="host"
 
 ENTRY main {
@@ -176,17 +180,18 @@ ENTRY main {
   constant.2 = s32[]{:T(128)} constant(2)
   broadcast.3 = s32[32]{0:T(128)} broadcast(constant.2), dimensions={}
   multiply.4 = s32[32]{0:T(128)} multiply(Arg_0.1, broadcast.3)
-  custom-call.1 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToHost"
-  custom-call.2 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToHost"
-  custom-call.cloned.call-start = ((s32[32]{0:T(128)}, s32[32]{0:T(128)}), s32[32]{0:T(128)}, u32[]{:T(128)}) async-start(custom-call.1, custom-call.2), async_execution_thread="host", calls=async_computation
-  ROOT custom-call.cloned.call-done = s32[32]{0:T(128)} async-done(custom-call.cloned.call-start), frontend_attributes={_xla_compute_type="host"}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
+  move_to_host.1 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToHost"
+  move_to_host.2 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToHost"
+  start = ((s32[32]{0:T(128)}, s32[32]{0:T(128)}), s32[32]{0:T(128)}, u32[]{:T(128)}) async-start(move_to_host.1, move_to_host.2), async_execution_thread="host", calls=async_computation
+  ROOT done = s32[32]{0:T(128)} async-done(start), frontend_attributes={_xla_compute_type="host"}
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunPass(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunRewrite(module.get(), Rewrite::kElideMoveToHost));
 
   EXPECT_TRUE(changed);
 
@@ -216,7 +221,7 @@ host_computation {
 
 async_computation {
   param_0 = s32[32]{0} parameter(0)
-  ROOT custom-call.cloned = s32[32]{0} custom-call(param_0), custom_call_target="HostExecute", called_computations={host_computation}, frontend_attributes={_xla_compute_type="host"}
+  ROOT call = s32[32]{0} call(param_0), to_apply=host_computation, frontend_attributes={_xla_compute_type="host"}
 }, execution_thread="host"
 
 ENTRY main {
@@ -224,17 +229,17 @@ ENTRY main {
   constant.2 = s32[]{:T(128)} constant(2)
   broadcast.3 = s32[32]{0:T(128)} broadcast(constant.2), dimensions={}
   multiply.4 = s32[32]{0:T(128)} multiply(Arg_0.1, broadcast.3)
-  custom-call.1 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToHost"
-  custom-call.2 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToDevice"
-  custom-call.cloned.call-start = ((s32[32]{0:T(128)}), s32[32]{0:T(128)}, u32[]{:T(128)}) async-start(custom-call.2), async_execution_thread="host", calls=async_computation
-  ROOT custom-call.cloned.call-done = s32[32]{0:T(128)} async-done(custom-call.cloned.call-start), frontend_attributes={_xla_compute_type="host"}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
+  move_to_device = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToDevice"
+  start = ((s32[32]{0:T(128)}), s32[32]{0:T(128)}, u32[]{:T(128)}) async-start(move_to_device), async_execution_thread="host", calls=async_computation
+  ROOT done = s32[32]{0:T(128)} async-done(start), frontend_attributes={_xla_compute_type="host"}
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunPass(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunRewrite(module.get(), Rewrite::kElideMoveToHost));
 
   EXPECT_FALSE(changed);
 }
@@ -252,7 +257,7 @@ host_computation {
 async_computation {
   param_0 = s32[32]{0} parameter(0)
   param_1 = s32[32]{0} parameter(1)
-  ROOT custom-call.cloned = s32[32]{0} custom-call(param_0, param_1), custom_call_target="HostExecute", called_computations={host_computation}, frontend_attributes={_xla_compute_type="host"}
+  ROOT call = s32[32]{0} call(param_0, param_1), to_apply=host_computation, frontend_attributes={_xla_compute_type="host"}
 }, execution_thread="host"
 
 ENTRY main {
@@ -260,17 +265,17 @@ ENTRY main {
   constant.2 = s32[]{:T(128)} constant(2)
   broadcast.3 = s32[32]{0:T(128)} broadcast(constant.2), dimensions={}
   multiply.4 = s32[32]{0:T(128)} multiply(Arg_0.1, broadcast.3)
-  custom-call.1 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToHost"
-  custom-call.2 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToDevice"
-  custom-call.cloned.call-start = ((s32[32]{0:T(128)}, s32[32]{0:T(128)}), s32[32]{0:T(128)}, u32[]{:T(128)}) async-start(custom-call.2, custom-call.2), async_execution_thread="host", calls=async_computation
-  ROOT custom-call.cloned.call-done = s32[32]{0:T(128)} async-done(custom-call.cloned.call-start), frontend_attributes={_xla_compute_type="host"}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
+  move_to_device = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToDevice"
+  custom-call.cloned.call-start = ((s32[32]{0:T(128)}, s32[32]{0:T(128)}), s32[32]{0:T(128)}, u32[]{:T(128)}) async-start(move_to_device, move_to_device), async_execution_thread="host", calls=async_computation
+  ROOT custom-call.cloned.call-done = s32[32]{0:T(128)} async-done(custom-call.cloned.call-start), frontend_attributes={_xla_compute_type="host"}
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunPass(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunRewrite(module.get(), Rewrite::kElideMoveToHost));
 
   EXPECT_FALSE(changed);
 }
@@ -288,7 +293,7 @@ host_computation {
 async_computation {
   param_0 = s32[32]{0} parameter(0)
   param_1 = s32[32]{0} parameter(1)
-  ROOT custom-call.cloned = s32[32]{0} custom-call(param_0, param_1), custom_call_target="HostExecute", called_computations={host_computation}, frontend_attributes={_xla_compute_type="host"}
+  ROOT call = s32[32]{0} call(param_0, param_1), to_apply=host_computation, frontend_attributes={_xla_compute_type="host"}
 }, execution_thread="host"
 
 ENTRY main {
@@ -296,23 +301,54 @@ ENTRY main {
   constant.2 = s32[]{:T(128)} constant(2)
   broadcast.3 = s32[32]{0:T(128)} broadcast(constant.2), dimensions={}
   multiply.4 = s32[32]{0:T(128)} multiply(Arg_0.1, broadcast.3)
-  custom-call.1 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToHost"
-  custom-call.2 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToHost"
-  custom-call.3 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToDevice"
-  custom-call.4 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToDevice"
-  custom-call.cloned.call-start = ((s32[32]{0:T(128)}, s32[32]{0:T(128)}), s32[32]{0:T(128)}, u32[]{:T(128)}) async-start(custom-call.3, custom-call.4), async_execution_thread="host", calls=async_computation
-  ROOT custom-call.cloned.call-done = s32[32]{0:T(128)} async-done(custom-call.cloned.call-start), frontend_attributes={_xla_compute_type="host"}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
+  move_to_device.1 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToDevice"
+  move_to_device.2 = s32[32]{0:T(128)} custom-call(multiply.4), custom_call_target="MoveToDevice"
+  start = ((s32[32]{0:T(128)}, s32[32]{0:T(128)}), s32[32]{0:T(128)}, u32[]{:T(128)}) async-start(move_to_device.1, move_to_device.2), async_execution_thread="host", calls=async_computation
+  ROOT done = s32[32]{0:T(128)} async-done(start), frontend_attributes={_xla_compute_type="host"}
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunPass(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunRewrite(module.get(), Rewrite::kElideMoveToHost));
 
   EXPECT_FALSE(changed);
 }
 
-}  // namespace
+TEST_F(HostOffloadingPrepareTest, ConvertToCustomCall) {
+  const char* hlo = R"(
+HloModule my_module
 
+host_computation {
+  Arg_0.0 = s32[32] parameter(0)
+  ROOT multiply.0 = s32[32] multiply(Arg_0.0, Arg_0.0)
+}, execution_thread="host"
+
+async_computation {
+  param_0 = s32[32] parameter(0)
+  ROOT call = s32[32] call(param_0), to_apply=host_computation
+}, execution_thread="host"
+
+ENTRY main {
+  Arg_0.1 = s32[32] parameter(0)
+  start = ((s32[32]), s32[32], u32[]) async-start(Arg_0.1),
+          async_execution_thread="host", calls=async_computation
+  ROOT done = s32[32] async-done(start)
+}
+)";
+
+  const char* expected = R"(
+// CHECK:      custom-call-start(%Arg_0.1),
+// CHECK-SAME:   async_execution_thread="host",
+// CHECK-SAME:   custom_call_target="HostExecute",
+// CHECK-SAME:   called_computations={%host_computation}
+)";
+
+  RunAndFilecheckHloRewrite(
+      hlo, HostOffloadingPrepare(Rewrite::kConvertToCustomCall), expected);
+}
+
+}  // namespace
 }  // namespace xla
