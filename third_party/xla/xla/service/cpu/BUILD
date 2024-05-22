@@ -53,6 +53,20 @@ filegroup(
     ]),
 )
 
+# Collection of XLA tests that support XLA:CPU thunk-based runtime. We keep
+# running them on TAP while we keep working on porting XLA:CPU to the new
+# runtime.
+#
+# XLA:CPU thunks enabled with:
+#   --test_env=XLA_FLAGS=--xla_cpu_use_thunk_runtime=true
+#
+test_suite(
+    name = "thunk_runtime_tests",
+    tests = [
+        "//xla/tests:copy_test_cpu",
+    ],
+)
+
 bool_flag(
     name = "experimental_mlir_gpu",
     build_setting_default = False,
@@ -237,6 +251,7 @@ cc_library(
         ":parallel_task_assignment",
         ":simple_orc_jit",
         ":target_machine_features",
+        ":thunk_emitter",
         ":xla_framework",
         "//xla:cpu_function_runtime",
         "//xla:debug_options_flags",
@@ -338,6 +353,7 @@ cc_library(
         "//xla/service:while_loop_invariant_code_motion",
         "//xla/service:while_loop_simplifier",
         "//xla/service:zero_sized_hlo_elimination",
+        "//xla/service/cpu/runtime:thunk",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/spmd:stateful_rng_spmd_partitioner",
@@ -557,6 +573,7 @@ cc_library(
         ":buffer_desc",
         ":simple_orc_jit",
         ":xla_framework",
+        "//xla:executable_run_options",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -567,27 +584,37 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:computation_layout",
+        "//xla/service:custom_call_status",
         "//xla/service:custom_call_status_internal",
         "//xla/service:executable",
         "//xla/service:hlo_dataflow_analysis",
         "//xla/service:hlo_execution_profile",
+        "//xla/service:hlo_value",
         "//xla/service:logical_buffer",
         "//xla/service:maybe_owning_device_memory",
         "//xla/service:shaped_buffer",
         "//xla/service:xla_debug_info_manager",
+        "//xla/service/cpu/runtime:thunk",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor/host:host_stream",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:OrcShared",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -712,6 +739,24 @@ cc_library(
         "//xla/service/llvm_ir:loop_emitter",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Core",
+    ],
+)
+
+cc_library(
+    name = "thunk_emitter",
+    srcs = ["thunk_emitter.cc"],
+    hdrs = ["thunk_emitter.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service/cpu/runtime:copy_thunk",
+        "//xla/service/cpu/runtime:thunk",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

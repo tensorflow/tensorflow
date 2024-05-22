@@ -115,6 +115,7 @@ message DebugOptions {
   bool xla_cpu_use_mkl_dnn = 97;
 
   reserved 177;  // Was xla_cpu_use_xla_runtime
+  bool xla_cpu_use_thunk_runtime = 298;
 
   reserved 98;  // Was xla_gpu_max_kernel_unroll_factor
 
@@ -525,11 +526,7 @@ message DebugOptions {
 
   reserved 168;  // Was xla_gpu_simplify_all_fp_conversions.
 
-  // An experimental option to force all layouts present in the
-  // after-optimizations HLO to be descending, e.g.
-  // ShapeUtil::MakeShapeWithDescendingLayout is an identity on all
-  // instructions.
-  bool xla_gpu_normalize_layouts = 172;
+  reserved 172;  // Was xla_gpu_normalize_layouts.
 
   // Generate calls to Arm Compute Library in the CPU backend.
   bool xla_cpu_use_acl = 174;
@@ -785,7 +782,7 @@ message DebugOptions {
   // a deterministic implementation.
   bool xla_gpu_exclude_nondeterministic_ops = 297;
 
-  // Next id: 298
+  // Next id: 299
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

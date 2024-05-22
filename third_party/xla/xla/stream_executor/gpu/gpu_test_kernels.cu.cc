@@ -17,6 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 
+#ifdef TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_runtime.h"
+#endif
+
 namespace stream_executor::gpu::internal {
 
 __global__ void AddI32(int32_t* a, int32_t* b, int32_t* c) {

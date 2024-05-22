@@ -144,7 +144,7 @@ bool ApproximateMatch(std::string_view lhs, std::string_view rhs) {
   size_t lhs_length = lhs.size();
   size_t rhs_length = rhs.size();
   size_t l = 0, r = 0;
-  while (l < lhs_length && r < rhs_length) {
+  while (l < lhs_length || r < rhs_length) {
     while (l < lhs_length && std::isspace(lhs[l])) {
       ++l;
     }

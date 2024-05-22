@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_TEST_KERNELS_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_TEST_KERNELS_H_
 
+#include <cstdint>
 #include <string_view>
 
 namespace stream_executor::gpu::internal {
@@ -76,7 +77,12 @@ inline constexpr std::string_view kAddI32Kernel = R"(
 
 })";
 #else
+}  // namespace stream_executor::gpu::internal
+
 #include "xla/stream_executor/rocm/add_i32_kernel.h"
+
+namespace stream_executor::gpu::internal {
+using ::kAddI32KernelModule;
 #endif  // !defined(TENSORFLOW_USE_ROCM)
 
 template <typename T>

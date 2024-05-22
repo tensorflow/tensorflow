@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "rocm/include/hip/hip_runtime.h"
+
 extern "C" __global__ void add(int32_t* a, int32_t* b, int32_t* c) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
   c[index] = a[index] + b[index];

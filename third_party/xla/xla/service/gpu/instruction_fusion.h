@@ -38,20 +38,16 @@ namespace gpu {
 
 class GpuInstructionFusion : public InstructionFusion {
  public:
-  explicit GpuInstructionFusion(bool may_duplicate,
-                                const se::DeviceDescription& d)
+  GpuInstructionFusion(bool may_duplicate, const se::DeviceDescription& d)
       : InstructionFusion(GpuInstructionFusion::IsExpensive, may_duplicate),
         device_info_(d) {}
 
   static bool IsExpensive(const HloInstruction& instruction);
 
   using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
-    fusion_node_evaluations_.clear();
-    return InstructionFusion::Run(module, execution_threads);
-  }
+  absl::StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  protected:
   std::unique_ptr<FusionQueue> GetFusionQueue(
@@ -73,6 +69,7 @@ class GpuInstructionFusion : public InstructionFusion {
 
   // Keep track of the number of times each instruction inside a fusion node is
   // indexed with different index vectors.
+  absl::flat_hash_set<const HloComputation*> fusible_computations_;
   absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
       fusion_node_evaluations_;
 

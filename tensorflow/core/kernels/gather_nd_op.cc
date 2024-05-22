@@ -45,8 +45,7 @@ class GatherNdOp : public OpKernel {
 
     Tensor out;
     OP_REQUIRES_OK(
-        c, functor::DoGatherNd<Device, T, Index, /*kDropBadIndices=*/false>(
-               c, params, indices, &out));
+        c, functor::DoGatherNd<Device, T, Index>(c, params, indices, &out));
     c->set_output(0, out);
   }
 };

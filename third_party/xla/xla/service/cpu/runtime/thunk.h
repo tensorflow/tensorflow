@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <ostream>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -61,10 +63,8 @@ class Thunk {
   // ExecuteParams
   //===--------------------------------------------------------------------===//
 
-  // Parameters passed to ExecuteOnStream. ExecuteOnStream is responsible for
-  // launching "work" on device, i.e., it launches host kernels, calls into
-  // libraries (oneDNN, Eigen, etc.).
-
+  // Parameters passed to Execute. Execute is responsible for launching "work"
+  // on device, i.e., it launches host kernels, calls into libraries, etc.
   struct ExecuteParams {
     const BufferAllocations* buffer_allocations = nullptr;
   };
@@ -78,7 +78,25 @@ class Thunk {
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 
 // A sequence of thunks to execute.
-class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {};
+class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
+ public:
+  ThunkSequence() = default;
+  explicit ThunkSequence(std::unique_ptr<Thunk> thunk);
+
+  // Return a ThunkSequence that contains a single thunk of type `T`.
+  template <typename T, typename... Args>
+  static ThunkSequence Of(Args&&... args) {
+    static_assert(std::is_base_of_v<Thunk, T>,
+                  "ThunkSequence::Of() requires `T` to be a `Thunk` subclass.");
+    return ThunkSequence(std::make_unique<T>(std::forward<Args>(args)...));
+  }
+
+  static ThunkSequence Empty() { return ThunkSequence(); }
+
+  absl::Status Execute(const Thunk::ExecuteParams& params);
+
+  void Append(ThunkSequence other);
+};
 
 }  // namespace xla::cpu
 
