@@ -424,6 +424,10 @@ message DebugOptions {
   // Inflate collective cost by running each collective multiple times.
   int32 xla_gpu_collective_inflation_factor = 205;
 
+  // Whether to force inline before llvm module split to get a more balanced
+  // splits for parallel compilation.
+  bool xla_llvm_force_inline_before_split = 300;
+
   // Whether to use the cuDNN frontend API for convolutions when possible.
   bool xla_gpu_enable_cudnn_frontend = 160;
 
