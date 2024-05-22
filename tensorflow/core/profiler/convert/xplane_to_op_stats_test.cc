@@ -212,7 +212,7 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
                                                    options, &op_stats));
   const StepDatabaseResult& step_db = op_stats.step_db();
 
-  EXPECT_EQ(step_db.step_sequence_size(), 1);
+  EXPECT_EQ(step_db.step_sequence_size(), 0);
 
   PrecisionStats precision_stats =
       op_stats.device_op_metrics_db().precision_stats();

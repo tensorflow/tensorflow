@@ -66,31 +66,20 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
  public:
   static StreamExecutorGpuTopologyDescription Create(
       const PjRtPlatformId platform_id, const absl::string_view platform_name,
-      const absl::string_view platform_version,
-      const std::vector<PjRtDevice*>& devices) {
-    std::vector<int> device_ids;
-    device_ids.reserve(devices.size());
-    for (PjRtDevice* device : devices) {
-      device_ids.push_back(device->id());
-    }
+      std::shared_ptr<const GpuTopology> gpu_topology) {
     return StreamExecutorGpuTopologyDescription(platform_id, platform_name,
-                                                platform_version, device_ids);
+                                                gpu_topology);
   }
-  // `gpu_device_ids` is the list of logical device ids for the GPU devices and
-  // will be used to initialize the GPU topology.
+
   StreamExecutorGpuTopologyDescription(
       const PjRtPlatformId platform_id, const absl::string_view platform_name,
-      const absl::string_view platform_version,
-      const std::vector<int>& gpu_device_ids,
+      std::shared_ptr<const GpuTopology> gpu_topology,
       const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& attributes =
           {})
       : platform_id_(platform_id),
         platform_name_(platform_name),
-        platform_version_(platform_version),
-        // TODO(b/331224674): Add support for multi-host.
-        gpu_topology_(gpu_device_ids, platform_version, /*num_slices=*/1,
-                      /*num_hosts_per_slice=*/1,
-                      /*num_devices_per_host=*/gpu_device_ids.size()),
+        platform_version_(gpu_topology ? gpu_topology->platform_version() : ""),
+        gpu_topology_(std::move(gpu_topology)),
         attributes_(attributes) {}
 
   bool operator==(const StreamExecutorGpuTopologyDescription& other) const {
@@ -111,33 +100,34 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
       const override {
     std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices;
-    devices.reserve(gpu_topology_.number_of_devices());
-    for (const int device_id : gpu_topology_.device_ids()) {
+    devices.reserve(gpu_topology_->number_of_devices());
+    for (const int device_id : gpu_topology_->device_ids()) {
       devices.push_back(std::make_unique<PjRtStreamExecutorDeviceDescription>(
           device_id, platform_version_));
     }
     return devices;
   }
 
-  const GpuTopology& gpu_topology() const { return gpu_topology_; }
-  const GpuTopology* gpu_topology_ptr() const { return &gpu_topology_; }
+  const GpuTopology& gpu_topology() const { return *gpu_topology_; }
+  const GpuTopology* gpu_topology_ptr() const { return gpu_topology_.get(); }
 
   // No subslice is supported.
   bool is_subslice_topology() const override { return false; }
 
-  // The topology support only single host now.
-  absl::StatusOr<int> ProcessCount() const override { return 1; }
+  absl::StatusOr<int> ProcessCount() const override {
+    return gpu_topology_->number_of_hosts();
+  }
 
   absl::StatusOr<int> CoreCountOfDefaultType() const override {
-    return gpu_topology_.number_of_devices();
+    return gpu_topology_->number_of_devices();
   }
 
   absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const override {
-    return gpu_topology_.number_of_devices();
+    return gpu_topology_->number_of_devices();
   }
 
   absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override {
-    return gpu_topology_.number_of_devices();
+    return gpu_topology_->number_of_devices();
   }
 
   absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override {
@@ -160,7 +150,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
   const std::string platform_version_;
-  const GpuTopology gpu_topology_;
+  std::shared_ptr<const GpuTopology> gpu_topology_;
   absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
 };
 
@@ -208,7 +198,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tsl::Allocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
-      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
+      std::shared_ptr<const GpuTopology> gpu_topology = nullptr);
 
   absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -271,6 +262,7 @@ absl::Status BuildDistributedDevices(
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>* devices,
     gpu::GpuExecutableRunOptions* gpu_executable_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
+    GpuTopologyProto* gpu_topology = nullptr,
     absl::Duration get_local_topology_timeout = absl::Minutes(2),
     absl::Duration get_global_topology_timeout = absl::Minutes(5));
 

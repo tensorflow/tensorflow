@@ -55,6 +55,8 @@ limitations under the License.
 #include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
+#include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -485,14 +487,15 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
     std::unique_ptr<tsl::Allocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
-    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
+    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
+    std::shared_ptr<const GpuTopology> gpu_topology)
     : xla::PjRtStreamExecutorClient(
           platform_name, client, std::move(devices), process_index,
           std::move(allocator), std::move(host_memory_allocator),
           should_stage_host_to_device_transfers, std::move(gpu_run_options)),
       topology_(xla::StreamExecutorGpuTopologyDescription::Create(
           tsl::Fingerprint64(platform_name), platform_name,
-          devices_.back()->device_kind(), devices_)) {
+          std::move(gpu_topology))) {
   for (auto* device : addressable_devices()) {
     // Use the device id to construct a globally unique memory space id. We do
     // not promise that memory space ids and device ids are the same.
@@ -948,7 +951,7 @@ absl::Status BuildDistributedDevices(
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>* devices,
     gpu::GpuExecutableRunOptions* gpu_executable_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
-    absl::Duration get_local_topology_timeout,
+    GpuTopologyProto* gpu_topology, absl::Duration get_local_topology_timeout,
     absl::Duration get_global_topology_timeout) {
   LocalTopologyProto local_topology;
   local_topology.set_node_id(node_id);
@@ -987,6 +990,10 @@ absl::Status BuildDistributedDevices(
         platform_name, node_id, num_nodes, get_local_topology_timeout,
         get_global_topology_timeout, kv_store.get(), local_topology,
         &global_topology));
+  }
+
+  if (gpu_topology != nullptr) {
+    TF_ASSIGN_OR_RETURN(*gpu_topology, BuildGpuTopology(global_topology));
   }
 
   std::map<int, GlobalDeviceId> gpu_device_ids;
@@ -1159,22 +1166,24 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     kv_store = std::make_shared<InMemoryKeyValueStore>();
   }
   TF_RET_CHECK(options.num_nodes == 1 || kv_store != nullptr);
+  GpuTopologyProto gpu_topology;
   TF_RETURN_IF_ERROR(BuildDistributedDevices(
       pjrt_platform_name, std::move(local_device_states), options.node_id,
       options.num_nodes, &devices, gpu_run_options.get(), kv_store,
-      options.enable_mock_nccl));
+      options.enable_mock_nccl, &gpu_topology));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(
       pjrt_platform_name, xla_client, std::move(devices), options.node_id,
       std::move(allocator), std::move(host_memory_allocator),
-      options.should_stage_host_to_device_transfers,
-      std::move(gpu_run_options)));
+      options.should_stage_host_to_device_transfers, std::move(gpu_run_options),
+      std::shared_ptr<const GpuTopology>(
+          GpuTopology::FromProto(gpu_topology))));
 }
 
 absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
     const {
   std::string result;
-  if (!tsl::SerializeToStringDeterministic(gpu_topology_.ToProto(), &result)) {
+  if (!tsl::SerializeToStringDeterministic(gpu_topology_->ToProto(), &result)) {
     return absl::InternalError("Failed to serialize gpu_topology");
   }
   return result;

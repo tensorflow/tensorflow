@@ -65,6 +65,7 @@ package_group(
     packages = [
         "//tensorflow/...",
         "//tensorflow_text/...",
+        "//waymo/ml/compiler/frontend/kernels/...",
         "//waymo/onboard/ml/...",
     ],
 )

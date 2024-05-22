@@ -240,11 +240,9 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       *op_stats.mutable_host_op_metrics_db() =
           ConvertHostThreadsXPlaneToOpMetricsDb(*host_plane);
     }
-    if (options.generate_step_db) {
-      const StepEvents* device_step_events =
-          has_device ? &step_events : nullptr;
+    if (options.generate_step_db && !has_device) {
       StepEvents host_step_events =
-          ConvertHostThreadsXPlaneToStepEvents(*host_plane, device_step_events);
+          ConvertHostThreadsXPlaneToStepEvents(*host_plane, nullptr);
       CombineStepEvents(host_step_events, &step_events);
     }
     XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(host_plane);

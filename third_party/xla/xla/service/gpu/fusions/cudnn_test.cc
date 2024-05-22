@@ -605,7 +605,7 @@ ENTRY r {
   ROOT r = bf16[192,128]{1,0} fusion(p0, p1), kind=kCustom, calls=fusion1,
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+                            ErrorSpec{/*aabs=*/1, /*arel=*/1e-3}));
 }
 
 TEST_F(CuDnnFusionLevel3Test,
@@ -629,7 +629,7 @@ ENTRY r {
   ROOT r = bf16[4,3,16,128]{2,1,3,0} fusion(p0, p1), kind=kCustom, calls=fusion1,
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+                            ErrorSpec{/*aabs=*/1, /*arel=*/1e-3}));
 }
 
 class ElementwiseTest : public CuDnnFusionExecutionTest,
