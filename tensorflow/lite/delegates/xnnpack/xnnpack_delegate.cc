@@ -6480,6 +6480,26 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorInt32Type(logging_context, end_tensor,
                                                end_tensor_index, node_index));
 
+    const auto CheckParamTensorShape = [&](const TfLiteTensor& param_tensor,
+                                           const char* param_tensor_name) {
+      if (input_tensor.dims->size != GetTensorData<int32_t>(&param_tensor)[0]) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "%s shape (%d) must be equal to input shape (%d) "
+            "in STRIDED_SLICE node #%d",
+            param_tensor_name,
+            reinterpret_cast<const int32_t*>(param_tensor.data.data)[0],
+            input_tensor.dims->size, node_index);
+        return kTfLiteError;
+      }
+      return kTfLiteOk;
+    };
+
+    TF_LITE_ENSURE_STATUS(CheckParamTensorShape(begin_tensor, "begin_tensor"));
+    TF_LITE_ENSURE_STATUS(CheckParamTensorShape(end_tensor, "end_tensor"));
+    TF_LITE_ENSURE_STATUS(
+        CheckParamTensorShape(stride_tensor, "stride_tensor"));
+
     TF_LITE_ENSURE_STATUS(
         CheckTensorsDimensionMatch(logging_context, stride_tensor, begin_tensor,
                                    0, node_index, "STRIDED_SLICE"));
