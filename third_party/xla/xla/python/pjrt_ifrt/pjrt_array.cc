@@ -97,7 +97,7 @@ absl::Status ValidateArrayCreationInput(
           canonicalized_sharding_memory_kind.DebugString());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Validates the PjRtBuffers have consistent memory kind and returns the memory
