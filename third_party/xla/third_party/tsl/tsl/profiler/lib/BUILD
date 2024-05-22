@@ -75,6 +75,7 @@ cc_library(
         "//tsl/profiler:internal",
         "//tsl/profiler:xla_profiler_backends",
         "@local_xla//xla/python:__pkg__",
+        "//learning/brain/tfrc/executor:__pkg__",
         "//learning/brain/tfrc/executor/stream_executor:__pkg__",
     ]),
     deps = [
