@@ -44,7 +44,7 @@ namespace functor {
 
 // Functor used by ScatterOp to do the computations.
 template <typename Device, typename T, typename Index,
-          scatter_nd_op::UpdateOp op, int IXDIM>
+          scatter_nd_op::UpdateOp op, int IXDIM, bool kDropBadIndices>
 struct ScatterNdFunctor {
   // Returns -1 on success or a nonnegative i s.t. indices[i] is a bad index.
   Index operator()(
@@ -63,7 +63,7 @@ struct ScatterNdFunctor {
 // right type (T) and shape.  This tensor will not be zeroed out
 // before the scatter is executed.
 template <typename Device, typename T, typename Index,
-          scatter_nd_op::UpdateOp Op>
+          scatter_nd_op::UpdateOp Op, bool kDropBadIndices = false>
 Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
                    const Tensor& updates, const TensorShape& shape, Tensor* out,
                    bool allocate);
