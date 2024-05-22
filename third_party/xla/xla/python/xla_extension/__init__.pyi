@@ -267,8 +267,8 @@ def register_custom_call_partitioner(
     prop_user_sharding: Callable,
     partition: Callable,
     infer_sharding_from_operands: Callable,
-    can_side_effecting_have_replicated_sharding: bool,
-    c_api: Optional[Any],
+    can_side_effecting_have_replicated_sharding: bool = ...,
+    c_api: Optional[Any] = ...,
 ) -> None: ...
 def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
 

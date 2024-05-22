@@ -83,6 +83,8 @@ def shape_from_pyval(pyval: Any, layout: Sequence[int] | None = None) -> Any: ..
 def heap_profile(client: Client) -> bytes:
   ...
 
+XlaRuntimeError = _xla.XlaRuntimeError
+
 def make_cpu_client(
     asynchronous: bool = ...,
     distributed_client: Optional[DistributedRuntimeClient] = ...,
@@ -229,7 +231,15 @@ def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
 
 def copy_array_to_devices_with_sharding(self: ArrayImpl, devices: List[Device], sharding: Any) -> ArrayImpl: ...
 
-def batched_device_put(aval: Any, sharding: Any, shards: Sequence[Any], devices: List[Device]) -> ArrayImpl: ...
+def batched_device_put(
+    aval: Any,
+    sharding: Any,
+    shards: Sequence[Any],
+    devices: List[Device],
+    committed: bool = ...,
+    force_copy: bool = ...,
+    host_buffer_semantics: Any = ...,
+) -> ArrayImpl: ...
 
 def batched_block_until_ready(x: Sequence[ArrayImpl]) -> None: ...
 
