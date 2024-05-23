@@ -425,6 +425,7 @@ cc_library(
         ":affine_map_printer",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/numeric:int128",  # build-cleaner: keep
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/model/indexing_map.h"
 
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -808,39 +810,135 @@ TEST_F(IndexingMapTest, RangeEvaluatorTest) {
   EXPECT_TRUE(range_evaluator.IsAlwaysNegativeOrZero(d3));
 }
 
-TEST(IntervalComparisionTest, Comparisons) {
+TEST(IntervalComparisionTest, PointComparisons) {
   Interval interval{12, 64};
-  EXPECT_EQ(interval > 11, true);
-  EXPECT_EQ(interval > 12, std::nullopt);
-  EXPECT_EQ(interval > 65, false);
+  auto point = [](int64_t n) { return Interval{n, n}; };
+  EXPECT_EQ(interval > point(11), true);
+  EXPECT_EQ(interval > point(12), std::nullopt);
+  EXPECT_EQ(interval > point(65), false);
 
-  EXPECT_EQ(interval < 65, true);
-  EXPECT_EQ(interval < 64, std::nullopt);
-  EXPECT_EQ(interval < 10, false);
+  EXPECT_EQ(interval < point(65), true);
+  EXPECT_EQ(interval < point(64), std::nullopt);
+  EXPECT_EQ(interval < point(10), false);
 
-  EXPECT_EQ(interval == 11, false);
-  EXPECT_EQ(interval == 15, std::nullopt);
-  EXPECT_EQ(interval == 65, false);
+  EXPECT_EQ(interval == point(11), false);
+  EXPECT_EQ(interval == point(12), std::nullopt);
+  EXPECT_EQ(interval == point(15), std::nullopt);
+  EXPECT_EQ(interval == point(65), false);
 
-  EXPECT_EQ(interval != 11, true);
-  EXPECT_EQ(interval != 15, std::nullopt);
-  EXPECT_EQ(interval != 65, true);
+  EXPECT_EQ(interval != point(11), true);
+  EXPECT_EQ(interval != point(15), std::nullopt);
+  EXPECT_EQ(interval != point(65), true);
 
-  EXPECT_EQ(interval >= 12, true);
-  EXPECT_EQ(interval >= 64, std::nullopt);
-  EXPECT_EQ(interval >= 65, false);
+  EXPECT_EQ(interval >= point(12), true);
+  EXPECT_EQ(interval >= point(64), std::nullopt);
+  EXPECT_EQ(interval >= point(65), false);
 
-  EXPECT_EQ(interval <= 11, false);
-  EXPECT_EQ(interval <= 64, true);
-  EXPECT_EQ(interval <= 63, std::nullopt);
-  EXPECT_EQ(interval <= 65, true);
+  EXPECT_EQ(interval <= point(11), false);
+  EXPECT_EQ(interval <= point(64), true);
+  EXPECT_EQ(interval <= point(63), std::nullopt);
+  EXPECT_EQ(interval <= point(65), true);
 
-  Interval point{15, 15};
-  EXPECT_EQ(point == 15, true);
-  EXPECT_EQ(point == 16, false);
+  EXPECT_EQ(point(15) == point(15), true);
+  EXPECT_EQ(point(15) == point(16), false);
 
-  EXPECT_EQ(point != 15, false);
-  EXPECT_EQ(point != 16, true);
+  EXPECT_EQ(point(15) != point(15), false);
+  EXPECT_EQ(point(15) != point(16), true);
+}
+
+TEST(IntervalComparisionTest, RangeComparisons) {
+  Interval interval{12, 64};
+  auto range = [](int64_t l, int64_t u) { return Interval{l, u}; };
+  EXPECT_EQ(interval > range(-10, 11), true);
+  EXPECT_EQ(interval > range(-10, 12), std::nullopt);
+  EXPECT_EQ(interval > interval, std::nullopt);
+  EXPECT_EQ(interval > range(10, 20), std::nullopt);
+  EXPECT_EQ(interval > range(50, 60), std::nullopt);
+  EXPECT_EQ(interval > range(64, 100), false);
+  EXPECT_EQ(interval > range(65, 100), false);
+
+  EXPECT_EQ(interval < range(65, 100), true);
+  EXPECT_EQ(interval < range(64, 100), std::nullopt);
+  EXPECT_EQ(interval < interval, std::nullopt);
+  EXPECT_EQ(interval < range(50, 60), std::nullopt);
+  EXPECT_EQ(interval < range(10, 20), std::nullopt);
+  EXPECT_EQ(interval < range(-10, 12), false);
+  EXPECT_EQ(interval < range(-10, 11), false);
+
+  EXPECT_EQ(interval == interval, std::nullopt);
+  EXPECT_EQ(interval == range(65, 100), false);
+  EXPECT_EQ(interval == range(0, 11), false);
+}
+
+MATCHER_P(IntervalIs, interval, "") {
+  std::pair<int64_t, int64_t> arg_pair{arg.lower, arg.upper};
+  return ::testing::ExplainMatchResult(
+      ::testing::Pair(interval.lower, interval.upper), arg_pair,
+      result_listener);
+}
+
+TEST(IntervalMathTest, Addition) {
+  Interval a{12, 64};
+  Interval b{-100, 120};
+  Interval sum{12 - 100, 64 + 120};
+  EXPECT_THAT(a + b, IntervalIs(sum));
+}
+
+TEST(IntervalMathTest, AdditionSaturating) {
+  Interval a{12, 64};
+  Interval b{-100, 120};
+  Interval c{100, std::numeric_limits<int64_t>::max() - 80};
+  Interval any{std::numeric_limits<int64_t>::min(),
+               std::numeric_limits<int64_t>::max()};
+  Interval positive{0, std::numeric_limits<int64_t>::max()};
+  Interval negative{std::numeric_limits<int64_t>::min(), 0};
+  auto range = [](int64_t l, int64_t u) { return Interval{l, u}; };
+
+  EXPECT_THAT(positive + negative, IntervalIs(any));
+  EXPECT_THAT(any + any, IntervalIs(any));
+  EXPECT_THAT(b + any, IntervalIs(any));
+
+  EXPECT_THAT(c + any, IntervalIs(any));
+  EXPECT_THAT(c + positive,
+              IntervalIs(range(100, std::numeric_limits<int64_t>::max())));
+  Interval c_plus_negative{negative.lower, c.upper};
+  EXPECT_THAT(c + negative, IntervalIs(c_plus_negative));
+
+  Interval a_plus_c{112, std::numeric_limits<int64_t>::max() - 16};
+  EXPECT_THAT(a + c, IntervalIs(a_plus_c));
+  Interval b_plus_c{0, std::numeric_limits<int64_t>::max()};
+  EXPECT_THAT(b + c, IntervalIs(b_plus_c));
+}
+
+TEST(IntervalMathTest, Multiplication) {
+  Interval pos{10, 100};
+  Interval neg{-10, -1};
+  Interval both_small{-5, 6};
+  Interval both_large{-20, 1000};
+
+  auto range = [](int64_t l, int64_t u) { return Interval{l, u}; };
+  EXPECT_THAT(pos * neg, IntervalIs(range(-1000, -10)));
+  EXPECT_THAT(pos * both_small, IntervalIs(range(-500, 600)));
+  EXPECT_THAT(pos * both_large, IntervalIs(range(-2000, 100000)));
+  EXPECT_THAT(neg * both_small, IntervalIs(range(-60, 50)));
+  EXPECT_THAT(neg * both_large, IntervalIs(range(-10000, 200)));
+  EXPECT_THAT(both_small * both_large, IntervalIs(range(-5000, 6000)));
+}
+
+TEST(IntervalMathTest, MultiplicationSaturating) {
+  Interval any{std::numeric_limits<int64_t>::min(),
+               std::numeric_limits<int64_t>::max()};
+  Interval bit33{42, std::numeric_limits<uint32_t>::max()};
+  Interval bit33_sq(42 * 42, std::numeric_limits<int64_t>::max());
+  EXPECT_THAT(bit33 * bit33, IntervalIs(bit33_sq));
+  EXPECT_THAT(any * any, IntervalIs(any));
+
+  Interval greater_41{42, std::numeric_limits<int64_t>::max()};
+  Interval neg_one{-1, -1};
+  Interval less_neg_41{std::numeric_limits<int64_t>::min(), -42};
+  EXPECT_THAT(greater_41 * neg_one, IntervalIs(less_neg_41));
+  EXPECT_THAT(less_neg_41 * neg_one, IntervalIs(greater_41));
+  EXPECT_THAT(any * neg_one, IntervalIs(any));
 }
 
 TEST_F(IndexingMapTest, ReplaceConstantRTVars_ScalarConstant) {
