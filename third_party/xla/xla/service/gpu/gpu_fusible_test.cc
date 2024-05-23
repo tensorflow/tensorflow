@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 
 #include <memory>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
