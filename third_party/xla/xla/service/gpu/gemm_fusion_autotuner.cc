@@ -669,16 +669,13 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
       config.block_k *= 2;
     }
 
-    // Hopper `wgmma` instruction requires at least 4 warps and 64 elements
-    // for LHS tile height.
-    if (is_hopper) {
-      config.block_m = std::max(config.block_m, 64);
-      config.num_warps = std::max(config.num_warps, 4);
-    }
-
     // Sparse meta should have at least one element per thread.
     // Note: only 2:4 structured sparsity is currently supported.
     if (dot.sparse_operands()) {
+      if (is_hopper) {
+        config.block_m = std::max(config.block_m, 64);
+        config.num_warps = std::max(config.num_warps, 4);
+      }
       config.block_k =
           std::max(config.block_k, kMinTileSize * (has_8_bit_operand ? 4 : 2));
       int meta_elements = config.block_m * config.block_k / 16;
