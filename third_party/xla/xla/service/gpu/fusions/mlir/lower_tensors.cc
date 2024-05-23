@@ -463,9 +463,11 @@ struct RemoveUnusedIndexSwitchResults
 };
 
 bool IsAtomicIntegral(Type element_type) {
+  if (!element_type.isInteger()) {
+    return false;
+  }
   unsigned element_bitwidth = element_type.getIntOrFloatBitWidth();
-  return element_type.isInteger() &&
-         (element_bitwidth == 32 || element_bitwidth == 64);
+  return element_bitwidth == 32 || element_bitwidth == 64;
 }
 
 Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type ty) {
