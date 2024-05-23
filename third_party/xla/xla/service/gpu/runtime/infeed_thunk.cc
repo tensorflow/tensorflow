@@ -15,15 +15,25 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/infeed_thunk.h"
 
+#include <cstddef>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/infeed_manager.h"
+#include "xla/service/gpu/runtime/thunk.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
