@@ -275,6 +275,41 @@ template <typename... Ts>
 using HasRemainingRetsTag =
     std::disjunction<std::is_same<RemainingRetsTag, Ts>...>;
 
+//----------------------------------------------------------------------------//
+
+template <typename T>
+XLA_FFI_DataType NativeTypeToCApiDataType() {
+  if constexpr (std::is_same_v<T, bool>) {
+    return XLA_FFI_DataType_PRED;
+  } else if constexpr (std::is_same_v<T, int8_t>) {
+    return XLA_FFI_DataType_S8;
+  } else if constexpr (std::is_same_v<T, int16_t>) {
+    return XLA_FFI_DataType_S16;
+  } else if constexpr (std::is_same_v<T, int32_t>) {
+    return XLA_FFI_DataType_S32;
+  } else if constexpr (std::is_same_v<T, int64_t>) {
+    return XLA_FFI_DataType_S64;
+  } else if constexpr (std::is_same_v<T, uint8_t>) {
+    return XLA_FFI_DataType_U8;
+  } else if constexpr (std::is_same_v<T, uint16_t>) {
+    return XLA_FFI_DataType_U16;
+  } else if constexpr (std::is_same_v<T, uint32_t>) {
+    return XLA_FFI_DataType_U32;
+  } else if constexpr (std::is_same_v<T, uint64_t>) {
+    return XLA_FFI_DataType_U64;
+  } else if constexpr (std::is_same_v<T, float>) {
+    return XLA_FFI_DataType_F32;
+  } else if constexpr (std::is_same_v<T, double>) {
+    return XLA_FFI_DataType_F64;
+  } else if constexpr (std::is_same_v<T, std::complex<float>>) {
+    return XLA_FFI_DataType_C64;
+  } else {
+    static_assert(std::is_same_v<T, std::complex<double>>,
+                  "unsupported FFI data type");
+    return XLA_FFI_DataType_C128;
+  }
+}
+
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
@@ -1573,6 +1608,33 @@ auto DictionaryDecoder(Members... m) {
         return ::xla::ffi::Ffi::RegisterStaticHandler(API, NAME, PLATFORM,  \
                                                       FUNC, ##__VA_ARGS__); \
       }()
+
+#define XLA_FFI_REGISTER_ENUM_ATTR_DECODING(T)                                \
+  template <>                                                                 \
+  struct ::xla::ffi::AttrDecoding<T> {                                        \
+    using Type = T;                                                           \
+    using U = std::underlying_type_t<Type>;                                   \
+    static_assert(std::is_enum<Type>::value, "Expected enum class");          \
+                                                                              \
+    static std::optional<Type> Decode(XLA_FFI_AttrType attr_type, void* attr, \
+                                      DiagnosticEngine& diagnostic) {         \
+      if (attr_type != XLA_FFI_AttrType_SCALAR) [[unlikely]] {                \
+        return diagnostic.Emit("Wrong attribute type: expected ")             \
+               << XLA_FFI_AttrType_SCALAR << " but got " << attr_type;        \
+      }                                                                       \
+                                                                              \
+      auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);                 \
+      auto expected_dtype = internal::NativeTypeToCApiDataType<U>();          \
+      if (XLA_FFI_PREDICT_FALSE(scalar->dtype != expected_dtype))             \
+          [[unlikely]] {                                                      \
+        return diagnostic.Emit("Wrong scalar data type: expected ")           \
+               << expected_dtype << " but got " << scalar->dtype;             \
+      }                                                                       \
+                                                                              \
+      auto underlying = *reinterpret_cast<U*>(scalar->value);                 \
+      return static_cast<Type>(underlying);                                   \
+    }                                                                         \
+  };
 
 }  // namespace xla::ffi
 

@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <ostream>
+#include <tuple>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -105,8 +107,6 @@ void CustomCallFailWithBackendConfigStr(float*, float**, const char* opaque,
   XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
 }
 
-}  // namespace
-
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2InPlace);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R2F32ReduceSum);
@@ -115,6 +115,32 @@ XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(F32TupleSwap);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2Succeed);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(CustomCallFail);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(CustomCallFailWithBackendConfigStr);
+
+enum class BinaryOp : int8_t { kAdd, kMul };
+enum class InitMethod : int { kZero, kOne };
+
+std::ostream& operator<<(std::ostream& os, BinaryOp op) {
+  switch (op) {
+    case BinaryOp::kAdd:
+      return os << "add";
+    case BinaryOp::kMul:
+      return os << "mul";
+  }
+}
+
+std::ostream& operator<<(std::ostream& os, InitMethod op) {
+  switch (op) {
+    case InitMethod::kZero:
+      return os << "zero";
+    case InitMethod::kOne:
+      return os << "one";
+  }
+}
+
+}  // namespace
+
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(BinaryOp);
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(InitMethod);
 
 namespace xla {
 namespace {
@@ -605,6 +631,43 @@ XLA_FFI_DEFINE_HANDLER(kFfiF32ReduceSum, FfiF32ReduceSum,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32ReduceSum",
                          "Host", kFfiF32ReduceSum);
 
+static absl::Status FfiF32Accumulate(F32Buffer in, InitMethod init,
+                                     R0F32ResultBuffer out,
+                                     BinaryOp binary_op) {
+  auto in_data = in.data.base();
+  auto out_data = out->data.base();
+
+  // Init method is an artificial enum to demonstrate handling enums with
+  // different underlying types. Normally it would be just a float scalar.
+  float init_value = (init == InitMethod::kZero) ? 0.0f : 1.0f;
+
+  // Calculate the total size of the vector
+  auto size = absl::c_accumulate(in.dimensions, 1, std::multiplies<int>());
+
+  // Calculate the sum or the product of the vector, based on binary_op value.
+  switch (binary_op) {
+    case BinaryOp::kAdd:
+      *out_data = absl::c_accumulate(absl::MakeSpan(in_data, size), init_value);
+      break;
+    case BinaryOp::kMul:
+      *out_data = absl::c_accumulate(absl::MakeSpan(in_data, size), init_value,
+                                     std::multiplies<float>());
+      break;
+  }
+
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kFfiF32Accumulate, FfiF32Accumulate,
+                       ffi::Ffi::Bind()
+                           .Arg<F32Buffer>(/*in*/)
+                           .Attr<InitMethod>("init")
+                           .Ret<R0F32Buffer>(/*out*/)
+                           .Attr<BinaryOp>("binary_op"));
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32Accumulate",
+                         "Host", kFfiF32Accumulate);
+
 static absl::Status FfiF32Add1ToValues(F32Buffer in, F32ResultBuffer out) {
   auto in_data = in.data.base();
   auto out_data = out->data.base();
@@ -1014,6 +1077,91 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleR2Vector) {
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(10.0f, result, error_spec_);
 }
+
+XLA_TEST_F(FfiCustomCallTest, FfiWrongEnumType) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  Array2D<float> array(2, 2);
+  array(0, 0) = 1.0f;
+  array(0, 1) = 2.0f;
+  array(1, 0) = 3.0f;
+  array(1, 1) = 4.0f;
+
+  auto input = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(array)));
+
+  auto op = BinaryOp::kAdd;
+  auto init_method = InitMethod::kZero;
+
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      r0f32_, {input}, "__xla_test$$FfiF32Accumulate",
+      /*opaque=*/
+      absl::StrFormat("{binary_op = %d : i16, init = %d : i16}", op,
+                      init_method),
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
+
+  module->AddEntryComputation(builder.Build());
+
+  auto status = Execute(std::move(module), {}).status();
+  // NOTE: In the current CPU implementation, the 'kInternal' status code is
+  // returned when the argument is invalid. This behavior differs from that of
+  // the GPU, which returns 'kInvalidArgument' in such case. When the CPU adopts
+  // the thunks runtime, the status code will be unified across both backends.
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(status.message(), HasSubstr("Wrong scalar data type"));
+}
+
+class FfiCustomCallEnumTest
+    : public FfiCustomCallTest,
+      public ::testing::WithParamInterface<std::tuple<BinaryOp, InitMethod>> {};
+
+XLA_TEST_P(FfiCustomCallEnumTest, FfiHandleEnumAttr) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  Array2D<float> array(2, 2);
+  array(0, 0) = 1.0f;
+  array(0, 1) = 2.0f;
+  array(1, 0) = 3.0f;
+  array(1, 1) = 4.0f;
+
+  auto input = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(array)));
+
+  auto op = std::get<0>(GetParam());
+  auto init_method = std::get<1>(GetParam());
+
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      r0f32_, {input}, "__xla_test$$FfiF32Accumulate",
+      /*opaque=*/
+      absl::StrFormat("{binary_op = %d : i8, init = %d : i32}", op,
+                      init_method),
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
+
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+
+  // Init method is an artificial enum to demonstrate handling enums with
+  // different underlying types. Normally it would be just a float scalar.
+  float expected = (init_method == InitMethod::kZero) ? 0.0f : 1.0f;
+  switch (op) {
+    case BinaryOp::kAdd:
+      expected += 10.0f;  // Sum of input array elements
+      break;
+    case BinaryOp::kMul:
+      expected *= 24.0f;  // Product of input array elements
+      break;
+  }
+
+  LiteralTestUtil::ExpectR0Near<float>(expected, result, error_spec_);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    FfiEnum, FfiCustomCallEnumTest,
+    ::testing::Combine(::testing::Values(BinaryOp::kAdd, BinaryOp::kMul),
+                       ::testing::Values(InitMethod::kZero, InitMethod::kOne)));
 
 XLA_TEST_F(FfiCustomCallTest, FfiUsedInOtherComputations) {
   auto module = CreateNewVerifiedModule();

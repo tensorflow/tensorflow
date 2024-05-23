@@ -18,6 +18,7 @@ cc_library(
     srcs = ["call_frame.cc"],
     hdrs = ["call_frame.h"],
     deps = [
+        ":api",
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/ffi/api:c_api",

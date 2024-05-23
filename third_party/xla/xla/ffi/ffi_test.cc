@@ -414,16 +414,24 @@ TEST(FfiTest, DecodingErrors) {
 
   EXPECT_TRUE(absl::StrContains(
       status.message(),
-      "Failed to decode all FFI handler operands (bad operands at: 0, 1, 3)"));
+      "Failed to decode all FFI handler operands (bad operands at: 0, 1, 3)"))
+      << "status.message():\n"
+      << status.message() << "\n";
 
   EXPECT_TRUE(absl::StrContains(
-      status.message(), "Attribute name mismatch: i32 vs not_i32_should_fail"));
+      status.message(), "Attribute name mismatch: i32 vs not_i32_should_fail"))
+      << "status.message():\n"
+      << status.message() << "\n";
 
   EXPECT_TRUE(absl::StrContains(
-      status.message(), "Attribute name mismatch: i64 vs not_i64_should_fail"));
+      status.message(), "Attribute name mismatch: i64 vs not_i64_should_fail"))
+      << "status.message():\n"
+      << status.message() << "\n";
 
   EXPECT_TRUE(absl::StrContains(
-      status.message(), "Attribute name mismatch: str vs not_str_should_fail"));
+      status.message(), "Attribute name mismatch: str vs not_str_should_fail"))
+      << "status.message():\n"
+      << status.message() << "\n";
 }
 
 TEST(FfiTest, BufferBaseArgument) {
