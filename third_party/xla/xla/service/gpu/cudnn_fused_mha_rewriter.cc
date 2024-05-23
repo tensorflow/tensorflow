@@ -132,6 +132,7 @@ auto OptionalBroadcast(Pattern pattern) {
 
 bool IsBatchedMatmul(const HloInstruction* instr) {
   if (instr->opcode() != HloOpcode::kDot) return false;
+  if (Cast<HloDotInstruction>(instr)->sparse_operands()) return false;
   const DotDimensionNumbers& dot_dims = instr->dot_dimension_numbers();
   bool is_batch_dot = !dot_dims.lhs_batch_dimensions().empty() ||
                       !dot_dims.rhs_batch_dimensions().empty();
