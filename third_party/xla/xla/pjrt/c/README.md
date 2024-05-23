@@ -13,6 +13,7 @@ opaque to the frameworks.
 
 ## Resources
 
+*   [PJRT C API header](https://github.com/openxla/xla/blob/main/xla/pjrt/c/pjrt_c_api.h)
 *   [PJRT C API changelog](https://github.com/openxla/xla/blob/main/xla/pjrt/c/CHANGELOG.md)
 *   [PJRT integration guide](https://github.com/openxla/xla/blob/main/xla/pjrt/c/docs/pjrt_integration_guide.md)
 *   [PJRT design docs](https://drive.google.com/corp/drive/folders/18M944-QQPk1E34qRyIjkqDRDnpMa3miN)
