@@ -244,7 +244,7 @@ absl::Status ConvertXplaneToProfiledInstructionsProto(
     cost->set_name(iter.first);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

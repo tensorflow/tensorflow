@@ -22,6 +22,7 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/lib/loops.h"
@@ -103,7 +104,7 @@ static absl::Status EnsureOperandIsRealFp(absl::string_view op_name,
         "Operands to %s must be real-valued floating-point, but got %s",
         op_name, PrimitiveType_Name(elem_ty));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 XlaOp IsPosInf(XlaOp operand) {

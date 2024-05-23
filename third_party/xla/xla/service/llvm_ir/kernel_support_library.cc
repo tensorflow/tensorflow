@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/kernel_support_library.h"
 
+#include "absl/status/status.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
@@ -42,7 +43,7 @@ absl::Status KernelSupportLibrary::ForWithStatus(
   b_->SetInsertPoint(&loop->GetBodyBasicBlock()->back());
   TF_RETURN_IF_ERROR(for_body_generator(loop->GetIndVarValue()));
   llvm_ir::SetToLastInsertPoint(loop->GetExitBasicBlock(), b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status KernelSupportLibrary::IfWithStatus(
@@ -59,7 +60,7 @@ absl::Status KernelSupportLibrary::IfWithStatus(
     TF_RETURN_IF_ERROR(false_block_generator());
   }
   llvm_ir::SetToLastInsertPoint(if_data.after_block, b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void KernelSupportLibrary::EmitAndCallOutlinedKernel(

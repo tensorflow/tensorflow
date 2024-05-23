@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
@@ -46,7 +47,7 @@ NcclCollectiveBroadcastStartThunk::NcclCollectiveBroadcastStartThunk(
 /*static*/ absl::Status NcclCollectiveBroadcastStartThunk::CheckImplementable(
     const HloInstruction* instr, int64_t replica_count,
     int64_t partition_count) {
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ CollectiveOpGroupMode
