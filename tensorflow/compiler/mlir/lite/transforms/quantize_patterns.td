@@ -36,3 +36,13 @@ def : Pat<(TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), (replaceWithValue $in)>;
 def : Pat<(TFL_DequantizeOp
              (TFL_QuantizeOp (Arith_ConstantOp F32ElementsAttr:$cst), $qt)),
           (TFL_ConstOp $cst)>;
+
+// Transpose conv supports hybrid computation with quantized weights.
+def FoldQuantWeightsIntoTposeConv : Pat<
+  (TFL_TransposeConvOp
+    $output_shape,
+    (TFL_DequantizeOp $quant_weights),
+    $quant_input,
+    $bias, $padding, $stride_h, $stride_w, $faf),
+  (TFL_TransposeConvOp $output_shape, $quant_weights,
+    $quant_input, $bias, $padding, $stride_h, $stride_w, $faf)>;
