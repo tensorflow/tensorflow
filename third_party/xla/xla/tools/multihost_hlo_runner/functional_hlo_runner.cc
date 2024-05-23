@@ -797,8 +797,6 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> FunctionalHloRunner::Compile(
 }
 
 // Runs the executable and may repeat for multiple times.
-// Since the input buffers may be donated by the PjrtClient, we re-create the
-// input PjrtBuffers for each repetition.
 absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType>
 FunctionalHloRunner::Run(PjRtClient& client, PjRtLoadedExecutable* executable,
 
@@ -940,9 +938,6 @@ FunctionalHloRunner::RunInternal(
   const HloModule& module = *(hlo_modules.front());
   ParameterType parameter_type = GetParameterType(module);
   bool flatten_arguments = parameter_type == ParameterType::kOneTupleOfArrays;
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers,
-      create_argument_buffers_on_device(flatten_arguments));
   auto get_output_index_for_one_tuple_of_arrays =
       [&module](int64_t parameter_index) -> std::optional<int64_t> {
     const HloInputOutputAliasConfig& alias_config =
@@ -977,8 +972,6 @@ FunctionalHloRunner::RunInternal(
   };
 
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
-  std::vector<std::vector<PjRtBuffer*>> argument_ptrs =
-      CreateArgumentPointersFromDeviceBuffers(device_buffers);
   auto output_has_tuple_leaf_on_host_memory_space = [&module]() {
     if (!module.result_shape().IsTuple()) {
       return false;
@@ -1014,9 +1007,19 @@ FunctionalHloRunner::RunInternal(
   }
   std::optional<std::vector<PjRtFuture<>>> futures;
   futures.emplace();
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers;
+  std::vector<std::vector<PjRtBuffer*>> argument_ptrs;
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "
             << repeat << ").";
+    if (repeat == 0 || running_options.recreate_buffers_between_repeats) {
+      VLOG(1) << "Creating argument buffers. repeat = " << repeat;
+      device_buffers.clear();
+      argument_ptrs.clear();
+      TF_ASSIGN_OR_RETURN(device_buffers,
+                          create_argument_buffers_on_device(flatten_arguments));
+      argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
+    }
     if (repeat == running_options.num_repeats - 1) {
       execute_options.untuple_result = default_untuple_result;
       if (running_options.profiler != nullptr) {
