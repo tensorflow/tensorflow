@@ -64,7 +64,7 @@ class WorkerClientTest : public ::testing::Test {
   }
 
   // Creates a dataset and returns the dataset ID.
-  StatusOr<std::string> RegisterDataset(const int64_t range) {
+  absl::StatusOr<std::string> RegisterDataset(const int64_t range) {
     const auto dataset_def = RangeSquareDataset(range);
     std::string dataset_id;
     TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
@@ -74,7 +74,7 @@ class WorkerClientTest : public ::testing::Test {
   }
 
   // Creates a iteration and returns the iteration client ID.
-  StatusOr<int64_t> CreateIteration(const std::string& dataset_id) {
+  absl::StatusOr<int64_t> CreateIteration(const std::string& dataset_id) {
     ProcessingModeDef processing_mode;
     processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
     int64_t job_id = 0;
@@ -89,7 +89,7 @@ class WorkerClientTest : public ::testing::Test {
   }
 
   // Gets the task for iteration `iteration_client_id`.
-  StatusOr<int64_t> GetTaskToRead(const int64_t iteration_client_id) {
+  absl::StatusOr<int64_t> GetTaskToRead(const int64_t iteration_client_id) {
     ClientHeartbeatRequest request;
     ClientHeartbeatResponse response;
     request.set_iteration_client_id(iteration_client_id);
@@ -101,7 +101,7 @@ class WorkerClientTest : public ::testing::Test {
     return response.task_info(0).task_id();
   }
 
-  StatusOr<std::unique_ptr<DataServiceWorkerClient>> GetWorkerClient(
+  absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>> GetWorkerClient(
       const std::string& data_transfer_protocol) {
     DataTransferServerInfo info;
     info.set_address(GetWorkerAddress());
@@ -111,8 +111,8 @@ class WorkerClientTest : public ::testing::Test {
                                          /*allocator=*/nullptr);
   }
 
-  StatusOr<GetElementResult> GetElement(DataServiceWorkerClient& client,
-                                        const int64_t task_id) {
+  absl::StatusOr<GetElementResult> GetElement(DataServiceWorkerClient& client,
+                                              const int64_t task_id) {
     GetElementRequest request;
     GetElementResult result;
     request.set_task_id(task_id);
