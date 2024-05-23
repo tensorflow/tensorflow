@@ -994,7 +994,6 @@ cc_library(
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status",
-        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",

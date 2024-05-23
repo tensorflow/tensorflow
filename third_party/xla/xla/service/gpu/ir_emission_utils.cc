@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emission_utils.h"
 
-#include <climits>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -49,7 +48,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
@@ -71,7 +69,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/util.h"
@@ -339,20 +336,6 @@ bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand) {
       effects, [](const mlir::MemoryEffects::EffectInstance& instance) {
         return mlir::isa<mlir::MemoryEffects::Write>(instance.getEffect());
       });
-}
-
-static int64_t GetMemRefSizeInBytes(mlir::MemRefType type) {
-  // For i1 memrefs, the underlying allocation is 8 bits.
-  if (type.getElementType().isInteger(/*width=*/1)) {
-    return type.getNumElements();
-  } else if (auto complexType =
-                 mlir::dyn_cast<mlir::ComplexType>(type.getElementType())) {
-    auto elementType = complexType.getElementType();
-    return elementType.getIntOrFloatBitWidth() * type.getNumElements() * 2 /
-           CHAR_BIT;
-  } else {
-    return type.getNumElements() * type.getElementTypeBitWidth() / CHAR_BIT;
-  }
 }
 
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
