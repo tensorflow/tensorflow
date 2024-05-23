@@ -1,0 +1,67 @@
+This can be deleted on the next integrate as is a revert of a previous patch
+(disable_mma_v3). Just delete this and you're fine!
+diff --git a/include/triton/Tools/Sys/GetEnv.hpp b/include/triton/Tools/Sys/GetEnv.hpp
+--- a/include/triton/Tools/Sys/GetEnv.hpp
++++ b/include/triton/Tools/Sys/GetEnv.hpp
+@@ -15,7 +15,7 @@ inline const std::set<std::string> CACHE
+     "AMDGCN_ENABLE_DUMP",
+     "DISABLE_FAST_REDUCTION",
+     "DISABLE_LLVM_OPT",
+-    "ENABLE_MMA_V3",
++    "DISABLE_MMA_V3",
+     "DISABLE_PTXAS_OPT",
+     "LLVM_IR_ENABLE_DUMP",
+     "LLVM_ENABLE_TIMING",
+diff --git a/lib/Analysis/Utility.cpp b/lib/Analysis/Utility.cpp
+--- a/lib/Analysis/Utility.cpp
++++ b/lib/Analysis/Utility.cpp
+@@ -535,8 +535,7 @@ bool supportMMA(triton::DotOp op, int ve
+   auto aElemTy = op.getA().getType().getElementType();
+   auto bElemTy = op.getB().getType().getElementType();
+   if (version == 3) {
+-    // TODO(b/311157761): enable mma_v3
+-    if (!triton::tools::getBoolEnv("ENABLE_MMA_V3"))
++    if (triton::tools::getBoolEnv("DISABLE_MMA_V3"))
+       return false;
+     auto retType = op.getType();
+     auto retShapePerCTA = getShapePerCTA(retType);
+diff --git a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
+--- a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
++++ b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
+@@ -40,8 +40,7 @@ public:
+     // Only insert fences for compute capability 9.0
+     if (computeCapability < 90)
+       return;
+-    // TODO(b/311157761): enable mma_v3
+-    if (!::triton::tools::getBoolEnv("ENABLE_MMA_V3"))
++    if (::triton::tools::getBoolEnv("DISABLE_MMA_V3"))
+       return;
+     ModuleOp mod = getOperation();
+     mod.walk([&](Operation *op) {
+diff --git a/test/Conversion/tritongpu_to_llvm_hopper.mlir b/test/Conversion/tritongpu_to_llvm_hopper.mlir
+--- a/test/Conversion/tritongpu_to_llvm_hopper.mlir
++++ b/test/Conversion/tritongpu_to_llvm_hopper.mlir
+@@ -1,4 +1,4 @@
+-// RUN: ENABLE_MMA_V3=1 triton-opt %s -split-input-file --allocate-shared-memory --convert-triton-gpu-to-llvm=compute-capability=90 2>&1 | FileCheck %s
++// RUN: triton-opt %s -split-input-file --allocate-shared-memory --convert-triton-gpu-to-llvm=compute-capability=90 2>&1 | FileCheck %s
+ 
+ #mma = #triton_gpu.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [8, 1], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0], instrShape = [16, 256, 32]}>
+ #shared = #triton_gpu.shared<{vec = 16, perPhase = 4, maxPhase = 2, order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [0, 1], hasLeadingOffset = true}>
+diff --git a/test/TritonGPU/accelerate-matmul.mlir b/test/TritonGPU/accelerate-matmul.mlir
+--- a/test/TritonGPU/accelerate-matmul.mlir
++++ b/test/TritonGPU/accelerate-matmul.mlir
+@@ -1,4 +1,4 @@
+-// RUN: ENABLE_MMA_V3=1 triton-opt %s -split-input-file --tritongpu-accelerate-matmul=compute-capability=90 | FileCheck %s
++// RUN: triton-opt %s -split-input-file --tritongpu-accelerate-matmul=compute-capability=90 | FileCheck %s
+ // RUN: triton-opt %s -split-input-file --tritongpu-accelerate-matmul=compute-capability=89 | FILECHECK_OPTS= FileCheck %s --check-prefix=CHECK-89
+ // RUN: triton-opt %s -split-input-file --tritongpu-accelerate-matmul=compute-capability=80 | FILECHECK_OPTS= FileCheck %s --check-prefix=CHECK-80
+ 
+diff --git a/test/TritonGPU/fence-inserstion.mlir b/test/TritonGPU/fence-inserstion.mlir
+--- a/test/TritonGPU/fence-inserstion.mlir
++++ b/test/TritonGPU/fence-inserstion.mlir
+@@ -1,4 +1,4 @@
+-// RUN: ENABLE_MMA_V3=1 triton-opt %s -split-input-file --triton-nvidia-gpu-fence-insertion | FileCheck %s
++// RUN: triton-opt %s -split-input-file --triton-nvidia-gpu-fence-insertion | FileCheck %s
+ 
+ #blocked = #triton_gpu.blocked<{sizePerThread = [1, 8], threadsPerWarp = [2, 16], warpsPerCTA = [8, 1], order = [1, 0]}>
+ #blocked2 = #triton_gpu.blocked<{sizePerThread = [8, 1], threadsPerWarp = [16, 2], warpsPerCTA = [1, 8], order = [0, 1]}>
