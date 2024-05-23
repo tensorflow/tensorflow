@@ -199,12 +199,13 @@ def make_c_api_client(
   return _xla.get_c_api_client(plugin_name, options, distributed_client)
 
 
-def make_tpu_client(library_path: Optional[str] = None):
+def make_tpu_client(library_path: Optional[str] = None,
+                    options: Optional[_NameValueMapping] = None):
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
   if not pjrt_plugin_loaded('tpu'):
     c_api = load_pjrt_plugin_dynamically('tpu', library_path or 'libtpu.so')
     profiler.register_plugin_profiler(c_api)
-  return make_tfrt_tpu_c_api_client()
+  return make_tfrt_tpu_c_api_client(options)
 
 
 def generate_pjrt_gpu_plugin_options() -> _NameValueMapping:

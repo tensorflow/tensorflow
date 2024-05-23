@@ -115,7 +115,8 @@ def make_c_api_device_topology(c_api: Any, topology_name: str = '', **kwargs) ->
 def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
   ...
 
-def make_tpu_client(library_path: Optional[str]) -> Client:
+def make_tpu_client(library_path: Optional[str],
+                    options: Optional[_NameValueMapping] = None) -> Client:
   ...
 
 def make_c_api_client(
