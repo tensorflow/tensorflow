@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
@@ -356,7 +356,7 @@ PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
                                 std::move(buffers)));
           result.push_back(std::move(array));
         }
-        return xla::OkStatus();
+        return absl::OkStatus();
       },
       shape_));
 
