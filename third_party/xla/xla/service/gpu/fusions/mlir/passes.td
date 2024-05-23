@@ -89,7 +89,7 @@ def MergePointersToSameSlicePass :
   let constructor = "CreateMergePointersToSameSlicePass()";
 }
 
-def SimplifyArithPass : Pass<"xla-gpu-simplify-arith", "mlir::ModuleOp"> {
+def SimplifyArithPass : Pass<"xla-gpu-simplify-arith", "mlir::func::FuncOp"> {
   let summary = "Simplifies arith using XLA's range-aware simplifier.";
 
   let description = [{
@@ -98,7 +98,8 @@ def SimplifyArithPass : Pass<"xla-gpu-simplify-arith", "mlir::ModuleOp"> {
   }];
 
   let dependentDialects = [
-    "mlir::arith::ArithDialect"
+    "mlir::arith::ArithDialect",
+    "mlir::func::FuncDialect",
   ];
 
   let constructor = "CreateSimplifyArithPass()";
