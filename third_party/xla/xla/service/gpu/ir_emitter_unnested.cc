@@ -1422,7 +1422,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
   auto ffi_thunk = [&] {
     auto& called_computations = instr->called_computations();
     return std::make_unique<CustomCallThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr), registration->handler,
+        Thunk::ThunkInfo::WithProfileAnnotation(instr), registration->bundle,
         std::move(operands), std::move(results), std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };

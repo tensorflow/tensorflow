@@ -625,7 +625,7 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
   // Creating embedded custom call thunk.
   ThunkSequence seq;
   seq.emplace_back(std::make_unique<CustomCallThunk>(
-      Thunk::ThunkInfo(), registration->handler, operands, results,
+      Thunk::ThunkInfo(), registration->bundle, operands, results,
       /*attributes=*/CustomCallThunk::AttributesMap(),
       /*called_computation=*/nullptr));
 
@@ -783,7 +783,7 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
   // Creating embedded custom call thunk.
   ThunkSequence seq;
   seq.emplace_back(std::make_unique<CustomCallThunk>(
-      Thunk::ThunkInfo(), registration->handler, operands, results,
+      Thunk::ThunkInfo(), registration->bundle, operands, results,
       /*attributes=*/CustomCallThunk::AttributesMap(),
       /*called_computation=*/nullptr));
 
@@ -1422,7 +1422,7 @@ TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
   // Creating embedded custom call thunk.
   ThunkSequence seq;
   seq.emplace_back(std::make_unique<CustomCallThunk>(
-      Thunk::ThunkInfo(), registration->handler, operands, results,
+      Thunk::ThunkInfo(), registration->bundle, operands, results,
       /*attributes=*/CustomCallThunk::AttributesMap(),
       /*called_computation=*/nullptr));
 

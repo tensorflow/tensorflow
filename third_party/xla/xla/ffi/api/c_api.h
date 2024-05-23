@@ -306,6 +306,30 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_CallFrame, attrs);
 // External functions registered with XLA as FFI handlers.
 typedef XLA_FFI_Error* XLA_FFI_Handler(XLA_FFI_CallFrame* call_frame);
 
+// XLA runtime has multiple execution stages and it is possible to run
+// different handlers for each stage:
+//
+// (1) Prepare - called before the execution to let FFI handlers to prepare
+//     for the execution and request resources from runtime, i.e. in XLA:GPU
+//     we use prepare stage to request collective cliques.
+//
+// (2) Initialize - called before the execution after acquiring all the
+//     resources requested in the prepare stage.
+//
+// (3) Execute - called when FFI handler is executed. Note that FFI handler
+//     can be called as a part of command buffer capture (CUDA graph capture
+//     on GPU backend) and argument buffers might contain uninitialized
+//     values in this case.
+//
+// It is undefined behavior to access argument buffers in prepare and
+// initialize stages as they might not be initialized yet. However it is safe
+// to use memory address as it is assigned ahead of time by buffer assignment.
+struct XLA_FFI_Handler_Bundle {
+  XLA_FFI_Handler* prepare;     // optional
+  XLA_FFI_Handler* initialize;  // optional
+  XLA_FFI_Handler* execute;     // required
+};
+
 enum XLA_FFI_Handler_TraitsBits {
   // Calls to FFI handler are safe to trace into the command buffer. It means
   // that calls to FFI handler always launch exactly the same device operations
@@ -321,7 +345,7 @@ struct XLA_FFI_Handler_Register_Args {
 
   XLA_FFI_ByteSpan name;
   XLA_FFI_ByteSpan platform;
-  XLA_FFI_Handler* handler;
+  XLA_FFI_Handler_Bundle bundle;
   XLA_FFI_Handler_Traits traits;
 };
 

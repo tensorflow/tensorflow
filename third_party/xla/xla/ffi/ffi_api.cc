@@ -130,10 +130,16 @@ static HandlerRegistry& GetHandlerRegistry() {
 
 static absl::Status RegisterHandler(std::string_view name,
                                     std::string_view platform,
-                                    XLA_FFI_Handler* handler,
+                                    XLA_FFI_Handler_Bundle bundle,
                                     XLA_FFI_Handler_Traits traits) {
+  if (bundle.execute == nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("FFI handler for ", name, "on a platform ", platform,
+                     " must provide an execute implementation"));
+  }
+
   auto emplaced = GetHandlerRegistry().try_emplace(
-      MakeHandlerKey(name, platform), HandlerRegistration{handler, traits});
+      MakeHandlerKey(name, platform), HandlerRegistration{bundle, traits});
   if (!emplaced.second)
     return absl::InvalidArgumentError(
         absl::StrCat("Duplicate FFI handler registration for ", name,
@@ -273,7 +279,7 @@ static XLA_FFI_Error* XLA_FFI_Handler_Register(
   if (auto status = RegisterHandler(
           std::string_view(args->name.ptr, args->name.len),
           std::string_view(args->platform.ptr, args->platform.len),
-          args->handler, args->traits);
+          args->bundle, args->traits);
       !status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
   }

@@ -952,7 +952,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
         for (const auto& [name, registration] :
              ffi::StaticRegisteredHandlers(platform)) {
           targets[nb::str(name.data(), name.size())] =
-              nb::capsule(reinterpret_cast<void*>(registration.handler));
+              nb::capsule(reinterpret_cast<void*>(registration.bundle.execute));
         }
         return targets;
       },

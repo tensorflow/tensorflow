@@ -88,8 +88,8 @@ class ScopedExecutionContext {
 //===----------------------------------------------------------------------===//
 
 struct HandlerRegistration {
-  XLA_FFI_Handler* handler = nullptr;
-  XLA_FFI_Handler_Traits traits = 0;
+  XLA_FFI_Handler_Bundle bundle = {};
+  XLA_FFI_Handler_Traits traits = {};
 };
 
 bool IsCommandBufferCompatible(XLA_FFI_Handler_Traits traits);

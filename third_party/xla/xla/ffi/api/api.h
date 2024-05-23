@@ -120,11 +120,21 @@ class Ffi {
   virtual ~Ffi() = default;
   virtual XLA_FFI_Error* Call(const XLA_FFI_CallFrame* call_frame) const = 0;
 
-  // Registers handler with an XLA runtime under the given name on a given
-  // platform.
+  // Registers FFI handler bundle with an XLA runtime under the given name on a
+  // given platform.
   static inline XLA_FFI_Error* RegisterStaticHandler(
       const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
-      XLA_FFI_Handler* handler, XLA_FFI_Handler_Traits traits = 0);
+      XLA_FFI_Handler_Bundle bundle, XLA_FFI_Handler_Traits traits = 0);
+
+  // Registers FFI execute handler with an XLA runtime under the given name on a
+  // given platform.
+  static inline XLA_FFI_Error* RegisterStaticHandler(
+      const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
+      XLA_FFI_Handler* execute, XLA_FFI_Handler_Traits traits = 0) {
+    return RegisterStaticHandler(
+        api, name, platform, XLA_FFI_Handler_Bundle{nullptr, nullptr, execute},
+        traits);
+  }
 
  protected:
   template <typename... Args>
@@ -145,14 +155,14 @@ class Ffi {
 XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
                                           std::string_view name,
                                           std::string_view platform,
-                                          XLA_FFI_Handler* handler,
+                                          XLA_FFI_Handler_Bundle bundle,
                                           XLA_FFI_Handler_Traits traits) {
   XLA_FFI_Handler_Register_Args args;
   args.struct_size = XLA_FFI_Handler_Register_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
   args.platform = XLA_FFI_ByteSpan{platform.data(), platform.size()};
-  args.handler = handler;
+  args.bundle = bundle;
   args.traits = traits;
   return api->XLA_FFI_Handler_Register(&args);
 }

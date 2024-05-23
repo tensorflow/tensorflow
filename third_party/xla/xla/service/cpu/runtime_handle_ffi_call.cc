@@ -167,7 +167,7 @@ static absl::Status BuildAndCallFfi(
   call_options.run_options = &service_run_options;
 
   ffi::CallFrame call_frame = builder.Build();
-  return ffi::Call(registration->handler, call_frame, call_options);
+  return ffi::Call(registration->bundle.execute, call_frame, call_options);
 }
 
 }  // namespace

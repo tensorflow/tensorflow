@@ -602,6 +602,7 @@ cc_library(
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_status_internal",
         "//xla/service:executable",
+        "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor/gpu:gpu_stream_header",

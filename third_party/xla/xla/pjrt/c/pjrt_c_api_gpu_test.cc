@@ -468,7 +468,7 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallTyped) {
   auto registration =
       xla::ffi::FindHandler(function_name, stream_executor::GpuPlatformName())
           .value();
-  EXPECT_EQ(reinterpret_cast<void*>(registration.handler), kNoop);
+  EXPECT_EQ(reinterpret_cast<void*>(registration.bundle.execute), kNoop);
 }
 
 }  // namespace
