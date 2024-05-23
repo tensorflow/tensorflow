@@ -61,11 +61,13 @@ class XlaRuntimeError(RuntimeError):
 class PrimitiveType(enum.IntEnum):
   PRIMITIVE_TYPE_INVALID: PrimitiveType
   PRED: PrimitiveType
+  S2: PrimitiveType
   S4: PrimitiveType
   S8: PrimitiveType
   S16: PrimitiveType
   S32: PrimitiveType
   S64: PrimitiveType
+  U2: PrimitiveType
   U4: PrimitiveType
   U8: PrimitiveType
   U16: PrimitiveType

@@ -640,6 +640,10 @@ typedef enum {
   PJRT_Buffer_Type_U4,
 
   PJRT_Buffer_Type_TOKEN,
+
+  // 2-bit integer types
+  PJRT_Buffer_Type_S2,
+  PJRT_Buffer_Type_U2,
 } PJRT_Buffer_Type;
 
 typedef enum {
