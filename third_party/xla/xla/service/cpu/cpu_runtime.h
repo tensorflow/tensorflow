@@ -89,6 +89,7 @@ extern const char* const kReduceScatterSymbolName;
 extern const char* const kOneDnnMatMulSymbolName;
 extern const char* const kOneDnnSoftmaxSymbolName;
 extern const char* const kOneDnnLayerNormSymbolName;
+extern const char* const kOneDnnConvolutionSymbolName;
 extern const char* const kOneDnnMatMulReorderSymbolName;
 extern const char* const kHandleFfiCallSymbolName;
 
