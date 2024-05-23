@@ -31,8 +31,6 @@ function is_linux_cpu_arm64_job() {
 }
 
 function pull_docker_image_with_retries() {
-  # Configure Artifact Registry permissions.
-  gcloud auth configure-docker us-central1-docker.pkg.dev
   # Pull the container (in case it was updated since the instance started) and
   # store its SHA in the Sponge log.
   docker pull "$DOCKER_IMAGE" || sleep 15
