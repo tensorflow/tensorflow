@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_windowed_einsum_handler.h"
 
 #include <cstdint>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
