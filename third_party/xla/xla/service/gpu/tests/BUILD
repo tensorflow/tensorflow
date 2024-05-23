@@ -930,14 +930,12 @@ xla_test(
         "gpu_a100",
         "gpu_h100",
     ],
-    tags = ["no_oss"],  # b/340304923
     deps = if_cuda_is_configured(
         [
             ":gpu_codegen_test",
             "@com_google_googletest//:gtest",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/types:span",
-            "//third_party/half:includes",
             "//xla:literal",
             "//xla:literal_util",
             "//xla/tests:xla_internal_test_main",

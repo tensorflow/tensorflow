@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
-#include "third_party/half/half.hpp"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
@@ -32,6 +31,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+uint16_t float_to_bf16(float value) {
+  uint16_t buf[2];
+  *reinterpret_cast<float*>(buf) = value;
+  return buf[1];
+}
 
 class SparseDotTest
     : public GpuCodegenTest,
@@ -54,8 +59,7 @@ class SparseDotTest
     for (int i = 0; i < height; ++i) {
       for (int j = 0; j < width; ++j) {
         int value = (i * 2 + j) % 100 + 1;
-        input[i * width + j] =
-            half_float::detail::int2half<std::round_to_nearest>(value);
+        input[i * width + j] = float_to_bf16(value);
       }
     }
     return input;
@@ -115,8 +119,8 @@ TEST_P(SparseDotTest, CompareWithDense) {
 HloModule TestDense
 
 ENTRY main {
-  lhs = f16[$0,$1] parameter(0)
-  rhs = f16[$2,$1] parameter(1)
+  lhs = bf16[$0,$1] parameter(0)
+  rhs = bf16[$2,$1] parameter(1)
   ROOT dot = f32[$0,$2] dot(lhs, rhs),
       lhs_contracting_dims={1}, rhs_contracting_dims={1}
 })";
@@ -137,8 +141,8 @@ ENTRY main {
 HloModule TestSparse
 
 ENTRY main {
-  lhs = f16[$0,$1] parameter(0)
-  rhs = f16[$2,$3] parameter(1)
+  lhs = bf16[$0,$1] parameter(0)
+  rhs = bf16[$2,$3] parameter(1)
   meta = u16[$0,$4] parameter(2)
   ROOT dot = f32[$0,$2] dot(lhs, rhs, meta),
       lhs_contracting_dims={1}, rhs_contracting_dims={1}, sparsity=L.1@2:4
