@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -26,14 +28,23 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/client/executable_build_options.h"
+#include "xla/client/xla_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
@@ -43,14 +54,21 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
+#include "xla/service/computation_layout.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_pipeline.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_control_flow_flattening.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -82,27 +100,36 @@ void PopulateWithSameValue(Literal* literal, ElementType val) {
 
 absl::StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape,
                                                      int value) {
-  if (!shape.IsArray()) {
-    return InvalidArgument(
-        "MakeFakeLiteralWithSameValue does not support non-array type");
-  }
-  Shape new_shape = shape;
-  new_shape.mutable_layout()->clear_tiles();
-  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
-      [&](auto type) -> absl::StatusOr<Literal> {
-        if constexpr (primitive_util::IsArrayType(type)) {
-          using NativeT = primitive_util::NativeTypeOf<type>;
+  if (shape.IsArray()) {
+    Shape new_shape = shape;
+    new_shape.mutable_layout()->clear_tiles();
+    return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
+        [&](auto type) -> absl::StatusOr<Literal> {
+          if constexpr (primitive_util::IsArrayType(type)) {
+            using NativeT = primitive_util::NativeTypeOf<type>;
 
-          Literal literal(new_shape);
-          PopulateWithSameValue(
-              &literal,
-              static_cast<NativeT>(type == PRED ? (value % 2) == 0 : value));
-          return literal;
-        }
-        return Unimplemented("Unsupported type for fake literal generation: %s",
-                             ShapeUtil::HumanString(shape));
-      },
-      new_shape.element_type());
+            Literal literal(new_shape);
+            PopulateWithSameValue(
+                &literal,
+                static_cast<NativeT>(type == PRED ? (value % 2) == 0 : value));
+            return literal;
+          }
+          return Unimplemented(
+              "Unsupported type for fake literal generation: %s",
+              ShapeUtil::HumanString(shape));
+        },
+        new_shape.element_type());
+  } else if (shape.IsTuple()) {
+    std::vector<Literal> subliterals;
+    for (const Shape& subshape : shape.tuple_shapes()) {
+      TF_ASSIGN_OR_RETURN(Literal subliteral,
+                          MakeFakeLiteralWithSameValue(subshape, value));
+      subliterals.push_back(std::move(subliteral));
+    }
+    return LiteralUtil::MakeTupleOwned(std::move(subliterals));
+  }
+  return InvalidArgument("Unsupported type for fake literal generation: %s",
+                         ShapeUtil::HumanString(shape));
 }
 
 }  // namespace
