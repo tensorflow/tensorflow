@@ -947,9 +947,8 @@ absl::StatusOr<std::unique_ptr<Stream>> GpuExecutor::CreateStream(
   bool init_worked = gpu_stream->Init();
   if (init_worked) {
     auto platform_specific_stream = gpu_stream->platform_specific_stream();
-    auto stream = std::make_unique<Stream>(this, std::move(gpu_stream));
-    alive_gpu_streams_[platform_specific_stream] = stream.get();
-    return std::move(stream);
+    alive_gpu_streams_[platform_specific_stream] = gpu_stream.get();
+    return std::move(gpu_stream);
   } else {
     return absl::InvalidArgumentError("Failed to initialize gpu stream");
   }

@@ -529,9 +529,8 @@ class CStreamExecutor : public StreamExecutor {
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority =
           std::nullopt) override {
-    auto c_stream = std::make_unique<CStream>(&device_, stream_executor_);
-    TF_RETURN_IF_ERROR(c_stream->Create());
-    auto stream = std::make_unique<Stream>(this, std::move(c_stream));
+    auto stream = std::make_unique<CStream>(&device_, stream_executor_, this);
+    TF_RETURN_IF_ERROR(stream->Create());
     return std::move(stream);
   }
 

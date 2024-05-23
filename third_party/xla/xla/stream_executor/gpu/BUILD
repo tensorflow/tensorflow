@@ -294,9 +294,9 @@ gpu_only_cc_library(
     name = "gpu_stream_header",
     hdrs = ["gpu_stream.h"],
     deps = [
+        ":gpu_executor_header",
         ":gpu_types_header",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_interface",
         "@com_google_absl//absl/log:check",
     ],
 )
@@ -310,7 +310,6 @@ gpu_only_cc_library(
         ":gpu_executor_header",
         ":gpu_types_header",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_interface",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

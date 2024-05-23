@@ -71,7 +71,7 @@ cc_library(
         "host_stream.h",
     ],
     deps = [
-        "//xla/stream_executor:stream_interface",
+        "//xla/stream_executor:stream_executor_headers",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",

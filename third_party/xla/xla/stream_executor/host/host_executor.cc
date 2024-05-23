@@ -292,7 +292,7 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
 
 absl::StatusOr<std::unique_ptr<Stream>> HostExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
-  return std::make_unique<Stream>(this, std::make_unique<HostStream>());
+  return std::make_unique<HostStream>(this);
 }
 
 }  // namespace host

@@ -97,13 +97,18 @@ class CPlatform : public Platform {
   stream_executor::ExecutorCache executor_cache_;
 };
 
-class CStream : public StreamInterface {
+class CStream : public Stream {
  public:
-  CStream(SP_Device* device, SP_StreamExecutor* stream_executor)
-      : device_(device),
+  CStream(SP_Device* device, SP_StreamExecutor* stream_executor,
+          StreamExecutor* executor)
+      : Stream(executor),
+        device_(device),
         stream_executor_(stream_executor),
         stream_handle_(nullptr) {}
-  ~CStream() override { Destroy(); }
+  ~CStream() override {
+    parent()->BlockHostUntilDone(this).IgnoreError();
+    Destroy();
+  }
 
   absl::Status Create() {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
