@@ -14,12 +14,26 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
+#include "tsl/platform/statusor.h"
+#include "tfrt/host_context/location.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {

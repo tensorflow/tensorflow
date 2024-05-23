@@ -15,10 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_FALLBACK_DEVICE_WITH_CUSTOM_ALLOCATOR_H_
 #define TENSORFLOW_CORE_TFRT_FALLBACK_DEVICE_WITH_CUSTOM_ALLOCATOR_H_
 
+#include <cstdint>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
-#include "tsl/framework/allocator.h"
+#include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
 namespace tfrt_stub {

@@ -16,20 +16,25 @@ limitations under the License.
 
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/platform/status_matchers.h"  // IWYU pragma: keep
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
 
-using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
 using ::testing::Not;
+using ::tsl::testing::StatusIs;
 
 TEST(FallbackStateTest, CreateRendezvous) {
   // Given a FallbackState, when a function is launched by function library

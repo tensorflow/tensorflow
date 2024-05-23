@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 
+#include <cstdint>
 #include <limits>
 #include <string>
 
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/tfrt/fallback/op_cost_map.pb.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
