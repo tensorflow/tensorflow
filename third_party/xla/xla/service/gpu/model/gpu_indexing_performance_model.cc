@@ -174,11 +174,12 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
       compute_time, memory_access_time,
       GpuPerformanceModelOptions::PriorityFusion());
 
-  EstimateRunTimeData runtime_data = {flops,        bytes_read, bytes_written,
-                                      num_threads,  read_time,  write_time,
-                                      compute_time, exec_time};
+  EstimateRunTimeData runtime_data = {flops,     bytes_read, bytes_written,
+                                      read_time, write_time, compute_time,
+                                      exec_time};
   VLOG(3) << "Runtime data for HLO fusion: " << fusion_adaptor.ToString()
           << "\n"
+          << launch_dimensions.ToString() << "\n"
           << runtime_data.ToString();
 
   return runtime_data;
@@ -192,7 +193,6 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForInstruction(
     return EstimateRunTimeData{/*flops=*/0,
                                /*bytes_read=*/0,
                                /*bytes_written=*/0,
-                               /*num_threads=*/0,
                                /*read_time=*/absl::ZeroDuration(),
                                /*write_time=*/absl::ZeroDuration(),
                                /*compute_time=*/absl::ZeroDuration(),

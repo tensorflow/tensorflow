@@ -38,7 +38,6 @@ struct EstimateRunTimeData {
   int64_t flops;
   int64_t bytes_read;
   int64_t bytes_written;
-  int64_t num_threads;
   absl::Duration read_time;
   absl::Duration write_time;
   absl::Duration compute_time;
@@ -50,15 +49,14 @@ struct EstimateRunTimeData {
         " flops: %d\n"
         " bytes_read: %d\n"
         " bytes_written: %d\n"
-        " num_threads: %d\n"
         " read_time: %s\n"
         " write_time: %s\n"
         " compute_time: %s\n"
         " exec_time: %s\n"
         "}",
-        flops, bytes_read, bytes_written, num_threads,
-        absl::FormatDuration(read_time), absl::FormatDuration(write_time),
-        absl::FormatDuration(compute_time), absl::FormatDuration(exec_time));
+        flops, bytes_read, bytes_written, absl::FormatDuration(read_time),
+        absl::FormatDuration(write_time), absl::FormatDuration(compute_time),
+        absl::FormatDuration(exec_time));
   }
 };
 

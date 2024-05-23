@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/service/gpu/model/coalescing_analysis.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "tsl/platform/status.h"
@@ -94,10 +93,11 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
       compute_time, read_time + write_time, config);
 
-  EstimateRunTimeData runtime_data = {flops,        bytes_read, bytes_written,
-                                      num_threads,  read_time,  write_time,
-                                      compute_time, exec_time};
+  EstimateRunTimeData runtime_data = {flops,     bytes_read, bytes_written,
+                                      read_time, write_time, compute_time,
+                                      exec_time};
   VLOG(3) << "Runtime data for HLO: " << instr->name() << "\n"
+          << launch_dimensions.ToString() << "\n"
           << runtime_data.ToString();
   return runtime_data;
 }
@@ -237,10 +237,10 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
   VLOG(3) << "Runtime data for producer-consumer fusion:\n"
           << " producer: " << producer->name() << "\n"
           << " consumer: " << consumer->name() << "\n"
+          << launch_dimensions.ToString() << "\n"
           << EstimateRunTimeData{flops,
                                  bytes_read,
                                  consumer_runtime.bytes_written,
-                                 num_threads,
                                  compute_time,
                                  read_time,
                                  consumer_runtime.write_time,
