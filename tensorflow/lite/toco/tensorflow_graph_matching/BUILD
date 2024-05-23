@@ -17,9 +17,6 @@ cc_library(
     hdrs = [
         "cluster_utils.h",
     ],
-    deps = [
-        "//tensorflow/lite/toco:toco_port",
-    ],
 )
 
 cc_library(
@@ -55,7 +52,6 @@ cc_library(
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:tooling_util",
-        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 
@@ -69,6 +65,7 @@ tf_cc_test(
         ":resolve_svdf",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/lite/toco:toco_port",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -87,6 +84,5 @@ cc_library(
         ":cluster_utils",
         ":resolve_svdf",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite/toco:tooling_util",
     ],
 )

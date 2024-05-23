@@ -23,18 +23,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "google/protobuf/map.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tensorflow_graph_matching/cluster.h"
 #include "tensorflow/lite/toco/tensorflow_graph_matching/cluster_utils.h"
 #include "tensorflow/lite/toco/toco_port.h"
-#include "tensorflow/lite/toco/tooling_util.h"
+#include "tensorflow/lite/toco/toco_types.h"
 
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
