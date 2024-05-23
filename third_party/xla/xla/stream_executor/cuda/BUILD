@@ -116,10 +116,6 @@ cc_library(name = "ptxas_wrapper")
 
 cc_library(name = "nvlink_wrapper")
 
-# Buildozer can not remove dependencies inside select guards, so we have to use
-# an intermediate target.
-cc_library(name = "fatbinary_wrapper")
-
 cuda_only_cc_library(
     name = "cuda_driver",
     srcs = ["cuda_driver.cc"],
@@ -560,6 +556,13 @@ cuda_only_cc_library(
     srcs = ["cuda_asm_compiler.cc"],
     hdrs = ["cuda_asm_compiler.h"],
     copts = tf_additional_gpu_compilation_copts(),
+    # copybara:uncomment_begin
+    # data = [
+    # "@local_config_cuda//cuda:runtime_fatbinary",
+    # "@local_config_cuda//cuda:runtime_nvlink",
+    # "@local_config_cuda//cuda:runtime_ptxas",
+    # ],
+    # copybara:uncomment_end
     visibility = internal_visibility([
         "//third_party/py/jax:__subpackages__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
@@ -569,11 +572,8 @@ cuda_only_cc_library(
     ]),
     deps = [
         ":cuda_driver",
-        ":fatbinary_wrapper",
-        ":nvlink_wrapper",
         ":ptx_compiler",
         ":ptx_compiler_support",
-        ":ptxas_wrapper",
         "//xla:status_macros",
         "//xla:util",
         "//xla/stream_executor/gpu:gpu_asm_opts",
