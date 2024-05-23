@@ -63,6 +63,7 @@ def LowerTensorsPass : Pass<"xla-gpu-lower-tensors", "mlir::ModuleOp"> {
     "mlir::gpu::GPUDialect",
     "mlir::scf::SCFDialect",
     "mlir::tensor::TensorDialect",
+    "xla::gpu::XlaGpuDialect",
   ];
   let options = [
     Option<"is_amd_gpu_", "is_amd_gpu", "bool", /*default=*/"false",
