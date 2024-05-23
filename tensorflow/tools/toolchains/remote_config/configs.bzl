@@ -234,6 +234,17 @@ def initialize_rbe_configs():
     )
 
     tensorflow_rbe_config(
+        name = "ubuntu20.04-clang_manylinux2014-cuda12.3-cudnn9.1",
+        compiler = "/usr/lib/llvm-17/bin/clang",
+        cuda_version = "12.3",
+        cudnn_version = "9.1",
+        os = "ubuntu20.04-manylinux2014-multipython",
+        python_versions = ["3.9", "3.10", "3.11", "3.12"],
+        sysroot = "/dt9",
+        python_install_path = "/usr/local",
+    )
+
+    tensorflow_rbe_config(
         name = "ubuntu20.04-gcc9_manylinux2014-cuda12.3-cudnn8.9",
         compiler = "/dt9/usr/bin/gcc",
         compiler_prefix = "/usr/bin",
@@ -822,5 +833,44 @@ def initialize_rbe_configs():
             "TF_SYSROOT": "/dt9",
             "TF_NEED_TENSORRT": "1",
             "TF_TENSORRT_VERSION": "8.6",
+        },
+    )
+
+    # TODO(b/338885148): Remove this temporary RBE config once the TF standard config is on cuDNN 9
+    sigbuild_tf_configs(
+        name_container_map = {
+            "sigbuild-r2.17-clang-cudnn9": "docker://gcr.io/tensorflow-sigs/build@sha256:52420ff74ce5179fed76d72ac37dafeae3d111a3e7862950ce186c841876e254",
+            "sigbuild-r2.17-clang-cudnn9-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:52420ff74ce5179fed76d72ac37dafeae3d111a3e7862950ce186c841876e254",
+            "sigbuild-r2.17-clang-cudnn9-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:c6e96290045ea5ec7c61ef2d3e07335089a3d778814f3859914f460e91ae2f79",
+            "sigbuild-r2.17-clang-cudnn9-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:3a5581f35aa2daf6a168d023802e1e3cac1169755a02fb5498ff9756ad3598b5",
+            "sigbuild-r2.17-clang-cudnn9-python3.12": "docker://gcr.io/tensorflow-sigs/build@sha256:70a1414721826d8c899e2bc508ea7265828629af949cf1f6753b5ee12a9559b2",
+        },
+        # Unclear why LIBC is set to 2.19 here, and yet manylinux2010 is 2.12
+        # and manylinux2014 is 2.17.
+        env = {
+            "ABI_LIBC_VERSION": "glibc_2.19",
+            "ABI_VERSION": "gcc",
+            "BAZEL_COMPILER": "/usr/lib/llvm-17/bin/clang",
+            "BAZEL_HOST_SYSTEM": "i686-unknown-linux-gnu",
+            "BAZEL_TARGET_CPU": "k8",
+            "BAZEL_TARGET_LIBC": "glibc_2.19",
+            "BAZEL_TARGET_SYSTEM": "x86_64-unknown-linux-gnu",
+            "CC": "/usr/lib/llvm-17/bin/clang",
+            "CC_TOOLCHAIN_NAME": "linux_gnu_x86",
+            "CLEAR_CACHE": "1",
+            "CUDNN_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
+            "CLANG_CUDA_COMPILER_PATH": "/usr/lib/llvm-17/bin/clang",
+            "HOST_CXX_COMPILER": "/usr/lib/llvm-17/bin/clang",
+            "HOST_C_COMPILER": "/usr/lib/llvm-17/bin/clang",
+            "PYTHON_BIN_PATH": "/usr/bin/python3",
+            "TF_CUDA_CLANG": "1",
+            "TF_CUDA_COMPUTE_CAPABILITIES": "3.5,6.0",
+            "TF_CUDA_VERSION": "12.3",
+            "TF_CUDNN_VERSION": "9.1",
+            "TF_ENABLE_XLA": "1",
+            "TF_NEED_CUDA": "1",
+            "TF_SYSROOT": "/dt9",
+            "TF_NEED_TENSORRT": "1",
+            "TF_TENSORRT_VERSION": "10.0",
         },
     )
