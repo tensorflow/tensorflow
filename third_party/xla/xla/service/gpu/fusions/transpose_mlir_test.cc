@@ -20,6 +20,9 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
+#include "xla/service/gpu/stream_executor_util.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
@@ -28,6 +31,13 @@ namespace gpu {
 namespace {
 
 using MlirTransposeFusionTest = MlirEmitterTestBase<MlirTransposeFusion>;
+
+TEST_F(MlirTransposeFusionTest, VersionCheck) {
+  se::StreamExecutor* executor = backend().default_stream_executor();
+  const se::dnn::VersionInfo version = GetDnnVersionInfo(executor);
+  FAIL() << "Version: " << version.major_version() << "."
+         << version.minor_version() << "." << version.patch();
+}
 
 TEST_F(MlirTransposeFusionTest, ThreadIndexing021) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(

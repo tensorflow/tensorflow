@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -460,11 +459,9 @@ TEST(FfiTest, UserData) {
 
   auto handler = Ffi::Bind().Ctx<UserData<MyData>>().To(fn);
 
-  ServiceExecutableRunOptions service_run_options;
-  service_run_options.mutable_run_options()->set_ffi_execution_context(
-      &execution_context);
+  CallOptions options;
+  options.execution_context = &execution_context;
 
-  CallOptions options = {&service_run_options};
   auto status = Call(*handler, call_frame, options);
 
   TF_ASSERT_OK(status);
