@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
@@ -333,7 +334,12 @@ llvm::SmallVector<Value> MlirReductionFusion::EmitReduction(
     for (auto* reduction : reductions) {
       auto reducer = state.GetReducer(reduction);
       int max_dist = WarpSize() / 2 / reduction_info().GetRowsPerWarp();
+      const auto& inits_for_reduction = inits.at(reduction);
       auto& values = accumulated[reduction];
+      for (auto [index, acc] : llvm::enumerate(values)) {
+        auto ty = inits_for_reduction[index].getType();
+        values[index] = mlir_converter::UnrealizedConversionCast(ty, acc, b);
+      }
       values =
           b.create<ShuffleReduceOp>(reducer, values, max_dist).getResults();
     }
@@ -353,10 +359,13 @@ llvm::SmallVector<Value> MlirReductionFusion::EmitReduction(
         int shared_index = 0;
         SmallVector<Value> written = tiles;
         for (auto* hero : reductions) {
-          for (auto value : accumulated[hero]) {
+          for (auto [value, init] : llvm::zip(accumulated[hero], inits[hero])) {
             if (mlir::isa<mlir::VectorType>(value.getType())) {
               value = b.create<mlir::vector::ExtractOp>(value, vector_index);
             }
+            // Convert back to unsigned if necessary.
+            value = mlir_converter::UnrealizedConversionCast(init.getType(),
+                                                             value, b);
             auto indices = shared_write_indices(vector_index, b);
             auto& tile = written[shared_index++];
             tile = b.create<PredicatedInsertOp>(loc, shared_write_condition,
@@ -432,6 +441,7 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
     iter_arg_starts[hero] = iter_arg_inits.size();
     iter_arg_inits.append(init);
   }
+  iter_arg_inits = mlir_converter::ConvertToSignless(iter_arg_inits, builder);
 
   auto body_builder = [&](ValueRange iter_args, ValueRange dim_values,
                           ValueRange symbol_values) -> SmallVector<Value> {
@@ -451,12 +461,20 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
       int arity = reduction->operand_count() / 2;
       int start = iter_arg_starts[reduction];
       SmallVector<Value> reduce_args = iter_args.slice(start, arity);
+      const auto& inits_for_reduction = inits.at(reduction);
+      for (auto [index, arg] : llvm::enumerate(reduce_args)) {
+        auto init_type = inits_for_reduction[index].getType();
+        reduce_args[index] =
+            mlir_converter::UnrealizedConversionCast(init_type, arg, builder);
+      }
       reduce_args.append(ProvideParameterRange(
           computation, reduction, 0, arity, get_input_indices(reduction, true),
           call_target, entry_function, builder));
       const auto& reducer = GetReducer(reduction);
       absl::c_copy(
-          builder.create<PureCallOp>(reducer, reduce_args).getResults(),
+          mlir_converter::ConvertToSignless(
+              builder.create<PureCallOp>(reducer, reduce_args).getResults(),
+              builder),
           results.begin() + start);
     }
     struct SideOutput {

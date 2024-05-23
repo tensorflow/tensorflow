@@ -195,21 +195,6 @@ absl::StatusOr<Value> GetSingleOperandValue(
   return operand.front();
 }
 
-SmallVector<Value> ConvertToSignless(const SmallVector<Value>& values,
-                                     ImplicitLocOpBuilder& b) {
-  mlir::mhlo::RemoveSignTypeConverter sign_converter;
-  SmallVector<Value> results;
-  results.reserve(values.size());
-  for (auto& value : values) {
-    CHECK(value != nullptr);
-    auto signless_type = sign_converter.convertType(value.getType());
-    results.push_back(
-        b.create<mlir::UnrealizedConversionCastOp>(signless_type, value)
-            .getResult(0));
-  }
-  return results;
-}
-
 absl::StatusOr<SmallVector<Value>> EmitReduce(
     const HloInstruction* instr, ValueRange indices,
     const OperandProvider& operand_provider,
@@ -227,9 +212,8 @@ absl::StatusOr<SmallVector<Value>> EmitReduce(
     TF_ASSIGN_OR_RETURN(auto element_mlir_type,
                         ConvertPrimitiveTypeToMlirType(
                             instr->operand(i)->shape().element_type(), b));
-    init_values.back() = b.create<mlir::UnrealizedConversionCastOp>(
-                              element_mlir_type, init_values.back())
-                             .getResult(0);
+    init_values.back() =
+        UnrealizedConversionCast(element_mlir_type, init_values.back(), b);
   }
 
   auto body =
@@ -245,9 +229,7 @@ absl::StatusOr<SmallVector<Value>> EmitReduce(
       TF_ASSIGN_OR_RETURN(auto element_mlir_type,
                           ConvertPrimitiveTypeToMlirType(
                               instr->operand(i)->shape().element_type(), b));
-      args.back() = b.create<mlir::UnrealizedConversionCastOp>(
-                         element_mlir_type, args.back())
-                        .getResult(0);
+      args.back() = UnrealizedConversionCast(element_mlir_type, args.back(), b);
     }
     auto reducer = call_target_provider(
         instr->called_computations().front()->root_instruction());
@@ -285,9 +267,8 @@ absl::StatusOr<SmallVector<Value>> EmitReduceWindow(
     TF_ASSIGN_OR_RETURN(
         auto element_mlir_type,
         ConvertPrimitiveTypeToMlirType(init_value->shape().element_type(), b));
-    init_values.back() = b.create<mlir::UnrealizedConversionCastOp>(
-                              element_mlir_type, init_values.back())
-                             .getResult(0);
+    init_values.back() =
+        UnrealizedConversionCast(element_mlir_type, init_values.back(), b);
   }
 
   auto body =
@@ -304,9 +285,7 @@ absl::StatusOr<SmallVector<Value>> EmitReduceWindow(
       TF_ASSIGN_OR_RETURN(
           auto element_mlir_type,
           ConvertPrimitiveTypeToMlirType(input->shape().element_type(), b));
-      args.back() = b.create<mlir::UnrealizedConversionCastOp>(
-                         element_mlir_type, args.back())
-                        .getResult(0);
+      args.back() = UnrealizedConversionCast(element_mlir_type, args.back(), b);
     }
 
     auto reducer = call_target_provider(
@@ -664,6 +643,26 @@ SmallVector<Value> MapElementwiseOp(llvm::ArrayRef<mlir::Type> arg_types,
 }
 
 }  // namespace
+
+Value UnrealizedConversionCast(mlir::Type type, Value value,
+                               ImplicitLocOpBuilder& b) {
+  SmallVector<Value> converted;
+  b.createOrFold<mlir::UnrealizedConversionCastOp>(converted, type, value);
+  return converted.front();
+}
+
+SmallVector<Value> ConvertToSignless(mlir::ValueRange values,
+                                     ImplicitLocOpBuilder& b) {
+  mlir::mhlo::RemoveSignTypeConverter sign_converter;
+  SmallVector<Value> results;
+  results.reserve(values.size());
+  for (Value value : values) {
+    CHECK(value != nullptr);
+    auto signless_type = sign_converter.convertType(value.getType());
+    results.push_back(UnrealizedConversionCast(signless_type, value, b));
+  }
+  return results;
+}
 
 Value ApplyAffineExpr(mlir::AffineExpr expr, ValueRange dims,
                       ValueRange symbols, ImplicitLocOpBuilder& b) {
@@ -1283,10 +1282,7 @@ absl::Status SubgraphToMlirFunction(
   // function signature, we have to convert back to signed types.
   for (auto [index, function_result] : llvm::enumerate(func.getResultTypes())) {
     results[index] =
-        builder
-            .create<mlir::UnrealizedConversionCastOp>(
-                results[index].getLoc(), function_result, results[index])
-            .getResult(0);
+        UnrealizedConversionCast(function_result, results[index], builder);
   }
 
   builder.create<mlir::func::ReturnOp>(results);
