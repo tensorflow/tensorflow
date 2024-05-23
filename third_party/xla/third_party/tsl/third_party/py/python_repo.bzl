@@ -24,6 +24,7 @@ HERMETIC_PYTHON_VERSION = "{version}"
 WHEEL_NAME = "{wheel_name}"
 WHEEL_COLLAB = "{wheel_collab}"
 REQUIREMENTS = "{requirements}"
+REQUIREMENTS_WITH_LOCAL_WHEELS = "{requirements_with_local_wheels}"
 """
 
 def _python_repository_impl(ctx):
@@ -43,11 +44,41 @@ def _python_repository_impl(ctx):
     else:
         print("Using hermetic Python %s" % version)  # buildifier: disable=print
 
-    requirements = ""
+    requirements = None
     for i in range(0, len(ctx.attr.requirements_locks)):
         if ctx.attr.requirements_versions[i] == version:
             requirements = ctx.attr.requirements_locks[i]
             break
+
+    if not requirements:
+        fail("""
+Could not find requirements_lock.txt file matching specified Python version.
+Specified python version: {version}
+Python versions with available requirement_lock.txt files: {versions}
+Please check python_init_repositories() in your WORKSPACE file.
+""".format(
+            version = version,
+            versions = ", ".join(ctx.attr.requirements_versions),
+        ))
+
+    requirements_with_local_wheels = str(requirements)
+    if ctx.attr.local_wheel_workspaces:
+        local_wheel_requirements = _get_injected_local_wheels(
+            ctx,
+            version,
+            ctx.attr.local_wheel_workspaces,
+        )
+        requirements_content = [ctx.read(requirements)] + local_wheel_requirements
+        merged_requirements_content = "\n".join(requirements_content)
+        requirements_with_local_wheels = requirements_with_local_wheels.replace(
+            "@" + requirements.repo_name,
+            "@" + ctx.name,
+        )
+
+        ctx.file(
+            requirements.name,
+            merged_requirements_content,
+        )
 
     ctx.file(
         "py_version.bzl",
@@ -56,8 +87,46 @@ def _python_repository_impl(ctx):
             wheel_name = wheel_name,
             wheel_collab = wheel_collab,
             requirements = str(requirements),
+            requirements_with_local_wheels = requirements_with_local_wheels,
         ),
     )
+
+def _get_injected_local_wheels(ctx, py_version, local_wheel_workspaces):
+    local_wheel_requirements = []
+    py_ver_marker = "-cp%s-" % py_version.replace(".", "")
+    wheels = {}
+
+    for local_wheel_workspace in local_wheel_workspaces:
+        local_wheel_workspace_path = ctx.path(local_wheel_workspace)
+        dist_folder = ctx.attr.local_wheel_dist_folder
+        dist_wheels = local_wheel_workspace_path.dirname.get_child(dist_folder).readdir()
+
+        for wheel in dist_wheels:
+            bn = wheel.basename
+            if not bn.endswith(".whl") or bn.find(py_ver_marker) < 0:
+                continue
+
+            name_components = bn.split("-")
+            package_name = name_components[0]
+            for name_component in name_components[1:]:
+                if name_component[0].isdigit():
+                    break
+                package_name += "-" + name_component
+
+            latest_wheel = wheels.get(package_name, None)
+
+            if not latest_wheel or latest_wheel.basename < wheel.basename:
+                wheels[package_name] = wheel
+
+    for wheel_name, wheel_path in wheels.items():
+        local_wheel_requirements.append(
+            "{wheel_name} @ file://{wheel_path}".format(
+                wheel_name = wheel_name,
+                wheel_path = wheel_path.realpath,
+            ),
+        )
+
+    return local_wheel_requirements
 
 python_repository = repository_rule(
     implementation = _python_repository_impl,
@@ -69,6 +138,14 @@ python_repository = repository_rule(
         "requirements_locks": attr.label_list(
             mandatory = False,
             default = [],
+        ),
+        "local_wheel_workspaces": attr.label_list(
+            mandatory = False,
+            default = [],
+        ),
+        "local_wheel_dist_folder": attr.string(
+            mandatory = False,
+            default = "dist",
         ),
     },
     environ = [
