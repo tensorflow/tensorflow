@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project  // IWYU pragma: keep
@@ -380,6 +381,107 @@ struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
   }
 };
 
+struct FoldApplyIndexingSequence
+    : public mlir::OpRewritePattern<ApplyIndexingOp> {
+  using OpRewritePattern<ApplyIndexingOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
+                                PatternRewriter& rewriter) const override {
+    MLIRContext* ctx = indexing_op.getContext();
+    int num_dims = indexing_op.getAffineMap().getNumDims();
+    int num_syms = indexing_op.getAffineMap().getNumSymbols();
+    mlir::DenseMap<Value, AffineExpr> operand_exprs;
+    for (auto& operand : indexing_op->getOpOperands()) {
+      int operand_number = operand.getOperandNumber();
+      operand_exprs[operand.get()] =
+          operand_number < num_dims
+              ? getAffineDimExpr(operand_number, ctx)
+              : getAffineSymbolExpr(operand_number - num_dims, ctx);
+    }
+
+    auto this_map = indexing_op.getIndexingMap();
+
+    SmallVector<Value> added_dim_args;
+    SmallVector<Value> added_sym_args;
+    auto new_dim_vars = this_map.GetDimVars();
+    auto new_sym_vars = this_map.GetRangeVars();
+
+    mlir::DenseMap<AffineExpr, AffineExpr> replacements;
+    for (auto& operand : indexing_op->getOpOperands()) {
+      if (auto producer = operand.get().getDefiningOp<ApplyIndexingOp>()) {
+        auto producer_map = producer.getIndexingMap();
+        int producer_result_id =
+            mlir::cast<mlir::OpResult>(operand.get()).getResultNumber();
+        int num_producer_dims = producer.getAffineMap().getNumDims();
+        SmallVector<AffineExpr> producer_dim_replacements;
+        SmallVector<AffineExpr> producer_sym_replacements;
+        for (auto& producer_operand : producer->getOpOperands()) {
+          int producer_operand_number = producer_operand.getOperandNumber();
+          bool is_dim = producer_operand_number < num_producer_dims;
+          auto& replacement_expr = operand_exprs[producer_operand.get()];
+          if (!replacement_expr) {
+            if (is_dim) {
+              int dim_num = producer_operand_number;
+              replacement_expr =
+                  getAffineDimExpr(num_dims + added_dim_args.size(), ctx);
+              added_dim_args.push_back(producer_operand.get());
+              new_dim_vars.push_back(producer_map.GetDimVars(dim_num));
+            } else {
+              int sym_num = producer_operand_number -
+                            producer.getAffineMap().getNumDims();
+              replacement_expr =
+                  getAffineSymbolExpr(num_syms + added_sym_args.size(), ctx);
+              added_sym_args.push_back(producer_operand.get());
+              new_sym_vars.push_back(producer_map.GetRangeVar(sym_num));
+            }
+          }
+
+          if (is_dim) {
+            producer_dim_replacements.push_back(replacement_expr);
+          } else {
+            producer_sym_replacements.push_back(replacement_expr);
+          }
+        }
+
+        replacements[operand_exprs[operand.get()]] =
+            producer.getAffineMap()
+                .getResult(producer_result_id)
+                .replaceDimsAndSymbols(producer_dim_replacements,
+                                       producer_sym_replacements);
+      }
+    }
+
+    if (replacements.empty()) {
+      return rewriter.notifyMatchFailure(indexing_op,
+                                         "No apply_indexing sequences found");
+    }
+
+    int new_num_operands = indexing_op->getNumOperands() +
+                           added_dim_args.size() + added_sym_args.size();
+    auto new_affine_map = indexing_op.getAffineMap().replace(
+        replacements, num_dims + added_dim_args.size(),
+        num_syms + added_sym_args.size());
+    IndexingMap new_indexing_map(new_affine_map, new_dim_vars, new_sym_vars,
+                                 /*rt_vars=*/{});
+    if (!new_indexing_map.Simplify(GetIndexingMapForInstruction)) {
+      return rewriter.notifyMatchFailure(
+          indexing_op, "Folded indexing map was not simplified");
+    }
+    SmallVector<Value> new_operands;
+    new_operands.reserve(new_num_operands);
+
+    auto begin = indexing_op.getOperands().begin();
+    new_operands.append(begin, begin + num_dims);
+    new_operands.append(added_dim_args);
+    new_operands.append(begin + num_dims, begin + num_dims + num_syms);
+    new_operands.append(added_sym_args);
+
+    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(indexing_op, new_operands,
+                                                 new_indexing_map);
+    return success();
+  }
+};
+
 // Folds constants into the indexing map.
 struct FoldApplyIndexingOperands
     : public mlir::OpRewritePattern<ApplyIndexingOp> {
@@ -528,7 +630,7 @@ struct FoldApplyIndexingResults
 void ApplyIndexingOp::getCanonicalizationPatterns(
     mlir::RewritePatternSet& results, MLIRContext* context) {
   results.add<FoldApplyIndexingOperands, FoldApplyIndexingResults,
-              SimplifyIndexingMap>(context);
+              SimplifyIndexingMap, FoldApplyIndexingSequence>(context);
 }
 
 mlir::LogicalResult ApplyIndexingOp::fold(
@@ -539,6 +641,8 @@ mlir::LogicalResult ApplyIndexingOp::fold(
       results.push_back(getOperand(dim.getPosition()));
     } else if (auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(expr)) {
       results.push_back(getOperand(map.getNumDims() + sym.getPosition()));
+    } else if (auto cst = mlir::dyn_cast<mlir::AffineConstantExpr>(expr)) {
+      results.push_back(OpBuilder(getContext()).getIndexAttr(cst.getValue()));
     } else {
       results.clear();
       return failure();

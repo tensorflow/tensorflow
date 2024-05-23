@@ -20,7 +20,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -61,8 +64,18 @@ class GpuReduceScatterCreatorTest : public HloTestBase {
   }
 
   size_t AllReduceCount(std::unique_ptr<HloModule> &module) {
-    return absl::c_count_if(module->entry_computation()->instructions(),
-                            HloPredicateIsOp<HloOpcode::kAllReduce>);
+    return CollectiveCount(module, HloOpcode::kAllReduce);
+  }
+
+  size_t ReduceScatterCount(std::unique_ptr<HloModule> &module) {
+    return CollectiveCount(module, HloOpcode::kAllReduce);
+  }
+
+ private:
+  size_t CollectiveCount(std::unique_ptr<HloModule> &module, HloOpcode opcode) {
+    return absl::c_count_if(
+        module->entry_computation()->instructions(),
+        [&opcode](HloInstruction *instr) { return instr->opcode() == opcode; });
   }
 };
 
@@ -380,6 +393,41 @@ ENTRY %AllReduce {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
   EXPECT_EQ(AllReduceCount(module), 0);
+}
+
+TEST_F(GpuReduceScatterCreatorTest, AllReduceFollowedByAllReduce) {
+  absl::string_view hlo_string = R"(
+HloModule AllReduce
+
+%sum {
+  %a = f32[] parameter(0)
+  %b = f32[] parameter(1)
+  ROOT %add = f32[] add(%a, %b)
+}
+
+ENTRY %AllReduce {
+  %param = f32[32,8,128]{2,1,0} parameter(0)
+  %all-reduce.scattered = f32[32,8,128]{2,1,0} all-reduce(%param),
+    replica_groups={{0,1,2,3,4,5,6,7},{8,9,10,11,12,13,14,15}}, to_apply=%sum, use_global_device_ids=true, channel_id=1
+  %table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  %pid = u32[] partition-id()
+  %id = s32[1] dynamic-slice(%table, %pid), dynamic_slice_sizes={1}
+  %reshape = s32[] reshape(%id)
+  %slice_size = s32[] constant(4)
+  %offset = s32[] multiply(%reshape, %slice_size)
+  %zero = s32[] constant(0)
+  %dynamic-slice = f32[4,8,128] dynamic-slice(%all-reduce.scattered, %offset, %zero, %zero),
+    dynamic_slice_sizes={4,8,128}
+  ROOT %all-reduce.sync = f32[4,8,128]{2,1,0} all-reduce(%dynamic-slice),
+    replica_groups={{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}}, to_apply=%sum, use_global_device_ids=true, channel_id=2
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                               /*num_replicas=*/2,
+                                               /*num_partitions=*/8,
+                                               /*expect_change=*/true));
+  EXPECT_EQ(AllReduceCount(module), 1);
+  EXPECT_EQ(ReduceScatterCount(module), 1);
 }
 
 TEST_F(GpuReduceScatterCreatorTest, SubgroupsGlobals) {
