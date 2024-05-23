@@ -1245,6 +1245,7 @@ cc_library(
         ":hlo_buffer",
         ":hlo_cost_analysis",
         ":hlo_pass",
+        "//xla:shape_util",
         "//xla:status",
         "//xla:util",
         "//xla:xla_proto_cc",

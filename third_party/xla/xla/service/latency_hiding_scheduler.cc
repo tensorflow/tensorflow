@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/layout.h"
 #include "xla/map_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo_alias_analysis.h"
@@ -187,8 +188,8 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
 ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
     const HloInstruction& hlo) const {
   CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
-  auto get_resource_for_op = [](HloOpcode op) -> ResourceType {
-    switch (op) {
+  auto get_resource_for_op = [&hlo, this](HloOpcode opcode) -> ResourceType {
+    switch (opcode) {
       case HloOpcode::kAllReduce:
         return ResourceType::kAllReduce;
       case HloOpcode::kAllGather:
@@ -200,7 +201,52 @@ ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
       case HloOpcode::kCollectivePermute:
         return ResourceType::kCollectivePermute;
       case HloOpcode::kCopy:
+        CHECK(hlo.opcode() == HloOpcode::kCopyStart ||
+              hlo.opcode() == HloOpcode::kCopyDone);
+        if (hlo.opcode() == HloOpcode::kCopyStart) {
+          if (hlo.operand(0)->shape().layout().memory_space() ==
+              Layout::kHostMemorySpace) {
+            return config_.force_send_recv_to_use_same_resource
+                       ? ResourceType::kSendHost
+                       : ResourceType::kRecvHost;
+          }
+          if (hlo.shape().tuple_shapes()[0].layout().memory_space() ==
+              Layout::kHostMemorySpace) {
+            return ResourceType::kSendHost;
+          }
+        } else {
+          if (hlo.shape().layout().memory_space() == Layout::kHostMemorySpace) {
+            return ResourceType::kSendHost;
+          }
+          if (hlo.operand(0)
+                  ->shape()
+                  .tuple_shapes()[0]
+                  .layout()
+                  .memory_space() == Layout::kHostMemorySpace) {
+            return config_.force_send_recv_to_use_same_resource
+                       ? ResourceType::kSendHost
+                       : ResourceType::kRecvHost;
+          }
+        }
         return ResourceType::kCopy;
+      case HloOpcode::kDynamicUpdateSlice: {
+        const HloInstruction* async = hlo.async_wrapped_instruction();
+        if (async->shape().layout().memory_space() ==
+            Layout::kHostMemorySpace) {
+          return ResourceType::kSendHost;
+        }
+        return ResourceType::kNoResource;
+      }
+      case HloOpcode::kDynamicSlice: {
+        const HloInstruction* async = hlo.async_wrapped_instruction();
+        if (async->operand(0)->shape().layout().memory_space() ==
+            Layout::kHostMemorySpace) {
+          return config_.force_send_recv_to_use_same_resource
+                     ? ResourceType::kSendHost
+                     : ResourceType::kRecvHost;
+        }
+        return ResourceType::kNoResource;
+      }
       case HloOpcode::kReduceScatter:
         return ResourceType::kReduceScatter;
       default:
@@ -260,6 +306,49 @@ ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
                                ResourceUsageType::kResourceOccupy)
               : std::make_pair(ResourceTypeToIndex(ResourceType::kSendRecv),
                                ResourceUsageType::kResourceOccupy)};
+    // case HloOpcode::kAsyncDone: {
+    //   const HloInstruction* async = hlo.async_wrapped_instruction();
+    //   if (async->opcode() == HloOpcode::kDynamicUpdateSlice &&
+    //       async->shape().layout().memory_space() == Layout::kHostMemorySpace)
+    //       {
+    //     return ResourcesVector{
+    //         std::make_pair(ResourceTypeToIndex(ResourceType::kSendHost),
+    //                        ResourceUsageType::kResourceOccupy)};
+    //   }
+    //   if (async->opcode() == HloOpcode::kDynamicSlice &&
+    //       async->operand(0)->shape().layout().memory_space() ==
+    //           Layout::kHostMemorySpace) {
+    //     auto resource_type = config_.force_send_recv_to_use_same_resource
+    //                              ? ResourceType::kSendHost
+    //                              : ResourceType::kRecvHost;
+    //     return ResourcesVector{
+    //         std::make_pair(ResourceTypeToIndex(resource_type),
+    //                        ResourceUsageType::kResourceOccupy)};
+    //   }
+    //   return ResourcesVector{};
+    // }
+    // case HloOpcode::kAsyncStart: {
+    //   const HloInstruction* async = hlo.async_wrapped_instruction();
+
+    //   if (async->opcode() == HloOpcode::kDynamicUpdateSlice &&
+    //       async->shape().layout().memory_space() == Layout::kHostMemorySpace)
+    //       {
+    //     return ResourcesVector{
+    //         std::make_pair(ResourceTypeToIndex(ResourceType::kSendHost),
+    //                        ResourceUsageType::kResourceRelease)};
+    //   }
+    //   if (async->opcode() == HloOpcode::kDynamicSlice &&
+    //       async->operand(0)->shape().layout().memory_space() ==
+    //           Layout::kHostMemorySpace) {
+    //     auto resource_type = config_.force_send_recv_to_use_same_resource
+    //                              ? ResourceType::kSendHost
+    //                              : ResourceType::kRecvHost;
+    //     return ResourcesVector{
+    //         std::make_pair(ResourceTypeToIndex(resource_type),
+    //                        ResourceUsageType::kResourceRelease)};
+    //   }
+    //   return ResourcesVector{};
+    // }
     default:
       return ResourcesVector{};
   }
@@ -408,6 +497,10 @@ absl::string_view AsyncTracker::GetResourceUsageName(
 
 ResourceHazardType AsyncTracker::GetResourceHazardType(
     int64_t resource_type) const {
+  if (resource_type == ResourceTypeToIndex(ResourceType::kSendHost) ||
+      resource_type == ResourceTypeToIndex(ResourceType::kRecvHost)) {
+    return ResourceHazardType::kShareable;
+  }
   return ResourceHazardType::kUnshareable;
 }
 
