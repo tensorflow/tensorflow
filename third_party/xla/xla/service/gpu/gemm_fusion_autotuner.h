@@ -87,6 +87,8 @@ class GemmFusionAutotunerImpl {
     bool operator<(const CuDnnConfig& other) const;
   };
   using Config = std::variant<CuBlasConfig, CuDnnConfig, TritonGemmConfig>;
+  using TilingConfigs =
+      std::vector<std::pair<const HloFusionInstruction*, std::vector<Config>>>;
 
   struct ExecutableCandidate {
     Config config;
@@ -102,9 +104,7 @@ class GemmFusionAutotunerImpl {
   // Compile all executables for all fusions.
   absl::StatusOr<absl::flat_hash_map<const HloFusionInstruction*,
                                      std::vector<ExecutableCandidate>>>
-  CompileAll(AutotunerCompileUtil& compile_util,
-             const absl::flat_hash_map<const HloFusionInstruction*,
-                                       std::vector<Config>>& task);
+  CompileAll(AutotunerCompileUtil& compile_util, const TilingConfigs& task);
 
   // Profile all executables for a fusion.
   absl::StatusOr<std::vector<AutotuneResult>> Profile(
@@ -113,9 +113,7 @@ class GemmFusionAutotunerImpl {
 
   // Autotune and save the results to the autotuning cache.
   absl::Status Autotune(
-      AutotunerCompileUtil& compile_util,
-      const absl::flat_hash_map<const HloFusionInstruction*,
-                                std::vector<Config>>& gemm_config_sets,
+      AutotunerCompileUtil& compile_util, const TilingConfigs& gemm_config_sets,
       absl::flat_hash_map<AutotuneCacheKey, uint64_t> fusion_count_map);
 
   // Helper methods.
