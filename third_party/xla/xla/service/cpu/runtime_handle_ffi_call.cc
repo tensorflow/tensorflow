@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/ffi/ffi_api.h"
 #include "xla/primitive_util.h"
 #include "xla/service/custom_call_status.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -161,10 +160,10 @@ static absl::Status BuildAndCallFfi(
   BuildBuffers(result_types, result_dims, outputs, RetInserter(builder));
 
   // Forward executable run options to the FFI handlers via the call options.
-  xla::ServiceExecutableRunOptions service_run_options(*run_options);
-
-  ffi::CallOptions call_options;
-  call_options.run_options = &service_run_options;
+  ffi::CallOptions call_options = {
+      run_options->device_ordinal(), run_options->stream(),
+      run_options->allocator(), /*called_computation=*/nullptr,
+      run_options->ffi_execution_context()};
 
   ffi::CallFrame call_frame = builder.Build();
   return ffi::Call(registration->bundle.execute, call_frame, call_options);

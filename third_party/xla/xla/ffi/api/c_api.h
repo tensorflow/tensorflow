@@ -81,9 +81,20 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api_Version, minor_version);
 // Error codes
 //===----------------------------------------------------------------------===//
 
-// XLA FFI handler must return an XLA_FFI_Error*, which is NULL if there is no
-// error and set if there is. Caller allocates any returned XLA_FFI_Errors, and
-// the XLA FFI is responsible for freeing them.
+// XLA FFI error is a mechanism to communicate errors between XLA and XLA FFI
+// via a set of C APIs. This is somewhat similar to type-erased version of
+// absl::Status exposed via API with opaque pointers.
+//
+// Returning NULL error is equivalent to returning absl::OkStatus().
+//
+// Ownership of an XLA_FFI_Error is always transferred to the caller, and the
+// caller is responsible for destroying it:
+//
+// (1) If the error is returned from an XLA FFI handler, the XLA runtime will
+//     destroy it (XLA is the caller who calls into the handler implementation).
+//
+// (2) If the error is returned from an XLA FFI API call, the caller is
+//     responsible for destroying it.
 typedef struct XLA_FFI_Error XLA_FFI_Error;
 
 // Codes are based on https://abseil.io/docs/cpp/guides/status-codes

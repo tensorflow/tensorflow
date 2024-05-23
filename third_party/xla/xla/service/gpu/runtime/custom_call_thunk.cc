@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -32,9 +33,10 @@ limitations under the License.
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -110,7 +112,9 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
 }
 
 absl::Status CustomCallThunk::ExecuteFfiHandler(
-    XLA_FFI_Handler* handler, const ExecutableRunOptions& run_options,
+    XLA_FFI_Handler* handler, int32_t device_ordinal, se::Stream* stream,
+    se::DeviceMemoryAllocator* allocator,
+    const ffi::ExecutionContext* execution_context,
     const BufferAllocations* buffer_allocations) {
   if (handler == nullptr) {
     return absl::InternalError("FFI execute handler is not set");
@@ -149,18 +153,13 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   builder.AddAttributes(attrs.Build());
   CallFrame call_frame = builder.Build();
 
-  // TODO(b/340104720): Remove `ServiceExecutableRunOptions` from FFI handler
-  // execution context, as apparently it's not easily accessible from Thunk.
-  ServiceExecutableRunOptions service_run_options(run_options);
-
-  CallOptions options = {&service_run_options, called_computation_};
+  CallOptions options = {device_ordinal, stream, allocator, called_computation_,
+                         execution_context};
   return Call(bundle_->execute, call_frame, options);
 }
 
 absl::Status CustomCallThunk::Prepare(const PrepareParams& params,
                                       ResourceRequests& resource_requests) {
-  // TODO(b/340104720): Remove `ServiceExecutableRunOptions` requirement from
-  // FFI to be able to support prepare stage execution.
   if (bundle_ && bundle_->prepare) {
     return absl::InternalError("FFI prepare stage is not yet supported");
   }
@@ -172,30 +171,18 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
     return absl::OkStatus();
   }
 
-  // TODO(b/340104720): Remove `ExecutableRunOptions` from FFI handler
-  // execution context, as apparently it's not easily accessible from Thunk.
-  ExecutableRunOptions run_options;
-  run_options.set_stream(params.stream);
-  run_options.set_allocator(params.buffer_allocations->memory_allocator());
-  run_options.set_device_ordinal(params.buffer_allocations->device_ordinal());
-  run_options.set_ffi_execution_context(params.ffi_execution_context);
-
-  return ExecuteFfiHandler(bundle_->initialize, run_options,
-                           params.buffer_allocations);
+  return ExecuteFfiHandler(
+      bundle_->initialize, params.buffer_allocations->device_ordinal(),
+      params.stream, params.buffer_allocations->memory_allocator(),
+      params.ffi_execution_context, params.buffer_allocations);
 }
 
 absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (bundle_.has_value()) {
-    // TODO(b/340104720): Remove `ExecutableRunOptions` from FFI handler
-    // execution context, as apparently it's not easily accessible from Thunk.
-    ExecutableRunOptions run_options;
-    run_options.set_stream(params.stream);
-    run_options.set_allocator(params.buffer_allocations->memory_allocator());
-    run_options.set_device_ordinal(params.buffer_allocations->device_ordinal());
-    run_options.set_ffi_execution_context(params.ffi_execution_context);
-
-    return ExecuteFfiHandler(bundle_->execute, run_options,
-                             params.buffer_allocations);
+    return ExecuteFfiHandler(
+        bundle_->execute, params.buffer_allocations->device_ordinal(),
+        params.stream, params.buffer_allocations->memory_allocator(),
+        params.ffi_execution_context, params.buffer_allocations);
   }
   return ExecuteCustomCall(params);
 }

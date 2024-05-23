@@ -31,8 +31,9 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream.h"
 
 //===----------------------------------------------------------------------===//
 // XLA FFI C structs definition
@@ -43,9 +44,13 @@ struct XLA_FFI_Error {
 };
 
 struct XLA_FFI_ExecutionContext {
-  const xla::ServiceExecutableRunOptions* run_options;
-  const xla::HloComputation* called_computation;
-  const xla::ffi::ExecutionContext* execution_context;
+  int32_t device_ordinal = -1;
+
+  stream_executor::Stream* stream = nullptr;
+  stream_executor::DeviceMemoryAllocator* allocator = nullptr;
+
+  const xla::HloComputation* called_computation = nullptr;
+  const xla::ffi::ExecutionContext* execution_context = nullptr;
 };
 
 //===----------------------------------------------------------------------===//
@@ -56,12 +61,17 @@ bool IsCommandBufferCompatible(XLA_FFI_Handler_Traits traits) {
   return traits & XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
 }
 
+static XLA_FFI_ExecutionContext CreateExecutionContext(
+    const CallOptions& options) {
+  return XLA_FFI_ExecutionContext{
+      options.device_ordinal, options.stream, options.allocator,
+      options.called_computation,
+      internal::ScopedExecutionContext::GetCallExecutionContext(options)};
+}
+
 //===----------------------------------------------------------------------===//
 // Calling XLA FFI handlers
 //===----------------------------------------------------------------------===//
-
-// WARNING: These functions defined in `call_frame.h` as we need to make them
-// available without having to depend on `ffi.h` header.
 
 absl::Status TakeStatus(XLA_FFI_Error* error) {
   if (error == nullptr) return absl::OkStatus();
@@ -72,18 +82,14 @@ absl::Status TakeStatus(XLA_FFI_Error* error) {
 
 absl::Status Call(Ffi& handler, CallFrame& call_frame,
                   const CallOptions& options) {
-  XLA_FFI_ExecutionContext ctx = {
-      options.run_options, options.called_computation,
-      internal::ScopedExecutionContext::GetCallExecutionContext(options)};
+  XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
   XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(GetXlaFfiApi(), &ctx);
   return TakeStatus(handler.Call(&ffi_call_frame));
 }
 
 absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
                   const CallOptions& options) {
-  XLA_FFI_ExecutionContext ctx = {
-      options.run_options, options.called_computation,
-      internal::ScopedExecutionContext::GetCallExecutionContext(options)};
+  XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
   XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(GetXlaFfiApi(), &ctx);
   return TakeStatus((*handler)(&ffi_call_frame));
 }
@@ -105,9 +111,7 @@ const ExecutionContext* ScopedExecutionContext::GetCallExecutionContext(
   if (scoped_execution_context != nullptr) {
     return scoped_execution_context;
   }
-  return options.run_options
-             ? options.run_options->run_options().ffi_execution_context()
-             : nullptr;
+  return options.execution_context;
 }
 }  // namespace internal
 
@@ -291,7 +295,12 @@ static XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args) {
       "XLA_FFI_Stream_Get", XLA_FFI_Stream_Get_Args_STRUCT_SIZE,
       args->struct_size));
 
-  auto handle = args->ctx->run_options->stream()->platform_specific_handle();
+  if (args->ctx->stream == nullptr) {
+    return new XLA_FFI_Error{
+        absl::InvalidArgumentError("XLA FFI stream is not available")};
+  }
+
+  auto handle = args->ctx->stream->platform_specific_handle();
   args->stream = handle.stream;
 
   return nullptr;
@@ -338,17 +347,17 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status) {
 }
 
 static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
-  return ctx->run_options->stream();
+  return ctx->stream;
 }
 
 static int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
     XLA_FFI_ExecutionContext* ctx) {
-  return ctx->run_options->device_ordinal();
+  return ctx->device_ordinal;
 }
 
 static void* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
     XLA_FFI_ExecutionContext* ctx) {
-  return ctx->run_options->allocator();
+  return ctx->allocator;
 }
 
 static void* XLA_FFI_INTERNAL_CalledComputation_Get(

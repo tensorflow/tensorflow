@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_RUNTIME_CUSTOM_CALL_THUNK_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
@@ -33,6 +35,8 @@ limitations under the License.
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/shape.h"
 #include "xla/status.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -100,7 +104,9 @@ class CustomCallThunk : public Thunk {
   absl::Status ExecuteCustomCall(const ExecuteParams& params);
 
   absl::Status ExecuteFfiHandler(XLA_FFI_Handler* handler,
-                                 const ExecutableRunOptions& run_options,
+                                 int32_t device_ordinal, se::Stream* stream,
+                                 se::DeviceMemoryAllocator* allocator,
+                                 const ffi::ExecutionContext* execution_context,
                                  const BufferAllocations* buffer_allocations);
 
   std::vector<std::optional<Slice>> operands_;
