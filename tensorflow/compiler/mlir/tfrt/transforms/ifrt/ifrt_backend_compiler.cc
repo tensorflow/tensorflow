@@ -99,7 +99,8 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
             ifrt_model_context.checkpoint_loader_queue(),
             ifrt_model_context.GetDeviceMgr(),
             ifrt_model_context.GetShapeRepresentationFn(),
-            ifrt_model_context.GetIfrtServingCoreSelector()));
+            ifrt_model_context.GetIfrtServingCoreSelector(),
+            ifrt_model_context.GetCompilationEnvironmentProto()));
 
     // Register the Ifrt program to `ServingExecutableRegistry` so that
     // the client TF program can invoke them via `IfrtCall` op.

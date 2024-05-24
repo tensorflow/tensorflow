@@ -16,7 +16,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -350,7 +349,7 @@ class KernelTest : public ::testing::Test {
     resource_context_
         .CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
             "IfrtModelContext", client_, ifrt_core_selector_.get(),
-            &GetThreadPool());
+            &GetThreadPool(), /*compilation_environment_proto=*/nullptr);
 
     tf_context_ = std::make_unique<Context>(fallback_request_state_.get(),
                                             &resource_context_);
