@@ -32,7 +32,8 @@ class ProfilingListener : public BenchmarkListener {
  public:
   ProfilingListener(
       Interpreter* interpreter, uint32_t max_num_initial_entries,
-      bool allow_dynamic_buffer_increase, const std::string& csv_file_path = "",
+      bool allow_dynamic_buffer_increase,
+      const std::string& output_file_path = "",
       std::shared_ptr<profiling::ProfileSummaryFormatter> summarizer_formatter =
           std::make_shared<profiling::ProfileSummaryDefaultFormatter>());
 
@@ -47,13 +48,12 @@ class ProfilingListener : public BenchmarkListener {
  protected:
   profiling::ProfileSummarizer run_summarizer_;
   profiling::ProfileSummarizer init_summarizer_;
-  std::string csv_file_path_;
+  std::string output_file_path_;
 
  private:
-  void WriteOutput(const std::string& header, const string& data,
-                   std::ostream* stream);
   Interpreter* interpreter_;
   profiling::BufferedProfiler profiler_;
+  std::shared_ptr<profiling::ProfileSummaryFormatter> summarizer_formatter_;
 };
 
 }  // namespace benchmark
