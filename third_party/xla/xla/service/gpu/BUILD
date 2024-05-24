@@ -5447,9 +5447,6 @@ cc_library(
     name = "topk_specializer",
     srcs = ["topk_specializer.cc"],
     hdrs = ["topk_specializer.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     deps = [
         "//xla:executable_run_options",
         "//xla:shape_util",
@@ -5518,9 +5515,6 @@ xla_cc_test(
 xla_cc_test(
     name = "topk_test",
     srcs = ["topk_test.cc"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     use_gpu = True,
     deps = [
         ":topk_specializer",
