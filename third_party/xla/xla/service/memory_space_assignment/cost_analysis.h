@@ -261,7 +261,15 @@ class CostAnalysis {
   // means the instruction is not in a while loop.
   int CalculateComputationNestLevel(const HloInstruction* instruction,
                                     bool while_only) const;
+
   float GetWhileNestMultiplier(int while_nest_level) const;
+
+  // Returns the number of times the computation nest will be executed.
+  // For instructions in nested loops, this is the product of the number of
+  // iterations (trip count) of each loop. This function is expected to provide
+  // a more accurate estimate than the GetWhileNestMultiplier function.
+  float CalculateComputationNestTripCount(
+      const HloInstruction* instruction) const;
 
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 

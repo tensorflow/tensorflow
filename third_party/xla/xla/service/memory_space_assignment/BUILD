@@ -272,6 +272,7 @@ cc_library(
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_value",
+        "//xla/service:while_loop_analysis",
         "//xla/service/heap_simulator",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",

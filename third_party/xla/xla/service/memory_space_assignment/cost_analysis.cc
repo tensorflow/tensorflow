@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/while_loop_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
@@ -231,6 +232,25 @@ float CostAnalysis::GetWhileNestMultiplier(int while_nest_level) const {
   return IPow<float>(
       options_.xla_tpu_memory_space_assignment_while_execution_count,
       while_nest_level);
+}
+
+float CostAnalysis::CalculateComputationNestTripCount(
+    const HloInstruction* instruction) const {
+  float total_trip_count = 1.0;
+  const HloComputation* computation = instruction->parent();
+  while (!computation->IsEntryComputation()) {
+    auto& node = call_graph_->GetNode(computation);
+    auto callsites = node.caller_callsites();
+    auto& callsite = callsites[0];
+    if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
+      HloInstruction* while_op = callsite.instruction();
+      std::optional<int64_t> trip_count = ComputeWhileLoopTripCount(while_op);
+      total_trip_count *= trip_count.value_or(
+          options_.xla_tpu_memory_space_assignment_while_execution_count);
+    }
+    computation = callsite.instruction()->parent();
+  }
+  return total_trip_count;
 }
 
 float CostAnalysis::GetDefaultMemoryAccessOverhead(

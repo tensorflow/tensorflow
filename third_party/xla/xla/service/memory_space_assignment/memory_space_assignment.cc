@@ -433,10 +433,7 @@ float MemorySpaceAssignment::ComputeEstimatedElapsedTime(
             *instruction, operands_in_alternate_memory,
             outputs_in_alternate_memory);
     float while_nest_multiplier =
-        options_.cost_analysis->GetWhileNestMultiplier(
-            options_.cost_analysis->CalculateComputationNestLevel(
-                instruction,
-                /*while_only=*/true));
+        options_.cost_analysis->CalculateComputationNestTripCount(instruction);
     total_elapsed += while_nest_multiplier * instruction_elapsed;
   }
   return total_elapsed;
