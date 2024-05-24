@@ -173,8 +173,8 @@ enum DimLevelType {
 }
 
 // Describes a tile used in tiling-based layout. Refer to
-// g3doc/third_party/tensorflow/compiler/xla/g3doc/tiled_layout.md for
-// details about tiling-based layout.
+// g3doc/third_party/xla/docs/tiled_layout.md for details about tiling-based
+// layout.
 message TileProto {
   // Number of elements in each dimension of the tile. It's ordered from the
   // most major dimension of the tile to the most minor dimension of the tile.

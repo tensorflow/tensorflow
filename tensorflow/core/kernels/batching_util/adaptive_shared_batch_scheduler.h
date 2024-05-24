@@ -633,7 +633,7 @@ void AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper(
     const internal::ASBSBatch<TaskType>* batch,
     AdaptiveSharedBatchScheduler<TaskType>::BatchProcessor callback,
     bool is_express) {
-  profiler::TraceMeConsumer trace_me(
+  tsl::profiler::TraceMeConsumer trace_me(
       [&] {
         return profiler::TraceMeEncode(
             "ProcessBatch", {{"batch_size_before_padding", batch->size()},
@@ -792,7 +792,7 @@ Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
 
       // Annotate each task (corresponds to one call of schedule) with a
       // TraceMeProducer.
-      profiler::TraceMeProducer trace_me(
+      tsl::profiler::TraceMeProducer trace_me(
           [task_size = task->size()] {
             return profiler::TraceMeEncode(
                 "ASBSQueue::Schedule",
