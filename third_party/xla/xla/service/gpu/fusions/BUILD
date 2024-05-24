@@ -611,7 +611,6 @@ cc_library(
     name = "triton",
     srcs = ["triton.cc"],
     hdrs = ["triton.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":fusion_emitter",
         "//xla:shape_util",

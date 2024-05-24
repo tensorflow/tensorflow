@@ -358,7 +358,6 @@ cc_library(
         "//xla/service:custom_call_target_registry",
         "//xla/service:global_device_id",
         "//xla/service:name_uniquer",
-        "//xla/service/gpu/fusions",
         "//xla/service/gpu/fusions:fusion_emitter",
         "//xla/service/gpu/fusions:thunk_util",
         "//xla/service/gpu/kernels:custom_kernel",
@@ -434,6 +433,7 @@ cc_library(
         "@triton//:TritonDialects",
     ] + if_gpu_is_configured([
         ":ir_emitter_triton",
+        "//xla/service/gpu/fusions",
         "//xla/service/gpu/runtime:cholesky_thunk",
         "//xla/service/gpu/runtime:cub_sort_thunk",
         "//xla/service/gpu/runtime:gpublas_lt_matmul_thunk",
