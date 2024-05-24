@@ -115,23 +115,6 @@ absl::Status LoadOpenCL() {
   }
 #else
   void* libopencl = nullptr;
-#ifdef __ANDROID__
-  // Pixel phone or auto?
-  libopencl =
-      AndroidDlopenSphalLibrary("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
-  if (!libopencl) {
-    libopencl =
-        AndroidDlopenSphalLibrary("libOpenCL-car.so", RTLD_NOW | RTLD_LOCAL);
-  }
-  if (libopencl) {
-    typedef void (*enableOpenCL_t)();
-    enableOpenCL_t enableOpenCL =
-        reinterpret_cast<enableOpenCL_t>(dlsym(libopencl, "enableOpenCL"));
-    enableOpenCL();
-    LoadOpenCLFunctions(libopencl, true);
-    return absl::OkStatus();
-  }
-#endif
 #ifdef __APPLE__
   static const char* kClLibName =
       "/System/Library/Frameworks/OpenCL.framework/OpenCL";
@@ -140,6 +123,23 @@ absl::Status LoadOpenCL() {
 #endif
 #ifdef __ANDROID__
   libopencl = AndroidDlopenSphalLibrary(kClLibName, RTLD_NOW | RTLD_LOCAL);
+  if (!libopencl) {
+    // Legacy Pixel phone or auto path?
+    libopencl =
+        AndroidDlopenSphalLibrary("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
+    if (!libopencl) {
+      libopencl =
+          AndroidDlopenSphalLibrary("libOpenCL-car.so", RTLD_NOW | RTLD_LOCAL);
+    }
+    if (libopencl) {
+      typedef void (*enableOpenCL_t)();
+      enableOpenCL_t enableOpenCL =
+          reinterpret_cast<enableOpenCL_t>(dlsym(libopencl, "enableOpenCL"));
+      enableOpenCL();
+      LoadOpenCLFunctions(libopencl, true);
+      return absl::OkStatus();
+    }
+  }
 #else
   libopencl = dlopen(kClLibName, RTLD_NOW | RTLD_LOCAL);
 #endif

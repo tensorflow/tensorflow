@@ -29,7 +29,8 @@ using tensorflow::errors::Unknown;
 
 // If the rank and all dim sizes are known, return corresponding TensorShape.
 // Otherwise return Unknown error.
-StatusOr<TensorShape> ToTensorShape(ShapeHandle shape_handle, int64_t rank) {
+absl::StatusOr<TensorShape> ToTensorShape(ShapeHandle shape_handle,
+                                          int64_t rank) {
   TensorShape shape;
   for (int i = 0; i < rank; ++i) {
     int64_t dim_size = shape_inference::InferenceContext::Value(
