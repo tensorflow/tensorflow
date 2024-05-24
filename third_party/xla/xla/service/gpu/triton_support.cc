@@ -123,7 +123,7 @@ std::vector<HloOpcode> TritonSupportedBinaryElementwise(
 
 std::vector<HloOpcode> TritonSupportedTernaryElementwise(
     PrimitiveType element_type) {
-  return {HloOpcode::kSelect, HloOpcode::kClamp};
+  return {HloOpcode::kSelect};
 }
 
 bool IsTritonSupportedElementwise(HloOpcode opcode,

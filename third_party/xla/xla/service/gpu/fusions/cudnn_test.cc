@@ -556,32 +556,6 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(CuDnnFusionLevel2Test, ClampExecutesCorrectly) {
-  EXPECT_TRUE(RunAndCompare(R"(
-fusion1 {
-  x = bf16[16,32] parameter(0)
-  y = bf16[32,16] parameter(1)
-  x_const_lower = bf16[] constant(3e-3)
-  x_const_upper = bf16[] constant(1e-1)
-  y_const_lower = bf16[] constant(3e-3)
-  y_const_upper = bf16[] constant(1e-1)
-  x_const_bcast_lower = bf16[16,32] broadcast(x_const_lower), dimensions={}
-  x_const_bcast_upper = bf16[16,32] broadcast(x_const_upper), dimensions={}
-  y_const_bcast_lower = bf16[32,16] broadcast(y_const_lower), dimensions={}
-  y_const_bcast_upper = bf16[32,16] broadcast(y_const_upper), dimensions={}
-  x_clamp = bf16[16,32] clamp(x_const_bcast_lower, x, x_const_bcast_upper)
-  y_clamp = bf16[32,16] clamp(y_const_bcast_lower, y, y_const_bcast_upper)
-  ROOT dot_a = f32[16,16] dot(x_clamp, y_clamp), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  }
-ENTRY e {
-  p0 = bf16[16,32] parameter(0)
-  p1 = bf16[32,16] parameter(1)
-  ROOT _ = f32[16,16] fusion(p0, p1), kind=kCustom, calls=fusion1,
-    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
-})",
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
-
 TEST_F(CuDnnFusionLevel2Test, DotF8ExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 
