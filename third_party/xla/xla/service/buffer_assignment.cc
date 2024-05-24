@@ -336,7 +336,7 @@ static const HloInstruction* GetOutputInstruction(
   return nullptr;
 }
 
-std::string BufferAllocation::ToString() const {
+std::string BufferAllocation::ToShortString() const {
   std::string output;
   StrAppendFormat(&output, "allocation %d: size %d", index_, size());
   if (color() != 0) {
@@ -366,6 +366,11 @@ std::string BufferAllocation::ToString() const {
     StrAppend(&output, ", preallocated-temp");
   }
   StrAppend(&output, ":\n");
+  return output;
+}
+
+std::string BufferAllocation::ToString() const {
+  std::string output = ToShortString();
   // Dump the assigned buffers ordered by id.
   std::vector<const HloValue*> sorted_buffers;
   for (const auto& buffer_offset_size : assigned_buffers_) {

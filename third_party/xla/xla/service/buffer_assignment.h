@@ -216,6 +216,7 @@ class BufferAllocation {
   Slice GetSlice(const HloValue& buffer) const;
 
   std::string ToString() const;
+  std::string ToShortString() const;
   BufferAllocationProto ToProto() const;
 
   // Whether the buffer is a parameter to or live out of the entry computation.

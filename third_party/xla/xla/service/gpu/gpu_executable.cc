@@ -857,6 +857,36 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
       GenerateBufferAllocations(arguments, globals, memory_allocator,
                                 device_ordinal));
   VLOG(3) << buffer_allocations.ToString();
+  absl::Span<const BufferAllocation> allocations = GetAllocations();
+
+  if (VLOG_IS_ON(5)) {
+    // Debug code to compare current allocation's address with previous run's
+    // address, and report the allocation info if memory addressed changed.
+    // Useful for identify in user's model if it is command buffer perf friendly
+    // (no command buffer update cost).
+    absl::MutexLock lock(&module_handle_mutex_);
+    if (module_allocations_.find(executor) == module_allocations_.end()) {
+      std::vector<se::DeviceMemoryBase> allocs_addr;
+      allocs_addr.reserve(buffer_allocations.size());
+      for (int i = 0; i < buffer_allocations.size(); i++) {
+        allocs_addr.push_back(buffer_allocations.GetDeviceAddress(i));
+      }
+      module_allocations_[executor] = std::move(allocs_addr);
+    } else {
+      for (int i = 0; i < buffer_allocations.size(); i++) {
+        if (module_allocations_[executor][i].IsSameAs(
+                buffer_allocations.GetDeviceAddress(i))) {
+          continue;
+        }
+        module_allocations_[executor][i] =
+            buffer_allocations.GetDeviceAddress(i);
+        VLOG(5) << "Gpu address changed for module " << module_name_
+                << ", allocation info: \n"
+                << allocations[i].ToShortString();
+      }
+    }
+  }
+
   std::set<se::DeviceMemoryBase> buffers_in_result;
 
   const bool is_entire_tuple_contents_aliased = [&] {
@@ -872,7 +902,6 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     return true;
   }();
 
-  absl::Span<const BufferAllocation> allocations = GetAllocations();
   for (auto& p : result.MutableResult()->buffers()) {
     const ShapeIndex& index = p.first;
     if (!output_info_.contains(index)) {
