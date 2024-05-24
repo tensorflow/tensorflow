@@ -49,6 +49,13 @@ class ConcreteShardingTest : public test_util::ShardingTest {};
 class ConcreteEvenShardingTest : public test_util::ShardingTest {};
 class ShardingParamShardingTest : public test_util::ShardingTest {};
 
+TEST_P(SingleDeviceShardingTest, IsFullyReplicated) {
+  auto device_list = GetDevices({0});
+  std::shared_ptr<const Sharding> sharding =
+      SingleDeviceSharding::Create(device_list.devices().front(), MemoryKind());
+  EXPECT_TRUE(sharding->IsFullyReplicated());
+}
+
 TEST_P(SingleDeviceShardingTest, IndexDomains) {
   auto device_list = GetDevices({0});
   std::shared_ptr<const Sharding> sharding =
@@ -92,6 +99,13 @@ TEST_P(SingleDeviceShardingTest, Disassemble) {
   }
 }
 
+TEST_P(OpaqueShardingTest, IsFullyReplicated) {
+  auto device_list = GetDevices({0, 1});
+  std::shared_ptr<const Sharding> sharding =
+      OpaqueSharding::Create(device_list, MemoryKind());
+  EXPECT_FALSE(sharding->IsFullyReplicated());
+}
+
 TEST_P(OpaqueShardingTest, FailedToDisassemble) {
   auto device_list = GetDevices({0, 1});
   std::shared_ptr<const Sharding> sharding =
@@ -123,6 +137,17 @@ TEST_P(OpaqueShardingTest, IndexDomainsFails) {
       StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("OpaqueSharding does not have index domain information")));
+}
+
+TEST_P(ConcreteShardingTest, IsFullyReplicated) {
+  auto device_list = GetDevices({0, 1});
+  std::vector<Shape> shard_shapes;
+  shard_shapes.reserve(2);
+  shard_shapes.push_back(Shape({10}));
+  shard_shapes.push_back(Shape({20}));
+  std::shared_ptr<const Sharding> sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), Shape({30}), shard_shapes);
+  EXPECT_FALSE(sharding->IsFullyReplicated());
 }
 
 TEST_P(ConcreteShardingTest, Disassemble) {
@@ -205,10 +230,29 @@ TEST_P(ConcreteShardingTest, IndexDomainsFails) {
                                  "domain information")));
 }
 
+TEST_P(ConcreteEvenShardingTest, IsFullyReplicated) {
+  auto device_list = GetDevices({0, 1});
+  {
+    // Fully replicated.
+    std::shared_ptr<const Sharding> sharding =
+        ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
+                                     Shape({15}), /*is_fully_replicated=*/true);
+    EXPECT_TRUE(sharding->IsFullyReplicated());
+  }
+  {
+    // Not fully replicated.
+    std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
+        device_list, MemoryKind(), Shape({30}), Shape({15}),
+        /*is_fully_replicated=*/false);
+    EXPECT_FALSE(sharding->IsFullyReplicated());
+  }
+}
+
 TEST_P(ConcreteEvenShardingTest, Disassemble) {
   auto device_list = GetDevices({0, 1});
-  std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
-      device_list, MemoryKind(), Shape({30}), Shape({15}));
+  std::shared_ptr<const Sharding> sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
+                                   Shape({15}), /*is_fully_replicated=*/false);
 
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
                           sharding->Disassemble(Shape({30})));
@@ -224,8 +268,9 @@ TEST_P(ConcreteEvenShardingTest, Disassemble) {
 
 TEST_P(ConcreteEvenShardingTest, DisassembleFailsForUnexpectedShape) {
   auto device_list = GetDevices({0, 1});
-  std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
-      device_list, MemoryKind(), Shape({30}), Shape({15}));
+  std::shared_ptr<const Sharding> sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
+                                   Shape({15}), /*is_fully_replicated=*/false);
 
   EXPECT_THAT(sharding->Disassemble(Shape({40})),
               StatusIs(tsl::error::INVALID_ARGUMENT,
@@ -235,8 +280,9 @@ TEST_P(ConcreteEvenShardingTest, DisassembleFailsForUnexpectedShape) {
 TEST_P(ConcreteEvenShardingTest, IndexDomainsFails) {
   auto device_list = GetDevices({0, 1});
   std::vector<Shape> shard_shapes;
-  std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
-      device_list, MemoryKind(), Shape({30}), Shape({15}));
+  std::shared_ptr<const Sharding> sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
+                                   Shape({15}), /*is_fully_replicated=*/false);
 
   EXPECT_THAT(
       sharding->IndexDomains(Shape({30})),
@@ -255,6 +301,37 @@ TEST_P(ShardingParamShardingTest, CreateFailsWhenDeviceCountNotMatch) {
               StatusIs(tsl::error::FAILED_PRECONDITION,
                        HasSubstr("Device counts don't match. From "
                                  "ShardingParam 6 vs from DeviceList 2")));
+}
+
+TEST_P(ShardingParamShardingTest, IsFullyReplicated) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
+  {
+    // Fully replicated.
+    ShardingParam param{/*dim_shards=*/{1, 1},
+                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<const Sharding> param_sharding,
+        ShardingParamSharding::Create(param, device_list, MemoryKind()));
+    EXPECT_TRUE(param_sharding->IsFullyReplicated());
+  }
+  {
+    // Not fully replicated.
+    ShardingParam param{/*dim_shards=*/{1, 6},
+                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<const Sharding> param_sharding,
+        ShardingParamSharding::Create(param, device_list, MemoryKind()));
+    EXPECT_FALSE(param_sharding->IsFullyReplicated());
+  }
+  {
+    // Not fully replicated.
+    ShardingParam param{/*dim_shards=*/{2, 3},
+                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<const Sharding> param_sharding,
+        ShardingParamSharding::Create(param, device_list, MemoryKind()));
+    EXPECT_FALSE(param_sharding->IsFullyReplicated());
+  }
 }
 
 TEST_P(ShardingParamShardingTest, Disassemble) {
