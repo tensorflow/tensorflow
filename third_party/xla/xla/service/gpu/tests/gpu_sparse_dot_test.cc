@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace gpu {
@@ -131,10 +132,10 @@ ENTRY main {
   Literal dense_rhs = LiteralUtil::CreateR1<uint16_t>(absl::MakeSpan(in2));
 
   auto dense_module = ParseAndReturnVerifiedModule(dense_hlo);
-  EXPECT_OK(dense_module);
+  TF_EXPECT_OK(dense_module);
   auto dense_result =
       Execute(std::move(*dense_module), {&dense_lhs, &dense_rhs});
-  EXPECT_OK(dense_result);
+  TF_EXPECT_OK(dense_result);
 
   // Execute sparse dot.
   const char* kSparseTpl = R"(
@@ -155,10 +156,10 @@ ENTRY main {
   Literal sparse_meta = LiteralUtil::CreateR1<uint16_t>(absl::MakeSpan(meta));
 
   auto sparse_module = ParseAndReturnVerifiedModule(sparse_hlo);
-  EXPECT_OK(sparse_module);
+  TF_EXPECT_OK(sparse_module);
   auto sparse_result = Execute(std::move(*sparse_module),
                                {&sparse_lhs, &sparse_rhs, &sparse_meta});
-  EXPECT_OK(sparse_result);
+  TF_EXPECT_OK(sparse_result);
 
   // Compare the results.
   EXPECT_EQ(*dense_result, *sparse_result);
