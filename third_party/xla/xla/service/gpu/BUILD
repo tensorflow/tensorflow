@@ -2927,6 +2927,7 @@ cc_library(
         ":gpu_fused_mha_runner",
         ":cublas_cudnn",
         ":stream_executor_util",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/container:flat_hash_set",
