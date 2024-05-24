@@ -81,16 +81,18 @@ absl::Status TakeStatus(XLA_FFI_Error* error) {
 }
 
 absl::Status Call(Ffi& handler, CallFrame& call_frame,
-                  const CallOptions& options) {
+                  const CallOptions& options, XLA_FFI_ExecutionStage stage) {
   XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
-  XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(GetXlaFfiApi(), &ctx);
+  XLA_FFI_CallFrame ffi_call_frame =
+      call_frame.Build(GetXlaFfiApi(), &ctx, stage);
   return TakeStatus(handler.Call(&ffi_call_frame));
 }
 
 absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
-                  const CallOptions& options) {
+                  const CallOptions& options, XLA_FFI_ExecutionStage stage) {
   XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
-  XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(GetXlaFfiApi(), &ctx);
+  XLA_FFI_CallFrame ffi_call_frame =
+      call_frame.Build(GetXlaFfiApi(), &ctx, stage);
   return TakeStatus((*handler)(&ffi_call_frame));
 }
 
