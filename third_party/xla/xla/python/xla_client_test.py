@@ -126,7 +126,7 @@ def TestFactory(xla_backend,
       if self.backend.platform == "cpu" and not _CUSTOM_CALLS_REGISTERED:
         for name, fn in custom_calls_testlib.registrations().items():
           xla_client.register_custom_call_target(
-              name, fn, platform="cpu", api_version=1
+              name, {"execute": fn}, platform="cpu", api_version=1
           )
         _CUSTOM_CALLS_REGISTERED = True
 

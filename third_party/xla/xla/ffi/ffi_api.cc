@@ -20,11 +20,14 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
@@ -34,6 +37,7 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "tsl/platform/logging.h"
 
 //===----------------------------------------------------------------------===//
 // XLA FFI C structs definition
@@ -134,10 +138,25 @@ static HandlerRegistry& GetHandlerRegistry() {
   return *registry;
 }
 
+static std::vector<std::string> GetHandlerStages(
+    const XLA_FFI_Handler_Bundle& bundle) {
+  std::vector<std::string> stages;
+  if (bundle.prepare != nullptr) stages.push_back("prepare");
+  if (bundle.initialize != nullptr) stages.push_back("initialize");
+  if (bundle.execute != nullptr) stages.push_back("execute");
+  return stages;
+}
+
 static absl::Status RegisterHandler(std::string_view name,
                                     std::string_view platform,
                                     XLA_FFI_Handler_Bundle bundle,
                                     XLA_FFI_Handler_Traits traits) {
+  VLOG(2) << absl::StreamFormat(
+      "Register XLA FFI handler for '%s'; platform=%s, stages=[%s], "
+      "command_buffer_compatible=%v",
+      name, platform, absl::StrJoin(GetHandlerStages(bundle), ", "),
+      IsCommandBufferCompatible(traits));
+
   if (bundle.execute == nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("FFI handler for ", name, "on a platform ", platform,

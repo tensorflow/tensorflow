@@ -254,14 +254,22 @@ def array_result_handler(
                _skip_checks: bool = ...) -> Callable:
   ...
 
+class CustomCallTargetTraits(enum.IntFlag):
+  DEFAULT = 0
+  COMMAND_BUFFER_COMPATIBLE = 1
+
 def register_custom_call_target(
-    name: str, fn: Callable, platform: str = ..., api_version: int = ...
-) -> None:
-  ...
+    name: str,
+    fn: Any,
+    platform: str = ...,
+    api_version: int = ...,
+    traits: CustomCallTargetTraits = ...,
+) -> None: ...
 
-def register_custom_call_handler(xla_platform_name: str, handler: Any) -> None:
-  ...
-
-def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
+def register_custom_call_handler(
+    xla_platform_name: str, handler: Any
+) -> None: ...
 
 def custom_call_targets(platform: str) -> dict[str, Any]: ...
+
+def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
