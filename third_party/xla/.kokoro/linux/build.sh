@@ -46,10 +46,11 @@ if is_linux_gpu_job ; then
 fi
 
 pull_docker_image_with_retries
+
+
 # Start a container in the background
-docker run --name xla -w /tf/xla -itd --rm \
-    -v "$KOKORO_ARTIFACTS_DIR/github/xla:/tf/xla" \
-    -v "$KOKORO_ARTIFACTS_DIR/pkg:/tf/pkg" \
+docker run --name xla -w /github/xla -itd --rm \
+    -v "./github:/github" \
     "$DOCKER_IMAGE" \
     bash
 
@@ -71,8 +72,7 @@ if is_linux_gpu_job ; then
     RBE_FLAGS="--config=rbe_linux_cuda_nvcc --jobs=150"
     (
       #TODO(b/338885148): Remove this block after TF was updated to cuDNN 9
-      cd ${KOKORO_ARTIFACTS_DIR}/github/xla
-      sed -i 's/@sigbuild-r2\.17-clang_/@sigbuild-r2.17-clang-cudnn9_/g' .bazelrc
+      sed -i 's/@sigbuild-r2\.17-clang_/@sigbuild-r2.17-clang-cudnn9_/g' ./github/xla/.bazelrc
       echo "The following changes were made:"
       git diff -- .bazelrc || true
     )
@@ -100,7 +100,7 @@ docker exec xla bazel \
         --keep_going \
         --nobuild_tests_only \
         --features=layering_check \
-        --profile=/tf/pkg/profile.json.gz \
+        --profile=profile.json.gz \
         --flaky_test_attempts=3 \
         --config=warnings \
         $RBE_FLAGS \
@@ -109,7 +109,7 @@ docker exec xla bazel \
 
 
 # Print build time statistics, including critical path.
-docker exec xla bazel analyze-profile "/tf/pkg/profile.json.gz"
+docker exec xla bazel analyze-profile profile.json.gz
 
 # Stop container
 docker stop xla
