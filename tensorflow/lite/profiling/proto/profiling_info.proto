@@ -1,0 +1,63 @@
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless optional by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto2";
+
+package tflite.profiling;
+
+option java_multiple_files = true;
+
+message BenchmarkProfilingData {
+  optional string model_name = 1;
+  optional ModelProfilingData init_profile = 2;
+  optional ModelProfilingData runtime_profile = 3;
+}
+
+message ModelProfilingData {
+  repeated SubGraphProfilingData subgraph_profiles = 1;
+  repeated DelegateProfilingData delegate_profiles = 2;
+}
+
+message SubGraphProfilingData {
+  optional string subgraph_name = 1;
+  optional int32 subgraph_index = 2;
+  repeated OpProfileData per_op_profiles = 3;
+}
+
+message DelegateProfilingData {
+  optional string delegate_name = 1;
+  repeated OpProfileData per_op_profiles = 2;
+}
+
+message OpProfilingStat {
+  optional int64 first = 1;
+  optional int64 last = 2;
+  optional int64 avg = 3;
+  optional float stddev = 4;
+  optional float variance = 5;
+  optional int64 min = 6;
+  optional int64 max = 7;
+  optional int64 sum = 8;
+  optional int64 count = 9;
+}
+
+message OpProfileData {
+  optional string node_type = 1;
+  optional OpProfilingStat inference_microseconds = 2;
+  optional OpProfilingStat mem_kb = 3;
+  optional int64 times_called = 4;
+  optional string name = 5;
+  optional int64 run_order = 6;
+}
