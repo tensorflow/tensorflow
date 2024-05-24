@@ -15,16 +15,26 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
+#include "llvm/Support/Casting.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/tile_assignment.h"
+#include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -37,6 +47,31 @@ using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
 
 class HloShardingTest : public test_util::ShardingTest {};
+
+TEST_P(HloShardingTest, IsFullyReplicated) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
+  {
+    // Fully replicated.
+    auto xla_hlo_sharding = xla::HloSharding::Replicate();
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_TRUE(sharding->IsFullyReplicated());
+  }
+  {
+    // Not fully replicated.
+    auto xla_hlo_sharding = xla::HloSharding::IotaTile({1, 6});
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_FALSE(sharding->IsFullyReplicated());
+  }
+  {
+    // Not fully replicated.
+    auto xla_hlo_sharding = xla::HloSharding::IotaTile({2, 3});
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_FALSE(sharding->IsFullyReplicated());
+  }
+}
 
 TEST_P(HloShardingTest, IndexDomainsWithReplication) {
   auto device_list = GetDevices({0, 1});

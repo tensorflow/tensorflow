@@ -17,7 +17,10 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -46,6 +49,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/ops:uniform_op_quant_spec",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:protos_all_cc",
+        "//third_party/protobuf",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -81,6 +85,8 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/lite/core/c:private_common",
         "//tensorflow/lite/kernels:padding",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:str_format",
