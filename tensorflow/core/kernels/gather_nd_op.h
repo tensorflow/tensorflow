@@ -43,8 +43,7 @@ struct GatherNdSlice {
                    typename TTypes<T>::Matrix Tout);
 };
 
-template <typename Device, typename T, typename Index,
-          bool kDropBadIndices = false>
+template <typename Device, typename T, typename Index>
 Status DoGatherNd(OpKernelContext* c, const Tensor& params,
                   const Tensor& indices, Tensor* out) {
   if (!TensorShapeUtils::IsVectorOrHigher(params.shape())) {
@@ -150,10 +149,6 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
             "Only indices.shape[-1] values between 1 and 7 "
             "are currently supported.  Requested rank: ",
             indices_nd);
-    }
-
-    if constexpr (kDropBadIndices) {
-      return absl::OkStatus();
     }
 
     // bad_i will only return >= 0 on CPUs right now.
