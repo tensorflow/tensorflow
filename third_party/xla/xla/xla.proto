@@ -115,6 +115,7 @@ message DebugOptions {
   bool xla_cpu_use_mkl_dnn = 97;
 
   reserved 177;  // Was xla_cpu_use_xla_runtime
+  bool xla_cpu_use_thunk_runtime = 298;
 
   reserved 98;  // Was xla_gpu_max_kernel_unroll_factor
 
@@ -785,7 +786,7 @@ message DebugOptions {
   // a deterministic implementation.
   bool xla_gpu_exclude_nondeterministic_ops = 297;
 
-  // Next id: 298
+  // Next id: 299
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
