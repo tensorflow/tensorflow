@@ -219,6 +219,7 @@ llvm::SmallVector<Value> MlirFusionEmitterBase::EmitThreadAndBlockIds(
 absl::StatusOr<FusionEmissionResult> MlirFusionEmitterBase::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
+  VLOG(5) << "Fusion: " << fusion.fused_instructions_computation()->ToString();
   TF_ASSIGN_OR_RETURN(
       auto args,
       KernelArguments::Create(ir_emitter_context.buffer_assignment(), &fusion));

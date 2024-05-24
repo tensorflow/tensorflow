@@ -1118,7 +1118,9 @@ llvm::SmallVector<Value> ProvideParameter(
   auto results = builder.create<PureCallOp>(callee, operands).getResults();
   auto callee_subgraph = computation.FindSubgraph(operand);
   if (callee_subgraph.roots.size() == 1) {
-    CHECK_EQ(callee_subgraph.roots.front(), operand);
+    CHECK_EQ(callee_subgraph.roots.front(), operand)
+        << "Expected " << operand->ToString() << " to be the root of "
+        << callee_subgraph.ToString();
     return results;
   }
 
