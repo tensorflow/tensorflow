@@ -16,9 +16,16 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
 
-#include "tsl/platform/statusor.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "tensorflow/core/framework/registration/registration.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/tfrt/common/pjrt_client_factory_options.h"
+#include "tsl/framework/device_type.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 PjrtClientFactoryRegistry& PjrtClientFactoryRegistry::Get() {

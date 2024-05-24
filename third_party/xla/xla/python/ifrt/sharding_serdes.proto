@@ -52,4 +52,5 @@ message ConcreteEvenShardingProto {
   optional string memory_kind = 4;
   ShapeProto shape = 2;
   ShapeProto shard_shape = 3;
+  bool is_fully_replicated = 5;
 }

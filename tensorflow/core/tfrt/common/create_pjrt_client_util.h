@@ -15,10 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_COMMON_CREATE_PJRT_CLIENT_UTIL_H_
 #define TENSORFLOW_CORE_TFRT_COMMON_CREATE_PJRT_CLIENT_UTIL_H_
 
-#include <memory>
 #include <optional>
 #include <set>
 
+#include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/types.h"
 
