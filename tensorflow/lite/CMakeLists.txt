@@ -711,6 +711,13 @@ if(TFLITE_KERNEL_TEST)
   add_subdirectory(${TFLITE_SOURCE_DIR}/kernels)
 endif()
 
+# Add the generated headers directory. Required for maintaining the
+# tensorflow/lite directory structure for generated headers.
+set(TFLITE_GENERATED_HEADERS_DIR ${CMAKE_BINARY_DIR}/tensorflow/lite)
+
+# Add the profiling proto directory.
+add_subdirectory(${TFLITE_SOURCE_DIR}/profiling/proto)
+
 # The benchmark tool.
 add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark)
 
