@@ -1468,12 +1468,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<SimplifyFPConversions>();
   }
 
-  // Since this CSE runs after collective schedule linearizer which inserts
-  // control dependencies, ignore these control deps when replacing instructions
-  // with equivalent ones here.
-  pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
-                           /*only_fusion_computations=*/false,
-                           /*ignore_control_dependencies=*/true);
+  pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
 
   pipeline.AddPass<HostMemoryTransferAsyncifier>(
       static_cast<int64_t>(stream_executor::MemoryType::kHost));
