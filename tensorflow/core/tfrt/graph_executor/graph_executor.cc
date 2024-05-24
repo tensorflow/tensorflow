@@ -1130,8 +1130,7 @@ GraphExecutor::LoadedClientGraph::LoadedClientGraph(
       pflr_(&graph_executor->fallback_state().device_manager(),
             graph_executor->fallback_state().session_options().env,
             &graph_executor->fallback_state().session_options().config,
-            TF_GRAPH_DEF_VERSION,
-            &graph_executor->fallback_state().func_lib_def(),
+            TF_GRAPH_DEF_VERSION, &flib_def_,
             graph_executor->fallback_state()
                 .session_options()
                 .config.graph_options()

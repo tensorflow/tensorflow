@@ -137,6 +137,7 @@ class LatencyEstimator {
     return get_canonical_async_op_(hlo);
   }
   bool IsAsyncPair(const HloGraphNode& from, const HloGraphNode& target) const;
+  bool IsP2pPair(const HloGraphNode& from, const HloGraphNode& target) const;
   explicit LatencyEstimator(
       GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
       : get_canonical_async_op_(func) {}
