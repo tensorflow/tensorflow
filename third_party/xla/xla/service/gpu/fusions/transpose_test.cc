@@ -243,6 +243,101 @@ TEST_F(TransposeTest, ThreadIndexingPartialBlock) {
       )"));
 }
 
+TEST_F(TransposeTest, SameInputIndexingForRealHeroAndSideOutput) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fusion {
+      %input = f32[100,32,64] parameter(0)
+      %transpose = f32[100,64,32] transpose(%input), dimensions={0,2,1}
+      %bitcast = f32[100,2048] bitcast(%input)
+      ROOT %tuple = (f32[100,64,32], f32[100,2048]) tuple(%transpose, %bitcast)
+    }
+
+    ENTRY entry {
+      %input = f32[100,32,64] parameter(0)
+      ROOT %fusion = (f32[100,64,32], f32[100,2048]) fusion(%input), kind=kInput, calls=fusion
+    })")
+                    .value();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = AnalyzeFusion(*root, device_info_);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetTransposeFusion(analysis));
+  mlir::MLIRContext mlir_context;
+
+  EXPECT_THAT(
+      fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
+      fusion->ComputeThreadIdToInputIndexing(1, 0, &mlir_context)->ToString());
+}
+
+TEST_F(TransposeTest, ThreadIndexingSideOutput) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fusion {
+      %input0 = f32[100,32,64] parameter(0)
+      %input1 = f32[100,32] parameter(1)
+      %transpose = f32[100,64,32] transpose(%input0), dimensions={0,2,1}
+      %broadcast = f32[100,32,64] broadcast(%input1), dimensions={0,1}
+      ROOT %tuple = (f32[100,64,32], f32[100,32,64]) tuple(%transpose, %broadcast)
+    }
+
+    ENTRY entry {
+      %input0 = f32[100,32,64] parameter(0)
+      %input1 = f32[100,32] parameter(1)
+      ROOT %fusion = (f32[100,64,32], f32[100,32,64]) fusion(%input0, %input1), kind=kInput, calls=fusion
+    })")
+                    .value();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = AnalyzeFusion(*root, device_info_);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetTransposeFusion(analysis));
+  mlir::MLIRContext mlir_context;
+  // Check if side output `%broadcast` get the correct input indexing, which
+  // should corresponds to `%input1` with shape [100,32].
+  EXPECT_THAT(
+      fusion->ComputeThreadIdToInputIndexing(1, 0, &mlir_context)->ToString(),
+      MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
+          d3 floordiv 2,
+          d0 floordiv 32 + s1 * 4
+        )
+        domain:
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 199]
+        d4 in [0, 0]
+        d5 in [0, 0]
+
+        s0 in [0, 0]
+        s1 in [0, 7]
+        s2 in [0, 0]
+      )"));
+  EXPECT_THAT(
+      fusion->ComputeThreadIdToOutputIndexing(1, &mlir_context)->ToString(),
+      MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
+          d3 floordiv 2,
+          d0 floordiv 32 + s1 * 4,
+          (d3 mod 2) * 32 + d0 mod 32
+        )
+        domain:
+        d0 in [0, 127]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 199]
+        d4 in [0, 0]
+        d5 in [0, 0]
+
+        s0 in [0, 0]
+        s1 in [0, 7]
+        s2 in [0, 0]
+      )"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
