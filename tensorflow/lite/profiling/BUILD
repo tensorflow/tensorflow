@@ -194,6 +194,8 @@ cc_library(
     copts = common_copts,
     deps = [
         "//tensorflow/core/util:stats_calculator_portable",
+        "//tensorflow/lite/profiling/proto:profiling_info_cc_proto",
+        "//tensorflow/lite/tools:logging",
     ],
 )
 
@@ -202,6 +204,7 @@ cc_test(
     srcs = ["profile_summary_formatter_test.cc"],
     deps = [
         ":profile_summary_formatter",
+        "//tensorflow/lite/profiling/proto:profiling_info_cc_proto",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],

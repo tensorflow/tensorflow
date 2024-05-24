@@ -21,7 +21,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -72,11 +76,8 @@ class HloSharding final
   static char ID;  // NOLINT
 
  private:
-  explicit HloSharding(DeviceList devices, MemoryKind memory_kind,
-                       xla::HloSharding xla_hlo_sharding)
-      : llvm::RTTIExtends<HloSharding, XlaCompatibleSharding>(
-            std::move(devices), memory_kind),
-        xla_hlo_sharding_(std::move(xla_hlo_sharding)) {}
+  HloSharding(DeviceList devices, MemoryKind memory_kind,
+              xla::HloSharding xla_hlo_sharding);
 
   xla::HloSharding xla_hlo_sharding_;
 };
