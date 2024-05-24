@@ -810,7 +810,7 @@ TEST_F(IndexingMapTest, RangeEvaluatorTest) {
   EXPECT_TRUE(range_evaluator.IsAlwaysNegativeOrZero(d3));
 }
 
-TEST(IntervalComparisionTest, PointComparisons) {
+TEST(IntervalComparisonTest, PointComparisons) {
   Interval interval{12, 64};
   auto point = [](int64_t n) { return Interval{n, n}; };
   EXPECT_EQ(interval > point(11), true);
@@ -846,7 +846,7 @@ TEST(IntervalComparisionTest, PointComparisons) {
   EXPECT_EQ(point(15) != point(16), true);
 }
 
-TEST(IntervalComparisionTest, RangeComparisons) {
+TEST(IntervalComparisonTest, RangeComparisons) {
   Interval interval{12, 64};
   auto range = [](int64_t l, int64_t u) { return Interval{l, u}; };
   EXPECT_EQ(interval > range(-10, 11), true);
@@ -929,7 +929,7 @@ TEST(IntervalMathTest, MultiplicationSaturating) {
   Interval any{std::numeric_limits<int64_t>::min(),
                std::numeric_limits<int64_t>::max()};
   Interval bit33{42, std::numeric_limits<uint32_t>::max()};
-  Interval bit33_sq(42 * 42, std::numeric_limits<int64_t>::max());
+  Interval bit33_sq{42 * 42, std::numeric_limits<int64_t>::max()};
   EXPECT_THAT(bit33 * bit33, IntervalIs(bit33_sq));
   EXPECT_THAT(any * any, IntervalIs(any));
 
