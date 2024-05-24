@@ -47,7 +47,13 @@ class FallbackState {
       const SessionOptions &session_options,
       const tensorflow::FunctionDefLibrary &fdef_lib);
 
+  static absl::StatusOr<std::unique_ptr<FallbackState>> CreateWithDeviceMgr(
+      const SessionOptions &session_options,
+      const tensorflow::FunctionDefLibrary &fdef_lib,
+      StaticDeviceMgr *device_mgr);
+
   FallbackState(const SessionOptions &session_options,
+                StaticDeviceMgr *static_device_mgr,
                 std::vector<std::unique_ptr<Device>> devices,
                 const tensorflow::FunctionDefLibrary &fdef_lib);
 
@@ -61,8 +67,20 @@ class FallbackState {
 
   const SessionOptions &session_options() const { return session_options_; }
 
-  const DeviceMgr &device_manager() const { return device_manager_; }
-  DeviceMgr &device_manager() { return device_manager_; }
+  const DeviceMgr &device_manager() const {
+    if (device_manager_ptr_) {
+      return *device_manager_ptr_;
+    } else {
+      return device_manager_;
+    }
+  }
+  DeviceMgr &device_manager() {
+    if (device_manager_ptr_) {
+      return *device_manager_ptr_;
+    } else {
+      return device_manager_;
+    }
+  }
 
   const DeviceSet &device_set() const { return device_set_; }
 
@@ -77,6 +95,7 @@ class FallbackState {
 
  private:
   SessionOptions session_options_;
+  StaticDeviceMgr *device_manager_ptr_;
   StaticDeviceMgr device_manager_;
   DeviceSet device_set_;
   FunctionLibraryDefinition func_lib_def_;

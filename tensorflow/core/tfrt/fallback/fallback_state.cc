@@ -64,8 +64,8 @@ absl::StatusOr<std::unique_ptr<FallbackState>> FallbackState::Create(
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
       session_options, "/job:localhost/replica:0/task:0", &devices));
 
-  return std::make_unique<FallbackState>(session_options, std::move(devices),
-                                         fdef_lib);
+  return std::make_unique<FallbackState>(session_options, nullptr,
+                                         std::move(devices), fdef_lib);
 }
 
 absl::StatusOr<std::unique_ptr<FallbackState>>
@@ -77,8 +77,8 @@ FallbackState::CreateWithCpuDevice(
   TF_RETURN_IF_ERROR(DeviceFactory::AddCpuDevices(
       session_options, "/job:localhost/replica:0/task:0", &devices));
 
-  return std::make_unique<FallbackState>(session_options, std::move(devices),
-                                         fdef_lib);
+  return std::make_unique<FallbackState>(session_options, nullptr,
+                                         std::move(devices), fdef_lib);
 }
 
 absl::StatusOr<std::unique_ptr<FallbackState>>
@@ -95,17 +95,29 @@ FallbackState::CreateWithMockGpuDevice(
   devices.push_back(
       std::make_unique<VirtualDevice>(session_options.env, device_attrs));
 
-  return std::make_unique<FallbackState>(session_options, std::move(devices),
-                                         fdef_lib);
+  return std::make_unique<FallbackState>(session_options, nullptr,
+                                         std::move(devices), fdef_lib);
+}
+
+absl::StatusOr<std::unique_ptr<FallbackState>>
+FallbackState::CreateWithDeviceMgr(
+    const SessionOptions &session_options,
+    const tensorflow::FunctionDefLibrary &fdef_lib,
+    StaticDeviceMgr *device_mgr) {
+  std::vector<std::unique_ptr<Device>> devices;
+  return std::make_unique<FallbackState>(session_options, device_mgr,
+                                         std::move(devices), fdef_lib);
 }
 
 FallbackState::FallbackState(const SessionOptions &session_options,
+                             StaticDeviceMgr *static_device_mgr,
                              std::vector<std::unique_ptr<Device>> devices,
                              const tensorflow::FunctionDefLibrary &fdef_lib)
     : session_options_(session_options),
+      device_manager_ptr_(static_device_mgr),
       device_manager_(std::move(devices)),
       func_lib_def_(OpRegistry::Global(), fdef_lib),
-      pflr_(&device_manager_, session_options.env, &session_options.config,
+      pflr_(&device_manager(), session_options.env, &session_options.config,
             TF_GRAPH_DEF_VERSION, &func_lib_def_,
             session_options.config.graph_options().optimizer_options(),
             /*thread_pool=*/nullptr, /*parent=*/nullptr,
@@ -116,12 +128,12 @@ FallbackState::FallbackState(const SessionOptions &session_options,
                   new IntraProcessRendezvous(device_mgr));
               return absl::OkStatus();
             }}) {
-  for (auto *d : device_manager_.ListDevices()) {
+  for (auto *d : device_manager().ListDevices()) {
     device_set_.AddDevice(d);
   }
 
   // client_device is the device for feed and fetch tensors.
-  device_set_.set_client_device(device_manager_.HostCPU());
+  device_set_.set_client_device(device_manager().HostCPU());
 }
 
 absl::StatusOr<std::unique_ptr<GraphExecutionState>>
