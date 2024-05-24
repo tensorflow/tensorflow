@@ -201,6 +201,8 @@ void ProfileSummarizer::ProcessProfiles(
   if (delegate_internal_total_us > 0) {
     delegate_stats_calculator_->UpdateRunTotalUs(delegate_internal_total_us);
   }
+
+  SetSubgraphNameMap(interpreter);
 }
 
 tensorflow::StatsCalculator* ProfileSummarizer::GetStatsCalculator(
