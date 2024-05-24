@@ -118,10 +118,10 @@ TEST_P(ShardingSerDesTest, ConcreteShardingWithDynamicShapeRoundTrip) {
 }
 
 TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
-  auto sharding =
-      ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind("abc"),
-                                   /*shape=*/Shape({10, 20}),
-                                   /*shard_shape=*/Shape({5, 20}));
+  auto sharding = ConcreteEvenSharding::Create(
+      GetDevices({0, 1}), MemoryKind("abc"),
+      /*shape=*/Shape({10, 20}),
+      /*shard_shape=*/Shape({5, 20}), /*is_fully_replicated=*/true);
 
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 
@@ -134,6 +134,7 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
   EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
   EXPECT_THAT(out_sharding->shape(), sharding->shape());
   EXPECT_THAT(out_sharding->shard_shape(), sharding->shard_shape());
+  EXPECT_THAT(out_sharding->IsFullyReplicated(), sharding->IsFullyReplicated());
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, ShardingSerDesTest,
