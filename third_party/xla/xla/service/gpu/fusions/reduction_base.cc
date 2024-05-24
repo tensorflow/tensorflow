@@ -106,7 +106,11 @@ int GetVectorSize(const HloFusionAnalysis& analysis,
     return 1;
   }
 
-  return for_mlir ? 2 : 1;
+  if (!for_mlir) {
+    return 1;
+  }
+
+  return minor_dim % 4 == 0 ? 4 : 2;
 }
 
 ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,

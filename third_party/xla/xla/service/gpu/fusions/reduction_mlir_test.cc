@@ -482,7 +482,7 @@ TEST_F(ReductionTest, ColumnReductionVectorization) {
       ROOT fusion = f32[16384] fusion(a, c), kind=kInput, calls=fused_computation
     })";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: vector<2xf32>
+    // CHECK: vector<4xf32>
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
