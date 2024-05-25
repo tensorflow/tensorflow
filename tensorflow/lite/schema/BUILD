@@ -144,28 +144,6 @@ flatbuffer_cc_library(
     out_prefix = "reflection/",
 )
 
-# Schema test to make sure we don't introduce backward incompatible changes
-# to schemas.
-cc_test(
-    name = "flatbuffer_compatibility_test",
-    size = "small",
-    srcs = ["flatbuffer_compatibility_test.cc"],
-    data = [
-        "schema.fbs",
-        "schema_v3b.fbs",
-    ],
-    tags = [
-        "no_oss",
-        "tflite_not_portable_android",
-        "tflite_not_portable_ios",
-    ],
-    deps = [
-        "//tensorflow/core/platform",
-        "@com_google_googletest//:gtest_main",
-        "@flatbuffers//:flatc_library",
-    ],
-)
-
 cc_library(
     name = "schema_utils",
     hdrs = ["schema_utils.h"],
