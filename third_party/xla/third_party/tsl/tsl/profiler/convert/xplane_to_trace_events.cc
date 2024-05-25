@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tsl/platform/types.h"
+#include "tsl/profiler/convert/trace_container.h"
 #include "tsl/profiler/protobuf/trace_events.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/tf_xplane_visitor.h"
