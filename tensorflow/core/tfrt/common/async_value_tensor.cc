@@ -14,11 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace tensorflow {
 

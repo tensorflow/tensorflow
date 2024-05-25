@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "grpcpp/grpcpp.h"
+#include "third_party/grpc/include/grpcpp/server.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 
