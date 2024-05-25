@@ -19,8 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "re2/re2.h"
-#include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 

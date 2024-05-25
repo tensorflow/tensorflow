@@ -185,6 +185,7 @@ cc_binary(
         ":command_line_flags",
         ":gen_op_registration",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -197,6 +198,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_googlesource_code_re2//:re2",
     ],
@@ -219,6 +221,8 @@ cc_test(
     ],
     deps = [
         ":gen_op_registration",
+        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -257,6 +261,7 @@ cc_library_with_tflite(
 cc_library(
     name = "logging",
     hdrs = ["logging.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
 )
 
@@ -312,8 +317,10 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers",
         "@jsoncpp_git//:jsoncpp",
@@ -329,6 +336,7 @@ tf_cc_binary(
     deps = [
         ":command_line_flags",
         ":list_flex_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -340,6 +348,7 @@ cc_library(
     deps = [
         ":command_line_flags",
         ":list_flex_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -350,7 +359,9 @@ cc_library(
     hdrs = ["list_flex_ops.h"],
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@jsoncpp_git//:jsoncpp",
     ],
@@ -363,6 +374,7 @@ tf_cc_binary(
     deps = [
         ":command_line_flags",
         ":list_flex_ops_no_kernel",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -384,9 +396,13 @@ tf_cc_test(
     deps = [
         ":list_flex_ops",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//third_party/protobuf",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
@@ -421,9 +437,12 @@ cc_library(
     srcs = ["model_loader.cc"],
     hdrs = ["model_loader.h"],
     deps = [
+        "//tensorflow/lite:allocation",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core:model_builder",
         "@com_google_absl//absl/strings",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -435,7 +454,6 @@ cc_test(
         ":model_loader",
         "//tensorflow/lite:model_builder",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
     ],

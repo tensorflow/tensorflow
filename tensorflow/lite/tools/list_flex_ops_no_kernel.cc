@@ -15,8 +15,10 @@ limitations under the License.
 #include <string>
 
 #include "json/json.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/list_flex_ops.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace flex {

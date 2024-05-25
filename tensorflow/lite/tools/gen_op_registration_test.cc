@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/tools/gen_op_registration.h"
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/string_type.h"
 
 using ::testing::ElementsAreArray;
 
