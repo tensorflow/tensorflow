@@ -57,6 +57,11 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // Returns the memory kind for all shards in this sharding.
   MemoryKind memory_kind() const { return memory_kind_; }
 
+  // Returns if this sharding is fully replicated. A fully replicated sharding
+  // means that the logical shape and shard shapes are identical, and every
+  // shard of the array contains the entire data of the logical array.
+  bool IsFullyReplicated() const { return is_fully_replicated_; }
+
   // Breaks a shape up into per-device shapes and shardings. See
   // Array::DisassembleIntoSingleDeviceArrays(). It may return an error if
   // disassembly is unsupported.
@@ -94,11 +99,14 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   static char ID;  // NOLINT
 
  protected:
-  Sharding(DeviceList devices, MemoryKind memory_kind)
-      : devices_(devices), memory_kind_(memory_kind) {}
+  Sharding(DeviceList devices, MemoryKind memory_kind, bool is_fully_replicated)
+      : devices_(devices),
+        memory_kind_(memory_kind),
+        is_fully_replicated_(is_fully_replicated) {}
 
   DeviceList devices_;
   MemoryKind memory_kind_;
+  bool is_fully_replicated_;
 };
 
 std::ostream& operator<<(std::ostream& os, const Sharding& sharding);
@@ -138,8 +146,8 @@ class SingleDeviceSharding final
 
  private:
   explicit SingleDeviceSharding(Device* device, MemoryKind memory_kind)
-      : llvm::RTTIExtends<SingleDeviceSharding, Sharding>(DeviceList({device}),
-                                                          memory_kind) {}
+      : llvm::RTTIExtends<SingleDeviceSharding, Sharding>(
+            DeviceList({device}), memory_kind, /*is_fully_replicated=*/true) {}
 };
 
 // Opaque sharding that does not define a fixed semantics for conversion between
@@ -261,10 +269,11 @@ class ConcreteEvenSharding
     : public llvm::RTTIExtends<ConcreteEvenSharding, Sharding> {
  public:
   // Creates a concrete even sharding.
-  static std::unique_ptr<ConcreteEvenSharding> Create(DeviceList devices,
-                                                      MemoryKind memory_kind,
-                                                      Shape shape,
-                                                      Shape shard_shape);
+  // TODO(hyeontaek): Remove the default value of `is_fully_replicated` once all
+  // callers are updated to provide it explicitly.
+  static std::unique_ptr<ConcreteEvenSharding> Create(
+      DeviceList devices, MemoryKind memory_kind, Shape shape,
+      Shape shard_shape, bool is_fully_replicated = false);
 
   Shape shape() const {
     DCHECK(this);
@@ -294,7 +303,7 @@ class ConcreteEvenSharding
 
  private:
   ConcreteEvenSharding(DeviceList devices, MemoryKind memory_kind, Shape shape,
-                       Shape shard_shape);
+                       Shape shard_shape, bool is_fully_replicated);
 
   Shape shape_;
   Shape shard_shape_;
@@ -324,10 +333,7 @@ class ShardingParamSharding
 
  private:
   ShardingParamSharding(ShardingParam sharding_param, DeviceList devices,
-                        MemoryKind memory_kind)
-      : llvm::RTTIExtends<ShardingParamSharding, Sharding>(devices,
-                                                           memory_kind),
-        sharding_param_(sharding_param) {}
+                        MemoryKind memory_kind);
 
   ShardingParam sharding_param_;
 };
