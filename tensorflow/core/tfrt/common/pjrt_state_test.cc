@@ -19,19 +19,20 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 
 namespace {
 
 using tensorflow::PjRtState;
 using ::testing::HasSubstr;
-
-using ::tensorflow::testing::StatusIs;
+using ::tsl::testing::StatusIs;
 
 class PjRtStateTestFixture : public testing::Test {
  protected:

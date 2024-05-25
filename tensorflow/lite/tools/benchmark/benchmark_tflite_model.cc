@@ -78,6 +78,15 @@ constexpr bool kOpProfilingEnabledDefault = true;
 constexpr bool kOpProfilingEnabledDefault = false;
 #endif
 
+// Op profiling output modes.
+constexpr char kOpProfilingOutputModeStdout[] = "stdout";
+constexpr char kOpProfilingOutputModeCsv[] = "csv";
+constexpr char kOpProfilingOutputModeProto[] = "proto";
+
+const char* kOpProfilingOutputModes[] = {kOpProfilingOutputModeStdout,
+                                         kOpProfilingOutputModeCsv,
+                                         kOpProfilingOutputModeProto};
+
 // Dumps ruy profiling events if the ruy profiler is enabled.
 class RuyProfileListener : public BenchmarkListener {
  public:
@@ -310,10 +319,14 @@ TfLiteStatus PopulateInputLayerInfo(
 }
 
 std::shared_ptr<profiling::ProfileSummaryFormatter>
-CreateProfileSummaryFormatter(bool format_as_csv) {
-  return format_as_csv
-             ? std::make_shared<profiling::ProfileSummaryCSVFormatter>()
-             : std::make_shared<profiling::ProfileSummaryDefaultFormatter>();
+CreateProfileSummaryFormatter(const std::string& output_mode) {
+  if (output_mode == kOpProfilingOutputModeCsv) {
+    return std::make_shared<profiling::ProfileSummaryCSVFormatter>();
+  } else if (output_mode == kOpProfilingOutputModeProto) {
+    return std::make_shared<profiling::ProfileSummaryProtoFormatter>();
+  } else {
+    return std::make_shared<profiling::ProfileSummaryDefaultFormatter>();
+  }
 }
 
 }  // namespace
@@ -479,6 +492,11 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam(
       "enable_op_profiling",
       BenchmarkParam::Create<bool>(kOpProfilingEnabledDefault));
+  default_params.AddParam(
+      "op_profiling_output_mode",
+      BenchmarkParam::Create<std::string>(kOpProfilingOutputModeStdout));
+  default_params.AddParam("op_profiling_output_file",
+                          BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("max_profiling_buffer_entries",
                           BenchmarkParam::Create<int32_t>(1024));
   default_params.AddParam("allow_dynamic_profiling_buffer_increase",
@@ -565,14 +583,21 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
       CreateFlag<bool>("require_full_delegation", &params_,
                        "require delegate to run the entire graph"),
       CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
+      CreateFlag<std::string>(
+          "op_profiling_output_mode", &params_,
+          "Output mode for op profiling results. Supported values are: "
+          "'stdout', 'csv' and 'proto'."),
+      CreateFlag<std::string>("op_profiling_output_file", &params_,
+                              "Output file for op profiling results."),
       CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
                           "max initial profiling buffer entries"),
       CreateFlag<bool>("allow_dynamic_profiling_buffer_increase", &params_,
                        "allow dynamic increase on profiling buffer entries"),
-      CreateFlag<std::string>(
-          "profiling_output_csv_file", &params_,
-          "File path to export profile data as CSV, if not set "
-          "prints to stdout."),
+      CreateFlag<std::string>("profiling_output_csv_file", &params_,
+                              "[DEPRECATED: Use op_profiling_output_file and "
+                              "op_profiling_output_mode instead] File path to "
+                              "export profile data as CSV, if not set "
+                              "prints to stdout."),
       CreateFlag<bool>(
           "print_preinvoke_state", &params_,
           "print out the interpreter internals just before calling Invoke. The "
@@ -650,6 +675,10 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Require full delegation", verbose);
   LOG_BENCHMARK_PARAM(bool, "enable_op_profiling", "Enable op profiling",
                       verbose);
+  LOG_BENCHMARK_PARAM(std::string, "op_profiling_output_mode",
+                      "Op profiling output mode.", verbose);
+  LOG_BENCHMARK_PARAM(std::string, "op_profiling_output_file",
+                      "Op profiling output file.", verbose);
   LOG_BENCHMARK_PARAM(int32_t, "max_profiling_buffer_entries",
                       "Max initial profiling buffer entries", verbose);
   LOG_BENCHMARK_PARAM(bool, "allow_dynamic_profiling_buffer_increase",
@@ -691,6 +720,31 @@ TfLiteStatus BenchmarkTfLiteModel::ValidateParams() {
     TFLITE_LOG(ERROR)
         << "Please specify the name of your TF Lite input file with --graph";
     return kTfLiteError;
+  }
+
+  if (params_.Get<bool>("enable_op_profiling")) {
+    bool found =
+        std::find(std::begin(kOpProfilingOutputModes),
+                  std::end(kOpProfilingOutputModes),
+                  params_.Get<std::string>("op_profiling_output_mode")) !=
+        std::end(kOpProfilingOutputModes);
+
+    if (!found) {
+      TFLITE_LOG(ERROR) << "Output mode"
+                        << params_.Get<std::string>("op_profiling_output_mode")
+                        << " is not supported. Supported values are: 'stdout', "
+                           "'csv' and 'proto'.";
+      return kTfLiteError;
+    }
+
+    if (!params_.Get<std::string>("profiling_output_csv_file").empty()) {
+      // Backward compatibility for profiling_output_csv_file.
+      params_.Set<std::string>("op_profiling_output_mode",
+                               kOpProfilingOutputModeCsv);
+      params_.Set<std::string>(
+          "op_profiling_output_file",
+          params_.Get<std::string>("profiling_output_csv_file"));
+    }
   }
 
   return PopulateInputLayerInfo(
@@ -1123,9 +1177,9 @@ BenchmarkTfLiteModel::MayCreateProfilingListener() const {
   return std::unique_ptr<BenchmarkListener>(new ProfilingListener(
       interpreter_.get(), params_.Get<int32_t>("max_profiling_buffer_entries"),
       params_.Get<bool>("allow_dynamic_profiling_buffer_increase"),
-      params_.Get<std::string>("profiling_output_csv_file"),
+      params_.Get<std::string>("op_profiling_output_file"),
       CreateProfileSummaryFormatter(
-          !params_.Get<std::string>("profiling_output_csv_file").empty())));
+          params_.Get<std::string>("op_profiling_output_mode"))));
 }
 
 TfLiteStatus BenchmarkTfLiteModel::RunImpl() {
