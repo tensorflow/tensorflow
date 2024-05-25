@@ -146,7 +146,7 @@ std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
             hero.shape(),
             analysis_.fusion_roots()[root_index].instruction().shape(),
             mlir_context));
-    map.Simplify(GetIndexingMapForInstruction);
+    map.Simplify();
     return map;
   }
   return GetIndexing(/*input=*/false, hero.shape(), mlir_context);
@@ -163,7 +163,7 @@ std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToInputIndexing(
              &analysis_.fusion_root(root_index).instruction(), 0, mlir_context)
              .indexing_maps[hero_operand_index]
              .begin());
-    map.Simplify(GetIndexingMapForInstruction);
+    map.Simplify();
     return map;
   }
   return GetIndexing(/*input=*/true, hero.operand(hero_operand_index)->shape(),
@@ -383,7 +383,7 @@ IndexingMap MlirTransposeFusion::GetIndexing(bool input,
   }
   result =
       ComposeIndexingMaps(result, GetBitcastMap(normalized_shape, shape, ctx));
-  result.Simplify(GetIndexingMapForInstruction);
+  result.Simplify();
   return result;
 }
 

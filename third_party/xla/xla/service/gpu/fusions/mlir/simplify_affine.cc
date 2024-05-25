@@ -147,7 +147,7 @@ struct RewriteAffineApply : OpRewritePattern<mlir::affine::AffineApplyOp> {
     IndexingMap indexing_map(affine_map, std::move(dim_ranges),
                              std::move(symbol_ranges),
                              /*rt_vars=*/{});
-    indexing_map.Simplify(GetIndexingMapForInstruction);
+    indexing_map.Simplify();
     auto result_expr = indexing_map.GetAffineMap().getResult(0);
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -170,7 +170,7 @@ struct RewriteApplyIndexingOp : OpRewritePattern<ApplyIndexingOp> {
   LogicalResult matchAndRewrite(ApplyIndexingOp op,
                                 PatternRewriter& rewriter) const override {
     auto indexing_map = op.getIndexingMap();
-    indexing_map.Simplify(GetIndexingMapForInstruction);
+    indexing_map.Simplify();
     auto affine_map = indexing_map.GetAffineMap();
     int64_t dim_count = indexing_map.GetDimensionCount();
     auto operands = op->getOperands();

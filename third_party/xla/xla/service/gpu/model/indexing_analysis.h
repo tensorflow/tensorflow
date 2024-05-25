@@ -186,11 +186,6 @@ IndexingMap CreateIdentityMap(const Shape& shape,
 llvm::SmallVector<mlir::AffineExpr, 4> DelinearizeInBoundsIndex(
     mlir::AffineExpr linear, absl::Span<const int64_t> sizes);
 
-// Returns the output-to-input indexing map of the first output of `instr`
-IndexingMap GetIndexingMapForInstruction(const HloInstruction* instr,
-                                         int64_t operand_idx,
-                                         mlir::MLIRContext* mlir_context);
-
 }  // namespace gpu
 }  // namespace xla
 

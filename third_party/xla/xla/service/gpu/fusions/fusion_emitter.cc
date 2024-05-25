@@ -197,7 +197,7 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
   } else {
     indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
   }
-  indexing_map.Simplify(GetIndexingMapForInstruction);
+  indexing_map.Simplify();
   return indexing_map;
 }
 

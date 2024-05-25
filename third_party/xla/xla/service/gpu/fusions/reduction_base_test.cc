@@ -348,12 +348,12 @@ TEST_F(ReductionTest, ThreadIndexingSideOutput) {
   )";
   auto input_indexing =
       fusion.ComputeThreadIdToInputIndexing(1, 0, &mlir_context_);
-  input_indexing->Simplify(GetIndexingMapForInstruction);
+  input_indexing->Simplify();
   EXPECT_THAT(input_indexing->ToString(),
               MatchIndexingString(kExpectedIndexing));
   auto output_indexing =
       fusion.ComputeThreadIdToOutputIndexing(1, &mlir_context_);
-  output_indexing->Simplify(GetIndexingMapForInstruction);
+  output_indexing->Simplify();
   EXPECT_THAT(output_indexing->ToString(),
               MatchIndexingString(kExpectedIndexing));
 }

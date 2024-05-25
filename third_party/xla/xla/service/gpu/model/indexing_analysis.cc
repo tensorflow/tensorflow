@@ -624,7 +624,7 @@ IndexingMap ComposeIndexingMapsForWindow(
   // Composed indexing.
   IndexingMap result =
       ComposeIndexingMaps(input_indexing_no_padding, padded_input_indexing);
-  result.Simplify(GetIndexingMapForInstruction);
+  result.Simplify();
   result.RemoveUnusedSymbols();
   return result;
 }
@@ -941,7 +941,7 @@ HloInstructionIndexing ComputeOutputToInputReshapeOpIndexing(
   IndexingMap reshape_indexing_map = IndexingMap::FromTensorSizes(
       ComputeReshapeIndexingMap(input, output, mlir_context),
       output.dimensions(), {});
-  reshape_indexing_map.Simplify(GetIndexingMapForInstruction);
+  reshape_indexing_map.Simplify();
   return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
 }
 HloInstructionIndexing ComputeInputToOutputReshapeOpIndexing(
@@ -952,7 +952,7 @@ HloInstructionIndexing ComputeInputToOutputReshapeOpIndexing(
   IndexingMap reshape_indexing_map = IndexingMap::FromTensorSizes(
       ComputeReshapeIndexingMap(output, input, mlir_context),
       input.dimensions(), {});
-  reshape_indexing_map.Simplify(GetIndexingMapForInstruction);
+  reshape_indexing_map.Simplify();
   return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
 }
 
@@ -1096,7 +1096,7 @@ HloInstructionIndexing ComputeOutputToInputBitcastOpIndexing(
     const HloInstruction* bitcast, MLIRContext* mlir_context) {
   auto bitcast_map = GetBitcastMap(bitcast->shape(),
                                    bitcast->operand(0)->shape(), mlir_context);
-  bitcast_map.Simplify(GetIndexingMapForInstruction);
+  bitcast_map.Simplify();
   return HloInstructionIndexing::FromIndexingMaps({bitcast_map});
 }
 
@@ -1104,7 +1104,7 @@ HloInstructionIndexing ComputeInputToOutputBitcastOpIndexing(
     const HloInstruction* bitcast, MLIRContext* mlir_context) {
   auto bitcast_map = GetBitcastMap(bitcast->operand(0)->shape(),
                                    bitcast->shape(), mlir_context);
-  bitcast_map.Simplify(GetIndexingMapForInstruction);
+  bitcast_map.Simplify();
   return HloInstructionIndexing::FromIndexingMaps({bitcast_map});
 }
 
@@ -1262,7 +1262,7 @@ bool HloInstructionIndexing::Simplify() {
       to_remove.push_back(map);
       if (map.IsUndefined()) {
         to_add.push_back(map);
-      } else if (map.Simplify(GetIndexingMapForInstruction)) {
+      } else if (map.Simplify()) {
         map.RemoveUnusedSymbols();
       } else {
         to_remove.pop_back();
@@ -1377,7 +1377,7 @@ GroupedByOpIndexingMap ComputeGroupedOutputToInputIndexing(
       for (const IndexingMap& producer_map : producer_operand_indexing) {
         for (const IndexingMap& consumer_map : consumer_indexing_maps_copy) {
           auto composed_map = ComposeIndexingMaps(consumer_map, producer_map);
-          composed_map.Simplify(GetIndexingMapForInstruction);
+          composed_map.Simplify();
           composed_map.RemoveUnusedSymbols();
           grouped_indexing_maps[&producer_operand_adaptor.instruction()].insert(
               composed_map);
@@ -1536,7 +1536,7 @@ IndexingMap ComputeEpilogueInputToOutputIndexing(
     auto user_indexing = ComputeInputToOutputIndexing(
         &user, user.operand_index(&producer), mlir_context);
     root_indexing = root_indexing * *user_indexing.indexing_maps[0].begin();
-    root_indexing.Simplify(GetIndexingMapForInstruction);
+    root_indexing.Simplify();
     root_indexing.RemoveUnusedSymbols();
   }
   return root_indexing;
