@@ -20,11 +20,19 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
