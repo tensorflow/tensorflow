@@ -25,6 +25,7 @@ tensorflow/contrib/cmake/_build/
 /tensorflow/lite/gen/**
 /tensorflow/lite/tools/make/downloads/**
 /tensorflow/lite/tools/make/gen/**
+/tensorflow/**/*_generated.h
 /api_init_files_list.txt
 /estimator_api_init_files_list.txt
 *.whl
