@@ -16,9 +16,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_COMMON_PJRT_UTIL_H_
 
 #include <memory>
-#include <optional>
-#include <set>
 
+#include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"

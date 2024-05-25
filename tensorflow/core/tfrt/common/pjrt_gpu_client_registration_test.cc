@@ -12,13 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <optional>
-#include <utility>
 
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_options.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_registry.h"
+#include "tsl/framework/device_type.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {

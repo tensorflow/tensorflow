@@ -278,7 +278,9 @@ TfLiteStatus SingleOpModel::ApplyDelegate() {
   if (delegate_) {
     TFLITE_LOG(WARN) << "Having a manually-set TfLite delegate, and bypassing "
                         "KernelTestDelegateProviders";
-    TF_LITE_ENSURE_STATUS(interpreter_->ModifyGraphWithDelegate(delegate_));
+    SetDelegateApplicationStatus(
+        interpreter_->ModifyGraphWithDelegate(delegate_));
+    TF_LITE_ENSURE_STATUS(*GetDelegateApplicationStatus());
     ++num_applied_delegates_;
   } else {
     auto* delegate_providers = tflite::KernelTestDelegateProviders::Get();
@@ -292,8 +294,9 @@ TfLiteStatus SingleOpModel::ApplyDelegate() {
     for (auto& one : delegate_providers->CreateAllDelegates()) {
       // The raw ptr always points to the actual TfLiteDegate object.
       auto* delegate_raw_ptr = one.delegate.get();
-      TF_LITE_ENSURE_STATUS(
+      SetDelegateApplicationStatus(
           interpreter_->ModifyGraphWithDelegate(std::move(one.delegate)));
+      TF_LITE_ENSURE_STATUS(*GetDelegateApplicationStatus());
       // Note: 'delegate_' is always set to the last successfully applied one.
       delegate_ = delegate_raw_ptr;
       ++num_applied_delegates_;
