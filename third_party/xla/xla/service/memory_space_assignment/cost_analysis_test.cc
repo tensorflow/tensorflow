@@ -65,7 +65,7 @@ class MemorySpaceAssignmentCostAnalysisTest : public HloTestBase {
     TF_ASSIGN_OR_RETURN(
         cost_analysis_,
         CostAnalysis::Create(*hlo_cost_analysis_costs_, options_, *module));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   CostAnalysisOptions options_;

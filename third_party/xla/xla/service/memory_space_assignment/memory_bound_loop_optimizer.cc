@@ -158,7 +158,7 @@ absl::Status MemoryBoundLoopOptimizer::Initialize() {
   for (const HloBuffer* buffer : buffers_to_process) {
     MaybeCreateLoopValue(*buffer, loop_computation);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MemoryBoundLoopOptimizer::MaybeCreateLoopValue(

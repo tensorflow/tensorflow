@@ -142,7 +142,7 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
     nb_dtype dtype, absl::Span<const int64_t> shape,
     absl::Span<const PyArray> py_arrays) {
   if (py_arrays.empty()) {
-    // TODO(hyeontaek): Return a Status.
+    // TODO(hyeontaek): Return a absl::Status.
     throw nb::value_error("At least one array must be provided.");
   }
   std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
@@ -181,7 +181,7 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
 
   auto ifrt_dtype = DtypeToIfRtDType(dtype);
   if (!ifrt_dtype.ok()) {
-    // TODO(hyeontaek): Return a Status.
+    // TODO(hyeontaek): Return a absl::Status.
     throw nb::value_error(ifrt_dtype.status().ToString().c_str());
   }
   auto ifrt_array = client->AssembleArrayFromSingleDeviceArrays(
@@ -192,7 +192,7 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
                                      /*shard_shapes=*/std::move(shapes)),
       absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput);
   if (!ifrt_array.ok()) {
-    // TODO(hyeontaek): Return a Status.
+    // TODO(hyeontaek): Return a absl::Status.
     throw nb::value_error(ifrt_array.status().ToString().c_str());
   }
   return *std::move(ifrt_array);
@@ -554,11 +554,11 @@ nb::object PyArray::arrays() {
   return nb::cast(py_arrays_cached());
 }
 
-Status PyArray::set_arrays(nb::object obj) {
+absl::Status PyArray::set_arrays(nb::object obj) {
   if (obj.is_none()) {
     SetIfrtArray(tsl::RCReference<ifrt::Array>());
     py_arrays().clear();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (!nb::isinstance<nb::list>(obj)) {
@@ -568,7 +568,7 @@ Status PyArray::set_arrays(nb::object obj) {
 
   nb::list list(obj);
 
-  if (list.size() == 0) return OkStatus();
+  if (list.size() == 0) return absl::OkStatus();
 
   SetIfrtArray(tsl::RCReference<ifrt::Array>());
   py_arrays().clear();
@@ -629,7 +629,7 @@ Status PyArray::set_arrays(nb::object obj) {
                                          /*shard_shapes=*/std::move(shapes)),
           absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput));
   SetIfrtArray(std::move(array));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<PyArray> PyArray::FullyReplicatedShard() {
@@ -653,7 +653,7 @@ absl::StatusOr<PyArray> PyArray::FullyReplicatedShard() {
   return nb::cast<PyArray>(cached);
 }
 
-Status PyArray::BlockUntilReady() const {
+absl::Status PyArray::BlockUntilReady() const {
   nb::gil_scoped_release gil_release;
   if (ifrt_array() == nullptr) {
     return InvalidArgument(
@@ -697,7 +697,7 @@ absl::StatusOr<nb::object> PyArray::SingleDeviceArrayToNumpyArray() {
   return result;
 }
 
-Status PyArray::CopySingleDeviceArrayToHostAsync() {
+absl::Status PyArray::CopySingleDeviceArrayToHostAsync() {
   TF_ASSIGN_OR_RETURN(auto arr, FullyReplicatedShard());
   return arr.GetStorage().host_value.CopyToHostAsync(
       arr.GetStorage().dynamic_shape, arr.ifrt_array());
@@ -932,7 +932,7 @@ absl::StatusOr<nb::object> CudaArrayInterfaceToBuffer(
                                             std::move(ifrt_array), false, true);
 }
 
-Status PyArray::Delete() {
+absl::Status PyArray::Delete() {
   for (auto& arr : py_arrays()) {
     TF_RETURN_IF_ERROR(arr.Delete());
   }
@@ -941,7 +941,7 @@ Status PyArray::Delete() {
     TF_RETURN_IF_ERROR(ifrt_array()->Delete().Await());
     SetIfrtArray(tsl::RCReference<ifrt::Array>());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool PyArray::IsDeleted() const {
@@ -1236,7 +1236,7 @@ bool HasDefaultLayout(const Layout& layout) {
 }
 
 int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
-  Status status = [&]() -> absl::Status {
+  absl::Status status = [&]() -> absl::Status {
     PyArray py_array = nb::borrow<PyArray>(exporter);
     if (py_array.ifrt_array() == nullptr) {
       // TODO(phawkins): why is this happening?
@@ -1348,7 +1348,7 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     }
     TF_RETURN_IF_ERROR(buffer.BlockHostUntilReady());
     view->internal = extra.release();
-    return OkStatus();
+    return absl::OkStatus();
   }();
   if (!status.ok()) {
     // numpy.asarray(...) eats the PyExc_BufferError. Adding a log here helps
@@ -1466,16 +1466,16 @@ absl::StatusOr<nb::object> PyHostValue::AsNumPyArray(
   return value_;
 }
 
-Status PyHostValue::CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
-                                    ifrt::Array* ifrt_array) {
+absl::Status PyHostValue::CopyToHostAsync(
+    std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array) {
   if (ready_.IsValid()) {
     // The array value has been populated, so CopyToHostAsync has been called.
-    return OkStatus();
+    return absl::OkStatus();
   }
   auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array);
   if (arr != nullptr && !arr->pjrt_buffers().front()->IsTuple() &&
       IsZeroCopyableCpuBuffer(arr->pjrt_buffers().front().get())) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   auto transfer_guard_formatter = [ifrt_array] {
     return absl::StrCat(
@@ -1520,11 +1520,11 @@ Status PyHostValue::CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
                                         ifrt::ArrayCopySemantics::kReuseInput);
   // Make sure the destination of the copy remains alive until the copy is done.
   value_.inc_ref();
-  ready_.OnReady([array{value_.ptr()}](Status status) {
+  ready_.OnReady([array{value_.ptr()}](absl::Status status) {
     GlobalPyRefManager()->AddGarbage(nb::steal(array));
   });
   value_.attr("flags").attr("writeable") = nb::bool_(false);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1559,7 +1559,7 @@ PyType_Slot PyArray_slots[] = {
 
 }  // namespace
 
-Status PyArray::RegisterTypes(nb::module_& m) {
+absl::Status PyArray::RegisterTypes(nb::module_& m) {
   std::string name =
       absl::StrCat(nb::cast<std::string>(m.attr("__name__")), ".ArrayImpl");
 
@@ -1695,7 +1695,7 @@ Status PyArray::RegisterTypes(nb::module_& m) {
            [](const PyArrayResultHandler& self,
               std::vector<PyArray> py_arrays) { return self.Call(py_arrays); });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

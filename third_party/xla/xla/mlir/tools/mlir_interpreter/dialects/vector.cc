@@ -155,7 +155,7 @@ InterpreterValue Bitcast(InterpreterState&, vector::BitCastOp op,
                          const InterpreterValue& vector) {
   ShapedType ty = cast<ShapedType>(op->getResultTypes()[0]);
   auto flattened = vector.CoerceLayout({});
-  auto buffer = flattened.Buffer();
+  auto buffer = flattened.GetBuffer();
   auto view = flattened.View();
   view.sizes = llvm::to_vector(ty.getShape());
   view.strides = BufferView::GetDefaultStrides(view.sizes);
@@ -190,7 +190,7 @@ InterpreterValue Broadcast(InterpreterState&, vector::BroadcastOp broadcast,
 void CompressStore(InterpreterState& state, vector::CompressStoreOp,
                    InterpreterValue dst, ArrayRef<int64_t> indices,
                    TensorOrMemref<bool> mask, InterpreterValue value) {
-  auto dst_buffer = dst.Buffer();
+  auto dst_buffer = dst.GetBuffer();
   const auto& dst_view = dst.View();
   if (dst_view.strides.back() != 1) {
     state.AddFailure("trailing dimension must be continguous");
@@ -202,7 +202,7 @@ void CompressStore(InterpreterState& state, vector::CompressStoreOp,
     return;
   }
 
-  auto src_buffer = value.Buffer();
+  auto src_buffer = value.GetBuffer();
   const auto& src_view = value.View();
 
   // TODO(jreiffers): Bounds checks.

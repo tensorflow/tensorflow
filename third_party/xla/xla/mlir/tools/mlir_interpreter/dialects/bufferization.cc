@@ -57,7 +57,7 @@ InterpreterValue AllocTensor(
 InterpreterValue Clone(InterpreterState& state, bufferization::CloneOp,
                        const InterpreterValue& in) {
   if (auto* stats = state.GetOptions().stats) {
-    stats->heap_size += in.Buffer()->GetByteSize();
+    stats->heap_size += in.GetBuffer()->GetByteSize();
     stats->peak_heap_size = std::max(stats->peak_heap_size, stats->heap_size);
     ++stats->num_allocations;
   }

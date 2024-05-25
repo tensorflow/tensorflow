@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -586,6 +587,8 @@ class IfCmd : public CommandBufferCmd {
                       const RecordParams& record_params,
                       se::CommandBuffer* command_buffer) override;
 
+  bool force_update() override;
+
   BufferUsageVector buffers() override;
 
  private:
@@ -609,6 +612,8 @@ class IfElseCmd : public CommandBufferCmd {
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
                       se::CommandBuffer* command_buffer) override;
+
+  bool force_update() override;
 
   BufferUsageVector buffers() override;
 
@@ -634,6 +639,8 @@ class CaseCmd : public CommandBufferCmd {
                       const RecordParams& record_params,
                       se::CommandBuffer* command_buffer) override;
 
+  bool force_update() override;
+
   BufferUsageVector buffers() override;
 
  private:
@@ -657,6 +664,8 @@ class ForCmd : public CommandBufferCmd {
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
                       se::CommandBuffer* command_buffer) override;
+
+  bool force_update() override;
 
   BufferUsageVector buffers() override;
 
@@ -682,6 +691,8 @@ class WhileCmd : public CommandBufferCmd {
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
                       se::CommandBuffer* command_buffer) override;
+
+  bool force_update() override;
 
   BufferUsageVector buffers() override;
 

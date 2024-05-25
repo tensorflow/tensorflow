@@ -47,9 +47,6 @@ namespace tpu {
 const ::stream_executor::Platform::Id TpuPlatform::kId = GetTpuPlatformId();
 TpuPlatform* tpu_registered_platform = nullptr;
 
-template <typename T>
-using StatusOr = ::absl::StatusOr<T>;
-
 TpuPlatform::TpuPlatform() : name_("TPU") {
   platform_ = stream_executor::tpu::ExecutorApiFn()->TpuPlatform_NewFn();
   CHECK(platform_ != nullptr);
@@ -99,13 +96,13 @@ int TpuPlatform::VisibleDeviceCount() const {
       ->TpuPlatform_VisibleDeviceCountFn(platform_);
 }
 
-StatusOr<::stream_executor::StreamExecutor*> TpuPlatform::GetExecutor(
+absl::StatusOr<::stream_executor::StreamExecutor*> TpuPlatform::GetExecutor(
     const ::stream_executor::StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
       config, [&]() { return GetUncachedExecutor(config); });
 }
 
-StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
+absl::StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
 TpuPlatform::GetUncachedExecutor(
     const ::stream_executor::StreamExecutorConfig& config) {
   SE_StreamExecutorConfig* c_config = stream_executor::tpu::ExecutorApiFn()
@@ -155,18 +152,17 @@ TpuRuntimeVersion TpuPlatform::version() const {
       platform_);
 }
 
-void TpuPlatform::InsertEvent(stream_executor::EventInterface* key,
-                              SE_Event* val) {
+void TpuPlatform::InsertEvent(stream_executor::Event* key, SE_Event* val) {
   absl::MutexLock lock(&event_map_mu_);
   event_map_[key] = val;
 }
 
-SE_Event* TpuPlatform::LookupEvent(stream_executor::EventInterface* key) {
+SE_Event* TpuPlatform::LookupEvent(stream_executor::Event* key) {
   absl::ReaderMutexLock lock(&event_map_mu_);
   return event_map_.at(key);
 }
 
-void TpuPlatform::EraseEvent(stream_executor::EventInterface* key) {
+void TpuPlatform::EraseEvent(stream_executor::Event* key) {
   absl::MutexLock lock(&event_map_mu_);
   event_map_.erase(key);
 }

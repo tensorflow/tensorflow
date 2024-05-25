@@ -39,10 +39,8 @@ namespace tpu {
 // individual nodes.
 class TpuNodeContext final {
  public:
-  template <typename T>
-  using StatusOr = absl::StatusOr<T>;
-
-  static StatusOr<std::unique_ptr<TpuNodeContext>> Create(int device_ordinal);
+  static absl::StatusOr<std::unique_ptr<TpuNodeContext>> Create(
+      int device_ordinal);
 
   explicit TpuNodeContext(int device_ordinal, XLA_TpuNodeContext* node_context)
       : device_ordinal_(device_ordinal), node_context_(node_context) {

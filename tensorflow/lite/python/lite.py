@@ -33,6 +33,7 @@ from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.experimental.microfrontend.python.ops import audio_microfrontend_op  # pylint: disable=unused-import
 from tensorflow.lite.python import conversion_metadata_schema_py_generated as conversion_metadata_fb
 from tensorflow.lite.python import lite_constants as constants
+from tensorflow.lite.python.convert import build_conversion_flags as _build_conversion_flags
 from tensorflow.lite.python.convert import convert_graphdef as _convert_graphdef
 from tensorflow.lite.python.convert import convert_graphdef_with_arrays as _convert_graphdef_with_arrays
 from tensorflow.lite.python.convert import convert_jax_hlo as _convert_jax_hlo
@@ -717,6 +718,7 @@ class TFLiteConverterBase:
       bias_type,
       allow_float,
       enable_variable_quantization,
+      debug_options,
   ):
     """Quantize the model."""
     # pylint: disable=protected-access
@@ -758,6 +760,7 @@ class TFLiteConverterBase:
           output_data_type=output_type,
           enable_variable_quantization=enable_variable_quantization,
           disable_per_channel_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
+          debug_options_str=debug_options.SerializeToString(),
       )
     else:
       return calibrate_quantize.calibrate_and_quantize(
@@ -1098,7 +1101,9 @@ class TFLiteConverterBase:
     self._tflite_metrics.set_converter_latency(value)
 
   @convert_phase(Component.OPTIMIZE_TFLITE_MODEL)
-  def _optimize_tflite_model(self, model, quant_mode, quant_io=True):
+  def _optimize_tflite_model(
+      self, model, quant_mode, debug_options, quant_io=True
+  ):
     """Apply optimizations on a TFLite model."""
 
     # Disable TFLite quantization pass when
@@ -1126,6 +1131,7 @@ class TFLiteConverterBase:
             q_bias_type,
             q_allow_float,
             q_variable_quantization,
+            debug_options,
         )
 
       m_in_type = in_type if in_type else _dtypes.float32
@@ -1415,7 +1421,10 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
 
     result = _convert_saved_model(**converter_kwargs)
     return self._optimize_tflite_model(
-        result, quant_mode, quant_io=self.experimental_new_quantizer
+        result,
+        quant_mode,
+        _build_conversion_flags(**converter_kwargs).debug_options,
+        quant_io=self.experimental_new_quantizer,
     )
 
   def convert(self, graph_def, input_tensors, output_tensors):
@@ -1461,7 +1470,10 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     )
 
     return self._optimize_tflite_model(
-        result, self._quant_mode, quant_io=self.experimental_new_quantizer
+        result,
+        self._quant_mode,
+        _build_conversion_flags(**converter_kwargs).debug_options,
+        quant_io=self.experimental_new_quantizer,
     )
 
 
@@ -2036,7 +2048,10 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
     result = _convert_jax_hlo(**converter_kwargs)
 
     return self._optimize_tflite_model(
-        result, quant_mode, quant_io=self.experimental_new_quantizer
+        result,
+        quant_mode,
+        _build_conversion_flags(**converter_kwargs).debug_options,
+        quant_io=self.experimental_new_quantizer,
     )
 
 
@@ -2572,7 +2587,10 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
       )
 
     return self._optimize_tflite_model(
-        result, quant_mode, quant_io=self.experimental_new_quantizer
+        result,
+        quant_mode,
+        _build_conversion_flags(**converter_kwargs).debug_options,
+        quant_io=self.experimental_new_quantizer,
     )
 
   def get_input_arrays(self):

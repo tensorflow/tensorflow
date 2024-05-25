@@ -75,7 +75,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
           new_control_predecessor->AddControlDependencyTo(new_hlo_pointer));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Does not create new nodes for the parameter; rather, notes the mapping from
@@ -84,7 +84,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleParameter(HloInstruction* parameter) override {
     TF_RETURN_IF_ERROR(NoteMapping(
         parameter, call_->mutable_operand(parameter->parameter_number())));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Wires the consumers of the call to instead point at the newly created root,
@@ -125,7 +125,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
         std::make_pair(subcomputation_hlo, new_hlo));
     TF_RET_CHECK(result.second)
         << "A mapping for the subcomputation HLO is already present.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   HloInstruction* call_;
@@ -164,7 +164,7 @@ absl::StatusOr<bool> CallInliner::Run(
                                                 -> absl::Status {
     if (!HloInstruction::IsThreadIncluded(
             node.computation()->execution_thread(), execution_threads)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     VLOG(1) << "Visiting node: " << node.ToString();
     for (HloInstruction* instruction :
@@ -192,7 +192,7 @@ absl::StatusOr<bool> CallInliner::Run(
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }));
   if (did_mutate) {
     // Run DCE to remove called computations which are now becoming unused.

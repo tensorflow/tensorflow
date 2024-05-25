@@ -43,9 +43,12 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::mlir::AffineConstantExpr;
+using ::mlir::AffineDimExpr;
 using ::mlir::AffineExpr;
 using ::mlir::AffineExprKind;
 using ::mlir::AffineMap;
+using ::mlir::AffineSymbolExpr;
 using ::mlir::getAffineConstantExpr;
 using ::mlir::getAffineDimExpr;
 using ::mlir::MLIRContext;
@@ -170,13 +173,270 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromFloorDiv(
   return std::nullopt;
 }
 
+// See documentation of `DestructureSummation` for an explanation of the
+// algorithm.
+void DestructureSummationImpl(AffineExpr expr,
+                              std::vector<AffineExpr>& summands) {
+  switch (expr.getKind()) {
+    case AffineExprKind::Add: {
+      const auto add = llvm::cast<mlir::AffineBinaryOpExpr>(expr);
+      DestructureSummationImpl(add.getLHS(), summands);
+      DestructureSummationImpl(add.getRHS(), summands);
+      break;
+    }
+    default:
+      // The expression is not a sum.
+      summands.push_back(expr);
+      break;
+  }
+}
+
+// Given an n-ary summation of expressions `e0 + e1 + ... + e{n-1}` with
+// arbitrary order of association, returns the vector `(e0, e1, ..., e{n-1})`.
+// The order of the returned subexpressions is not guaranteed to match the order
+// in which they appear in the original expression.
+//
+// AffineExprKind::Add should be the operation that binds the least tightly,
+// allowing us to simply recursively destructure expressions until we reach an
+// AffineExprKind that is not an AffineExprKind::Add.
+//
+// Note that this will only work correctly for expressions that do no
+// factoring/grouping of summands such as `(d0 + d1) * c` or `(d0 + d1) mod c`.
+// It's unclear at this point whether this restriction will prove problematic,
+// but it isn't really worth thinking about until we are sure this actually
+// has practical implications.
+std::vector<AffineExpr> DestructureSummation(AffineExpr expr) {
+  std::vector<AffineExpr> summands;
+  DestructureSummationImpl(expr, summands);
+  return summands;
+}
+
 std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
-    AffineExpr strided_indexing, absl::Span<Interval const> symbol_intervals) {
+    AffineExpr strided_indexing, absl::Span<Interval const> dimension_intervals,
+    absl::Span<Interval const> symbol_intervals);
+
+// Given a multivariate summation of strided indexing expression, extracts a
+// size and a stride for each summand. Returns std::nullopt if extraction fails
+// for any of the summands.
+std::optional<std::vector<SizeAndStrideExpression>>
+ExtractSizesAndStridesFromMultivariateSummation(
+    AffineExpr summation, absl::Span<Interval const> dimension_intervals,
+    absl::Span<Interval const> symbol_intervals) {
+  std::vector<AffineExpr> summands = DestructureSummation(summation);
+
+  std::vector<SizeAndStrideExpression> sizes_and_strides;
+  sizes_and_strides.reserve(summands.size());
+  for (AffineExpr summand : summands) {
+    std::optional<SizeAndStrideExpression> maybe_size_and_stride =
+        ExtractSizeAndStride(summand, dimension_intervals, symbol_intervals);
+    if (!maybe_size_and_stride.has_value()) {
+      VLOG(1) << "Couldn't extract size and stride from "
+              << AffineMapPrinter().ToString(summand);
+      return std::nullopt;
+    }
+    sizes_and_strides.push_back(*maybe_size_and_stride);
+  }
+  return sizes_and_strides;
+}
+
+// Given a list of sizes and strides, returns the product of all sizes.
+AffineExpr CombineSizes(
+    absl::Span<SizeAndStrideExpression const> sizes_and_strides) {
+  CHECK(!sizes_and_strides.empty());
+  AffineExpr product =
+      getAffineConstantExpr(1, sizes_and_strides[0].size.getContext());
+  for (const SizeAndStrideExpression& size_and_stride : sizes_and_strides) {
+    product = product * size_and_stride.size;
+  }
+  return product;
+}
+
+// Returns an affine expression logically equivalent to
+//   `eq_param != 1 ? true_expr : false_expr`.
+// `eq_param` is assumed to be able to be in the inclusive range
+//    {1, 2, ..., eq_param_inclusive_upper_bound}.
+AffineExpr IfNeqOne(AffineExpr eq_param, AffineExpr true_expr,
+                    AffineExpr false_expr,
+                    int64_t eq_param_inclusive_upper_bound) {
+  // Let e = eq_param, and b = eq_param_inclusive_bound, then we have:
+  //     1 <= e <= b
+  // <=> -b <= e - b - 1 <= -1              (subtract (b + 1))
+  // <=> 1 <= b + 1 - e <= b                (negate)
+  // <=> 0 <= (b + 1 - e) floordiv b <= 1   (divide by b)
+  //
+  // Since (b + 1 - e) floordiv b is an integer, it can only take values 0 or 1.
+  // Let's prove that
+  //   (b + 1 - e) floordiv b = 1 <=> e = 1.
+  //
+  // * If e = 1, then (b + 1 - e) floordiv b = (b + 1 - 1) floordiv b = 1.
+  // * If e != 1, then 1 < e since 1 is the lower bound for e.
+  //     1 < e <=> -e < -1                       (negate)
+  //           <=> b + 1 - e < b                 (add b + 1)
+  //           <=> (b - e + 1) floordiv b < 1.   (divide by b)
+  //   We also know that 0 <= (b + 1 - e) floordiv b. Therefore, we have that
+  //     (b - e + 1) floordiv b = 0.
+  //
+  // Thus,
+  //   (b + 1 - e) floordiv b = 1 <=> e = 1, and
+  //   (b + 1 - e) floordiv b = 0 <=> e != 1
+  // hold.
+  AffineExpr b = getAffineConstantExpr(eq_param_inclusive_upper_bound,
+                                       eq_param.getContext());
+  AffineExpr condition = mlir::getAffineBinaryOpExpr(AffineExprKind::FloorDiv,
+                                                     b + 1 - eq_param, b);
+
+  return condition * false_expr + (1 - condition) * true_expr;
+}
+
+// Sorts a list of `SizeAndStrideExpression`s by stride. There is a precondition
+// that all strides are constant.
+void SortByStride(std::vector<SizeAndStrideExpression>& sizes_and_strides) {
+  absl::c_sort(sizes_and_strides, [](const SizeAndStrideExpression& sas1,
+                                     const SizeAndStrideExpression& sas2) {
+    int64_t stride1 = llvm::cast<AffineConstantExpr>(sas1.stride).getValue();
+    int64_t stride2 = llvm::cast<AffineConstantExpr>(sas2.stride).getValue();
+    return stride1 < stride2;
+  });
+}
+
+// Given a list of sizes and strides, combines the strides into a single
+// expression if it is possible.
+//
+// The current implementation expects that each size captures a single dimension
+// parameter.
+//
+// Let s be an n-dimensional shape that we want to fully collapse. In order to
+// be propagated successfully through the collapse, the pattern of the tiling of
+// s will have to look like the following (in row-major order):
+//   (1*, partial_dim?, full_dims*, 1*)
+// where full_dims are dimensions along which we capture all the elements
+// we can based on the corresponding stride, and partial_dim is a dimension that
+// can be captured with an arbitrary tile.
+//
+// In that case, the stride will be the stride corresponding to the minormost
+// dimension in which we capture more than a single element. This corresponds
+// to the size expression `e` with the smallest stride such that `e` evaluates
+// to another value than 1. Algorithmically, this can be represented as a series
+// of nested if statements:
+//   if size0 != 1 then stride0 else (if size1 != 1 then stride1 else ...)
+// where {size,stride}i = size_and_strides[i].{size,stride} (sizes_and_strides
+// being sorted in ascending order of stride).
+//
+// We generate this nest.
+//
+// If all the sizes are 1, then return a zero stride. Note that this
+// value is arbitrarily chosen.
+std::optional<AffineExpr> CombineStrides(
+    std::vector<SizeAndStrideExpression> sizes_and_strides,
+    absl::Span<Interval const> dimension_intervals) {
+  CHECK(!sizes_and_strides.empty());
+  for (const SizeAndStrideExpression& size_and_stride : sizes_and_strides) {
+    if (size_and_stride.stride.getKind() != AffineExprKind::Constant) {
+      VLOG(1) << "Attempted to combine non-constant stride: "
+              << AffineMapPrinter().ToString(size_and_stride.stride);
+      return std::nullopt;
+    }
+
+    // We know the exact bounds of dimension parameters, since they correspond
+    // to parameters of the initial indexing map. It follows that if a size
+    // expression is exactly a dimension parameter, we know its exact bounds.
+    //
+    // If a size is not exactly a dimension parameter, then it is dubious
+    // whether we know the bounds---and may thus calculate wrong strides.
+    if (size_and_stride.size.getKind() != AffineExprKind::DimId) {
+      VLOG(1) << "Attempted to combine strides but got non-dimension size "
+              << AffineMapPrinter().ToString(size_and_stride.size);
+      return std::nullopt;
+    }
+  }
+
+  SortByStride(sizes_and_strides);
+
+  for (auto [dim_id, size_and_stride] : llvm::enumerate(sizes_and_strides)) {
+    int64_t stride =
+        llvm::cast<AffineConstantExpr>(size_and_stride.stride).getValue();
+
+    // The minormost stride can be anything, but we expect every subsequent
+    // stride to be exactly `p_stride * p_size` where `p_size` is the upper
+    // bound of the size expression of the previous dimension and `p_stride` is
+    // its stride expression.
+    //
+    // For simplicity, we assume that each size expression captures a single
+    // dimension parameter.
+    if (dim_id > 0) {
+      const SizeAndStrideExpression& previous_size_and_stride =
+          sizes_and_strides[dim_id - 1];
+      const auto previous_dimension =
+          llvm::cast<AffineDimExpr>(previous_size_and_stride.size);
+      const Interval& previous_size_interval =
+          dimension_intervals[previous_dimension.getPosition()];
+      if (previous_size_interval.lower != 0) {
+        // TODO(bchetioui): I think we may need to handle this to have reshapes
+        // working well with concatenations. Nevertheless, we can take a look
+        // later.
+        VLOG(1) << "Attempted to combine strides but got dimension "
+                << AffineMapPrinter().ToString(previous_dimension)
+                << " with lower bound " << previous_size_interval.lower
+                << " != 0";
+        return std::nullopt;
+      }
+
+      int64_t previous_stride =
+          llvm::cast<AffineConstantExpr>(previous_size_and_stride.stride)
+              .getValue();
+      // We need to add 1 to the upper bound of the interval to describe the
+      // number of elements being captured, since the interval bounds are
+      // inclusive.
+      if ((previous_size_interval.upper + 1) * previous_stride != stride) {
+        VLOG(1) << "Attempted to combine strides but stride did not grow "
+                << "exactly as expected: got "
+                << (previous_size_interval.upper + 1) << " * "
+                << previous_stride << " != " << stride;
+        return std::nullopt;
+      }
+    }
+  }
+
+  // Produce a nested if statement as described in the function's documentation.
+  MLIRContext* ctx = sizes_and_strides[0].stride.getContext();
+  AffineExpr nested_if = getAffineConstantExpr(0, ctx);
+  for (auto size_and_stride_it = sizes_and_strides.rbegin();
+       size_and_stride_it != sizes_and_strides.rend(); ++size_and_stride_it) {
+    AffineExpr size = size_and_stride_it->size;
+    AffineExpr stride = size_and_stride_it->stride;
+    const Interval& size_interval =
+        dimension_intervals[llvm::cast<AffineDimExpr>(size).getPosition()];
+    nested_if = IfNeqOne(size, stride, nested_if, size_interval.upper + 1);
+  }
+
+  return nested_if;
+}
+
+// See documentation of `CombineSizes` and `CombineStrides` for an explanation
+// of how sizes and strides are combined.
+std::optional<SizeAndStrideExpression> CombineSizesAndStrides(
+    std::vector<SizeAndStrideExpression> sizes_and_strides,
+    absl::Span<Interval const> dimension_intervals) {
+  CHECK(!sizes_and_strides.empty());
+  AffineExpr size = CombineSizes(sizes_and_strides);
+  std::optional<AffineExpr> stride =
+      CombineStrides(std::move(sizes_and_strides), dimension_intervals);
+  if (!stride.has_value()) {
+    return std::nullopt;
+  }
+
+  // TODO(b/326998704): handle reshape constraints here.
+  return SizeAndStrideExpression{size, *stride};
+}
+
+std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
+    AffineExpr strided_indexing, absl::Span<Interval const> dimension_intervals,
+    absl::Span<Interval const> symbol_intervals) {
   MLIRContext* ctx = strided_indexing.getContext();
   // Deal with the symbol case (capturing a whole untiled dimension).
   // TODO(b/330906085): concatenating across a reduction dimension needs to be
   // handled by this code.
-  if (auto symbol = llvm::dyn_cast<mlir::AffineSymbolExpr>(strided_indexing)) {
+  if (auto symbol = llvm::dyn_cast<AffineSymbolExpr>(strided_indexing)) {
     const Interval& symbol_interval = symbol_intervals[symbol.getPosition()];
     if (symbol_interval.lower != 0) {
       return std::nullopt;
@@ -199,11 +459,10 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
       AffineExpr lhs = mul.getLHS();
       // The stride may not be fully collapsed if it is negative; in that case,
       // we need to extract the negative multiplier first.
-      if (const auto rhs =
-              llvm::dyn_cast<mlir::AffineConstantExpr>(mul.getRHS());
+      if (const auto rhs = llvm::dyn_cast<AffineConstantExpr>(mul.getRHS());
           rhs && rhs.getValue() == -1) {
         std::optional<SizeAndStrideExpression> maybe_size_and_stride =
-            ExtractSizeAndStride(lhs, symbol_intervals);
+            ExtractSizeAndStride(lhs, dimension_intervals, symbol_intervals);
         if (!maybe_size_and_stride.has_value()) {
           return std::nullopt;
         }
@@ -224,7 +483,7 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
       auto floor_div = llvm::cast<mlir::AffineBinaryOpExpr>(strided_indexing);
       return ExtractSizeAndStrideFromFloorDiv(floor_div.getLHS(),
                                               floor_div.getRHS());
-    };
+    }
     case mlir::AffineExprKind::Constant:
       return SizeAndStrideExpression{/*size=*/getAffineConstantExpr(1, ctx),
                                      /*stride=*/getAffineConstantExpr(0, ctx)};
@@ -234,12 +493,19 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
       // It's currently not checked separately, but RTVars shouldn't appear in
       // the strided indexing expressions.
       return std::nullopt;
-    case mlir::AffineExprKind::Add:
+    case mlir::AffineExprKind::Add: {
       // TODO(b/328427138): this should only be necessary in the multivariate
       // case, and will be implemented later.
-      VLOG(1) << "Encountered complex strided indexing expression "
-              << printer.ToString(strided_indexing);
-      return std::nullopt;
+      std::optional<std::vector<SizeAndStrideExpression>>
+          maybe_sizes_and_strides =
+              ExtractSizesAndStridesFromMultivariateSummation(
+                  strided_indexing, dimension_intervals, symbol_intervals);
+      if (!maybe_sizes_and_strides.has_value()) {
+        return std::nullopt;
+      }
+      return CombineSizesAndStrides(std::move(*maybe_sizes_and_strides),
+                                    dimension_intervals);
+    }
     case mlir::AffineExprKind::CeilDiv:
       break;
   };
@@ -323,6 +589,7 @@ AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
     std::optional<SizeAndStrideExpression> maybe_size_and_stride =
         ExtractSizeAndStride(SimplifyAffineExpr(composite_indexing - offset,
                                                 /*reference=*/indexing_map),
+                             indexing_map.GetDimensionBounds(),
                              indexing_map.GetSymbolBounds());
     if (!maybe_size_and_stride.has_value()) {
       VLOG(1) << "No size and stride extracted";
@@ -333,19 +600,18 @@ AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
   }
 
   // Eliminate negative strides and recalculate offsets.
+  // TODO(b/340555497): handle normalization of more complex expressions.
   std::vector<AffineExpr> dim_replacements, sym_replacements;
   for (auto [offset, size, stride] :
        llvm::zip(offset_expressions, size_expressions, stride_expressions)) {
-    auto constant = llvm::dyn_cast<mlir::AffineConstantExpr>(stride);
-    if (!constant) {
+    auto constant = llvm::dyn_cast<AffineConstantExpr>(stride);
+    if (constant && constant.getValue() < 0) {
+      offset = offset + size * stride - stride;
+      stride = -stride;
+    } else if (!constant) {
       AffineMapPrinter printer;
       VLOG(1) << "Unexpected non-constant stride expression: "
               << printer.ToString(stride);
-      return std::nullopt;
-    }
-    if (constant.getValue() < 0) {
-      offset = offset + size * stride - stride;
-      stride = -stride;
     }
   }
 

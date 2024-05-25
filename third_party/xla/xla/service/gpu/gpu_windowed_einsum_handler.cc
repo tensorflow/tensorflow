@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_windowed_einsum_handler.h"
 
 #include <cstdint>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -217,7 +218,7 @@ absl::Status ProcessWindowedEinsumLoopForActivationCaching(
   }
   TF_RETURN_IF_ERROR(root->ReplaceOperandWith(full_cache_buffer_index,
                                               new_full_buffer_output));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class WindowedEinsumVisitor : public DfsHloRewriteVisitor {

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/client/xla_computation.h"
 #include "xla/debug_options_flags.h"
@@ -49,7 +50,7 @@ absl::StatusOr<Literal> Client::Transfer(const GlobalData& data,
 
   VLOG(1) << "making transfer request";
   VLOG(3) << "TransferToClientRequest: {" << request.DebugString() << "}";
-  Status s = stub_->TransferToClient(&request, &response);
+  absl::Status s = stub_->TransferToClient(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -76,7 +77,7 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
 
   VLOG(1) << "making transfer to server request";
   VLOG(3) << "TransferToServerRequest: {" << request.DebugString() << "}";
-  Status s = stub_->TransferToServer(&request, &response);
+  absl::Status s = stub_->TransferToServer(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -93,8 +94,9 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
   return std::make_unique<GlobalData>(stub_, response.data());
 }
 
-Status Client::TransferToInfeed(const LiteralSlice& literal, int64_t replica_id,
-                                const DeviceHandle* device_handle) {
+absl::Status Client::TransferToInfeed(const LiteralSlice& literal,
+                                      int64_t replica_id,
+                                      const DeviceHandle* device_handle) {
   TransferToInfeedRequest request;
   *request.mutable_literal() = literal.ToProto();
   if (device_handle) {
@@ -105,14 +107,14 @@ Status Client::TransferToInfeed(const LiteralSlice& literal, int64_t replica_id,
 
   VLOG(1) << "making transfer to infeed request";
   VLOG(3) << "TransferToInfeedRequest: {" << request.DebugString() << "}";
-  Status s = stub_->TransferToInfeed(&request, &response);
+  absl::Status s = stub_->TransferToInfeed(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
     return s;
   }
   VLOG(3) << "TransferToInfeedResponse: {" << response.DebugString() << "}";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<Literal> Client::TransferFromOutfeed(
@@ -130,7 +132,7 @@ absl::StatusOr<Literal> Client::TransferFromOutfeed(
 
   VLOG(1) << "making transfer from outfeed request";
   VLOG(3) << "TransferFromOutfeedRequest: {" << request.DebugString() << "}";
-  Status s = stub_->TransferFromOutfeed(&request, &response);
+  absl::Status s = stub_->TransferFromOutfeed(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -147,20 +149,20 @@ absl::StatusOr<Literal> Client::TransferFromOutfeed(
   return Literal::CreateFromProto(response.literal());
 }
 
-Status Client::ResetDevice() {
+absl::Status Client::ResetDevice() {
   ResetDeviceRequest request;
   ResetDeviceResponse response;
 
   VLOG(1) << "making reset device request";
   VLOG(3) << "ResetDeviceRequest: {" << request.DebugString() << "}";
-  Status s = stub_->ResetDevice(&request, &response);
+  absl::Status s = stub_->ResetDevice(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
     return s;
   }
   VLOG(3) << "ResetDeviceResponse: {" << response.DebugString() << "}";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<Literal> Client::ExecuteAndTransfer(
@@ -192,7 +194,7 @@ absl::StatusOr<Literal> Client::ComputeConstant(
   ComputeConstantResponse response;
 
   VLOG(2) << "making compute-constant-graph request";
-  Status s = stub_->ComputeConstantGraph(&request, &response);
+  absl::Status s = stub_->ComputeConstantGraph(&request, &response);
   VLOG(2) << "done with request";
 
   if (!s.ok()) {
@@ -238,7 +240,7 @@ absl::StatusOr<ExecutionHandle> Client::Compile(
 
   CompileResponse response;
   VLOG(1) << "making compile request: " << request.ShortDebugString();
-  Status s = stub_->Compile(&request, &response);
+  absl::Status s = stub_->Compile(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -260,7 +262,7 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
 
   ExecuteResponse response;
   VLOG(1) << "making execute request: " << request.ShortDebugString();
-  Status s = stub_->Execute(&request, &response);
+  absl::Status s = stub_->Execute(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -342,7 +344,7 @@ Client::ExecuteParallel(absl::Span<const XlaComputationInstance> computations) {
   ExecuteParallelResponse response;
   VLOG(1) << "making execute-graph-parallel request: "
           << request.ShortDebugString();
-  Status s = stub_->ExecuteGraphParallel(&request, &response);
+  absl::Status s = stub_->ExecuteGraphParallel(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -372,7 +374,7 @@ absl::StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
 
   GetDeviceHandlesResponse response;
   VLOG(1) << "making get device request: " << request.ShortDebugString();
-  Status s = stub_->GetDeviceHandles(&request, &response);
+  absl::Status s = stub_->GetDeviceHandles(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -389,13 +391,13 @@ absl::StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
   return device_handles;
 }
 
-Status Client::Unregister(const GlobalData& data) {
+absl::Status Client::Unregister(const GlobalData& data) {
   UnregisterRequest request;
   *request.add_data() = data.handle();
   UnregisterResponse response;
 
   VLOG(1) << "making unregister request";
-  Status s = stub_->Unregister(&request, &response);
+  absl::Status s = stub_->Unregister(&request, &response);
   VLOG(1) << "done with request";
 
   return s;
@@ -408,7 +410,7 @@ Client::DeconstructTuple(const GlobalData& data) {
   DeconstructTupleResponse response;
 
   VLOG(1) << "making DestructTuple request";
-  Status s = stub_->DeconstructTuple(&request, &response);
+  absl::Status s = stub_->DeconstructTuple(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -433,7 +435,7 @@ absl::StatusOr<ComputationStats> Client::GetComputationStats(
   ComputationStatsResponse response;
 
   VLOG(1) << "making computation graph stats request";
-  Status s = stub_->GetComputationGraphStats(&request, &response);
+  absl::Status s = stub_->GetComputationGraphStats(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -455,7 +457,7 @@ absl::StatusOr<Shape> Client::GetShape(const GlobalData& data) {
   GetShapeResponse response;
 
   VLOG(1) << "making get shape request";
-  Status s = stub_->GetShape(&request, &response);
+  absl::Status s = stub_->GetShape(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -493,7 +495,7 @@ absl::StatusOr<ChannelHandle> Client::CreateChannelHandleByType(
   CreateChannelHandleResponse response;
 
   VLOG(1) << "making create channel handle request";
-  Status s = stub_->CreateChannelHandle(&request, &response);
+  absl::Status s = stub_->CreateChannelHandle(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {

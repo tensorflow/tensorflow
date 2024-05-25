@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/setround.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tsl/platform/tracing.h"
 
 namespace tensorflow {
 namespace {
@@ -67,9 +67,10 @@ RunHandlerEnvironment::EnvThread* RunHandlerEnvironment::CreateThread(
 RunHandlerEnvironment::Task RunHandlerEnvironment::CreateTask(
     std::function<void()> f) {
   uint64 id = 0;
-  if (tracing::EventCollector::IsEnabled()) {
-    id = tracing::GetUniqueArg();
-    tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
+  if (tsl::tracing::EventCollector::IsEnabled()) {
+    id = tsl::tracing::GetUniqueArg();
+    tsl::tracing::RecordEvent(tsl::tracing::EventCategory::kScheduleClosure,
+                              id);
   }
   return Task{
       std::unique_ptr<TaskImpl>(new TaskImpl{
@@ -82,8 +83,8 @@ RunHandlerEnvironment::Task RunHandlerEnvironment::CreateTask(
 
 void RunHandlerEnvironment::ExecuteTask(const Task& t) {
   WithContext wc(t.f->context);
-  tracing::ScopedRegion region(tracing::EventCategory::kRunClosure,
-                               t.f->trace_id);
+  tsl::tracing::ScopedRegion region(tsl::tracing::EventCategory::kRunClosure,
+                                    t.f->trace_id);
   t.f->f();
 }
 

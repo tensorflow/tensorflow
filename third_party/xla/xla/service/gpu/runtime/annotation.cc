@@ -192,7 +192,7 @@ class SourceLocationVisitor : public ConstDfsHloVisitorWithDefault {
                                           op_name,
                                           meta.source_line()});
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::pair<StringHandle, int32_t> LongestSourceLocationPrefix() const {

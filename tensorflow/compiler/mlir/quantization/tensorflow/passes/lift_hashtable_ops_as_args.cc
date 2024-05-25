@@ -70,14 +70,15 @@ bool IsHashTableOp(Operation* op) {
 
 // Checks if the function is the main or initializer function.
 bool IsMainOrInitializerFunction(ModuleOp module, func::FuncOp func) {
-  if (func.getSymName().equals(tensorflow::kImportModelDefaultGraphFuncName) ||
-      func.getSymName().equals(kTfQuantSaveFuncName)) {
+  if (func.getSymName() ==
+          llvm::StringRef(tensorflow::kImportModelDefaultGraphFuncName) ||
+      func.getSymName() == kTfQuantSaveFuncName) {
     return true;
   }
 
   for (func::FuncOp init_func :
        tf_saved_model::GetInitializerFunctions(module)) {
-    if (func.getSymName().equals(init_func.getSymName())) {
+    if (func.getSymName() == init_func.getSymName()) {
       return true;
     }
   }
@@ -118,7 +119,7 @@ bool IsResourceInitialized(ModuleOp module_op, Operation* hash_table) {
        tf_saved_model::GetInitializerFunctions(module_op)) {
     for (Operation& op : init_func_op.getBody().getOps()) {
       StringRef other_shared_name = GetSharedName(&op);
-      if (IsHashTableOp(&op) && other_shared_name.equals(shared_name)) {
+      if (IsHashTableOp(&op) && other_shared_name == shared_name) {
         return true;
       }
     }

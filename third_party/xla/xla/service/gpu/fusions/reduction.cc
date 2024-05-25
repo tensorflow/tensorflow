@@ -28,9 +28,11 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -50,9 +52,11 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
+#include "xla/service/gpu/fusions/reduction_base.h"
 #include "xla/service/gpu/fusions/thunk_util.h"
 #include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
@@ -76,6 +80,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
@@ -147,10 +152,10 @@ class ReductionEmitter {
         index_ty_(GetIndexType(fusion, reduction_codegen_info.GetTiling(),
                                elemental_emitter_.builder())) {
     for (auto hero : analysis.fusion_heroes()) {
-      if (hero->opcode() == HloOpcode::kReduce) {
-        for (int i = 0; i < hero->operand_count() / 2; ++i) {
+      if (hero.opcode() == HloOpcode::kReduce) {
+        for (int i = 0; i < hero.instruction().operand_count() / 2; ++i) {
           CHECK(LayoutUtil::IsMonotonicWithDim0Major(
-              hero->operand(i)->shape().layout()))
+              hero.instruction().operand(i)->shape().layout()))
               << "reduction-layout-normalizer must run before code generation";
         }
       }
@@ -1012,10 +1017,10 @@ absl::StatusOr<FusionEmissionResult> ReductionEmitter::EmitInitializers() {
         return absl::OkStatus();
       }));
 
-  absl::Span<const HloInstruction* const> fusion_roots =
+  absl::Span<HloInstructionAdaptor const> fusion_roots =
       analysis_.fusion_roots();
   for (int i = 0; i < fusion_roots.size(); ++i) {
-    const HloInstruction* fusion_root = fusion_roots[i];
+    const HloInstruction* fusion_root = &fusion_roots[i].instruction();
 
     if (IsReductionFromOrToContiguousDimensions(*fusion_root)) {
       TF_ASSIGN_OR_RETURN(
@@ -1046,9 +1051,9 @@ absl::Status ReductionEmitter::EmitKernel(
   ReductionOutputMap result_ir_arrays;
 
   int ir_arrays_idx = 0;
-  for (const HloInstruction* root : analysis_.fusion_roots()) {
-    int get_num_results = GetNumOutputs(root->shape());
-    result_ir_arrays[root] =
+  for (const HloInstructionAdaptor& root : analysis_.fusion_roots()) {
+    int get_num_results = GetNumOutputs(root.shape());
+    result_ir_arrays[&root.instruction()] =
         absl::MakeSpan(outputs).subspan(ir_arrays_idx, get_num_results);
     ir_arrays_idx += get_num_results;
   }

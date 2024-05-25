@@ -17,15 +17,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_IFRT_SHARDING_UTILS_H_
 
 #include "absl/status/statusor.h"
-#include "xla/executable_run_options.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 
 namespace tensorflow {

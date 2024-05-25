@@ -209,7 +209,7 @@ bool ShouldKeepSharding(const HloInstruction* hlo) {
 
 // Clears all sharding attributes from instructions in the module. This must be
 // called only after all SPMD transformation is complete.
-Status ClearShardingAttributes(
+absl::Status ClearShardingAttributes(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (HloComputation* computation : module->computations(execution_threads)) {
@@ -220,7 +220,7 @@ Status ClearShardingAttributes(
       hlo->clear_sharding();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns a sharding that is replicated on all the dimensions where the given
@@ -2266,7 +2266,33 @@ std::vector<ReplicaGroup> SpmdPartitioningVisitor::CreateReplicaGroups(
   return device_groups;
 }
 
-Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
+Status SpmdPartitioningVisitor::HandleCall(HloInstruction* hlo) {
+  std::vector<HloInstruction*> call_args;
+  HloComputation* computation = hlo->called_computations()[0];
+  for (int64_t i = 0; i < hlo->operand_count(); ++i) {
+    // Shardings of the computation parameter and its argument must be
+    // the same.
+    computation->parameter_instruction(i)->set_sharding(
+        hlo->operand(i)->sharding());
+    call_args.push_back(GetPartitionedHlo(hlo->operand(i)).hlo());
+  }
+
+  TF_RETURN_IF_ERROR(partitioner_
+                         ->PartitionComputation(computation, hlo->sharding(),
+                                                next_channel_id_, logger_,
+                                                call_graph_)
+                         .status());
+  SetPartitionedHlo(hlo, [&] {
+    auto* call = b_.AddInstruction(HloInstruction::CreateCall(
+        MakePartitionedShape(hlo->shape(), hlo->sharding()), call_args,
+        hlo->called_computations()[0]));
+    call->set_raw_backend_config_string(hlo->raw_backend_config_string());
+    return call;
+  });
+  return OkStatus();
+}
+
+absl::Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   if (hlo->HasSideEffect() && !hlo->sharding().HasUniqueDevice()) {
     return Unimplemented("Side-effect ops cannot be replicated: %s",
                          hlo->ToString());
@@ -2308,10 +2334,10 @@ Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   SetPartitionedHlo(hlo,
                     PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
                         .Reshard(hlo->sharding()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
   visiting_hlo_ = hlo;
   b_.set_visiting_hlo(hlo);
   // Temporarily replace manual sharding to one-device sharding so that the
@@ -2343,7 +2369,8 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       hlo->opcode() != HloOpcode::kParameter &&
       hlo->opcode() != HloOpcode::kWhile && hlo->opcode() != HloOpcode::kRng &&
       hlo->opcode() != HloOpcode::kOutfeed &&
-      hlo->opcode() != HloOpcode::kAllReduce) {
+      hlo->opcode() != HloOpcode::kAllReduce &&
+      hlo->opcode() != HloOpcode::kCall) {
     const bool has_manual_sharding =
         hlo->sharding().IsManual() ||
         (hlo->sharding().IsTuple() &&
@@ -2473,10 +2500,10 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::Postprocess(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::Postprocess(HloInstruction* hlo) {
   logger_->RegisterLogEntry(hlo, b_.derived_instructions(hlo));
   visiting_hlo_ = nullptr;
   b_.set_visiting_hlo(nullptr);
@@ -2512,10 +2539,10 @@ Status SpmdPartitioningVisitor::Postprocess(HloInstruction* hlo) {
     visiting_state_.clear();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleElementwise(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleElementwise(HloInstruction* hlo) {
   std::vector<HloInstruction*> new_operands;
   for (HloInstruction* operand : hlo->operands()) {
     new_operands.push_back(
@@ -2525,10 +2552,10 @@ Status SpmdPartitioningVisitor::HandleElementwise(HloInstruction* hlo) {
     return b_.AddInstruction(hlo->CloneWithNewOperands(
         MakePartitionedShape(hlo->shape(), hlo->sharding()), new_operands));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
   const HloSharding& sharding = hlo->sharding();
   if (sharding.IsTileMaximal()) {
     return DefaultAction(hlo);
@@ -2546,7 +2573,7 @@ Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
       return b_.AddInstruction(
           hlo->CloneWithNewOperands(shard_shape, new_operands));
     });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // If the concatenate dimension is along one of the partitioned dimensions,
@@ -2622,10 +2649,10 @@ Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
         shard_shape, all_reduce, start_indices, shard_shape.dimensions()));
   });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleSlice(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleSlice(HloInstruction* hlo) {
   const HloSharding& sharding = hlo->sharding();
   if (sharding.IsTileMaximal()) {
     return DefaultAction(hlo);
@@ -2651,10 +2678,10 @@ Status SpmdPartitioningVisitor::HandleSlice(HloInstruction* hlo) {
         final_operand->shape(), HloOpcode::kCopy, final_operand));
   });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
   HloSharding sharding = hlo->sharding();
   int64_t input_count = 1;
   if (hlo->shape().IsTuple()) {
@@ -2678,7 +2705,7 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     clone->set_sharding(sharding);
     SetPartitionedHlo(
         hlo, PartitionedHlo(clone, hlo->shape(), MakePartitioningState()));
-    return OkStatus();
+    return absl::OkStatus();
   }
   // Special handling for sort in TopK when first operand partitioined at
   // sort dimension.
@@ -2775,7 +2802,7 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
                                    MakePartitioningState());
     SetPartitionedHlo(hlo, replicated_sort.Reshard(hlo->sharding()));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
   auto sort = DynCast<HloSortInstruction>(hlo);
   auto sort_dim = sort->sort_dimension();
@@ -2879,7 +2906,7 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     final_sort->set_sharding(*new_output_sharding);
     PartitionedHlo psort(final_sort, sort->shape(), MakePartitioningState());
     SetPartitionedHlo(sort, psort.Reshard(sort->sharding()));
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (hlo->shape().IsTuple()) {
     // Check that all elements are sharded in the same way.
@@ -2910,10 +2937,10 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     return b_.AddInstruction(hlo->CloneWithNewOperands(
         MakePartitionedShape(hlo->shape(), hlo->sharding()), new_operands));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleTranspose(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleTranspose(HloInstruction* hlo) {
   const HloSharding& sharding = hlo->sharding();
   if (sharding.IsTileMaximal()) {
     return DefaultAction(hlo);
@@ -2933,10 +2960,10 @@ Status SpmdPartitioningVisitor::HandleTranspose(HloInstruction* hlo) {
     return b_.AddInstruction(hlo->CloneWithNewOperands(
         MakePartitionedShape(hlo->shape(), hlo->sharding()), {operand}));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   const HloSharding& sharding = hlo->sharding();
   if (sharding.IsTileMaximal()) {
     return DefaultAction(hlo);
@@ -2962,7 +2989,7 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   // Try the original output sharding at first.
   if (auto operand_hlo = desired_operand(hlo->sharding())) {
     SetPartitionedHlo(hlo, [&] { return *operand_hlo; });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Then try the desired_output_sharding.
@@ -2978,7 +3005,7 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
             .Reshard(hlo->sharding())
             .hlo();
       });
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -3220,10 +3247,10 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(HloInstruction * partitioned,
                       recursive_shard(operand, sharding, hlo->shape()));
   SetPartitionedHlo(hlo, [&] { return partitioned; });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleIota(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleIota(HloInstruction* hlo) {
   const HloSharding& sharding = hlo->sharding();
   if (sharding.IsTileMaximal()) {
     return DefaultAction(hlo);
@@ -3255,10 +3282,11 @@ Status SpmdPartitioningVisitor::HandleIota(HloInstruction* hlo) {
     return iota;
   });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleSingleDevice(const HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleSingleDevice(
+    const HloInstruction* hlo) {
   TF_RET_CHECK(hlo->sharding().HasUniqueDevice());
   int64_t device = hlo->sharding().GetUniqueDevice();
   const HloSharding sharding = HloSharding::AssignDevice(device);
@@ -3311,10 +3339,10 @@ Status SpmdPartitioningVisitor::HandleSingleDevice(const HloInstruction* hlo) {
         hlo->shape(), pred, operand, true_computation, operand,
         false_computation));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleAllReduce(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleAllReduce(HloInstruction* hlo) {
   if (hlo->IsCrossReplicaAllReduce() && hlo->operand_count() == 1) {
     return HandleElementwise(hlo);
   }
@@ -3364,7 +3392,7 @@ Status SpmdPartitioningVisitor::HandleAllReduce(HloInstruction* hlo) {
   return DefaultAction(hlo);
 }
 
-Status SpmdPartitioningVisitor::HandleBroadcast(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleBroadcast(HloInstruction* hlo) {
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
   }
@@ -3388,10 +3416,10 @@ Status SpmdPartitioningVisitor::HandleBroadcast(HloInstruction* hlo) {
     return b_.AddInstruction(
         hlo->CloneWithNewOperands(output_shard_shape, {input}));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleConstant(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleConstant(HloInstruction* hlo) {
   const Literal& literal = hlo->literal();
   if (literal.shape().IsTuple() ||
       (!hlo->sharding().IsTileMaximal() &&
@@ -3408,10 +3436,10 @@ Status SpmdPartitioningVisitor::HandleConstant(HloInstruction* hlo) {
     *constant->mutable_shape() = shard_shape;
     return constant;
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleDynamicSlice(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleDynamicSlice(HloInstruction* hlo) {
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
   }
@@ -3445,10 +3473,11 @@ Status SpmdPartitioningVisitor::HandleDynamicSlice(HloInstruction* hlo) {
         partitioned_shape, new_input, new_indices,
         partitioned_shape.dimensions()));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
+    HloInstruction* hlo) {
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
   }
@@ -3505,7 +3534,7 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
       return DefaultAction(hlo);
     }
     handle_with_replicate_slice_dims();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Handle when there is slice dim partitioned.
@@ -3565,7 +3594,7 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
                 1) /
                per_partition_size)) {
         handle_with_replicate_slice_dims();
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // within_partition = (offset >= partition_id * per_partition_size) &&
@@ -3626,7 +3655,7 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
               all_dims_within_partition, {})),
           dus, partitioned_input));
     });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Partition non slice dims only.
@@ -3651,10 +3680,11 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
     return b_.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
         partitioned_shape, new_input, new_update, new_indices));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleGetTupleElement(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleGetTupleElement(
+    HloInstruction* hlo) {
   if (hlo->sharding().IsManual()) {
     return DefaultAction(hlo);
   }
@@ -3670,10 +3700,10 @@ Status SpmdPartitioningVisitor::HandleGetTupleElement(HloInstruction* hlo) {
       MakePartitioningState());
   source_partitioned_gte = source_partitioned_gte.Reshard(hlo->sharding());
   SetPartitionedHlo(hlo, source_partitioned_gte);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
   const Shape& shape = ShapeUtil::GetTupleElementShape(hlo->shape(), 0);
   auto token = GetPartitionedHlo(hlo->operand(0)).hlo();
   if (ShapeUtil::GetLeafCount(shape) == 0) {
@@ -3686,7 +3716,7 @@ Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
       return b_.AddInstruction(
           HloInstruction::CreateInfeed(shape, token, hlo->infeed_config()));
     });
-    return OkStatus();
+    return absl::OkStatus();
   }
   auto sharding = hlo->sharding().GetSubSharding(hlo->shape(), {0});
   auto shard_shape = MakePartitionedShape(shape, sharding);
@@ -3695,7 +3725,7 @@ Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
       return b_.AddInstruction(HloInstruction::CreateInfeed(
           shard_shape, token, hlo->infeed_config()));
     });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (hlo->sharding().HasUniqueDevice()) {
@@ -3802,10 +3832,10 @@ Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
         ShapeUtil::MakeTupleShape({shard_shape, token->shape()}), branch_index,
         branches, std::vector<HloInstruction*>(branches.size(), token)));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
   }
@@ -3831,10 +3861,10 @@ Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
         *reshard_operand->dynamic_slice_index_on_output,
         shard_shape.dimensions()));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleParameter(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleParameter(HloInstruction* hlo) {
   SetPartitionedHlo(hlo, [&]() {
     auto shard_shape = MakePartitionedShape(hlo->shape(), hlo->sharding());
     auto new_param = b_.AddInstruction(HloInstruction::CreateParameter(
@@ -3845,10 +3875,10 @@ Status SpmdPartitioningVisitor::HandleParameter(HloInstruction* hlo) {
     }
     return new_param;
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
   int64_t input_count = 1;
   if (hlo->shape().IsTuple()) {
     input_count = hlo->shape().tuple_shapes_size();
@@ -3877,7 +3907,7 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
     SetPartitionedHlo(
         hlo, PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
                  .Reshard(hlo->sharding()));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<PartitionedHlo> inputs;
@@ -3983,10 +4013,10 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
         .Reshard(hlo->sharding())
         .hlo();
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleReverse(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleReverse(HloInstruction* hlo) {
   auto reverse = Cast<HloReverseInstruction>(hlo);
   if (reverse->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
@@ -4003,10 +4033,10 @@ Status SpmdPartitioningVisitor::HandleReverse(HloInstruction* hlo) {
     return b_.AddInstruction(hlo->CloneWithNewOperands(
         left_padded_operand->shape(), {left_padded_operand}));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleWhile(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleWhile(HloInstruction* hlo) {
   const HloSharding& sharding = hlo->sharding();
 
   // Shardings for the body parameter, body root, and cond parameter must be
@@ -4035,10 +4065,10 @@ Status SpmdPartitioningVisitor::HandleWhile(HloInstruction* hlo) {
         hlo->while_body(),
         GetPartitionedHlo(hlo->operand(0)).Reshard(sharding).hlo()));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
   std::vector<HloInstruction*> branch_args;
   for (int64_t i = 0; i < hlo->branch_count(); ++i) {
     HloComputation* computation = hlo->branch_computation(i);
@@ -4073,14 +4103,15 @@ Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
         MakePartitionedShape(hlo->shape(), hlo->sharding()), cond,
         hlo->called_computations(), branch_args));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleOptimizationBarrier(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleOptimizationBarrier(
+    HloInstruction* hlo) {
   return HandleElementwise(hlo);
 }
 
-Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return HandleSingleDevice(hlo);
   }
@@ -4099,7 +4130,7 @@ Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
 
     SetPartitionedHlo(hlo,
                       [&] { return clone_from_original(hlo->sharding()); });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // TODO(b/260756663): Remove this fixup once this bug is fixed.
@@ -4137,7 +4168,7 @@ Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
       return b_.AddInstruction(HloInstruction::CreateOutfeed(
           outfeed_shape, operand, token, hlo->outfeed_config()));
     });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Create a branch for each unique partitioned shape.
@@ -4259,10 +4290,10 @@ Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
             branches.size(),
             b_.AddInstruction(HloInstruction::CreateTuple({operand, token})))));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return HandleSingleDevice(hlo);
   }
@@ -4281,7 +4312,7 @@ Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
   if (hlo->sharding().IsManual()) {
     SetPartitionedHlo(hlo,
                       [&] { return clone_from_original(hlo->sharding()); });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (hlo->sharding().IsReplicated()) {
@@ -4292,7 +4323,7 @@ Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
           .Reshard(HloSharding::Replicate())
           .hlo();
     });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TF_RET_CHECK(!hlo->sharding().IsTileMaximal());
@@ -4328,10 +4359,10 @@ Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
           .hlo();
     });
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
   }
@@ -4390,10 +4421,11 @@ Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
         *sharded_results[0].dynamic_slice_index_on_output,
         shard_shape.dimensions()));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleSelectAndScatter(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleSelectAndScatter(
+    HloInstruction* hlo) {
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
   }
@@ -4611,10 +4643,10 @@ Status SpmdPartitioningVisitor::HandleSelectAndScatter(HloInstruction* hlo) {
         shard_shape, sharded_select_and_scatter, slice_offsets,
         shard_shape.dimensions()));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleTuple(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleTuple(HloInstruction* hlo) {
   std::vector<HloInstruction*> new_operands;
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     new_operands.push_back(
@@ -4625,7 +4657,7 @@ Status SpmdPartitioningVisitor::HandleTuple(HloInstruction* hlo) {
   SetPartitionedHlo(hlo, [&]() {
     return b_.AddInstruction(HloInstruction::CreateTuple(new_operands));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> SpmdPartitioningVisitor::DoPartition(
@@ -4651,7 +4683,7 @@ absl::StatusOr<bool> SpmdPartitioningVisitor::DoPartition(
   return changed_;
 }
 
-Status SpmdPartitioningVisitor::HandlePartitionId(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandlePartitionId(HloInstruction* hlo) {
   if (hlo->has_sharding() && hlo->sharding().IsManual()) {
     hlo->set_sharding(HloSharding::AssignDevice(0));
     return DefaultAction(hlo);
@@ -5179,7 +5211,7 @@ absl::StatusOr<bool> SpmdPartitioner::Run(
   return changed;
 }
 
-Status SpmdPartitioner::PreprocessSharding(
+absl::Status SpmdPartitioner::PreprocessSharding(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (HloComputation* computation : module->computations(execution_threads)) {
@@ -5244,10 +5276,10 @@ Status SpmdPartitioner::PreprocessSharding(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioner::PreprocessHlos(
+absl::Status SpmdPartitioner::PreprocessHlos(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto skip_copy_operands = [](HloInstruction* operand,
@@ -5475,7 +5507,7 @@ Status SpmdPartitioner::PreprocessHlos(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace spmd

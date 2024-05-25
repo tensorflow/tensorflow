@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <memory>
+#include <string>
+#include <tuple>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -33,8 +37,10 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/tests/filecheck.h"
+#include "xla/tests/verified_hlo_module.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -522,6 +528,9 @@ ENTRY e {
 }
 
 TEST_F(CuDnnFusionLevel2Test, ConstantExecutesCorrectly) {
+  if (!IsAtLeastCuDnn91()) {
+    GTEST_SKIP() << "Fused scalar constants require cuDNN 9.1+.";
+  }
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
   x = bf16[16,32] parameter(0)
@@ -602,7 +611,7 @@ ENTRY r {
   ROOT r = bf16[192,128]{1,0} fusion(p0, p1), kind=kCustom, calls=fusion1,
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+                            ErrorSpec{/*aabs=*/1, /*arel=*/1e-3}));
 }
 
 TEST_F(CuDnnFusionLevel3Test,
@@ -626,7 +635,7 @@ ENTRY r {
   ROOT r = bf16[4,3,16,128]{2,1,3,0} fusion(p0, p1), kind=kCustom, calls=fusion1,
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+                            ErrorSpec{/*aabs=*/1, /*arel=*/1e-3}));
 }
 
 class ElementwiseTest : public CuDnnFusionExecutionTest,

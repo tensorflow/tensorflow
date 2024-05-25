@@ -1408,7 +1408,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
       return ImportOldStyleAsyncStart<mlir::mhlo::SendOp>(
           attributes, operands, loc, async_bundled_tuple, func_builder, "send_",
-          [](auto) { return OkStatus(); });
+          [](auto) { return absl::OkStatus(); });
     }
     case HloOpcode::kSendDone: {
       return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
@@ -1442,7 +1442,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
       return ImportOldStyleAsyncStart<mlir::mhlo::RecvOp>(
           attributes, operands, loc, async_bundled_tuple, func_builder, "recv_",
-          [](auto) { return OkStatus(); });
+          [](auto) { return absl::OkStatus(); });
     }
     case HloOpcode::kRecvDone: {
       return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,

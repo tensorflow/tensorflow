@@ -123,7 +123,7 @@ class DataServiceWorkerImpl {
   // Validates the worker config.
   Status ValidateWorkerConfig() const;
   // Creates and initializes a dispatcher client.
-  StatusOr<std::unique_ptr<DataServiceDispatcherClient>>
+  absl::StatusOr<std::unique_ptr<DataServiceDispatcherClient>>
   CreateDispatcherClient() const TF_LOCKS_EXCLUDED(mu_);
   // Sends task status to the dispatcher and checks for dispatcher commands.
   Status SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_);
@@ -141,7 +141,7 @@ class DataServiceWorkerImpl {
   // Performs a heartbeat to the dispatcher.
   Status Heartbeat();
   // Check with the dispatcher to see whether or not to disable compression.
-  StatusOr<bool> DisableCompressionAtRuntime(
+  absl::StatusOr<bool> DisableCompressionAtRuntime(
       const std::string& dataset_id) const;
   // Returns the active tasks of this worker.
   std::vector<ActiveTask> GetActiveTasks() const TF_LOCKS_EXCLUDED(mu_);
@@ -158,18 +158,18 @@ class DataServiceWorkerImpl {
   Status UpdateSnapshotWriters(const WorkerHeartbeatResponse& response)
       TF_LOCKS_EXCLUDED(mu_);
   // Creates an dataset iterator for snapshot writers.
-  StatusOr<std::unique_ptr<StandaloneTaskIterator>> MakeSnapshotTaskIterator(
-      const SnapshotTaskDef& snapshot_task,
-      const DatasetDef& dataset_def) const;
+  absl::StatusOr<std::unique_ptr<StandaloneTaskIterator>>
+  MakeSnapshotTaskIterator(const SnapshotTaskDef& snapshot_task,
+                           const DatasetDef& dataset_def) const;
   // Gets the snapshot task progress from the snapshot writers.
   std::vector<SnapshotTaskProgress> GetSnapshotTaskProgress() const;
   // Gets the DatasetDef for `task_def`.
-  StatusOr<DatasetDef> GetDatasetDef(const TaskDef& task_def) const;
+  absl::StatusOr<DatasetDef> GetDatasetDef(const TaskDef& task_def) const;
   // Creates a dataset from `dataset_def`.
-  StatusOr<std::unique_ptr<standalone::Dataset>> MakeDataset(
+  absl::StatusOr<std::unique_ptr<standalone::Dataset>> MakeDataset(
       const DatasetDef& dataset_def, const TaskDef& task_def) const;
   // Creates an iterator for `dataset`.
-  StatusOr<std::unique_ptr<standalone::Iterator>> MakeDatasetIterator(
+  absl::StatusOr<std::unique_ptr<standalone::Iterator>> MakeDatasetIterator(
       standalone::Dataset& dataset, const TaskDef& task_def) const;
 
   const experimental::WorkerConfig config_;

@@ -427,8 +427,7 @@ Status DebugNodeInserter::SetDebugNodeAttributes(
         debug_node->AddAttr<string>(attr.name(), attr_value);
       } else if (attr.type() == "float") {
         float float_value = 0.0;
-        if (!::tensorflow::strings::safe_strtof(attr_value.c_str(),
-                                                &float_value)) {
+        if (!::tensorflow::strings::safe_strtof(attr_value, &float_value)) {
           return absl::InvalidArgumentError(absl::StrCat(
               "Invalid value string for float-type attribute ", attr.name(),
               "of debug node ", debug_node->name(), ": \"", attr_value, "\""));

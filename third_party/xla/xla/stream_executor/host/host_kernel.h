@@ -21,15 +21,17 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/host/host_execution_engine.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "tsl/platform/threadpool.h"
 
 namespace stream_executor::host {
 
@@ -37,10 +39,32 @@ class HostExecutor;
 
 class HostKernel : public Kernel {
  public:
+  // Virtual base class that owns the function behind the host kernel. It can be
+  // a function in a jit-compiled LLVM module or simply a pointer to the
+  // in-process function written in C++. HostKernel is responsible for launching
+  // the kernel function owned by the KernelFunction with given user-provided
+  // arguments potentially on a thread pool.
+  class KernelFunction {
+   public:
+    virtual ~KernelFunction() = default;
+    virtual SE_HOST_Kernel* kernel() const = 0;
+  };
+
+  // A wrapper around function pointer that implements SE_HOST_Kernel API.
+  class KernelFunctionPtr final : public KernelFunction {
+   public:
+    explicit KernelFunctionPtr(SE_HOST_Kernel* ptr) : ptr_(ptr) {}
+    SE_HOST_Kernel* kernel() const override { return ptr_; }
+
+   private:
+    SE_HOST_Kernel* ptr_;  // not owned
+  };
+
   explicit HostKernel() = default;
 
   // TODO(tsilytskyi): make this implementation detail private
-  explicit HostKernel(unsigned arity, SE_HOST_Kernel* kernel);
+  explicit HostKernel(unsigned arity, SE_HOST_Kernel* kernel,
+                      std::shared_ptr<tsl::thread::ThreadPool> thread_pool);
 
   // TODO(b/331430625): Connect this API to Launch API defined at
   // StreamExecutor level, which requires refactoring how arguments passed to
@@ -58,18 +82,22 @@ class HostKernel : public Kernel {
   void SetArity(unsigned arity) { arity_ = arity; };
   unsigned Arity() const override { return arity_; };
 
-  template <typename T>
+  template <typename T,
+            std::enable_if_t<std::is_base_of_v<KernelFunction, T>>* = nullptr>
   void SetExecutionEngine(std::unique_ptr<T> execution_engine) {
-    static_assert(std::is_base_of<HostExecutionEngine, T>::value,
-                  "T is not derived from HostExecutionEngine");
-    execution_engine_ = std::move(execution_engine);
+    function_ = std::move(execution_engine);
   }
 
  private:
-  std::unique_ptr<HostExecutionEngine> execution_engine_;
+  std::unique_ptr<KernelFunction> function_;
 
   unsigned arity_;
-  SE_HOST_Kernel* kernel_ = nullptr;
+  std::shared_ptr<tsl::thread::ThreadPool> thread_pool_;
+
+  SE_HOST_KernelError* worker(SE_HOST_Kernel* kernel,
+                              uint64_t block_size_balanced, uint64_t starting_i,
+                              SE_HOST_KernelThreadDim& max_dims,
+                              std::vector<SE_HOST_KernelArg>& args) const;
 };
 
 inline const HostKernel* AsHostKernel(const Kernel* kernel) {

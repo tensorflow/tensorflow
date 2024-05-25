@@ -45,7 +45,7 @@ llvm::SmallVector<InterpreterValue> UnrealizedConversionCast(
         return {DispatchScalarType(r, [&](auto dummy) -> InterpreterValue {
           TensorOrMemref<decltype(dummy)> result;
           result.view = args[0].View();
-          result.buffer = args[0].Buffer();
+          result.buffer = args[0].GetBuffer();
           return {result};
         })};
       }

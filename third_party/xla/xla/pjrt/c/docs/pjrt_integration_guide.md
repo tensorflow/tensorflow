@@ -1,4 +1,4 @@
 # PJRT integration guide
 
 This file has been moved into the root
-[XLA documentation directory](https://github.com/openxla/xla/blob/main/docs/pjrt_integration.md.
+[XLA documentation directory](https://github.com/openxla/xla/blob/main/docs/pjrt_integration.md).

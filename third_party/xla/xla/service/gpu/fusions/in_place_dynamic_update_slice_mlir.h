@@ -47,8 +47,8 @@ class MlirInPlaceDynamicUpdateSliceFusion : public MlirFusionEmitterBase {
   explicit MlirInPlaceDynamicUpdateSliceFusion(
       const HloFusionAnalysis& analysis)
       : analysis_(analysis),
-        dus_ops_(GetOutputDefiningDynamicUpdateSlices(
-            analysis.fusion_root_adaptors())) {}
+        dus_ops_(
+            GetOutputDefiningDynamicUpdateSlices(analysis.fusion_roots())) {}
 
   LaunchDimensions launch_dimensions() const override;
 

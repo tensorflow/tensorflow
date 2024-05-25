@@ -15,7 +15,6 @@ filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
     srcs = [
         ":schema_fbs_srcs",
-        ":schema_utils.cc",
         ":schema_utils.h",
     ],
     visibility = [
@@ -134,7 +133,7 @@ flatbuffer_cc_library(
 # Generic schema for inference on device (but with reflections makes bigger).
 flatbuffer_cc_library(
     name = "schema_fbs_with_reflection",
-    srcs = ["schema.fbs"],
+    srcs = ["//tensorflow/compiler/mlir/lite/schema:schema.fbs"],
     compatible_with = get_compatible_with_portable(),
     flatc_args = [
         "--reflect-types",
@@ -169,28 +168,18 @@ cc_test(
 
 cc_library(
     name = "schema_utils",
-    srcs = ["schema_utils.cc"],
     hdrs = ["schema_utils.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
-    deps = [
-        ":schema_fbs",
-        "//tensorflow/lite/kernels/internal:compatibility",
-        "@flatbuffers//:runtime_cc",
-    ],
+    deps = ["//tensorflow/compiler/mlir/lite/schema:schema_utils"],
 )
 
 cc_library(
     name = "schema_conversion_utils",
-    srcs = ["schema_conversion_utils.cc"],
     hdrs = ["schema_conversion_utils.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
-    deps = [
-        ":schema_fbs",
-        "//tensorflow/lite/kernels/internal:compatibility",
-        "@flatbuffers",
-    ],
+    deps = ["//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils"],
 )
 
 flatbuffer_cc_library(

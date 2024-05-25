@@ -81,9 +81,20 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api_Version, minor_version);
 // Error codes
 //===----------------------------------------------------------------------===//
 
-// XLA FFI handler must return an XLA_FFI_Error*, which is NULL if there is no
-// error and set if there is. Caller allocates any returned XLA_FFI_Errors, and
-// the XLA FFI is responsible for freeing them.
+// XLA FFI error is a mechanism to communicate errors between XLA and XLA FFI
+// via a set of C APIs. This is somewhat similar to type-erased version of
+// absl::Status exposed via API with opaque pointers.
+//
+// Returning NULL error is equivalent to returning absl::OkStatus().
+//
+// Ownership of an XLA_FFI_Error is always transferred to the caller, and the
+// caller is responsible for destroying it:
+//
+// (1) If the error is returned from an XLA FFI handler, the XLA runtime will
+//     destroy it (XLA is the caller who calls into the handler implementation).
+//
+// (2) If the error is returned from an XLA FFI API call, the caller is
+//     responsible for destroying it.
 typedef struct XLA_FFI_Error XLA_FFI_Error;
 
 // Codes are based on https://abseil.io/docs/cpp/guides/status-codes
@@ -250,6 +261,30 @@ struct XLA_FFI_Array {
 // Call frame
 //===----------------------------------------------------------------------===//
 
+// XLA runtime has multiple execution stages and it is possible to run
+// different handlers for each stage:
+//
+// (1) Prepare - called before the execution to let FFI handlers to prepare
+//     for the execution and request resources from runtime, i.e. in XLA:GPU
+//     we use prepare stage to request collective cliques.
+//
+// (2) Initialize - called before the execution after acquiring all the
+//     resources requested in the prepare stage.
+//
+// (3) Execute - called when FFI handler is executed. Note that FFI handler
+//     can be called as a part of command buffer capture (CUDA graph capture
+//     on GPU backend) and argument buffers might contain uninitialized
+//     values in this case.
+//
+// It is undefined behavior to access argument buffers in prepare and
+// initialize stages as they might not be initialized yet. However it is safe
+// to use memory address as it is assigned ahead of time by buffer assignment.
+typedef enum {
+  XLA_FFI_ExecutionStage_PREPARE = 0,
+  XLA_FFI_ExecutionStage_INITIALIZE = 1,
+  XLA_FFI_ExecutionStage_EXECUTE = 2,
+} XLA_FFI_ExecutionStage;
+
 struct XLA_FFI_Args {
   size_t struct_size;
   void* priv;
@@ -292,6 +327,7 @@ struct XLA_FFI_CallFrame {
 
   const XLA_FFI_Api* api;
   XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_ExecutionStage stage;
   XLA_FFI_Args args;
   XLA_FFI_Rets rets;
   XLA_FFI_Attrs attrs;
@@ -305,6 +341,13 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_CallFrame, attrs);
 
 // External functions registered with XLA as FFI handlers.
 typedef XLA_FFI_Error* XLA_FFI_Handler(XLA_FFI_CallFrame* call_frame);
+
+// XLA FFI handlers for execution stages (see XLA_FFI_ExecutionStage).
+struct XLA_FFI_Handler_Bundle {
+  XLA_FFI_Handler* prepare;     // optional
+  XLA_FFI_Handler* initialize;  // optional
+  XLA_FFI_Handler* execute;     // required
+};
 
 enum XLA_FFI_Handler_TraitsBits {
   // Calls to FFI handler are safe to trace into the command buffer. It means
@@ -321,7 +364,7 @@ struct XLA_FFI_Handler_Register_Args {
 
   XLA_FFI_ByteSpan name;
   XLA_FFI_ByteSpan platform;
-  XLA_FFI_Handler* handler;
+  XLA_FFI_Handler_Bundle bundle;
   XLA_FFI_Handler_Traits traits;
 };
 

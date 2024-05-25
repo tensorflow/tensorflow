@@ -52,7 +52,7 @@ inline void DeletePluginOpKernelContext(PluginOpKernelContext* wrapper) {
 
 #define PLUGIN_OP_REQUIRES_OK(CTX, ...)          \
   do {                                           \
-    ::tensorflow::Status _s(__VA_ARGS__);        \
+    absl::Status _s(__VA_ARGS__);                \
     if (!TF_PREDICT_TRUE(_s.ok())) {             \
       (CTX)->CtxFailure(__FILE__, __LINE__, _s); \
       return;                                    \

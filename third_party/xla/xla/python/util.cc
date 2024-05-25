@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace xla {
 
-Status AwaitBuffersReady(absl::Span<ifrt::Array* const> ifrt_arrays) {
+absl::Status AwaitBuffersReady(absl::Span<ifrt::Array* const> ifrt_arrays) {
   ifrt::Future<> future;
   if (ifrt_arrays.size() == 1) {
     future = ifrt_arrays[0]->GetReadyFuture();
@@ -42,7 +42,7 @@ Status AwaitBuffersReady(absl::Span<ifrt::Array* const> ifrt_arrays) {
     future = ifrt::JoinFutures(absl::MakeSpan(futures));
   }
 
-  Status s = future.Await();
+  absl::Status s = future.Await();
   if (!s.ok()) {
     // Fix up error string because some clients rely on it.
     if (s.message() == "GetReadyFuture() called on deleted or donated buffer") {

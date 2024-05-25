@@ -126,7 +126,7 @@ absl::Status TpuTracer::Start() {
     LOG(ERROR) << "TPU tracer failed to start.";
     return status.status();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TpuTracer::Stop() {
@@ -137,7 +137,7 @@ absl::Status TpuTracer::Stop() {
     LOG(ERROR) << "TPU tracer failed to stop.";
     return status.status();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TpuTracer::CollectData(XSpace* space) {
@@ -164,7 +164,7 @@ absl::Status TpuTracer::CollectData(XSpace* space) {
     LOG(ERROR) << "TPU tracer failed to collect data.";
     return status.status();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Initializes TpuProfilerApiFns. The initialization may not be successful if

@@ -10,6 +10,7 @@ package(
         # For TFLite Converter integration.
         "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/compiler/mlir/quantization:__subpackages__",
+        "//tensorflow/compiler/mlir/tensorflow_to_stablehlo:__subpackages__",
     ],
     licenses = ["notice"],
 )

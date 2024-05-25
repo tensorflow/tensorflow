@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/client/client_library.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
@@ -41,7 +42,7 @@ absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(
                 client->backend().transfer_manager()->GetByteSizeRequirement(
                     subshape)));
         device_buffers.push_back(device_memory.Release());
-        return OkStatus();
+        return absl::OkStatus();
       }));
   return std::make_shared<TrackedDeviceBuffer>(
       client->backend().memory_allocator(), /*device_ordinal=*/0,

@@ -22,32 +22,32 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/statusor.h"
-#include "tsl/platform/errors.h"
+#include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "tsl/platform/statusor.h"
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/ir_emitter_triton.h"
-#else
-#include "absl/status/status.h"
-#endif
 
 namespace xla {
 namespace gpu {
@@ -99,7 +99,6 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   llvm::IRBuilder builder(ir_emitter_context.llvm_module()->getContext());
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   VLOG(3) << fusion.ToString();
   std::string suggested_kernel_name = std::string(fusion.name());
   TF_ASSIGN_OR_RETURN(
@@ -212,9 +211,6 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
       entry->launch_dimensions, entry->cluster_dim, entry->shmem_bytes));
 
   return result;
-#else
-  return absl::UnimplementedError("Triton support requires CUDA or ROCm");
-#endif
 }
 
 std::optional<LaunchDimensions> TritonFusion::launch_dimensions() const {

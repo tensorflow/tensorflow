@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -112,8 +113,8 @@ bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
   return false;
 }
 
-Status NormalizeAndAssignSharing(HloInstructionProto* instr,
-                                 const OpSharding& op_sharding) {
+absl::Status NormalizeAndAssignSharing(HloInstructionProto* instr,
+                                       const OpSharding& op_sharding) {
   // Normalize tuple sharding and fail the call if the sharding is invalid.
   Shape shape(instr->shape());
   TF_ASSIGN_OR_RETURN(HloSharding sharding,
@@ -121,7 +122,7 @@ Status NormalizeAndAssignSharing(HloInstructionProto* instr,
   sharding = sharding.NormalizeTupleSharding(shape);
   TF_RETURN_IF_ERROR(sharding.Validate(shape));
   *instr->mutable_sharding() = sharding.ToProto();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -532,7 +533,7 @@ XlaBuilder::XlaBuilder(const std::string& computation_name)
 
 XlaBuilder::~XlaBuilder() = default;
 
-XlaOp XlaBuilder::ReportError(const Status& error) {
+XlaOp XlaBuilder::ReportError(const absl::Status& error) {
   CHECK(!error.ok());
   if (die_immediately_on_error_) {
     LOG(FATAL) << "error building computation: " << error;
@@ -687,21 +688,21 @@ void XlaBuilder::IsConstantVisitor(const int64_t op_handle, int depth,
   visited->insert(op_handle);
 }
 
-Status XlaBuilder::SetInstructionFrontendAttribute(const XlaOp op,
-                                                   std::string attribute,
-                                                   std::string value) {
+absl::Status XlaBuilder::SetInstructionFrontendAttribute(const XlaOp op,
+                                                         std::string attribute,
+                                                         std::string value) {
   TF_ASSIGN_OR_RETURN(auto instr_proto, LookUpMutableInstruction(op));
   auto* frontend_attributes = instr_proto->mutable_frontend_attributes();
   (*frontend_attributes->mutable_map())[attribute] = std::move(value);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status XlaBuilder::SetInstructionSharding(
+absl::Status XlaBuilder::SetInstructionSharding(
     XlaOp op, const std::optional<OpSharding>& sharding) {
   TF_ASSIGN_OR_RETURN(auto instr_proto, LookUpMutableInstruction(op));
   if (!sharding.has_value()) {
     instr_proto->clear_sharding();
-    return OkStatus();
+    return absl::OkStatus();
   }
   return NormalizeAndAssignSharing(instr_proto, sharding.value());
 }
@@ -717,13 +718,13 @@ XlaComputation XlaBuilder::BuildAndNoteError() {
   return std::move(build_status).value();
 }
 
-Status XlaBuilder::GetCurrentStatus() const {
+absl::Status XlaBuilder::GetCurrentStatus() const {
   if (!first_error_.ok()) {
     std::string backtrace;
     first_error_backtrace_.Dump(tsl::DebugWriteToString, &backtrace);
     return AppendStatus(first_error_, backtrace);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<XlaComputation> XlaBuilder::Build(
@@ -804,7 +805,7 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(
   return std::move(computation);
 }
 
-/* static */ Status XlaBuilder::PopulateInputOutputAliasAndBufferDonor(
+/* static */ absl::Status XlaBuilder::PopulateInputOutputAliasAndBufferDonor(
     HloModuleProto* module, const ProgramShape& program_shape,
     const std::vector<InputOutputAlias>& input_output_aliases,
     const absl::flat_hash_set<HloBufferDonorConfig::BufferDonor>&
@@ -859,7 +860,7 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(
   }
   *module->mutable_buffer_donor() = buffer_donor_config.ToProto();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 XlaOp XlaBuilder::MhloDynamicReshape(XlaOp operand, XlaOp output_shape,
@@ -1987,7 +1988,7 @@ XlaOp XlaBuilder::SparseDot(
   });
 }
 
-Status XlaBuilder::VerifyConvolution(
+absl::Status XlaBuilder::VerifyConvolution(
     const Shape& lhs_shape, const Shape& rhs_shape,
     const ConvolutionDimensionNumbers& dimension_numbers) const {
   if (lhs_shape.rank() != rhs_shape.rank()) {
@@ -2018,7 +2019,7 @@ Status XlaBuilder::VerifyConvolution(
                                field_name, i, numbers[i]);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
   TF_RETURN_IF_ERROR(
       check_spatial_dimensions("input_spatial_dimensions",
@@ -3333,14 +3334,14 @@ XlaOp XlaBuilder::ConditionalImpl(
   });
 }
 
-Status XlaBuilder::CheckOpBuilder(XlaOp op) const {
+absl::Status XlaBuilder::CheckOpBuilder(XlaOp op) const {
   if (this != op.builder()) {
     return InvalidArgument(
         "XlaOp with handle %d is built by builder '%s', but is trying to use "
         "it in builder '%s'",
         op.handle(), op.builder()->name(), name());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 XlaOp XlaBuilder::Reduce(XlaOp operand, XlaOp init_value,
@@ -4605,7 +4606,7 @@ XlaBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
   return dimension_numbers;
 }
 
-/* static */ Status XlaBuilder::Validate(
+/* static */ absl::Status XlaBuilder::Validate(
     const ConvolutionDimensionNumbers& dnum) {
   if (dnum.input_spatial_dimensions_size() < 2) {
     return FailedPrecondition("input spacial dimension < 2: %d",
@@ -4653,7 +4654,7 @@ XlaBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
         dnum.output_batch_dimension(), dnum.output_feature_dimension(),
         dnum.output_spatial_dimensions(0), dnum.output_spatial_dimensions(1));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<XlaOp> XlaBuilder::AddInstruction(

@@ -1141,8 +1141,7 @@ IndexingMap CreateIdentityMap(const Shape& shape, MLIRContext* mlir_context) {
 }
 
 llvm::SmallVector<AffineExpr, 4> DelinearizeInBoundsIndex(
-    AffineExpr linear, absl::Span<const int64_t> sizes,
-    absl::Span<const int64_t> strides) {
+    AffineExpr linear, absl::Span<const int64_t> sizes) {
   llvm::SmallVector<AffineExpr, 4> result;
   result.reserve(sizes.size());
   if (absl::c_linear_search(sizes, 0)) {
@@ -1152,6 +1151,7 @@ llvm::SmallVector<AffineExpr, 4> DelinearizeInBoundsIndex(
     return result;
   }
 
+  auto strides = ComputeStrides(sizes);
   for (auto [size, stride] : llvm::zip(sizes, strides)) {
     result.push_back(linear.floorDiv(stride) % size);
   }
@@ -1197,8 +1197,7 @@ IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(
 AffineMap GetBlockOffsetsForTiling(const Tiling& tiling,
                                    MLIRContext* mlir_context) {
   auto offsets = DelinearizeInBoundsIndex(getAffineDimExpr(3, mlir_context),
-                                          tiling.GetBlockCounts(),
-                                          tiling.GetBlockStrides());
+                                          tiling.GetBlockCounts());
   for (auto&& [offset, tile_size] :
        llvm::zip(offsets, tiling.GetBlockTileSize())) {
     offset = offset * tile_size;
@@ -1209,8 +1208,7 @@ AffineMap GetBlockOffsetsForTiling(const Tiling& tiling,
 AffineMap GetThreadOffsetsForTiling(const Tiling& tiling,
                                     MLIRContext* mlir_context) {
   auto offsets = DelinearizeInBoundsIndex(getAffineDimExpr(0, mlir_context),
-                                          tiling.GetThreadsPerBlock(),
-                                          tiling.GetThreadStrides());
+                                          tiling.GetThreadsPerBlock());
   for (int dim = 0; dim < tiling.GetShape().size(); ++dim) {
     if (tiling.GetThreadTileSize()[dim] > 1) {
       offsets[dim] = offsets[dim] + getAffineSymbolExpr(dim, mlir_context) *

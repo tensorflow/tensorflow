@@ -56,18 +56,15 @@ TEST_F(FusionAnalysisCacheTest, CachesAndInvalidates) {
   auto* negate = computation->GetInstructionWithName("n0");
   auto* fusion = module->entry_computation()->root_instruction();
 
-  EXPECT_THAT(cache_.Get(*fusion).fusion_roots(),
-              ::testing::ElementsAre(negate));
+  EXPECT_EQ(&cache_.Get(*fusion).fusion_root(0).instruction(), negate);
 
   computation->set_root_instruction(broadcast);
 
-  EXPECT_THAT(cache_.Get(*fusion).fusion_roots(),
-              ::testing::ElementsAre(negate))
+  EXPECT_EQ(&cache_.Get(*fusion).fusion_root(0).instruction(), negate)
       << "Analysis should be cached.";
 
   cache_.Invalidate(*fusion);
-  EXPECT_THAT(cache_.Get(*fusion).fusion_roots(),
-              ::testing::ElementsAre(broadcast))
+  EXPECT_EQ(&cache_.Get(*fusion).fusion_root(0).instruction(), broadcast)
       << "Analysis should have been recomputed";
 }
 

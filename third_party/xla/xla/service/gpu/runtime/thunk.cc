@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -340,16 +339,9 @@ bool IsReductionCollective(Thunk::Kind kind) {
          kind == Thunk::kNcclReduceScatterStart;
 }
 
-Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(mlir::Operation* op) {
-  ThunkInfo thunk_info(op);
-  thunk_info.profile_annotation =
-      mlir::mhlo::GetDebugNameFromLocation(op->getLoc());
-  return thunk_info;
-}
-
 Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
     const HloInstruction* instr) {
-  ThunkInfo thunk_info(nullptr);
+  ThunkInfo thunk_info;
   thunk_info.profile_annotation = instr->name();
   auto gpu_backend_config = instr->backend_config<GpuBackendConfig>();
   if (gpu_backend_config.ok()) {

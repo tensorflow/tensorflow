@@ -64,13 +64,13 @@ void DfsHloVisitorBase<HloInstructionPtr>::SetVisited(
 template <typename HloInstructionPtr>
 absl::Status DfsHloVisitorBase<HloInstructionPtr>::Preprocess(
     HloInstructionPtr) {
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename HloInstructionPtr>
 absl::Status DfsHloVisitorBase<HloInstructionPtr>::Postprocess(
     HloInstructionPtr) {
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Explicit instantiations.

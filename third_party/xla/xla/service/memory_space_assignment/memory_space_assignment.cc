@@ -81,7 +81,7 @@ absl::Status EnsureInstructionAndOperandsInserted(
     HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
     absl::flat_hash_set<HloInstruction*>* inserted_instructions) {
   if (inserted_instructions->contains(new_instruction)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return InsertInstructionAndEnsureOperandsInserted(
       new_instruction, new_sequence, inserted_instructions);
@@ -100,7 +100,7 @@ absl::Status InsertInstructionAndEnsureOperandsInserted(
   VLOG(4) << "inserting: " << new_instruction->ToShortString();
   new_sequence->push_back(new_instruction);
   TF_RET_CHECK(inserted_instructions->insert(new_instruction).second);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string InstructionScheduleToString(const HloLiveRange& hlo_live_range) {
@@ -387,7 +387,7 @@ absl::Status MemorySpaceAssignment::FindAllocationSequence(
                                         options_.size_fn,
                                         heap_simulator_options)
                          .status());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 float MemorySpaceAssignment::ComputeEstimatedElapsedTime(
@@ -510,7 +510,7 @@ absl::Status MemorySpaceAssignment::Process(
       TF_RETURN_IF_ERROR(allocation->PostProcess());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status MemorySpaceAssignment::ExportAndColorBuffers() {
@@ -578,7 +578,7 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers() {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MemorySpaceAssignment::RemoveAssignmentForInstruction(
@@ -701,7 +701,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1019,7 +1019,7 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
 
   TF_RETURN_IF_ERROR(schedule.Update());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
@@ -1065,7 +1065,7 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
       }
     }
     interval_tree.Add(start_time, end_time - 1, chunk);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   // Go through all instructions in the module to ensure CopyStart/CopyDone
@@ -1171,7 +1171,7 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
                 << ")";
         TF_RETURN_IF_ERROR(add_allocation_and_verify(
             start_time, earliest_computation_start_time - 1, chunk, value));
-        return OkStatus();
+        return absl::OkStatus();
       };
 
       if (last_use_instruction &&
@@ -1238,7 +1238,7 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
   }
   VLOG(1) << "Max memory usage ignoring fragmentation: " << max_memory_usage;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace memory_space_assignment

@@ -99,7 +99,7 @@ struct InterpreterValue {
   BufferView& View();
   const BufferView& View() const;
   // Returns the underlying tensor's buffer. Must be a tensor.
-  std::shared_ptr<Buffer> Buffer() const;
+  std::shared_ptr<Buffer> GetBuffer() const;
 
   bool IsTensor() const;
 

@@ -205,19 +205,10 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   StreamExecutorGpuClient(
       std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-      std::vector<std::unique_ptr<PjRtStreamExecutorMemorySpace>> memory_spaces,
       int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tsl::Allocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
-      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
-      : xla::PjRtStreamExecutorClient(
-            platform_name, client, std::move(devices), std::move(memory_spaces),
-            process_index, std::move(allocator),
-            std::move(host_memory_allocator),
-            should_stage_host_to_device_transfers, std::move(gpu_run_options)),
-        topology_(xla::StreamExecutorGpuTopologyDescription::Create(
-            tsl::Fingerprint64(platform_name), platform_name,
-            devices_.back()->device_kind(), devices_)) {}
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
 
   absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -282,9 +273,6 @@ absl::Status BuildDistributedDevices(
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
     absl::Duration get_local_topology_timeout = absl::Minutes(2),
     absl::Duration get_global_topology_timeout = absl::Minutes(5));
-
-std::vector<std::unique_ptr<PjRtStreamExecutorMemorySpace>> BuildMemorySpaces(
-    absl::Span<const std::unique_ptr<PjRtStreamExecutorDevice>> devices);
 
 struct GpuClientOptions {
   GpuAllocatorConfig allocator_config;

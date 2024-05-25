@@ -72,7 +72,7 @@ struct DevicePutResult {
 // to execute.
 //
 // May throw exceptions from nanobind in addition to failing via an error
-// Status. (We could catch these if needed, but there seems little point.)
+// absl::Status. (We could catch these if needed, but there seems little point.)
 struct DevicePutOptions {
   bool squash_64bit_types = false;
   bool allow_zero_copy = true;

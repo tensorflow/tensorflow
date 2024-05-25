@@ -60,7 +60,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tsl/framework/allocator.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/thread_annotations.h"

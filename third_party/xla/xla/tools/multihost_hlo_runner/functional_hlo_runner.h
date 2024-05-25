@@ -186,10 +186,16 @@ class FunctionalHloRunner {
     ModuleOutputMode module_output_mode = ModuleOutputMode::kReturnOutputs;
     // Repeatedly execute the HLO for this many times.
     size_t num_repeats = 1;
+    // If true, we recreate the buffers between repeats to reset of effect of
+    // buffer donation.
+    bool recreate_buffers_between_repeats = false;
     // This indicates whether we log the inputs and outputs to stderr.
     LogOutputMode log_input_output_mode = LogOutputMode::kNotLogOutput;
     const MultiSliceConfig* multi_slice_config = nullptr;
     ProfilerInterface* profiler = nullptr;
+    // Whether to untuple the result of running HLO module into a vector of
+    // arrays. If unprovided, use the default in ExecuteOptions.
+    std::optional<bool> untuple_result = std::nullopt;
 
     // Should we log the inputs and outputs to stderr?
     bool log_input_output() const {

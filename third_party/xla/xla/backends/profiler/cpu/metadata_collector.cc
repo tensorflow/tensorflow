@@ -47,7 +47,7 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
       xla::XlaDebugInfoManager::Get()->StartTracing();
       trace_active_ = true;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status Stop() override {
@@ -55,7 +55,7 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
       xla::XlaDebugInfoManager::Get()->StopTracing(&debug_info_);
       trace_active_ = false;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status CollectData(tsl::profiler::XSpace* space) override {
@@ -70,7 +70,7 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
       }
       debug_info_.clear();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

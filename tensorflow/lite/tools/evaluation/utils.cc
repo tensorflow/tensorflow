@@ -185,7 +185,9 @@ TfLiteDelegatePtr CreateHexagonDelegate(
 #endif  // TFLITE_ENABLE_HEXAGON
 
 #ifdef TFLITE_WITHOUT_XNNPACK
-TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads, bool force_fp16) {
+TfLiteDelegatePtr CreateXNNPACKDelegate(
+    int num_threads, bool force_fp16,
+    const char* experimental_weight_cache_file_path) {
   return tools::CreateNullDelegate();
 }
 #else  // !defined(TFLITE_WITHOUT_XNNPACK)

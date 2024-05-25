@@ -1033,7 +1033,7 @@ absl::Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1477,7 +1477,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
         VLOG(2) << "Repacking.";
         auto repack_status =
             options_.repacker->Repack(absl::MakeSpan(repack_allocation_blocks));
-        CHECK_EQ(repack_status.status(), OkStatus());
+        CHECK_EQ(repack_status.status(), absl::OkStatus());
         VLOG(2) << "Repack complete. Modified = " << *repack_status;
         // For debug and testing purpose, also update allocations if
         // repack_after_every_allocation is on.
@@ -1525,7 +1525,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
     VLOG(2) << "Final Repacking.";
     auto repack_status =
         options_.repacker->Repack(absl::MakeSpan(repack_allocation_blocks));
-    CHECK_EQ(repack_status.status(), OkStatus());
+    CHECK_EQ(repack_status.status(), absl::OkStatus());
     VLOG(2) << "Final Repack complete. Modified = " << *repack_status;
   }
 
@@ -3377,7 +3377,7 @@ void MsaAlgorithm::ImportRepackedSlicedAllocation(
 absl::Status MsaAlgorithm::AreRepackedSlicesValid(
     const RepackAllocationBlock& block) {
   if (!block.repacked_slice_data.has_value()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (!block.original_slice_data.has_value()) {
     return InvalidArgumentStrCat(
@@ -3418,7 +3418,7 @@ absl::Status MsaAlgorithm::AreRepackedSlicesValid(
         "mappings.");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MsaAlgorithm::UncommitPendingChunks(

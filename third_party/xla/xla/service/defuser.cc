@@ -53,7 +53,7 @@ absl::StatusOr<bool> Defuser::Run(
           TF_RETURN_IF_ERROR(fusion_instruction->Defuse());
           changed = true;
         }
-        return OkStatus();
+        return absl::OkStatus();
       },
       /*visit_unreachable_nodes=*/true));
 

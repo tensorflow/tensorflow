@@ -174,7 +174,7 @@ absl::Status TuplePointsToAnalysis::Analyze() {
 
   XLA_VLOG_LINES(3, ToString());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
@@ -196,7 +196,7 @@ absl::Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
           }
         });
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::DefaultAction(
@@ -218,7 +218,7 @@ absl::Status TuplePointsToAnalysis::DefaultAction(
     points_to_set.add_tuple_source({}, hlo_instruction);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleGetTupleElement(
@@ -250,7 +250,7 @@ absl::Status TuplePointsToAnalysis::HandleGetTupleElement(
         }
       });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleCopy(HloInstruction* copy) {
@@ -263,7 +263,7 @@ absl::Status TuplePointsToAnalysis::HandleCopy(HloInstruction* copy) {
       logical_buffer_analysis_->GetBuffer(copy, /*index=*/{}),
       /*index=*/{});
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleBitcast(HloInstruction* bitcast) {
@@ -271,7 +271,7 @@ absl::Status TuplePointsToAnalysis::HandleBitcast(HloInstruction* bitcast) {
   // result *is* the buffer of its operand, so just copy the operands points-to
   // set.
   CreateCopiedPointsToSet(bitcast, bitcast->operand(0));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleDomain(HloInstruction* domain) {
@@ -279,14 +279,14 @@ absl::Status TuplePointsToAnalysis::HandleDomain(HloInstruction* domain) {
   // result *is* the buffer of its operand, so just copy the operands points-to
   // set.
   CreateCopiedPointsToSet(domain, domain->operand(0));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleAddDependency(
     HloInstruction* add_dependency) {
   // AddDependency just forwards the value of its zero-th operand.
   CreateCopiedPointsToSet(add_dependency, add_dependency->operand(0));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
@@ -316,7 +316,7 @@ absl::Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
           points_to_set.add_tuple_source(index, tuple_source);
         }
       });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleAsyncStart(
@@ -341,7 +341,7 @@ absl::Status TuplePointsToAnalysis::HandleAsyncStart(
         }
       });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleAsyncUpdate(
@@ -360,7 +360,7 @@ absl::Status TuplePointsToAnalysis::HandleAsyncUpdate(
     }
   });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleAsyncDone(
@@ -384,7 +384,7 @@ absl::Status TuplePointsToAnalysis::HandleAsyncDone(
         }
       });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleCopyStart(
@@ -409,7 +409,7 @@ absl::Status TuplePointsToAnalysis::HandleCopyStart(
     points_to_set.add_tuple_source(/*index=*/{1}, tuple);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleCopyDone(HloInstruction* copy_done) {
@@ -432,7 +432,7 @@ absl::Status TuplePointsToAnalysis::HandleCopyDone(HloInstruction* copy_done) {
         }
       });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleSend(HloInstruction* send) {
@@ -471,7 +471,7 @@ absl::Status TuplePointsToAnalysis::HandleSend(HloInstruction* send) {
         }
       });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
@@ -510,7 +510,7 @@ absl::Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
 
   points_to_set.add_tuple_source({}, tuple);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleCustomCall(
@@ -542,7 +542,7 @@ absl::Status TuplePointsToAnalysis::HandleCustomCall(
     }
   });
   points_to_set.add_tuple_source({}, custom_call);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // WARNING:
@@ -576,14 +576,14 @@ absl::Status TuplePointsToAnalysis::HandleFusion(HloInstruction* fusion) {
     }
   });
   points_to_set.add_tuple_source({}, fusion);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TuplePointsToAnalysis::HandleOptimizationBarrier(
     HloInstruction* barrier) {
   // A kOptimizationBarrier instruction is a no-op.
   CreateCopiedPointsToSet(barrier, barrier->operand(0));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const PointsToSet& TuplePointsToAnalysis::GetPointsToSet(
@@ -629,7 +629,7 @@ absl::Status TuplePointsToAnalysis::VerifyBuffer(
         buffer.ToString(), GetBuffer(buffer.id()).ToString());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const LogicalBuffer& TuplePointsToAnalysis::GetBuffer(
@@ -685,7 +685,7 @@ absl::Status TuplePointsToAnalysis::GatherBuffersDefinedByInstruction(
           }
         }
       });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 PointsToSet& TuplePointsToAnalysis::CreateCopiedPointsToSet(

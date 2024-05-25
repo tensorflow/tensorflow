@@ -171,7 +171,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
                 alias->ToString());
           }
         }
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   se::StreamExecutor* executor = stream->parent();

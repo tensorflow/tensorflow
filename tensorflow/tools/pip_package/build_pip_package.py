@@ -230,6 +230,10 @@ def patch_so(srcs_dir: str) -> None:
           "tensorflow/compiler/mlir/quantization/tensorflow/python/"
           "pywrap_quantize_model.so"
       ): "$ORIGIN/../../../../../python",
+      (
+          "tensorflow/compiler/mlir/tensorflow_to_stablehlo/python/"
+          "pywrap_tensorflow_to_stablehlo.so"
+      ): "$ORIGIN/../../../../python",
   }
   for file, path in to_patch.items():
     rpath = subprocess.check_output(

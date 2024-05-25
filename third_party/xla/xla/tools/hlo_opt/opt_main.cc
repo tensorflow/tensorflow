@@ -176,7 +176,7 @@ absl::Status RunOpt(int argc, char** argv, const HloOptConfig& opts) {
     TF_RETURN_IF_ERROR(
         tsl::WriteStringToFile(tsl::Env::Default(), opts.output_file, output));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

@@ -460,13 +460,13 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 1)
     self.assertEqual('Placeholder', input_details[0]['name'])
-    self.assertEqual(np.string_, input_details[0]['dtype'])
+    self.assertEqual(np.bytes_, input_details[0]['dtype'])
     self.assertAllEqual([4], input_details[0]['shape'])
 
     output_details = interpreter.get_output_details()
     self.assertLen(output_details, 1)
     self.assertEqual('Reshape', output_details[0]['name'])
-    self.assertEqual(np.string_, output_details[0]['dtype'])
+    self.assertEqual(np.bytes_, output_details[0]['dtype'])
     self.assertAllEqual([2, 2], output_details[0]['shape'])
     # TODO(b/122659643): Test setting/getting string data via the python
     # interpreter API after support has been added.

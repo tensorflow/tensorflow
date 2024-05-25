@@ -44,9 +44,9 @@ InterpreterValue Bitcast(InterpreterState&, arith::BitcastOp op,
     TensorOrMemref<decltype(dummy)> result;
     result.view = {};
     if (shaped_ty) {
-      result.buffer = in.Clone().Buffer();
+      result.buffer = in.Clone().GetBuffer();
     } else {
-      result.buffer = in.AsUnitTensor().Buffer();
+      result.buffer = in.AsUnitTensor().GetBuffer();
     }
     return {result};
   });

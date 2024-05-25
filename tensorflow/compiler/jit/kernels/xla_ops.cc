@@ -24,10 +24,10 @@ limitations under the License.
 #include <string_view>
 #include <tuple>
 #include <utility>
-#include <variant>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
@@ -52,7 +52,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/statusor.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -224,7 +224,7 @@ xla::SendDeviceMemoryFunction GetSendDeviceMemoryFunction(
           int64_t channel_id, se::Stream* stream, const xla::Shape& shape,
           const se::DeviceMemoryBase& device_memory_base,
           const absl::flat_hash_map<std::string, std::string>& frontend_attrs)
-          -> absl::StatusOr<tsl::AsyncValueRef<se::Event>> {
+          -> absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<se::Event>>> {
         auto iter = frontend_attrs.find("_xla_host_transfer_rendezvous");
 
         // Generate the Rendezvous key.
@@ -244,12 +244,10 @@ xla::SendDeviceMemoryFunction GetSendDeviceMemoryFunction(
         RendezvousInterface::ParsedKey parsed_key;
         TF_RETURN_IF_ERROR(Rendezvous::ParseKey(rendezvous_key, &parsed_key));
 
-        tsl::AsyncValueRef<se::Event> done_event =
-            tsl::MakeConstructedAsyncValueRef<se::Event>(stream->parent());
-        if (!done_event->Init()) {
-          return errors::Internal(
-              "Failed to initialize done event (channel_id=%d)", channel_id);
-        }
+        TF_ASSIGN_OR_RETURN(auto event, stream->parent()->CreateEvent());
+        tsl::AsyncValueRef<std::unique_ptr<se::Event>> done_event =
+            tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
+                std::move(event));
 
         Rendezvous::Args args;
         // Rendezvous::Args owns the device context pointer.
@@ -273,7 +271,7 @@ xla::RecvDeviceMemoryFunction GetRecvDeviceMemoryFunction(
           int64_t channel_id, se::Stream* stream, const xla::Shape& shape,
           se::DeviceMemoryBase* device_memory_base,
           const absl::flat_hash_map<std::string, std::string>& frontend_attrs)
-          -> absl::StatusOr<tsl::AsyncValueRef<se::Event>> {
+          -> absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<se::Event>>> {
         auto iter = frontend_attrs.find("_xla_host_transfer_rendezvous");
 
         // Generate the Rendezvous key.
@@ -293,12 +291,10 @@ xla::RecvDeviceMemoryFunction GetRecvDeviceMemoryFunction(
         RendezvousInterface::ParsedKey parsed_key;
         TF_RETURN_IF_ERROR(Rendezvous::ParseKey(rendezvous_key, &parsed_key));
 
-        tsl::AsyncValueRef<se::Event> done_event =
-            tsl::MakeConstructedAsyncValueRef<se::Event>(stream->parent());
-        if (!done_event->Init()) {
-          return errors::Internal(
-              "Failed to initialize done event (channel_id=%d)", channel_id);
-        }
+        TF_ASSIGN_OR_RETURN(auto event, stream->parent()->CreateEvent());
+        tsl::AsyncValueRef<std::unique_ptr<se::Event>> done_event =
+            tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
+                std::move(event));
 
         Rendezvous::Args args;
         // Rendezvous::Args owns the device context pointer.

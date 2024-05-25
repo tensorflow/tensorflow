@@ -239,7 +239,7 @@ struct P2PGroup {
   absl::Status RecordP2POpForUnpipelinedGroup(HloSendRecvInstruction* p2p) {
     if (kind == kUnrecognized) {
       // Leave unrecognized P2P groups alone.
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (kind != kUnpipelined) {
       return Internal("Expected unpipelined group");
@@ -248,13 +248,13 @@ struct P2PGroup {
     if (!node.RecordP2POp(p2p)) {
       kind = kUnrecognized;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status RecordP2POpForPipelinedGroup(HloSendRecvInstruction* p2p) {
     if (kind == kUnrecognized) {
       // Leave unrecognized P2P groups alone.
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (kind == kUnpipelined) {
       if (nodes[kPipelinedParentNodeIdx].computation != nullptr) {
@@ -266,13 +266,13 @@ struct P2PGroup {
     if (!node.RecordP2POp(p2p)) {
       kind = kUnrecognized;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status RecordWhileOpToPipelinedGroup(HloInstruction* while_op) {
     if (kind == kUnrecognized) {
       // Leave unrecognized P2P groups alone.
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (kind == kUnpipelined) {
       return Internal("Expected pipelined group");
@@ -281,7 +281,7 @@ struct P2PGroup {
     if (!node.RecordWhileOp(while_op)) {
       kind = kUnrecognized;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Finds the pipeline stream from the frontend attribute of the Send/Recv in
@@ -329,7 +329,7 @@ struct P2PGroup {
         p2p_group.complement_group_channel = GetChannel();
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns the parent computation assuming this is a kPipelined group.
@@ -424,12 +424,12 @@ absl::Status MayAddWhileOpToPipelinedGroup(HloInstruction* while_op,
     // A while-init should contain the loop index variable. So if a while-init
     // is not a tuple, it only contains the loop index variable and shouldn't
     // contain any pipelined Send operand.
-    return OkStatus();
+    return absl::OkStatus();
   }
   HloComputation* body = while_op->called_computations()[0];
   auto p2p_in_while = p2p_in_computation.find(body);
   if (p2p_in_while == p2p_in_computation.end()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   int pipelined_group = 0;
   // Check whether the while-op init contains a token from a Send result.
@@ -452,13 +452,13 @@ absl::Status MayAddWhileOpToPipelinedGroup(HloInstruction* while_op,
     }
     TF_RETURN_IF_ERROR(group->second.RecordWhileOpToPipelinedGroup(while_op));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status OrderBefore(HloInstruction* i1, HloInstruction* i2) {
   TF_RETURN_IF_ERROR(i1->AddControlDependencyTo(i2));
   VLOG(10) << "Add control predecessor " << i2->ToString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Adds control dependence to enforce this ordering:
@@ -471,7 +471,7 @@ absl::Status ConnectP2P1NodeChain(const P2PGroupNode& node) {
   TF_RETURN_IF_ERROR(OrderBefore(recv, send));
   TF_RETURN_IF_ERROR(OrderBefore(send, recv_done));
   TF_RETURN_IF_ERROR(OrderBefore(recv_done, send_done));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // For an unpipelined Send-Recv chain, adds control dependence to enforce this
@@ -513,7 +513,7 @@ absl::Status ConnectP2P2NodeChain(const P2PGroupNode& node0,
 
   TF_RETURN_IF_ERROR(OrderBefore(send1, recv_done0));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // For a pipelined Send-Recv chain with two channel groups forming a cycle in a
@@ -660,7 +660,7 @@ absl::Status GatherP2PGroupsAndCollectiveInfo(
     TF_RETURN_IF_ERROR(p2p_group.RecordComplementGroup(p2p_group_map));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // For a given computation, adds control dependence to chain a pipelined or
@@ -736,7 +736,7 @@ absl::Status OrderBefore(HloReachabilityMap* reachability, HloInstruction* a,
     VLOG(10) << "add control predecessor " << b->ToString();
     reachability->UpdateReachabilityThroughInstruction(b);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Adds control dependence to linearize other collective ops with respect to
@@ -829,7 +829,7 @@ absl::Status LinearizeCollectivesWithOtherP2P(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Adds control dependence to linearize other collective ops with respect to
@@ -881,7 +881,7 @@ absl::Status LinearizeCollectivesWithPipelinedP2PChild(
     TF_RETURN_IF_ERROR(OrderBefore(reachability, hlo, start_end.first));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

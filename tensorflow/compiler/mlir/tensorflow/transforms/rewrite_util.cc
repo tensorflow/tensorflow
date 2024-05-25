@@ -67,5 +67,20 @@ void CopyDeviceAndUnderscoredAttributesAdaptor(mlir::Operation *src,
                                                mlir::Operation *dest) {
   CopyDeviceAndUnderscoredAttributes(src, dest);
 }
+
+void CopyXlaOutsideCompilationAttributesAdaptor(mlir::OpResult src,
+                                                mlir::OpResult dest) {
+  CopyXlaOutsideCompilationAttributesAdaptor(src.getOwner(), dest.getOwner());
+}
+
+void CopyXlaOutsideCompilationAttributesAdaptor(mlir::Operation *src,
+                                                mlir::OpResult dest) {
+  CopyXlaOutsideCompilationAttributesAdaptor(src, dest.getOwner());
+}
+
+void CopyXlaOutsideCompilationAttributesAdaptor(mlir::Operation *src,
+                                                mlir::Operation *dest) {
+  CopyXlaOutsideCompilationAttributes(src, dest);
+}
 }  // namespace TF
 }  // namespace mlir

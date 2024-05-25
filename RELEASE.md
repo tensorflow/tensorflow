@@ -31,6 +31,9 @@
       been added to TF binary distributions (Python wheels).
 * Replace `DebuggerOptions` of TensorFlow Quantizer, and migrate to
   `DebuggerConfig` of StableHLO Quantizer.
+* Add TensorFlow to StableHLO converter to TensorFlow pip package.
+* TensorRT support: this is the last release supporting TensorRT. It will be
+removed in the next release.
 
 ## Keras
 
@@ -87,6 +90,8 @@
     * The Python TF Lite Interpreter bindings now have an option
       `experimental_default_delegate_latest_features` to enable all default
       delegate features.
+    * Flatbuffer version update:
+        * `GetTemporaryPointer()` bug fixed.
 
 * `tf.data`
     * Add `wait` to `tf.data.Dataset.load`. If `True`, for snapshots written

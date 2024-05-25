@@ -133,7 +133,7 @@ absl::Status EmitMlirFuncAndCall(
   }
   b->CreateCall(func, op_vals);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cpu

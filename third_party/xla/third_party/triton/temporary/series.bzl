@@ -6,6 +6,7 @@ internal patch during the next triton integration process.
 """
 
 temporary_patch_list = [
-    "//third_party/triton/temporary:fp8_splat.patch",
-    "//third_party/triton/temporary:fix_register_constraints.patch",
+    "//third_party/triton/temporary:reduction_mma_v3_fix.patch",
+    "//third_party/triton/temporary:exclude_failing_h100_tests.patch",
+    "//third_party/triton/temporary:enable_mma_v3.patch",
 ]

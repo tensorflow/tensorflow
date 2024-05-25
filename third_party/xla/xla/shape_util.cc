@@ -929,7 +929,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
       shape,
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         if (!subshape.IsArray()) {
           return InvalidArgument("Shape cannot be serialiized: %s",
@@ -950,7 +950,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
         } else {
           size += ByteSizeOfElements(subshape);
         }
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   return size;
@@ -971,7 +971,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
       TF_RETURN_IF_ERROR(
           ValidateShapeWithOptionalLayoutInternal(element_shape));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Non-tuple shape.
@@ -993,7 +993,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
           primitive_util::LowercasePrimitiveTypeName(shape.element_type()),
           shape.ShortDebugString());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool any_overflows = false;
@@ -1018,14 +1018,14 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   }
 
   TF_RETURN_IF_ERROR(ValidateShapeSize(shape));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /* static */ absl::Status ShapeUtil::ValidateShapeSize(const Shape& shape) {
   VLOG(3) << "Validating shape size: " << ShapeUtil::HumanString(shape);
 
   if (!shape.IsArray()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   auto [extent_product, extent_overflow] =
@@ -1039,7 +1039,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   }
 
   VLOG(3) << "Shape size is valid: " << dense_shape_size;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /* static */ absl::Status ShapeUtil::ValidateShapeWithOptionalLayout(
@@ -1858,7 +1858,7 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
     const ForEachVisitorFunction& visitor_function) {
   ForEachState s(shape, base, count, incr);
   if (s.IsZeroElementArray()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   // Allows handling R0 arrays, such that the visitor function will be called
   // once with the proper empty indexes.
@@ -1872,7 +1872,7 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
     // Increments dimensions in minor to major order.
     n = s.IncrementDim();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /* static */ void ShapeUtil::ForEachIndexInternalNoStatus(
@@ -2146,7 +2146,7 @@ absl::Status ShapeUtil::ByteStrides(const Shape& shape,
     strides.at(i) = stride;
     stride *= shape.dimensions(i);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/

@@ -148,7 +148,7 @@ absl::Status Equal(LiteralSlice expected, LiteralSlice actual,
     if (mismatched) {
       mismatched->Set<bool>(multi_index, !result);
     }
-    return result ? OkStatus()
+    return result ? absl::OkStatus()
                   : MakeErrorStatus<NativeT>(expected_value, actual_value,
                                              multi_index);
   }
@@ -300,7 +300,7 @@ class NearComparator {
     CompareLiterals();
 
     if (num_mismatches_ == 0) {
-      return OkStatus();
+      return absl::OkStatus();
     } else if (!VLOG_IS_ON(1) && miscompare_callback_ != nullptr) {
       miscompare_callback_(
           expected_, actual_, mismatches_, shape_index_,
@@ -809,7 +809,7 @@ absl::Status EqualShapes(const Shape& expected, const Shape& actual) {
     }
   }
   // Non-array, non-tuple shapes are trivially equivalent.
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status EqualDynamicShapesAndDimensions(const LiteralSlice& expected,
@@ -856,7 +856,7 @@ absl::Status EqualDynamicShapesAndDimensions(const LiteralSlice& expected,
           }
         }
 
-        return OkStatus();
+        return absl::OkStatus();
       });
 }
 

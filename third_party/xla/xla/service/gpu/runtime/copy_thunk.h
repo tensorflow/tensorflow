@@ -17,10 +17,15 @@ limitations under the License.
 #define XLA_SERVICE_GPU_RUNTIME_COPY_THUNK_H_
 
 #include <cstdint>
+#include <memory>
+#include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
-#include "xla/hlo/ir/hlo_instructions.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/event.h"
@@ -44,8 +49,6 @@ class DeviceToDeviceCopyThunk : public Thunk {
   DeviceToDeviceCopyThunk& operator=(const DeviceToDeviceCopyThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-
-  void ClearCompileTimeInfo() override { Thunk::ClearCompileTimeInfo(); }
 
   const BufferAllocation::Slice& source() const { return source_buffer_; }
   const BufferAllocation::Slice& destination() const {

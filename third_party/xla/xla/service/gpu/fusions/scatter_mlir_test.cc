@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/scatter_mlir.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
@@ -184,8 +185,8 @@ TEST_F(MlirScatterFusionTest, Scatter_UniqueIndices) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: #[[$MAP0:.*]] = affine_map<()[s0] -> (s0 floordiv 2)>
-    // CHECK: #[[$MAP1:.*]] = affine_map<()[s0] -> (s0 mod 2)>
+    // CHECK: #[[$MAP0:.*]] = affine_map<(d0) -> (d0 floordiv 2)>
+    // CHECK: #[[$MAP1:.*]] = affine_map<(d0) -> (d0 mod 2)>
 
     // CHECK-LABEL: func.func @fused_computation(
     // CHECK-SAME:    %[[OPERAND:[a-zA-Z0-9]*]]: tensor<10x5xf32>
@@ -197,8 +198,8 @@ TEST_F(MlirScatterFusionTest, Scatter_UniqueIndices) {
     // CHECK-DAG:       %[[C9:.*]] = arith.constant 9 : index
 
     // CHECK:      %[[TH_X:.*]] = gpu.thread_id  x
-    // CHECK:      %[[SLICE_ID:.*]] = affine.apply #[[$MAP0]]()[%[[TH_X]]]
-    // CHECK:      %[[SLICE_X:.*]] = affine.apply #[[$MAP1]]()[%[[TH_X]]]
+    // CHECK:      %[[SLICE_ID:.*]] = xla_gpu.apply_indexing #[[$MAP0]](%[[TH_X]]
+    // CHECK:      %[[SLICE_X:.*]] = xla_gpu.apply_indexing #[[$MAP1]](%[[TH_X]]
 
     // CHECK:      %[[UPD_ELEM:.*]] = xla_gpu.pure_call @scatter_update(
     // CHECK-SAME:  %[[OPERAND]], %[[INDICES]], %[[UPDATES]],

@@ -129,7 +129,8 @@ LogicalResult LiftVariablesFromSession(
     const Tensor& tensor = std::get<1>(iter);
 
     // Create tensor attribute for this variable.
-    StatusOr<ElementsAttr> tensor_attr_or = ConvertTensor(tensor, &builder);
+    absl::StatusOr<ElementsAttr> tensor_attr_or =
+        ConvertTensor(tensor, &builder);
     if (!tensor_attr_or.ok()) {
       return module.emitOpError()
              << "failed to convert tensor (name: " << name.str() << ")";

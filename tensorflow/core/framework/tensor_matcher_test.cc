@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/tensor_matcher.h"
 
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -26,7 +27,9 @@ namespace tensorflow {
 namespace test {
 namespace {
 
+using ::testing::DoubleEq;
 using ::testing::ElementsAre;
+using ::testing::FloatEq;
 
 TEST(TensorMatcherTest, BasicPod) {
   std::vector<Tensor> expected;
@@ -48,6 +51,34 @@ TEST(TensorMatcherTest, BasicString) {
 
   EXPECT_THAT(expected,
               ElementsAre(TensorEq(Tensor(s1)), TensorEq(Tensor(s2))));
+}
+
+TEST(TensorMatcherTest, FloatComparisonUsesTolerance) {
+  // Two floats that are *nearly* equal.
+  float f1(1);
+  float f2 = std::nextafter(f1, f1 + 1);
+
+  // Direct equality checks should fail, but use of the specialized `FloatEq`
+  // should succeed since this matcher applies ULP-based comparison.
+  // go/matchers#FpMatchers
+  ASSERT_NE(f1, f2);
+  ASSERT_THAT(f1, FloatEq(f2));
+
+  EXPECT_THAT(Tensor(f1), TensorEq(Tensor(f2)));
+}
+
+TEST(TensorMatcherTest, DoubleComparisonUsesTolerance) {
+  // Two doubles that are *nearly* equal.
+  double d1(1);
+  double d2 = std::nextafter(d1, d1 + 1);
+
+  // Direct equality checks should fail, but use of the specialized `DoubleEq`
+  // should succeed since this matcher applies ULP-based comparison.
+  // go/matchers#FpMatchers
+  ASSERT_NE(d1, d2);
+  ASSERT_THAT(d1, DoubleEq(d2));
+
+  EXPECT_THAT(Tensor(d1), TensorEq(Tensor(d2)));
 }
 
 }  // namespace

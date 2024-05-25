@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/manifest_checking_test.h"
 #include "xla/tests/verified_hlo_module.h"

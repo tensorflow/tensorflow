@@ -538,7 +538,7 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
               *device = *it1;
               gm1.erase(it1);
               gm2.erase(it2);
-              return OkStatus();
+              return absl::OkStatus();
             } else if (*it1 < *it2) {
               it1++;
             } else {
@@ -3160,11 +3160,11 @@ absl::Status CanonicalizeLayoutAfterShardingPropagation(
     HloModule* module, bool update_output_layout,
     bool update_parameters_layout) {
   if (!update_output_layout && !update_parameters_layout) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (!module->layout_canonicalization_callback()) {
     LOG(INFO) << "There is no registered layout_canonicalization_callback.";
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(auto shapes_with_layout,
                       module->layout_canonicalization_callback()(*module));
@@ -3190,7 +3190,7 @@ absl::Status CanonicalizeLayoutAfterShardingPropagation(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace hlo_sharding_util

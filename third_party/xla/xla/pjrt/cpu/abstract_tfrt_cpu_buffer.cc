@@ -946,7 +946,7 @@ AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToSubBuffer(
       event->SetStateConcrete();
     }
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AbstractAsyncHostToHostMemoryTransferManager::SetBufferError(
@@ -981,7 +981,7 @@ AbstractAsyncHostToHostMemoryTransferManager::PopulateAsyncTransferManagerData(
     buffer_sizes.push_back(buffer_size);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

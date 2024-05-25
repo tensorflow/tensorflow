@@ -119,7 +119,7 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
     TF_ASSIGN_OR_RETURN(live_range_,
                         HloLiveRange::Run(module->schedule(), *alias_analysis_,
                                           module->entry_computation()));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::StatusOr<MemoryBoundLoopOptimizer*> CreateOptimizer(
@@ -496,7 +496,7 @@ ENTRY Entry {
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

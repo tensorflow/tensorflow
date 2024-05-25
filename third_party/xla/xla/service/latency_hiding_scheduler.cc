@@ -1817,7 +1817,7 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
       module, alias_analysis_.get(), shape_size_bytes_);
   module_pressure_state_->InitializePressureStates();
   module_pressure_state_->SetMemoryPeak(0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status DefaultSchedulerCore::SchedulingStep(
@@ -1832,7 +1832,7 @@ absl::Status DefaultSchedulerCore::SchedulingStep(
                       ScheduleNode(node, sched_state));
   VLOG(5) << "Scheduled: ";
   XLA_VLOG_LINES(5, node->ToString());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<HloInstruction*>>

@@ -104,8 +104,8 @@ class StreamExecutorInterface {
   // Loads a module for the platform this StreamExecutor is acting upon.
   //
   // `spec` describes the module to be loaded.  On success writes the handle for
-  // the loaded module to `module_handle` and returns OkStatus().  Otherwise,
-  // returns the error which has occurred.
+  // the loaded module to `module_handle` and returns absl::OkStatus().
+  // Otherwise, returns the error which has occurred.
   virtual absl::Status LoadModule(const MultiModuleLoaderSpec& spec,
                                   ModuleHandle* module_handle) {
     return absl::UnimplementedError("Not Implemented");
@@ -263,28 +263,11 @@ class StreamExecutorInterface {
   virtual bool HostCallback(Stream* stream,
                             absl::AnyInvocable<absl::Status() &&> callback) = 0;
 
-  // Performs platform-specific allocation and initialization of an event.
-  virtual absl::Status AllocateEvent(Event* event) = 0;
-
-  // Performs platform-specific deallocation and cleanup of an event.
-  virtual absl::Status DeallocateEvent(Event* event) = 0;
-
   // Inserts the specified event at the end of the specified stream.
   virtual absl::Status RecordEvent(Stream* stream, Event* event) = 0;
 
   // Waits for the specified event at the end of the specified stream.
   virtual absl::Status WaitForEvent(Stream* stream, Event* event) = 0;
-
-  // Waits for the specified event at the end of the raw platform-specific
-  // stream.
-  virtual absl::Status WaitForEventOnExternalStream(std::intptr_t stream,
-                                                    Event* event) {
-    return absl::UnimplementedError(
-        "WaitForEventOnExternalStream not supported on this executor.");
-  }
-
-  // Requests the current status of the event from the underlying platform.
-  virtual Event::Status PollForEventStatus(Event* event) = 0;
 
   // Deallocates stream resources on the underlying platform.
   virtual void DeallocateStream(Stream* stream) = 0;
@@ -356,10 +339,6 @@ class StreamExecutorInterface {
   // Returns null if there was an error initializing the DNN support for the
   // underlying platform.
   virtual dnn::DnnSupport* AsDnn() { return nullptr; }
-
-  // Each call creates a new instance of the platform-specific implementation of
-  // the corresponding interface type.
-  virtual std::unique_ptr<EventInterface> CreateEventImplementation() = 0;
 
   // Creates a new Kernel object.
   // TODO(klucke) Combine with GetKernel.

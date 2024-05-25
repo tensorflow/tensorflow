@@ -124,9 +124,9 @@ void InterpreterState::AddFailure(llvm::StringRef failure) {
 
 void InterpreterScope::Verify() const {
   for (auto& [_, value] : values_) {
-    if (value.IsTensor() && value.Buffer() &&
-        !value.Buffer()->GetFailure().empty()) {
-      state_.AddFailure(value.Buffer()->GetFailure());
+    if (value.IsTensor() && value.GetBuffer() &&
+        !value.GetBuffer()->GetFailure().empty()) {
+      state_.AddFailure(value.GetBuffer()->GetFailure());
       break;
     }
   }

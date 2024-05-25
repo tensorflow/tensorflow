@@ -44,7 +44,7 @@ MemoryDump ReadDumpFile(const string& fname) {
     LOG(ERROR) << "read from file " << fname << " failed " << status;
   }
   MemoryDump md;
-  md.ParseFromString(string(contents));
+  md.ParseFromString(contents);
   return md;
 }
 

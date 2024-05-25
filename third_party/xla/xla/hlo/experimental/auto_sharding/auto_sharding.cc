@@ -19,6 +19,7 @@ limitations under the License.
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -94,7 +95,6 @@ namespace xla {
 namespace spmd {
 
 namespace {
-constexpr double kOverbudgetCoeff = 1e6;
 constexpr double kSaltiplier = 0.0;  // This value (0.0) disables salting.
 }  // namespace
 
@@ -1972,7 +1972,11 @@ AutoShardingSolverResult CallSolver(
   request.mutable_s_hint()->Add(s_hint.begin(), s_hint.end());
   request.mutable_solver_timeout()->set_solver_timeout_in_seconds(
       solver_timeout_in_seconds);
-  request.mutable_overbudget_coeff()->set_coeff(kOverbudgetCoeff);
+  // Only apply soft memory constraints if the overbudget coeff is nonnegative.
+  if (option.memory_overbudget_coeff >= 0.0) {
+    request.mutable_overbudget_coeff()->set_coeff(
+        option.memory_overbudget_coeff);
+  }
   request.set_crash_at_infinity_costs_check(!option.try_multiple_mesh_shapes);
   request.set_compute_iis(compute_iis);
   request.set_saltiplier(kSaltiplier);
@@ -3285,7 +3289,7 @@ absl::Status GenerateReduceScatter(
             .output_sharding);
     TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(replace_with));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AnnotateShardingWithSimpleHeuristic(
@@ -3443,7 +3447,7 @@ absl::Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
       << ins->ToString() << " does not have any valid strategies";
   strategy_group->strategies = std::move(new_strategies);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Return the output sharding of the reduce-scatter variant of a given strategy.
@@ -3740,7 +3744,7 @@ absl::Status AutoShardingImplementation::CanonicalizeLayouts(
     HloModule* module) {
   if (!module->layout_canonicalization_callback()) {
     LOG(INFO) << "There is no registered layout_canonicalization_callback.";
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(auto layouts,
                       module->layout_canonicalization_callback()(*module));
@@ -3759,7 +3763,7 @@ absl::Status AutoShardingImplementation::CanonicalizeLayouts(
   }
   *module->mutable_config().mutable_entry_computation_layout() =
       entry_computation_layout;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Computes the set of instructions that lie outside any manually partitioned
@@ -4038,7 +4042,11 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
           << " = " << memory_lower_bound_gb * option_.memory_budget_ratio
           << " GB";
       option_.memory_budget_per_device =
-          memory_lower_bound * option_.memory_budget_ratio;
+          memory_lower_bound * std::abs(option_.memory_budget_ratio);
+      // TODO(b/341299984): Document this flag syntax, or automate the behavior.
+      if (option_.memory_budget_ratio < 0) {
+        option_.memory_overbudget_coeff = -1.0;  // Disables the soft constraint
+      }
     } else if (option_.memory_budget_per_device > 0) {
       option_.memory_budget_per_device = original_memory_budget *
                                          original_device_mesh.num_elements() /

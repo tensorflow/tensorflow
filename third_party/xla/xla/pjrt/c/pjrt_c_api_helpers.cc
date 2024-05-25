@@ -262,6 +262,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_PRED;
     case xla::PrimitiveType::TOKEN:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_TOKEN;
+    case xla::PrimitiveType::S2:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_S2;
     case xla::PrimitiveType::S4:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S4;
     case xla::PrimitiveType::S8:
@@ -272,6 +274,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S32;
     case xla::PrimitiveType::S64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S64;
+    case xla::PrimitiveType::U2:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_U2;
     case xla::PrimitiveType::U4:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_U4;
     case xla::PrimitiveType::U8:
@@ -317,6 +321,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::PRED;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_TOKEN:
       return xla::PrimitiveType::TOKEN;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_S2:
+      return xla::PrimitiveType::S2;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S4:
       return xla::PrimitiveType::S4;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S8:
@@ -327,6 +333,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::S32;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S64:
       return xla::PrimitiveType::S64;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_U2:
+      return xla::PrimitiveType::U2;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_U4:
       return xla::PrimitiveType::U4;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_U8:

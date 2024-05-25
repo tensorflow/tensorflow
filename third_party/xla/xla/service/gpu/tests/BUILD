@@ -116,8 +116,10 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -184,6 +186,7 @@ xla_test(
         "//xla/service/gpu:gpu_executable",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/tests:filecheck",
         "//xla/tests:verified_hlo_module",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -230,6 +233,7 @@ xla_cc_test(
         ":gpu_codegen_test",
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
+        "//xla/stream_executor:stream_executor_memory_allocator",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -926,17 +930,16 @@ xla_test(
         "gpu_a100",
         "gpu_h100",
     ],
-    tags = ["no_oss"],  # b/340304923
     deps = if_cuda_is_configured(
         [
             ":gpu_codegen_test",
             "@com_google_googletest//:gtest",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/types:span",
-            "//third_party/half:includes",
             "//xla:literal",
             "//xla:literal_util",
             "//xla/tests:xla_internal_test_main",
+            "@local_tsl//tsl/lib/core:status_test_util",
         ],
         ["@local_tsl//tsl/platform:test_main"],  # b/317293391
     ),
@@ -946,7 +949,7 @@ xla_test(
     name = "gpu_fused_mha_test",
     srcs = ["gpu_fused_mha_test.cc"],
     backend_tags = {"gpu": [
-        "requires-gpu-sm90",
+        "requires-gpu-sm80",
     ]},
     backends = [
         "gpu",

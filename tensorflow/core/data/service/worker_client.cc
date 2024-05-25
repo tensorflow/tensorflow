@@ -56,7 +56,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 CreateDataServiceWorkerClient(
     const std::string& dispatcher_protocol, const DataTransferServerInfo& info,
     const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
@@ -243,7 +243,7 @@ class LocalDataTransferClient : public DataTransferClient {
     return absl::OkStatus();
   }
 
-  StatusOr<std::shared_ptr<DataServiceWorkerImpl>> GetWorker(
+  absl::StatusOr<std::shared_ptr<DataServiceWorkerImpl>> GetWorker(
       const GetElementRequest& req) const {
     std::shared_ptr<DataServiceWorkerImpl> worker =
         LocalWorkers::Get(worker_address_);

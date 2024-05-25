@@ -16,9 +16,17 @@ limitations under the License.
 #include "xla/service/gpu/runtime/cudnn_thunk.h"
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/kernel_arguments.h"
+#include "xla/service/gpu/runtime/thunk.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "tsl/platform/errors.h"
 

@@ -391,9 +391,19 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     """Create a simple QAT SavedModel that includes float ops at the end."""
     saved_model_dir = os.path.join(self.get_temp_dir(), 'qat_float_ops_at_end')
     input_tensor = tf.keras.layers.Input((32, 32, 128))
-    x = tf.quantization.fake_quant_with_min_max_args(input_tensor, -3.0, 3.0)
+
+    class _FakeQuantArgsLayer(tf.keras.layers.Layer):
+      """A fake quantization layer with fake_quant_with_min_max_args.
+
+      Keras 3 requires wrapping the tf function inside Keras layer.
+      """
+
+      def call(self, x):
+        return tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
+
+    x = _FakeQuantArgsLayer()(input_tensor)
     x = tf.keras.layers.Conv2D(1, (3, 3))(x)
-    x = tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
+    x = _FakeQuantArgsLayer()(x)
     # Exclude the quantization of the following Dense layer by not putting
     # fake quant layer after the dense layer.
     output_tensor = tf.keras.layers.Dense(1, activation='sigmoid')(x)
@@ -1607,10 +1617,19 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     input_name = 'input'
     output_name = 'scores'
 
+    class _FakeQuantArgsLayer(tf.keras.layers.Layer):
+      """A fake quantization layer with fake_quant_with_min_max_args.
+
+      Keras 3 requires wrapping the tf function inside Keras layer.
+      """
+
+      def call(self, x):
+        return tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
+
     input_tensor = tf.keras.layers.Input((32, 32, 128), name=input_name)
-    x = tf.quantization.fake_quant_with_min_max_args(input_tensor, -3.0, 3.0)
+    x = _FakeQuantArgsLayer()(input_tensor)
     x = tf.keras.layers.Conv2D(1, (3, 3))(x)
-    x = tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
+    x = _FakeQuantArgsLayer()(x)
     scores = tf.keras.layers.Reshape((-1,), name=output_name)(x)
     model = tf.keras.Model(input_tensor, scores)
     model.save(saved_model_dir)
@@ -1888,7 +1907,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     input_details = interp.get_input_details()
     output_details = interp.get_output_details()
 
-    input_data = np.array(['a', 'b', 'c', 'z'], dtype=np.string_)
+    input_data = np.array(['a', 'b', 'c', 'z'], dtype=np.bytes_)
     interp.resize_tensor_input(input_details[0]['index'], [4], strict=False)
     interp.allocate_tensors()
 
@@ -1982,7 +2001,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     input_details = interp.get_input_details()
     output_details = interp.get_output_details()
 
-    input_data = np.array(['a', 'b', 'c'], dtype=np.string_)
+    input_data = np.array(['a', 'b', 'c'], dtype=np.bytes_)
     interp.resize_tensor_input(input_details[0]['index'], [3], strict=False)
     interp.allocate_tensors()
 
@@ -2679,9 +2698,18 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         batch_size=1, shape=[3, 3], name='input_tensor', dtype=tf.float32
     )
 
-    x = tf.quantization.fake_quant_with_min_max_args(input_tensor, -3.0, 3.0)
+    class _FakeQuantArgsLayer(tf.keras.layers.Layer):
+      """A fake quantization layer with fake_quant_with_min_max_args.
+
+      Keras 3 requires wrapping the tf function inside Keras layer.
+      """
+
+      def call(self, x):
+        return tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
+
+    x = _FakeQuantArgsLayer()(input_tensor)
     x = tf.keras.layers.Dense(3)(x)
-    x = tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
+    x = _FakeQuantArgsLayer()(x)
     model = tf.keras.Model(input_tensor, x)
 
     model.compile(
@@ -2736,14 +2764,20 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
             inputs, filters, [*inputs.shape[:-1], 24], 1
         )
 
+    class _FakeQuantVarsLayer(tf.keras.layers.Layer):
+      """A fake quantization layer with fake_quant_with_min_max_vars.
+
+      Keras 3 requires wrapping the tf function inside Keras layer.
+      """
+
+      def call(self, x):
+        return tf.quantization.fake_quant_with_min_max_vars(
+            x, -3.0, 3.0, narrow_range=True)
+
     inp = tf.keras.Input(shape=(6, 8, 48), batch_size=1)
-    x = tf.quantization.fake_quant_with_min_max_vars(
-        inp, -3.0, 3.0, narrow_range=True
-    )
+    x = _FakeQuantVarsLayer()(inp)
     x = QuantConv2DTransposed()(x)
-    x = tf.quantization.fake_quant_with_min_max_vars(
-        x, -3.0, 3.0, narrow_range=True
-    )
+    x = _FakeQuantVarsLayer()(x)
 
     model = tf.keras.Model(inp, x)
 
@@ -3512,10 +3546,18 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
             result, -3.0, 3.0, narrow_range=True
         )
 
+    class _FakeQuantVarsLayer(tf.keras.layers.Layer):
+      """A fake quantization layer with fake_quant_with_min_max_vars.
+
+      Keras 3 requires wrapping the tf function inside Keras layer.
+      """
+
+      def call(self, x):
+        return tf.quantization.fake_quant_with_min_max_vars(
+            x, -3.0, 3.0, narrow_range=True)
+
     inp = tf.keras.Input(shape=(6, 8, 6), batch_size=1)
-    x = tf.quantization.fake_quant_with_min_max_vars(
-        inp, -3.0, 3.0, narrow_range=True
-    )
+    x = _FakeQuantVarsLayer()(inp)
     x = QuantConv2DTransposedWithBiasAndActivation()(x)
 
     model = tf.keras.Model(inp, x)

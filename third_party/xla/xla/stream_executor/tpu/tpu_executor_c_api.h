@@ -64,10 +64,6 @@ SE_TpuTopology_Core* TpuExecutor_GetCoreLocation(SE_StreamExecutor* executor);
 
 void TpuExecutor_AllocateEvent(SE_StreamExecutor* executor, SE_Event* event,
                                TF_Status* status);
-void TpuExecutor_DeallocateEvent(SE_StreamExecutor* executor, SE_Event* event,
-                                 TF_Status* status);
-int TpuExecutor_PollForEventStatus(SE_StreamExecutor* executor,
-                                   SE_Event* event);
 void TpuExecutor_RecordEvent(SE_StreamExecutor* executor, SE_Stream* stream,
                              SE_Event* event, TF_Status* status);
 void TpuExecutor_WaitForEvent(SE_StreamExecutor* executor, SE_Stream* stream,
@@ -399,8 +395,6 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_GetStatus);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_GetCoreLocation);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_AllocateEvent);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DeallocateEvent);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_PollForEventStatus);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_RecordEvent);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_WaitForEvent);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SynchronousMemcpyToHost);

@@ -82,8 +82,6 @@ class KernelThunk : public Thunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  void ClearCompileTimeInfo() override { Thunk::ClearCompileTimeInfo(); }
-
   const std::vector<BufferAllocation::Slice>& arguments() const {
     return args_;
   }

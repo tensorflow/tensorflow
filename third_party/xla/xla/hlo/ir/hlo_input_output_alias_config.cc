@@ -64,7 +64,7 @@ absl::Status HloInputOutputAliasConfig::SetUpAlias(
   VLOG(4) << "Set up alias between output index " << output_index.ToString()
           << " and parameter " << param_number << " at index "
           << param_index.ToString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HloInputOutputAliasProto HloInputOutputAliasConfig::ToProto() const {
@@ -189,7 +189,7 @@ absl::Status HloInputOutputAliasConfig::ForEachAliasWithStatus(
         if (aliased) {
           TF_RETURN_IF_ERROR(fn(output_index, *aliased));
         }
-        return OkStatus();
+        return absl::OkStatus();
       });
 }
 
@@ -240,7 +240,7 @@ absl::Status HloInputOutputAliasConfig::Verify(
                      alias.parameter_index) == false);
     *(param_has_seen[alias.parameter_number].mutable_element(
         alias.parameter_index)) = true;
-    return OkStatus();
+    return absl::OkStatus();
   });
 }
 
@@ -256,14 +256,14 @@ absl::Status HloBufferDonorConfig::AddBufferDonor(
   VLOG(4) << "Register the parameter " << param_number << " at index "
           << param_index.ToString() << " as a buffer donor.";
   buffer_donor_.emplace(BufferDonor(param_number, param_index));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HloBufferDonorConfig::RemoveBufferDonor(
     int64_t param_number, const ShapeIndex& param_index) {
   TF_RET_CHECK(param_number >= 0) << param_number;
   buffer_donor_.erase(BufferDonor(param_number, param_index));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HloBufferDonorProto HloBufferDonorConfig::ToProto() const {
@@ -344,7 +344,7 @@ absl::Status HloBufferDonorConfig::Verify(const HloModule& module) const {
 
   // Since buffer_donor_ is a set, we do not need to check if one input has
   // registered as a buffer donor many times.
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::ostream& operator<<(std::ostream& out,

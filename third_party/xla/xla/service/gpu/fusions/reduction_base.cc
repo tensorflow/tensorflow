@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/union_find.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -68,37 +70,47 @@ int RowReductionGetRowsPerWarp(int reduced_dimension_size) {
 
 int GetVectorSize(const HloFusionAnalysis& analysis,
                   const ReductionDimensions& reduction_dimensions,
-                  int num_threads, Vector3 reduction_tiling) {
-  if (!reduction_dimensions.is_row_reduction) {
+                  int num_threads, Vector3 reduction_tiling, bool for_mlir) {
+  // If the minor dimension is not divisible by 2, we can't currently vectorize.
+  int64_t minor_dim = reduction_dimensions.dimensions.back();
+  if (minor_dim % 2 != 0) {
     return 1;
   }
 
-  constexpr int kRowMinorReduced =
-      ReductionDimensions::kRowMinorReducedDimension;
-  if (reduction_dimensions.dimensions[kRowMinorReduced] % 2 != 0 ||
-      MayPreventVectorization(analysis.fusion())) {
+  // Only enable vectorization if all threads will still have work.
+  if (num_threads * 2 > minor_dim) {
     return 1;
   }
 
-  // Enabling vectorization if (number_threads * vector_size) is <=
-  // minor_reduced_dimension otherwise exist threads not doing any work.
-  if (num_threads * 2 > reduction_dimensions.dimensions[kRowMinorReduced]) {
+  if (MayPreventVectorization(analysis.fusion())) {
     return 1;
   }
 
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &analysis.device_info().gpu_compute_capability());
-  if (cuda_cc == nullptr) return 1;
-  if (cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) return 2;
-  if (cuda_cc->IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
-    return analysis.input_output_info().smallest_input_dtype_bits <= 32 &&
-                   reduction_dimensions.dimensions[kRowMinorReduced] %
-                           (reduction_tiling[kRowMinorReduced] * num_threads) ==
-                       0
-               ? 2
-               : 1;
+  if (reduction_dimensions.is_row_reduction) {
+    constexpr int kRowMinorReduced =
+        ReductionDimensions::kRowMinorReducedDimension;
+
+    const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
+        &analysis.device_info().gpu_compute_capability());
+    if (cuda_cc == nullptr) return 1;
+    if (cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) return 2;
+    if (cuda_cc->IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
+      return analysis.input_output_info().smallest_input_dtype_bits <= 32 &&
+                     reduction_dimensions.dimensions[kRowMinorReduced] %
+                             (reduction_tiling[kRowMinorReduced] *
+                              num_threads) ==
+                         0
+                 ? 2
+                 : 1;
+    }
+    return 1;
   }
-  return 1;
+
+  if (!for_mlir) {
+    return 1;
+  }
+
+  return minor_dim % 4 == 0 ? 4 : 2;
 }
 
 ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
@@ -134,7 +146,7 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
     disjoint_sets[root].Get() = root;
     reachable_outputs[root].insert(root);
     result.is_reduction_root.push_back(
-        IsRealReductionHero(root.instruction(), *hero));
+        IsRealReductionHero(root.instruction(), hero.instruction()));
     if (result.is_reduction_root.back()) {
       roots_with_reduction.insert(root);
     } else if (first_non_reduction_root) {
@@ -299,14 +311,29 @@ ReductionInfo ReductionInfo::Create(const HloFusionAnalysis& analysis,
   }
 
   int vector_size = GetVectorSize(analysis, reduction_dimensions, num_threads_x,
-                                  reduction_tiling);
+                                  reduction_tiling, for_mlir);
 
   absl::InlinedVector<int64_t, 4> num_threads{1, num_threads_y, num_threads_x};
   absl::InlinedVector<int64_t, 4> tiled_shape{shape[0], shape[1],
                                               shape[2] / vector_size};
   absl::InlinedVector<int64_t, 4> tile_per_thread{
       reduction_tiling[0], reduction_tiling[1],
-      reduction_tiling[2] / vector_size};
+      std::max<int64_t>(reduction_tiling[2] / vector_size, 1)};
+  if (for_mlir) {
+    // The indexing map simplifier does not currently handle this correctly,
+    // leading to loop bounds that are too large.
+    // TODO(jreiffers): Implement tightening of ranges based on constraints
+    // instead. For example, based on:
+    //
+    //   s1 in [0, 127]
+    //   d0 floordiv 32 + s1 * 32 in [0, 63]
+    //
+    // Tighten the bound of s1 to [0, 1].
+    for (int i = 0; i < num_threads.size(); ++i) {
+      tile_per_thread[i] = std::min(
+          tile_per_thread[i], CeilOfRatio(tiled_shape[i], num_threads[i]));
+    }
+  }
   if (rows_per_warp > 1) {
     // If we produce more than one element per thread, that means the reduced
     // dimension is small and it can't be tiled - we already have more threads
@@ -315,10 +342,25 @@ ReductionInfo ReductionInfo::Create(const HloFusionAnalysis& analysis,
     // uses the thread ID as the coordinate.
     tile_per_thread[2] = 1;
   }
-  if (vector_size != 1) {
+  if (vector_size != 1 ||
+      (for_mlir && !reduction_dimensions.is_row_reduction)) {
     num_threads.push_back(1);  // The vector dimension is a loop.
     tiled_shape.push_back(vector_size);
     tile_per_thread.push_back(vector_size);
+  }
+
+  // The MLIR emitter treats the last tiled dimension as the number of parallel
+  // independent reductions per thread (to use vectorized loads). This is only
+  // needed for column reductions: row reductions can use vectorized loads for
+  // the same reduction.
+  // row reduction:     [[a, b], [c, d]] -> [a + b, c + d]
+  // column reduction:  [[a, b], [c, d]] -> [a + c, b + d]
+  // In both cases [a, b] are loaded together, but only in the column reduction
+  // they contribute to different result elements.
+  if (for_mlir && reduction_dimensions.is_row_reduction) {
+    num_threads.push_back(1);
+    tiled_shape.push_back(1);
+    tile_per_thread.push_back(1);
   }
 
   Tiling tiling(tiled_shape, tile_per_thread, num_threads,
@@ -337,7 +379,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
     auto map = ComposeIndexingMaps(
         GetIndexingMapForTiling(tiling_, ctx),
         GetBitcastMap(tiling_.GetXlaShape(),
-                      analysis_.fusion_roots()[root_index]->shape(), ctx));
+                      analysis_.fusion_root(root_index).shape(), ctx));
     AddGroupIdConstraint(map, root_index, ctx);
     return map;
   }
@@ -345,8 +387,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
 
   auto block_offsets = GetBlockOffsetsForTiling(tiling_, ctx);
   auto thread_ids = DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx),
-                                             tiling_.GetThreadsPerBlock(),
-                                             tiling_.GetThreadStrides());
+                                             tiling_.GetThreadsPerBlock());
 
   auto physical_shape =
       ShapeUtil::DeleteDimensions(hero.dimensions(), hero.operand(0)->shape());
@@ -388,13 +429,18 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
                                       physical_shape, ctx));
     }
 
+    mlir::SmallVector<mlir::AffineExpr> projected_dims{
+        block_offsets.getResult(kColMajorKept),
+        block_offsets.getResult(kColMinorKept) + thread_ids[kColReduced]};
+    std::vector<RangeVar> range_vars;
+    if (thread_ids.size() == 4) {
+      int vector_size = tiling_.GetThreadTileSize().back();
+      range_vars.push_back({0, vector_size - 1});
+      projected_dims.push_back(mlir::getAffineSymbolExpr(0, ctx));
+    }
     IndexingMap projected_index(
-        mlir::AffineMap::get(
-            6, 0,
-            {block_offsets.getResult(kColMajorKept),
-             block_offsets.getResult(kColMinorKept) + thread_ids[kColReduced]},
-            ctx),
-        dimension_ranges, /*range_vars=*/{}, /*rt_vars=*/{});
+        mlir::AffineMap::get(6, range_vars.size(), projected_dims, ctx),
+        dimension_ranges, range_vars, /*rt_vars=*/{});
 
     projected_index.AddConstraint(
         mlir::getAffineDimExpr(
@@ -432,8 +478,8 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToInputIndexing(
   if (!groups_.is_reduction_root[root_index]) {
     return ComposeIndexingMaps(
         *ComputeThreadIdToOutputIndexing(root_index, ctx),
-        *ComputeOutputToInputIndexing(analysis_.fusion_roots()[root_index], 0,
-                                      ctx)
+        *ComputeOutputToInputIndexing(
+             &analysis_.fusion_root(root_index).instruction(), 0, ctx)
              .indexing_maps[hero_operand_index]
              .begin());
   }

@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -132,7 +133,7 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
   commands.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_b, slice_a, byte_length);
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
 
   se::StreamExecutorMemoryAllocator allocator(executor);
   ServiceExecutableRunOptions run_options;
@@ -186,7 +187,7 @@ TEST(CommandBufferThunkTest, MemzeroCmd) {
   commands.Emplace<MemzeroCmd>(s0, slice_a);
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorMemoryAllocator allocator(executor);
@@ -228,7 +229,7 @@ TEST(CommandBufferThunkTest, Memset32Cmd) {
   commands.Emplace<Memset32Cmd>(s0, slice_a, int32_t{84});
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorMemoryAllocator allocator(executor);
@@ -267,7 +268,7 @@ TEST(CommandBufferThunkTest, Memset32CmdOnDifferentStreams) {
   commands.Emplace<Memset32Cmd>(s1, slice1, int32_t{34});
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorMemoryAllocator allocator(executor);
@@ -320,7 +321,7 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
                               /*shmem_bytes=*/0);
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorMemoryAllocator allocator(executor);
@@ -416,7 +417,7 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
                               /*shmem_bytes=*/0);
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorMemoryAllocator allocator(executor);
@@ -531,7 +532,7 @@ TEST(CommandBufferThunkTest, GemmCmd) {
                             /*deterministic=*/true);
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorMemoryAllocator allocator(executor);
@@ -631,7 +632,7 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
                               /*shmem_bytes=*/0);
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorMemoryAllocator allocator(executor);
@@ -746,7 +747,7 @@ TEST(CommandBufferThunkTest, IfCmd) {
   commands.Emplace<IfCmd>(s0, slice_p, std::move(then_commands));
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorMemoryAllocator allocator(executor);
@@ -845,7 +846,7 @@ TEST(CommandBufferThunkTest, IfElseCmd) {
                               std::move(else_commands));
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorMemoryAllocator allocator(executor);
@@ -934,7 +935,7 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   commands.Emplace<CaseCmd>(s0, slice_i, std::move(branches));
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorMemoryAllocator allocator(executor);
@@ -1013,7 +1014,7 @@ TEST(CommandBufferThunkTest, ForCmd) {
                            std::move(body_commands));
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorMemoryAllocator allocator(executor);

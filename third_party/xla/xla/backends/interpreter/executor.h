@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/event_interface.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
@@ -114,22 +113,12 @@ class XlaInterpreterExecutor : public StreamExecutor {
   bool HostCallback(Stream *stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
-  absl::Status AllocateEvent(Event *event) override { return absl::OkStatus(); }
-
-  absl::Status DeallocateEvent(Event *event) override {
-    return absl::OkStatus();
-  }
-
   absl::Status RecordEvent(Stream *stream, Event *event) override {
     return absl::Status{absl::StatusCode::kUnimplemented, "RecordEvent"};
   }
 
   absl::Status WaitForEvent(Stream *stream, Event *event) override {
     return absl::Status{absl::StatusCode::kUnimplemented, "WaitForEvent"};
-  }
-
-  Event::Status PollForEventStatus(Event *event) override {
-    return Event::Status::kError;
   }
 
   void DeallocateStream(Stream *stream) override {}
@@ -156,17 +145,14 @@ class XlaInterpreterExecutor : public StreamExecutor {
   bool CanEnablePeerAccessTo(StreamExecutorInterface *other) override {
     return true;
   }
-
-  std::unique_ptr<EventInterface> CreateEventImplementation() override {
-    return nullptr;
+  absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override {
+    return std::make_unique<Event>();
   }
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority =
           std::nullopt) override {
-    auto stream =
-        std::make_unique<Stream>(this, std::make_unique<host::HostStream>());
-    return std::move(stream);
+    return std::make_unique<host::HostStream>(this);
   }
 
  private:

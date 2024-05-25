@@ -125,6 +125,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(kDefaultThreshold);
   opts.set_xla_gpu_enable_all_gather_combine_by_dim(true);
   opts.set_xla_gpu_enable_reduce_scatter_combine_by_dim(true);
+  opts.set_xla_gpu_all_reduce_contiguous(true);
 
   opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
 
@@ -139,7 +140,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
-  opts.set_xla_gpu_enable_nccl_comm_splitting(true);
+  opts.set_xla_gpu_enable_nccl_comm_splitting(false);
   opts.set_xla_gpu_enable_nccl_per_stream_comms(false);
 
   // Set 4GB space limit for redzone scratch allocator.
@@ -187,6 +188,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(false);
 
   opts.set_xla_gpu_collective_inflation_factor(1);
+  opts.set_xla_llvm_force_inline_before_split(true);
 
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
@@ -1013,6 +1015,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_deterministic_ops(),
                 "Guarantees run-to-run determinism on GPU."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_exclude_nondeterministic_ops",
+      bool_setter_for(&DebugOptions::set_xla_gpu_exclude_nondeterministic_ops),
+      debug_options->xla_gpu_exclude_nondeterministic_ops(),
+      "Excludes non-deterministic ops from compiled executables."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_disable_async_collectives",
       setter_for_xla_gpu_disable_async_collectives,
       collective_op_types_to_string(
@@ -1082,6 +1089,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_collective_inflation_factor(),
       "Inflation factor for collectives. If set to > 1, each XLA/GPU "
       "collective will execute multiple times (will yield incorrect results)"));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_llvm_force_inline_before_split",
+      bool_setter_for(&DebugOptions::set_xla_llvm_force_inline_before_split),
+      debug_options->xla_llvm_force_inline_before_split(),
+      "Decide whether to force inline before llvm module split to get a more "
+      "balanced splits for parallel compilation"));
+
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_reassociation_for_converted_ar",
       bool_setter_for(

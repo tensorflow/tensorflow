@@ -322,7 +322,7 @@ bool Tuple::operator==(const Tuple& other) const {
   return true;
 }
 
-std::shared_ptr<Buffer> InterpreterValue::Buffer() const {
+std::shared_ptr<Buffer> InterpreterValue::GetBuffer() const {
   return std::visit(
       [](const auto& it) -> std::shared_ptr<interpreter::Buffer> {
         if constexpr (is_tensor_or_memref_v<decltype(it)>) {

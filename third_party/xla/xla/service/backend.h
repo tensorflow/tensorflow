@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;

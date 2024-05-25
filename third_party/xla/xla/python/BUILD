@@ -567,6 +567,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:custom_call_sharding_helper",
         "//xla/service/spmd:spmd_partitioner",
+        "@com_google_absl//absl/status",
     ],
     # Always register 'InspectSharding' custom partitioning handler.
     alwayslink = 1,
@@ -803,6 +804,7 @@ xla_cc_test(
         "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt/cpu:cpu_client",
         "//xla/service:platform_util",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -1087,6 +1089,8 @@ cc_library(
         ":py_client",
         ":types",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -1126,7 +1130,10 @@ cc_library(
         "//xla/service:name_uniquer",
         "//xla/service:tuple_simplifier",
         "@local_tsl//tsl/lib/strings:proto_serialization",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

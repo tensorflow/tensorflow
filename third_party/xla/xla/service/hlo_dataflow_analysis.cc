@@ -1621,7 +1621,7 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void HloDataflowAnalysis::OptimizePhiValues() {
@@ -1764,7 +1764,7 @@ absl::Status HloDataflowAnalysis::Verify() const {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HloDataflowAnalysis::DoesNotUseOperandBuffer(

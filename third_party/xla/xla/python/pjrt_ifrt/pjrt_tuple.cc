@@ -89,7 +89,7 @@ absl::Status PjRtTuple::Unpack(absl::Span<tsl::RCReference<Value>> values_out) {
         values_out.size(), values_.size());
   }
   absl::c_copy(values_, values_out.begin());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 char PjRtTuple::ID = 0;

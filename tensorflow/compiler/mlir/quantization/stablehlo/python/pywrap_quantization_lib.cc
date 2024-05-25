@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/weight_only_ptq.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace stablehlo::quantization::pywrap {
 

@@ -1,4 +1,4 @@
-// RUN: ENABLE_MMA_V3=1 triton-opt %s -split-input-file -tritongpu-accelerate-matmul=compute-capability=90 | FileCheck %s
+// RUN: triton-opt %s -split-input-file -tritongpu-accelerate-matmul=compute-capability=90 | FileCheck %s
 // RUN: triton-opt %s -split-input-file -tritongpu-accelerate-matmul=compute-capability=80 | FILECHECK_OPTS= FileCheck %s --check-prefix=CHECK-80
 
 #blocked = #triton_gpu.blocked<{sizePerThread = [1, 1], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0]}>

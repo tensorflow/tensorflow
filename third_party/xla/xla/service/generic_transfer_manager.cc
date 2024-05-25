@@ -70,7 +70,7 @@ absl::Status GenericTransferManager::WriteSingleTupleIndexTable(
       stream->DoHostCallback([element_pointers{std::move(element_pointers)}]() {
         /* holds reference to element_pointers in closure */
       }));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void GenericTransferManager::TransferLiteralFromDevice(
@@ -113,9 +113,9 @@ void GenericTransferManager::TransferLiteralFromDevice(
                   /*destination=*/literal.untyped_data(index)));
             }
           }
-          return OkStatus();
+          return absl::OkStatus();
         }));
-    return OkStatus();
+    return absl::OkStatus();
   }();
 
   if (!status.ok()) {
@@ -132,7 +132,7 @@ void GenericTransferManager::TransferLiteralFromDevice(
       tensorflow::down_cast<const LiteralFromDeviceMetadata*>(transfer_metadata)
           ->callback_is_host_callback_safe) {
     auto status = stream->DoHostCallback([done = std::move(done), stream] {
-      done(stream->ok() ? OkStatus()
+      done(stream->ok() ? absl::OkStatus()
                         : Internal("`TransferLiteralFromDevice` failed"));
     });
     if (!status.ok()) {
@@ -202,7 +202,7 @@ absl::Status GenericTransferManager::TransferLiteralToDeviceAsync(
                 [keep_alive = std::move(relaid_out)] {}));
           }
         }
-        return OkStatus();
+        return absl::OkStatus();
       });
 }
 
@@ -263,7 +263,7 @@ absl::Status GenericTransferManager::TransferIntNArrayFromDevice(
             bit_width, *packed_dst_data,
             absl::MakeSpan(static_cast<char*>(destination), num_elements));
       }));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status GenericTransferManager::TransferIntNArrayToDevice(

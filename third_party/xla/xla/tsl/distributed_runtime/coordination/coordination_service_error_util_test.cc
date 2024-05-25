@@ -16,8 +16,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
+#include "absl/status/status.h"
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/coordination_service.pb.h"
 namespace tsl {
@@ -26,7 +25,7 @@ using ::tensorflow::CoordinatedTask;
 using ::tensorflow::CoordinationServiceError;
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithEmptyPayload) {
-  absl::Status error = errors::Internal("Test Error");
+  absl::Status error = absl::InternalError("Test Error");
 
   absl::Status coordination_error = MakeCoordinationError(error);
 
@@ -38,7 +37,7 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithEmptyPayload) {
 }
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithErrorOrigin) {
-  absl::Status error = errors::Internal("Test Error");
+  absl::Status error = absl::InternalError("Test Error");
   CoordinatedTask source_task;
   source_task.set_job_name("test_worker");
   source_task.set_task_id(7);
@@ -57,7 +56,7 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithErrorOrigin) {
 }
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithUserReportedError) {
-  absl::Status error = errors::Internal("Test Error");
+  absl::Status error = absl::InternalError("Test Error");
   CoordinatedTask source_task;
   source_task.set_job_name("test_worker");
   source_task.set_task_id(7);
@@ -78,7 +77,7 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithUserReportedError) {
 }
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithPayload) {
-  absl::Status error = errors::Internal("Test Error");
+  absl::Status error = absl::InternalError("Test Error");
   CoordinationServiceError payload;
   CoordinatedTask* source_task = payload.mutable_source_task();
   source_task->set_job_name("test_worker");

@@ -39,6 +39,8 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
@@ -233,11 +235,12 @@ TEST_F(ElementalHloToMlirTest, ReduceWindow) {
     // CHECK:      %[[INIT:.*]] = tensor.extract %[[ARG1]][]
     // CHECK:      %[[RET:.*]] = scf.for %[[I:.*]] = %[[C0]] to %[[C7]]
     // CHECK-SAME:   step %[[C1]] iter_args(%[[ACC:.*]] = %[[INIT]])
-    // CHECK:      %[[J:[a-z0-9]+]]:2 = xla_gpu.apply_indexing
-    // CHECK-SAME:     affine_map<(d0, d1)[s0] -> (d0 * 4, d1 + s0 - 3)>
-    // CHECK-SAME:     (%[[Y]] in [0, 2], %[[Z]] in [0, 7])[%[[I]] in [0, 6]]
+    // CHECK:      %[[J0:.*]] = xla_gpu.apply_indexing affine_map<(d0) -> (d0 * 4)>
+    // CHECK-SAME:     (%[[Y]] in [0, 2])
+    // CHECK:      %[[J1:.*]] = xla_gpu.apply_indexing affine_map<(d0)[s0] -> (d0 + s0 - 3)>
+    // CHECK-SAME:     (%[[Z]] in [0, 7])[%[[I]] in [0, 6]]
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]]
-    // CHECK-SAME:        [%[[X]], %[[J]]#0, %[[J]]#1]
+    // CHECK-SAME:        [%[[X]], %[[J0]], %[[J1]]]
     // CHECK:          %[[UPD:.*]] = func.call @add_sum(%[[ACC]],
     // CHECK-SAME:                                      %[[VAL]])
     // CHECK:          scf.yield %[[UPD]]
@@ -405,9 +408,8 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK-DAG:    %[[C1:.*]] = arith.constant 1
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4
     // CHECK-DAG:    %[[C7:.*]] = arith.constant 7
-    // CHECK:        %[[CONSTRAINT_VAL:.*]] = affine.apply
-    // CHECK-SAME:     <()[s0] -> (s0 - ((s0 - 1) floordiv 2) * 2 - 1)>
-    // CHECK-SAME:     ()[%[[X]]]
+    // CHECK:        %[[CONSTRAINT_VAL:.*]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     <(d0) -> ((d0 - 1) mod 2)>(%[[X]] in [1, 7])
     // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
     // CHECK-DAG:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
     // CHECK-DAG:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
@@ -418,10 +420,13 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK:        %[[Y_BOUNDS:.*]] = arith.andi %[[Y_L]], %[[Y_H]]
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
-    // CHECK:          %[[IN:.*]]:2 = xla_gpu.apply_indexing
-    // CHECK-SAME:         <(d0, d1) -> ((d0 - 1) floordiv 2, d1 - 4)>
-    // CHECK-SAME:         (%[[X]] in [1, 7], %[[Y]] in [4, 7])
-    // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN]]#0, %[[IN]]#1]
+    // CHECK:          %[[IN0:.*]] = xla_gpu.apply_indexing
+    // CHECK-SAME:         <(d0) -> ((d0 - 1) floordiv 2)>
+    // CHECK-SAME:         (%[[X]] in [1, 7])
+    // CHECK:          %[[IN1:.*]] = xla_gpu.apply_indexing
+    // CHECK-SAME:         <(d0) -> (d0 - 4)>
+    // CHECK-SAME:         (%[[Y]] in [4, 7])
+    // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
     // CHECK:          scf.yield %[[VAL]]
     // CHECK:        } else {
     // CHECK:          %[[PAD_VAL:.*]] = tensor.extract %[[ARG1]][]
@@ -447,9 +452,8 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK-DAG:    %[[C1:.*]] = arith.constant 1
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4
     // CHECK-DAG:    %[[C7:.*]] = arith.constant 7
-    // CHECK:        %[[CONSTRAINT_VAL:.*]] = affine.apply
-    // CHECK-SAME:     <()[s0] -> (s0 - ((s0 - 1) floordiv 2) * 2 - 1)>
-    // CHECK-SAME:     ()[%[[X]]]
+    // CHECK:        %[[CONSTRAINT_VAL:.*]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     <(d0) -> ((d0 - 1) mod 2)>(%[[X]] in [1, 7])
     // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
     // CHECK-DAG:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
     // CHECK-DAG:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
@@ -460,10 +464,13 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK:        %[[Y_BOUNDS:.*]] = arith.andi %[[Y_L]], %[[Y_H]]
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
-    // CHECK:          %[[IN:.*]]:2 = xla_gpu.apply_indexing
-    // CHECK-SAME:         <(d0, d1) -> ((d0 - 1) floordiv 2, d1 - 4)>
-    // CHECK-SAME:         (%[[X]] in [1, 7], %[[Y]] in [4, 7])
-    // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN]]#0, %[[IN]]#1]
+    // CHECK:          %[[IN0:.*]] = xla_gpu.apply_indexing
+    // CHECK-SAME:         <(d0) -> ((d0 - 1) floordiv 2)>
+    // CHECK-SAME:         (%[[X]] in [1, 7])
+    // CHECK:          %[[IN1:.*]] = xla_gpu.apply_indexing
+    // CHECK-SAME:         <(d0) -> (d0 - 4)>
+    // CHECK-SAME:         (%[[Y]] in [4, 7])
+    // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
     // CHECK:          %[[CAST0:.*]] = builtin.unrealized_conversion_cast %[[VAL]]
     // CHECK:          scf.yield %[[CAST0]]
     // CHECK:        } else {
@@ -784,10 +791,13 @@ TEST_F(ElementalHloToMlirTest, ConvolutionSimple) {
     // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
     // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
-    // CHECK:      %[[XX:.+]]:2 = xla_gpu.apply_indexing
-    // CHECK-SAME:   affine_map<(d0, d1)[s0, s1] -> (d0 + s0, d1 + s1)>
-    // CHECK-SAME:   (%[[W]] in [0, 5], %[[H]] in [0, 7])[%[[X]] in [0, 2], %[[Y]] in [0, 4]]
-    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX]]#0, %[[XX]]#1, %[[I]]] : tensor<2x8x12x4xf32>
+    // CHECK:      %[[XX0:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:   affine_map<(d0)[s0] -> (d0 + s0)>
+    // CHECK-SAME:   (%[[W]] in [0, 5])[%[[X]] in [0, 2]]
+    // CHECK:      %[[XX1:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:   affine_map<(d0)[s0] -> (d0 + s0)>
+    // CHECK-SAME:   (%[[H]] in [0, 7])[%[[Y]] in [0, 4]]
+    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
     // CHECK-NEXT:   %[[ADD:.+]] = arith.addf %[[ACC]], %[[MUL]] : f32
@@ -827,11 +837,13 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithWindowStrides) {
     // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
     // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
-
-    // CHECK:        %[[XX:.+]]:2 = xla_gpu.apply_indexing
-    // CHECK-SAME:     affine_map<(d0, d1)[s0, s1] -> (d0 * 2 + s0, d1 * 2 + s1)>
-    // CHECK-SAME:     (%[[W]] in [0, 2], %[[H]] in [0, 3])[%[[X]] in [0, 2], %[[Y]] in [0, 4]]
-    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX]]#0, %[[XX]]#1, %[[I]]] : tensor<2x8x12x4xf32>
+    // CHECK:        %[[XX0:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     affine_map<(d0)[s0] -> (d0 * 2 + s0)>
+    // CHECK-SAME:     (%[[W]] in [0, 2])[%[[X]] in [0, 2]]
+    // CHECK:        %[[XX1:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     affine_map<(d0)[s0] -> (d0 * 2 + s0)>
+    // CHECK-SAME:     (%[[H]] in [0, 3])[%[[Y]] in [0, 4]]
+    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
     // CHECK-NEXT:   %[[ADD:.+]] = arith.addf %[[ACC]], %[[MUL]] : f32
@@ -873,19 +885,22 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithPadding) {
     // CHECK:      %[[R0:.+]] = scf.for %[[X:.+]] = %[[C0]] to %[[C3]] step %[[C1]] iter_args(%[[A0:.+]] = %[[INIT]]) -> (f32) {
     // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
     // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
-    // CHECK-DAG:  %[[TESTX:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1)>()[%[[X]], %[[W]]]
+    // CHECK-DAG:  %[[TESTX:.+]] = xla_gpu.apply_indexing affine_map<(d0)[s0] -> (d0 + s0)>(%[[W]] in [0, 7])[%[[X]] in [0, 2]]
     // CHECK-DAG:  %[[TXGE:.+]] = arith.cmpi sge, %[[TESTX]], %[[C1]] : index
     // CHECK-DAG:  %[[TXLE:.+]] = arith.cmpi sle, %[[TESTX]], %[[C8]] : index
     // CHECK-DAG:  %[[TX:.+]] = arith.andi %[[TXGE]], %[[TXLE]] : i1
-    // CHECK-DAG:  %[[TESTY:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1)>()[%[[Y]], %[[H]]]
+    // CHECK-DAG:  %[[TESTY:.+]] = xla_gpu.apply_indexing affine_map<(d0)[s0] -> (d0 + s0)>(%[[H]] in [0, 11])[%[[Y]] in [0, 4]]
     // CHECK-DAG:  %[[TYGE:.+]] = arith.cmpi sge, %[[TESTY]], %[[C2]] : index
     // CHECK-DAG:  %[[TYLE:.+]] = arith.cmpi sle, %[[TESTY]], %[[C13]] : index
     // CHECK-DAG:  %[[TY:.+]] = arith.andi %[[TYGE]], %[[TYLE]] : i1
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
-    // CHECK:        %[[XX:.+]]:2 = xla_gpu.apply_indexing
-    // CHECK-SAME:     affine_map<(d0, d1)[s0, s1] -> (d0 + s0 - 1, d1 + s1 - 2)>
-    // CHECK-SAME:     (%[[W]] in [0, 7], %[[H]] in [0, 11])[%[[X]] in [0, 2], %[[Y]] in [0, 4]]
-    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX]]#0, %[[XX]]#1, %[[I]]] : tensor<2x8x12x4xf32>
+    // CHECK:        %[[XX0:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     affine_map<(d0)[s0] -> (d0 + s0 - 1)>
+    // CHECK-SAME:     (%[[W]] in [0, 7])[%[[X]] in [0, 2]]
+    // CHECK:        %[[XX1:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     affine_map<(d0)[s0] -> (d0 + s0 - 2)>
+    // CHECK-SAME:     (%[[H]] in [0, 11])[%[[Y]] in [0, 4]]
+    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
     // CHECK-NEXT:   %[[ADD:.+]] = arith.addf %[[ACC]], %[[MUL]] : f32
@@ -924,15 +939,18 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithLhsDilation) {
     // CHECK:      %[[R0:.+]] = scf.for %[[X:.+]] = %[[C0]] to %[[C3]] step %[[C1]] iter_args(%[[A0:.+]] = %[[INIT]]) -> (f32) {
     // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
     // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
-    // CHECK-DAG:  %[[TESTX:.+]] = affine.apply affine_map<()[s0, s1] -> ((s0 + s1) mod 2)>()[%[[X]], %[[W]]]
+    // CHECK-DAG:  %[[TESTX:.+]] = xla_gpu.apply_indexing affine_map<(d0)[s0] -> ((d0 + s0) mod 2)>(%[[W]] in [0, 12])[%[[X]] in [0, 2]]
     // CHECK-DAG:  %[[TX:.+]] = arith.cmpi eq, %[[TESTX]], %[[C0]] : index
-    // CHECK-DAG:  %[[TESTY:.+]] = affine.apply affine_map<()[s0, s1] -> ((s0 + s1) mod 2)>()[%[[Y]], %[[H]]]
+    // CHECK-DAG:  %[[TESTY:.+]] = xla_gpu.apply_indexing affine_map<(d0)[s0] -> ((d0 + s0) mod 2)>(%[[H]] in [0, 18])[%[[Y]] in [0, 4]]
     // CHECK-DAG:  %[[TY:.+]] = arith.cmpi eq, %[[TESTY]], %[[C0]] : index
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
-    // CHECK:        %[[XX:.+]]:2 = xla_gpu.apply_indexing
-    // CHECK-SAME:     affine_map<(d0, d1)[s0, s1] -> ((d0 + s0) floordiv 2, (d1 + s1) floordiv 2)>
-    // CHECK-SAME:     (%[[W]] in [0, 12], %[[H]] in [0, 18])[%[[X]] in [0, 2], %[[Y]] in [0, 4]]
-    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX]]#0, %[[XX]]#1, %[[I]]] : tensor<2x8x12x4xf32>
+    // CHECK:        %[[XX0:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     affine_map<(d0)[s0] -> ((d0 + s0) floordiv 2)>
+    // CHECK-SAME:     (%[[W]] in [0, 12])[%[[X]] in [0, 2]]
+    // CHECK:        %[[XX1:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     affine_map<(d0)[s0] -> ((d0 + s0) floordiv 2)>
+    // CHECK-SAME:     (%[[H]] in [0, 18])[%[[Y]] in [0, 4]]
+    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
     // CHECK-NEXT:   %[[ADD:.+]] = arith.addf %[[ACC]], %[[MUL]] : f32
@@ -972,10 +990,13 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithRhsDilation) {
     // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
     // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
-    // CHECK:        %[[XX:.+]]:2 = xla_gpu.apply_indexing
-    // CHECK-SAME:     affine_map<(d0, d1)[s0, s1] -> (d0 + s0 * 2, d1 + s1 * 2)>
-    // CHECK-SAME:     (%[[W]] in [0, 3], %[[H]] in [0, 3])[%[[X]] in [0, 2], %[[Y]] in [0, 4]]
-    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX]]#0, %[[XX]]#1, %[[I]]] : tensor<2x8x12x4xf32>
+    // CHECK:        %[[XX0:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     affine_map<(d0)[s0] -> (d0 + s0 * 2)>
+    // CHECK-SAME:     (%[[W]] in [0, 3])[%[[X]] in [0, 2]]
+    // CHECK:        %[[XX1:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     affine_map<(d0)[s0] -> (d0 + s0 * 2)>
+    // CHECK-SAME:     (%[[H]] in [0, 3])[%[[Y]] in [0, 4]]
+    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
     // CHECK-NEXT:   %[[ADD:.+]] = arith.addf %[[ACC]], %[[MUL]] : f32
@@ -1015,11 +1036,19 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithFeatureGroupCount) {
     // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
     // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C2]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
-    // CHECK:        %[[XX:.+]]:3 = xla_gpu.apply_indexing
-    // CHECK-SAME:     affine_map<(d0, d1, d2)[s0, s1, s2] -> (d0 + s0, d1 + s1, (d2 floordiv 8) * 2 + s2)>
-    // CHECK-SAME:     (%[[W]] in [0, 5], %[[H]] in [0, 7], %[[O]] in [0, 15])
-    // CHECK-SAME:     [%[[X]] in [0, 2], %[[Y]] in [0, 4], %[[I]] in [0, 1]]
-    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX]]#0, %[[XX]]#1, %[[XX]]#2] : tensor<2x8x12x4xf32>
+    // CHECK:        %[[XX0:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     affine_map<(d0)[s0] -> (d0 + s0)>
+    // CHECK-SAME:     (%[[W]] in [0, 5])
+    // CHECK-SAME:     [%[[X]] in [0, 2]]
+    // CHECK:        %[[XX1:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     affine_map<(d0)[s0] -> (d0 + s0)>
+    // CHECK-SAME:     (%[[H]] in [0, 7])
+    // CHECK-SAME:     [%[[Y]] in [0, 4]]
+    // CHECK:        %[[XX2:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     affine_map<(d0)[s0] -> ((d0 floordiv 8) * 2 + s0)>
+    // CHECK-SAME:     (%[[O]] in [0, 15])
+    // CHECK-SAME:     [%[[I]] in [0, 1]]
+    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[XX2]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<2x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
     // CHECK-NEXT:   %[[ADD:.+]] = arith.addf %[[ACC]], %[[MUL]] : f32
@@ -1061,11 +1090,15 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithBatchGroupCount) {
     // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[A2:.+]] = %[[A1]]) -> (f32) {
     // CHECK-NEXT: %[[R3:.+]] = scf.for %[[G:.+]] = %[[C0]] to %[[C2]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A2]]) -> (f32) {
     // CHECK:      %[[R4:.+]] = scf.if {{.+}} -> (f32) {
-    // CHECK:        %[[XX:.+]]:2 = xla_gpu.apply_indexing
-    // CHECK-SAME:     affine_map<(d0, d1)[s0, s1] -> (d0 + s0, d1 + s1)>
-    // CHECK-SAME:     (%[[W]] in [0, 5], %[[H]] in [0, 7])
-    // CHECK-SAME:     [%[[X]] in [0, 2], %[[Y]] in [0, 4]]
-    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[G]], %[[XX]]#0, %[[XX]]#1, %[[I]]] : tensor<2x8x12x4xf32>
+    // CHECK:        %[[XX0:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     affine_map<(d0)[s0] -> (d0 + s0)>
+    // CHECK-SAME:     (%[[W]] in [0, 5])
+    // CHECK-SAME:     [%[[X]] in [0, 2]]
+    // CHECK:        %[[XX1:.+]] = xla_gpu.apply_indexing
+    // CHECK-SAME:     affine_map<(d0)[s0] -> (d0 + s0)>
+    // CHECK-SAME:     (%[[H]] in [0, 7])
+    // CHECK-SAME:     [%[[Y]] in [0, 4]]
+    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[G]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
     // CHECK-NEXT:   %[[ADD:.+]] = arith.addf %[[ACC]], %[[MUL]] : f32
@@ -1236,8 +1269,11 @@ TEST_F(ElementalHloToMlirTest, Epilogue) {
         epilogue.roots.push_back(entry->GetInstructionWithName("add"));
         epilogue.index_ranges = {2, 16, 17};
         epilogue.root_indexing.push_back(
-            mlir::AffineMap::getMultiDimIdentityMap(3, &context_)
-                .getSubMap({0, 2, 1}));
+            IndexingMap{mlir::AffineMap::getMultiDimIdentityMap(3, &context_)
+                            .getSubMap({0, 2, 1}),
+                        DimVarsFromTensorSizes({2, 17, 17}),
+                        {},
+                        {}});
         return epilogue;
       }));
 }

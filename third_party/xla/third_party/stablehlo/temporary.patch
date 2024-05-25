@@ -200,6 +200,28 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir b/stablehlo
    %0 = stablehlo.constant dense<0.000000e+00> : tensor<10xf64>
    return %0 : tensor<10xf64>
  }
+diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+--- stablehlo/stablehlo/dialect/AssemblyFormat.cpp
++++ stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+@@ -305,8 +305,7 @@
+ bool isCommutativeNoRegionMatchingDialect(OperationName innerOp,
+                                           StringRef reduceOpDialect) {
+   auto innerOpDialect = innerOp.getDialect();
+-  return innerOpDialect &&
+-         innerOpDialect->getNamespace().equals(reduceOpDialect) &&
++  return innerOpDialect && innerOpDialect->getNamespace() == reduceOpDialect &&
+          innerOp.hasTrait<mlir::OpTrait::NOperands<2>::Impl>() &&
+          innerOp.hasTrait<mlir::OpTrait::OneResult>() &&
+          (innerOp.hasTrait<mlir::hlo::OpTrait::IsCommutative>() ||
+@@ -359,7 +358,7 @@
+   // Check E5.
+   LLVM_DEBUG(llvm::dbgs() << "Checking ReduceOp compact print E5\n");
+   auto retOp = block.getTerminator();
+-  if (!retOp->getName().stripDialect().equals("return")) return false;
++  if (retOp->getName().stripDialect() != "return") return false;
+ 
+   return llvm::equal(innerOp.getResults(), retOp->getOperands());
+ }
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
@@ -2589,4 +2611,37 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/reference/Api.cpp b/stablehlo/stablehlo/reference/Api.cpp
+--- stablehlo/stablehlo/reference/Api.cpp
++++ stablehlo/stablehlo/reference/Api.cpp
+@@ -51,7 +51,7 @@
+   auto functions = module.getOps<func::FuncOp>();
+ 
+   for (auto funcOp : functions)
+-    if (funcOp.getSymName().equals(mainName)) return funcOp;
++    if (funcOp.getSymName() == mainName) return funcOp;
+ 
+   bool isSingleFunction =
+       std::distance(functions.begin(), functions.end()) == 1;
+@@ -68,7 +68,7 @@
+ class DefaultInterpreterFallback : public InterpreterFallback {
+  public:
+   DefaultInterpreterFallback(const InterpreterConfiguration &config)
+-      : config(config){};
++      : config(config) {};
+ 
+   virtual llvm::Error operator()(Operation &op, Scope &scope,
+                                  Process *process) final {
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+--- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+@@ -764,7 +764,7 @@
+ 
+     // Clean up operand buffers after refinement
+     // Must do in this pattern to avoid needing multiple refinement iterations
+-    if (op.getCallTargetName().equals(kCustomCallOperandBarrierTarget)) {
++    if (op.getCallTargetName() == kCustomCallOperandBarrierTarget) {
+       Value operand = op.getOperand(0);
+       if (operand.getType() == op.getResult(0).getType()) {
+         op.replaceAllUsesWith(ValueRange(operand));
 

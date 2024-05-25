@@ -91,7 +91,8 @@ TEST(IfrtBackendCompilerTest, Basic) {
   IfrtServingCoreSelector core_selector(&mock_serving_device_selector);
 
   runtime_context.resource_context().CreateResource<IfrtModelContext>(
-      "IfrtModelContext", client, &core_selector, &GetThreadPool());
+      "IfrtModelContext", client, &core_selector, &GetThreadPool(),
+      /*compilation_environment_proto=*/nullptr);
 
   IfrtBackendCompiler compiler;
   TF_ASSERT_OK(compiler.CompileTensorflow(runtime_context, mlir_module.get()));

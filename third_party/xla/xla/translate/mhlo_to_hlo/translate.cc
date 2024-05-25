@@ -105,7 +105,7 @@ absl::Status ConvertMlirHloToHloViaBuilder(
   auto hlo_module = computation.proto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 mlir::LogicalResult MlirHloToHloTextTranslateFunction(

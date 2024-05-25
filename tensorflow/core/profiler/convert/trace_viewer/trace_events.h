@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/bind_front.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_filter_interface.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/protobuf/task.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
+#include "tsl/lib/io/table.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/status.h"
@@ -64,6 +66,9 @@ tsl::Status DoLoadFromLevelDbTable(
     bool& filter_by_visibility,
     const std::function<TraceEvent*(const TraceEvent&)>& copy_event_to_arena,
     const std::function<void(TraceEvent*)>& add_arena_event);
+
+// Reads the trace metadata from a file with given path
+absl::Status ReadFileTraceMetadata(std::string& filepath, Trace* trace);
 
 std::vector<std::vector<const TraceEvent*>> GetEventsByLevel(
     const Trace& trace, std::vector<TraceEvent*>& events);
@@ -245,6 +250,10 @@ class TraceEventsContainerBase {
     trace.set_num_events(NumEvents());
     auto events_by_level = EventsByLevel();
     return DoStoreAsLevelDbTable(file, trace, events_by_level);
+  }
+
+  std::vector<std::vector<const TraceEvent*>> GetTraceEventsByLevel() const {
+    return EventsByLevel();
   }
 
   // Loads the contents of this container from a level-db sstable file.

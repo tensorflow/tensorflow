@@ -47,7 +47,7 @@ class HloPassFix : public Pass {
     TF_RETURN_IF_ERROR(RunToFixPoint(module, &run_state, execution_threads));
     outer_run_state->changed_this_iteration.insert(run_state.changed.begin(),
                                                    run_state.changed.end());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   using HloPassInterface::Run;
@@ -106,7 +106,7 @@ class HloPassFix : public Pass {
         break;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status RunOnChangedComputationsOnce(
@@ -127,7 +127,7 @@ class HloPassFix : public Pass {
       run_state->changed_this_iteration.insert(computations.begin(),
                                                computations.end());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

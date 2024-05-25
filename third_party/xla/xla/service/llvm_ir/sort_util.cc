@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -149,7 +150,7 @@ absl::Status EmitCompareLoopBody(
         write_element(i, compare_keys_index, value2);
       }
     });
-    return OkStatus();
+    return absl::OkStatus();
   });
 }
 
@@ -315,7 +316,7 @@ absl::Status EmitTiledCompareLoop(
   // same location in shared memory because we have exactly tile_size / 2 many
   // threads, and the linear index calculated by ParallelLoopEmitter uses
   // linear_index = blockIdx.x * blockDim.x + threadIdx.x;
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -420,7 +421,7 @@ absl::Status EmitSortInPlace(
           element_address_pointee_type, write_element, emit_compare_callback,
           b));
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
   return gpu::ParallelLoopEmitter(compare_loop_body_emitter, iteration_shape,
                                   launch_dimensions, b)

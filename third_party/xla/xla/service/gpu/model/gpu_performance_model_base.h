@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -36,8 +36,8 @@ namespace gpu {
 
 struct EstimateRunTimeData {
   int64_t flops;
+  int64_t bytes_read;
   int64_t bytes_written;
-  int64_t num_threads;
   absl::Duration read_time;
   absl::Duration write_time;
   absl::Duration compute_time;
@@ -47,14 +47,14 @@ struct EstimateRunTimeData {
     return absl::StrFormat(
         "EstimateRunTimeData{\n"
         " flops: %d\n"
+        " bytes_read: %d\n"
         " bytes_written: %d\n"
-        " num_threads: %d\n"
         " read_time: %s\n"
         " write_time: %s\n"
         " compute_time: %s\n"
         " exec_time: %s\n"
         "}",
-        flops, bytes_written, num_threads, absl::FormatDuration(read_time),
+        flops, bytes_read, bytes_written, absl::FormatDuration(read_time),
         absl::FormatDuration(write_time), absl::FormatDuration(compute_time),
         absl::FormatDuration(exec_time));
   }
@@ -148,8 +148,7 @@ class GpuPerformanceModelBase {
   // Uses HloFusionAnalysis for computing the actual number of threads and
   // blocks that the IR emitter will use.
   static LaunchDimensions EstimateFusionLaunchDimensions(
-      int64_t estimated_num_threads, const HloFusionAnalysis& fusion_analysis,
-      const se::DeviceDescription& device_info);
+      const HloFusionAnalysis& fusion_analysis);
 
   // Returns bytes accessed of operand output by instruction. Returns 0, if the
   // operand is not used by the instruction.
@@ -226,12 +225,6 @@ class GpuPerformanceModelBase {
   static void VLogOperandRead(const HloInstruction* operand,
                               int64_t n_bytes_total, int64_t n_bytes_net,
                               bool coalesced);
-
-  // Logs estimate results of the performance model if VLOG is enabled.
-  static void VLogResult(int64_t flops, int64_t bytes_read,
-                         int64_t bytes_written, int64_t num_threads,
-                         absl::Duration compute_time, absl::Duration read_time,
-                         absl::Duration write_time, absl::Duration exec_time);
 };
 
 }  // namespace gpu

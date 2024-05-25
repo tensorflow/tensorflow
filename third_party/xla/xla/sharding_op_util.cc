@@ -61,7 +61,7 @@ absl::Status ParseAttributes(absl::string_view opaque,
                                    attr_name);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace sharding_op_util

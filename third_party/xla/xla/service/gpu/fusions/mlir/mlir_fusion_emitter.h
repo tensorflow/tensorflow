@@ -96,12 +96,15 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
   // the symbol 0 as the outermost loop. The indices of the map's dimensions and
   // symbols are passed to the lambda separately. The return values of the
   // function are the updated outputs.
+  // For the meaning of `vectorize`, see the documentation of `EmitLoopNest` in
+  // elemental_hlo_to_mlir.h.
   llvm::SmallVector<mlir::Value> EmitThreadLoopNest(
       mlir::ImplicitLocOpBuilder& b, mlir::ValueRange outputs,
       const IndexingMap& indexing_map,
       const std::function<llvm::SmallVector<mlir::Value>(
           mlir::ValueRange outputs, mlir::ValueRange dim_values,
-          mlir::ValueRange symbol_values)>& create_body) const;
+          mlir::ValueRange symbol_values)>& create_body,
+      bool vectorize = false) const;
 
   mlir::Value EmitBlockId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
   mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;

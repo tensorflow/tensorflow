@@ -69,7 +69,7 @@ class TpuExecutableInterface : public Executable {
       std::vector<ExecutionInput>* arguments, se::Stream* stream,
       se::Stream* transfer_stream = nullptr);
 
-  virtual Status LoadProgramAndEnqueueToStream(
+  virtual absl::Status LoadProgramAndEnqueueToStream(
       const ServiceExecutableRunOptions& run_options,
       absl::Span<const stream_executor::DeviceMemoryBase> arguments,
       stream_executor::DeviceMemoryBase result,

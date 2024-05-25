@@ -20,16 +20,6 @@ limitations under the License.
 #include <initializer_list>
 #include <vector>
 
-// Both "absl/log/check.h" and "third_party/tsl/platform/logging.h"
-// are transitively included in bazel. Both of them define similar CHECK macros.
-// Explicitly including the Abseil header first because the TSL version has
-// undefs.
-
-// Otherwise, we would get redefinition error.
-// clang-format off
-#include "absl/log/check.h"
-// clang-format on
-
 #include "dnnl.hpp"
 #include "absl/base/dynamic_annotations.h"
 #include "xla/executable_run_options.h"

@@ -2034,7 +2034,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
         if (node->opcode() != HloOpcode::kConvert) {
           return false;
         }
-        auto in_type =
+        Type in_type =
             TritonType(builder, node->operand(0)->shape().element_type());
         Type out_type = TritonType(builder, node->shape().element_type());
         return in_type.getIntOrFloatBitWidth() <= 8 && out_type.isF32();
@@ -2742,12 +2742,6 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
       return absl::FailedPreconditionError(
           "Triton support is only enabled for Ampere GPUs and up.");
     }
-  }
-
-  auto debug_options = GetDebugOptionsFromFlags();
-  if (debug_options.xla_gpu_enable_triton_hopper()) {
-    // Set environment variables for consumption by Triton.
-    tsl::setenv("ENABLE_MMA_V3", "true", true /*overwrite*/);
   }
 
   TF_ASSIGN_OR_RETURN(

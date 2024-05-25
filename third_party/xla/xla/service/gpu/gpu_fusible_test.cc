@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 
 #include <memory>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
@@ -1158,11 +1159,12 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionReduceUnfriendlyLoopFusion) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     mixed_input_layouts_computation {
       p0.1 = f16[128,1024,32,32]{1,3,2,0} parameter(0)
-      p1.1 = f16[128,1024,32,32]{3,2,1,0} parameter(1)
-      copy = f16[128,1024,32,32]{1,3,2,0} copy(p1.1)
+      p1.1 = f16[128,1024,33,33]{3,2,1,0} parameter(1)
+      copy = f16[128,1024,33,33]{1,3,2,0} copy(p1.1)
+      slice = f16[128,1024,32,32]{1,3,2,0} slice(copy), slice={[0:128],[0:1024],[0:32],[0:32]}
       c0 = f16[] constant(0)
       broadcast = f16[128,1024,32,32]{1,3,2,0} broadcast(c0), dimensions={}
-      greater-than = pred[128,1024,32,32]{1,3,2,0} compare(copy, broadcast), direction=GT
+      greater-than = pred[128,1024,32,32]{1,3,2,0} compare(slice, broadcast), direction=GT
       ROOT root = f16[128,1024,32,32]{1,3,2,0} select(greater-than, p0.1, broadcast)
     }
     fused_reduce {
@@ -1172,8 +1174,8 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionReduceUnfriendlyLoopFusion) {
       ROOT reduce = f32[1024]{0} reduce(convert, c0.2), dimensions={0,2,3}, to_apply=scalar_add
     }
     ENTRY reduce {
-      p0 = f16[128,1024,32,32]{3,2,1,0} parameter(0)
-      p1 = f16[128,1024,32,32]{1,3,2,0} parameter(1)
+      p0 = f16[128,1024,32,32]{1,3,2,0} parameter(0)
+      p1 = f16[128,1024,33,33]{3,2,1,0} parameter(1)
       loop_fusion = f16[128,1024,32,32]{1,3,2,0} fusion(p0, p1), kind=kLoop, calls=mixed_input_layouts_computation
       reduce_fusion = f32[1024]{0} fusion(loop_fusion), kind=kInput, calls=fused_reduce
       ROOT root = (f32[1024]{0}, f16[128,1024,32,32]{1,3,2,0}) tuple(reduce_fusion, loop_fusion)

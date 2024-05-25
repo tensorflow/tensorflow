@@ -825,7 +825,7 @@ absl::StatusOr<HloInstruction*> PartitionGather(
 
 }  // namespace
 
-Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return DefaultAction(hlo);
   }
@@ -846,7 +846,7 @@ Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
                       gather->gather_slice_sizes(), this));
   SetPartitionedHlo(gather, PartitionedHlo(pgather, gather->shape(),
                                            MakePartitioningState()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1613,7 +1613,7 @@ absl::StatusOr<HloInstruction*> PartitionScatter(
 
 }  // namespace
 
-Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return DefaultAction(hlo);
   }
@@ -1694,7 +1694,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   }
   SetPartitionedHlo(scatter, PartitionedHlo(pscatter, scatter->shape(),
                                             MakePartitioningState()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace spmd

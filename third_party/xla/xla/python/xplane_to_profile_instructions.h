@@ -36,14 +36,14 @@ struct HloLatencyInfo {
 
 // Convert XSpace to ProfiledInstructionsProto. This function will aggregate
 // all the xplane.pb info into ProfiledInstructionsProto.
-Status ConvertXplaneToProfiledInstructionsProto(
+absl::Status ConvertXplaneToProfiledInstructionsProto(
     std::vector<tensorflow::profiler::XSpace> xspaces,
     tensorflow::profiler::ProfiledInstructionsProto*
         profiled_instructions_proto);
 
 // Convert XSpace to ProfiledInstructionsProto. This function will aggregate
 // all the xplane.pb info under logdir into ProfiledInstructionsProto.
-Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
+absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
     const std::string& logdir, tensorflow::profiler::ProfiledInstructionsProto*
                                    profiled_instructions_proto);
 

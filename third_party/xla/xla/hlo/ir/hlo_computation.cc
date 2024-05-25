@@ -317,7 +317,7 @@ absl::Status HloComputation::RemoveParameter(int64_t param_no) {
     param_no++;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HloInstruction* HloComputation::ReplaceParameter(
@@ -371,7 +371,7 @@ absl::Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
     }
   }
   param_instructions_.resize(param_instructions_.size() - removed);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HloComputation::IsSafelyRemovable(const HloInstruction* instruction,
@@ -471,7 +471,7 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
@@ -515,7 +515,7 @@ absl::Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   DCHECK_EQ(instructions_.size() - to_be_deleted_.size(), instruction_count())
       << "instructions_.size(): " << instructions_.size()
       << ", to_be_deleted_.size(): " << to_be_deleted_.size();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void HloComputation::Cleanup() {
@@ -1049,7 +1049,7 @@ HloComputation::CreateFromProto(
     TF_RET_CHECK(parameters_seen_count == parameter_count)
         << "Not all parameters in range [0, " << parameter_count
         << ") were referenced";
-    return OkStatus();
+    return absl::OkStatus();
   }());
 
   auto computation = absl::WrapUnique(
@@ -1376,7 +1376,7 @@ absl::Status HloComputation::ReplaceInstruction(
                       ReplaceInstruction(old_instruction, new_instruction,
                                          /*preserve_sharding=*/false));
   DCHECK(changed);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
@@ -1451,7 +1451,7 @@ absl::Status HloComputation::ReplaceInstructionWithDifferentShape(
                                         old_instruction, new_instruction,
                                         /*preserve_sharding=*/false));
   DCHECK(changed);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {

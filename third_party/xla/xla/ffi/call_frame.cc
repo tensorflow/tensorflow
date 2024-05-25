@@ -26,8 +26,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/dynamic_annotations.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
+#include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/stream_executor/device_memory.h"
@@ -83,12 +85,16 @@ void CallFrameBuilder::AddBufferArg(se::DeviceMemoryBase memory,
                                     PrimitiveType type,
                                     absl::Span<const int64_t> dims) {
   args_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+      args_.back().dims.data(), sizeof(int64_t) * args_.back().dims.size());
 }
 
 void CallFrameBuilder::AddBufferRet(se::DeviceMemoryBase memory,
                                     PrimitiveType type,
                                     absl::Span<const int64_t> dims) {
   rets_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+      rets_.back().dims.data(), sizeof(int64_t) * rets_.back().dims.size());
 }
 
 void CallFrameBuilder::AddAttributes(AttributesMap attrs) {
@@ -214,10 +220,12 @@ CallFrame::CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
       attributes_(InitAttrs(attrs)) {}
 
 XLA_FFI_CallFrame CallFrame::Build(const XLA_FFI_Api* api,
-                                   XLA_FFI_ExecutionContext* ctx) {
+                                   XLA_FFI_ExecutionContext* ctx,
+                                   XLA_FFI_ExecutionStage stage) {
   XLA_FFI_CallFrame call_frame = {XLA_FFI_CallFrame_STRUCT_SIZE, nullptr};
   call_frame.api = api;
   call_frame.ctx = ctx;
+  call_frame.stage = stage;
   call_frame.args = arguments_->ffi_args;
   call_frame.rets = results_->ffi_rets;
   call_frame.attrs = attributes_->ffi_attrs;
@@ -356,42 +364,13 @@ struct CallFrame::ConvertAttribute {
   }
 };
 
-template <typename T>
-static XLA_FFI_DataType GetDataType() {
-  if constexpr (std::is_same_v<bool, T>) {
-    return XLA_FFI_DataType_PRED;
-  } else if constexpr (std::is_same_v<int8_t, T>) {
-    return XLA_FFI_DataType_S8;
-  } else if constexpr (std::is_same_v<int16_t, T>) {
-    return XLA_FFI_DataType_S16;
-  } else if constexpr (std::is_same_v<int32_t, T>) {
-    return XLA_FFI_DataType_S32;
-  } else if constexpr (std::is_same_v<int64_t, T>) {
-    return XLA_FFI_DataType_S64;
-  } else if constexpr (std::is_same_v<uint8_t, T>) {
-    return XLA_FFI_DataType_U8;
-  } else if constexpr (std::is_same_v<uint16_t, T>) {
-    return XLA_FFI_DataType_U16;
-  } else if constexpr (std::is_same_v<uint32_t, T>) {
-    return XLA_FFI_DataType_U32;
-  } else if constexpr (std::is_same_v<uint64_t, T>) {
-    return XLA_FFI_DataType_U64;
-  } else if constexpr (std::is_same_v<float, T>) {
-    return XLA_FFI_DataType_F32;
-  } else if constexpr (std::is_same_v<double, T>) {
-    return XLA_FFI_DataType_F64;
-  } else {
-    static_assert(sizeof(T) == 0, "unsupported FFI data type");
-  }
-}
-
 // An std::visit overload set to fix up CallFrame::Attribute storage and
 // initialize XLA FFI structs with valid pointers into storage objects.
 struct CallFrame::FixupAttribute {
   void operator()(CallFrame::Array& array) {
     auto visitor = [&](auto& value) {
       using T = typename std::remove_reference_t<decltype(value)>::value_type;
-      array.array.dtype = GetDataType<T>();
+      array.array.dtype = internal::NativeTypeToCApiDataType<T>();
       array.array.size = value.size();
       array.array.data = value.data();
     };
@@ -401,7 +380,7 @@ struct CallFrame::FixupAttribute {
   void operator()(CallFrame::Scalar& scalar) {
     auto visitor = [&](auto& value) {
       using T = std::remove_reference_t<decltype(value)>;
-      scalar.scalar.dtype = GetDataType<T>();
+      scalar.scalar.dtype = internal::NativeTypeToCApiDataType<T>();
       scalar.scalar.value = &value;
     };
     std::visit(visitor, scalar.value);

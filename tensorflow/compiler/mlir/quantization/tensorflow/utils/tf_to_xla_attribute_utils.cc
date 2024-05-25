@@ -160,7 +160,7 @@ Value CalculatePaddingAndPadIfNeeded(OpBuilder &builder, Location loc,
   bool has_dynamic_spatial_dim = absl::c_any_of(
       spatial_dims,
       [&input_shape](int64_t dim) { return input_shape.isDynamicDim(dim); });
-  if (conv_padding.strref().equals("SAME") && has_dynamic_spatial_dim) {
+  if (conv_padding.strref() == "SAME" && has_dynamic_spatial_dim) {
     return PadForDynamicShapedInputSamePadding(
         builder, loc, input, filter, input_zp_value, strides, dilations,
         conv_padding, padding, num_dims);
@@ -168,7 +168,7 @@ Value CalculatePaddingAndPadIfNeeded(OpBuilder &builder, Location loc,
 
   ShapedType filter_shape = mlir::cast<ShapedType>(filter.getType());
   SmallVector<int32_t> padding_values(2 * num_dims, 0);
-  if (conv_padding.strref().equals("EXPLICIT")) {
+  if (conv_padding.strref() == "EXPLICIT") {
     if (explicit_paddings.size() != 2 * num_dims) {
       emitError(loc,
                 absl::StrFormat(
@@ -182,7 +182,7 @@ Value CalculatePaddingAndPadIfNeeded(OpBuilder &builder, Location loc,
       padding_values[2 * i + 1] =
           mlir::cast<IntegerAttr>(explicit_paddings[2 * i + 1]).getInt();
     }
-  } else if (conv_padding.strref().equals("SAME")) {
+  } else if (conv_padding.strref() == "SAME") {
     for (int i : spatial_dims) {
       int input_size = input_shape.getDimSize(i);
       int filter_size = filter_shape.getDimSize(i - 1);

@@ -156,7 +156,7 @@ absl::Status DumpHloModule(HloModule* module, const std::string& file_name,
     LOG(FATAL) << "Unexpected output format: " << output_format;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

@@ -48,8 +48,12 @@ limitations under the License.
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/llvm_ir/loop_emitter.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -128,7 +132,8 @@ TransposeFusion::TransposeFusion(const se::DeviceDescription& gpu_device_info,
           ComputeTransposeTiling(gpu_device_info, analysis.tiled_transpose())) {
   for (auto [root, hero] :
        llvm::zip(analysis_.fusion_roots(), analysis_.fusion_heroes())) {
-    if (auto transpose = GetDescriptionForTiledTransposeEmitter(*root, *hero)) {
+    if (auto transpose = GetDescriptionForTiledTransposeEmitter(
+            root.instruction(), hero.instruction())) {
       permutation_ = transpose->permutation;
       break;
     }
@@ -165,18 +170,20 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 
   for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
     const auto& hero = analysis_.fusion_hero(output_idx).instruction();
-    auto transpose_descr = GetDescriptionForTiledTransposeEmitter(*root, hero);
+    auto transpose_descr =
+        GetDescriptionForTiledTransposeEmitter(root.instruction(), hero);
     if (transpose_descr.has_value()) {
       auto iterator_inserted = transposes_to_roots.insert(std::make_pair(
           &hero, std::vector<std::pair<int64_t, const HloInstruction*>>{
-                     {output_idx, root}}));
+                     {output_idx, &root.instruction()}}));
       if (iterator_inserted.second) {
         transposes.push_back(*transpose_descr);
       } else {
-        iterator_inserted.first->second.push_back({output_idx, root});
+        iterator_inserted.first->second.push_back(
+            {output_idx, &root.instruction()});
       }
     } else {
-      extra_outputs.push_back({output_idx, root});
+      extra_outputs.push_back({output_idx, &root.instruction()});
     }
   }
 
@@ -303,10 +310,16 @@ LaunchDimensions TransposeFusion::launch_dimensions() const {
 std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
-  const auto& root = analysis_.fusion_root(root_index).instruction();
-  if (!GetDescriptionForTiledTransposeEmitter(root, hero)) {
-    // Non-transpose roots are elementwise by definition.
-    return ComputeThreadIdToInputIndexing(root_index, 0, ctx);
+  if (hero.opcode() != HloOpcode::kTranspose) {
+    // The shape of non-transpose roots are bitcast compatible with the input
+    // shape of transpose heroes.
+    auto map = ComposeIndexingMaps(
+        GetIndexingMapForTiling(tiling_, ctx),
+        GetBitcastMap(
+            tiling_.GetXlaShape(),
+            analysis_.fusion_roots()[root_index].instruction().shape(), ctx));
+    map.Simplify(GetIndexingMapForInstruction);
+    return map;
   }
 
   // The block offsets are permuted, but the thread offsets remain the same.
@@ -331,6 +344,16 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* ctx) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
+  if (hero.opcode() != HloOpcode::kTranspose) {
+    auto map = ComposeIndexingMaps(
+        *ComputeThreadIdToOutputIndexing(root_index, ctx),
+        *ComputeOutputToInputIndexing(
+             &analysis_.fusion_root(root_index).instruction(), 0, ctx)
+             .indexing_maps[hero_operand_index]
+             .begin());
+    map.Simplify(GetIndexingMapForInstruction);
+    return map;
+  }
 
   auto map = ComposeIndexingMaps(
       GetIndexingMapForTiling(tiling_, ctx),

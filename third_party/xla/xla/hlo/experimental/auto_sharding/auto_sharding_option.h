@@ -26,6 +26,7 @@ namespace xla {
 
 static constexpr double kDeviceMeshAlpha = 1.0;
 static constexpr double kDeviceMeshBeta = 1.0;
+static constexpr double kOverbudgetCoeff = 1e6;
 
 // Options for the autosharding pass
 struct AutoShardingOption {
@@ -62,6 +63,10 @@ struct AutoShardingOption {
   //     memory_budget_ratio * (memory lower bound estimation).
   // Enabled when memory_budget_per_device == 0;
   float memory_budget_ratio = 1.1;
+
+  // Controls the penalty associated with violating memory constraints; if
+  // negative, the memory budget is instead imposed as a hard constraint.
+  float memory_overbudget_coeff = kOverbudgetCoeff;
 
   // Overwrite the all gather cost with the input all reduce cost.
   bool force_override_all_gather_cost = false;

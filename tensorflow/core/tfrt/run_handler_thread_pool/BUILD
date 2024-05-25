@@ -57,6 +57,7 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:env",
         "@tf_runtime//:hostcontext",
     ],
 )

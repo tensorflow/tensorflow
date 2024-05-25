@@ -44,13 +44,9 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
  public:
   using StreamMap =
       absl::flat_hash_map<stream_executor::StreamInterface*, SE_Stream*>;
-  using EventMap =
-      absl::flat_hash_map<stream_executor::EventInterface*, SE_Event*>;
+  using EventMap = absl::flat_hash_map<stream_executor::Event*, SE_Event*>;
 
   static const ::stream_executor::Platform::Id kId;
-
-  template <typename T>
-  using StatusOr = ::absl::StatusOr<T>;
 
   TpuPlatform();
 
@@ -82,36 +78,36 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
     LOG(FATAL) << "Not yet implemented";
   }
 
-  StatusOr<std::unique_ptr<::stream_executor::DeviceDescription>>
+  absl::StatusOr<std::unique_ptr<::stream_executor::DeviceDescription>>
   DescriptionForDevice(int ordinal) const override {
     LOG(FATAL) << "Not yet implemented";
   }
 
-  StatusOr<::stream_executor::StreamExecutor*> ExecutorForDevice(
+  absl::StatusOr<::stream_executor::StreamExecutor*> ExecutorForDevice(
       int ordinal) override {
     stream_executor::StreamExecutorConfig config;
     config.ordinal = ordinal;
     return GetExecutor(config);
   }
 
-  StatusOr<::stream_executor::StreamExecutor*> GetExecutor(
+  absl::StatusOr<::stream_executor::StreamExecutor*> GetExecutor(
       const ::stream_executor::StreamExecutorConfig& config) override;
 
-  StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
+  absl::StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
   GetUncachedExecutor(
       const ::stream_executor::StreamExecutorConfig& config) override;
 
   StreamMap* stream_map() { return &stream_map_; }
 
-  void InsertEvent(stream_executor::EventInterface* key, SE_Event* val);
-  SE_Event* LookupEvent(stream_executor::EventInterface* key);
+  void InsertEvent(stream_executor::Event* key, SE_Event* val);
+  SE_Event* LookupEvent(stream_executor::Event* key);
   SE_Stream* LookupStream(stream_executor::StreamInterface* key) {
     mutex().Lock();
     auto stream = stream_map_.at(key);
     mutex().Unlock();
     return stream;
   }
-  void EraseEvent(stream_executor::EventInterface* key);
+  void EraseEvent(stream_executor::Event* key) override;
 
   SE_Platform* se_platform() const { return platform_; }
 

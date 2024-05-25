@@ -2644,7 +2644,7 @@ absl::Status ConvolutionVisitor::PropagateOnUsers(HloInstruction* old_conv) {
             << batch_to_space->ToString();
     TF_CHECK_OK(computation_->ReplaceInstruction(old_conv, batch_to_space));
     VLOG(1) << "Replacement successful";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t iteration_count = 0;
@@ -2724,7 +2724,7 @@ absl::Status ConvolutionVisitor::PropagateOnUsers(HloInstruction* old_conv) {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
@@ -2931,7 +2931,7 @@ absl::Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   instr_to_dim_permute_map_[new_conv] = std::vector<int64_t>(transpose_dims);
 
   convs_to_visit_.erase(convolution);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ConvolutionVisitor::PropagateOnConcat(HloInstruction* concat) {
@@ -2954,7 +2954,7 @@ absl::Status ConvolutionVisitor::PropagateOnConcat(HloInstruction* concat) {
   instr_to_dim_permute_map_[new_concat] =
       std::vector<int64_t>(instr_to_dim_permute_map_[first_operand]);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ConvolutionVisitor::PropagateOnReverse(HloInstruction* reverse) {
@@ -2975,7 +2975,7 @@ absl::Status ConvolutionVisitor::PropagateOnReverse(HloInstruction* reverse) {
   instr_to_dim_permute_map_[new_reverse] =
       std::vector<int64_t>(instr_to_dim_permute_map_[first_operand]);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ConvolutionVisitor::PropagateOnPad(HloInstruction* pad) {
@@ -3006,7 +3006,7 @@ absl::Status ConvolutionVisitor::PropagateOnPad(HloInstruction* pad) {
   instr_to_dim_permute_map_[new_pad] =
       std::vector<int64_t>(instr_to_dim_permute_map_[first_operand]);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ConvolutionVisitor::PropagateOnSlice(HloInstruction* slice) {
@@ -3042,7 +3042,7 @@ absl::Status ConvolutionVisitor::PropagateOnSlice(HloInstruction* slice) {
   instr_to_dim_permute_map_[new_slice] =
       std::vector<int64_t>(instr_to_dim_permute_map_[operand]);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<HloInstruction*> ConvolutionVisitor::TransposeAndMergeBatch(
@@ -3694,7 +3694,7 @@ absl::Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
   absl::c_iota(trans_dims, 0);
   instr_to_dim_permute_map_[new_conv] = trans_dims;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HloInstruction*
@@ -3870,7 +3870,7 @@ absl::Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   if (!ConsumeFuel("space-to-batch-converter", [&] {
         return "Skipping space-to-batch propagation because fuel over\n";
       })) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(1) << "Handling conv " << convolution->ToString();
 
@@ -3886,7 +3886,7 @@ absl::Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
 
   // A very primitive cost model to thwart propagations on tiny shapes.
   if (c.spatial_size < 2 * ctrl_.number_of_splits) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   auto original_conv = convolution;
@@ -4080,7 +4080,7 @@ absl::Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   }
   TF_CHECK_OK(PropagateOnUsers(original_conv));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

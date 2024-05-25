@@ -142,6 +142,7 @@ cc_library(
 cc_library(
     name = "rocm_event",
     srcs = if_rocm_is_configured(["rocm_event.cc"]),
+    hdrs = if_rocm_is_configured(["rocm_event.h"]),
     deps = if_rocm_is_configured([
         # keep sorted
         ":rocm_driver",

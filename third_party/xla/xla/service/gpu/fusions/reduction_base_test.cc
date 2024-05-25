@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
@@ -492,8 +493,8 @@ TEST_F(ReductionTest, TwoGroups) {
   FakeReductionFusion fusion(analysis);
 
   EXPECT_THAT(fusion.reduction_info().GetGroups().grouped_roots,
-              ElementsAre(ElementsAre(analysis.fusion_roots()[0]),
-                          ElementsAre(analysis.fusion_roots()[1])));
+              ElementsAre(ElementsAre(&analysis.fusion_root(0).instruction()),
+                          ElementsAre(&analysis.fusion_root(1).instruction())));
 }
 
 TEST_F(ReductionTest, OneGroup) {
@@ -527,6 +528,100 @@ TEST_F(ReductionTest, OneGroup) {
   FakeMlirReductionFusion mlir_fusion(analysis);
   EXPECT_THAT(mlir_fusion.reduction_info().GetGroups().grouped_roots,
               SizeIs(1));
+}
+
+TEST_F(ReductionTest, MlirColumnReduction) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    add {
+      b = f32[] parameter(1)
+      a = f32[] parameter(0)
+      ROOT out = f32[] add(a, b)
+    }
+    fusion {
+      %p0 = f32[192,64,1536] parameter(0)
+      %c0 = f32[] constant(0)
+      ROOT reduce = f32[192,1536] reduce(p0, c0), dimensions={1}, to_apply=add
+    }
+    ENTRY entry {
+      %p0 = f32[192,64,1536] parameter(0)
+      ROOT %fusion = f32[192,1536] fusion(%p0), kind=kInput, calls=fusion
+    })")
+                    .value();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = AnalyzeFusion(*root, device_info_);
+
+  FakeMlirReductionFusion fusion(analysis);
+
+  EXPECT_THAT(
+      fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
+      MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> (
+          d3 floordiv 12,
+          d0 floordiv 32 + s1 * 32,
+          ((d3 mod 12) * 32 + d0 mod 32) * 4 + s3
+        )
+        domain:
+        d0 in [0, 1023]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 2303]
+        d4 in [0, 0]
+        d5 in [0, 0]
+        s0 in [0, 0]
+        s1 in [0, 1]
+        s2 in [0, 0]
+        s3 in [0, 3]
+        (d3 mod 12) * 32 + d0 mod 32 in [0, 383]
+        d0 floordiv 32 + s1 * 32 in [0, 63]
+      )"));
+}
+
+TEST_F(ReductionTest, MlirColumnReductionVectorSizeTwo) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    add {
+      b = f32[] parameter(1)
+      a = f32[] parameter(0)
+      ROOT out = f32[] add(a, b)
+    }
+    fusion {
+      %p0 = f32[192,64,1538] parameter(0)
+      %c0 = f32[] constant(0)
+      ROOT reduce = f32[192,1538] reduce(p0, c0), dimensions={1}, to_apply=add
+    }
+    ENTRY entry {
+      %p0 = f32[192,64,1538] parameter(0)
+      ROOT %fusion = f32[192,1538] fusion(%p0), kind=kInput, calls=fusion
+    })")
+                    .value();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = AnalyzeFusion(*root, device_info_);
+
+  FakeMlirReductionFusion fusion(analysis);
+
+  EXPECT_THAT(
+      fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
+      MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> (
+          d3 floordiv 25,
+          d0 floordiv 32 + s1 * 32,
+          ((d3 mod 25) * 32 + d0 mod 32) * 2 + s3
+        )
+        domain:
+        d0 in [0, 1023]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 4799]
+        d4 in [0, 0]
+        d5 in [0, 0]
+        s0 in [0, 0]
+        s1 in [0, 1]
+        s2 in [0, 0]
+        s3 in [0, 1]
+        (d3 mod 25) * 32 + d0 mod 32 in [0, 768]
+        d0 floordiv 32 + s1 * 32 in [0, 63]
+      )"));
 }
 
 }  // namespace

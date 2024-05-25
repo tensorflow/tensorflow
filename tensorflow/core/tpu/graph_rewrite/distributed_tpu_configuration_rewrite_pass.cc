@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"

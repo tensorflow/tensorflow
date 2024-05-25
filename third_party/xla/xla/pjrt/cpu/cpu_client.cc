@@ -1176,7 +1176,7 @@ absl::Status TfrtCpuExecutable::SetUpDonation(bool tuple_inputs) {
   TF_ASSIGN_OR_RETURN(parameters_that_must_be_donated_,
                       ComputeParametersThatMustBeDonated(
                           *cpu_executable_->shared_module(), tuple_inputs));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1330,7 +1330,7 @@ absl::Status TfrtCpuExecutable::CheckBufferCompatibilities(
           i, input_buffer_sizes_in_bytes_[i], buffer->BufferSizes()[0]);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
@@ -1437,7 +1437,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           tracked_buffer = donation_transaction->device_buffer();
           tracked_buffers.emplace_back(/*can_donate=*/true, tracked_buffer);
           donation_transactions.push_back(std::move(*donation_transaction));
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
       tracked_buffer = tfrt_buffer->AcquireUsage(execute_event);
@@ -1445,7 +1445,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
         return InvalidArgument(
             "Invalid buffer passed: buffer has been deleted or donated.");
       tracked_buffers.emplace_back(/*can_donate=*/false, tracked_buffer);
-      return OkStatus();
+      return absl::OkStatus();
     };
     TF_RETURN_IF_ERROR(get_buffer(i));
 

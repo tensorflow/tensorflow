@@ -781,7 +781,7 @@ absl::Status ChangeAccumulatorShapesInLoopBodies(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates all the sinked all-reduce instructions in the while instruction's
@@ -927,7 +927,7 @@ absl::Status AddSinkedAllReducesAndReplaceWhile(
       CreateNewWhileResult(new_while_instruction, tuple_index_to_new_buffer);
   TF_RETURN_IF_ERROR(while_instruction->parent()->ReplaceInstruction(
       while_instruction, new_while_result));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

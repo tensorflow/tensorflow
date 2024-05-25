@@ -111,7 +111,7 @@ absl::Status TransferBufferToInfeed(int device_ordinal, int64_t size,
       cpu::runtime::GetXfeedManager(device_ordinal);
   xfeed_manager->infeed()->EnqueueBuffersAtomically({buffer});
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<Shape> TransferBuffersFromOutfeedInternal(
@@ -218,7 +218,7 @@ absl::Status TransferLiteralToInfeedOnCpu(int device_ordinal,
   xfeed_manager->infeed()->EnqueueBuffersAtomically(buffers);
 
   std::move(cleanup).Cancel();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
@@ -242,7 +242,7 @@ absl::Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
     TF_RET_CHECK(size == cpu::runtime::GetByteSizeRequirement(received_shape,
                                                               sizeof(void*)));
     *literal.mutable_shape_do_not_use() = received_shape;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (ShapeUtil::IsNestedTuple(literal.shape())) {
@@ -272,7 +272,7 @@ absl::Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
       cpu::runtime::GetByteSizeRequirement(received_shape, sizeof(void*)));
 
   TF_RET_CHECK(ShapeUtil::Equal(literal.shape(), literal.shape()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status ReadDynamicShapesOnCpu(
@@ -286,12 +286,12 @@ absl::Status ReadDynamicShapesOnCpu(
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         Shape& device_sub_shape =
             *ShapeUtil::GetMutableSubshape(device_shape, index);
         if (device_sub_shape.is_static()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         const void* memory = buffer.opaque();
 
@@ -310,12 +310,12 @@ absl::Status ReadDynamicShapesOnCpu(
         for (int64_t i = 0; i < device_sub_shape.rank(); ++i) {
           device_sub_shape.mutable_dimensions()[i] = metadata_buffer[i];
         }
-        return OkStatus();
+        return absl::OkStatus();
       }));
   device_shape->clear_dynamic_dimensions();
 
   TF_RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
                                                    original_device_shape));
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace xla

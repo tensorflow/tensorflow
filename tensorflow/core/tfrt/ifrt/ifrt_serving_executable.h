@@ -19,20 +19,19 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -72,7 +71,8 @@ class IfrtServingExecutable {
       tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
       tensorflow::DeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
-      IfrtServingCoreSelector* ifrt_serving_core_selector);
+      IfrtServingCoreSelector* ifrt_serving_core_selector,
+      tsl::protobuf::Message* compilation_environment_proto);
 
   // Movable but not copyable.
   IfrtServingExecutable(IfrtServingExecutable&& other) = default;
@@ -143,7 +143,8 @@ class IfrtServingExecutable {
       tensorflow::DeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
-      tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata)
+      tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
+      tsl::protobuf::Message* compilation_environment_proto)
       : program_id_(program_id),
         model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
@@ -156,7 +157,8 @@ class IfrtServingExecutable {
         checkpoint_loader_queue_(checkpoint_loader_queue),
         device_mgr_(device_mgr),
         shape_representation_fn_(std::move(shape_representation_fn)),
-        ifrt_serving_core_selector_(std::move(ifrt_serving_core_selector)) {}
+        ifrt_serving_core_selector_(std::move(ifrt_serving_core_selector)),
+        compilation_environment_proto_(compilation_environment_proto) {}
 
   int64_t program_id_;
   using SharedCachedExecutableBundle = std::shared_ptr<CachedExecutableBundle>;
@@ -179,6 +181,9 @@ class IfrtServingExecutable {
   tensorflow::DeviceMgr* device_mgr_;  // Not owned. For host callback.
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
   IfrtServingCoreSelector* ifrt_serving_core_selector_;
+
+  tsl::protobuf::Message*
+      compilation_environment_proto_;  // NOT OWNED. can be nullptr.
 
   mutable absl::Mutex mutex_;
   absl::flat_hash_map<Key, xla::ifrt::Future<SharedCachedExecutableBundle>>

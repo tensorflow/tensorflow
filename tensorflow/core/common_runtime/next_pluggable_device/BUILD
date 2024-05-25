@@ -130,6 +130,7 @@ cc_library(
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:bfloat16",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@local_xla//xla/pjrt:pjrt_client",
     ],
 )
@@ -304,6 +305,7 @@ cc_library(
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/common_runtime/next_pluggable_device:flags",
+        "@com_google_absl//absl/flags:flag",
     ],
 )
 

@@ -266,6 +266,171 @@ TEST_F(PipelinedP2pRewriterTest, SendRecvPipelined1) {
   DoFileCheck(module.get(), kExpected);
 }
 
+// Repeats the Send/Recv pattern in the previous test, to test that we can
+// rewrite a routine with multiple pipelined loops without crashing.
+TEST_F(PipelinedP2pRewriterTest, SendRecvTwoPipelinedWhileLoops) {
+  const char* kModuleStr = R"(
+  HloModule test, is_scheduled=true
+
+  while-cond {
+    param = (u32[], (f32[1,1024,1024], token[]), token[]) parameter(0)
+    count = get-tuple-element(param), index=0
+    ub = u32[] constant(25)
+    ROOT cond-result = pred[] compare(count, ub), direction=LT
+  }
+
+  while-body {
+    param = (u32[], (f32[1,1024,1024], token[]), token[]) parameter(0)
+    count = get-tuple-element(param), index=0
+
+    recv-done.q = (f32[1,1024,1024], token[]) get-tuple-element(param), index=1
+    send-data = f32[1, 1024, 1024] get-tuple-element(recv-done.q), index=0
+
+    c1 = u32[] constant(1)
+    new-count = u32[] add(count, c1)
+
+    after-all = token[] after-all()
+    recv = (f32[1, 1024, 1024], u32[], token[]) recv(after-all), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+        _xla_send_recv_pipeline="0"
+      }
+    send = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all),
+      channel_id=1, frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+        _xla_send_recv_pipeline="0"
+      }
+    recv-done.p = (f32[1,1024,1024], token[]) recv-done(recv), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    send-done.p = token[] send-done(send), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    gte.0 = f32[1,1024,1024] get-tuple-element(recv-done.p), index=0
+    gte.1 = token[] get-tuple-element(recv-done.p), index=1
+    recv-done-tuple = (f32[1,1024,1024], token[]) tuple(gte.0, gte.1)
+    ROOT body-result = (u32[], (f32[1,1024,1024], token[]), token[])
+      tuple(new-count, recv-done-tuple, send-done.p)
+  }
+
+  while-cond-2 {
+    param = (u32[], (f32[1,1024,1024], token[]), token[]) parameter(0)
+    count = get-tuple-element(param), index=0
+    ub = u32[] constant(25)
+    ROOT cond-result = pred[] compare(count, ub), direction=LT
+  }
+
+  while-body-2 {
+    param = (u32[], (f32[1,1024,1024], token[]), token[]) parameter(0)
+    count = get-tuple-element(param), index=0
+
+    recv-done.q = (f32[1,1024,1024], token[]) get-tuple-element(param), index=1
+    send-data = f32[1, 1024, 1024] get-tuple-element(recv-done.q), index=0
+
+    c1 = u32[] constant(1)
+    new-count = u32[] add(count, c1)
+
+    after-all = token[] after-all()
+    recv = (f32[1, 1024, 1024], u32[], token[]) recv(after-all), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+        _xla_send_recv_pipeline="0"
+      }
+    send = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all),
+      channel_id=1, frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+        _xla_send_recv_pipeline="0"
+      }
+    recv-done.p = (f32[1,1024,1024], token[]) recv-done(recv), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    send-done.p = token[] send-done(send), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    gte.0 = f32[1,1024,1024] get-tuple-element(recv-done.p), index=0
+    gte.1 = token[] get-tuple-element(recv-done.p), index=1
+    recv-done-tuple = (f32[1,1024,1024], token[]) tuple(gte.0, gte.1)
+    ROOT body-result = (u32[], (f32[1,1024,1024], token[]), token[])
+      tuple(new-count, recv-done-tuple, send-done.p)
+  }
+
+  ENTRY main {
+    c0 = u32[] constant(0)
+    f0 = f32[] constant(0.0)
+    init = f32[1, 1024, 1024] broadcast(f0), dimensions={}
+
+    after-all.1 = token[] after-all()
+    recv.1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.1), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+        _xla_send_recv_pipeline="0"
+      }
+    send.1 = (f32[1, 1024, 1024], u32[], token[]) send(init, after-all.1), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+        _xla_send_recv_pipeline="0"
+      }
+    recv-done.1.p = (f32[1,1024,1024], token[]) recv-done(recv.1), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    send-done.1.p = token[] send-done(send.1), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    while-init.p =  (u32[], (f32[1,1024,1024], token[]), token[])
+      tuple(c0, recv-done.1.p, send-done.1.p)
+    while-result.p = (u32[], (f32[1,1024,1024], token[]), token[])
+      while(while-init.p),
+      body=while-body, condition=while-cond,
+      backend_config={"known_trip_count":{"n":"25"}}
+
+    recv-done.1.q = (f32[1,1024,1024], token[]) get-tuple-element(while-result.p), index=1
+
+    after-all-2.1 = token[] after-all()
+    recv-2.1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all-2.1), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+        _xla_send_recv_pipeline="0"
+      }
+    send-2.1 = (f32[1, 1024, 1024], u32[], token[]) send(recv-done.1.q, after-all-2.1), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+        _xla_send_recv_pipeline="0"
+      }
+    recv-done-2.1.p = (f32[1,1024,1024], token[]) recv-done(recv-2.1), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    send-done-2.1.p = token[] send-done(send-2.1), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    while-init-2.p =  (u32[], (f32[1,1024,1024], token[]), token[])
+      tuple(c0, recv-done-2.1.p, send-done-2.1.p)
+    while-result-2.p = (u32[], (f32[1,1024,1024], token[]), token[])
+      while(while-init-2.p),
+      body=while-body-2, condition=while-cond-2,
+      backend_config={"known_trip_count":{"n":"25"}}
+
+    recv-done-2.1.q = (f32[1,1024,1024], token[]) get-tuple-element(while-result-2.p), index=1
+
+    ROOT entry-result = f32[1, 1024, 1024] get-tuple-element(recv-done-2.1.q), index=0
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  PipelinedP2PRewriter rewriter;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  // Check that we transform the module without crashing.
+  EXPECT_TRUE(changed);
+}
+
 // Tests the rewrite for a pipelined Send/Recv chain with two channel groups.
 TEST_F(PipelinedP2pRewriterTest, SendRecvPipelined2) {
   const char* kModuleStr = R"(

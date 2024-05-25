@@ -70,7 +70,7 @@ InterpreterValue BitcastConvert(InterpreterState&, mhlo::BitcastConvertOp op,
   auto result = DispatchScalarType(ty, [&](auto dummy) -> InterpreterValue {
     TensorOrMemref<decltype(dummy)> result;
     result.view = {};
-    result.buffer = in.Clone().Buffer();
+    result.buffer = in.Clone().GetBuffer();
     return {result};
   });
   auto& out_view = result.View();

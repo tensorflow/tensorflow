@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -32,12 +33,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
-#include "absl/types/span.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/event_interface.h"
-#include "xla/stream_executor/host/host_execution_engine.h"
 #include "xla/stream_executor/host/host_kernel.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -56,6 +54,16 @@ HostStream* AsHostStream(Stream* stream) {
   return dynamic_cast<HostStream*>(stream->implementation());
 }
 
+static std::vector<HostExecutor::KernelFunctionLoader>&
+KernelFunctionLoaderRegistry() {
+  static auto* registry = new std::vector<HostExecutor::KernelFunctionLoader>();
+  return *registry;
+}
+
+void HostExecutor::RegisterKernelFunctionLoader(KernelFunctionLoader loader) {
+  KernelFunctionLoaderRegistry().push_back(std::move(loader));
+}
+
 absl::Status HostExecutor::Init() { return absl::OkStatus(); }
 
 absl::StatusOr<std::unique_ptr<Kernel>> HostExecutor::CreateKernel() {
@@ -69,25 +77,16 @@ absl::Status HostExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
 
   VLOG(3) << "GetKernel on kernel " << kernel << " : " << kernel->name();
 
-  if (spec.has_llvm_host_kernel()) {
-    const LlvmHostKernel& llvm_host_kernel = spec.llvm_host_kernel();
-    const absl::string_view name = llvm_host_kernel.kernel_name();
-    const absl::string_view entry = llvm_host_kernel.entrypoint();
-    const absl::string_view ir = llvm_host_kernel.ir();
-    const absl::Span<const std::string> options = llvm_host_kernel.options();
+  for (auto& loader : KernelFunctionLoaderRegistry()) {
+    auto loaded = loader(spec);
+    if (!loaded.has_value()) continue;
 
-    TF_ASSIGN_OR_RETURN(
-        auto execution_engine,
-        LlvmExecutionEngine::CreateFromLlvmIr(name, entry, ir, options));
-    host_kernel->SetExecutionEngine(std::move(execution_engine));
+    TF_ASSIGN_OR_RETURN(auto kernel_function, *std::move(loaded));
+    host_kernel->SetExecutionEngine(std::move(kernel_function));
     return absl::OkStatus();
-  } else if (false /* TODO(tsilytskyi): Implement CppHostKernel */) {
-    // host_kernel->SetExecutionEngine(std::make_unique<CppExecutionEngine>());
-  } else {
-    return absl::InternalError("No method of loading host kernel provided");
   }
 
-  return absl::UnimplementedError("Not Implemented");
+  return absl::InternalError("No method of loading host kernel provided");
 }
 
 absl::Status HostExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
@@ -222,11 +221,16 @@ bool HostExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
   return true;
 }
 
-class HostEvent : public EventInterface {
+class HostEvent : public Event {
  public:
   HostEvent() : notification_(std::make_shared<absl::Notification>()) {}
 
   std::shared_ptr<absl::Notification>& notification() { return notification_; }
+
+  Status PollForStatus() override {
+    return notification_->HasBeenNotified() ? Event::Status::kComplete
+                                            : Event::Status::kPending;
+  }
 
  private:
   // We use a std::shared_ptr here because the client may delete the HostEvent
@@ -235,21 +239,13 @@ class HostEvent : public EventInterface {
   std::shared_ptr<absl::Notification> notification_;
 };
 
-std::unique_ptr<EventInterface> HostExecutor::CreateEventImplementation() {
-  return std::unique_ptr<EventInterface>(new HostEvent());
+absl::StatusOr<std::unique_ptr<Event>> HostExecutor::CreateEvent() {
+  return std::make_unique<HostEvent>();
 }
 
 static HostEvent* AsHostEvent(Event* event) {
   DCHECK(event != nullptr);
-  return static_cast<HostEvent*>(event->implementation());
-}
-
-absl::Status HostExecutor::AllocateEvent(Event* /*event*/) {
-  return absl::OkStatus();
-}
-
-absl::Status HostExecutor::DeallocateEvent(Event* /*event*/) {
-  return absl::OkStatus();
+  return static_cast<HostEvent*>(event);
 }
 
 absl::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {
@@ -268,12 +264,6 @@ absl::Status HostExecutor::WaitForEvent(Stream* stream, Event* event) {
   AsHostStream(stream)->EnqueueTask(
       [notification]() { notification->WaitForNotification(); });
   return absl::OkStatus();
-}
-
-Event::Status HostExecutor::PollForEventStatus(Event* event) {
-  absl::Notification& notification = *AsHostEvent(event)->notification();
-  return notification.HasBeenNotified() ? Event::Status::kComplete
-                                        : Event::Status::kPending;
 }
 
 absl::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
@@ -302,7 +292,7 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
 
 absl::StatusOr<std::unique_ptr<Stream>> HostExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
-  return std::make_unique<Stream>(this, std::make_unique<HostStream>());
+  return std::make_unique<HostStream>(this);
 }
 
 }  // namespace host

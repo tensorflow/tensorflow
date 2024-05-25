@@ -75,20 +75,19 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::gpu::createOptimizeDotOperandsPass(ccCuda.IsAtLeastAmpere()));
   pm.addPass(mlir::createCSEPass());
 
-  pm.addPass(mt::gpu::createPipelinePass(config.num_stages, config.num_warps,
-                                         config.num_ctas, ccAsInt));
-
+  // Even though we don't run on pre-Ampere architectures anymore, we keep this
+  // check for consistency with the upstream pipeline
+  if (ccCuda.IsAtLeastAmpere()) {
+    pm.addPass(mt::gpu::createCombineTensorSelectAndIfPass());
+    pm.addPass(mt::gpu::createPipelinePass(config.num_stages, config.num_warps,
+                                           config.num_ctas, ccAsInt));
+  }
   if (!ccCuda.IsAtLeastHopper()) {
     pm.addPass(mt::gpu::createPrefetchPass());
   }
 
   pm.addPass(mt::gpu::createOptimizeDotOperandsPass(ccCuda.IsAtLeastAmpere()));
-  // We need to disable this pass because it undoes the hoisting of dot_operand
-  // layout conversion done in
-  // triton/lib/Dialect/TritonGPU/Transforms/OptimizeDotOperands.cpp in
-  // HoistLayoutConversion pattern.
-  // Bug: b/331360119
-  // pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
+  pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
   pm.addPass(mt::gpu::createReduceDataDuplicationPass());
   pm.addPass(mt::gpu::createReorderInstructionsPass());
   pm.addPass(mlir::createCSEPass());

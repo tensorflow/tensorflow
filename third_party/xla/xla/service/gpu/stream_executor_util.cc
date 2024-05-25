@@ -665,12 +665,12 @@ absl::Status NoAlgorithmSuppliedInternalError(
     std::optional<std::string_view> instr_str) {
   std::ostringstream msg;
   if (instr_str.has_value()) {
-    msg << "There are no algorithm candiates for computing: \n  "
+    msg << "There are no algorithm candidates for computing: \n  "
         << instr_str.value()
         << "\nThis likely means that the instruction shape is not supported by "
            "the target GPU library.";
   } else {
-    msg << "There are no algorithm candiates for computing the instruction.\n"
+    msg << "There are no algorithm candidates for computing the instruction.\n"
            "This likely means that the instruction shape is not supported by "
            "the target GPU library.";
   }

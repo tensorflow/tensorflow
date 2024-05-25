@@ -395,7 +395,7 @@ bool is_valid_special_tpu_op(
 
     bool op_has_inconsistent_cluster_name =
         wrapped_op_cluster_name.has_value() &&
-        !wrapped_op_cluster_name.value().equals(cluster_name);
+        wrapped_op_cluster_name.value() != cluster_name;
 
     if (op_has_inconsistent_cluster_name) {
       return false;

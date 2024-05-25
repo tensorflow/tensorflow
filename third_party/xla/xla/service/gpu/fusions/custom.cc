@@ -335,7 +335,8 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   }
 
   bool deterministic_ops =
-      ir_emitter_context.debug_options().xla_gpu_deterministic_ops();
+      ir_emitter_context.debug_options().xla_gpu_deterministic_ops() ||
+      ir_emitter_context.debug_options().xla_gpu_exclude_nondeterministic_ops();
 
   TF_ASSIGN_OR_RETURN(
       GemmConfig config,
@@ -584,7 +585,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   auto ffi_thunk = [&](Slices ops, Slices res) {
     auto& called_computations = custom_call.called_computations();
     return std::make_unique<CustomCallThunk>(
-        thunk_info, registration->handler, std::move(ops), std::move(res),
+        thunk_info, registration->bundle, std::move(ops), std::move(res),
         std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };

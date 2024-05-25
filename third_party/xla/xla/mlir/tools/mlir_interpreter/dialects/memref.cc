@@ -40,7 +40,7 @@ namespace {
 InterpreterValue Load(InterpreterState& state, memref::LoadOp,
                       const InterpreterValue& memref,
                       ArrayRef<int64_t> indices) {
-  if (!memref.Buffer()) {
+  if (!memref.GetBuffer()) {
     state.AddFailure("null pointer dereference.");
     return {};
   }
@@ -69,11 +69,11 @@ InterpreterValue Alloc(InterpreterState& state, memref::AllocOp alloc,
   auto result =
       InterpreterValue::MakeTensor(ty.getElementType(), std::move(shape));
   if (auto* stats = state.GetOptions().stats) {
-    stats->heap_size += result.Buffer()->GetByteSize();
+    stats->heap_size += result.GetBuffer()->GetByteSize();
     stats->peak_heap_size = std::max(stats->peak_heap_size, stats->heap_size);
     ++stats->num_allocations;
   }
-  result.Buffer()->SetAllocatedBy(alloc);
+  result.GetBuffer()->SetAllocatedBy(alloc);
   return result;
 }
 
@@ -83,18 +83,18 @@ InterpreterValue AllocA(InterpreterState&, memref::AllocaOp alloc,
   auto shape = ReplaceDynamicVals(ty.getShape(), dynamic_sizes);
   auto result =
       InterpreterValue::MakeTensor(ty.getElementType(), std::move(shape));
-  result.Buffer()->SetIsAlloca();
-  result.Buffer()->SetAllocatedBy(alloc);
+  result.GetBuffer()->SetIsAlloca();
+  result.GetBuffer()->SetAllocatedBy(alloc);
   return result;
 }
 
 void Dealloc(InterpreterState& state, memref::DeallocOp op,
              InterpreterValue memref) {
-  if (!memref.Buffer()) {
+  if (!memref.GetBuffer()) {
     state.AddFailure("attempting to deallocate null pointer.");
     return;
   }
-  auto buffer = memref.Buffer();
+  auto buffer = memref.GetBuffer();
   const auto& view = memref.View();
   if (auto* stats = state.GetOptions().stats) {
     stats->heap_size -= buffer->GetByteSize();

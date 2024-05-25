@@ -61,11 +61,13 @@ class XlaRuntimeError(RuntimeError):
 class PrimitiveType(enum.IntEnum):
   PRIMITIVE_TYPE_INVALID: PrimitiveType
   PRED: PrimitiveType
+  S2: PrimitiveType
   S4: PrimitiveType
   S8: PrimitiveType
   S16: PrimitiveType
   S32: PrimitiveType
   S64: PrimitiveType
+  U2: PrimitiveType
   U4: PrimitiveType
   U8: PrimitiveType
   U16: PrimitiveType
@@ -267,8 +269,8 @@ def register_custom_call_partitioner(
     prop_user_sharding: Callable,
     partition: Callable,
     infer_sharding_from_operands: Callable,
-    can_side_effecting_have_replicated_sharding: bool,
-    c_api: Optional[Any],
+    can_side_effecting_have_replicated_sharding: bool = ...,
+    c_api: Optional[Any] = ...,
 ) -> None: ...
 def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
 

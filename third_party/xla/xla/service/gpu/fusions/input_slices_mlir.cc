@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -69,11 +70,16 @@ MlirInputSlicesFusion::ComputeThreadIdToOutputIndexing(
 std::vector<mlir_converter::EpilogueSpecification>
 MlirInputSlicesFusion::GetEpilogues(const HloFusionInstruction& fusion,
                                     mlir::MLIRContext* mlir_context) const {
+  std::vector<const HloInstruction*> roots;
+  roots.reserve(analysis_.fusion_root_count());
+  for (const auto& root : analysis_.fusion_roots()) {
+    roots.push_back(&root.instruction());
+  }
+
   // We don't actually use epilogues here, but this is how we tell the base
   // class not to emit code for the slices.
   return {mlir_converter::EpilogueSpecification::FromOutputIndexing(
-      analysis_, analysis_.fusion_roots(), analysis_.fusion_roots(), *this,
-      mlir_context)};
+      analysis_, roots, roots, *this, mlir_context)};
 }
 
 LaunchDimensions MlirInputSlicesFusion::launch_dimensions() const {
@@ -94,7 +100,8 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
 
   auto launch_dims = launch_dimensions();
-  const auto& shape = analysis_.fusion_roots().front()->operand(0)->shape();
+  const auto& shape =
+      analysis_.fusion_root(0).instruction().operand(0)->shape();
   auto input_indexing = GetDefaultThreadIdIndexingMap(
       launch_dims, unroll_factor_, shape, builder.getContext());
 
@@ -106,8 +113,8 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
       builder, output_tensor_args, input_indexing,
       [&](ValueRange output_tensors, ValueRange dim_values,
           ValueRange symbol_values) -> SmallVector<Value> {
-        auto input_indices = mlir_converter::ApplyAffineMap(
-            input_indexing.GetAffineMap(), dim_values, symbol_values, builder);
+        auto input_indices = mlir_converter::ApplyIndexing(
+            input_indexing, dim_values, symbol_values, builder);
         SmallVector<Value> input_operands(
             entry_function.getArguments().take_front(num_inputs));
         absl::c_copy(input_indices, std::back_inserter(input_operands));
@@ -115,8 +122,8 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
         result_tensors.reserve(output_tensor_args.size());
 
         absl::flat_hash_map<const HloInstruction*, mlir::Value> input_values;
-        for (const auto* root : analysis_.fusion_roots()) {
-          const auto* arg = root->operand(0);
+        for (const HloInstructionAdaptor& root : analysis_.fusion_roots()) {
+          const auto* arg = root.instruction().operand(0);
           if (auto& value = input_values[arg]; !value) {
             value =
                 builder.create<PureCallOp>(call_targets(arg), input_operands)
@@ -134,11 +141,11 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
               [&, output_index = output_index, output = output](
                   mlir::OpBuilder b, mlir::Location loc) {
                 mlir::ImplicitLocOpBuilder then_builder(loc, b);
-                auto output_indices = mlir_converter::ApplyAffineMap(
-                    output_indexing->GetAffineMap(), dim_values, symbol_values,
-                    then_builder);
-                const auto* arg =
-                    analysis_.fusion_roots()[output_index]->operand(0);
+                auto output_indices = mlir_converter::ApplyIndexing(
+                    *output_indexing, dim_values, symbol_values, then_builder);
+                const auto* arg = analysis_.fusion_root(output_index)
+                                      .instruction()
+                                      .operand(0);
                 auto inserted = then_builder.create<mlir::tensor::InsertOp>(
                     input_values[arg], output, output_indices);
                 then_builder.create<mlir::scf::YieldOp>(inserted.getResult());

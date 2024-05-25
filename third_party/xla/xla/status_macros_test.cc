@@ -29,17 +29,17 @@ namespace xla {
 
 absl::Status RetCheckFail() {
   TF_RET_CHECK(2 > 3);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status RetCheckFailWithExtraMessage() {
   TF_RET_CHECK(2 > 3) << "extra message";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status RetCheckSuccess() {
   TF_RET_CHECK(3 > 2);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TEST(StatusMacros, RetCheckFailing) {
@@ -72,7 +72,7 @@ TEST(StatusMacros, AssignOrAssertOnOK) {
   EXPECT_EQ(42, result);
 }
 
-absl::Status ReturnStatusOK() { return OkStatus(); }
+absl::Status ReturnStatusOK() { return absl::OkStatus(); }
 
 absl::Status ReturnStatusError() { return (tsl::errors::Internal("foobar")); }
 
@@ -100,7 +100,7 @@ TEST(StatusMacros, AssignOrReturnSuccessfully) {
   absl::Status status = []() {
     TF_ASSIGN_OR_RETURN(int value, CreateIntSuccessfully());
     EXPECT_EQ(value, 42);
-    return OkStatus();
+    return absl::OkStatus();
   }();
   EXPECT_IS_OK(status);
 }
@@ -109,7 +109,7 @@ TEST(StatusMacros, AssignOrReturnUnsuccessfully) {
   absl::Status status = []() {
     TF_ASSIGN_OR_RETURN(int value, CreateIntUnsuccessfully());
     (void)value;
-    return OkStatus();
+    return absl::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.code(), tsl::error::INTERNAL);

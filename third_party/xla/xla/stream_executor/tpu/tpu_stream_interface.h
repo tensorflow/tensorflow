@@ -18,14 +18,17 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_interface.h"
 
 namespace tensorflow {
 namespace tpu {
 
-class TpuStreamInterface : public stream_executor::StreamInterface {
+class TpuStreamInterface : public stream_executor::Stream {
  public:
+  explicit TpuStreamInterface(stream_executor::StreamExecutor* executor)
+      : Stream(executor) {}
   virtual bool IsSameSharedMemoryLocation(TpuStreamInterface* other) = 0;
   virtual absl::Status EnqueueOnTpuDeviceSendRecvLocal(
       stream_executor::DeviceMemoryBase send_buffer,

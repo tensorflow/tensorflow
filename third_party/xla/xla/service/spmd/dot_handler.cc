@@ -64,7 +64,7 @@ namespace {
 using hlo_sharding_util::GroupedSharding;
 }  // namespace
 
-Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
   DotConvDimsMapping mapping;
   const auto& dnums = hlo->dot_dimension_numbers();
   int64_t next_output_dim = 0;
@@ -4264,7 +4264,7 @@ absl::StatusOr<HloInstruction*> PartitionDot(
 
 }  // namespace
 
-Status SpmdPartitioningVisitor::HandleDotHelper(
+absl::Status SpmdPartitioningVisitor::HandleDotHelper(
     HloInstruction* hlo, const DotConvDimsMapping& dims_mapping,
     absl::FunctionRef<absl::StatusOr<HloInstruction*>(
         HloInstruction*, HloInstruction*, SpmdBuilder*,
@@ -4286,7 +4286,7 @@ Status SpmdPartitioningVisitor::HandleDotHelper(
                    num_partitions_, create_sharded_dot, conv_window, module_,
                    hlo, options_, &b_, &windowed_dot_general_loops_, this));
   SetPartitionedHlo(hlo, [&] { return partitioned_dot; });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -4362,7 +4362,7 @@ FindInputNodesIfOnlyDependOnSmallOperands(HloInstruction* hlo) {
 //
 // Later optimization passes (TpuPadSliceMover) will merge the dynamic slice
 // with the input nodes.
-Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
+absl::Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
     HloInstruction* loop, int64_t non_windowed_operand_index) {
   auto input_tuple = loop->mutable_operand(0);
   auto old_operand = input_tuple->mutable_operand(non_windowed_operand_index);
@@ -4370,7 +4370,7 @@ Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
   auto to_sink = std::move(input_nodes.first);
   auto new_operands = std::move(input_nodes.second);
   if (to_sink.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   auto computation = loop->parent();
   // Replace the old operand with a tuple of the found small operands.
@@ -4452,7 +4452,7 @@ Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
       TF_RETURN_IF_ERROR(body->RemoveInstruction(ou));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Checks a condition holds true for all recursive operands of an hlo.
@@ -4496,7 +4496,7 @@ bool CheckOperandsRecursive(
 //
 // Later optimization passes (TpuPadSliceMover) will merge the dynamic slice
 // with the input nodes (broadcast).
-Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
+absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
     HloInstruction* loop, const SpmdPartitionerOptions& options) {
   CHECK_EQ(loop->user_count(), 1);
   // There should be a single direct user of the while loop, which is the
@@ -4591,7 +4591,7 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
   // If nothing is found, to_move could contain only original_output, or
   // cleared by the above code.
   if (to_move.size() <= 1) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // If there is a reduce that's dependent of another reduce, then we can't do
@@ -4604,7 +4604,7 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
       for (const HloInstruction* other_reduce : reduce_outputs) {
         if (reduce != other_reduce &&
             reachability->IsReachable(reduce, other_reduce)) {
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
     }
@@ -4615,7 +4615,7 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
         return !absl::c_linear_search(reduce_outputs, inst);
       };
       if (!CheckOperandsRecursive(reduce, reduce_outputs_do_not_contain)) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
   }
@@ -4949,12 +4949,12 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
     TF_RETURN_IF_ERROR(
         computation->RemoveInstructionAndUnusedOperands(reduce_outputs[i]));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
+absl::Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
     HloComputation* computation, const SpmdPartitionerOptions& options) {
   for (auto& loop : windowed_dot_general_loops_) {
     if (loop.windowed_in_contracting_dims || loop.windowed_in_batch_dims ||
@@ -4978,7 +4978,7 @@ Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
               loop.while_loop, options));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace spmd

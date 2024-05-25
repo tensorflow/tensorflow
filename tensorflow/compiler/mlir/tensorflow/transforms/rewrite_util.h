@@ -78,6 +78,15 @@ void CopyDeviceAndUnderscoredAttributesAdaptor(mlir::Operation *src,
                                                mlir::OpResult dest);
 void CopyDeviceAndUnderscoredAttributesAdaptor(mlir::Operation *src,
                                                mlir::Operation *dest);
+
+// Wrappers for CopyXlaOutsideCompilationAttributes
+void CopyXlaOutsideCompilationAttributesAdaptor(mlir::OpResult src,
+                                                mlir::OpResult dest);
+void CopyXlaOutsideCompilationAttributesAdaptor(mlir::Operation *src,
+                                                mlir::OpResult dest);
+void CopyXlaOutsideCompilationAttributesAdaptor(mlir::Operation *src,
+                                                mlir::Operation *dest);
+
 }  // namespace TF
 }  // namespace mlir
 

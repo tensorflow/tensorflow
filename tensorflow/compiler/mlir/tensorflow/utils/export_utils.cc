@@ -282,12 +282,12 @@ static bool IsRefTypeControlOp(mlir::Operation* op) {
   if (!op_name_or_status.ok()) return false;
 
   auto op_name = std::move(op_name_or_status).value();
-  if (op_name.equals("NextIteration"))
+  if (op_name == "NextIteration")
     return mlir::isa<mlir::TF::TensorFlowRefType>(
         mlir::getElementTypeOrSelf(op->getOperand(0).getType()));
 
-  if (op_name.equals("Enter") || op_name.equals("Exit") ||
-      op_name.equals("Switch") || op_name.equals("Merge")) {
+  if (op_name == "Enter" || op_name == "Exit" || op_name == "Switch" ||
+      op_name == "Merge") {
     return mlir::isa<mlir::TF::TensorFlowRefType>(
         getElementTypeOrSelf(op->getResult(0).getType()));
   }

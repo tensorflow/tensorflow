@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/type_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
@@ -114,8 +115,8 @@ EpilogueSpecification EpilogueSpecification::FromIdentityIndexing(
   absl::c_copy(root->shape().dimensions(),
                std::back_inserter(result.index_ranges));
   result.roots.push_back(root);
-  result.root_indexing.push_back(mlir::AffineMap::getMultiDimIdentityMap(
-      root->shape().rank(), mlir_context));
+  result.root_indexing.push_back(
+      CreateIdentityMap(root->shape(), mlir_context));
   result.heroes.push_back(hero);
   return result;
 }
@@ -131,11 +132,11 @@ EpilogueSpecification EpilogueSpecification::FromOutputIndexing(
       root_to_hero;
   for (auto [root, hero] :
        llvm::zip(analysis.fusion_roots(), analysis.fusion_heroes())) {
-    root_to_hero[root] = hero;
+    root_to_hero[&root.instruction()] = &hero.instruction();
   }
   absl::flat_hash_map<const HloInstruction*, int> root_to_index;
   for (auto [index, root] : llvm::enumerate(analysis.fusion_roots())) {
-    root_to_index[root] = root_to_index.size();
+    root_to_index[&root.instruction()] = root_to_index.size();
   }
 
   result.root_indexing.reserve(roots.size());
@@ -155,9 +156,8 @@ EpilogueSpecification EpilogueSpecification::FromOutputIndexing(
     auto* hero = root_to_hero[root];
     auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(
         {*hero, &analysis.fusion()}, {*root, &analysis.fusion()}, mlir_context);
-    auto root_indexing = ComposeIndexingMaps(*indexing, epilogue_indexing);
-
-    result.root_indexing.push_back(root_indexing.GetAffineMap());
+    result.root_indexing.push_back(
+        ComposeIndexingMaps(*indexing, epilogue_indexing));
   }
   result.heroes = heroes;
   result.roots = roots;
@@ -266,7 +266,7 @@ PartitionedComputation::PartitionedComputation(
     };
 
     std::vector<const HloInstruction*> roots;
-    std::vector<mlir::AffineMap> root_indexing;
+    std::vector<IndexingMap> root_indexing;
     const xla::Shape* first_root_shape = nullptr;
     for (auto* instruction : instructions) {
       if (instruction->user_count() == 0 ||
@@ -280,17 +280,16 @@ PartitionedComputation::PartitionedComputation(
             root_indexing.push_back(root_indexing.front());
           } else {
             // Bitcast from the first root to the target shape.
-            auto bitcast = GetBitcastMap(*first_root_shape,
-                                         instruction->shape(), mlir_context);
-            root_indexing.push_back(bitcast.GetAffineMap());
+            root_indexing.push_back(GetBitcastMap(
+                *first_root_shape, instruction->shape(), mlir_context));
           }
         } else {
           first_root_shape = &instruction->shape();
           while (first_root_shape->IsTuple()) {
             first_root_shape = &first_root_shape->tuple_shapes()[0];
           }
-          root_indexing.push_back(mlir::AffineMap::getMultiDimIdentityMap(
-              first_root_shape->rank(), mlir_context));
+          root_indexing.push_back(
+              CreateIdentityMap(*first_root_shape, mlir_context));
         }
       }
     }

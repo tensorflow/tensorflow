@@ -43,9 +43,6 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
   TpuTransferManager();
   ~TpuTransferManager() override;
 
-  template <typename T>
-  using StatusOr = absl::StatusOr<T>;
-
   stream_executor::Platform::Id PlatformId() const override;
 
   xla::Shape HostShapeToDeviceShape(
@@ -79,7 +76,7 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
 
   int64_t GetByteSizeRequirement(const xla::Shape& shape) const override;
 
-  StatusOr<xla::Shape> ChooseCompactLayoutForShape(
+  absl::StatusOr<xla::Shape> ChooseCompactLayoutForShape(
       const xla::Shape& host_shape) const override;
 
   bool CanShapedBufferBeAccessedNow(
