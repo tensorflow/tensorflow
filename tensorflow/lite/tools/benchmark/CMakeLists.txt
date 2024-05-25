@@ -45,6 +45,11 @@ list(APPEND TFLITE_BENCHMARK_LIBS
   tensorflow-lite
 )
 
+list(APPEND TFLITE_BENCHMARK_LIBS
+  profiling_info_proto
+  protobuf::libprotobuf
+)
+
 # TODO(b/171007016): Enable performance options on Windows.
 if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
   list(APPEND TFLITE_BENCHMARK_SRCS
@@ -91,6 +96,10 @@ add_executable(benchmark_model
 target_compile_options(benchmark_model
   PRIVATE
     ${TFLITE_BENCHMARK_CC_OPTIONS}
+)
+target_include_directories(benchmark_model
+  PUBLIC
+    ${CMAKE_BINARY_DIR}
 )
 target_link_libraries(benchmark_model
     ${TFLITE_BENCHMARK_LIBS}
