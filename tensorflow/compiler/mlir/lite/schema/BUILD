@@ -1,4 +1,5 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -67,5 +68,27 @@ cc_library(
     deps = [
         ":schema_fbs",
         "@flatbuffers",
+    ],
+)
+
+# Schema test to make sure we don't introduce backward incompatible changes
+# to schemas.
+tf_cc_test(
+    name = "flatbuffer_compatibility_test",
+    size = "small",
+    srcs = ["flatbuffer_compatibility_test.cc"],
+    data = [
+        "schema.fbs",
+        "schema_v3b.fbs",
+    ],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        "//tensorflow/core/platform",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:flatc_library",
     ],
 )

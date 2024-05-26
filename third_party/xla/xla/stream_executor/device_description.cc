@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <variant>
 
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "tsl/lib/math/math_util.h"
 #include "tsl/platform/logging.h"

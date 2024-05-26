@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -24,11 +25,22 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -91,6 +103,12 @@ std::unique_ptr<HloSharding> HloSharding::Create(
   return std::unique_ptr<HloSharding>(new HloSharding(
       std::move(devices), memory_kind, std::move(xla_hlo_sharding)));
 }
+
+HloSharding::HloSharding(DeviceList devices, MemoryKind memory_kind,
+                         xla::HloSharding xla_hlo_sharding)
+    : llvm::RTTIExtends<HloSharding, XlaCompatibleSharding>(
+          std::move(devices), memory_kind, xla_hlo_sharding.IsReplicated()),
+      xla_hlo_sharding_(std::move(xla_hlo_sharding)) {}
 
 absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
 HloSharding::Disassemble(const Shape& shape) const {
