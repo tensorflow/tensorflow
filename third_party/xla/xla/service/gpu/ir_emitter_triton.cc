@@ -475,6 +475,10 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
       return Maximum(b, device_info, inputs);
     case HloOpcode::kMinimum:
       return Minimum(b, device_info, inputs);
+    case HloOpcode::kClamp:
+      return Maximum(
+          b, device_info,
+          {Minimum(b, device_info, {inputs[1], inputs[2]}), inputs[0]});
     case HloOpcode::kAnd:
       return b.create<ma::AndIOp>(inputs[0], inputs[1]);
     case HloOpcode::kOr:
