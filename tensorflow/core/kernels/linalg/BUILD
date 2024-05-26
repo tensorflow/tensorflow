@@ -304,7 +304,7 @@ cc_library(
     name = "linalg_ops_common",
     srcs = ["linalg_ops_common.cc"],
     hdrs = ["linalg_ops_common.h"],
-    visibility = ["//visibility:private"],
+    visibility = ["//tensorflow/core/kernels:__pkg__"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
