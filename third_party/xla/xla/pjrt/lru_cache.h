@@ -87,6 +87,8 @@ class LRUCache {
   Value GetOrCreateIfAbsent(const Key& key,
                             const std::function<Value(const Key&)>& factory);
 
+  void Remove(const Key& key);
+
   // Removes all entries from the cache.
   void Clear();
 
@@ -137,6 +139,16 @@ void LRUCache<Key, Value, Hash, Eq>::Clear() {
 template <typename Key, typename Value, typename Hash, typename Eq>
 LRUCache<Key, Value, Hash, Eq>::~LRUCache() {
   Clear();
+}
+
+template <typename Key, typename Value, typename Hash, typename Eq>
+void LRUCache<Key, Value, Hash, Eq>::Remove(const Key& key) {
+  LRUListEntry* l = &entries_[key];
+  l->next->prev = l->prev;
+  l->prev->next = l->next;
+  --lru_list_->size_;
+
+  entries_.erase(key);
 }
 
 template <typename Key, typename Value, typename Hash, typename Eq>
