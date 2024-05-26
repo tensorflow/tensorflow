@@ -66,7 +66,8 @@ LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::GetLatencyBetween(
 
   // For async-start/done instructions, if there is no entry in latencies, fall
   // back to using instruction cost as the latency.
-  if (it->second.cost.has_value() && IsAsyncPair(from, target)) {
+  if (it->second.cost.has_value() &&
+      (IsAsyncPair(from, target) || IsP2pPair(from, target))) {
     VLOG(10) << "PGLE found latency for async op " << from.GetInstr().name()
              << " and (assumed)" << target.GetInstr().name()
              << " in instruction costs";

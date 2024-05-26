@@ -110,7 +110,7 @@ void do_custom_call(CUstream stream, BufferF32 in0, BufferF32 in1,
   const int64_t block_dim = 64;
   const int64_t grid_dim = 2048 / block_dim;
   custom_call_kernel<<<grid_dim, block_dim, 0, stream>>>(
-    in0.data, in1.data, out.data);
+    in0.data, in1.data, out->data);
 }
 
 XLA_FFI_DEFINE_HANDLER(handler, do_custom_call,
