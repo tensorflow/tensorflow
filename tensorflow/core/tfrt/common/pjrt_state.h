@@ -17,14 +17,22 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <set>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/framework/allocator.h"
 
 namespace tensorflow {
 

@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
@@ -223,6 +227,7 @@ class ConcreteEvenShardingSerDes
     }
     *proto.mutable_shape() = sharding.shape().ToProto();
     *proto.mutable_shard_shape() = sharding.shard_shape().ToProto();
+    proto.set_is_fully_replicated(sharding.IsFullyReplicated());
     return proto.SerializeAsString();
   }
 
@@ -248,9 +253,9 @@ class ConcreteEvenShardingSerDes
     TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
     TF_ASSIGN_OR_RETURN(auto shard_shape,
                         Shape::FromProto(proto.shard_shape()));
-    return ConcreteEvenSharding::Create(std::move(devices), memory_kind,
-                                        std::move(shape),
-                                        std::move(shard_shape));
+    return ConcreteEvenSharding::Create(
+        std::move(devices), memory_kind, std::move(shape),
+        std::move(shard_shape), proto.is_fully_replicated());
   }
 
   static char ID;  // NOLINT
