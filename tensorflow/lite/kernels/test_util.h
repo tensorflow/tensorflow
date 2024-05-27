@@ -29,6 +29,7 @@ limitations under the License.
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <tuple>
@@ -747,6 +748,13 @@ class SingleOpModel {
   int CountOpsExecutedByCpuKernel();
   int CountNumberOfDelegatedPartitions() const;
   int GetNumberOfAppliedDelegates() const { return num_applied_delegates_; }
+  // Return the most recent return status of ApplyDelegate.
+  std::optional<TfLiteStatus> GetDelegateApplicationStatus() const {
+    return delegate_application_status_;
+  }
+  void SetDelegateApplicationStatus(std::optional<TfLiteStatus> status) {
+    delegate_application_status_ = status;
+  }
 
   // Tell TF Lite runtime to apply default delegates (i.e. XNNPACK delegate)
   // when handling this op-level model.
@@ -1082,6 +1090,7 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
   TfLiteDelegate* delegate_ = nullptr;  // not own the memory.
+  std::optional<TfLiteStatus> delegate_application_status_ = std::nullopt;
   std::vector<std::vector<int>> input_shapes_;
   int num_applied_delegates_ = 0;
   bool allow_fp32_relax_to_fp16_ = false;

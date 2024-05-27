@@ -16,10 +16,13 @@ limitations under the License.
 #include "xla/service/gpu/runtime/while_thunk.h"
 
 #include <cstdint>
+#include <iterator>
+#include <list>
 #include <memory>
 #include <optional>
 #include <utility>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
@@ -34,6 +37,20 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+static thread_local auto* loop_counters = new std::list<int64_t>();
+
+absl::StatusOr<int64_t> WhileThunk::CurrentLoopIteration(int64_t depth) {
+  if (depth >= loop_counters->size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Loop depth %d is greater than the number of tracked loops %d", depth,
+        loop_counters->size()));
+  }
+
+  auto counter = loop_counters->begin();
+  std::advance(counter, depth);
+  return *counter;
+}
 
 WhileThunk::WhileThunk(
     ThunkInfo thunk_info,
@@ -74,20 +91,21 @@ absl::Status WhileThunk::Initialize(const InitializeParams& params) {
 absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
 
+  int64_t& iter = loop_counters->emplace_front();
+  absl::Cleanup cleanup = [&] { loop_counters->pop_front(); };
+
   se::DeviceMemoryBase condition_result_data =
       params.buffer_allocations->GetDeviceAddress(
           condition_result_buffer_index_);
 
   if (trip_count_.has_value()) {
     VLOG(2) << "Executing WhileThunk for " << *trip_count_ << " iterations";
-    for (int64_t i = 0; i < trip_count_; ++i) {
-      VLOG(3) << "Executing iteration # " << i;
+    for (iter = 0; iter < trip_count_; ++iter) {
+      VLOG(3) << "Executing iteration # " << iter;
       TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
     }
     return absl::OkStatus();
   }
-
-  int64_t iter = 0;
 
   // Get memory allocation for copying condition result from device.
   bool* condition_result = [&] {
@@ -115,8 +133,9 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
       break;
     }
 
-    VLOG(3) << "Executing WhileThunk body computation; iter=" << iter++;
+    VLOG(3) << "Executing WhileThunk body computation; iter=" << iter;
     TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
+    ++iter;
   }
   return absl::OkStatus();
 }

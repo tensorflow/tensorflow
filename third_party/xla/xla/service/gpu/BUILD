@@ -4533,7 +4533,6 @@ cc_library(
     name = "cudnn_fused_conv_rewriter",
     srcs = ["cudnn_fused_conv_rewriter.cc"],
     hdrs = ["cudnn_fused_conv_rewriter.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
@@ -4559,13 +4558,11 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@local_config_cuda//cuda:cudnn_header",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cudnn_header",
-    ]),
+    ],
 )
 
 xla_test(

@@ -201,7 +201,8 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
-  pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability);
+  pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability,
+                                           GetToolkitVersion());
   pipeline.AddPass<GpuConvPaddingLegalization>();
   pipeline.AddPass<CudnnPadForConvolutions>(cuda_compute_capability);
   pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability,
