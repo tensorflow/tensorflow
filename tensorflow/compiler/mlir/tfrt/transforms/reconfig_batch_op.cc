@@ -31,34 +31,31 @@ namespace tensorflow {
 namespace tfrt_compiler {
 namespace {
 
-class LowerBoundBatchThreadsPass
-    : public mlir::PassWrapper<LowerBoundBatchThreadsPass,
+class ReconfigBatchOpPass
+    : public mlir::PassWrapper<ReconfigBatchOpPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
  public:
-  explicit LowerBoundBatchThreadsPass(uint64_t min_num_batch_threads)
-      : mlir::PassWrapper<LowerBoundBatchThreadsPass,
+  explicit ReconfigBatchOpPass(ReconfigBatchOpPassOptions options)
+      : mlir::PassWrapper<ReconfigBatchOpPass,
                           mlir::OperationPass<mlir::ModuleOp>>() {
-    min_num_batch_threads_ = min_num_batch_threads;
+    min_num_batch_threads_ = options.min_num_batch_threads;
   }
-  LowerBoundBatchThreadsPass()
-      : mlir::PassWrapper<LowerBoundBatchThreadsPass,
+  ReconfigBatchOpPass()
+      : mlir::PassWrapper<ReconfigBatchOpPass,
                           mlir::OperationPass<mlir::ModuleOp>>() {}
-  LowerBoundBatchThreadsPass(const LowerBoundBatchThreadsPass& other)
-      : mlir::PassWrapper<LowerBoundBatchThreadsPass,
+  ReconfigBatchOpPass(const ReconfigBatchOpPass& other)
+      : mlir::PassWrapper<ReconfigBatchOpPass,
                           mlir::OperationPass<mlir::ModuleOp>>(other) {}
 
-  LowerBoundBatchThreadsPass& operator=(
-      const LowerBoundBatchThreadsPass& other) = delete;
+  ReconfigBatchOpPass& operator=(const ReconfigBatchOpPass& other) = delete;
 
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerBoundBatchThreadsPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ReconfigBatchOpPass)
 
  private:
-  llvm::StringRef getArgument() const final {
-    return "tfrt-lower-bound-batch-threads";
-  }
+  llvm::StringRef getArgument() const final { return "tfrt-reconfig-batch-op"; }
 
   llvm::StringRef getDescription() const final {
-    return "Lower bound batch threads for batch ops.";
+    return "Reconfig batch op such as num_batch_threads.";
   }
 
   void runOnOperation() override {
@@ -82,12 +79,12 @@ class LowerBoundBatchThreadsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateLowerBoundBatchThreadsPass(int64_t min_num_batch_threads) {
-  return std::make_unique<LowerBoundBatchThreadsPass>(min_num_batch_threads);
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateReconfigBatchOpPass(
+    ReconfigBatchOpPassOptions options) {
+  return std::make_unique<ReconfigBatchOpPass>(options);
 }
 
-static mlir::PassRegistration<LowerBoundBatchThreadsPass> register_pass;
+static mlir::PassRegistration<ReconfigBatchOpPass> register_pass;
 
 }  // namespace tfrt_compiler
 }  // namespace tensorflow

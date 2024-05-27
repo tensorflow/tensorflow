@@ -510,6 +510,23 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
 
 Value EmitParameterLoad(ImplicitLocOpBuilder& b, Value pointer,
                         ArrayRef<int32_t> boundary_checks) {
+  // 0-D MakeTensorPtrOp
+  //
+  // Triton tries to access the -1 element of a vector and segfaults when
+  // lowering to LLVM the code to load a 0-D tensor. The workaround is to load a
+  // regular pointer + a splat.
+  if (auto make_tensor_ptr = pointer.getDefiningOp<mt::MakeTensorPtrOp>()) {
+    if (make_tensor_ptr.getOffsets().empty()) {
+      return Splat(b,
+                   b.create<mt::LoadOp>(make_tensor_ptr.getBase(),
+                                        mt::CacheModifier::NONE,
+                                        mt::EvictionPolicy::NORMAL,
+                                        /*isVolatile=*/false),
+                   {});
+    }
+  }
+
+  // Any other tensor pointer.
   if (mt::isTensorPointerType(pointer.getType())) {
     std::optional<mt::PaddingOption> padding;
     if (!boundary_checks.empty()) {
@@ -520,6 +537,11 @@ Value EmitParameterLoad(ImplicitLocOpBuilder& b, Value pointer,
                                 mt::EvictionPolicy::NORMAL,
                                 /*isVolatile=*/false);
   }
+
+  // Non-tensor pointer.
+  //
+  // TODO(b/343013366): Remove this after we delete the legacy SoftMax code.
+  // It's the only place where this code-path is used.
   return Splat(b,
                b.create<mt::LoadOp>(pointer, mt::CacheModifier::NONE,
                                     mt::EvictionPolicy::NORMAL,
@@ -2446,10 +2468,6 @@ absl::Status EmitTiledSoftMax(mlir::OpBuilder builder,
 
     auto fn_arg = fn.getArgument(tiled_hlo.hlo()->parameter_number());
     auto tile_ptr = AddPtr(b, fn_arg, ptr_offset);
-
-    if (tile_sizes.empty()) {
-      return EmitParameterLoad(b, tile_ptr, boundary_checks);
-    }
 
     Value emitted_tensor = b.create<mt::MakeTensorPtrOp>(
         /*base=*/tile_ptr,
