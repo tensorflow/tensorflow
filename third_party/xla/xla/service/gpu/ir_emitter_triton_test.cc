@@ -4452,7 +4452,12 @@ triton_gemm_dot_computation {
   tmp_19 = f32[3,57]{1,0} multiply(tmp_17, tmp_18)
   tmp_20 = f32[3,57]{1,0} negate(tmp_19)
   tmp_21 = f32[3,57]{1,0} add(tmp_13, tmp_20)
-  ROOT tmp_22 = f32[32,57]{0,1} dot(tmp_8, tmp_21), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  const_1 = f32[] constant(-3e-3)
+  const_2 = f32[] constant(3e-2)
+  broadcast_1 = f32[3,57]{1,0} broadcast(const_1), dimensions={}
+  broadcast_2 = f32[3,57]{1,0} broadcast(const_2), dimensions={}
+  tmp_22 = f32[3,57]{1,0} clamp(broadcast_1, tmp_21, broadcast_2)
+  ROOT tmp_23 = f32[32,57]{0,1} dot(tmp_8, tmp_22), lhs_contracting_dims={0}, rhs_contracting_dims={0}
 }
 
 ENTRY e {
@@ -4493,7 +4498,12 @@ fused_computation {
   param_0.1 = f32[3,57]{1,0} parameter(0)
   multiply.3 = f32[3,57]{1,0} multiply(select.2, param_0.1)
   negate.1 = f32[3,57]{1,0} negate(multiply.3)
-  ROOT add.2 = f32[3,57]{1,0} add(add.3, negate.1)
+  add.2 = f32[3,57]{1,0} add(add.3, negate.1)
+  const.1 = f32[] constant(-3e-3)
+  const.2 = f32[] constant(3e-2)
+  broadcast.1 = f32[3,57]{1,0} broadcast(const.1), dimensions={}
+  broadcast.2 = f32[3,57]{1,0} broadcast(const.2), dimensions={}
+  ROOT clamp = f32[3,57]{1,0} clamp(broadcast.1, add.2, broadcast.2)
 }
 
 fused_computation.1 {

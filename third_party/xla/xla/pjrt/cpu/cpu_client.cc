@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_client.h"
 
+#define EIGEN_USE_THREADS
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -28,12 +30,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "xla/pjrt/cpu/cpu_topology.h"
-#include "xla/pjrt/host_memory_spaces.h"
-#include "xla/pjrt/pjrt_compiler.h"
-
-#define EIGEN_USE_THREADS
-
 #include "absl/base/dynamic_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -64,11 +60,14 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
+#include "xla/pjrt/cpu/cpu_topology.h"
 #include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
 #include "xla/pjrt/distributed/topology_util.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/semaphore.h"
@@ -83,8 +82,11 @@ limitations under the License.
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/cpu/cpu_xfeed.h"
+#include "xla/service/cpu/runtime/buffer_allocations.h"
+#include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/custom_call_status.h"
+#include "xla/service/custom_call_status_internal.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
@@ -92,6 +94,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -1547,7 +1550,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
   }
 
   if (input_deps.empty() && execute_inline) {
-    // Synchronously call generated function.
+    // Synchronously call generated function or thunk sequence.
 
     // Set denormal and rounding behavior to match the default TF
     // ThreadPool behavior.
@@ -1570,10 +1573,28 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     }
     void* result_buffer = buffer_pointers[result_buffer_index_];
 
-    // Call generated function.
-    cpu_executable->compute_function()(result_buffer, &run_options, nullptr,
-                                       buffer_pointers.data(), &status,
-                                       nullptr);
+    if (cpu_executable->has_compute_function()) {
+      // Call jit-compiled function implementing XLA executable.
+      cpu_executable->compute_function()(result_buffer, &run_options, nullptr,
+                                         buffer_pointers.data(), &status,
+                                         nullptr);
+
+    } else if (cpu_executable->has_thunks()) {
+      // Call interpreted thunk sequence implementing XLA executable.
+      absl::InlinedVector<MaybeOwningDeviceMemory, 8> buffer_device_mem;
+      buffer_device_mem.reserve(buffer_table.size());
+      for (const auto& buffer_info : buffer_table) {
+        buffer_device_mem.emplace_back(se::DeviceMemoryBase(
+            buffer_info.buffer->data(), buffer_info.buffer->size()));
+      }
+
+      cpu::BufferAllocations allocations(buffer_device_mem);
+      cpu::Thunk::ExecuteParams execute_params = {&allocations};
+      TF_RETURN_IF_ERROR(cpu_executable->thunks().Execute(execute_params));
+
+    } else {
+      return Internal("CpuExecutable has no compute function or thunks.");
+    }
 
     for (auto& donation_transaction : donation_transactions) {
       std::move(donation_transaction).Commit();
@@ -1650,22 +1671,46 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           }
           void* result_buffer = buffer_pointers[result_buffer_index];
 
-          // Call generated function.
-          std::optional<absl::string_view> error_message;
-          XlaCustomCallStatus status;
-          cpu_executable->compute_function()(result_buffer, &run_options,
-                                             nullptr, buffer_pointers.data(),
-                                             &status, nullptr);
-          error_message = xla::CustomCallStatusGetMessage(&status);
+          absl::Status status;
+
+          if (cpu_executable->has_compute_function()) {
+            // Call jit-compiled function implementing XLA executable.
+            XlaCustomCallStatus compute_function_status;
+
+            cpu_executable->compute_function()(
+                result_buffer, &run_options, nullptr, buffer_pointers.data(),
+                &compute_function_status, nullptr);
+            if (auto error_message =
+                    xla::CustomCallStatusGetMessage(&compute_function_status)) {
+              status =
+                  Internal("Generated function failed: %s", *error_message);
+            }
+
+          } else if (cpu_executable->has_thunks()) {
+            // Call interpreted thunk sequence implementing XLA executable.
+            absl::InlinedVector<MaybeOwningDeviceMemory, 8> buffer_device_mem;
+            buffer_device_mem.reserve(buffer_table.size());
+            for (const auto& buffer_info : buffer_table) {
+              buffer_device_mem.emplace_back(se::DeviceMemoryBase(
+                  buffer_info.buffer->data(), buffer_info.buffer->size()));
+            }
+
+            cpu::BufferAllocations allocations(buffer_device_mem);
+            cpu::Thunk::ExecuteParams execute_params = {&allocations};
+            status = cpu_executable->thunks().Execute(execute_params);
+
+          } else {
+            status =
+                Internal("CpuExecutable has no compute function or thunks.");
+          }
 
           for (auto& donation_transaction : donation_transactions) {
             std::move(donation_transaction).Commit();
           }
 
-          if (error_message) {
+          if (!status.ok()) {
             // CPU computation fails with an error.
-            execute_event.SetError(absl::StrFormat(
-                "Generated function failed: %s", *error_message));
+            execute_event.SetError(std::move(status));
             return;
           }
 

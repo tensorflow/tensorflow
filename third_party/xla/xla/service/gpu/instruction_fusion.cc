@@ -39,7 +39,29 @@ bool ElementIsF32OrF16(const Shape& shape) {
   PrimitiveType type = shape.element_type();
   return type == F32 || type == F16;
 }
+
+class EmptyFusionQueue : public FusionQueue {
+ public:
+  std::pair<HloInstruction*, std::vector<int64_t>>
+  DequeueNextInstructionAndOperandsToFuseInOrder() override {
+    return {nullptr, {}};
+  }
+  void RemoveInstruction(HloInstruction* instruction) override {};
+  const std::vector<bool>* FusionConfiguration() override { return nullptr; };
+};
+
 }  // namespace
+
+absl::StatusOr<bool> GpuInstructionFusion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  fusion_node_evaluations_.clear();
+  auto fusible_computations =
+      GetFusibleComputations(*module, execution_threads);
+  fusible_computations_ = {fusible_computations.begin(),
+                           fusible_computations.end()};
+  return InstructionFusion::Run(module, execution_threads);
+}
 
 /*static*/ bool GpuInstructionFusion::IsExpensive(
     const HloInstruction& instruction) {
@@ -151,7 +173,10 @@ HloInstruction* GpuInstructionFusion::FuseInstruction(
 
 std::unique_ptr<FusionQueue> GpuInstructionFusion::GetFusionQueue(
     HloComputation* computation) {
-  return InstructionFusion::GetFusionQueue(computation);
+  if (fusible_computations_.contains(computation)) {
+    return InstructionFusion::GetFusionQueue(computation);
+  }
+  return std::make_unique<EmptyFusionQueue>();
 }
 
 }  // namespace gpu
