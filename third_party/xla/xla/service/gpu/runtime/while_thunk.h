@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
@@ -74,6 +75,12 @@ class WhileThunk : public Thunk {
   const BufferAllocation::Slice& condition_result_buffer() const {
     return condition_result_buffer_index_;
   }
+
+  // Returns the current loop iteration if the caller is inside a while loop(s).
+  //
+  // Implementation relies on thread local storage, be careful when call it from
+  // code running on multiple threads.
+  static absl::StatusOr<int64_t> CurrentLoopIteration(int64_t depth = 0);
 
  private:
   const BufferAllocation::Slice condition_result_buffer_index_;
