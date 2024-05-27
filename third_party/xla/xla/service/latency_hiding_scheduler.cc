@@ -104,6 +104,14 @@ bool LatencyEstimator::IsAsyncPair(const HloGraphNode& from,
          from_op.inner == target_op.inner;
 }
 
+bool LatencyEstimator::IsP2pPair(const HloGraphNode& from,
+                                 const HloGraphNode& target) const {
+  return (from.GetInstr().opcode() == HloOpcode::kSend &&
+          target.GetInstr().opcode() == HloOpcode::kSendDone) ||
+         (from.GetInstr().opcode() == HloOpcode::kRecv &&
+          target.GetInstr().opcode() == HloOpcode::kRecvDone);
+}
+
 LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
   if (IsAsyncPair(from, target)) {
