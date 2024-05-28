@@ -603,6 +603,7 @@ cc_library(
     name = "triton",
     srcs = ["triton.cc"],
     hdrs = ["triton.h"],
+    visibility = ["//xla/service/gpu:__subpackages__"],
     deps = [
         ":fusion_emitter",
         "//xla:shape_util",

@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -189,6 +190,101 @@ ENTRY entry_computation {
   EXPECT_EQ(GpuPerformanceModelBase::GetOperandBytesAccessed(&analysis_, root,
                                                              root->operand(0)),
             /*2*4*128=*/1024);
+}
+
+TEST_F(GpuPerformanceModelBaseTest, EstimateFusionLaunchDimensions_LoopFusion) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f1 {
+  p0 = f32[8,16,128] parameter(0)
+  log = f32[8,16,128] log(p0)
+  ROOT add = f32[8,16,128] add(p0, log)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[8,16,128] parameter(0)
+  ROOT fusion = f32[8,16,128] fusion(param_0), kind=kLoop, calls=f1
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto fusion_analysis = AnalyzeFusion(
+      *module->entry_computation()->root_instruction(), device_info_);
+  auto launch_dimensions =
+      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis);
+
+  EXPECT_EQ(launch_dimensions.num_blocks(), 16);
+  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 1024);
+}
+
+TEST_F(GpuPerformanceModelBaseTest,
+       EstimateFusionLaunchDimensions_TritonSoftMaxFusion) {
+  absl::string_view hlo_string = R"(
+max {
+  p1 = f32[] parameter(1)
+  p0 = f32[] parameter(0)
+  ROOT m = f32[] maximum(p0, p1)
+}
+
+triton_softmax_computation {
+  p0 = f32[16,970] parameter(0)
+  constant = f32[] constant(-inf)
+  reduce = f32[16] reduce(p0, constant), dimensions={1}, to_apply=max
+  broadcast = f32[16,970] broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[16,970] subtract(p0, broadcast)
+}
+
+ENTRY e {
+  p0 = f32[16,970]{1,0} parameter(0)
+  ROOT r = f32[16,970]{1,0} fusion(p0), kind=kCustom,
+    calls=triton_softmax_computation,
+    backend_config={"fusion_backend_config": {kind: "__triton_softmax"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto fusion_analysis = AnalyzeFusion(
+      *module->entry_computation()->root_instruction(), device_info_);
+  auto launch_dimensions =
+      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis);
+
+  EXPECT_EQ(launch_dimensions.num_blocks(), 16);
+  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 64);
+}
+
+TEST_F(GpuPerformanceModelBaseTest,
+       EstimateFusionLaunchDimensions_CudnnFusion) {
+  absl::string_view hlo_string = R"(
+fusion1 {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,256] parameter(1)
+  ROOT r = f32[32,256] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,256] parameter(1)
+  ROOT _ = f32[32,256] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto fusion_analysis = AnalyzeFusion(
+      *module->entry_computation()->root_instruction(), device_info_);
+  auto launch_dimensions =
+      GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis);
+
+  // CuNnnFusion doesn't implement KernelLaunchInsterface, so
+  // EstimateFusionLaunchDimensions returns a default estimate.
+  EXPECT_EQ(launch_dimensions.num_blocks(), 64);
+  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 128);
 }
 
 }  // namespace

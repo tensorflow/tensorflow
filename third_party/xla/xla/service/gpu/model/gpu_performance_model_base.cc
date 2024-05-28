@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
+#include "xla/service/gpu/fusions/triton.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -155,6 +156,15 @@ LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
   if (const auto* kernel_emitter =
           dynamic_cast<const KernelFusionInterface*>(emitter.get())) {
     return kernel_emitter->launch_dimensions();
+  }
+
+  // TritonFusion does not implement KernelFusionInterface, because it provides
+  // launch dimensions only for SoftMax fusions.
+  if (const auto* triton_emitter =
+          dynamic_cast<const TritonFusion*>(emitter.get())) {
+    if (auto launch_dimensions = triton_emitter->launch_dimensions()) {
+      return *launch_dimensions;
+    }
   }
 
   // This estimate should never be reached in fusion code. Fusions that don't
