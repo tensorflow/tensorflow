@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/legalize_tf_with_tf2xla_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
