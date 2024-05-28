@@ -53,7 +53,7 @@ namespace xla::cpu {
 // WARNING: This is under construction and will eventually replace IrEmitter.
 class IrEmitter2 {
  public:
-  explicit IrEmitter2(llvm::Module* module);
+  IrEmitter2(const HloModule& hlo_module, llvm::Module* module);
 
   // Thread dimensions of the kernel invocation.
   struct KernelThreadDims {
@@ -119,6 +119,7 @@ class IrEmitter2 {
                                       llvm::Value* call_frame, int64_t index,
                                       const Shape& shape);
 
+  const HloModule& hlo_module_;
   llvm::Module* module_;
 
   // LLVM types defining HostKernel API (see host_kernel_c_api.h).

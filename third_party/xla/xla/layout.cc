@@ -219,6 +219,7 @@ Layout& Layout::operator=(Layout&& other) = default;
 
 LayoutProto Layout::ToProto() const {
   LayoutProto proto;
+  proto.mutable_dim_level_types()->Reserve(n_dim_level_types_);
   for (int i = 0; i < n_dim_level_types_; i++) {
     proto.add_dim_level_types(dim_level_type(i));
   }
