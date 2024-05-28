@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/cudnn_thunk.h"
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
 #include "xla/service/gpu/runtime/gemm_thunk.h"
+#include "xla/service/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/runtime/memset_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_gather_thunk.h"
@@ -123,6 +124,20 @@ static absl::StatusOr<Command> Convert(const GemmThunk& thunk) {
       thunk.execution_stream_id(), thunk.config(), thunk.lhs_buffer(),
       thunk.rhs_buffer(), thunk.output_buffer(), thunk.workspace().value(),
       thunk.deterministic());
+}
+
+static absl::StatusOr<Command> Convert(const CublasLtMatmulThunk& thunk) {
+  if (!thunk.workspace().has_value()) {
+    return absl::InternalError(
+        "Gemm thunk does not contain a workspace buffer");
+  }
+  return std::make_unique<CublasLtCmd>(
+      thunk.execution_stream_id(), thunk.config(), thunk.epilogue(),
+      thunk.algorithm_idx(), thunk.a_buffer(), thunk.b_buffer(),
+      thunk.c_buffer(), thunk.d_buffer(), thunk.bias_buffer(),
+      thunk.aux_buffer(), thunk.a_scale_buffer(), thunk.b_scale_buffer(),
+      thunk.c_scale_buffer(), thunk.d_scale_buffer(), thunk.d_amax_buffer(),
+      thunk.workspace().value());
 }
 
 static absl::StatusOr<Command> Convert(
@@ -236,6 +251,8 @@ static absl::Status AppendCommands(
       return append(Convert<KernelThunk>(thunk));
     case Thunk::Kind::kGemm:
       return append(Convert<GemmThunk>(thunk));
+    case Thunk::Kind::kCublasLtMatmul:
+      return append(Convert<CublasLtMatmulThunk>(thunk));
     case Thunk::Kind::kMemset32BitValue:
       return append(Convert<Memset32BitValueThunk>(thunk));
     case Thunk::Kind::kMemzero:

@@ -7,7 +7,7 @@ load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configu
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load(
     "//xla/tests:build_defs.bzl",
-    "prepare_gpu_backend_data",
+    "prepare_nvidia_gpu_backend_data",
 )
 
 # buildifier: disable=out-of-order-load
@@ -149,7 +149,7 @@ def gen_gpu_hlo_compile_tests(name, hlo_files, multihost_hlo_runner_binary_path,
 
         # Expand "gpu" backend name to specific GPU backends and update tags.
         backends, disabled_backends, backend_tags, backend_args = \
-            prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args)
+            prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args)
 
         backends = [
             backend

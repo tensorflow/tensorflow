@@ -127,6 +127,11 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
     return true;
   }
 
+  if (config.enabled_commands.contains(DebugOptions::CUBLASLT) &&
+      (IsCublasLtMatmul(*hlo) || IsCublasLtMatmulF8(*hlo))) {
+    return true;
+  }
+
   if (!config.enabled_commands.contains(DebugOptions::CUSTOM_CALL)) {
     return false;
   }
