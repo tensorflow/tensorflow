@@ -20,10 +20,10 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/status/status.h"
-#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/service/buffer_assignment.h"
@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -45,9 +46,10 @@ namespace gpu {
 
 AddressComputationThunk::AddressComputationThunk(
     ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
-    std::vector<std::optional<const BufferAllocation::Slice>> arguments,
+    std::vector<std::optional<BufferAllocation::Slice>> arguments,
     std::vector<std::unique_ptr<BufferAllocation>> fake_allocations,
-    std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
+    std::vector<std::optional<
+        std::vector<std::variant<int64_t, BufferAllocation::Slice>>>>
         offset_buffer_indices,
     std::vector<std::optional<Shape>> orig_shapes,
     std::vector<std::optional<Shape>> sliced_shapes,
@@ -151,28 +153,47 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
     std::vector<int64_t> slice_starts;
     slice_starts.reserve(dst_shape.rank());
 
+    // Number of issues d2h transfers to copy offset values from device to host.
+    int64_t num_transfers = 0;
+
     // Get offset for `argument_idx`-th argument, which has `dst_shape.rank()`
     // components.
     for (auto [offset_idx, values] : llvm::enumerate(llvm::zip(
              *offset_slice, src_shape.dimensions(), dst_shape.dimensions()))) {
       auto [slice, src_dim, dst_dim] = values;
-      se::DeviceMemoryBase offset_src =
-          orig_allocations.GetDeviceAddress(slice);
-      int64_t* offset_dst = &offsets_base[argument_idx + offset_idx];
-      // Copy the `offset_idx`-th component of the offset for the
-      // `argument_idx`-th argument from device to host.
-      TF_RETURN_IF_ERROR(
-          stream.Memcpy(offset_dst, offset_src, offset_byte_size.value()));
 
-      if (absl::Status blocked = stream.BlockHostUntilDone(); !blocked.ok()) {
-        return absl::InternalError(absl::StrFormat(
-            "Failed to retrieve all slice offset values on stream %p: %s",
-            &stream, blocked.message()));
+      if (int64_t* const_offset = std::get_if<int64_t>(&slice)) {
+        // Forward slice offsets that are known constant values
+        offsets_base[argument_idx + offset_idx] = *const_offset;
+      } else {
+        // Transfer slice offset value from device to host.
+        se::DeviceMemoryBase offset_src = orig_allocations.GetDeviceAddress(
+            std::get<BufferAllocation::Slice>(slice));
+        int64_t* offset_dst = &offsets_base[argument_idx + offset_idx];
+
+        // Copy the `offset_idx`-th component of the offset for the
+        // `argument_idx`-th argument from device to host.
+        TF_RETURN_IF_ERROR(
+            stream.Memcpy(offset_dst, offset_src, offset_byte_size.value()));
+        ++num_transfers;
       }
-      // Clamp start indices:
-      // start_indices[i] = min(max(start_indices[i], 0),
-      //                        operand.dimension_size[i] - size_indices[i])
-      auto start_index = std::min(std::max(*offset_dst, 0L), src_dim - dst_dim);
+    }
+
+    // Wait for the completion of all transfers.
+    if (num_transfers > 0) {
+      VLOG(2) << "Wait for completion of " << num_transfers << " transfer";
+      TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+    }
+
+    // Clamp start indices:
+    // start_indices[i] = min(max(start_indices[i], 0),
+    //                        operand.dimension_size[i] - size_indices[i])
+    for (auto [offset_idx, values] : llvm::enumerate(
+             llvm::zip(src_shape.dimensions(), dst_shape.dimensions()))) {
+      auto [src_dim, dst_dim] = values;
+      int64_t start_index =
+          std::min(std::max(offsets_base[argument_idx + offset_idx], 0L),
+                   src_dim - dst_dim);
       slice_starts.push_back(start_index);
     }
 

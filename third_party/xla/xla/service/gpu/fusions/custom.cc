@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -64,6 +63,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -172,7 +172,8 @@ absl::Status CollectSliceInfo(
     const BufferAssignment& buffer_assignment,
     const HloInstruction& fusion_instr,
     absl::Span<HloInstruction*> slice_instrs,
-    std::vector<std::optional<std::vector<BufferAllocation::Slice>>>&
+    std::vector<std::optional<
+        std::vector<std::variant<int64_t, BufferAllocation::Slice>>>>&
         offset_buffer_indices,
     std::vector<std::optional<Shape>>& orig_shapes,
     std::vector<std::optional<Shape>>& sliced_shapes,
@@ -183,15 +184,30 @@ absl::Status CollectSliceInfo(
     return absl::OkStatus();
   }
 
-  std::vector<BufferAllocation::Slice> offset_slices;
+  std::vector<std::variant<int64_t, BufferAllocation::Slice>> offset_slices;
   for (auto idx_op : slice_instr->index_operands()) {
     const auto* param = Cast<HloParameterInstruction>(idx_op);
-    TF_ASSIGN_OR_RETURN(
-        auto offset_slice,
-        GetAllocationSlice(buffer_assignment,
-                           fusion_instr.operand(param->parameter_number()),
-                           /*index=*/{}));
-    offset_slices.push_back(offset_slice);
+    const auto* offset_param = fusion_instr.operand(param->parameter_number());
+
+    if (auto* cst_offset = DynCast<HloConstantInstruction>(offset_param)) {
+      auto s32_scalar = ShapeUtil::MakeShape(PrimitiveType::S32, {});
+      auto s64_scalar = ShapeUtil::MakeShape(PrimitiveType::S64, {});
+
+      if (cst_offset->shape() == s32_scalar) {
+        offset_slices.emplace_back() = cst_offset->literal().data<int32_t>()[0];
+      } else if (cst_offset->shape() == s64_scalar) {
+        offset_slices.emplace_back() = cst_offset->literal().data<int64_t>()[0];
+      } else {
+        return absl::InternalError(
+            absl::StrCat("Unsupported constant offset shape: ",
+                         cst_offset->shape().ToString()));
+      }
+
+    } else {
+      TF_ASSIGN_OR_RETURN(offset_slices.emplace_back(),
+                          GetAllocationSlice(buffer_assignment, offset_param,
+                                             /*index=*/{}));
+    }
   }
   offset_buffer_indices[arg_idx] = std::move(offset_slices);
   orig_shapes[arg_idx] = slice_instr->operand(0)->shape();
@@ -256,7 +272,8 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   const BufferAssignment& buffer_assignment =
       ir_emitter_context.buffer_assignment();
 
-  std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
+  std::vector<std::optional<
+      std::vector<std::variant<int64_t, BufferAllocation::Slice>>>>
       offset_buffer_indices(4, std::nullopt);
   std::vector<std::optional<Shape>> orig_shapes(4, std::nullopt);
   std::vector<std::optional<Shape>> sliced_shapes(4, std::nullopt);
@@ -379,7 +396,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
         thunk_info, std::move(config), slice_lhs_fake, slice_rhs_fake,
         slice_out_fake, slice_workspace_fake, deterministic_ops));
 
-    std::vector<std::optional<const BufferAllocation::Slice>> arguments{
+    std::vector<std::optional<BufferAllocation::Slice>> arguments{
         lhs_slice, rhs_slice, output, workspace};
 
     thunk = std::make_unique<AddressComputationThunk>(
@@ -435,7 +452,8 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
     num_args += ShapeUtil::GetLeafCount(operand->shape());
   });
 
-  std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
+  std::vector<std::optional<
+      std::vector<std::variant<int64_t, BufferAllocation::Slice>>>>
       offset_buffer_indices(num_args, std::nullopt);
   std::vector<std::optional<Shape>> orig_shapes(num_args, std::nullopt);
   std::vector<std::optional<Shape>> sliced_shapes(num_args, std::nullopt);
@@ -443,7 +461,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
                                                          std::nullopt);
 
   std::vector<HloInstruction*> slice_instrs(num_args, nullptr);
-  std::vector<std::optional<const BufferAllocation::Slice>> arguments;
+  std::vector<std::optional<BufferAllocation::Slice>> arguments;
 
   unsigned arg_idx = 0;
   // TODO(vuson): add test for custom call with token-typed operands
