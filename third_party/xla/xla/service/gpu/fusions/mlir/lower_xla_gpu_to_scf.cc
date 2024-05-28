@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -145,6 +146,18 @@ struct RewriteShuffleReduce : mlir::OpRewritePattern<ShuffleReduceOp> {
               value.getType(),
               shuffle_int_or_float(b.create<mlir::complex::ReOp>(value)),
               shuffle_int_or_float(b.create<mlir::complex::ImOp>(value)));
+        }
+        if (value.getType().isUnsignedInteger()) {
+          auto ty = value.getType();
+          auto signless_ty = b.getIntegerType(ty.getIntOrFloatBitWidth());
+          value = b.create<mlir::UnrealizedConversionCastOp>(
+                       mlir::TypeRange{signless_ty}, value)
+                      .getResult(0);
+          value = shuffle_int_or_float(value);
+          value = b.create<mlir::UnrealizedConversionCastOp>(
+                       mlir::TypeRange{ty}, value)
+                      .getResult(0);
+          return value;
         }
         return shuffle_int_or_float(value);
       };
