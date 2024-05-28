@@ -12,12 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "absl/strings/string_view.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/saved_model/python/saved_model_load_and_run.h"
+#include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
 namespace py = pybind11;

@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -130,13 +131,17 @@ TEST(StreamExecutorGpuClientTest, MemorySpace) {
 
   for (auto* device : client->devices()) {
     TF_ASSERT_OK_AND_ASSIGN(auto* memory_space, device->default_memory_space());
-    EXPECT_THAT(device->memory_spaces(), ElementsAre(memory_space));
     EXPECT_EQ(memory_space->kind(), StreamExecutorGpuHbmMemorySpace::kKind);
     EXPECT_EQ(memory_space->kind_id(),
               StreamExecutorGpuHbmMemorySpace::kKindId);
     EXPECT_THAT(
         device->memory_space_by_kind(StreamExecutorGpuHbmMemorySpace::kKind),
         IsOkAndHolds(memory_space));
+    EXPECT_EQ(device->memory_spaces().size(), 2);
+    auto* pinned = device->memory_spaces()[1];
+    EXPECT_EQ(pinned->kind_id(), PinnedHostMemorySpace::kKindId);
+    EXPECT_THAT(device->memory_space_by_kind(PinnedHostMemorySpace::kKind),
+                IsOkAndHolds(pinned));
   }
 }
 
