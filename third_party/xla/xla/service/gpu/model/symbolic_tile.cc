@@ -530,7 +530,7 @@ AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
       /*range_vars=*/reference.GetRangeVars(),
       /*rt_vars=*/reference.GetRTVars(),
       /*constraints=*/reference.GetConstraints());
-  tmp_indexing_map.Simplify(GetIndexingMapForInstruction);
+  tmp_indexing_map.Simplify();
 
   CHECK_EQ(tmp_indexing_map.GetAffineMap().getResults().size(), 1);
   return tmp_indexing_map.GetAffineMap().getResults().back();

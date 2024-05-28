@@ -127,7 +127,7 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
       block_id_to_tile_offset_indexing.GetRangeVars(),
       block_id_to_tile_offset_indexing.GetRTVars()};
 
-  simplified_indexing_map.Simplify(GetIndexingMapForInstruction);
+  simplified_indexing_map.Simplify();
   simplified_indexing_map.RescaleSymbols();
   simplified_indexing_map.RemoveUnusedSymbols();
 

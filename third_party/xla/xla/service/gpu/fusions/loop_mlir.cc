@@ -87,7 +87,7 @@ std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToInputIndexing(
   CHECK_EQ(output_to_input_indexing_set.size(), 1);
   IndexingMap thread_id_to_input_indexing_map = ComposeIndexingMaps(
       *thread_id_to_output_indexing, *output_to_input_indexing_set.begin());
-  thread_id_to_input_indexing_map.Simplify(GetIndexingMapForInstruction);
+  thread_id_to_input_indexing_map.Simplify();
   return thread_id_to_input_indexing_map;
 }
 

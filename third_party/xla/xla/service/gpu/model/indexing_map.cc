@@ -750,6 +750,11 @@ SmallVector<AffineExpr, 4> MapSymbolsToComposedSymbolsList(
 
 }  // namespace
 
+// Returns the output-to-input indexing map of the first output of `instr`
+IndexingMap GetIndexingMapForInstruction(const HloInstruction* instr,
+                                         int64_t operand_idx,
+                                         mlir::MLIRContext* mlir_context);
+
 int64_t FloorDiv(int64_t dividend, int64_t divisor) {
   return dividend / divisor -
          (((dividend >= 0) != (divisor >= 0) && dividend % divisor) ? 1 : 0);
@@ -1235,10 +1240,10 @@ IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs) {
 // RangeEvaluator for every constraint. Note that we start with "expr"
 // simplification, because the ranges of constraints were already optimized once
 // when IndexingMap was constructed.
-bool IndexingMap::Simplify(IndexingMapProvider indexing_map_provider) {
+bool IndexingMap::Simplify() {
   if (IsUndefined() || IsKnownEmpty()) return false;
 
-  bool rtvars_were_eliminated = ReplaceConstantRTVars(indexing_map_provider);
+  bool rtvars_were_eliminated = ReplaceConstantRTVars();
 
   // Simplify constraints to shrink the lower/upper bounds of dims and symbols.
   bool constraints_were_simplified = false;
@@ -1777,9 +1782,8 @@ namespace {
 // `{()[sk] -> f(sk), rt_var_new }` - an affine expression that maps from the
 // old RTVar to the new RTVar, and the new RTVar itself. The new RTVar now
 // references some HLO subgraph of the old RTVar's HLO.
-RTVarOptimizationResult OptimizeRTVar(
-    RTVar rt_var, int64_t symbol_index, MLIRContext* mlir_context,
-    IndexingMap::IndexingMapProvider indexing_map_provider) {
+RTVarOptimizationResult OptimizeRTVar(RTVar rt_var, int64_t symbol_index,
+                                      MLIRContext* mlir_context) {
   const auto symbol = getAffineSymbolExpr(symbol_index, mlir_context);
   auto result_expr = symbol;
 
@@ -1814,7 +1818,7 @@ RTVarOptimizationResult OptimizeRTVar(
 
     if (is_indexing_transformation(rt_var.hlo)) {
       auto instr_indexing_map =
-          indexing_map_provider(rt_var.hlo, 0, mlir_context);
+          GetIndexingMapForInstruction(rt_var.hlo, 0, mlir_context);
 
       rt_var.hlo = rt_var.hlo->operand(0);
       rt_var.map = instr_indexing_map.GetAffineMap().compose(rt_var.map);
@@ -1849,7 +1853,7 @@ RTVarOptimizationResult OptimizeRTVar(
 
       auto lhs = OptimizeRTVar(
           RTVar{rt_var.feasible_values, rt_var.hlo->operand(0), rt_var.map},
-          symbol_index, mlir_context, indexing_map_provider);
+          symbol_index, mlir_context);
 
       if (!lhs.remapped_symbol.isFunctionOfSymbol(symbol_index)) {
         // This means that lhs is constant-like and we can eliminate the
@@ -1864,7 +1868,7 @@ RTVarOptimizationResult OptimizeRTVar(
 
       auto rhs = OptimizeRTVar(
           RTVar{rt_var.feasible_values, rt_var.hlo->operand(1), rt_var.map},
-          symbol_index, mlir_context, indexing_map_provider);
+          symbol_index, mlir_context);
 
       if (!rhs.remapped_symbol.isFunctionOfSymbol(symbol_index)) {
         // This means that rhs is constant-like and we can eliminate the
@@ -1884,8 +1888,7 @@ RTVarOptimizationResult OptimizeRTVar(
 }
 }  // namespace
 
-bool IndexingMap::ReplaceConstantRTVars(
-    IndexingMap::IndexingMapProvider indexing_map_provider) {
+bool IndexingMap::ReplaceConstantRTVars() {
   if (rt_vars_.empty()) return false;
 
   std::vector<size_t> to_delete;
@@ -1898,8 +1901,8 @@ bool IndexingMap::ReplaceConstantRTVars(
     auto symbol_index = range_vars_.size() + index;
     auto rt_var_symbol = getAffineSymbolExpr(symbol_index, GetMLIRContext());
 
-    RTVarOptimizationResult result = OptimizeRTVar(
-        rt_var, symbol_index, GetMLIRContext(), indexing_map_provider);
+    RTVarOptimizationResult result =
+        OptimizeRTVar(rt_var, symbol_index, GetMLIRContext());
 
     if (result.remapped_symbol != rt_var_symbol) {
       affine_map_ =

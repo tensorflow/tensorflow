@@ -115,7 +115,7 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
   auto indexing = *ComputeThreadIdToInputIndexing(
       /*root_index=*/0,
       /*hero_operand_index=*/kDUSUpdateIndex, mlir_context);
-  indexing.Simplify(GetIndexingMapForInstruction);
+  indexing.Simplify();
   indexing.RemoveUnusedSymbols();
 
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();

@@ -353,7 +353,7 @@ struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
     IndexingMap indexing_map = indexing_op.getIndexingMap();
-    bool is_simplified = indexing_map.Simplify(GetIndexingMapForInstruction);
+    bool is_simplified = indexing_map.Simplify();
 
     // Remove unused symbols.
     auto unused_symbols_bit_vector = indexing_map.RemoveUnusedVars();
@@ -463,7 +463,7 @@ struct FoldApplyIndexingSequence
         num_syms + added_sym_args.size());
     IndexingMap new_indexing_map(new_affine_map, new_dim_vars, new_sym_vars,
                                  /*rt_vars=*/{});
-    if (!new_indexing_map.Simplify(GetIndexingMapForInstruction)) {
+    if (!new_indexing_map.Simplify()) {
       return rewriter.notifyMatchFailure(
           indexing_op, "Folded indexing map was not simplified");
     }

@@ -265,13 +265,8 @@ class IndexingMap {
 
   void Print(std::ostream& out, const AffineMapPrinter& printer) const;
 
-  // TODO(hebecker): Rearrange code structure so that we can call
-  // `ComputeInputToOutputIndexing` from `:indexing_analysis` directly.
-  using IndexingMapProvider = llvm::function_ref<IndexingMap(
-      const HloInstruction*, int64_t /*operand id*/, mlir::MLIRContext*)>;
-
   // Returns true if the map was simplified.
-  bool Simplify(IndexingMapProvider indexing_map_provider);
+  bool Simplify();
 
   // Return MLIRContext.
   mlir::MLIRContext* GetMLIRContext() const;
@@ -387,7 +382,7 @@ class IndexingMap {
 
   // Replace RTVars that yield constants by indexing expressions.
   // Returns true if a replacement was performed, otherwise false.
-  bool ReplaceConstantRTVars(IndexingMapProvider indexing_map_provider);
+  bool ReplaceConstantRTVars();
 
   // Removes DimVars, RangeVars, RTVars that correspond to the unused dimensions
   // and symbols. If unused_dims is empty, then dims won't be removed. The same

@@ -253,8 +253,7 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
         IndexingMap operand_logical_to_linearized_physical_shape =
             operand_logical_to_physical_map *
             operand_physical_to_linearized_shape;
-        operand_logical_to_linearized_physical_shape.Simplify(
-            GetIndexingMapForInstruction);
+        operand_logical_to_linearized_physical_shape.Simplify();
 
         for (const IndexingMap& operand_indexing_map :
              operand_indexing_maps_it->second) {
@@ -270,8 +269,7 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
           IndexingMap thread_id_to_linearized_physical_input_map =
               *thread_id_to_hero_operand_map *
               logical_output_to_linearized_physical_input_map;
-          thread_id_to_linearized_physical_input_map.Simplify(
-              GetIndexingMapForInstruction);
+          thread_id_to_linearized_physical_input_map.Simplify();
           result[operand].insert(thread_id_to_linearized_physical_input_map);
         }
       }
@@ -307,7 +305,7 @@ void AssignValuesToRTVars(IndexingMap* indexing_map) {
                               indexing_map->GetDimVars(),
                               indexing_map->GetRangeVars(),
                               {}};
-  indexing_map->Simplify(GetIndexingMapForInstruction);
+  indexing_map->Simplify();
   indexing_map->RemoveUnusedSymbols();
 }
 
@@ -334,7 +332,7 @@ void AssignValuesToOuterLoopIVs(IndexingMap* indexing_map) {
                               indexing_map->GetDimVars(),
                               {indexing_map->GetRangeVars().back()},
                               {}};
-  indexing_map->Simplify(GetIndexingMapForInstruction);
+  indexing_map->Simplify();
   indexing_map->RemoveUnusedSymbols();
 }
 
@@ -596,7 +594,7 @@ bool IsIndexingCoalesced(IndexingMap& thread_x_to_linearized_input,
       /*rt_vars=*/{}};
   IndexingMap thread_x_to_input_sample =
       thread_x_first_32_elements * thread_x_to_linearized_input;
-  thread_x_to_input_sample.Simplify(GetIndexingMapForInstruction);
+  thread_x_to_input_sample.Simplify();
   thread_x_to_input_sample.RescaleSymbols();
   thread_x_to_input_sample.RemoveUnusedSymbols();
 

@@ -49,7 +49,7 @@ TEST_F(MlirInputSlicesFusionTest, ThreadIndexing) {
 
   auto thread_id_to_output_indexing_0 =
       emitter->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
-  thread_id_to_output_indexing_0->Simplify(GetIndexingMapForInstruction);
+  thread_id_to_output_indexing_0->Simplify();
   EXPECT_THAT(thread_id_to_output_indexing_0->ToString(thread_id_printer_),
               MatchIndexingString(R"(
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1] -> (
@@ -69,7 +69,7 @@ TEST_F(MlirInputSlicesFusionTest, ThreadIndexing) {
   )"));
   auto thread_id_to_output_indexing_1 =
       emitter->ComputeThreadIdToOutputIndexing(1, &mlir_context_);
-  thread_id_to_output_indexing_1->Simplify(GetIndexingMapForInstruction);
+  thread_id_to_output_indexing_1->Simplify();
   EXPECT_THAT(thread_id_to_output_indexing_1->ToString(thread_id_printer_),
               MatchIndexingString(R"(
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1] -> (

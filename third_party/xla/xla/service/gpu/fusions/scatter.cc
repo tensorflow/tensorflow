@@ -284,7 +284,7 @@ std::optional<IndexingMap> ScatterFusion::ComputeThreadIdToInputIndexing(
         RangeVarsFromTensorSizes({scatter_indices_shape.dimensions(1)}),
         /*rt_vars=*/{}};
     auto scatter_indices_map = scatter_update_map * updates_to_indices_map;
-    scatter_indices_map.Simplify(GetIndexingMapForInstruction);
+    scatter_indices_map.Simplify();
     return scatter_indices_map;
   }
   return scatter_update_map;
