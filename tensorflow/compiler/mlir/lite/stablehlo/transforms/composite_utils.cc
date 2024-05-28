@@ -18,10 +18,12 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -62,6 +64,16 @@ bool GetI32VectorFromDenseI64CompositeAttr(
   }
 
   return DenseI64AttrToI32Vector(attr, out_vec);
+}
+
+std::optional<bool> GetBoolFromCompositeAttr(
+    const DictionaryAttr& composite_attrs, llvm::StringRef attr_name) {
+  auto attr = composite_attrs.get(attr_name);
+  if (!attr) return std::nullopt;
+  if (auto bool_attr = mlir::dyn_cast_or_null<BoolAttr>(attr)) {
+    return bool_attr.getValue();
+  }
+  return std::nullopt;
 }
 
 bool IsSupportedNchwUpsampleBlinear(

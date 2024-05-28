@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_interface.h"
 
 namespace stream_executor {
 

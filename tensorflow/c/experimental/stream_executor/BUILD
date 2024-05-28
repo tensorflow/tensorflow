@@ -70,7 +70,6 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:stream_executor_interface",
-        "@local_xla//xla/stream_executor:stream_interface",
     ],
 )
 

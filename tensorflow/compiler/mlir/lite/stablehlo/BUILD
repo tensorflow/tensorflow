@@ -716,6 +716,7 @@ cc_library(
     hdrs = ["transforms/composite_utils.h"],
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -741,8 +742,6 @@ cc_library(
         ":composite_utils",
         ":passes_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/core:framework",
-        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",

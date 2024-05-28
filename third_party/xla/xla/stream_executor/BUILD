@@ -227,7 +227,6 @@ cc_library(
         ":module_spec",
         ":stream_executor_headers",
         ":stream_executor_interface",
-        ":stream_interface",
         "//xla:test",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
@@ -452,7 +451,6 @@ cc_library(
     ],
     deps = [
         ":stream_executor_headers",
-        ":stream_interface",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
@@ -480,7 +478,6 @@ cc_library(
     deps = STREAM_EXECUTOR_DEPENDENCIES + if_static([
         "@com_google_protobuf//:protobuf",  # indirectly-used by dnn.h
     ]) + [
-        ":stream_interface",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:thread_annotations",
@@ -503,14 +500,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-    ],
-)
-
-cc_library(
-    name = "stream_interface",
-    hdrs = ["stream_interface.h"],
-    deps = [
-        ":platform",
     ],
 )
 

@@ -394,7 +394,6 @@ cc_library(
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:plugin_registry",
-        "//xla/stream_executor:stream_interface",
         "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_executor_header",

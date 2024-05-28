@@ -53,6 +53,10 @@ bool EnsureAttribute(const DictionaryAttr& composite_attributes,
 bool DenseI64AttrToI32Vector(const DenseIntElementsAttr& dense_attr,
                              std::vector<int32_t>* out_vec);
 
+// Gets boolean from composite attrs if it exists.
+std::optional<bool> GetBoolFromCompositeAttr(
+    const DictionaryAttr& composite_attrs, llvm::StringRef attr_name);
+
 // Given a DictionaryAttr, checks if it has a DenseIntElementsAttr attribute
 // with the name attr_name. If so, extracts its values and stores as a vector
 // of int32_t elements.

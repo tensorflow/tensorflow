@@ -77,6 +77,9 @@ class GatherOp : public OpKernel {
                     errors::InvalidArgument("axis must be int32 or int64."));
       }
     }
+    // special case to avoid checkfail when axis = kint64max.
+    OP_REQUIRES(c, axis < kint64max,
+                absl::InvalidArgumentError("axis must be less than kint64max"));
 
     int64_t min_params_dim = axis < 0 ? -axis : axis + 1;
     OP_REQUIRES(

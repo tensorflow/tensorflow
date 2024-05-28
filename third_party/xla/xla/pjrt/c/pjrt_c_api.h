@@ -79,7 +79,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 53
+#define PJRT_API_MINOR 54
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1685,6 +1685,8 @@ struct PJRT_Buffer_GetMemoryLayout_Args {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_GetMemoryLayout_Args, layout);
 
+// DEPRECATED. Please use layout extension instead.
+// https://github.com/openxla/xla/blob/main/xla/pjrt/c/pjrt_c_api_layouts_extension.h
 // Returns the memory layout of the data in this buffer.
 typedef PJRT_Error* PJRT_Buffer_GetMemoryLayout(
     PJRT_Buffer_GetMemoryLayout_Args* args);
