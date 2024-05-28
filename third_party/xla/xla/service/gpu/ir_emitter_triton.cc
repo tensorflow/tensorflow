@@ -831,14 +831,14 @@ Value EmitTiledBroadcast(
 absl::StatusOr<Value> EmitTiledHloInstruction(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
-    const TiledHloInstruction& tiled_hlo,
-    std::function<absl::StatusOr<Value>(const TiledHloInstruction&)>
-        emit_param_load_fn,
+    const TiledHloInstruction& tiled_hlo, mlir::triton::FuncOp fn, Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
   const HloInstruction* hlo = tiled_hlo.hlo();
 
   if (hlo->opcode() == HloOpcode::kParameter) {
-    return emit_param_load_fn(tiled_hlo);
+    auto make_tensor = ir_emitter_triton_internal::CreateMakeTensorPtrOp(
+        b, pid, tiled_hlo, fn.getArgument(tiled_hlo.hlo()->parameter_number()));
+    return EmitParameterLoad(b, make_tensor.op, make_tensor.boundary_checks);
   }
 
   if (hlo->opcode() == HloOpcode::kConstant &&
@@ -883,16 +883,14 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
 absl::StatusOr<Value> EmitTiledScope(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
-    const TiledHloComputation& tiled_computation,
-    std::function<absl::StatusOr<Value>(const TiledHloInstruction&)>
-        emit_param_load_fn,
-    absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
+    const TiledHloComputation& tiled_computation, mlir::triton::FuncOp fn,
+    Value pid) {
+  absl::flat_hash_map<const TiledHloInstruction*, Value> values;
   for (const TiledHloInstruction* tiled_hlo :
        tiled_computation.instructions()) {
-    TF_ASSIGN_OR_RETURN(
-        Value result,
-        EmitTiledHloInstruction(b, libdevice_path, device_info, *tiled_hlo,
-                                emit_param_load_fn, values));
+    TF_ASSIGN_OR_RETURN(Value result,
+                        EmitTiledHloInstruction(b, libdevice_path, device_info,
+                                                *tiled_hlo, fn, pid, values));
     TF_RET_CHECK(values.insert({tiled_hlo, result}).second)
         << tiled_hlo->hlo()->ToString();
     VLOG(8) << "Emitted "
@@ -2504,18 +2502,9 @@ absl::Status EmitTiledSoftMax(mlir::OpBuilder builder,
 
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
                       analysis->ComputeTiledHloInstructions(output_tile_sizes));
-  auto emit_param_load =
-      [&](const TiledHloInstruction& tiled_hlo) -> absl::StatusOr<Value> {
-    auto make_tensor = ir_emitter_triton_internal::CreateMakeTensorPtrOp(
-        b, pid, tiled_hlo, fn.getArgument(tiled_hlo.hlo()->parameter_number()));
-    return EmitParameterLoad(b, make_tensor.op, make_tensor.boundary_checks);
-  };
-
-  absl::flat_hash_map<const TiledHloInstruction*, Value> values_out;
-  TF_ASSIGN_OR_RETURN(
-      Value result,
-      EmitTiledScope(b, libdevice_path, device_info, tiled_hlo_computation,
-                     emit_param_load, values_out));
+  TF_ASSIGN_OR_RETURN(Value result,
+                      EmitTiledScope(b, libdevice_path, device_info,
+                                     tiled_hlo_computation, fn, pid));
 
   const auto& tiled_hlo = *tiled_hlo_computation.GetRoot();
   auto make_tensor = ir_emitter_triton_internal::CreateMakeTensorPtrOp(
