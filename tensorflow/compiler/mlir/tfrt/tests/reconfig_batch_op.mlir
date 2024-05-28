@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -split-input-file -tfrt-lower-bound-batch-threads="tfrt-min-num-batch-threads=2" %s | FileCheck %s --dump-input=always
+// RUN: tf-tfrt-opt -split-input-file -tfrt-reconfig-batch-op="tfrt-min-num-batch-threads=2" %s | FileCheck %s --dump-input=always
 
 // -----
 

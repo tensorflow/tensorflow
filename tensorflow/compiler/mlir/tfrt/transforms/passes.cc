@@ -118,8 +118,8 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   pm.addPass(tfrt_compiler::CreateMergeTfIfOpsPass());
 
   // Lower bound on the number of batch threads in `tf.BatchFunction`.
-  pm.addPass(tfrt_compiler::CreateLowerBoundBatchThreadsPass(
-      options.min_num_batch_threads));
+  pm.addPass(tfrt_compiler::CreateReconfigBatchOpPass(
+      {.min_num_batch_threads = options.min_num_batch_threads}));
 
   // Deduplicate functions invoked by tf.BatchFunction with the same
   // shared_name
