@@ -25,7 +25,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -43,6 +46,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -4746,6 +4750,50 @@ ENTRY entry {
               op::Tuple(op::GetTupleElement(op::Parameter(0)),
                         op::GetTupleElement(op::Parameter(0)), cond_op,
                         op::GetTupleElement(op::Parameter(0)), next_i));
+}
+
+TEST_P(SpmdPartitioningTest, WindowedEinsumKeepBatchDimensionsSorted) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = bf16[64,1025,4096]{2,1,0} parameter(0), sharding={devices=[8,1,1,8]<=[64] last_tile_dim_replicate}
+  p1 = bf16[1,4096,16384]{2,1,0} parameter(1), sharding={devices=[1,8,8]<=[64]}
+
+  reshape.9434 = bf16[64,1025,32,128]{3,2,1,0} reshape(p0), sharding={devices=[8,1,1,1,8]<=[64] last_tile_dim_replicate}
+  reshape.9438 = bf16[32,128,16384]{2,1,0} reshape(p1), sharding={devices=[8,1,8]<=[64]}
+  ROOT dot.1104 = bf16[32,64,1025,16384]{3,2,1,0} dot(reshape.9434, reshape.9438), lhs_batch_dims={2}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, sharding={devices=[1,8,1,8]<=[64]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/64,
+                           /*conv_halo_exchange_always_on_lhs=*/true,
+                           /*choose_faster_windowed_einsum=*/true,
+                           /*unroll_windowed_einsum=*/true,
+                           /*bidirectional_windowed_einsum=*/true,
+                           /*threshold_for_windowed_einsum_mib=*/0));
+  VLOG(1) << module->ToString();
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
+                           /*allow_mixed_precision=*/false)
+                   .Run(module.get())
+                   .status());
+  const HloInstruction* while_inst =
+      module->entry_computation()->root_instruction()->operand(0);
+  for (HloInstruction* inst : while_inst->while_body()->instructions()) {
+    if (inst->opcode() == HloOpcode::kDot) {
+      auto lhs_batch_dims =
+          inst->dot_dimension_numbers().lhs_batch_dimensions();
+      CHECK_EQ(lhs_batch_dims.size(), 2);
+      CHECK_EQ(lhs_batch_dims[0], 2);
+      CHECK_EQ(lhs_batch_dims[1], 3);
+      auto rhs_batch_dims =
+          inst->dot_dimension_numbers().rhs_batch_dimensions();
+      CHECK_EQ(rhs_batch_dims.size(), 2);
+      CHECK_EQ(rhs_batch_dims[0], 0);
+      CHECK_EQ(rhs_batch_dims[1], 1);
+    }
+  }
 }
 
 TEST_P(SpmdPartitioningTest, DotPartialDeviceOrder) {

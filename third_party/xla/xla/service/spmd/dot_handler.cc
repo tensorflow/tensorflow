@@ -183,6 +183,11 @@ void UpdateDDNums(DotDimensionNumbers* new_ddnums, int64_t reshaped_dim,
         }
         if (add_reshaped_dim) {
           dims->Add(reshaped_dim);
+          // Sort the dimensions (assumes they were sorted before the addition)
+          for (int64_t i = dims->size() - 1;
+               i >= 1 && dims->at(i) < dims->at(i - 1); i--) {
+            dims->SwapElements(i - 1, i);
+          }
         }
       };
 
