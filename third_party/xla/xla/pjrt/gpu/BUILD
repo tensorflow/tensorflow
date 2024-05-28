@@ -292,13 +292,12 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "se_gpu_pjrt_compiler_test",
     srcs = if_gpu_is_configured(["se_gpu_pjrt_compiler_test.cc"]),
+    backends = ["gpu"],
     tags = [
-        "gpu",
         "no_oss",
-        "requires-gpu-nvidia",
     ] + if_google(["config-cuda-only"]),
     deps = [
         ":se_gpu_pjrt_client",
@@ -308,7 +307,6 @@ xla_cc_test(
         "//xla/mlir_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
-        "//xla/service:gpu_plugin",
         "//xla/service:hlo_parser",
         "//xla/stream_executor/cuda:cublas_plugin",
         "//xla/tests:literal_test_util",
@@ -322,13 +320,12 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "se_gpu_pjrt_compiler_aot_test",
     srcs = if_gpu_is_configured(["se_gpu_pjrt_compiler_aot_test.cc"]),
+    backends = ["gpu"],
     tags = [
-        "gpu",
         "no_oss",
-        "requires-gpu-nvidia",
     ] + if_google(["config-cuda-only"]),
     deps = [
         ":se_gpu_pjrt_client",
@@ -341,7 +338,6 @@ xla_cc_test(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/service:compiler",
-        "//xla/service:gpu_plugin",
         "//xla/service:hlo_parser",
         "//xla/tests:literal_test_util",
         "@com_google_absl//absl/memory",
