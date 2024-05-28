@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/service/gpu/runtime/while_thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -48,9 +49,7 @@ AddressComputationThunk::AddressComputationThunk(
     ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
     std::vector<std::optional<BufferAllocation::Slice>> arguments,
     std::vector<std::unique_ptr<BufferAllocation>> fake_allocations,
-    std::vector<std::optional<
-        std::vector<std::variant<int64_t, BufferAllocation::Slice>>>>
-        offset_buffer_indices,
+    std::vector<std::optional<std::vector<Offset>>> offsets,
     std::vector<std::optional<Shape>> orig_shapes,
     std::vector<std::optional<Shape>> sliced_shapes,
     std::vector<std::optional<uint64_t>> offset_byte_sizes)
@@ -59,7 +58,7 @@ AddressComputationThunk::AddressComputationThunk(
           ThunkInfo(), std::move(*embedded_thunk))),
       embedded_thunk_arguments_(std::move(arguments)),
       fake_allocations_(std::move(fake_allocations)),
-      offset_buffer_indices_(std::move(offset_buffer_indices)),
+      offsets_(std::move(offsets)),
       orig_shapes_(std::move(orig_shapes)),
       sliced_shapes_(std::move(sliced_shapes)),
       offset_byte_sizes_(std::move(offset_byte_sizes)) {}
@@ -67,14 +66,14 @@ AddressComputationThunk::AddressComputationThunk(
 absl::Status AddressComputationThunk::Prepare(
     const PrepareParams& params, ResourceRequests& resource_requests) {
   auto num_arguments = embedded_thunk_arguments_.size();
-  TF_RET_CHECK(num_arguments == offset_buffer_indices_.size());
+  TF_RET_CHECK(num_arguments == offsets_.size());
   TF_RET_CHECK(num_arguments == orig_shapes_.size());
   TF_RET_CHECK(num_arguments == sliced_shapes_.size());
   TF_RET_CHECK(num_arguments == offset_byte_sizes_.size());
   for (auto [argument, offset_slice, orig_shape, sliced_shape,
              offset_byte_size] :
-       llvm::zip(embedded_thunk_arguments_, offset_buffer_indices_,
-                 orig_shapes_, sliced_shapes_, offset_byte_sizes_)) {
+       llvm::zip(embedded_thunk_arguments_, offsets_, orig_shapes_,
+                 sliced_shapes_, offset_byte_sizes_)) {
     if (offset_slice.has_value()) {
       TF_RET_CHECK(argument.has_value());
       TF_RET_CHECK(orig_shape.has_value());
@@ -103,11 +102,12 @@ absl::Status AddressComputationThunk::Initialize(
   }
 
   absl::MutexLock lock(&mutex_);
-  if (auto it = offsets_.find(params.executor); it == offsets_.end()) {
+  if (auto it = offsets_allocs_.find(params.executor);
+      it == offsets_allocs_.end()) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<se::MemoryAllocation> allocation,
         params.executor->HostMemoryAllocate(offset_count * sizeof(int64_t)));
-    offsets_.emplace(params.executor, std::move(allocation));
+    offsets_allocs_.emplace(params.executor, std::move(allocation));
   }
 
   return absl::OkStatus();
@@ -123,12 +123,14 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
   // Get memory allocation for copying offsets from device.
   int64_t* offsets_base = [&] {
     absl::MutexLock lock(&mutex_);
-    return reinterpret_cast<int64_t*>(offsets_.at(stream.parent())->opaque());
+    return reinterpret_cast<int64_t*>(
+        offsets_allocs_.at(stream.parent())->opaque());
   }();
 
+  VLOG(2) << "Execute address computation thunk:";
   for (auto [argument_idx, values] : llvm::enumerate(
-           llvm::zip(embedded_thunk_arguments_, offset_buffer_indices_,
-                     orig_shapes_, sliced_shapes_, offset_byte_sizes_))) {
+           llvm::zip(embedded_thunk_arguments_, offsets_, orig_shapes_,
+                     sliced_shapes_, offset_byte_sizes_))) {
     auto [argument_slice, offset_slice, orig_shape, sliced_shape,
           offset_byte_size] = values;
 
@@ -164,11 +166,25 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
 
       if (int64_t* const_offset = std::get_if<int64_t>(&slice)) {
         // Forward slice offsets that are known constant values
+        VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
+                << "]: constant offset = " << *const_offset;
         offsets_base[argument_idx + offset_idx] = *const_offset;
+
+      } else if (std::holds_alternative<LoopIter>(slice)) {
+        // Get slice offset from the current loop iteration.
+        TF_ASSIGN_OR_RETURN(int64_t iter, WhileThunk::CurrentLoopIteration());
+        VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
+                << "]: loop iteration offset = " << iter;
+        offsets_base[argument_idx + offset_idx] = iter;
+
       } else {
         // Transfer slice offset value from device to host.
-        se::DeviceMemoryBase offset_src = orig_allocations.GetDeviceAddress(
-            std::get<BufferAllocation::Slice>(slice));
+        auto alloc_slice = std::get<BufferAllocation::Slice>(slice);
+        VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
+                << "]: transfer offset from device " << alloc_slice.ToString();
+
+        se::DeviceMemoryBase offset_src =
+            orig_allocations.GetDeviceAddress(alloc_slice);
         int64_t* offset_dst = &offsets_base[argument_idx + offset_idx];
 
         // Copy the `offset_idx`-th component of the offset for the
@@ -207,6 +223,10 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
       new_offset += start * stride;
     }
 
+    VLOG(2) << "Create sliced argument " << argument_idx << " of shape "
+            << sliced_shape->ToString() << " by slicing argument of shape "
+            << orig_shape->ToString() << " at offset " << new_offset << " with "
+            << new_size;
     new_buffers[argument_idx] =
         orig_argument.GetByteSlice(new_offset, new_size);
   }

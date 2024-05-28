@@ -320,6 +320,7 @@ cc_library(
     hdrs = ["address_computation_thunk.h"],
     deps = [
         ":sequential_thunk",
+        ":while_thunk",
         "//xla:shape_util",
         "//xla:status",
         "//xla:status_macros",
