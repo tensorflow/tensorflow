@@ -202,6 +202,7 @@ cc_library(
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
+        ":pjrt_c_api_layouts_extension_hdrs",
         ":pjrt_c_api_wrapper_impl",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/cpu:cpu_client",
