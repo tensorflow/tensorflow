@@ -47,10 +47,6 @@ limitations under the License.
 
 namespace stream_executor {
 
-namespace internal {
-class StreamInterface;
-}  // namespace internal
-
 class DeviceMemoryBase;
 template <typename ElemT>
 class DeviceMemory;
@@ -68,7 +64,7 @@ class StreamExecutor;
 // !ok(), it will never be ok().
 //
 // Thread-safe post-initialization.
-class Stream : public StreamInterface {
+class Stream {
  public:
   // Platform specific handle to the underlying resources behind a stream
   // implementation (e.g. it gives access to CUstream for CUDA platform).
@@ -84,7 +80,7 @@ class Stream : public StreamInterface {
   // Deallocates any stream resources that the parent StreamExecutor has
   // bestowed
   // upon this object.
-  ~Stream();
+  virtual ~Stream() = default;
 
   // TODO(ezhulenev): Consider removing this platform-specific accessor and
   // forward all users to platform-specific headers, however it requires careful
@@ -268,6 +264,17 @@ class Stream : public StreamInterface {
   RocmComputeCapability GetRocmComputeCapability() const {
     return parent()->GetDeviceDescription().rocm_compute_capability();
   }
+
+  // Gets priority for a stream.
+  virtual std::variant<StreamPriority, int> priority() const {
+    return StreamPriority::Default;
+  }
+
+  // Returns a pointer to a platform specific stream associated with this object
+  // if it exists, or nullptr otherwise. This is available via Stream public API
+  // as Stream::PlatformSpecificHandle, and should not be accessed directly
+  // outside of a StreamExecutor package.
+  virtual void *platform_specific_stream() const { return nullptr; }
 
  private:
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {

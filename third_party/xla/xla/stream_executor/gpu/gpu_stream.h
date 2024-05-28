@@ -55,11 +55,9 @@ class GpuStream : public Stream {
   // Explicitly initialize the CUDA resources associated with this stream.
   bool Init();
 
-  void SetPriority(StreamPriority priority) override {
-    stream_priority_ = priority;
-  }
-
-  void SetPriority(int priority) override { stream_priority_ = priority; }
+  // Sets the priority of this stream.
+  void SetPriority(StreamPriority priority) { stream_priority_ = priority; }
+  void SetPriority(int priority) { stream_priority_ = priority; }
 
   std::variant<StreamPriority, int> priority() const override {
     return stream_priority_;
