@@ -433,7 +433,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-// Modify block_k back to 16 once b/331362083 is fixed.
+// Modify block_k back to 16 once b/337839570 is fixed.
 TEST_F(GemmFusionAutotunerTest, DoNotRunAutotuningKernelSpillingRegisters) {
   const std::string kHloText = R"(
 HloModule m
@@ -468,7 +468,7 @@ ENTRY %e {
               "Compilation result discarded due to register spilling")));
 }
 
-// Modify block_k back to 16 once b/331362083 is fixed.
+// Modify block_k back to 16 once b/337839570 is fixed.
 TEST_F(GemmFusionAutotunerTest,
        DoNotFilterOutAutotuningKernelSpillingRegisters) {
   const std::string kHloText = R"(
@@ -510,7 +510,7 @@ ENTRY %e {
   EXPECT_NE(executable, nullptr);
 }
 
-// Modify block_k back to 16 once b/331362083 is fixed.
+// Modify block_k back to 16 once b/337839570 is fixed.
 TEST_F(GemmFusionAutotunerTest, RunAutotuningKernelNotSpillingRegisters) {
   const std::string kHloText = R"(
 HloModule m
