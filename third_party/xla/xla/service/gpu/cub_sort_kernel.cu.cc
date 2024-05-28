@@ -52,6 +52,32 @@ const char* CubSortKeys(void* d_temp_storage, size_t& temp_bytes,
   return nullptr;
 }
 
+template <typename KeyT>
+const char* CubSortKeys(void* d_temp_storage, size_t& temp_bytes,
+                        const void* d_keys_in, void* d_keys_out,
+                        size_t num_items, bool descending, size_t batch_size) {
+  if (batch_size == 1) {
+    return CubSortKeys<KeyT>(d_temp_storage, temp_bytes, d_keys_in, d_keys_out,
+                             num_items, descending);
+  }
+  void* d_offsets = static_cast<char*>(d_temp_storage) + temp_bytes;
+  int* start_offsets =
+      d_temp_storage != nullptr ? static_cast<int*>(d_offsets) : nullptr;
+  int* end_offsets = start_offsets != nullptr ? start_offsets + 1 : nullptr;
+  auto err =
+      descending
+          ? gpuprim::DeviceSegmentedRadixSort::SortKeysDescending<KeyT>(
+                d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
+                static_cast<KeyT*>(d_keys_out), num_items, batch_size,
+                start_offsets, end_offsets)
+          : gpuprim::DeviceSegmentedRadixSort::SortKeys<KeyT>(
+                d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
+                static_cast<KeyT*>(d_keys_out), num_items, batch_size,
+                start_offsets, end_offsets);
+  CHK_GPU_ERR(err)
+  return nullptr;
+}
+
 template <typename KeyT, typename ValT>
 const char* CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
                          const void* d_keys_in, void* d_keys_out,
@@ -73,24 +99,57 @@ const char* CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
   return nullptr;
 }
 
+template <typename KeyT, typename ValT>
+const char* CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
+                         const void* d_keys_in, void* d_keys_out,
+                         const void* d_values_in, void* d_values_out,
+                         size_t num_items, bool descending, size_t batch_size) {
+  if (batch_size == 1) {
+    return CubSortPairs<KeyT, ValT>(d_temp_storage, temp_bytes, d_keys_in,
+                                    d_keys_out, d_values_in, d_values_out,
+                                    num_items, descending);
+  }
+  void* d_offsets = static_cast<char*>(d_temp_storage) + temp_bytes;
+  int* start_offsets =
+      d_temp_storage != nullptr ? static_cast<int*>(d_offsets) : nullptr;
+  int* end_offsets = start_offsets != nullptr ? start_offsets + 1 : nullptr;
+  auto err =
+      descending
+          ? gpuprim::DeviceSegmentedRadixSort::SortPairsDescending<KeyT, ValT>(
+                d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
+                static_cast<KeyT*>(d_keys_out),
+                static_cast<const ValT*>(d_values_in),
+                static_cast<ValT*>(d_values_out), num_items, batch_size,
+                start_offsets, end_offsets)
+          : gpuprim::DeviceSegmentedRadixSort::SortPairs<KeyT, ValT>(
+                d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
+                static_cast<KeyT*>(d_keys_out),
+                static_cast<const ValT*>(d_values_in),
+                static_cast<ValT*>(d_values_out), num_items, batch_size,
+                start_offsets, end_offsets);
+  CHK_GPU_ERR(err)
+  return nullptr;
+}
+
 }  // namespace
 
 #define XLA_CUB_DEFINE_SORT_KEYS(suffix, type)                               \
   const char* CubSortKeys_##suffix(void* d_temp_storage, size_t& temp_bytes, \
                                    const void* d_keys_in, void* d_keys_out,  \
-                                   size_t num_items, bool descending) {      \
+                                   size_t num_items, bool descending,        \
+                                   size_t batch_size) {                      \
     return CubSortKeys<type>(d_temp_storage, temp_bytes, d_keys_in,          \
-                             d_keys_out, num_items, descending);             \
+                             d_keys_out, num_items, descending, batch_size); \
   }
 
 #define XLA_CUB_DEFINE_SORT_PAIRS(suffix, type1, type2)                      \
   const char* CubSortPairs_##suffix(                                         \
       void* d_temp_storage, size_t& temp_bytes, const void* d_keys_in,       \
       void* d_keys_out, const void* d_values_in, void* d_values_out,         \
-      size_t num_items, bool descending) {                                   \
+      size_t num_items, bool descending, size_t batch_size) {                \
     return CubSortPairs<type1, type2>(d_temp_storage, temp_bytes, d_keys_in, \
                                       d_keys_out, d_values_in, d_values_out, \
-                                      num_items, descending);                \
+                                      num_items, descending, batch_size);    \
   }
 
 // Floating point types.

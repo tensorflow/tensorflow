@@ -31,8 +31,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/runtime/cub_sort_thunk.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -45,6 +47,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
+namespace m = match;
+
 // Analyze sort comparer function.
 struct SortComputationAnalysis {
   int key_operand;  // 0 or 1
@@ -53,19 +57,41 @@ struct SortComputationAnalysis {
 
 std::optional<SortComputationAnalysis> AnalyzeSortComputation(
     const HloComputation* computation) {
-  // Root instruction must be a comparison with a valid direction.
-  const HloCompareInstruction* compare =
-      DynCast<HloCompareInstruction>(computation->root_instruction());
-  if (compare == nullptr || compare->direction() == ComparisonDirection::kEq ||
+  const HloInstruction* root = computation->root_instruction();
+
+  // Match simple compare operation.
+  const HloInstruction *cmp[2], *lhs[2], *rhs[2];
+  auto matcher = [&](int index) {
+    return m::Op(&cmp[index])
+        .WithOpcode(HloOpcode::kCompare)
+        .WithOperand(0, m::Op(&lhs[index]))
+        .WithOperand(1, m::Op(&rhs[index]));
+  };
+  bool match = Match(root, matcher(0));
+
+  // Match floating-point compare operation.
+  if (!match) {
+    const HloInstruction* valid;
+    match = Match(
+        root, m::Select(m::Eq(matcher(0), matcher(1)), m::Op(), m::Op(&valid)));
+    match &= lhs[1] == rhs[0] && rhs[1] == lhs[0] && valid == cmp[0];
+  }
+  if (!match) {
+    return std::nullopt;
+  }
+
+  // Compare instruction must have a valid direction.
+  const HloCompareInstruction* compare = Cast<HloCompareInstruction>(*cmp);
+  if (compare->direction() == ComparisonDirection::kEq ||
       compare->direction() == ComparisonDirection::kNe) {
     return std::nullopt;
   }
 
   // Compare should operate on the function parameters for a single tensor.
   const HloParameterInstruction* param0 =
-      DynCast<HloParameterInstruction>(compare->operand(0));
+      DynCast<HloParameterInstruction>(*lhs);
   const HloParameterInstruction* param1 =
-      DynCast<HloParameterInstruction>(compare->operand(1));
+      DynCast<HloParameterInstruction>(*rhs);
   if (param0 == nullptr || param1 == nullptr) {
     return std::nullopt;
   }
@@ -103,11 +129,13 @@ bool IsCubCompatibleSort(HloSortInstruction* sort_op) {
     VLOG(2) << "Unsupported operand count: " << sort_op->operand_count();
     return false;
   }
-  if (sort_op->operand(0)->shape().rank() != 1) {
-    VLOG(2) << "Only 1D shapes are supported";
+
+  const Shape& operand_shape = sort_op->operand(0)->shape();
+  if (sort_op->sort_dimension() != operand_shape.rank() - 1) {
+    VLOG(2) << "Sort dimension should be the minor one";
     return false;
   }
-  if (sort_op->operand(0)->shape().dimensions(0) <
+  if (Product(operand_shape.dimensions()) <
       GpuSortRewriter::kSortSizeThreshold) {
     VLOG(2) << "Tensor shape size is too small to see an improvement";
     return false;
@@ -151,10 +179,20 @@ absl::StatusOr<bool> GpuSortRewriter::RunOnInstruction(
       AnalyzeSortComputation(sort_op->called_computations().front()).value();
 
   // Get scratch size requirements from CUB.
+  const Shape& operand_shape = sort_op->operand(0)->shape();
+  int64_t batch_size = Product(operand_shape.dimensions()) /
+                       operand_shape.dimensions(sort_op->sort_dimension());
+
   TF_ASSIGN_OR_RETURN(auto runner, CreateRunner(sort_op, sort_config));
   TF_ASSIGN_OR_RETURN(
       int64_t scratch_size,
-      runner->GetScratchSize(sort_op->operand(0)->shape().dimensions(0)));
+      runner->GetScratchSize(Product(operand_shape.dimensions()), batch_size));
+
+  // Align and increase scratch size to fit the offsets.
+  if (batch_size > 1) {
+    scratch_size += sizeof(int) - scratch_size % sizeof(int);
+    scratch_size += (batch_size + 1) * sizeof(int);
+  }
 
   // Values are only present if sorting a pair of tensors.
   HloInstruction* keys = sort_op->mutable_operand(0);
