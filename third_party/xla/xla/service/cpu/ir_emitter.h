@@ -57,7 +57,7 @@ namespace cpu {
 // functions.
 class IrEmitter : public DfsHloVisitorWithDefault,
                   public IrBuilderMixin<IrEmitter> {
-  friend class CpuElementalIrEmitter;
+  class CpuElementalIrEmitter;
 
  public:
   using GeneratorForOperandIrArrays =

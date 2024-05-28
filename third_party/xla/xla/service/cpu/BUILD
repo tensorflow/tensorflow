@@ -620,6 +620,25 @@ cc_library(
 )
 
 cc_library(
+    name = "elemental_math_emitter",
+    srcs = ["elemental_math_emitter.cc"],
+    hdrs = ["elemental_math_emitter.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/service/llvm_ir:ir_array",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/service/llvm_ir:math_ops",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
     name = "host_kernel_emitter",
     srcs = ["host_kernel_emitter.cc"],
     hdrs = ["host_kernel_emitter.h"],
@@ -654,21 +673,65 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "ir_emitter2",
+    srcs = ["ir_emitter2.cc"],
+    hdrs = ["ir_emitter2.h"],
+    deps = [
+        ":elemental_math_emitter",
+        ":host_kernel_emitter",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:elemental_ir_emitter",
+        "//xla/service/llvm_ir:ir_array",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/service/llvm_ir:loop_emitter",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "ir_emitter2_test",
+    srcs = ["ir_emitter2_test.cc"],
+    deps = [
+        ":host_kernel_emitter",
+        ":ir_emitter2",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_parser",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/tests:filecheck",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "ir_emitter",
-    srcs = [
-        "elemental_ir_emitter.cc",
-        "ir_emitter.cc",
-    ],
-    hdrs = [
-        "elemental_ir_emitter.h",
-        "ir_emitter.h",
-    ],
+    srcs = ["ir_emitter.cc"],
+    hdrs = ["ir_emitter.h"],
     copts = tsl_copts(),
     deps = [
         ":backend_config_proto_cc",
         ":cpu_options",
         ":cpu_runtime",
         ":dot_op_emitter",
+        ":elemental_math_emitter",
         ":ir_emission_utils",
         ":ir_function",
         ":onednn_memory_util",
