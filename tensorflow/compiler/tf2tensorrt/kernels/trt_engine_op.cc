@@ -1288,7 +1288,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       }
 #else
       return errors::Internal(
-          "Implicit batch is not supported since TensorRT 10.0");
+          "Implicit batch is not supported since TensorRT 10.0. Pass "
+          "use_dynamic_shape=True to TrtGraphConverterV2 to avoid this error.");
 #endif
     }
 
