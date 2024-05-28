@@ -308,6 +308,7 @@ tf_cuda_cc_test(
     srcs = [
         "gpu_device_test.cc",
     ],
+    extra_copts = ["-DXLA_TEST_BACKEND_GPU=1"], # This is a mess
     features = ["-layering_check"],
     tags = tf_cuda_tests_tags(),
     deps = [
