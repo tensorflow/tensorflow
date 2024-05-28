@@ -444,7 +444,7 @@ auto* eager_client_error_counter = tsl::monitoring::Counter<2>::New(
     "error_type");
 
 auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<5>::New(
-    "/tensorflow/core/tf_mlir_bridge_first_phase_count",
+    "/tensorflow/core/tf_mlir_bridge_first_phase_v2_count",
     "Tracks processing state in first phase of mlir bridge", "bridge",
     "version", "device", "fallback", "result");
 
