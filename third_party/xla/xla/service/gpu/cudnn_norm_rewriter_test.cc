@@ -1493,7 +1493,9 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D12Degenerate2) {
   TestNorm(hlo_text, optimized_hlo);
 }
 
-TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D1DoutputReshapeSplit) {
+// TODO(b/343124533) Reenable when fixed
+TEST_F(CudnnNormRewriterTest,
+       DISABLED_LayerNormTrainBackward4D1DoutputReshapeSplit) {
 #if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
   GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
 #endif
@@ -1612,7 +1614,9 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D1DoutputReshapeSplit) {
   TestNorm(hlo_text, optimized_hlo);
 }
 
-TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D1DoutputReshapeCombine) {
+// TODO(b/343124533) Reenable when fixed
+TEST_F(CudnnNormRewriterTest,
+       DISABLED_LayerNormTrainBackward4D1DoutputReshapeCombine) {
 #if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
   GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
 #endif

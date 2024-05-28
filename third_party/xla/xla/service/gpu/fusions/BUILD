@@ -36,7 +36,6 @@ cc_library(
 xla_cc_test(
     name = "in_place_dynamic_update_slice_test",
     srcs = ["in_place_dynamic_update_slice_test.cc"],
-    use_gpu = True,
     deps = [
         ":fusions",
         ":in_place_dynamic_update_slice",
@@ -81,15 +80,14 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "in_place_dynamic_update_slice_mlir_test",
     srcs = ["in_place_dynamic_update_slice_mlir_test.cc"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":in_place_dynamic_update_slice_mlir",
         ":mlir_emitter_test_base",
         "//xla:error_spec",
-        "//xla/service:gpu_plugin",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/model:indexing_test_utils",
         "//xla/tests:xla_internal_test_main",
@@ -388,10 +386,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "loop_mlir_test",
     srcs = ["loop_mlir_test.cc"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":loop_mlir",
         ":mlir_emitter_test_base",
@@ -439,10 +437,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "scatter_mlir_test",
     srcs = ["scatter_mlir_test.cc"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":mlir_emitter_test_base",
         ":scatter_mlir",
@@ -492,10 +490,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "transpose_mlir_test",
     srcs = ["transpose_mlir_test.cc"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":mlir_emitter_test_base",
         ":transpose_mlir",
@@ -886,15 +884,14 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "reduction_mlir_test",
     srcs = ["reduction_mlir_test.cc"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":mlir_emitter_test_base",
         ":reduction_mlir",
         "//xla:error_spec",
-        "//xla/service:gpu_plugin",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
@@ -972,10 +969,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "concatenate_mlir_test",
     srcs = ["concatenate_mlir_test.cc"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":concatenate_mlir",
         ":mlir_emitter_test_base",
@@ -1110,15 +1107,14 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "input_slices_mlir_test",
     srcs = ["input_slices_mlir_test.cc"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":input_slices_mlir",
         ":mlir_emitter_test_base",
         "//xla:error_spec",
-        "//xla/service:gpu_plugin",
         "//xla/service/gpu/model:indexing_test_utils",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",

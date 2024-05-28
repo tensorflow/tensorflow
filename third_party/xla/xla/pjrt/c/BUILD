@@ -7,7 +7,12 @@ load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
+load(
+    "//xla:xla.bzl",
+    "xla_cc_binary",
+    "xla_cc_test",
+)
+load("//xla/tests:build_defs.bzl", "xla_test")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -342,10 +347,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "pjrt_c_api_gpu_test",
     srcs = ["pjrt_c_api_gpu_test.cc"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":pjrt_c_api_ffi_extension_hdrs",
         ":pjrt_c_api_gpu",
@@ -368,7 +373,6 @@ xla_cc_test(
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/service:custom_call_target_registry",
-        "//xla/service:gpu_plugin",
         "//xla/stream_executor/gpu:gpu_init",
         "//xla/tests:literal_test_util",
         "@com_google_absl//absl/container:flat_hash_map",

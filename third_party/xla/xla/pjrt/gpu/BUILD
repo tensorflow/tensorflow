@@ -4,6 +4,7 @@ load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm", "if_gpu_is_configured")
+load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 
 package(
@@ -196,18 +197,20 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "pjrt_client_test_se_gpu",
     srcs = ["pjrt_client_test_se_gpu.cc"],
+    backend_tags = {
+        "gpu": ["multi_gpu"],
+    },
+    backends = ["gpu"],
     tags = [
         "no_oss",
         "notap",
-        "requires-gpu-nvidia:2",
     ],
     deps = [
         ":se_gpu_pjrt_client",
         "//xla/pjrt:pjrt_client_test_common",
-        "//xla/service:gpu_plugin",
         "@local_tsl//tsl/platform:test_main",
     ],
 )

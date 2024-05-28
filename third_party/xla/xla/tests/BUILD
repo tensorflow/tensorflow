@@ -2410,13 +2410,15 @@ xla_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "llvm_compiler_test",
     srcs = ["llvm_compiler_test.cc"],
+    backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM",
     ]),
-    use_gpu = True,
+    # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly
+    tags = ["gpu"],
     deps = if_gpu_is_configured([
         ":verified_hlo_module",
         "//xla:literal_util",
@@ -2425,7 +2427,6 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "//xla/service:backend",
         "//xla/service:cpu_plugin",
-        "//xla/service:gpu_plugin",
         "//xla/service:llvm_compiler",
         "//xla/service:platform_util",
         "//xla/service/cpu:cpu_compiler",
@@ -2733,17 +2734,16 @@ xla_test(
 )
 
 # A demo of test that loads an hlo module from a file and compares results on gpu and cpu.
-xla_cc_test(
+xla_test(
     name = "sample_file_test",
     srcs = ["sample_file_test.cc"],
+    backends = ["gpu"],
     data = ["isolated_convolution.hlo"],
-    use_gpu = True,
     deps = [
         ":hlo_test_base",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:test",
         "//xla/service:cpu_plugin",  # reference backend
-        "//xla/service:gpu_plugin",  # test backend
         "//xla/service:platform_util",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:test",

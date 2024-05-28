@@ -855,15 +855,14 @@ cc_library(
     ]
 ]
 
-xla_cc_test(
+xla_test(
     name = "hlo_op_profiler_test",
     srcs = ["hlo_op_profiler_test.cc"],
+    backends = ["gpu"],
     local_defines = if_cuda(["GOOGLE_CUDA"]),
-    use_gpu = True,
     deps = [
         ":hlo_op_profiler_lib",
         "//xla/hlo/ir:hlo",
-        "//xla/service:gpu_plugin",
         "//xla/tests:hlo_test_base",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test_main",

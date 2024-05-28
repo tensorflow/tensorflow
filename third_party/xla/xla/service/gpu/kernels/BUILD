@@ -5,7 +5,6 @@ load(
     "if_cuda_is_configured",
     "if_cuda_newer_than",
 )
-load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/service/gpu:build_defs.bzl", "gpu_kernel_library")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
@@ -174,10 +173,10 @@ gpu_kernel_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "topk_kernel_test",
     srcs = if_gpu_is_configured(["topk_kernel_test.cc"]),
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":topk_kernel",
         "//xla:types",

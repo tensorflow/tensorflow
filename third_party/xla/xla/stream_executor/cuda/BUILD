@@ -23,6 +23,7 @@ load(
     "tf_additional_cudnn_plugin_copts",
     "tf_additional_gpu_compilation_copts",
 )
+load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "internal_visibility", "tsl_copts")
 
 package(
@@ -189,11 +190,15 @@ cuda_only_cc_library(
     ] + if_nccl(["@local_config_nccl//:nccl"]),
 )
 
-xla_cc_test(
+xla_test(
     name = "cuda_driver_test",
     srcs = ["cuda_driver_test.cc"],
-    tags = ["no_rocm"],
-    use_gpu = True,
+    backends = ["gpu"],
+    tags = [
+        # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly
+        "gpu",
+        "no_rocm",
+    ],
     deps = [
         ":cuda_driver",
         "//xla/stream_executor/gpu:gpu_driver_header",
@@ -540,7 +545,6 @@ cc_library(
 xla_cc_test(
     name = "ptx_compiler_test",
     srcs = ["ptx_compiler_test.cc"],
-    use_gpu = True,
     deps = [
         ":ptx_compiler",
         ":ptx_compiler_support",

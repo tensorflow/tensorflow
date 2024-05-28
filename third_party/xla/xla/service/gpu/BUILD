@@ -155,11 +155,11 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "custom_call_test",
     srcs = if_gpu_is_configured(["custom_call_test.cc"]),
+    backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    use_gpu = True,
     deps = [
         "//xla:debug_options_flags",
         "//xla:shape_util",
@@ -175,7 +175,6 @@ xla_cc_test(
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_target_registry",
         "//xla/service:executable",
-        "//xla/service:gpu_plugin",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tests:client_library_test_base",
@@ -199,7 +198,6 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_copy_insertion_test",
     srcs = ["gpu_copy_insertion_test.cc"],
-    use_gpu = True,
     deps = [
         ":buffer_sharing",
         "//xla:test",
@@ -1724,15 +1722,14 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "dot_dimension_sorter_test",
     srcs = ["dot_dimension_sorter_test.cc"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":dot_dimension_sorter",
         "//xla:error_spec",
         "//xla/hlo/ir:hlo",
-        "//xla/service:gpu_plugin",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_googletest//:gtest",
@@ -1761,7 +1758,6 @@ cc_library(
 xla_cc_test(
     name = "dot_sparsity_rewriter_test",
     srcs = ["dot_sparsity_rewriter_test.cc"],
-    use_gpu = True,
     deps = [
         ":dot_sparsity_rewriter",
         "//xla:xla_data_proto_cc",
@@ -3627,15 +3623,14 @@ xla_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "auto_sharding_gpu_compiler_test",
     srcs = ["auto_sharding_gpu_compiler_test.cc"],
+    backends = ["gpu"],
     tags = ["no_oss"],  # TODO(b/277355322): Make autosharding work in OSS
-    use_gpu = True,
     deps = [
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
-        "//xla/service:gpu_plugin",
         "//xla/service:hlo_module_config",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
@@ -4093,7 +4088,6 @@ cc_library(
 xla_cc_test(
     name = "gpu_layout_assignment_test",
     srcs = ["gpu_layout_assignment_test.cc"],
-    use_gpu = True,
     deps = [
         ":gpu_layout_assignment",
         ":stream_executor_util",
@@ -4192,19 +4186,18 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "gpu_hlo_schedule_test",
     srcs = [
         "gpu_hlo_schedule_test.cc",
     ],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":gpu_hlo_schedule",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:backend",
-        "//xla/service:gpu_plugin",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_ordering",
         "//xla/stream_executor:device_description",
@@ -4440,13 +4433,13 @@ gpu_kernel_library(
     ]),
 )
 
-xla_cc_test(
+xla_test(
     name = "buffer_comparator_test",
     srcs = if_gpu_is_configured(["buffer_comparator_test.cc"]),
+    backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    use_gpu = True,
     deps = [
         ":stream_executor_util",
         "//xla:shape_util",
@@ -4657,11 +4650,11 @@ cc_library(
     ]),
 )
 
-xla_cc_test(
+xla_test(
     name = "cudnn_norm_rewriter_test",
     srcs = ["cudnn_norm_rewriter_test.cc"],
+    backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    use_gpu = True,
     deps = [
         ":cublas_cudnn",
         ":cudnn_norm_rewriter",
@@ -4809,10 +4802,10 @@ xla_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "conv_layout_normalization_test",
     srcs = ["conv_layout_normalization_test.cc"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         "//xla:error_spec",
         "//xla/hlo/ir:hlo",
@@ -4981,10 +4974,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "horizontal_loop_fusion_test",
     srcs = ["horizontal_loop_fusion_test.cc"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":gpu_device_info_for_tests",
         ":horizontal_loop_fusion",
@@ -4995,7 +4988,6 @@ xla_cc_test(
         "//xla:test",
         "//xla:test_helpers",
         "//xla/hlo/ir:hlo",
-        "//xla/service:gpu_plugin",
         "//xla/service:hlo_dce",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_pass",
@@ -5033,10 +5025,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "horizontal_input_fusion_test",
     srcs = ["horizontal_input_fusion_test.cc"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":gpu_device_info_for_tests",
         ":horizontal_input_fusion",
@@ -5338,14 +5330,13 @@ tsl_gpu_library(
     alwayslink = 1,
 )
 
-xla_cc_test(
+xla_test(
     name = "runtime_intrinsics_test",
     srcs = ["runtime_intrinsics_test.cc"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":runtime_intrinsics",
         "//xla/hlo/ir:hlo",
-        "//xla/service:gpu_plugin",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
@@ -5512,17 +5503,16 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "topk_test",
     srcs = ["topk_test.cc"],
-    use_gpu = True,
+    backends = ["gpu"],
     deps = [
         ":topk_specializer",
         "//xla:shape_util",
         "//xla:status",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
-        "//xla/service:gpu_plugin",
         "//xla/service:hlo_pass",
         "//xla/service:platform_util",
         "//xla/service:topk_rewriter",
