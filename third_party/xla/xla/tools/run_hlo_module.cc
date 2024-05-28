@@ -287,7 +287,7 @@ absl::Status RunAndCompareInternal(
   }
 
   if (reference_module == nullptr) {
-    std::cerr << "Skipping reference runner";
+    std::cerr << "Skipping reference runner\n";
     return absl::OkStatus();
   }
   if (const HloInstruction* root_instruction =
