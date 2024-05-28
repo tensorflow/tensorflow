@@ -33,6 +33,9 @@ limitations under the License.
 
 namespace xla::cpu {
 
+ThunkEmitter::ThunkEmitter(const BufferAssignment* buffer_assignment)
+    : buffer_assignment_(buffer_assignment) {}
+
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitEntryComputation(
     const HloModule& module) {
   if (!module.has_schedule()) {
@@ -71,7 +74,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
   switch (instruction->opcode()) {
     // Instructions that do not have a thunk implementation and instead fully
     // defined by the corresponding buffer assignment.
+    case HloOpcode::kBitcast:
     case HloOpcode::kParameter:
+      return ThunkSequence::Empty();
+
+    // Allocations for constants owned by the executable, and resolved at run
+    // time according to the buffer assignment (using allocation index). We do
+    // not need to emit any thunks for constant instructions.
+    case HloOpcode::kConstant:
       return ThunkSequence::Empty();
 
     case HloOpcode::kCopy:

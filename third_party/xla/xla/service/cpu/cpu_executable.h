@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 
 namespace xla {
@@ -50,6 +52,16 @@ namespace cpu {
 // architecture, so JIT-ed code and host code share the same ABI.
 class CpuExecutable : public Executable {
  public:
+  // A storage (or an alias) for constant allocations data.
+  struct ConstantAllocation {
+    se::DeviceMemoryBase AsDeviceMemoryBase() const;
+
+    BufferAllocation::Index index;
+    std::variant<std::monostate, std::vector<uint8_t>,
+                 absl::Span<const uint8_t>>
+        data;
+  };
+
   // Creates a CpuExecutable from JIT compiled cpu function by resolving
   // `entry_function_name` in the `jit`.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
@@ -64,6 +76,7 @@ class CpuExecutable : public Executable {
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
       std::unique_ptr<const BufferAssignment> assignment,
       std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
+      std::vector<ConstantAllocation> constants,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
       std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
 
@@ -80,6 +93,12 @@ class CpuExecutable : public Executable {
       const ExecutableRunOptions* run_options,
       absl::Span<MaybeOwningDeviceMemory const> buffers,
       HloExecutionProfile* hlo_execution_profile);
+
+  // Calls emitted thunk sequence with the given arguments using the supplied
+  // buffers.
+  absl::Status ExecuteThunks(const ExecutableRunOptions* run_options,
+                             absl::Span<MaybeOwningDeviceMemory const> buffers,
+                             HloExecutionProfile* hlo_execution_profile);
 
   absl::Span<const std::string> obj_files() const { return obj_files_; }
 
@@ -188,6 +207,8 @@ class CpuExecutable : public Executable {
 
   // A thunk sequence implementing CpuExecutable.
   std::optional<ThunkSequence> thunks_;
+  // Vector indexed by BufferAllocation::Index for efficient access.
+  std::vector<ConstantAllocation> constants_;
 
   // Entry function name for the computation.
   const std::string entry_function_name_;

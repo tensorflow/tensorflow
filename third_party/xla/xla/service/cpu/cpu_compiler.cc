@@ -1031,6 +1031,48 @@ std::vector<ComputationToEmit> SubcomputationEmissionOrder(
 
 }  // namespace
 
+// Creates a vector of constant allocations from the given buffer assignment.
+static absl::StatusOr<std::vector<CpuExecutable::ConstantAllocation>>
+CreateConstantAllocations(const BufferAssignment& assignment) {
+  std::vector<CpuExecutable::ConstantAllocation> constants;
+
+  for (const BufferAllocation& allocation : assignment.Allocations()) {
+    if (!allocation.is_constant()) {
+      continue;
+    }
+
+    // Find the constant instruction defining the value for allocation.
+    HloInstruction* const_instr = nullptr;
+    for (const auto& [value, _] : allocation.assigned_buffers()) {
+      // Multiple aliasing instructions can share the allocation, we need to
+      // find the original constant instruction that defines the value.
+      if (value->instruction()->opcode() == HloOpcode::kConstant) {
+        if (const_instr != nullptr) {
+          return absl::InternalError(
+              absl::StrCat("Multiple constant instructions define buffer ",
+                           allocation.ToString()));
+        }
+        const_instr = value->instruction();
+      }
+    }
+    if (const_instr == nullptr) {
+      return absl::InternalError(
+          absl::StrCat("Could not find constant instruction defining buffer ",
+                       allocation.ToString()));
+    }
+
+    const void* untyped_data = const_instr->literal().untyped_data();
+    int64_t size_in_bytes = const_instr->literal().size_bytes();
+
+    constants.push_back(CpuExecutable::ConstantAllocation{
+        allocation.index(),
+        absl::Span<const uint8_t>(
+            reinterpret_cast<const uint8_t*>(untyped_data), size_in_bytes)});
+  }
+
+  return constants;
+}
+
 absl::StatusOr<std::unique_ptr<CpuExecutable>>
 CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   ModuleHook pre_optimization_ir_hook;
@@ -1121,9 +1163,13 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
                         thunk_emitter.EmitEntryComputation(*module));
 
     TF_ASSIGN_OR_RETURN(
+        std::vector<CpuExecutable::ConstantAllocation> constants,
+        CreateConstantAllocations(*assignment));
+
+    TF_ASSIGN_OR_RETURN(
         auto cpu_executable,
         CpuExecutable::Create(std::move(assignment), std::move(module),
-                              std::move(thunks),
+                              std::move(thunks), std::move(constants),
                               std::move(hlo_profile_printer_data),
                               std::move(hlo_profile_index_map)));
 

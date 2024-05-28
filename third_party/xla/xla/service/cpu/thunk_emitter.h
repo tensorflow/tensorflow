@@ -31,8 +31,7 @@ namespace xla::cpu {
 // call into the libraries (oneDNN, Eigen, etc.).
 class ThunkEmitter {
  public:
-  explicit ThunkEmitter(const BufferAssignment* buffer_assignment)
-      : buffer_assignment_(buffer_assignment) {}
+  explicit ThunkEmitter(const BufferAssignment* buffer_assignment);
 
   // Emits HLO module entry computation as a sequence of thunks.
   absl::StatusOr<ThunkSequence> EmitEntryComputation(const HloModule& module);

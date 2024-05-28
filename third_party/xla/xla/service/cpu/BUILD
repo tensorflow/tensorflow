@@ -594,6 +594,7 @@ cc_library(
         "//xla/service:maybe_owning_device_memory",
         "//xla/service:shaped_buffer",
         "//xla/service:xla_debug_info_manager",
+        "//xla/service/cpu/runtime:buffer_allocations",
         "//xla/service/cpu/runtime:thunk",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
