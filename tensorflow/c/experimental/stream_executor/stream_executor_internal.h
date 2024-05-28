@@ -107,6 +107,7 @@ class CStream : public Stream {
         stream_handle_(nullptr) {}
   ~CStream() override {
     parent()->BlockHostUntilDone(this).IgnoreError();
+    parent()->DeallocateStream(this);
     Destroy();
   }
 

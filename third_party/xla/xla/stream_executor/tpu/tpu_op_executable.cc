@@ -88,8 +88,7 @@ absl::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
 
   auto platform = down_cast<tpu::TpuPlatform*>(
       tpu::TpuPlatformInterface::GetRegisteredPlatform());
-  auto stream = platform->LookupStream(
-      run_options.run_options().stream()->implementation());
+  auto stream = platform->LookupStream(run_options.run_options().stream());
   StatusHelper status;
 
   TpuExecutable_LoadProgramAndEnqueueToStream_Params params;

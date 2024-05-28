@@ -360,7 +360,7 @@ SP_Stream TF_GetStream(TF_OpKernelContext* ctx, TF_Status* status) {
   } else {  // Is a PluggableDevice
     TF_SetStatus(status, TF_OK, "");
     auto c_stream = static_cast<stream_executor::CStream*>(
-        cc_ctx->op_device_context()->stream()->implementation());
+        cc_ctx->op_device_context()->stream());
     return c_stream->Handle();
   }
 #endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)

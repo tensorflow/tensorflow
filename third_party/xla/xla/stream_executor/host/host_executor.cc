@@ -51,7 +51,7 @@ namespace host {
 
 HostStream* AsHostStream(Stream* stream) {
   DCHECK(stream != nullptr);
-  return dynamic_cast<HostStream*>(stream->implementation());
+  return dynamic_cast<HostStream*>(stream);
 }
 
 static std::vector<HostExecutor::KernelFunctionLoader>&

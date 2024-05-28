@@ -48,6 +48,7 @@ HostStream::~HostStream() {
   }
   // thread_'s destructor blocks until the thread finishes running.
   thread_.reset();
+  parent()->DeallocateStream(this);
 }
 
 bool HostStream::EnqueueTask(absl::AnyInvocable<void() &&> task) {

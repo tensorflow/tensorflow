@@ -470,8 +470,8 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     }
   }
 
-  auto* host_stream = dynamic_cast<se::host::HostStream*>(
-      run_options->stream()->implementation());
+  auto* host_stream =
+      dynamic_cast<se::host::HostStream*>(run_options->stream());
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   TF_ASSIGN_OR_RETURN(

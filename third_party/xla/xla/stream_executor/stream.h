@@ -235,10 +235,6 @@ class Stream : public StreamInterface {
   // Otherwise returns an error describing why the blocking failed.
   absl::Status BlockHostUntilDone() TF_LOCKS_EXCLUDED(mu_);
 
-  // Returns the (opaque) platform-specific backing object. Ownership is not
-  // transferred to the caller.
-  StreamInterface *implementation() { return this; }
-
   // Entrains onto the stream a callback to the host (from the device).
   // Behaves as DoHostCallbackWithStatus below, but the callback should
   // never fail or its failure is inconsequential.

@@ -45,7 +45,10 @@ class GpuStream : public Stream {
         completed_event_(nullptr) {}
 
   // Note: teardown is handled by a parent's call to DeallocateStream.
-  ~GpuStream() override { BlockHostUntilDone().IgnoreError(); }
+  ~GpuStream() override {
+    BlockHostUntilDone().IgnoreError();
+    parent()->DeallocateStream(this);
+  }
 
   void* platform_specific_stream() const override { return gpu_stream_; }
 

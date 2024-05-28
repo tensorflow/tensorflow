@@ -88,8 +88,7 @@ void TpuExecutor::DeallocateStream(Stream* stream) {
 
 bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
   return ExecutorApiFn()->TpuExecutor_CreateStreamDependencyFn(
-      executor_, get_stream(dependent->implementation()),
-      get_stream(other->implementation()));
+      executor_, get_stream(dependent), get_stream(other));
 }
 
 absl::Status TpuExecutor::RecordEvent(Stream* stream,
