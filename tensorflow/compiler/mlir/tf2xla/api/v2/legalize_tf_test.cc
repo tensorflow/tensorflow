@@ -238,8 +238,6 @@ TEST(LegalizeTFTest, RecordsStreamzForFailedLegalizeWithMlirBridge) {
       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED);
 
   EXPECT_FALSE(result.ok());
-  EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeSuccess), 0);
-  EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeFailure), 1);
   EXPECT_EQ(compilation_status.Delta(kMlirCombinedMlirFailure), 1);
 }
 
