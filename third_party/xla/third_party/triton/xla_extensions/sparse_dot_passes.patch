@@ -117,34 +117,34 @@ diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect
 index 098ee85e4..0516fc56f 100644
 --- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
-@@ -44,8 +44,9 @@ static int getMMAVersionSafe(int computeCapability, tt::DotOp op) {
+@@ -39,8 +39,9 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
    return 0;
  }
  
+-SmallVector<unsigned> warpsPerTileV2(DotOp dotOp, const ArrayRef<int64_t> shape,
 +template <typename DotType>
- SmallVector<unsigned>
--warpsPerTileV2(tt::DotOp dotOp, const ArrayRef<int64_t> shape, int numWarps) {
-+warpsPerTileV2(DotType dotOp, const ArrayRef<int64_t> shape, int numWarps) {
++SmallVector<unsigned> warpsPerTileV2(DotType dotOp, const ArrayRef<int64_t> shape,
+                                      int numWarps) {
    auto rank = shape.size();
    // Early exit for batched matmul
    if (rank == 3)
-@@ -58,8 +59,8 @@ warpsPerTileV2(tt::DotOp dotOp, const ArrayRef<int64_t> shape, int numWarps) {
+@@ -54,8 +54,8 @@ warpsPerTileV2(DotOp dotOp, const ArrayRef<int64_t> shape, int numWarps) {
    auto slices = multiRootGetSlice(dotOp, {filter}, {filter});
    bool hasChainedDot = false;
    for (Operation *op : slices) {
--    if (isa<tt::DotOp>(op) && (op != dotOp)) {
--      auto chainedDot = cast<tt::DotOp>(op);
+-    if (isa<DotOp>(op) && (op != dotOp)) {
+-      auto chainedDot = cast<DotOp>(op);
 +    if (isa<DotType>(op) && (op != dotOp)) {
 +      auto chainedDot = cast<DotType>(op);
        auto resTy = chainedDot.getResult().getType();
        if (resTy.getRank() != rank) {
          continue;
-@@ -103,12 +104,13 @@ warpsPerTileV2(tt::DotOp dotOp, const ArrayRef<int64_t> shape, int numWarps) {
+@@ -99,12 +99,13 @@ warpsPerTileV2(DotOp dotOp, const ArrayRef<int64_t> shape, int numWarps) {
    return ret;
  }
  
 -SmallVector<unsigned, 2>
--warpsPerTileV3(tt::DotOp dotOp, const ArrayRef<int64_t> shape, int numWarps,
+-warpsPerTileV3(DotOp dotOp, const ArrayRef<int64_t> shape, int numWarps,
 -               const SmallVector<unsigned, 3> &instrShape) {
 +template <typename DotType>
 +SmallVector<unsigned, 2> warpsPerTileV3(
@@ -152,17 +152,17 @@ index 098ee85e4..0516fc56f 100644
 +    const SmallVector<unsigned, 3> &instrShape) {
    SetVector<Operation *> slices;
    mlir::getForwardSlice(dotOp.getResult(), &slices);
--  if (llvm::find_if(slices, [](Operation *op) { return isa<tt::DotOp>(op); }) !=
+-  if (llvm::find_if(slices, [](Operation *op) { return isa<DotOp>(op); }) !=
 +  if (llvm::find_if(slices, [](Operation *op) { return isa<DotType>(op); }) !=
        slices.end())
      return {(unsigned)numWarps, 1};
  
-@@ -178,9 +180,10 @@ public:
-       : mlir::RewritePattern(tt::DotOp::getOperationName(), 2, context),
+@@ -184,9 +184,10 @@ public:
+       : mlir::RewritePattern(DotOp::getOperationName(), 2, context),
          computeCapability(computeCapability) {}
  
 -  static SmallVector<unsigned, 3>
--  getWarpsPerTile(tt::DotOp dotOp, const ArrayRef<int64_t> shape, int version,
+-  getWarpsPerTile(DotOp dotOp, const ArrayRef<int64_t> shape, int version,
 -                  int numWarps, const SmallVector<unsigned, 3> &instrShape) {
 +  template <typename DotType>
 +  static SmallVector<unsigned, 3> getWarpsPerTile(
@@ -171,7 +171,7 @@ index 098ee85e4..0516fc56f 100644
      switch (version) {
      case 2:
        return warpsPerTileV2(dotOp, shape, numWarps);
-@@ -335,6 +338,98 @@ public:
+@@ -342,6 +342,98 @@ public:
      return success();
    }
  };
@@ -196,7 +196,7 @@ index 098ee85e4..0516fc56f 100644
 +    // Check data-types and SM compatibility
 +    RankedTensorType oldRetType = dotOp.getType();
 +    if (!oldRetType.getEncoding() ||
-+        isa<ttg::NvidiaMmaEncodingAttr>(oldRetType.getEncoding()))
++        isa<NvidiaMmaEncodingAttr>(oldRetType.getEncoding()))
 +      return failure();
 +
 +    assert(computeCapability >= 80 &&
@@ -204,43 +204,43 @@ index 098ee85e4..0516fc56f 100644
 +    int versionMajor = computeCapability < 90 ? 2 : 3;
 +
 +    // get MMA encoding for the given number of warps
-+    auto retShapePerCTA = ttg::getShapePerCTA(oldRetType);
++    auto retShapePerCTA = getShapePerCTA(oldRetType);
 +    auto mod = op->getParentOfType<mlir::ModuleOp>();
-+    int numWarps = ttg::TritonGPUDialect::getNumWarps(mod);
-+    auto CTALayout = ttg::getCTALayout(oldRetType.getEncoding());
++    int numWarps = TritonGPUDialect::getNumWarps(mod);
++    auto CTALayout = getCTALayout(oldRetType.getEncoding());
 +
 +    auto instrShape =
 +        mmaVersionToInstrShape(versionMajor, retShapePerCTA,
 +                               cast<TensorOrMemDesc>(a.getType()), numWarps);
 +    auto warpsPerTile = BlockedToMMA::getWarpsPerTile(
 +        dotOp, retShapePerCTA, versionMajor, numWarps, instrShape);
-+    ttg::NvidiaMmaEncodingAttr mmaEnc =
-+        ttg::NvidiaMmaEncodingAttr::get(ctx, versionMajor, /*versionMinor=*/0,
++    NvidiaMmaEncodingAttr mmaEnc =
++        NvidiaMmaEncodingAttr::get(ctx, versionMajor, /*versionMinor=*/0,
 +                                        warpsPerTile, CTALayout, instrShape);
 +    auto newRetType = RankedTensorType::get(
 +        oldRetType.getShape(), oldRetType.getElementType(), mmaEnc);
 +
 +    // convert accumulator
 +    auto oldAcc = dotOp.getOperand(2);
-+    auto newAcc = rewriter.create<ttg::ConvertLayoutOp>(oldAcc.getLoc(),
++    auto newAcc = rewriter.create<ConvertLayoutOp>(oldAcc.getLoc(),
 +                                                        newRetType, oldAcc);
 +
 +    if (versionMajor == 2) {
 +      // convert A operand
 +      auto oldAType = cast<RankedTensorType>(a.getType());
-+      auto newAEncoding = ttg::DotOperandEncodingAttr::get(
++      auto newAEncoding = DotOperandEncodingAttr::get(
 +          ctx, 0, mmaEnc, oldAType.getElementType());
 +      auto newAType = RankedTensorType::get(
 +          oldAType.getShape(), oldAType.getElementType(), newAEncoding);
-+      a = rewriter.create<ttg::ConvertLayoutOp>(a.getLoc(), newAType, a);
++      a = rewriter.create<ConvertLayoutOp>(a.getLoc(), newAType, a);
 +
 +      // convert B operand
 +      auto oldBType = cast<RankedTensorType>(b.getType());
-+      auto newBEncoding = ttg::DotOperandEncodingAttr::get(
++      auto newBEncoding = DotOperandEncodingAttr::get(
 +          ctx, 1, mmaEnc, oldBType.getElementType());
 +      auto newBType = RankedTensorType::get(
 +          oldBType.getShape(), oldBType.getElementType(), newBEncoding);
-+      b = rewriter.create<ttg::ConvertLayoutOp>(b.getLoc(), newBType, b);
++      b = rewriter.create<ConvertLayoutOp>(b.getLoc(), newBType, b);
 +    } else {
 +      a = BlockedToMMA::getMMAv3Operand(a, rewriter, 0);
 +      b = BlockedToMMA::getMMAv3Operand(b, rewriter, 1);
@@ -253,13 +253,13 @@ index 098ee85e4..0516fc56f 100644
 +        oldMetaType.getShape(), oldMetaType.getElementType(),
 +        SparseDotMetaEncodingAttr::get(ctx, mmaEnc));
 +    meta =
-+        rewriter.create<ttg::ConvertLayoutOp>(meta.getLoc(), newMetaType, meta);
++        rewriter.create<ConvertLayoutOp>(meta.getLoc(), newMetaType, meta);
 +
 +    // convert dot instruction
 +    auto newDot = rewriter.create<SparseDotOp>(dotOp.getLoc(), newRetType, a, b,
 +                                               newAcc, meta);
 +
-+    rewriter.replaceOpWithNewOp<ttg::ConvertLayoutOp>(op, oldRetType,
++    rewriter.replaceOpWithNewOp<ConvertLayoutOp>(op, oldRetType,
 +                                                      newDot.getResult());
 +    return success();
 +  }
@@ -270,11 +270,11 @@ index 098ee85e4..0516fc56f 100644
  } // namespace
  
  static Value promoteOperand(OpBuilder &builder, Location loc, Value operand,
-@@ -394,6 +489,7 @@ public:
+@@ -394,6 +493,7 @@ public:
  
      mlir::RewritePatternSet patterns(context);
-     patterns.add<::BlockedToMMA>(context, computeCapability);
-+    patterns.add<::SparseBlockedToMMA>(context, computeCapability);
+     patterns.add<BlockedToMMA>(context, computeCapability);
++    patterns.add<SparseBlockedToMMA>(context, computeCapability);
      if (applyPatternsAndFoldGreedily(m, std::move(patterns)).failed()) {
        signalPassFailure();
      }
@@ -293,7 +293,7 @@ index 97ca6a840..f0ef124ff 100644
  static bool isMMAv3Dot(Operation *op) {
    auto dot = dyn_cast<tt::DotOp>(op);
    if (!dot)
-@@ -399,19 +403,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val) {
+@@ -391,19 +391,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val) {
      } else {
        if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))
          return std::nullopt;
@@ -334,7 +334,7 @@ index 97ca6a840..f0ef124ff 100644
      }
      // Check that the shared encodings needed by the users are compatible.
      if (!tempAttr || (attr != nullptr && attr != tempAttr))
-@@ -518,7 +531,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
+@@ -519,7 +519,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
        };
  
    for (Operation &op : forOp.getBody()->without_terminator()) {
@@ -343,7 +343,7 @@ index 97ca6a840..f0ef124ff 100644
        continue;
      seen.clear();
      dfs(&op, 0, &op);
-@@ -595,7 +608,8 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
+@@ -596,7 +596,8 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
          continue;
      }
  
@@ -353,7 +353,7 @@ index 97ca6a840..f0ef124ff 100644
        loadInfo.usedByDot = true;
        if (loadIsMMAv3(op)) {
          loadInfo.loadIsMMAV3 = true;
-@@ -614,7 +628,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
+@@ -619,7 +619,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
          // The codegen bug is caught by an assertion, so if you think you've
          // fixed it, feel free to delete this code and see if the assert still
          // fails.  :)
@@ -366,7 +366,7 @@ diff --git a/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp b/lib/Di
 index 2211df31b..ee5ff44d8 100644
 --- a/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
-@@ -37,6 +37,10 @@ public:
+@@ -38,6 +38,10 @@ public:
        auto srcEncoding = srcType.getEncoding();
        if (isa<triton::gpu::SharedEncodingAttr>(srcEncoding))
          return;
@@ -377,7 +377,7 @@ index 2211df31b..ee5ff44d8 100644
        auto dstDotOp =
            dyn_cast<triton::gpu::DotOperandEncodingAttr>(dstType.getEncoding());
        if (!dstDotOp)
-@@ -83,6 +87,27 @@ public:
+@@ -84,6 +88,27 @@ public:
        cvtOp.erase();
      });
    }
@@ -404,12 +404,12 @@ index 2211df31b..ee5ff44d8 100644
 +  }
  };
  
- std::unique_ptr<Pass> mlir::triton::gpu::createReduceDataDuplicationPass() {
+ } // namespace gpu
 diff --git a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
 index f456d36a6..a1dac2b72 100644
 --- a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
-@@ -45,7 +45,7 @@ public:
+@@ -44,7 +44,7 @@ public:
        return;
      ModuleOp mod = getOperation();
      mod.walk([&](Operation *op) {
@@ -418,7 +418,7 @@ index f456d36a6..a1dac2b72 100644
          return WalkResult::advance();
        OpBuilder builder(op);
        auto a = op->getOperand(0);
-@@ -80,7 +80,7 @@ private:
+@@ -79,7 +79,7 @@ private:
      static DenseSet<std::pair<Operation *, unsigned>> trace;
      auto op = operand.getDefiningOp();
      // avoid redundant insertion

@@ -63,33 +63,35 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
       absl::StrFormat("cuda:%u", ccAsInt), config.num_warps, threadsPerWarp,
       config.num_ctas));
-  pm.addPass(mt::gpu::createCoalescePass());
+  pm.addPass(mt::gpu::createTritonGPUCoalesce());
   if (ccCuda.IsAtLeastAmpere()) {
-    pm.addPass(mt::gpu::createF32DotTCPass());
+    pm.addPass(mt::gpu::createTritonGPUF32DotTC());
   }
   pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&out_cluster_info));
-  pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
-  pm.addPass(mt::gpu::createOptimizeThreadLocalityPass());
-  pm.addPass(mt::gpu::createAccelerateMatmulPass(ccAsInt));
-  pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
-  pm.addPass(mt::gpu::createOptimizeDotOperandsPass(ccCuda.IsAtLeastAmpere()));
+  pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
+  pm.addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
+  pm.addPass(mt::gpu::createTritonGPUAccelerateMatmul({ccAsInt}));
+  pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
+  pm.addPass(
+      mt::gpu::createTritonGPUOptimizeDotOperands({ccCuda.IsAtLeastAmpere()}));
   pm.addPass(mlir::createCSEPass());
 
   // Even though we don't run on pre-Ampere architectures anymore, we keep this
   // check for consistency with the upstream pipeline
   if (ccCuda.IsAtLeastAmpere()) {
-    pm.addPass(mt::gpu::createCombineTensorSelectAndIfPass());
-    pm.addPass(mt::gpu::createPipelinePass(config.num_stages, config.num_warps,
-                                           config.num_ctas, ccAsInt));
+    pm.addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
+    pm.addPass(mt::gpu::createTritonGPUPipeline(
+        {config.num_stages, config.num_warps, config.num_ctas, ccAsInt}));
   }
   if (!ccCuda.IsAtLeastHopper()) {
-    pm.addPass(mt::gpu::createPrefetchPass());
+    pm.addPass(mt::gpu::createTritonGPUPrefetch());
   }
 
-  pm.addPass(mt::gpu::createOptimizeDotOperandsPass(ccCuda.IsAtLeastAmpere()));
-  pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
-  pm.addPass(mt::gpu::createReduceDataDuplicationPass());
-  pm.addPass(mt::gpu::createReorderInstructionsPass());
+  pm.addPass(
+      mt::gpu::createTritonGPUOptimizeDotOperands({ccCuda.IsAtLeastAmpere()}));
+  pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
+  pm.addPass(mt::gpu::createTritonGPUReduceDataDuplication());
+  pm.addPass(mt::gpu::createTritonGPUReorderInstructions());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
   if (ccCuda.IsAtLeastHopper()) {

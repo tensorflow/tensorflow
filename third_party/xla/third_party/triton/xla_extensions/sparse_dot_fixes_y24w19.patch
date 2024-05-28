@@ -1,7 +1,7 @@
 diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
 --- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
-@@ -365,7 +365,8 @@ class SparseBlockedToMMA : public mlir::
+@@ -368,7 +368,8 @@ class SparseBlockedToMMA : public mlir::
  
      assert(computeCapability >= 80 &&
             "SparseDot is supported on Ampere and higher");
@@ -10,7 +10,7 @@ diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect
 +    int versionMajor = computeCapability >= 90 && allowV3 ? 3 : 2;
  
      // get MMA encoding for the given number of warps
-     auto retShapePerCTA = ttg::getShapePerCTA(oldRetType);
+     auto retShapePerCTA = getShapePerCTA(oldRetType);
 diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
