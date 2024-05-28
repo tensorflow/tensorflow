@@ -89,8 +89,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
     default:
       return absl::UnimplementedError(
-          absl::StrCat("HLO opcode: ", HloOpcodeString(instruction->opcode()),
-                       " is not supported by XLA:CPU ThunkEmitter"));
+          absl::StrCat("HLO opcode `", HloOpcodeString(instruction->opcode()),
+                       "` is not supported by XLA:CPU ThunkEmitter"));
   }
 }
 

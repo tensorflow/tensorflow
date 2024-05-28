@@ -620,6 +620,40 @@ cc_library(
 )
 
 cc_library(
+    name = "host_kernel_emitter",
+    srcs = ["host_kernel_emitter.cc"],
+    hdrs = ["host_kernel_emitter.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/service/llvm_ir:ir_array",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "host_kernel_emitter_test",
+    srcs = ["host_kernel_emitter_test.cc"],
+    deps = [
+        ":host_kernel_emitter",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/tests:filecheck",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "ir_emitter",
     srcs = [
         "elemental_ir_emitter.cc",
