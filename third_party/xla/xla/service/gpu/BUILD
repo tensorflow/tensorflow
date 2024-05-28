@@ -650,6 +650,30 @@ xla_test(
     ],
 )
 
+cc_test(
+    name = "ir_emitter_triton_mem_utils_test",
+    srcs = if_cuda_is_configured(["ir_emitter_triton_mem_utils_test.cc"]),
+    deps = [
+        ":ir_emitter_triton",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu/model:indexing_analysis",
+        "//xla/service/gpu/model:tiled_hlo_instruction",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:NVVMDialect",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:logging",
+        "@triton//:TritonDialects",
+    ],
+)
+
 xla_test(
     name = "ir_emitter_triton_large_test",
     srcs = if_cuda_is_configured(["ir_emitter_triton_large_test.cc"]),

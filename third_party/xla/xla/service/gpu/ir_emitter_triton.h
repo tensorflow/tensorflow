@@ -24,17 +24,21 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/status.h"
@@ -124,6 +128,23 @@ absl::Status CreateTritonPipeline(
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);
+
+// Exposed for testing purposes only. Do not use.
+namespace ir_emitter_triton_internal {
+
+// Used for creating Triton Load and Store ops.
+struct MakeTensorPtrOpAndBoundaryChecks {
+  mt::MakeTensorPtrOp op;
+
+  // Indices of dimensions where the original tile size is not a power of 2 and
+  // requires a boundary check.
+  llvm::SmallVector<int32_t> boundary_checks;
+};
+
+MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
+    mlir::ImplicitLocOpBuilder& b, mlir::Value pid,
+    const TiledHloInstruction& tiled_hlo, mlir::Value argument_block);
+}  // namespace ir_emitter_triton_internal
 
 }  // namespace gpu
 }  // namespace xla

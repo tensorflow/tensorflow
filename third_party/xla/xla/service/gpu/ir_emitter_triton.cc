@@ -513,7 +513,7 @@ Value EmitParameterLoad(ImplicitLocOpBuilder& b, Value pointer,
   // 0-D MakeTensorPtrOp
   //
   // Triton tries to access the -1 element of a vector and segfaults when
-  // lowering to LLVM the code to load a 0-D tensor. The workaround is to load a
+  // lowering the code to load a 0-D tensor to LLVM. The workaround is to load a
   // regular pointer + a splat.
   if (auto make_tensor_ptr = pointer.getDefiningOp<mt::MakeTensorPtrOp>()) {
     if (make_tensor_ptr.getOffsets().empty()) {
@@ -2384,6 +2384,70 @@ Value ComputeBasePtrOffset(ImplicitLocOpBuilder b, Value pid,
                                       /*symbols=*/{}, b));
 }
 
+namespace ir_emitter_triton_internal {
+
+MakeTensorPtrOpAndBoundaryChecks CreateMakeTensorPtrOp(
+    ImplicitLocOpBuilder& b, Value pid, const TiledHloInstruction& tiled_hlo,
+    Value argument_block) {
+  llvm::SmallVector<Value> sizes;
+  llvm::SmallVector<Value> strides;
+  llvm::SmallVector<Value> offsets;
+  llvm::SmallVector<int32_t> power2_sizes;
+  llvm::SmallVector<int32_t> order;
+  llvm::SmallVector<int32_t> boundary_checks;
+
+  for (auto [size, stride] :
+       llvm::zip(tiled_hlo.tile_sizes(), tiled_hlo.tile_strides())) {
+    if (size == 1) continue;
+
+    int dimension_index = sizes.size();
+
+    sizes.push_back(CreateConst(b, b.getI64Type(), size));
+    strides.push_back(CreateConst(b, b.getI64Type(), stride));
+    // TODO(b/332649307): Explore using proper offsets instead of manually
+    // computing the block pointer.
+    //
+    // In general, there are two options for computing a block:
+    //   - Output a TensorPtr whose base pointer is the base pointer of the
+    //     TiledHloInstruction and provide the necessary offsets so that Triton
+    //     can compute the pointer to the block specific to the given pid. This
+    //     option yields simpler code, but relies on Triton to correctly handle
+    //     higher-dimensional blocks and degenerate dimensions of size 1, which
+    //     Triton doesn't always do well.
+    //   - Output a TensorPtr that points directly to the tile specific to the
+    //     pid. All offset computation is done here instead of by Triton. Triton
+    //     sees 0 offsets. This is what we do now. It's a bit of extra code to
+    //     compute the right offsets, but it's possible to ensure that we
+    //     generate a block with minimal dimensions (all dimensions of size 1
+    //     are folded into the offset computation).
+    offsets.push_back(CreateConst(b, b.getI32Type(), 0));
+    // Triton requires that all block dimensions are a power of 2.
+    power2_sizes.push_back(llvm::PowerOf2Ceil(size));
+    // TODO(b/342989850): Clarify and comment what `order` exactly is. It's not
+    // entirely clear from the Triton docs.
+    order.insert(order.begin(), dimension_index);
+    if (size != power2_sizes.back()) {
+      boundary_checks.push_back(dimension_index);
+    }
+  }
+
+  // Manually compute pointer offset to avoid materialized fully parallel
+  // dimensions in the tile. Current codegen tried to avoid size-1 dims.
+  Value ptr_offset = ComputeBasePtrOffset(b, pid, tiled_hlo);
+  auto tile_ptr = AddPtr(b, argument_block, ptr_offset);
+
+  return MakeTensorPtrOpAndBoundaryChecks{b.create<mt::MakeTensorPtrOp>(
+                                              /*base=*/tile_ptr,
+                                              /*shape=*/sizes,
+                                              /*strides=*/strides,
+                                              /*offsets=*/offsets,
+                                              /*tensorShape=*/power2_sizes,
+                                              /*order=*/order),
+                                          boundary_checks};
+}
+
+}  // namespace ir_emitter_triton_internal
+
 absl::Status EmitTiledSoftMax(mlir::OpBuilder builder,
                               absl::string_view libdevice_path,
                               const se::DeviceDescription& device_info,
@@ -2440,44 +2504,11 @@ absl::Status EmitTiledSoftMax(mlir::OpBuilder builder,
 
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
                       analysis->ComputeTiledHloInstructions(output_tile_sizes));
-
-  // block_size must be a power of two.
-  int result_block_size = llvm::PowerOf2Ceil(row_len);
-
-  std::vector<int32_t> boundary_checks;
-  if (result_block_size != row_len) {
-    boundary_checks.push_back(0);
-  }
-
-  // Emits load instructions
   auto emit_param_load =
       [&](const TiledHloInstruction& tiled_hlo) -> absl::StatusOr<Value> {
-    std::vector<Value> tile_sizes, tile_strides, tile_offsets;
-    for (auto [size, stride] :
-         llvm::zip(tiled_hlo.tile_sizes(), tiled_hlo.tile_strides())) {
-      if (size == 1) continue;
-
-      tile_sizes.push_back(CreateConst(b, b.getI64Type(), size));
-      tile_strides.push_back(CreateConst(b, b.getI64Type(), stride));
-      tile_offsets.push_back(CreateConst(b, b.getI32Type(), 0));
-    }
-
-    // Manually compute pointer offset to avoid materialized fully parallel
-    // dimensions in the tile. Current codegen tried to avoid size-1 dims.
-    Value ptr_offset = ComputeBasePtrOffset(b, pid, tiled_hlo);
-
-    auto fn_arg = fn.getArgument(tiled_hlo.hlo()->parameter_number());
-    auto tile_ptr = AddPtr(b, fn_arg, ptr_offset);
-
-    Value emitted_tensor = b.create<mt::MakeTensorPtrOp>(
-        /*base=*/tile_ptr,
-        /*shape=*/tile_sizes,
-        /*strides=*/tile_strides,
-        /*offsets=*/tile_offsets,
-        /*tensorShape=*/std::vector<int32_t>{result_block_size},
-        /*order=*/std::vector<int32_t>{0});
-
-    return EmitParameterLoad(b, emitted_tensor, boundary_checks);
+    auto make_tensor = ir_emitter_triton_internal::CreateMakeTensorPtrOp(
+        b, pid, tiled_hlo, fn.getArgument(tiled_hlo.hlo()->parameter_number()));
+    return EmitParameterLoad(b, make_tensor.op, make_tensor.boundary_checks);
   };
 
   absl::flat_hash_map<const TiledHloInstruction*, Value> values_out;
@@ -2486,19 +2517,10 @@ absl::Status EmitTiledSoftMax(mlir::OpBuilder builder,
       EmitTiledScope(b, libdevice_path, device_info, tiled_hlo_computation,
                      emit_param_load, values_out));
 
-  Value ptr_offset =
-      ComputeBasePtrOffset(b, pid, *tiled_hlo_computation.GetRoot());
-
-  Value store_tensor = b.create<mt::MakeTensorPtrOp>(
-      /*base=*/AddPtr(b, fn.getArgument(computation->num_parameters()),
-                      ptr_offset),
-      /*shape=*/ValueRange{CreateConst(b, b.getI64Type(), row_len)},
-      /*strides=*/ValueRange{CreateConst(b, b.getI64Type(), 1)},
-      /*offsets=*/ValueRange{CreateConst(b, b.getI32Type(), 0)},
-      /*tensorShape=*/std::vector<int32_t>{result_block_size},
-      /*order=*/std::vector<int32_t>{0});
-
-  b.create<mt::StoreOp>(store_tensor, result, std::vector<int32_t>{0},
+  const auto& tiled_hlo = *tiled_hlo_computation.GetRoot();
+  auto make_tensor = ir_emitter_triton_internal::CreateMakeTensorPtrOp(
+      b, pid, tiled_hlo, fn.getArgument(computation->num_parameters()));
+  b.create<mt::StoreOp>(make_tensor.op, result, make_tensor.boundary_checks,
                         mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
 
   return absl::OkStatus();
