@@ -3565,6 +3565,7 @@ cc_library(
         ":ir_emitter_unnested",
         ":prepare_hlo_for_ir_emitting_pipeline",
         ":rename_fusions",
+        ":stream_executor_util",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor:platform_manager",
         "@llvm-project//mlir:FuncDialect",

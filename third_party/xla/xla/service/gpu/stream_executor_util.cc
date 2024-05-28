@@ -68,17 +68,24 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-se::dnn::VersionInfo GetDnnVersionInfo(
-    stream_executor::StreamExecutor* stream_exec,
-    se::dnn::VersionInfo fallback_version) {
+absl::StatusOr<se::dnn::VersionInfo> GetDnnVersionInfo(
+    stream_executor::StreamExecutor* stream_exec) {
   if (!stream_exec) {
-    return fallback_version;
+    return absl::InvalidArgumentError("StreamExecutor is null");
   }
   stream_executor::dnn::DnnSupport* dnn = stream_exec->AsDnn();
   if (!dnn) {
-    return fallback_version;
+    return absl::FailedPreconditionError(
+        "DNN library initialization failed. Look at the errors above for more "
+        "details.");
   }
-  return dnn->GetVersion().value_or(fallback_version);
+  return dnn->GetVersion();
+}
+
+se::dnn::VersionInfo GetDnnVersionInfoOrDefault(
+    stream_executor::StreamExecutor* stream_exec,
+    se::dnn::VersionInfo fallback_version) {
+  return GetDnnVersionInfo(stream_exec).value_or(fallback_version);
 }
 
 namespace {
