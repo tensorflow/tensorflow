@@ -16,11 +16,19 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_IR_EMITTER2_H_
 #define XLA_SERVICE_CPU_IR_EMITTER2_H_
 
+#include <cstdint>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/llvm_ir/ir_array.h"
+#include "xla/shape.h"
 
 namespace xla::cpu {
 
@@ -44,21 +52,75 @@ namespace xla::cpu {
 // WARNING: This is under construction and will eventually replace IrEmitter.
 class IrEmitter2 {
  public:
-  class ElementalIrEmitter;
-
   explicit IrEmitter2(llvm::Module* module);
 
+  // Thread dimensions of the kernel invocation.
+  struct KernelThreadDims {
+    llvm::Value* x;
+    llvm::Value* y;
+    llvm::Value* z;
+  };
+
+  // Thread coordinates of the kernel invocation.
+  struct KernelThread {
+    llvm::Value* x;
+    llvm::Value* y;
+    llvm::Value* z;
+  };
+
+  // A kernel function prototype with all the LLVM values that might be needed
+  // to emit the actual kernel body.
+  struct KernelPrototype {
+    llvm::Function* function;
+
+    // LLVM values identifying kernel invocation thread coordinates.
+    KernelThreadDims thread_dims;
+    KernelThread thread;
+
+    // LLVM values corresponding to the kernel arguments and results arrays. All
+    // tuples are flattened as we do not have any tuples at run time and only
+    // read and write data from/to leaf arrays.
+    std::vector<llvm_ir::IrArray> arguments;
+    std::vector<llvm_ir::IrArray> results;
+  };
+
   // A symbol name in the LLVM module that defines a host kernel.
-  struct HostKernelSym {
+  //
+  // TODO(ezhulenev): In addition to a symbol name we also need to know the
+  // block and thread sizes.
+  struct KernelInfo {
     std::string name;
   };
 
   // Emits an elemental host kernel for the given HLO instruction.
-  absl::StatusOr<HostKernelSym> EmitElementalHostKernel(
+  absl::StatusOr<KernelInfo> EmitElementalHostKernel(
       const HloInstruction* instr);
 
+  // Emits a host kernel prototype and prepares function for emitting kernel
+  // body into it.
+  KernelPrototype EmitKernelPrototype(std::string_view name,
+                                      absl::Span<const Shape> arguments,
+                                      absl::Span<const Shape> results);
+
  private:
+  class ElementalIrEmitter;
+
+  KernelThreadDims EmitKernelThreadDims(llvm::IRBuilder<>& b,
+                                        llvm::Value* call_frame);
+
+  KernelThread EmitKernelThread(llvm::IRBuilder<>& b, llvm::Value* call_frame);
+
+  llvm_ir::IrArray EmitKernelArgument(llvm::IRBuilder<>& b,
+                                      llvm::Value* call_frame, int64_t index,
+                                      const Shape& shape);
+
   llvm::Module* module_;
+
+  // LLVM types defining HostKernel API (see host_kernel_c_api.h).
+  llvm::StructType* call_frame_ty_;
+  llvm::StructType* thread_dims_ty_;
+  llvm::StructType* thread_ty_;
+  llvm::StructType* arg_ty_;
 };
 
 }  // namespace xla::cpu
