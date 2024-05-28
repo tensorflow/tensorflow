@@ -305,6 +305,7 @@ BatchFunctionKernel::BatchFunctionKernel(OpKernelConstruction* c)
                                &low_priority_max_enqueued_batches_));
   OP_REQUIRES_OK(c,
                  c->GetAttr("mixed_priority_policy", &mixed_priority_policy_));
+  OP_REQUIRES_OK(c, c->GetAttr("batch_padding_policy", &batch_padding_policy_));
 
   OP_REQUIRES_OK(c, c->GetAttr("f", &func_));
 

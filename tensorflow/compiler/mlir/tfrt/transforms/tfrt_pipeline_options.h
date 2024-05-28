@@ -153,6 +153,10 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, streams with inter data depenedencies will be "
                      "preferred to be merged for inline execution."),
       llvm::cl::init(false)};
+
+  Option<std::string> batch_padding_policy{
+      *this, "batch-padding-policy",
+      llvm::cl::desc("Sets the BatchFunction.batch_padding_policy attr.")};
 };
 
 }  // namespace tensorflow
