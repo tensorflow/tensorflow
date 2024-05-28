@@ -67,6 +67,7 @@ build_and_test_on_rbe_cpu() {
       --config=tensorflow_testing_rbe_linux \
       --test_env=JAX_NUM_GENERATED_CASES=25 \
       --test_output=errors \
+      --bes_upload_mode=fully_async \
       -- //tests:cpu_tests //tests:backend_independent_tests
 }
 
@@ -88,6 +89,7 @@ build_and_test_on_rbe_gpu() {
     --test_env=TF_CPP_MIN_LOG_LEVEL=0 \
     --test_env=JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow" \
     --test_tag_filters=-multiaccelerator \
+    --bes_upload_mode=fully_async \
     -- //tests:gpu_tests //tests:backend_independent_tests
 }
 
