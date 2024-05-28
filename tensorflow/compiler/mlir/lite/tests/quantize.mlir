@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize | FileCheck %s
+// RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize  | FileCheck %s
 // RUN: tf-opt %s -tfl-quantize="legacy-quantize=true" | FileCheck --check-prefix=LEGACY %s
 // RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize="ops-blocklist=tfl.fully_connected,tfl.softmax locs-blocklist=Block,NullBlock" | FileCheck --check-prefix=BLOCK %s
 
@@ -485,4 +485,17 @@ func.func @foldQuantWeightsIntoTposeConv(%arg0: tensor<2x2x3x2048xf32>) -> tenso
   // CHECK-NOT: "tfl.dequantize"
   // CHECK: "tfl.transpose_conv"(%cst, %1, %arg0, %0) <{fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<4xi32>, tensor<4x2x2x2048x!quant.uniform<u8<1:255>:f32
 }
+
+// CHECK-LABEL: foldQuantWeightsIntoTposeConvf16NotFolded
+func.func @foldQuantWeightsIntoTposeConvf16NotFolded(%arg0: tensor<2x2x3x2048xf32>) -> tensor<2x3x2x2048xf32> {
+  %output_shape = arith.constant dense<[2, 3, 2, 2048]> : tensor<4xi32>
+  %f16_weights = "tfl.pseudo_const"() {value = dense<1.0> : tensor<4x2x2x2048xf16>} : () -> tensor<4x2x2x2048xf16>
+  %dq_weights = "tfl.dequantize"(%f16_weights) : (tensor<4x2x2x2048xf16>) -> tensor<4x2x2x2048xf32>
+  %bias = "tfl.no_value"() {value} : () -> none
+  %out = "tfl.transpose_conv"(%output_shape, %dq_weights, %arg0, %bias) {fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<4xi32>, tensor<4x2x2x2048xf32>, tensor<2x2x3x2048xf32>, none) -> tensor<2x3x2x2048xf32>
+  func.return %out : tensor<2x3x2x2048xf32>
+
+  // CHECK: "tfl.dequantize"
+}
+
 
