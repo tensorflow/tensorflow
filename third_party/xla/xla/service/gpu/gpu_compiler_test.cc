@@ -85,6 +85,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+  ResetCompiledProgramsCountForTesting();
   std::unique_ptr<Executable> executable =
       backend()
           .compiler()
