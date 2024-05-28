@@ -618,6 +618,31 @@ constexpr PrimitiveType ComplexType(PrimitiveType base_type) {
   return PRIMITIVE_TYPE_INVALID;
 }
 
+// Gets the corresponding signed integral type for an unsigned integral type.
+constexpr PrimitiveType SignedIntegralTypeForUnsignedType(
+    PrimitiveType base_type) {
+  if (ABSL_PREDICT_TRUE(IsUnsignedIntegralType(base_type))) {
+    switch (base_type) {
+      case U2:
+        return S2;
+      case U4:
+        return S4;
+      case U8:
+        return S8;
+      case U16:
+        return S16;
+      case U32:
+        return S32;
+      case U64:
+        return S64;
+      default:
+        ABSL_UNREACHABLE();
+    }
+  }
+  LOG(FATAL) << "Not an unsigned integral type "
+             << PrimitiveType_Name(base_type);
+}
+
 // Returns the higher-precision element type if a and b are both floating
 // point types; otherwise, checks that they have the same element type
 // and returns it.
