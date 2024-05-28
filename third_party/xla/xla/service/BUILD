@@ -6062,8 +6062,10 @@ cc_library(
     srcs = ["host_offloader.cc"],
     hdrs = ["host_offloader.h"],
     deps = [
+        ":call_graph",
         ":hlo_alias_analysis",
         ":hlo_buffer",
+        ":hlo_cse",
         ":hlo_pass",
         ":hlo_value",
         ":host_memory_offload_annotations_hdr",
@@ -6868,6 +6870,7 @@ cc_library(
     visibility = internal_visibility([
         ":__subpackages__",
         "//tensorflow/compiler/tf2xla:__pkg__",
+        "//xla/pjrt:__subpackages__",
     ]),
     deps = [
         ":custom_call_status",

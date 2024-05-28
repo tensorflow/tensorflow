@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstring>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/stream_executor/device_memory.h"
@@ -47,9 +48,11 @@ absl::Status CopyThunk::Execute(const ExecuteParams& params) {
       se::DeviceMemoryBase destination_data,
       params.buffer_allocations->GetDeviceAddress(destination_buffer_));
 
-  VLOG(3) << "Copy buffer of size " << HumanReadableNumBytes(size_in_bytes_)
-          << " from " << source_data.opaque() << " to "
-          << destination_data.opaque();
+  VLOG(3) << absl::StrFormat(
+      "Copy buffer of size %s from slice %s (%p) to slice %s (%p)",
+      HumanReadableNumBytes(size_in_bytes_), source_buffer_.ToString(),
+      source_data.opaque(), destination_buffer_.ToString(),
+      destination_data.opaque());
 
   // TODO(ezhulenev): Add benchmarks for copy thunk and add support for
   // running it on multiple threads.
