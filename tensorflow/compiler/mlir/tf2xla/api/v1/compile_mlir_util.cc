@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <variant>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -96,7 +97,7 @@ constexpr absl::string_view kGroupKeyAttrName =
 // that is converted to a TensorShape.
 absl::StatusOr<TensorShape> GetTensorShapeFromXlaArgument(
     const XlaArgument& arg) {
-  if (absl::holds_alternative<xla::Shape>(arg.shape)) {
+  if (std::holds_alternative<xla::Shape>(arg.shape)) {
     TensorShape arg_shape;
     TF_RETURN_IF_ERROR(
         XLAShapeToTensorShape(std::get<xla::Shape>(arg.shape), &arg_shape));
