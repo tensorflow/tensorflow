@@ -628,10 +628,6 @@ class Delegate {
 #endif
   }
 
-  bool experimental_adaptive_avx_optimization() const {
-    return options_.experimental_adaptive_avx_optimization;
-  }
-
   pthreadpool_t threadpool() const {
 #if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
     return nullptr;
@@ -1119,9 +1115,6 @@ class Subgraph {
     }
     if (delegate.transient_indirection_buffer()) {
       flags |= XNN_FLAG_TRANSIENT_INDIRECTION_BUFFER;
-    }
-    if (delegate.experimental_adaptive_avx_optimization()) {
-      xnn_experiment_enable_adaptive_avx_optimization();
     }
     if (delegate.force_fp16()) {
       flags |= XNN_FLAG_FORCE_FP16_INFERENCE;

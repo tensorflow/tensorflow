@@ -329,18 +329,38 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintIsAConstantWithinRange) {
                         )"));
 }
 
-TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintIsAConstantOutOfRange) {
+TEST_F(IndexingMapTest, KnownEmpty_CreatingIndexingMapWithInfeasibleRange) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0) -> (d0)", &mlir_context_), {-1}, {});
+  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
+}
+
+TEST_F(IndexingMapTest, KnownEmpty_AddingConstraintOutOfRange) {
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0) -> (d0)", &mlir_context_), {50}, {});
   // Addition of this constraint makes the domain empty.
   indexing_map.AddConstraint(ParseAffineExpr("0", &mlir_context_),
                              Interval{10, 15});
-  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
-                          (d0) -> (d0)
-                          domain:
-                          d0 in [0, 49]
-                          0 in [10, 15]
-                        )"));
+  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
+}
+
+TEST_F(IndexingMapTest, KnownEmpty_Composition) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0) -> (d0)", &mlir_context_), {50}, {});
+  EXPECT_THAT(indexing_map * IndexingMap::GetKnownEmpty(&mlir_context_),
+              MatchIndexingMap("KNOWN EMPTY"));
+  EXPECT_THAT(IndexingMap::GetKnownEmpty(&mlir_context_) * indexing_map,
+              MatchIndexingMap("KNOWN EMPTY"));
+}
+
+TEST_F(IndexingMapTest,
+       KnownEmpty_AddingConstraintOutOfRangeAfterSimplification) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1)[s0, s1] -> (d1, d0, s1)", &mlir_context_),
+      {50, 60}, {70, 20});
+  indexing_map.AddConstraint(ParseAffineExpr("s1 floordiv 20", &mlir_context_),
+                             Interval{2, 2});
+  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
 }
 
 TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithManySymbols) {

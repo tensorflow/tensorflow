@@ -18,27 +18,36 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
-#include <functional>
+#include <cstring>
+#include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/cleanup/cleanup.h"
+#include "absl/base/dynamic_annotations.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
+#include "llvm/Support/Error.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/computation_layout.h"
-#include "xla/service/logical_buffer.h"
+#include "xla/service/cpu/runtime/thunk.h"
+#include "xla/service/cpu/simple_orc_jit.h"
+#include "xla/service/custom_call_status.h"
+#include "xla/service/custom_call_status_internal.h"
+#include "xla/service/executable.h"
+#include "xla/service/hlo_execution_profile.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/shape_tree.h"
@@ -46,11 +55,11 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/host/host_stream.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {
@@ -62,6 +71,9 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     const std::string& entry_function_name,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map) {
+  VLOG(2) << "Create CpuExecutable from a jit compiled function: "
+          << entry_function_name << ", module=" << hlo_module->name();
+
   std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
       std::move(hlo_profile_index_map), std::move(assignment)));
@@ -89,14 +101,19 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
 }
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
-    std::unique_ptr<HloModule> hlo_module,
+    std::unique_ptr<const BufferAssignment> assignment,
+    std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-    std::unique_ptr<const BufferAssignment> assignment) {
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map) {
+  VLOG(2) << "Create CpuExecutable from a thunk sequence; module="
+          << hlo_module->name();
+
   std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
       std::move(hlo_profile_index_map), std::move(assignment)));
-  executable->module_name_ = "main";
+
+  executable->thunks_ = std::move(thunks);
+
   return executable;
 }
 
@@ -149,9 +166,9 @@ static absl::StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
           << "]";
 
   // Since the output buffer and all the temporary buffers were written into
-  // by the JITed code, msan has no way of knowing their memory was
-  // initialized. Mark them initialized so that msan doesn't flag loads from
-  // these buffers.
+  // by the JITed code, memory sanitizer has no way of knowing their memory was
+  // initialized. Mark them initialized so that memory sanitizer doesn't flag
+  // loads from these buffers.
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(out->opaque(), buffer_size);
   return MaybeOwningDeviceMemory{std::move(out)};
 }

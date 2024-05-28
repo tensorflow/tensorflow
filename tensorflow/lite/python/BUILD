@@ -197,6 +197,7 @@ py_strict_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
+        "//tensorflow/lite/profiling/proto:profiling_info_py",
         "//tensorflow/lite/python/metrics",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/lite/tools:flatbuffer_utils",

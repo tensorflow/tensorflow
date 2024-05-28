@@ -1215,24 +1215,22 @@ absl::Status GpuCompiler::OptimizeHloModule(
     opts.set_enable_unconditional_reduce_of_concat_replacement(false);
     return opts;
   }();
-  if (debug_options.xla_gpu_normalize_layouts()) {
-    layout_normalization_pipeline.AddPass<ReshapeDecomposer>();
-    layout_normalization_pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
-    layout_normalization_pipeline.AddPass<LayoutNormalization>(
-        &NormalizeLayoutForGpuCustomCalls);
-    // The LayoutAssignment pass may leave behind kCopy instructions which are
-    // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-    layout_normalization_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-        simplifier_options);
-    // Layout normalization will create broadcasts that are not canonical.
-    layout_normalization_pipeline.AddPass<BroadcastCanonicalizer>();
-    // Layout normalization will create scatters that are not simplified and
-    // also have unsorted update_window_dims.
-    layout_normalization_pipeline.AddPass<ScatterSimplifier>();
-    // Layout normalization will create gathers that are not simplified and also
-    // have unsorted offset_dims.
-    layout_normalization_pipeline.AddPass<GatherSimplifier>();
-  }
+  layout_normalization_pipeline.AddPass<ReshapeDecomposer>();
+  layout_normalization_pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
+  layout_normalization_pipeline.AddPass<LayoutNormalization>(
+      &NormalizeLayoutForGpuCustomCalls);
+  // The LayoutAssignment pass may leave behind kCopy instructions which are
+  // duplicate or NOPs, so remove them with algebraic simplification and CSE.
+  layout_normalization_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
+      simplifier_options);
+  // Layout normalization will create broadcasts that are not canonical.
+  layout_normalization_pipeline.AddPass<BroadcastCanonicalizer>();
+  // Layout normalization will create scatters that are not simplified and
+  // also have unsorted update_window_dims.
+  layout_normalization_pipeline.AddPass<ScatterSimplifier>();
+  // Layout normalization will create gathers that are not simplified and also
+  // have unsorted offset_dims.
+  layout_normalization_pipeline.AddPass<GatherSimplifier>();
   TF_RETURN_IF_ERROR(layout_normalization_pipeline.Run(hlo_module).status());
   // Run target-specific HLO optimization passes after layout assignment.
   TF_RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(
@@ -1379,18 +1377,16 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
-    if (debug_options.xla_gpu_normalize_layouts()) {
-      pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
-      // Remove any redundant operations (such as bitcasts) introduced by layout
-      // normalization.
-      pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_options);
-      // Layout normalization will create scatters that are not simplified and
-      // also have unsorted update_window_dims.
-      pipeline.AddPass<ScatterSimplifier>();
-      // Layout normalization will create gathers that are not simplified and
-      // also have unsorted offset_dims.
-      pipeline.AddPass<GatherSimplifier>();
-    }
+    pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
+    // Remove any redundant operations (such as bitcasts) introduced by layout
+    // normalization.
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_options);
+    // Layout normalization will create scatters that are not simplified and
+    // also have unsorted update_window_dims.
+    pipeline.AddPass<ScatterSimplifier>();
+    // Layout normalization will create gathers that are not simplified and
+    // also have unsorted offset_dims.
+    pipeline.AddPass<GatherSimplifier>();
     pipeline.AddPass<BroadcastCanonicalizer>();
 
     pipeline.AddPass<ReductionDegenerateDimRemover>();
