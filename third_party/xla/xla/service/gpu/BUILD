@@ -6154,7 +6154,6 @@ xla_cc_test(
     srcs = ["execution_stream_assignment_test.cc"],
     deps = [
         ":execution_stream_assignment",
-        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu/runtime:thunk",
         "//xla/tests:hlo_test_base",

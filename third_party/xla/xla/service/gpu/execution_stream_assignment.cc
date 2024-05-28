@@ -55,6 +55,20 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module) {
   std::deque<Pending> queue;
   queue.emplace_back(module->entry_computation(), ExecutionStreamId(0));
 
+  // Enqueues called computations of a given `callsite` unless the callees are
+  // only invoked in an embedded context, in which case children nodes will all
+  // be executed in a single kernel.
+  auto enqueue_called_computations = [&](const CallSite& callsite,
+                                         ExecutionStreamId stream) {
+    if (GetInstructionCallContext(callsite.instruction()->opcode()) ==
+        CallContext::kEmbedded) {
+      return;
+    }
+    for (HloComputation* computation : callsite.called_computations()) {
+      queue.emplace_back(computation, stream);
+    }
+  };
+
   while (!queue.empty()) {
     Pending pending = queue.front();
     queue.pop_front();
@@ -72,14 +86,10 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module) {
          call_graph->GetNode(pending.node).callsites()) {
       if (callsite.instruction()->IsAsynchronous()) {
         // Asynchronous calls will result in a new `ExecutionStreamId` being
-        // dispensed for the target computation.
+        // dispensed for the called computations.
         CHECK_EQ(callsite.instruction()->opcode(), HloOpcode::kAsyncStart);
         const ExecutionStreamId async_stream_id = next_stream_id++;
-
-        // Because the `HloModule` is assumed to be flat, all computations must
-        // be invoked from a single call-like instruction.
-        CHECK_EQ(callsite.called_computations().size(), 1);
-        queue.emplace_back(callsite.called_computations()[0], async_stream_id);
+        enqueue_called_computations(callsite, async_stream_id);
 
         AsyncExecutionStreamIds streams;
         streams.source_stream_id = pending.stream_id;
@@ -87,17 +97,16 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module) {
         CHECK(async_instructions_.try_emplace(callsite.instruction(), streams)
                   .second);
       } else {
-        // Synchronous calls will result in the target computation being invoked
-        // using the same `ExecutionStreamId`.
-        queue.emplace_back(callsite.called_computations()[0],
-                           pending.stream_id);
+        // Synchronous calls will result in the called computations being
+        // invoked using the same `ExecutionStreamId`.
+        enqueue_called_computations(callsite, pending.stream_id);
       }
     }
 
     // And finally, we need to assign `ExecutionStreamIds` to all asynchronous
     // instructions that are were not handled by the iteration over callsites
     // above. These are the `async-updates` and `async-dones`. Both of these
-    // should share the `ExecutionStreamId` as the originating `async-starts`.
+    // should share the `ExecutionStreamId` with the originating `async-starts`.
     for (HloInstruction* instruction : pending.node->instructions()) {
       if (!instruction->IsAsynchronous()) continue;
       if (instruction->opcode() == HloOpcode::kAsyncStart) {
@@ -117,9 +126,10 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module) {
 
 namespace {
 absl::Status StreamNotFoundError(const HloInstruction* instruction) {
-  return absl::NotFoundError(
-      absl::StrCat("No stream found for ", instruction->ToString(),
-                   "; it may not be reachable from the module's entrypoint."));
+  return absl::NotFoundError(absl::StrCat(
+      "No ExecutionStreamId found for ", instruction->ToString(),
+      "; this may happen if the Computation is not reachable from the module's "
+      "entrypoint, or if it's only reachable through a embedded calls."));
 }
 }  // namespace
 
