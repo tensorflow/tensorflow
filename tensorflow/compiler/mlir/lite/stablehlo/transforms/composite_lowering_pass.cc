@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -53,12 +52,11 @@ class CompositeLoweringPass
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_composite_lowering.inc"
 
 void CompositeLoweringPass::runOnOperation() {
-  MLIRContext& context = getContext();
   RewritePatternSet patterns(&getContext());
 
   populateWithGenerated(patterns);
 
-  ConversionTarget target(context);
+  ConversionTarget target(getContext());
   target.addLegalDialect<TFL::TensorFlowLiteDialect>();
   target.addLegalDialect<arith::ArithDialect>();
 
