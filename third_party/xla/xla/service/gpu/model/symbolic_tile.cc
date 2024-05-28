@@ -676,10 +676,13 @@ void SymbolicTile::Print(std::ostream& out,
   printer.Print(out, size_map());
   out << "\n\tstride_map: ";
   printer.Print(out, stride_map());
-  out << "\n\trt_vars: ";
-  PrintRTVars(tile_map_.GetRTVars(),
-              /*first_rt_var_symbol_index=*/tile_map_.GetDimensionCount(), out,
-              printer);
+  const std::vector<RTVar>& rt_vars = tile_map_.GetRTVars();
+  if (!rt_vars.empty()) {
+    out << "\n\trt_vars: ";
+    PrintRTVars(rt_vars,
+                /*first_rt_var_symbol_index=*/tile_map_.GetDimensionCount(),
+                out, printer);
+  }
   out << "\n";
 }
 
