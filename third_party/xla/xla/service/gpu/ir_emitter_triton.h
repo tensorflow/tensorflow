@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -57,34 +58,50 @@ struct TritonWrapperResult {
   std::optional<se::ClusterDim> cluster_dim;
 };
 
+// Generate Triton IR inside 'fn'. This uses the given output_tile_sizes
+// and the SymbolicTileAnalysis from the computation. The provided
+// TritonFusionAnalysis and TritonGemmConfig are ignored.
+absl::Status EmitGeneric(mlir::OpBuilder b, absl::string_view libdevice_path,
+                         const se::DeviceDescription& device_info,
+                         const TritonFusionAnalysis& analysis,
+                         const HloComputation* computation,
+                         mlir::triton::FuncOp fn,
+                         const TritonGemmConfig& config,
+                         const std::vector<int64_t>& output_tile_sizes);
+
 // Compute the launch dimensions for the given Triton MatMul.
 absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
     const TritonFusionAnalysis& analysis, const HloFusionAdaptor& fusion,
     const TritonGemmConfig& config);
-// Use tiling and execution parameters from 'config'.
+
+// Use tiling and execution parameters from 'config'. output_tile_sizes is
+// ignored.
 absl::Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
                         const se::DeviceDescription& device_info,
                         const TritonFusionAnalysis& analysis,
                         const HloComputation* computation,
-                        mlir::triton::FuncOp fn,
-                        const TritonGemmConfig& config);
+                        mlir::triton::FuncOp fn, const TritonGemmConfig& config,
+                        const std::vector<int64_t>& output_tile_sizes);
 
 // Compute the launch dimensions for the given Triton SoftMax.
 LaunchDimensions GetSoftMaxLaunchDimensions(const HloFusionAdaptor& fusion,
                                             const TritonGemmConfig& config);
+
 // Generate Softmax in Triton IR inside 'fn'.
-// Use execution parameters from 'config'.
+// Use execution parameters from 'config'. output_tile_sizes is ignored.
 absl::Status EmitSoftMax(mlir::OpBuilder b, absl::string_view libdevice_path,
                          const se::DeviceDescription& device_info,
                          const TritonFusionAnalysis& analysis,
                          const HloComputation* computation,
                          mlir::triton::FuncOp fn,
-                         const TritonGemmConfig& config);
+                         const TritonGemmConfig& config,
+                         const std::vector<int64_t>& output_tile_sizes);
 
 using TritonIrEmitter = std::function<absl::Status(
     mlir::OpBuilder, absl::string_view, const se::DeviceDescription&,
     const TritonFusionAnalysis& analysis, const HloComputation*,
-    mlir::triton::FuncOp, const TritonGemmConfig&)>;
+    mlir::triton::FuncOp, const TritonGemmConfig&,
+    const std::vector<int64_t>&)>;
 
 // Generate Triton IR by running the provided generator and compile it into LLVM
 // IR.
@@ -93,8 +110,8 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloComputation* hlo_computation, const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
-    llvm::Module* llvm_module, TritonIrEmitter ir_emitter,
-    mlir::MLIRContext& mlir_context);
+    const std::vector<int64_t>& output_tile_sizes, llvm::Module* llvm_module,
+    TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context);
 
 // Creates the initial Triton module for the given fusion. Visible for testing,
 // use TritonWrapper instead.
@@ -102,7 +119,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloComputation* hlo_computation,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
-    TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context);
+    const std::vector<int64_t>& output_tile_sizes, TritonIrEmitter ir_emitter,
+    mlir::MLIRContext& mlir_context);
 
 // Compiles a given Triton module to LLVM IR.
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(

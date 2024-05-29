@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// TODO(b/343158720): Simplify the tests in this file after a generic emitter
+// has landed.
 #include "xla/service/gpu/triton_support.h"
 
 #include <memory>
@@ -459,7 +461,8 @@ ENTRY e {
     EXPECT_THAT(
         TritonWrapper(*TritonFusionAnalysis::Execute(*computation), "test_fn",
                       computation, GetCudaComputeCapability(), dev_info,
-                      config_, &llvm_module_, &EmitMatMul, mlir_context_),
+                      config_, /*output_tile_sizes=*/{}, &llvm_module_,
+                      &EmitMatMul, mlir_context_),
         tsl::testing::StatusIs(
             absl::StatusCode::kInternal,
             ::testing::HasSubstr("Failed to compile Triton kernel")));
@@ -503,7 +506,8 @@ ENTRY e {
   EXPECT_THAT(
       TritonWrapper(*TritonFusionAnalysis::Execute(*computation), "test_fn",
                     computation, GetCudaComputeCapability(), dev_info, config_,
-                    &llvm_module_, &EmitMatMul, mlir_context_),
+                    /*output_tile_sizes=*/{}, &llvm_module_, &EmitMatMul,
+                    mlir_context_),
       tsl::testing::StatusIs(
           absl::StatusCode::kInternal,
           ::testing::HasSubstr("pm.run(triton_module.get()).succeeded()")));
@@ -543,7 +547,8 @@ ENTRY e {
   EXPECT_THAT(
       TritonWrapper(*TritonFusionAnalysis::Execute(*computation), "test_fn",
                     computation, GetCudaComputeCapability(), dev_info, config_,
-                    &llvm_module_, &EmitMatMul, mlir_context_),
+                    /*output_tile_sizes=*/{}, &llvm_module_, &EmitMatMul,
+                    mlir_context_),
       tsl::testing::StatusIs(absl::StatusCode::kInternal,
                              ::testing::HasSubstr("num_batch_dims <= 1")));
 }
@@ -640,7 +645,8 @@ ENTRY main {
     EXPECT_THAT(
         TritonWrapper(*TritonFusionAnalysis::Execute(*computation), "test_fn",
                       computation, GetCudaComputeCapability(), dev_info,
-                      config_, &llvm_module_, &EmitSoftMax, mlir_context_),
+                      config_, /*output_tile_sizes=*/{}, &llvm_module_,
+                      &EmitSoftMax, mlir_context_),
         tsl::testing::StatusIs(
             absl::StatusCode::kInternal,
             ::testing::HasSubstr("Failed to compile Triton kernel")));
@@ -884,7 +890,8 @@ ENTRY main {
   EXPECT_THAT(
       TritonWrapper(*TritonFusionAnalysis::Execute(*computation), "test_fn",
                     computation, GetCudaComputeCapability(), dev_info, config_,
-                    &llvm_module_, &EmitSoftMax, mlir_context_),
+                    /*output_tile_sizes=*/{}, &llvm_module_, &EmitSoftMax,
+                    mlir_context_),
       tsl::testing::StatusIs(
           absl::StatusCode::kInternal,
           ::testing::HasSubstr("operand->opcode() == HloOpcode::kConstant")));
@@ -933,7 +940,8 @@ ENTRY main {
   EXPECT_THAT(
       TritonWrapper(*TritonFusionAnalysis::Execute(*computation), "test_fn",
                     computation, GetCudaComputeCapability(), dev_info, config_,
-                    &llvm_module_, &EmitSoftMax, mlir_context_),
+                    /*output_tile_sizes=*/{}, &llvm_module_, &EmitSoftMax,
+                    mlir_context_),
       tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
                              ::testing::HasSubstr("Unsupported operation")));
 }

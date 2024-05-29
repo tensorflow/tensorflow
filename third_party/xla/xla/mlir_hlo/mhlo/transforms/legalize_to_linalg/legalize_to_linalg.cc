@@ -4017,6 +4017,11 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
   LogicalResult matchAndRewrite(
       mhlo::GatherOp gatherOp, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
+    // TODO: b/342172264 - Implement handling of batching dims.
+    if (!gatherOp.getDimensionNumbers().getOperandBatchingDims().empty() ||
+        !gatherOp.getDimensionNumbers().getStartIndicesBatchingDims().empty())
+      return failure();
+
     Location loc = gatherOp.getLoc();
 
     Value startIndices = adaptor.getStartIndices();
