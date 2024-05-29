@@ -78,8 +78,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/mlir_hlo/transforms/passes.h"
+#include "xla/primitive_util.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/all_to_all_decomposer.h"
@@ -1027,6 +1029,40 @@ std::vector<ComputationToEmit> SubcomputationEmissionOrder(
 
 }  // namespace
 
+static absl::StatusOr<CpuExecutable::ConstantAllocation>
+LiteralToConstantAllocation(BufferAllocation::Index index,
+                            const Literal& literal) {
+  // TODO(ezhulenev): This code is almost identical to code in XLA:GPU, we
+  // should standardize it. See `xla/service/gpu/ir_emission_utils.cc`.
+  PrimitiveType element_type = literal.shape().element_type();
+  if (!primitive_util::IsArrayType(element_type)) {
+    return absl::InternalError(
+        "Only array literals can be converted to constant allocations");
+  }
+
+  int64_t size_bytes = literal.size_bytes();
+  const void* untyped_data = literal.untyped_data();
+
+  // Pack sub-byte types into an XLA storage format.
+  if (primitive_util::IsSubByteNonPredType(element_type)) {
+    int bit_width = primitive_util::BitWidth(element_type);
+    int packed_size_bytes = CeilOfRatio<int64_t>(size_bytes, 8 / bit_width);
+
+    std::vector<uint8_t> packed(packed_size_bytes);
+    PackIntN(
+        bit_width,
+        absl::MakeSpan(reinterpret_cast<const char*>(untyped_data), size_bytes),
+        absl::MakeSpan(reinterpret_cast<char*>(packed.data()), packed.size()));
+
+    return CpuExecutable::ConstantAllocation{index, std::move(packed)};
+  }
+
+  // Create a constant allocation from the literal's untyped data.
+  return CpuExecutable::ConstantAllocation{
+      index, absl::Span<const uint8_t>(
+                 reinterpret_cast<const uint8_t*>(untyped_data), size_bytes)};
+}
+
 // Creates a vector of constant allocations from the given buffer assignment.
 static absl::StatusOr<std::vector<CpuExecutable::ConstantAllocation>>
 CreateConstantAllocations(const BufferAssignment& assignment) {
@@ -1057,13 +1093,9 @@ CreateConstantAllocations(const BufferAssignment& assignment) {
                        allocation.ToString()));
     }
 
-    const void* untyped_data = const_instr->literal().untyped_data();
-    int64_t size_in_bytes = const_instr->literal().size_bytes();
-
-    constants.push_back(CpuExecutable::ConstantAllocation{
-        allocation.index(),
-        absl::Span<const uint8_t>(
-            reinterpret_cast<const uint8_t*>(untyped_data), size_in_bytes)});
+    TF_ASSIGN_OR_RETURN(constants.emplace_back(),
+                        LiteralToConstantAllocation(allocation.index(),
+                                                    const_instr->literal()));
   }
 
   return constants;

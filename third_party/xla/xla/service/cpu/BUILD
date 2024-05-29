@@ -64,7 +64,10 @@ test_suite(
     name = "thunk_runtime_tests",
     tests = [
         "//xla/tests:array_elementwise_ops_test_cpu",
+        "//xla/tests:axpy_simple_test_cpu",
+        "//xla/tests:convert_test_cpu",
         "//xla/tests:copy_test_cpu",
+        "//xla/tests:floor_ceil_test_cpu",
     ],
 )
 
