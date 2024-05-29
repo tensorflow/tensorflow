@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
@@ -48,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel_runner_utils.h"
+#include "tensorflow/core/tfrt/mlrt/kernel/shard_restore_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -60,6 +63,14 @@ namespace tensorflow {
 namespace tf_mlrt {
 
 namespace {
+int64_t GetSizeFromVarHandle(const ResourceHandle& handle) {
+  int size = 0;
+  for (auto& dtype_and_shape : handle.dtypes_and_shapes()) {
+    size += DataTypeSize(dtype_and_shape.dtype) *
+            dtype_and_shape.shape.num_elements();
+  }
+  return size;
+}
 
 struct MlrtIfrtRestoreVariableKernel : mlrt::KernelFrame {
   using KernelFrame::KernelFrame;
@@ -98,7 +109,23 @@ struct MlrtIfrtRestoreVariableKernel : mlrt::KernelFrame {
   void Invoke();
 
  private:
+  // TODO(b/335247101): Consider exposing this as an option for tuning or
+  // dynamically decide it based on the size of the variables.
+  static constexpr int kNumRestoreClusters = 4;
+
+  // A shard of variables to be restored.
+  struct RestoreVariableShard {
+    tensorflow::Tensor prefix;
+    tensorflow::Tensor tensor_names;
+    tensorflow::Tensor shape_and_slices;
+    std::vector<tensorflow::tfrt_stub::FallbackTensor> var_handles;
+    tensorflow::AttrValue dtypes_attr_value;
+  };
+
   absl::Status InvokeHelper();
+
+  absl::Status RunShard(RestoreVariableShard shard);
+  absl::Status ValidateInput();
 };
 
 void MlrtIfrtRestoreVariableKernel::Invoke() {
@@ -109,7 +136,8 @@ void MlrtIfrtRestoreVariableKernel::Invoke() {
   }
 }
 
-absl::Status MlrtIfrtRestoreVariableKernel::InvokeHelper() {
+absl::Status MlrtIfrtRestoreVariableKernel::RunShard(
+    RestoreVariableShard shard) {
   std::optional<IfrtModelContext*> ifrt_model_context =
       context().resource_context().GetResource<IfrtModelContext>(
           "IfrtModelContext");
@@ -117,40 +145,38 @@ absl::Status MlrtIfrtRestoreVariableKernel::InvokeHelper() {
     return absl::FailedPreconditionError(
         "RestoreVariableOp: failed to fetch IfrtModelContext");
   }
-  const int num_outputs = var_handles().size();
-  DCHECK_EQ(num_outputs, tensor_names().tensor().NumElements());
+  const int num_outputs = shard.var_handles.size();
+  DCHECK_EQ(num_outputs, shard.tensor_names.NumElements());
   auto& fallback_request_state = context().fallback_request_state();
-  tensorflow::AttrValue dtypes_attr_value;
-  for (const auto& dtype : restored_dtypes()) {
-    dtypes_attr_value.mutable_list()->mutable_type()->Add(dtype);
-  }
+
   // Use `tf.RestoreV2` to restore tensor. This will also populate
   // tensorflow::ResourceManager.
   // TODO(b/319045348): avoid populating tensorflow::ResourceManager if the
   // variable is only used by device/IFRT.
   // TODO(b/319045348): consider directly calling restore function such as that
   // in /tensorflow/core/kernels/save_restore_v2_ops.cc
-  auto runner = tfrt_stub::OpKernelRunner::Create(
-                    /*op_name=*/
-                    "RestoreV2", /*node_name=*/"RestoreV2",
-                    context().params().device->name(),
-                    /*num_args=*/3,
-                    [&](tensorflow::AttrValueMap* attr_value_map) {
-                      attr_value_map->insert({"dtypes", dtypes_attr_value});
-                      return absl::OkStatus();
-                    },
-                    fallback_request_state.device_manager(),
-                    fallback_request_state.process_function_library_runtime())
-                    .value();
+  auto runner =
+      tfrt_stub::OpKernelRunner::Create(
+          /*op_name=*/
+          "RestoreV2", /*node_name=*/"RestoreV2",
+          context().params().device->name(),
+          /*num_args=*/3,
+          [&](tensorflow::AttrValueMap* attr_value_map) {
+            attr_value_map->insert({"dtypes", shard.dtypes_attr_value});
+            return absl::OkStatus();
+          },
+          fallback_request_state.device_manager(),
+          fallback_request_state.process_function_library_runtime())
+          .value();
 
   // Prepare the input tensors.
   std::vector<tensorflow::TensorValue> input_tf_tensor_values;
-  input_tf_tensor_values.resize(arguments().size());
-  for (int i = 0; i < arguments().size(); ++i) {
-    auto& fallback_tensor =
-        arguments()[i].Get<tensorflow::tfrt_stub::FallbackTensor>();
-    input_tf_tensor_values[i].tensor = &fallback_tensor.tensor();
-  }
+  static constexpr int kNumInputArgs = 3;
+  input_tf_tensor_values.resize(kNumInputArgs);
+  // We need to keep these tensor alive
+  input_tf_tensor_values[0].tensor = &shard.prefix;
+  input_tf_tensor_values[1].tensor = &shard.tensor_names;
+  input_tf_tensor_values[2].tensor = &shard.shape_and_slices;
 
   auto& params = context().params();
   SetUpParams(runner, input_tf_tensor_values, params);
@@ -179,13 +205,14 @@ absl::Status MlrtIfrtRestoreVariableKernel::InvokeHelper() {
     auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
     auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
     const ResourceHandle& var_handle =
-        var_handles()[i].tensor().scalar<ResourceHandle>()();
+        shard.var_handles[i].tensor().scalar<tensorflow::ResourceHandle>()();
 
     TF_ASSIGN_OR_RETURN(ifrt_serving::DtypeAndShape dtype_and_shape,
                         ifrt_serving::GetDtypeAndShape(var_handle));
 
     std::string runtime_name =
         ifrt_serving::GetRuntimeNameFromVarHandle(var_handle);
+
     ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
         restored_tensor_info = {false, std::move(dtype_and_shape),
                                 std::move(future)};
@@ -206,24 +233,114 @@ absl::Status MlrtIfrtRestoreVariableKernel::InvokeHelper() {
   DCHECK((*ifrt_model_context)->checkpoint_loader_queue() != nullptr);
   (*ifrt_model_context)
       ->checkpoint_loader_queue()
-      ->AddTask(
-          [runner = std::move(runner), async_state = std::move(async_state)]() {
-            auto* op_kernel_context_ptr = &async_state->context;
-            runner.Run(op_kernel_context_ptr);
+      ->AddTask([runner = std::move(runner),
+                 async_state = std::move(async_state),
+                 shard = std::move(shard)]() {
+        // Keep input tensor alive in `shard`.
+        auto* op_kernel_context_ptr = &async_state->context;
+        runner.Run(op_kernel_context_ptr);
 
-            auto& op_kernel_context = async_state->context;
-            if (!op_kernel_context.status().ok()) {
-              for (auto& result : async_state->results) {
-                std::move(result).Set(op_kernel_context.status());
-              }
-              return;
-            }
-            for (int i = 0; i < op_kernel_context.num_outputs(); ++i) {
-              DCHECK(op_kernel_context.mutable_output(i));
-              std::move(async_state->results[i])
-                  .Set(std::move(*op_kernel_context.mutable_output(i)));
-            }
-          });
+        auto& op_kernel_context = async_state->context;
+        if (!op_kernel_context.status().ok()) {
+          for (auto& result : async_state->results) {
+            std::move(result).Set(op_kernel_context.status());
+          }
+          return;
+        }
+        for (int i = 0; i < op_kernel_context.num_outputs(); ++i) {
+          DCHECK(op_kernel_context.mutable_output(i));
+          std::move(async_state->results[i])
+              .Set(std::move(*op_kernel_context.mutable_output(i)));
+        }
+      });
+  return absl::OkStatus();
+}
+
+absl::Status MlrtIfrtRestoreVariableKernel::ValidateInput() {
+  if (prefix().tensor().NumElements() != 1) {
+    return absl::InvalidArgumentError(
+        "The prefix tensor must be a scalar tensor.");
+  }
+  if (!TensorShapeUtils::IsVector(tensor_names().tensor().shape()) ||
+      !TensorShapeUtils::IsVector(shape_and_slices().tensor().shape())) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Input tensor_names and shape_and_slices "
+                     "should be an 1-D tensors, got ",
+                     tensor_names().tensor().shape().DebugString(), " and ",
+                     shape_and_slices().tensor().shape().DebugString()));
+  }
+
+  if (tensor_names().tensor().NumElements() !=
+      shape_and_slices().tensor().NumElements()) {
+    return absl::InvalidArgumentError(
+        "The tensor_names and shape_and_slices tensors must have the same "
+        "number of elements.");
+  }
+
+  if (tensor_names().tensor().NumElements() != var_handles().size()) {
+    return absl::InvalidArgumentError(
+        "The tensor_names and var_handles must have the same number of "
+        "elements.");
+  }
+  if (tensor_names().tensor().NumElements() != restored_dtypes().size()) {
+    return absl::InvalidArgumentError(
+        "The tensor_names and restored_dtypes must have the same number of "
+        "elements.");
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status MlrtIfrtRestoreVariableKernel::InvokeHelper() {
+  TF_RETURN_IF_ERROR(ValidateInput());
+
+  std::vector<int64_t> variable_sizes;
+  variable_sizes.reserve(var_handles().size());
+  for (auto& handle : var_handles()) {
+    variable_sizes.push_back(GetSizeFromVarHandle(
+        handle.tensor().scalar<tensorflow::ResourceHandle>()()));
+  }
+
+  std::vector<std::vector<int>> sharded_indices =
+      ShardVariables(kNumRestoreClusters, absl::MakeSpan(variable_sizes));
+
+  // Converts the names and slices back to the tensor.
+  auto vector_to_tensor = [](const std::vector<tsl::tstring>& vec) {
+    tensorflow::Tensor tensor(tensorflow::DT_STRING,
+                              TensorShape({static_cast<int>(vec.size())}));
+    for (int i = 0; i < vec.size(); ++i) {
+      tensor.flat<tsl::tstring>()(i) = vec[i];
+    }
+    return tensor;
+  };
+
+  const auto& tensor_names_flat = tensor_names().tensor().flat<tsl::tstring>();
+  const auto& shape_and_slices_flat =
+      shape_and_slices().tensor().flat<tsl::tstring>();
+
+  std::vector<RestoreVariableShard> shards;
+  shards.reserve(sharded_indices.size());
+  for (auto& sharded_index : sharded_indices) {
+    RestoreVariableShard shard;
+    std::vector<tsl::tstring> tensor_names;
+    std::vector<tsl::tstring> shape_and_slices;
+    for (int index : sharded_index) {
+      tensor_names.push_back(tensor_names_flat(index));
+      shape_and_slices.push_back(shape_and_slices_flat(index));
+      shard.var_handles.push_back(var_handles()[index]);
+      shard.dtypes_attr_value.mutable_list()->add_type(
+          restored_dtypes()[index]);
+    }
+
+    shard.prefix = prefix().tensor();
+    shard.tensor_names = vector_to_tensor(tensor_names);
+    shard.shape_and_slices = vector_to_tensor(shape_and_slices);
+    shards.push_back(std::move(shard));
+  }
+
+  for (const auto& shard : shards) {
+    TF_RETURN_IF_ERROR(RunShard(shard));
+  }
   return absl::OkStatus();
 }
 
