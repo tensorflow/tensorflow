@@ -47,6 +47,7 @@ namespace xla::cpu {
 class Thunk {
  public:
   enum class Kind {
+    kCall,
     kCopy,
     kKernel,
   };

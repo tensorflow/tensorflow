@@ -45,6 +45,16 @@ cc_library(
 )
 
 cc_library(
+    name = "call_thunk",
+    srcs = ["call_thunk.cc"],
+    hdrs = ["call_thunk.h"],
+    deps = [
+        ":thunk",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
     name = "copy_thunk",
     srcs = ["copy_thunk.cc"],
     hdrs = ["copy_thunk.h"],

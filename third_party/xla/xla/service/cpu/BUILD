@@ -72,6 +72,7 @@ test_suite(
         "//xla/tests:reshape_test_cpu",
         "//xla/tests:reverse_test_cpu",
         "//xla/tests:unary_op_test_cpu",
+        "//xla/tests/exhaustive:exhaustive_binary_16_bit_test_cpu",
     ],
 )
 
@@ -827,6 +828,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
+        "//xla/service/cpu/runtime:call_thunk",
         "//xla/service/cpu/runtime:copy_thunk",
         "//xla/service/cpu/runtime:kernel_thunk",
         "//xla/service/cpu/runtime:thunk",

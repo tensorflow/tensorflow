@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter2.h"
+#include "xla/service/cpu/runtime/call_thunk.h"
 #include "xla/service/cpu/runtime/copy_thunk.h"
 #include "xla/service/cpu/runtime/kernel_thunk.h"
 #include "xla/service/cpu/runtime/thunk.h"
@@ -141,6 +142,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kFusion:
       return EmitFusionKernelThunk(instruction);
 
+    case HloOpcode::kCall:
+      return EmitCallThunk(instruction);
+
     case HloOpcode::kCopy:
       return EmitCopyThunk(instruction);
 
@@ -149,6 +153,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
           absl::StrCat("HLO opcode `", HloOpcodeString(instruction->opcode()),
                        "` is not supported by XLA:CPU ThunkEmitter"));
   }
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
+    const HloInstruction* instruction) {
+  TF_ASSIGN_OR_RETURN(
+      ThunkSequence called_sequence,
+      EmitHloComputation(instruction->called_computations().front()));
+  return ThunkSequence::Of<CallThunk>(std::move(called_sequence));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyThunk(
