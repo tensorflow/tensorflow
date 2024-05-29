@@ -64,16 +64,16 @@ using ::testing::HasSubstr;
 using ::testing::IsFalse;
 using ::tsl::testing::IsOkAndHolds;
 
-static absl::Status TestError(ffi::BufferBase, ffi::Result<ffi::BufferBase>,
-                              ffi::Result<ffi::BufferBase>) {
+static absl::Status TestError(ffi::AnyBuffer, ffi::Result<ffi::AnyBuffer>,
+                              ffi::Result<ffi::AnyBuffer>) {
   return absl::InternalError("test error.");
 }
 
 XLA_FFI_DEFINE_HANDLER(kTestError, TestError,
                        ffi::Ffi::Bind()
-                           .Arg<ffi::BufferBase>()  // in
-                           .Ret<ffi::BufferBase>()  // out0
-                           .Ret<ffi::BufferBase>()  // out1
+                           .Arg<ffi::AnyBuffer>()  // in
+                           .Ret<ffi::AnyBuffer>()  // out0
+                           .Ret<ffi::AnyBuffer>()  // out1
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$TestError", "Host",

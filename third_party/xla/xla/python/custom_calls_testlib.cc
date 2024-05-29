@@ -26,11 +26,11 @@ namespace nb = ::nanobind;
 // examples and features (e.g. binding attributes, custom user-defined structs
 // and arbitrary execution context).
 
-static Error AlwaysFail(Result<BufferBase>) {
+static Error AlwaysFail(Result<AnyBuffer>) {
   return Error(XLA_FFI_Error_Code_INTERNAL, "Failed intentionally");
 }
 
-static Error AlwaysSucceed(Result<BufferBase>) { return Error::Success(); }
+static Error AlwaysSucceed(Result<AnyBuffer>) { return Error::Success(); }
 
 static Error Subtract(BufferR0<DataType::F32> a, BufferR0<DataType::F32> b,
                       Result<BufferR0<DataType::F32>> out) {
@@ -47,10 +47,10 @@ static Error SubtractCst(BufferR0<DataType::F32> a,
 // Define XLA FFI handlers from the implementations defined above using explicit
 // XLA FFI binding API to describe type signatures of custom calls.
 
-XLA_FFI_DEFINE_HANDLER(kAlwaysFail, AlwaysFail, Ffi::Bind().Ret<BufferBase>());
+XLA_FFI_DEFINE_HANDLER(kAlwaysFail, AlwaysFail, Ffi::Bind().Ret<AnyBuffer>());
 
 XLA_FFI_DEFINE_HANDLER(kAlwaysSucceed, AlwaysSucceed,
-                       Ffi::Bind().Ret<BufferBase>());
+                       Ffi::Bind().Ret<AnyBuffer>());
 
 XLA_FFI_DEFINE_HANDLER(kSubtract, Subtract,
                        Ffi::Bind()

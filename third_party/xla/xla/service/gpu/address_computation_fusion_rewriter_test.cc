@@ -932,8 +932,8 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
                             expected);
 }
 
-static absl::Status Memcpy(se::Stream* stream, ffi::BufferBase src,
-                           ffi::BufferBase dst) {
+static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
+                           ffi::AnyBuffer dst) {
   return stream->MemcpyD2D(
       &dst.data, src.data,
       absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
@@ -943,8 +943,8 @@ static absl::Status Memcpy(se::Stream* stream, ffi::BufferBase src,
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
-                           .Arg<ffi::BufferBase>()  // src
-                           .Arg<ffi::BufferBase>()  // dst
+                           .Arg<ffi::AnyBuffer>()  // src
+                           .Arg<ffi::AnyBuffer>()  // dst
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
                          kMemcpy);
