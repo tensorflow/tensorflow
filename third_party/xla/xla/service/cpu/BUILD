@@ -63,6 +63,7 @@ filegroup(
 test_suite(
     name = "thunk_runtime_tests",
     tests = [
+        "//xla/tests:array_elementwise_ops_test_cpu",
         "//xla/tests:copy_test_cpu",
     ],
 )
@@ -649,6 +650,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:elemental_ir_emitter",
+        "//xla/service/llvm_ir:fused_ir_emitter",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:loop_emitter",
@@ -661,6 +663,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
