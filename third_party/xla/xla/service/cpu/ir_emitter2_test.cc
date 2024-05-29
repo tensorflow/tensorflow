@@ -49,31 +49,33 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
       ir_emitter.EmitKernelPrototype("test", parameters, results);
 
   ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
-    CHECK: define ptr @test(ptr %0) {
+    CHECK: define ptr @test(ptr %0) #0 {
 
-    CHECK:   getelementptr %SE_HOST_KernelCallFrame, {{.*}} i64 0
-    CHECK:   getelementptr %SE_HOST_KernelThreadDim
-    CHECK:   getelementptr %SE_HOST_KernelThreadDim
-    CHECK:   getelementptr %SE_HOST_KernelThreadDim
-    CHECK:   load i64
-    CHECK:   load i64
-    CHECK:   load i64
+    CHECK-NEXT: getelementptr %SE_HOST_KernelCallFrame, {{.*}} i32 0, i32 0
+    CHECK:      getelementptr %SE_HOST_KernelThreadDim, {{.*}} i32 0, i32 0
+    CHECK:      getelementptr %SE_HOST_KernelThreadDim, {{.*}} i32 0, i32 1
+    CHECK:      getelementptr %SE_HOST_KernelThreadDim, {{.*}} i32 0, i32 2
+    CHECK:      load i64
+    CHECK:      load i64
+    CHECK:      load i64
 
-    CHECK:   getelementptr %SE_HOST_KernelCallFrame, {{.*}} i64 1
-    CHECK:   getelementptr %SE_HOST_KernelThread
-    CHECK:   getelementptr %SE_HOST_KernelThread
-    CHECK:   getelementptr %SE_HOST_KernelThread
-    CHECK:   load i64
-    CHECK:   load i64
-    CHECK:   load i64
+    CHECK-NEXT: getelementptr %SE_HOST_KernelCallFrame, {{.*}} i32 0, i32 1
+    CHECK:      getelementptr %SE_HOST_KernelThread, {{.*}} i32 0, i32 0
+    CHECK:      getelementptr %SE_HOST_KernelThread, {{.*}} i32 0, i32 1
+    CHECK:      getelementptr %SE_HOST_KernelThread, {{.*}} i32 0, i32 2
+    CHECK:      load i64
+    CHECK:      load i64
+    CHECK:      load i64
 
-    CHECK:   getelementptr %SE_HOST_KernelCallFrame, {{.*}} i64 3
-    CHECK:   getelementptr %SE_HOST_KernelArg
-    CHECK:   getelementptr %SE_HOST_KernelArg
+    CHECK-NEXT: getelementptr %SE_HOST_KernelCallFrame, {{.*}} i32 0, i32 3
+    CHECK:      load ptr
+    CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 0, i32 0
+    CHECK:      load ptr
 
-    CHECK:   getelementptr %SE_HOST_KernelCallFrame, {{.*}} i64 3
-    CHECK:   getelementptr %SE_HOST_KernelArg
-    CHECK:   getelementptr %SE_HOST_KernelArg
+    CHECK-NEXT: getelementptr %SE_HOST_KernelCallFrame, {{.*}} i32 0, i32 3
+    CHECK:      load ptr
+    CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 1, i32 0
+    CHECK:      load ptr
 
     CHECK:   ret ptr null
     CHECK: }
@@ -100,7 +102,7 @@ TEST_F(IrEmitter2Test, EmitElementalKernel) {
                           ir_emitter.EmitElementalHostKernel(convert));
 
   ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
-    CHECK: define ptr @convert(ptr %0) {
+    CHECK: define ptr @convert(ptr %0) #0 {
     CHECK:   fptosi float {{.*}} to i32
     CHECK: }
   )"));

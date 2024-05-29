@@ -165,6 +165,14 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
       EmitKernelPrototype(instr->name(), parameters, results);
   b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
 
+  // TODO(ezhulenev): Figure out how to set up `operand_to_generator` for
+  // multi-argument/result kernels.
+  if (kernel_prototype.arguments.size() != 1 ||
+      kernel_prototype.results.size() != 1) {
+    return absl::UnimplementedError(
+        "Kernel with multiple arguments/results is not implemented");
+  }
+
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (const HloInstruction* operand : instr->operands()) {
     operand_to_generator[operand] = [&](const llvm_ir::IrArray::Index& index) {
@@ -181,7 +189,7 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
       llvm_ir::LoopEmitter(element_generator, kernel_prototype.results[0], &b)
           .EmitLoop(llvm_ir::IrName(instr)));
 
-  return KernelInfo{kernel_prototype.function->getName().str()};
+  return kernels_.emplace_back(kernel_prototype.function->getName().str());
 }
 
 //===----------------------------------------------------------------------===//
@@ -190,39 +198,40 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
 
 IrEmitter2::KernelThreadDims IrEmitter2::EmitKernelThreadDims(
     llvm::IRBuilder<>& b, llvm::Value* call_frame) {
-  auto* thread_dims = b.CreateConstGEP2_64(call_frame_ty_, call_frame, 0, 0);
-  auto* x_ptr = b.CreateConstGEP2_32(thread_dims_ty_, thread_dims, 0, 0);
-  auto* y_ptr = b.CreateConstGEP2_32(thread_dims_ty_, thread_dims, 0, 1);
-  auto* z_ptr = b.CreateConstGEP2_32(thread_dims_ty_, thread_dims, 0, 2);
+  auto* thread_dims = b.CreateConstGEP2_32(call_frame_ty_, call_frame, 0, 0);
+  auto* x_gep = b.CreateConstGEP2_32(thread_dims_ty_, thread_dims, 0, 0);
+  auto* y_gep = b.CreateConstGEP2_32(thread_dims_ty_, thread_dims, 0, 1);
+  auto* z_gep = b.CreateConstGEP2_32(thread_dims_ty_, thread_dims, 0, 2);
 
-  return {b.CreateLoad(b.getInt64Ty(), x_ptr),
-          b.CreateLoad(b.getInt64Ty(), y_ptr),
-          b.CreateLoad(b.getInt64Ty(), z_ptr)};
+  return {b.CreateLoad(b.getInt64Ty(), x_gep),
+          b.CreateLoad(b.getInt64Ty(), y_gep),
+          b.CreateLoad(b.getInt64Ty(), z_gep)};
 }
 
 IrEmitter2::KernelThread IrEmitter2::EmitKernelThread(llvm::IRBuilder<>& b,
                                                       llvm::Value* call_frame) {
-  auto* thread_dims = b.CreateConstGEP2_64(call_frame_ty_, call_frame, 0, 1);
-  auto* x_ptr = b.CreateConstGEP2_32(thread_ty_, thread_dims, 0, 0);
-  auto* y_ptr = b.CreateConstGEP2_32(thread_ty_, thread_dims, 0, 1);
-  auto* z_ptr = b.CreateConstGEP2_32(thread_ty_, thread_dims, 0, 2);
+  auto* thread_dims = b.CreateConstGEP2_32(call_frame_ty_, call_frame, 0, 1);
+  auto* x_gep = b.CreateConstGEP2_32(thread_ty_, thread_dims, 0, 0);
+  auto* y_gep = b.CreateConstGEP2_32(thread_ty_, thread_dims, 0, 1);
+  auto* z_gep = b.CreateConstGEP2_32(thread_ty_, thread_dims, 0, 2);
 
-  return {b.CreateLoad(b.getInt64Ty(), x_ptr),
-          b.CreateLoad(b.getInt64Ty(), y_ptr),
-          b.CreateLoad(b.getInt64Ty(), z_ptr)};
+  return {b.CreateLoad(b.getInt64Ty(), x_gep),
+          b.CreateLoad(b.getInt64Ty(), y_gep),
+          b.CreateLoad(b.getInt64Ty(), z_gep)};
 }
 
 llvm_ir::IrArray IrEmitter2::EmitKernelArgument(llvm::IRBuilder<>& b,
                                                 llvm::Value* call_frame,
                                                 int64_t index,
                                                 const Shape& shape) {
-  auto* args_ptr = b.CreateConstGEP2_64(call_frame_ty_, call_frame, 0, 3);
-  auto* arg_ptr = b.CreateConstGEP1_64(arg_ty_, args_ptr, index);
-  auto* data_ptr = b.CreateConstGEP2_64(arg_ty_, arg_ptr, 0, 0);
-
   llvm::Type* ptr = llvm::PointerType::get(b.getContext(), 0);
-  return llvm_ir::IrArray(b.CreateLoad(ptr, data_ptr),
-                          llvm_ir::ShapeToIrType(shape, module_), shape);
+
+  auto* args_gep = b.CreateConstGEP2_32(call_frame_ty_, call_frame, 0, 3);
+  auto* args = b.CreateLoad(ptr, args_gep);
+  auto* data_gep = b.CreateConstGEP2_32(arg_ty_, args, index, 0);
+  auto* data = b.CreateLoad(ptr, data_gep);
+
+  return llvm_ir::IrArray(data, llvm_ir::ShapeToIrType(shape, module_), shape);
 }
 
 IrEmitter2::KernelPrototype IrEmitter2::EmitKernelPrototype(
@@ -245,10 +254,12 @@ IrEmitter2::KernelPrototype IrEmitter2::EmitKernelPrototype(
   llvm::Function* function = llvm::dyn_cast<llvm::Function>(
       module_->getOrInsertFunction(name, KernelFunctionTy(ctx)).getCallee());
   function->setCallingConv(llvm::CallingConv::C);
+  function->setDoesNotThrow();
+
+  // Create an entry basic block and set insert point to the end of it.
   b.SetInsertPoint(llvm::BasicBlock::Create(ctx, "", function));
 
   llvm::Value* call_frame = function->getArg(0);
-
   // Build thread coordinates from the call frame.
   KernelThreadDims kernel_thread_dims = EmitKernelThreadDims(b, call_frame);
   KernelThread kernel_thread = EmitKernelThread(b, call_frame);

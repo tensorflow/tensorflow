@@ -1589,7 +1589,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
       }
 
       cpu::BufferAllocations allocations(buffer_device_mem);
-      cpu::Thunk::ExecuteParams execute_params = {&allocations};
+      cpu::Thunk::ExecuteParams execute_params = {
+          &cpu_executable->host_kernels(), &allocations};
       TF_RETURN_IF_ERROR(cpu_executable->thunks().Execute(execute_params));
 
     } else {
@@ -1696,7 +1697,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
             }
 
             cpu::BufferAllocations allocations(buffer_device_mem);
-            cpu::Thunk::ExecuteParams execute_params = {&allocations};
+            cpu::Thunk::ExecuteParams execute_params = {
+                &cpu_executable->host_kernels(), &allocations};
             status = cpu_executable->thunks().Execute(execute_params);
 
           } else {

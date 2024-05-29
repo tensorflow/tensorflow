@@ -48,7 +48,7 @@ TEST(CopyThunkTest, Copy) {
 
   CopyThunk thunk(src_slice, dst_slice, size_in_bytes);
 
-  Thunk::ExecuteParams params = {&allocations};
+  Thunk::ExecuteParams params = {nullptr, &allocations};
   TF_ASSERT_OK(thunk.Execute(params));
 
   EXPECT_EQ(src, dst);

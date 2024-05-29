@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/cpu/thunk_emitter.h"
 
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -25,16 +26,21 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/runtime/copy_thunk.h"
+#include "xla/service/cpu/runtime/kernel_thunk.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/launch_dim.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
-ThunkEmitter::ThunkEmitter(const BufferAssignment* buffer_assignment)
-    : buffer_assignment_(buffer_assignment) {}
+ThunkEmitter::ThunkEmitter(IrEmitter2* ir_emitter,
+                           const BufferAssignment* buffer_assignment)
+    : ir_emitter_(ir_emitter), buffer_assignment_(buffer_assignment) {}
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitEntryComputation(
     const HloModule& module) {
@@ -84,6 +90,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kConstant:
       return ThunkSequence::Empty();
 
+    // Simple HLO instructions lowered to elemental host kernels (plain loops
+    // behind the HostKernel API).
+    case HloOpcode::kAdd:
+    case HloOpcode::kConvert:
+      return EmitElementalKernelThunk(instruction);
+
     case HloOpcode::kCopy:
       return EmitCopyThunk(instruction);
 
@@ -100,6 +112,31 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyThunk(
   TF_ASSIGN_OR_RETURN(auto destination_buffer, GetAllocationSlice(copy));
   return ThunkSequence::Of<CopyThunk>(source_buffer, destination_buffer,
                                       ShapeUtil::ByteSizeOf(copy->shape()));
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
+    const HloInstruction* instruction) {
+  TF_ASSIGN_OR_RETURN(auto kernel,
+                      ir_emitter_->EmitElementalHostKernel(instruction));
+
+  // Collect flattened buffer slices for all operands and result(s).
+  std::vector<BufferAllocation::Slice> buffers;
+  auto add_buffers = [&](const HloInstruction* instr) -> absl::Status {
+    for (const auto& indexed : ShapeUtil::GetLeafShapes(instr->shape())) {
+      TF_ASSIGN_OR_RETURN(buffers.emplace_back(),
+                          GetAllocationSlice(instr, indexed.index));
+    }
+    return absl::OkStatus();
+  };
+
+  for (HloInstruction* operand : instruction->operands()) {
+    TF_RETURN_IF_ERROR(add_buffers(operand));
+  }
+  TF_RETURN_IF_ERROR(add_buffers(instruction));
+
+  // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
+  // invocation, for now we assume that we always emit a full loop.
+  return ThunkSequence::Of<KernelThunk>(buffers, kernel.name, se::ThreadDim());
 }
 
 }  // namespace xla::cpu

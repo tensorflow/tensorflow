@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -68,6 +69,22 @@ namespace xla {
 namespace cpu {
 
 using ConstantAllocation = CpuExecutable::ConstantAllocation;
+using HostKernels = CpuExecutable::HostKernels;
+
+HostKernels::HostKernels(SimpleOrcJIT* jit) : jit_(jit) {}
+
+absl::StatusOr<SE_HOST_Kernel*> HostKernels::Find(std::string_view name) {
+  VLOG(2) << "Find host kernel with a name " << name;
+
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
+      jit_->FindCompiledSymbol(std::string(name));
+  if (!sym) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't resolve host kernel with a name ", name,
+                     " in the jit compiled module."));
+  }
+  return reinterpret_cast<SE_HOST_Kernel*>(sym->getAddress().getValue());
+}
 
 se::DeviceMemoryBase ConstantAllocation::AsDeviceMemoryBase() const {
   if (auto* empty = std::get_if<std::monostate>(&data)) {
@@ -123,6 +140,7 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
 }
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
+    std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
     std::vector<ConstantAllocation> constants,
@@ -135,7 +153,9 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
       std::move(hlo_profile_index_map), std::move(assignment)));
 
+  executable->jit_ = std::move(jit);
   executable->thunks_ = std::move(thunks);
+  executable->host_kernels_ = HostKernels(executable->jit_.get());
 
   // Re-index constants by their allocation index to allow efficient lookup.
   for (auto& constant : constants) {
@@ -328,7 +348,7 @@ absl::Status CpuExecutable::ExecuteThunks(
                              profile_counters_size);
   VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
 
-  Thunk::ExecuteParams execute_params = {&allocations};
+  Thunk::ExecuteParams execute_params = {&*host_kernels_, &allocations};
   absl::Status executed = thunks_->Execute(execute_params);
 
   if (run_options->execution_profile()) {

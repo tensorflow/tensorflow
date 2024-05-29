@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/host/host_kernel_c_api.h"
 
 namespace xla {
 namespace cpu {
@@ -74,6 +76,7 @@ class CpuExecutable : public Executable {
 
   // Creates a CpuExecutable from a thunk sequence.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
+      std::unique_ptr<SimpleOrcJIT> jit,
       std::unique_ptr<const BufferAssignment> assignment,
       std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
       std::vector<ConstantAllocation> constants,
@@ -136,6 +139,19 @@ class CpuExecutable : public Executable {
   absl::Span<const BufferAllocation> GetAllocations() const override {
     return assignment_->Allocations();
   }
+
+  // A Thunk::HostKernels implementation that jit-compiles host kernels on
+  // demand using the SimpleOrcJIT instance owned by the CpuExecutable.
+  class HostKernels : public Thunk::HostKernels {
+   public:
+    explicit HostKernels(SimpleOrcJIT* jit);
+    absl::StatusOr<SE_HOST_Kernel*> Find(std::string_view name) final;
+
+   private:
+    SimpleOrcJIT* jit_;
+  };
+
+  Thunk::HostKernels& host_kernels() { return *host_kernels_; }
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
@@ -209,6 +225,8 @@ class CpuExecutable : public Executable {
   std::optional<ThunkSequence> thunks_;
   // Vector indexed by BufferAllocation::Index for efficient access.
   std::vector<ConstantAllocation> constants_;
+  // On-demand JIT host kernels compiler.
+  std::optional<HostKernels> host_kernels_;
 
   // Entry function name for the computation.
   const std::string entry_function_name_;

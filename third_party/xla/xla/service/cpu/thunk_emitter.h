@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/runtime/thunk.h"
 #include "xla/shape_util.h"
 
@@ -29,9 +30,14 @@ namespace xla::cpu {
 // ThunkEmitter is responsible for converting optimized HLO module into a
 // sequence of thunks that will launch "work" on the CPU: launch host kernels,
 // call into the libraries (oneDNN, Eigen, etc.).
+//
+// During the thunk emission it emits IR (LLVM IR) for the host kernels via the
+// IrEmitter that later will be compiled into the executable binary (one or
+// multiple LLVM modules compiled to object files).
 class ThunkEmitter {
  public:
-  explicit ThunkEmitter(const BufferAssignment* buffer_assignment);
+  ThunkEmitter(IrEmitter2* ir_emitter,
+               const BufferAssignment* buffer_assignment);
 
   // Emits HLO module entry computation as a sequence of thunks.
   absl::StatusOr<ThunkSequence> EmitEntryComputation(const HloModule& module);
@@ -50,6 +56,10 @@ class ThunkEmitter {
 
   absl::StatusOr<ThunkSequence> EmitCopyThunk(const HloInstruction* copy);
 
+  absl::StatusOr<ThunkSequence> EmitElementalKernelThunk(
+      const HloInstruction* instruction);
+
+  IrEmitter2* ir_emitter_;
   const BufferAssignment* buffer_assignment_;
 };
 

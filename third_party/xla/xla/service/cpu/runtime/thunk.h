@@ -24,7 +24,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/service/cpu/runtime/buffer_allocations.h"
+#include "xla/stream_executor/host/host_kernel_c_api.h"
 
 namespace xla::cpu {
 
@@ -46,6 +48,7 @@ class Thunk {
  public:
   enum class Kind {
     kCopy,
+    kKernel,
   };
 
   virtual ~Thunk() = default;
@@ -60,12 +63,27 @@ class Thunk {
   static std::string_view KindToString(Kind kind);
 
   //===--------------------------------------------------------------------===//
+  // HostKernels
+  //===--------------------------------------------------------------------===//
+
+  // Interface for finding host kernels (function pointers with host kernel API)
+  // by name. At run time this is typically backed by an LLVM jit compiler that
+  // compiles LLVM IR to executables on demand.
+  class HostKernels {
+   public:
+    virtual ~HostKernels() = default;
+
+    virtual absl::StatusOr<SE_HOST_Kernel*> Find(std::string_view name) = 0;
+  };
+
+  //===--------------------------------------------------------------------===//
   // ExecuteParams
   //===--------------------------------------------------------------------===//
 
   // Parameters passed to Execute. Execute is responsible for launching "work"
   // on device, i.e., it launches host kernels, calls into libraries, etc.
   struct ExecuteParams {
+    HostKernels* host_kernels = nullptr;
     const BufferAllocations* buffer_allocations = nullptr;
   };
 

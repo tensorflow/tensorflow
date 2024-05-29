@@ -42,8 +42,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
@@ -54,7 +52,6 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/TargetSelect.h"
@@ -63,12 +60,6 @@ limitations under the License.
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
-#include "xla/service/cpu/runtime/thunk.h"
-#include "xla/service/cpu/thunk_emitter.h"
-#include "xla/service/reduce_window_rewriter.h"
-#ifdef TF_LLVM_X86_AVAILABLE
-#include "llvm/TargetParser/X86TargetParser.h"
-#endif
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Vector/IR/VectorOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -78,7 +69,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "xla/cpu_function_runtime.h"
-#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -88,7 +78,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/layout_util.h"
 #include "xla/map_util.h"
 #include "xla/mlir_hlo/transforms/passes.h"
 #include "xla/service/algebraic_simplifier.h"
@@ -119,9 +108,12 @@ limitations under the License.
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emitter.h"
+#include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/parallel_task_assignment.h"
+#include "xla/service/cpu/runtime/thunk.h"
 #include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/cpu/target_machine_features.h"
+#include "xla/service/cpu/thunk_emitter.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/dot_decomposer.h"
 #include "xla/service/dump.h"
@@ -161,6 +153,7 @@ limitations under the License.
 #include "xla/service/optimize_input_output_buffer_alias.h"
 #include "xla/service/qr_expander.h"
 #include "xla/service/reduce_decomposer.h"
+#include "xla/service/reduce_window_rewriter.h"
 #include "xla/service/reshape_decomposer.h"
 #include "xla/service/reshape_mover.h"
 #include "xla/service/result_caster.h"
@@ -170,7 +163,6 @@ limitations under the License.
 #include "xla/service/select_and_scatter_expander.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/sharding_remover.h"
-#include "xla/service/simplify_fp_conversions.h"
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/service/sort_simplifier.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
@@ -189,7 +181,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -204,10 +195,15 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
+#ifdef TF_LLVM_X86_AVAILABLE
+#include "llvm/TargetParser/X86TargetParser.h"
+#endif
+
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 #include "xla/service/cpu/cpu_float_support.h"
 #include "xla/service/cpu/onednn_matmul_rewriter.h"
 #include "xla/service/cpu/onednn_ops_rewriter.h"
+#include "xla/service/simplify_fp_conversions.h"
 #endif
 
 namespace xla {
@@ -1158,18 +1154,42 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   // entry computation we emit a sequence of thunks that implement the
   // computation as a sequence of interpreted commands.
   if (module->config().debug_options().xla_cpu_use_thunk_runtime()) {
-    ThunkEmitter thunk_emitter(assignment.get());
+    // IR emitter is responsible for building LLVM module with host kernels for
+    // corresponding HLO instructions (fusions, elemental instructions, etc.).
+    IrEmitter2 ir_emitter(llvm_module.get());
+
+    // Thunk emitter is responsible for building a Thunk sequence that will
+    // resolved kernels in the compiled LLVM module and execute them together
+    // with Thunks implemented as library calls (e.g. oneDNN or Eigen).
+    ThunkEmitter thunk_emitter(&ir_emitter, assignment.get());
     TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                         thunk_emitter.EmitEntryComputation(*module));
 
+    // JIT compile the LLVM IR module to in-memory machine code.
+    TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
+    cantFail((*jit)->AddModule(llvm::orc::ThreadSafeModule(
+        std::move(llvm_module), std::move(llvm_context))));
+
+    // TODO(ezhulenev): We should be able to make it lazy on-demand, but today
+    // we capture obj_files by reference and it leads to asan errors. Figure out
+    // lifetime issues and move compilation to Thunk initialization stage.
+    for (const auto& kernel : ir_emitter.kernels()) {
+      if (auto sym = (*jit)->FindCompiledSymbol(kernel.name); !sym) {
+        return Internal("Failed to find compiled symbol for kernel %s",
+                        kernel.name);
+      }
+    }
+
+    // Create constant allocations from the buffer assignment.
     TF_ASSIGN_OR_RETURN(
         std::vector<CpuExecutable::ConstantAllocation> constants,
         CreateConstantAllocations(*assignment));
 
     TF_ASSIGN_OR_RETURN(
         auto cpu_executable,
-        CpuExecutable::Create(std::move(assignment), std::move(module),
-                              std::move(thunks), std::move(constants),
+        CpuExecutable::Create(std::move(*jit), std::move(assignment),
+                              std::move(module), std::move(thunks),
+                              std::move(constants),
                               std::move(hlo_profile_printer_data),
                               std::move(hlo_profile_index_map)));
 

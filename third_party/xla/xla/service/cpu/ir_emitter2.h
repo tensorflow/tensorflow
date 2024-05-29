@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -89,8 +90,12 @@ class IrEmitter2 {
   // TODO(ezhulenev): In addition to a symbol name we also need to know the
   // block and thread sizes.
   struct KernelInfo {
+    explicit KernelInfo(std::string name) : name(std::move(name)) {}
     std::string name;
   };
+
+  // Returns all the kernels emitted so far via this emitter.
+  absl::Span<const KernelInfo> kernels() const { return kernels_; }
 
   // Emits an elemental host kernel for the given HLO instruction.
   absl::StatusOr<KernelInfo> EmitElementalHostKernel(
@@ -121,6 +126,9 @@ class IrEmitter2 {
   llvm::StructType* thread_dims_ty_;
   llvm::StructType* thread_ty_;
   llvm::StructType* arg_ty_;
+
+  // Keeps track of all the kernels emitted so far.
+  std::vector<KernelInfo> kernels_;
 };
 
 }  // namespace xla::cpu
