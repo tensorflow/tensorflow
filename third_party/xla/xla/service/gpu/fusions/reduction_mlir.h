@@ -30,51 +30,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class MlirReductionInfo {
- public:
-  static MlirReductionInfo Create(const HloFusionAnalysis& analysis);
-
-  const Tiling& GetTiling() const { return tiling_; }
-  const ReductionGroups& GetGroups() const { return groups_; }
-  Shape GetReduceOperandShape() const {
-    return first_reduce_->operand(0)->shape();
-  }
-
-  bool IsRowReduction() const { return is_row_reduction_; }
-  bool IsRaceFree() const { return is_race_free_; }
-  int GetRowsPerWarp() const;
-
-  std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const;
-
-  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
-      int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const;
-
-  LaunchDimensions launch_dimensions() const;
-
- private:
-  MlirReductionInfo(const HloFusionAnalysis& analysis, Tiling tiling,
-                    bool is_row_reduction, bool is_race_free,
-                    ReductionGroups groups, const HloInstruction* first_reduce)
-      : analysis_(analysis),
-        tiling_(tiling),
-        is_row_reduction_(is_row_reduction),
-        is_race_free_(is_race_free),
-        groups_(std::move(groups)),
-        first_reduce_(first_reduce) {}
-
-  void AddGroupIdConstraint(IndexingMap& map, int64_t root_index,
-                            mlir::MLIRContext* ctx) const;
-
-  const HloFusionAnalysis& analysis_;
-  Tiling tiling_;
-  bool is_row_reduction_;
-  bool is_race_free_;
-  ReductionGroups groups_;
-  const HloInstruction* first_reduce_;
-};
-
 // Reduction fusion. Lowers to LLVM via MLIR. Currently not fully
 // implemented: only single reduction groups, no side outputs, only row
 // reductions.
@@ -83,22 +38,15 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   explicit MlirReductionFusion(const HloFusionAnalysis& analysis);
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const override {
-    return reduction_info_.ComputeThreadIdToOutputIndexing(root_index, ctx);
-  }
+      int64_t root_index, mlir::MLIRContext* ctx) const override;
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const override {
-    return reduction_info_.ComputeThreadIdToInputIndexing(
-        root_index, hero_operand_index, ctx);
-  }
+      mlir::MLIRContext* ctx) const override;
 
-  LaunchDimensions launch_dimensions() const override {
-    return reduction_info_.launch_dimensions();
-  }
+  LaunchDimensions launch_dimensions() const override;
 
-  const MlirReductionInfo& reduction_info() const { return reduction_info_; }
+  const ReductionGroups& GetGroups() const { return groups_; }
 
  protected:
   absl::Status EmitEntryFunction(
@@ -110,10 +58,20 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   std::vector<mlir_converter::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
       mlir::MLIRContext* mlir_context) const override;
+  const Tiling& GetTiling() const { return tiling_; };
 
  private:
   struct EmitterState;
   friend struct EmitterState;
+
+  Shape GetReduceOperandShape() const {
+    return first_reduce_->operand(0)->shape();
+  }
+
+  int GetRowsPerWarp() const;
+
+  void AddGroupIdConstraint(IndexingMap& map, int64_t root_index,
+                            mlir::MLIRContext* ctx) const;
 
   llvm::SmallVector<mlir::Value> EmitReduction(int group_id,
                                                EmitterState& state) const;
@@ -125,7 +83,12 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
   // The side output roots for each reduction group.
   std::vector<std::vector<const HloInstruction*>> side_output_roots_;
   const HloFusionAnalysis& analysis_;
-  MlirReductionInfo reduction_info_;
+
+  Tiling tiling_;
+  bool is_row_reduction_;
+  bool is_race_free_;
+  ReductionGroups groups_;
+  const HloInstruction* first_reduce_;
 };
 
 }  // namespace gpu

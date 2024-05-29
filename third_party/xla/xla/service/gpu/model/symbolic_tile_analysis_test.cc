@@ -39,9 +39,11 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::ExplainMatchResult;
 using ::testing::Matcher;
+using ::testing::Pointee;
 
 MATCHER_P3(MatchTiledHloInstructionImpl, tile_sizes, tile_strides,
            block_id_to_tile_offsets_indexing, "") {
@@ -52,6 +54,19 @@ MATCHER_P3(MatchTiledHloInstructionImpl, tile_sizes, tile_strides,
          ExplainMatchResult(MatchIndexingMap(block_id_to_tile_offsets_indexing),
                             arg.block_id_to_tile_offsets_indexing(),
                             result_listener);
+}
+
+std::vector<const TiledHloInstruction*> GetInstructionsWithName(
+    const TiledHloComputation& tiled_hlo_computation,
+    absl::string_view instruction_name) {
+  std::vector<const TiledHloInstruction*> result;
+  for (const TiledHloInstruction* instruction :
+       tiled_hlo_computation.instructions()) {
+    if (instruction->hlo()->name() == instruction_name) {
+      result.push_back(instruction);
+    }
+  }
+  return result;
 }
 
 Matcher<const TiledHloInstruction> MatchTiledHloInstruction(
@@ -131,6 +146,96 @@ ENTRY main {
     domain:
     d0 in [0, 19]
   )"));
+}
+
+TEST_F(SymbolicTileAnalysisTest,
+       NormalizationDiamondWithBroadcastAndReshapeIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+max {
+  p1.1 = f32[] parameter(1)
+  p0.1 = f32[] parameter(0)
+  ROOT m = f32[] maximum(p0.1, p1.1)
+}
+
+ENTRY main {
+  p0 = f32[48,97] parameter(0)
+  bitcast = f32[4,12,97] bitcast(p0)
+
+  p1 = pred[4,97] parameter(1)
+  broadcast.1 = pred[4,12,97]{2,1,0} broadcast(p1), dimensions={0,2}
+
+  constant.3 = f32[] constant(-2.38197633e+38)
+  broadcast.5 = f32[4,12,97] broadcast(constant.3), dimensions={}
+
+  select = f32[4,12,97] select(broadcast.1, bitcast, broadcast.5)
+  constant = f32[] constant(-inf)
+  reduce = f32[4,12] reduce(select, constant), dimensions={2}, to_apply=max
+  broadcast = f32[4,12,97] broadcast(reduce), dimensions={0,1}
+  ROOT subtract = f32[4,12,97] subtract(select, broadcast)
+})"));
+
+  EXPECT_TRUE(SetAnalysis(module.get()));
+
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        TiledHloComputation tiled_hlo_computation,
+        analysis_->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 1, 97}));
+
+    EXPECT_THAT(GetInstructionsWithName(tiled_hlo_computation, "p0"),
+                ElementsAre(Pointee(MatchTiledHloInstruction(
+                    /*tile_sizes=*/{1, 97}, /*tile_strides=*/{0, 1},
+                    /*block_id_to_tile_offsets_indexing=*/R"(
+      (d0) -> (d0, 0)
+      domain:
+      d0 in [0, 47]
+    )"))));
+
+    EXPECT_THAT(GetInstructionsWithName(tiled_hlo_computation, "p1"),
+                ElementsAre(Pointee(MatchTiledHloInstruction(
+                    /*tile_sizes=*/{1, 97}, /*tile_strides=*/{1, 1},
+                    /*block_id_to_tile_offsets_indexing=*/R"(
+      (d0) -> (d0 floordiv 12, 0)
+      domain:
+      d0 in [0, 47]
+    )"))));
+  }
+
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        TiledHloComputation tiled_hlo_computation,
+        analysis_->ComputeTiledHloInstructions(/*tile_parameters=*/{1, 2, 10}));
+
+    EXPECT_THAT(GetInstructionsWithName(tiled_hlo_computation, "p0"),
+                ElementsAre(Pointee(MatchTiledHloInstruction(
+                                /*tile_sizes=*/{2, 10}, /*tile_strides=*/{1, 1},
+                                /*block_id_to_tile_offsets_indexing=*/R"(
+      (d0) -> (((d0 floordiv 10) mod 6) * 2 + (d0 floordiv 60) * 12, (d0 mod 10) * 10)
+      domain:
+      d0 in [0, 239]
+    )")),
+                            Pointee(MatchTiledHloInstruction(
+                                /*tile_sizes=*/{2, 97}, /*tile_strides=*/{1, 1},
+                                /*block_id_to_tile_offsets_indexing=*/R"(
+      (d0) -> (((d0 floordiv 10) mod 6) * 2 + (d0 floordiv 60) * 12, 0)
+      domain:
+      d0 in [0, 239]
+    )"))));
+
+    EXPECT_THAT(GetInstructionsWithName(tiled_hlo_computation, "p1"),
+                ElementsAre(Pointee(MatchTiledHloInstruction(
+                                /*tile_sizes=*/{1, 10}, /*tile_strides=*/{1, 1},
+                                /*block_id_to_tile_offsets_indexing=*/R"(
+      (d0) -> (d0 floordiv 60, (d0 mod 10) * 10)
+      domain: d0 in [0, 239]
+    )")),
+                            Pointee(MatchTiledHloInstruction(
+                                /*tile_sizes=*/{1, 97}, /*tile_strides=*/{1, 1},
+                                /*block_id_to_tile_offsets_indexing=*/R"(
+      (d0) -> (d0 floordiv 60, 0)
+      domain: d0 in [0, 239]
+    )"))));
+  }
 }
 
 TEST_F(SymbolicTileAnalysisTest, ElementwiseDiamondCSEIsSupported) {
@@ -247,28 +352,6 @@ ENTRY main {
   ROOT dot = f32[1,3]{1,0} dot(p0, p1),
     lhs_batch_dims={}, rhs_batch_dims={},
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})"));
-
-  EXPECT_FALSE(SetAnalysis(module.get()));
-}
-
-TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedReshape) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-ENTRY main {
-  p0 = f32[1,2]{1,0} parameter(0)
-  ROOT reshape = f32[2] reshape(p0)
-})"));
-
-  EXPECT_FALSE(SetAnalysis(module.get()));
-}
-
-TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedBitcast) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-ENTRY main {
-  p0 = f32[1,2]{1,0} parameter(0)
-  ROOT bitcast = f32[2] bitcast(p0)
 })"));
 
   EXPECT_FALSE(SetAnalysis(module.get()));

@@ -171,8 +171,6 @@ absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
     // line. This is not an inherent limitation of the approach, but simply
     // issues to be resolved in the current implementation.
     if (hlo->opcode() == HloOpcode::kDot ||
-        hlo->opcode() == HloOpcode::kReshape ||
-        hlo->opcode() == HloOpcode::kBitcast ||
         hlo->opcode() == HloOpcode::kConcatenate) {
       return FusionDecision{} << "Bailing out on " << hlo->ToString();
     }

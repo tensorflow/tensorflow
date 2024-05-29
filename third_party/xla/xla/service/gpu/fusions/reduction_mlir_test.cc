@@ -600,7 +600,7 @@ TEST_F(MlirReductionTest, TwoGroups) {
   auto analysis = AnalyzeFusion(*root, device_info_);
   MlirReductionFusion fusion(analysis);
 
-  EXPECT_THAT(fusion.reduction_info().GetGroups().grouped_roots,
+  EXPECT_THAT(fusion.GetGroups().grouped_roots,
               ElementsAre(ElementsAre(&analysis.fusion_root(0).instruction()),
                           ElementsAre(&analysis.fusion_root(1).instruction())));
 }
@@ -631,8 +631,7 @@ TEST_F(MlirReductionTest, OneGroup) {
   auto analysis = AnalyzeFusion(*root, device_info_);
 
   MlirReductionFusion mlir_fusion(analysis);
-  EXPECT_THAT(mlir_fusion.reduction_info().GetGroups().grouped_roots,
-              SizeIs(1));
+  EXPECT_THAT(mlir_fusion.GetGroups().grouped_roots, SizeIs(1));
 }
 
 TEST_F(MlirReductionTest, MlirColumnReduction) {
