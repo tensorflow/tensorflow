@@ -637,7 +637,8 @@ TEST_F(HloDceTest, MultiOutputFusionRemoveUnusedTupleElementsRemoveTuple) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString));
-  HloDCE dce;
+  HloDCE dce(/*remove_cross_partition_collective_ops=*/false,
+             [](HloInstruction*) { return HloInstruction::FusionKind::kLoop; });
   auto changed = dce.Run(module.get());
   ASSERT_TRUE(changed.ok());
   EXPECT_TRUE(*changed);
@@ -674,7 +675,8 @@ TEST_F(HloDceTest, MultiOutputFusionRemoveUnusedTupleElementAdjustTuple) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString));
-  HloDCE dce;
+  HloDCE dce(/*remove_cross_partition_collective_ops=*/false,
+             [](HloInstruction*) { return HloInstruction::FusionKind::kLoop; });
   auto changed = dce.Run(module.get());
   ASSERT_TRUE(changed.ok());
   EXPECT_TRUE(*changed);

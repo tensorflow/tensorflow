@@ -98,7 +98,9 @@ class HloRematerialization : public HloModulePass {
                      std::optional<HostMemoryOffloadConfig>
                          host_memory_offload_config = std::nullopt,
                      absl::flat_hash_map<HloComputation*, int64_t>
-                         async_computation_parallelism = {})
+                         async_computation_parallelism = {},
+                     std::function<HloInstruction::FusionKind(HloInstruction*)>
+                         fusion_kind_deducer = nullptr)
         : hlo_cost_analysis(hlo_cost_analysis),
           remat_mode_config(remat_mode_config),
           memory_limit_bytes(memory_limit_bytes),
@@ -109,7 +111,8 @@ class HloRematerialization : public HloModulePass {
                                      ? DefaultCompactShapeFunction
                                      : std::move(compact_shape_function)),
           host_memory_offload_config(host_memory_offload_config),
-          async_computation_parallelism(async_computation_parallelism) {}
+          async_computation_parallelism(async_computation_parallelism),
+          fusion_kind_deducer(fusion_kind_deducer) {}
 
     // The cost model used for decisions during rematerialization for host
     // memory offload. It is also used for getting Shape size.
@@ -150,6 +153,11 @@ class HloRematerialization : public HloModulePass {
     // Collection of async entry computations and their number of parallel
     // invocations.
     absl::flat_hash_map<HloComputation*, int64_t> async_computation_parallelism;
+
+    // Predicate to help DCE determine the fusion kind after it modifies the
+    // respective computation body.
+    std::function<HloInstruction::FusionKind(HloInstruction*)>
+        fusion_kind_deducer;
   };
 
   explicit HloRematerialization(Options options, RematerializationSizes& sizes)

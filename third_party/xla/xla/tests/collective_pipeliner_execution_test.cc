@@ -63,7 +63,8 @@ absl::StatusOr<bool> RunOptimizer(
                             /*allow_mixed_precision=*/false);
   TF_ASSIGN_OR_RETURN(const bool modified, pass.Run(module));
   HloPassPipeline pass_dce("dce");
-  pass_dce.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
+  pass_dce.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true,
+                           /*fusion_kind_deducer=*/nullptr);
   return modified;
 }
 

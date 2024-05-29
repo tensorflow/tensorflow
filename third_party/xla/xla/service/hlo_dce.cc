@@ -70,14 +70,17 @@ bool IsRemovableWhile(HloInstruction* instruction,
 }  // namespace
 
 /*static*/ absl::StatusOr<bool> HloDCE::RunOnComputation(
-    HloComputation* computation, bool remove_cross_partition_collective_ops) {
+    HloComputation* computation, bool remove_cross_partition_collective_ops,
+    std::function<HloInstruction::FusionKind(HloInstruction*)>
+        fusion_kind_deducer) {
   bool changed = false;
   VLOG(3) << "Before dce:";
   XLA_VLOG_LINES(3, computation->ToString());
   // Cleanup unused tuple elements in multi-output fusion roots. We do this
   // first, because it may create dead roots which we can clean up next.
-  if (auto* fusion_instruction = computation->FusionInstruction();
-      fusion_instruction != nullptr &&
+  bool mof_cleanup = false;
+  auto* fusion_instruction = computation->FusionInstruction();
+  if (fusion_instruction != nullptr &&
       computation->root_instruction()->opcode() == HloOpcode::kTuple &&
       !computation->root_instruction()->has_sharding() &&
       fusion_instruction->output_operand_aliasing().empty() &&
@@ -90,15 +93,20 @@ bool IsRemovableWhile(HloInstruction* instruction,
     // We only support this cleanup if all users of the fusion instruction are
     // GetTupleElement ops, and there is at least one user of
     // 'fusion_instruction'.
-    bool supported = fusion_instruction->user_count() > 0;
+    mof_cleanup = fusion_instruction->user_count() > 0;
     for (HloInstruction* gte : fusion_instruction->users()) {
       if (gte->opcode() != HloOpcode::kGetTupleElement) {
-        supported = false;
+        mof_cleanup = false;
         break;
       }
       used_tuple_elements.push_back(gte->tuple_index());
     }
-    if (supported) {
+    if (mof_cleanup && (fusion_kind_deducer == nullptr)) {
+      VLOG(0) << "Skipping removing unused tuple elements of MOF due to "
+                 "missing fusion kind deducer";
+      mof_cleanup = false;
+    }
+    if (mof_cleanup) {
       std::sort(used_tuple_elements.begin(), used_tuple_elements.end());
       std::vector<Shape> tuple_shapes;
       tuple_shapes.reserve(used_tuple_elements.size());
@@ -175,6 +183,13 @@ bool IsRemovableWhile(HloInstruction* instruction,
     TF_RETURN_IF_ERROR(
         computation->RemoveInstructionAndUnusedOperands(dead_root));
     changed = true;
+  }
+  // If we updated the fusion computations, we might need to update their
+  // fusion metadata.
+  if (mof_cleanup) {
+    HloInstruction::FusionKind new_fusion_kind =
+        fusion_kind_deducer(fusion_instruction);
+    fusion_instruction->set_fusion_kind(new_fusion_kind);
   }
   if (changed) {
     VLOG(3) << "After dce:";
@@ -277,7 +292,8 @@ absl::StatusOr<bool> HloDCE::Run(
   for (auto* computation : computations) {
     TF_ASSIGN_OR_RETURN(
         bool changed_for_computation,
-        RunOnComputation(computation, remove_cross_partition_collective_ops_));
+        RunOnComputation(computation, remove_cross_partition_collective_ops_,
+                         fusion_kind_deducer_));
     changed |= changed_for_computation;
   }
 

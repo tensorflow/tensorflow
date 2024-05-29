@@ -34,9 +34,11 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/elemental_ir_emitter.h"
+#include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 namespace {
@@ -159,15 +162,15 @@ IrEmitter2::IrEmitter2(const HloModule& hlo_module, llvm::Module* module)
       thread_ty_(KernelThreadTy(module_->getContext())),
       arg_ty_(KernelArgTy(module_->getContext())) {}
 
+bool IrEmitter2::fast_min_max() const {
+  return hlo_module_.config().debug_options().xla_cpu_enable_fast_min_max();
+}
+
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
     const HloInstruction* instr) {
+  KernelPrototype kernel_prototype = EmitKernelPrototype(instr);
+
   llvm::IRBuilder<> b(module_->getContext());
-
-  std::vector<Shape> parameters = FlattenedParameters(instr);
-  std::vector<Shape> results = FlattenedResults(instr);
-
-  KernelPrototype kernel_prototype =
-      EmitKernelPrototype(instr->name(), parameters, results);
   b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
 
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
@@ -182,15 +185,46 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
     return absl::InternalError("Multi-output host kernels are not supported");
   }
 
-  ElementalIrEmitter elemental_emitter(
-      module_, &b,
-      hlo_module_.config().debug_options().xla_cpu_enable_fast_min_max());
+  ElementalIrEmitter elemental_emitter(module_, &b, fast_min_max());
   llvm_ir::ElementGenerator element_generator =
       elemental_emitter.MakeElementGenerator(instr, operand_to_generator);
 
   TF_RETURN_IF_ERROR(
       llvm_ir::LoopEmitter(element_generator, kernel_prototype.results[0], &b)
           .EmitLoop(llvm_ir::IrName(instr)));
+
+  return kernels_.emplace_back(kernel_prototype.function->getName().str());
+}
+
+absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
+    const HloFusionInstruction* fusion) {
+  if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
+    return absl::InternalError(absl::StrCat(
+        "Unsupported loop fusion kind for instruction: ", fusion->ToString()));
+  }
+
+  KernelPrototype kernel_prototype = EmitKernelPrototype(fusion);
+
+  llvm::IRBuilder<> b(module_->getContext());
+  b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
+
+  ElementalIrEmitter elemental_emitter(module_, &b, fast_min_max());
+  FusedIrEmitter fused_emitter(elemental_emitter);
+
+  for (int i = 0; i < fusion->operand_count(); i++) {
+    fused_emitter.BindGenerator(
+        *fusion->fused_parameter(i), [&, i](llvm_ir::IrArray::Index idx) {
+          return kernel_prototype.arguments[i].EmitReadArrayElement(idx, &b);
+        });
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      auto element_generator,
+      fused_emitter.GetGenerator(*fusion->fused_expression_root()));
+
+  TF_RETURN_IF_ERROR(
+      llvm_ir::LoopEmitter(element_generator, kernel_prototype.results[0], &b)
+          .EmitLoop(llvm_ir::IrName(fusion)));
 
   return kernels_.emplace_back(kernel_prototype.function->getName().str());
 }
@@ -289,6 +323,12 @@ IrEmitter2::KernelPrototype IrEmitter2::EmitKernelPrototype(
 
   return KernelPrototype{function, kernel_thread_dims, kernel_thread,
                          std::move(ir_arguments), std::move(ir_results)};
+}
+
+IrEmitter2::KernelPrototype IrEmitter2::EmitKernelPrototype(
+    const HloInstruction* instr) {
+  return EmitKernelPrototype(instr->name(), FlattenedParameters(instr),
+                             FlattenedResults(instr));
 }
 
 }  // namespace xla::cpu

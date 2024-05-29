@@ -97,7 +97,8 @@ absl::StatusOr<bool> RunWhileDCE(
     TF_ASSIGN_OR_RETURN(bool changed_for_computation,
                         HloDCE::RunOnComputation(
                             while_body_comp,
-                            /*remove_cross_partition_collective_ops=*/false));
+                            /*remove_cross_partition_collective_ops=*/false,
+                            /*fusion_kind_deducer=*/nullptr));
     changed |= changed_for_computation;
   }
   return changed;

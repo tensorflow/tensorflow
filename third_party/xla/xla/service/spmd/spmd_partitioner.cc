@@ -5199,9 +5199,11 @@ absl::StatusOr<bool> SpmdPartitioner::Run(
 
   if (changed) {
     HloPassPipeline pass("spmd-cleanup");
-    pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
+    pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true,
+                         /*fusion_kind_deducer=*/nullptr);
     pass.AddPass<TupleSimplifier>();
-    pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
+    pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true,
+                         /*fusion_kind_deducer=*/nullptr);
     pass.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pass.AddPass<FlattenCallGraph>();
     TF_RETURN_IF_ERROR(pass.Run(module, execution_threads).status());

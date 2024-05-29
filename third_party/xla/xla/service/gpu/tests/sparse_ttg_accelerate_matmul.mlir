@@ -9,8 +9,10 @@
 module attributes {"triton_gpu.num-warps" = 4 : i32} {
   tt.func @sparse_dot(%A: tensor<64x32xf16, #lhs>, %B: tensor<64x64xf16, #rhs>, %meta: tensor<64x4xi16, #blocked>) -> tensor<64x64xf32, #blocked> {
     %C = arith.constant dense<0.000000e+00> : tensor<64x64xf32, #blocked>
-    // CHECK-DAG: %[[LHS:.+]] = triton_gpu.local_alloc {{.+}} : (tensor<64x32xf16, #triton_gpu.dot_op<{opIdx = 0, parent = #blocked}>>) -> !tt.memdesc<64x32xf16, #{{.+}}>
-    // CHECK-DAG: %[[RHS:.+]] = triton_gpu.local_alloc {{.+}} : (tensor<64x64xf16, #triton_gpu.dot_op<{opIdx = 1, parent = #blocked}>>) -> !tt.memdesc<64x64xf16, #{{.+}}>
+    // CHECK-DAG: %[[LHS_TEMP:.+]] = triton_gpu.convert_layout {{.+}} : tensor<64x32xf16, #triton_gpu.dot_op<{opIdx = 0, parent = #blocked}>> -> tensor<64x32xf16, #blocked>
+    // CHECK-DAG: %[[LHS:.+]] = triton_gpu.local_alloc %[[LHS_TEMP]] : (tensor<64x32xf16, #blocked>) -> !tt.memdesc<64x32xf16, #{{.+}}>
+    // CHECK-DAG: %[[RHS_TEMP:.+]] = triton_gpu.convert_layout {{.+}} : tensor<64x64xf16, #triton_gpu.dot_op<{opIdx = 1, parent = #blocked}>> -> tensor<64x64xf16, #blocked>
+    // CHECK-DAG: %[[RHS:.+]] = triton_gpu.local_alloc %[[RHS_TEMP]] : (tensor<64x64xf16, #blocked>) -> !tt.memdesc<64x64xf16, #{{.+}}>
     // CHECK-DAG: %[[ACC:.+]] = triton_gpu.convert_layout {{.+}} : tensor<64x64xf32, #blocked> -> tensor<64x64xf32, #[[MMA]]>
     // CHECK-DAG: %[[META:.+]] = triton_gpu.convert_layout {{.+}} : tensor<64x4xi16, #blocked> -> tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #[[MMA]]}>>
     // CHECK: %[[OUT:.+]] = triton_gpu.sparse_dot %[[LHS]], %[[RHS]], %[[ACC]], %[[META]] : {{.+}} -> tensor<64x64xf32, #[[MMA]]>

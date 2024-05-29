@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_THUNK_EMITTER_H_
 #define XLA_SERVICE_CPU_THUNK_EMITTER_H_
 
+#include <vector>
+
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -54,9 +56,19 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitHloInstruction(
       const HloInstruction* instruction);
 
-  absl::StatusOr<ThunkSequence> EmitCopyThunk(const HloInstruction* copy);
+  absl::StatusOr<ThunkSequence> EmitCopyThunk(
+      const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitElementalKernelThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitFusionKernelThunk(
+      const HloInstruction* instruction);
+
+  // Returns the list of buffer allocation slices assigned to the given
+  // instruction leaf buffers. We do not materialize tuples at run time and only
+  // read and write from buffers corresponding to arrays.
+  absl::StatusOr<std::vector<BufferAllocation::Slice>> GetLeafAllocationSlices(
       const HloInstruction* instruction);
 
   IrEmitter2* ir_emitter_;

@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 
@@ -101,11 +102,18 @@ class IrEmitter2 {
   absl::StatusOr<KernelInfo> EmitElementalHostKernel(
       const HloInstruction* instr);
 
+  // Emits a host kernel for the given fusion instruction.
+  absl::StatusOr<KernelInfo> EmitFusionHostKernel(
+      const HloFusionInstruction* fusion);
+
   // Emits a host kernel prototype and prepares function for emitting kernel
   // body into it.
   KernelPrototype EmitKernelPrototype(std::string_view name,
                                       absl::Span<const Shape> arguments,
                                       absl::Span<const Shape> results);
+
+  // Emits a host kernel prototype for the given HLO instruction.
+  KernelPrototype EmitKernelPrototype(const HloInstruction* instr);
 
  private:
   class ElementalIrEmitter;
@@ -118,6 +126,8 @@ class IrEmitter2 {
   llvm_ir::IrArray EmitKernelArgument(llvm::IRBuilder<>& b,
                                       llvm::Value* call_frame, int64_t index,
                                       const Shape& shape);
+
+  bool fast_min_max() const;
 
   const HloModule& hlo_module_;
   llvm::Module* module_;

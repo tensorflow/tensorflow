@@ -39,16 +39,23 @@ namespace xla {
 // instructions cannot be deleted.
 class HloDCE : public HloModulePass {
  public:
-  HloDCE() : remove_cross_partition_collective_ops_(false) {}
-  explicit HloDCE(bool remove_cross_partition_collective_ops)
+  HloDCE()
+      : remove_cross_partition_collective_ops_(false),
+        fusion_kind_deducer_(nullptr) {}
+  explicit HloDCE(bool remove_cross_partition_collective_ops,
+                  std::function<HloInstruction::FusionKind(HloInstruction*)>
+                      fusion_kind_deducer)
       : remove_cross_partition_collective_ops_(
-            remove_cross_partition_collective_ops) {}
+            remove_cross_partition_collective_ops),
+        fusion_kind_deducer_(fusion_kind_deducer) {}
   ~HloDCE() override {}
   absl::string_view name() const override { return "dce"; }
 
   // Run DCE on a computation.
   static absl::StatusOr<bool> RunOnComputation(
-      HloComputation* computation, bool remove_cross_partition_collective_ops);
+      HloComputation* computation, bool remove_cross_partition_collective_ops,
+      std::function<HloInstruction::FusionKind(HloInstruction*)>
+          fusion_kind_deducer);
 
   // Run the pass on the given module. Returns whether the module was changed
   // (instructions were removed).
@@ -71,6 +78,10 @@ class HloDCE : public HloModulePass {
       absl::flat_hash_map<HloComputation*, int>& live_call_counts);
 
   bool remove_cross_partition_collective_ops_;
+
+  // Predicate to determine the kind of fusion after we modify its computation.
+  std::function<HloInstruction::FusionKind(HloInstruction*)>
+      fusion_kind_deducer_;
 };
 
 }  // namespace xla

@@ -2972,7 +2972,8 @@ absl::StatusOr<bool> HloRematerialization::Run(
   // while the module is in flux.
   HloSchedule saved_schedule = module->schedule();
   module->clear_schedule();
-  TF_ASSIGN_OR_RETURN(bool dead_code_removed, HloDCE().Run(module));
+  HloDCE dce(false, options_.fusion_kind_deducer);
+  TF_ASSIGN_OR_RETURN(bool dead_code_removed, dce.Run(module));
   changed |= dead_code_removed;
 
   // After DCE, the module sequence may include instructions which no longer
