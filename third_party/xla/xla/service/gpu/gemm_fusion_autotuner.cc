@@ -574,7 +574,7 @@ absl::StatusOr<std::vector<Config>> GemmFusionAutotunerImpl::GenerateConfigs(
       !config_.IsDeviceless() && GetComputeCapability().IsAtLeastHopper();
   bool is_cudnn_enabled =
       debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 0 && is_hopper &&
-      GetDnnVersionInfo(config_.GetExecutor()).major_version() >= 9;
+      GetDnnVersionInfoOrDefault(config_.GetExecutor()).major_version() >= 9;
   if ((IsFusionKind(fusion, kCuDnnFusionKind) && IsAutotuningEnabled()) ||
       (IsFusionKind(fusion, kTritonGemmFusionKind) && is_cudnn_enabled &&
        algorithm_util::IsSupportedByCudnn(

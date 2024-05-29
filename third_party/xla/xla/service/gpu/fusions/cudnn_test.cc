@@ -65,11 +65,11 @@ class CuDnnFusionTest : public GpuCodegenTest {
     return executor->GetDeviceDescription()
                .cuda_compute_capability()
                .IsAtLeastHopper() &&
-           GetDnnVersionInfo(executor).major_version() >= 9;
+           GetDnnVersionInfoOrDefault(executor).major_version() >= 9;
   }
   bool IsAtLeastCuDnn91() {
     se::StreamExecutor* executor = backend().default_stream_executor();
-    const se::dnn::VersionInfo version = GetDnnVersionInfo(executor);
+    const se::dnn::VersionInfo version = GetDnnVersionInfoOrDefault(executor);
     return (version.major_version() == 9 && version.minor_version() >= 1) ||
            version.major_version() > 9;
   }
