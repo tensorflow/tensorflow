@@ -716,6 +716,7 @@ cc_library(
         "//learning/brain/google/data/core/kernels:__pkg__",
         "//learning/deepmind/tensorflow/queues:__pkg__",
         "//learning/deepmind/tensorflow/sstable:__pkg__",
+        "//learning/deepmind/video/tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__pkg__",
         "//third_party/py/grain/_src/tensorflow/ops:__pkg__",
         "//waymo/ml/compiler/frontend/kernels:__pkg__",
