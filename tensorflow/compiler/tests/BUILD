@@ -2082,7 +2082,7 @@ cuda_py_strict_test(
 
 cuda_py_strict_test(
     name = "dense_layer_test",
-    size = "medium",
+    size = "large",
     srcs = ["dense_layer_test.py"],
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
