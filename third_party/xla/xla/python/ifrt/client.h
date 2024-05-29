@@ -103,7 +103,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // `on_done_with_host_buffer` will be called iff OK is returned.
   //
   // TODO(hyeontaek): Consider changing `on_done_with_host_buffer` into a
-  // returned `Future<Status>` for consistency with other IFRT APIs.
+  // returned `Future<absl::Status>` for consistency with other IFRT APIs.
   virtual absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,

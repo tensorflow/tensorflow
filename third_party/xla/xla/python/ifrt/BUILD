@@ -86,7 +86,6 @@ cc_library(
         ":serdes",
         ":shape_proto_cc",
         ":sharding_proto_cc",
-        "//xla:status",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:util",
@@ -333,7 +332,6 @@ cc_library(
     deps = [
         ":ifrt",
         "//xla:literal",
-        "//xla:status",
         "//xla:test",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:pjrt_client",
