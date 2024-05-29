@@ -34,6 +34,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -150,8 +151,9 @@ class IrEmitter2::ElementalIrEmitter : public xla::ElementalIrEmitter {
 // IrEmitter2
 //===----------------------------------------------------------------------===//
 
-IrEmitter2::IrEmitter2(llvm::Module* module)
-    : module_(module),
+IrEmitter2::IrEmitter2(const HloModule& hlo_module, llvm::Module* module)
+    : hlo_module_(hlo_module),
+      module_(module),
       call_frame_ty_(KernelCallFrameTy(module_->getContext())),
       thread_dims_ty_(KernelThreadDimTy(module_->getContext())),
       thread_ty_(KernelThreadTy(module_->getContext())),
@@ -180,9 +182,10 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
     return absl::InternalError("Multi-output host kernels are not supported");
   }
 
-  // TODO(ezhulenev): Get `fast_min_max` from the HLO module config.
-  ElementalIrEmitter elemental_emitter(module_, &b, /*fast_min_max_=*/true);
-  auto element_generator =
+  ElementalIrEmitter elemental_emitter(
+      module_, &b,
+      hlo_module_.config().debug_options().xla_cpu_enable_fast_min_max());
+  llvm_ir::ElementGenerator element_generator =
       elemental_emitter.MakeElementGenerator(instr, operand_to_generator);
 
   TF_RETURN_IF_ERROR(

@@ -180,8 +180,8 @@ Status ColocatePredecessorTreesPass::Run(
     return absl::OkStatus();
   }
   Graph* graph = options.graph->get();
-  if (VLOG_IS_ON(1)) {
-    VLOG(1) << DumpGraphToFile("before_colocate_predecessor_trees", *graph,
+  if (VLOG_IS_ON(0)) {
+    VLOG(0) << DumpGraphToFile("before_colocate_predecessor_trees", *graph,
                                options.flib_def);
   }
 
@@ -199,8 +199,8 @@ Status ColocatePredecessorTreesPass::Run(
     PropagateColocationInfo(root_node, tree_nodes);
   }
 
-  if (VLOG_IS_ON(1)) {
-    VLOG(1) << DumpGraphToFile("after_colocate_predecessor_trees", *graph,
+  if (VLOG_IS_ON(0)) {
+    VLOG(0) << DumpGraphToFile("after_colocate_predecessor_trees", *graph,
                                options.flib_def);
   }
 

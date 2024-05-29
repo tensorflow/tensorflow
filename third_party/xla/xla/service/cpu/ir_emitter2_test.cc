@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/IR/LLVMContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
@@ -37,6 +38,8 @@ namespace {
 using IrEmitter2Test = HloTestBase;
 
 TEST_F(IrEmitter2Test, BuildKernelPrototype) {
+  auto hlo = std::make_unique<HloModule>("test", HloModuleConfig());
+
   llvm::LLVMContext context;
   auto module = std::make_unique<llvm::Module>("test", context);
 
@@ -44,7 +47,7 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
   std::vector<Shape> parameters = {shape};
   std::vector<Shape> results = {shape};
 
-  IrEmitter2 ir_emitter(module.get());
+  IrEmitter2 ir_emitter(*hlo, module.get());
   IrEmitter2::KernelPrototype prototype =
       ir_emitter.EmitKernelPrototype("test", parameters, results);
 
@@ -97,7 +100,7 @@ TEST_F(IrEmitter2Test, EmitElementalKernel) {
   HloInstruction* convert = FindInstruction(hlo.get(), "convert");
   ASSERT_NE(convert, nullptr);
 
-  IrEmitter2 ir_emitter(module.get());
+  IrEmitter2 ir_emitter(*hlo, module.get());
   TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
                           ir_emitter.EmitElementalHostKernel(convert));
 
