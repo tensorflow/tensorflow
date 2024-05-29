@@ -19,9 +19,9 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -32,15 +32,15 @@ class PluginCoordinationServiceAgent {
 
   virtual bool IsInitialized() const = 0;
 
-  virtual Status InsertKeyValue(std::string_view key,
-                                std::string_view value) = 0;
+  virtual absl::Status InsertKeyValue(std::string_view key,
+                                      std::string_view value) = 0;
 
   virtual absl::StatusOr<std::string> GetKeyValue(std::string_view key) = 0;
   virtual absl::StatusOr<std::string> GetKeyValue(std::string_view key,
                                                   absl::Duration timeout) = 0;
   virtual absl::StatusOr<std::string> TryGetKeyValue(std::string_view key) = 0;
 
-  virtual Status DeleteKeyValue(std::string_view key) = 0;
+  virtual absl::Status DeleteKeyValue(std::string_view key) = 0;
 };
 
 }  // namespace tensorflow

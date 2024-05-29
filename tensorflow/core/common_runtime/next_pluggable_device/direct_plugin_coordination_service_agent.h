@@ -19,11 +19,11 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -38,7 +38,8 @@ class DirectPluginCoordinationServiceAgent
     return agent_->IsInitialized();
   }
 
-  Status InsertKeyValue(std::string_view key, std::string_view value) override {
+  absl::Status InsertKeyValue(std::string_view key,
+                              std::string_view value) override {
     return agent_->InsertKeyValue(key, value);
   }
 
@@ -55,7 +56,7 @@ class DirectPluginCoordinationServiceAgent
     return agent_->TryGetKeyValue(key);
   }
 
-  Status DeleteKeyValue(std::string_view key) override {
+  absl::Status DeleteKeyValue(std::string_view key) override {
     return agent_->DeleteKeyValue(key);
   }
 
