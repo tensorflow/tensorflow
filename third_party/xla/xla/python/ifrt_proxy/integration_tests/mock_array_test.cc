@@ -47,7 +47,6 @@
 #include "xla/python/ifrt_proxy/client/registry.h"
 #include "xla/python/ifrt_proxy/server/grpc_server.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
-#include "xla/status.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/status_matchers.h"
