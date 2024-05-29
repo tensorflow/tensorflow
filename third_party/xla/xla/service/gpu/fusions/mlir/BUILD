@@ -288,6 +288,7 @@ cc_library(
         "propagate_slice_indices.cc",
         "simplify_affine.cc",
         "simplify_arith.cc",
+        "unswitch_loops.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
