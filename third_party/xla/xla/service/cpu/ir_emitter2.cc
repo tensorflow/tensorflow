@@ -168,19 +168,16 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
       EmitKernelPrototype(instr->name(), parameters, results);
   b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
 
-  // TODO(ezhulenev): Figure out how to set up `operand_to_generator` for
-  // multi-argument/result kernels.
-  if (kernel_prototype.arguments.size() != 1 ||
-      kernel_prototype.results.size() != 1) {
-    return absl::UnimplementedError(
-        "Kernel with multiple arguments/results is not implemented");
+  ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
+  for (int64_t i = 0; i < instr->operand_count(); ++i) {
+    const HloInstruction* operand = instr->operand(i);
+    operand_to_generator[operand] = [&, i](const llvm_ir::IrArray::Index& idx) {
+      return kernel_prototype.arguments[i].EmitReadArrayElement(idx, &b);
+    };
   }
 
-  ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
-  for (const HloInstruction* operand : instr->operands()) {
-    operand_to_generator[operand] = [&](const llvm_ir::IrArray::Index& index) {
-      return kernel_prototype.arguments[0].EmitReadArrayElement(index, &b);
-    };
+  if (kernel_prototype.results.size() > 1) {
+    return absl::InternalError("Multi-output host kernels are not supported");
   }
 
   // TODO(ezhulenev): Get `fast_min_max` from the HLO module config.

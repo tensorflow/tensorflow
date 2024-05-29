@@ -81,7 +81,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     // Instructions that do not have a thunk implementation and instead fully
     // defined by the corresponding buffer assignment.
     case HloOpcode::kBitcast:
+    case HloOpcode::kGetTupleElement:
     case HloOpcode::kParameter:
+    case HloOpcode::kTuple:
       return ThunkSequence::Empty();
 
     // Allocations for constants owned by the executable, and resolved at run
@@ -94,6 +96,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     // behind the HostKernel API).
     case HloOpcode::kAdd:
     case HloOpcode::kConvert:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kRsqrt:
+    case HloOpcode::kSqrt:
       return EmitElementalKernelThunk(instruction);
 
     case HloOpcode::kCopy:
