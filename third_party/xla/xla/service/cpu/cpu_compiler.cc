@@ -1156,7 +1156,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   if (module->config().debug_options().xla_cpu_use_thunk_runtime()) {
     // IR emitter is responsible for building LLVM module with host kernels for
     // corresponding HLO instructions (fusions, elemental instructions, etc.).
-    IrEmitter2 ir_emitter(llvm_module.get());
+    IrEmitter2 ir_emitter(*module, llvm_module.get());
 
     // Thunk emitter is responsible for building a Thunk sequence that will
     // resolved kernels in the compiled LLVM module and execute them together

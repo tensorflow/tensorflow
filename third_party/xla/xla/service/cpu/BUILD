@@ -672,6 +672,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_parser",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tests:filecheck",
