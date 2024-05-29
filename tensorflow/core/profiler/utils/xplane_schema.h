@@ -37,6 +37,7 @@ using tsl::profiler::kCustomPlanePrefix;            // NOLINT
 using tsl::profiler::kDeviceVendorAMD;              // NOLINT
 using tsl::profiler::kDeviceVendorNvidia;           // NOLINT
 using tsl::profiler::kGpuPlanePrefix;               // NOLINT
+using tsl::profiler::kHostOffloadOpLineName;        // NOLINT
 using tsl::profiler::kHostThreadsPlaneName;         // NOLINT
 using tsl::profiler::kKernelLaunchLineName;         // NOLINT
 using tsl::profiler::kMegaScaleBarrier;             // NOLINT
