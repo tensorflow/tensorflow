@@ -93,6 +93,33 @@ std::unique_ptr<HloComputation> MakeTrivialLoopCondition(
           init_value_constant, ComparisonDirection::kLe)));
 }
 
+// Handle DynamicGte and DynamicTuple custom-calls created during unstacking
+// pass.
+absl::Status HandleDynamicGteOrTuple(HloInstruction* instr, int64_t iter_num) {
+  if (instr->IsCustomCall("DynamicGte")) {
+    return instr->parent()->ReplaceInstruction(
+        instr, instr->AddInstruction(HloInstruction::CreateGetTupleElement(
+                   instr->mutable_operand(0), iter_num)));
+  } else if (instr->IsCustomCall("DynamicTuple")) {
+    std::vector<HloInstruction*> tuple_operands;
+    for (int64_t i = 0; i < instr->operand(0)->shape().tuple_shapes_size();
+         i++) {
+      if (i == iter_num) {
+        tuple_operands.push_back(instr->mutable_operand(1));
+      } else {
+        HloInstruction* slice =
+            instr->AddInstruction(HloInstruction::CreateGetTupleElement(
+                instr->mutable_operand(0), i));
+        tuple_operands.push_back(slice);
+      }
+    }
+    return instr->parent()->ReplaceInstruction(
+        instr,
+        instr->AddInstruction(HloInstruction::CreateTuple(tuple_operands)));
+  }
+  return absl::OkStatus();
+}
+
 // Helper function that replaces a single iteration of a while loop with
 // induction variable equal to induction_value.
 absl::StatusOr<std::unique_ptr<HloComputation>>
@@ -155,7 +182,7 @@ UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
                                        match::Constant()))) {
         continue;
       }
-
+      CHECK_OK(HandleDynamicGteOrTuple(indvar_use, induction_value));
       for (int64_t i = 0; i < indvar_use->operand_count(); ++i) {
         const HloInstruction* indvar_use_operand = indvar_use->operand(i);
         // Found the induction var user.
