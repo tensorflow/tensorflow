@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/status.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 
