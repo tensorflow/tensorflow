@@ -19382,6 +19382,17 @@ func Gather(scope *Scope, params tf.Output, indices tf.Output, optional ...Gathe
 	return op.Output(0)
 }
 
+// GatherNdAttr is an optional argument to GatherNd.
+type GatherNdAttr func(optionalAttr)
+
+// GatherNdBadIndicesPolicy sets the optional bad_indices_policy attribute to value.
+// If not specified, defaults to ""
+func GatherNdBadIndicesPolicy(value string) GatherNdAttr {
+	return func(m optionalAttr) {
+		m["bad_indices_policy"] = value
+	}
+}
+
 // Gather slices from `params` into a Tensor with shape specified by `indices`.
 //
 // `indices` is a K-dimensional integer tensor, best thought of as a
@@ -19508,15 +19519,20 @@ func Gather(scope *Scope, params tf.Output, indices tf.Output, optional ...Gathe
 //
 // Returns Values from `params` gathered from indices given by `indices`, with
 // shape `indices.shape[:-1] + params.shape[indices.shape[-1]:]`.
-func GatherNd(scope *Scope, params tf.Output, indices tf.Output) (output tf.Output) {
+func GatherNd(scope *Scope, params tf.Output, indices tf.Output, optional ...GatherNdAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "GatherNd",
 		Input: []tf.Input{
 			params, indices,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
