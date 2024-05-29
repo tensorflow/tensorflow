@@ -49,7 +49,7 @@ class AddressComputationThunk : public Thunk {
   // Dynamic slice offset can be either: (1) a statically known constant value,
   // (2) a loop iteration number, or (3) a truly dynamic offset that is
   // computed on device and have to be transferred to host.
-  using Offset = std::variant<int64_t, LoopIter, BufferAllocation::Slice>;
+  using Offset = std::variant<uint64_t, LoopIter, BufferAllocation::Slice>;
 
   AddressComputationThunk(
       ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,

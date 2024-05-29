@@ -238,14 +238,21 @@ absl::Status CollectSliceInfo(
     const auto* offset_value = fusion_instr.operand(param->parameter_number());
 
     if (auto* cst = DynCast<HloConstantInstruction>(offset_value)) {
-      // Loop offset is defined by a constant value.
-      auto s32_scalar = ShapeUtil::MakeShape(PrimitiveType::S32, {});
-      auto s64_scalar = ShapeUtil::MakeShape(PrimitiveType::S64, {});
-
-      if (cst->shape() == s32_scalar) {
-        arg_offsets.emplace_back() = cst->literal().data<int32_t>()[0];
-      } else if (cst->shape() == s64_scalar) {
-        arg_offsets.emplace_back() = cst->literal().data<int64_t>()[0];
+      // Loop offset is defined by a constant scalar value.
+      if (ShapeUtil::IsScalarWithElementType(cst->shape(),
+                                             PrimitiveType::S32)) {
+        arg_offsets.emplace_back() =
+            static_cast<uint64_t>(cst->literal().data<int32_t>()[0]);
+      } else if (ShapeUtil::IsScalarWithElementType(cst->shape(),
+                                                    PrimitiveType::S64)) {
+        arg_offsets.emplace_back() =
+            static_cast<uint64_t>(cst->literal().data<int64_t>()[0]);
+      } else if (ShapeUtil::IsScalarWithElementType(cst->shape(),
+                                                    PrimitiveType::U32)) {
+        arg_offsets.emplace_back() = cst->literal().data<uint32_t>()[0];
+      } else if (ShapeUtil::IsScalarWithElementType(cst->shape(),
+                                                    PrimitiveType::U64)) {
+        arg_offsets.emplace_back() = cst->literal().data<uint64_t>()[0];
       } else {
         return absl::InternalError(absl::StrCat(
             "Unsupported constant offset shape: ", cst->shape().ToString()));
