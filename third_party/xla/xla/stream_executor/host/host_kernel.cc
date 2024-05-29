@@ -95,8 +95,8 @@ absl::Status HostKernel::Launch(
   const uint64_t workload =
       kernel_thread_dims.z * kernel_thread_dims.y * kernel_thread_dims.x;
 
-  const uint64_t num_partitions = workload / block_size;
-  const uint64_t remainder = workload % block_size;
+  const uint64_t num_partitions = thread_pool_ ? (workload / block_size) : 0;
+  const uint64_t remainder = thread_pool_ ? workload % block_size : workload;
 
   SE_HOST_Kernel* kernel = function_->kernel();
 
