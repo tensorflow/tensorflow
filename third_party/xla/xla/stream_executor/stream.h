@@ -85,7 +85,7 @@ class Stream {
   // TODO(ezhulenev): Consider removing this platform-specific accessor and
   // forward all users to platform-specific headers, however it requires careful
   // build rules set up to avoid leaking even more implementation details.
-  PlatformSpecificHandle platform_specific_handle() const;
+  virtual PlatformSpecificHandle platform_specific_handle() const;
 
   // Returns whether any errors have occurred while entraining work for this
   // stream.
@@ -269,12 +269,6 @@ class Stream {
   virtual std::variant<StreamPriority, int> priority() const {
     return StreamPriority::Default;
   }
-
-  // Returns a pointer to a platform specific stream associated with this object
-  // if it exists, or nullptr otherwise. This is available via Stream public API
-  // as Stream::PlatformSpecificHandle, and should not be accessed directly
-  // outside of a StreamExecutor package.
-  virtual void *platform_specific_stream() const { return nullptr; }
 
  private:
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {

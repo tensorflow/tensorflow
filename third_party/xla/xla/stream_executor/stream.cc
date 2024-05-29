@@ -49,7 +49,7 @@ Stream::Stream(StreamExecutor *parent)
 
 Stream::PlatformSpecificHandle Stream::platform_specific_handle() const {
   PlatformSpecificHandle handle;
-  handle.stream = platform_specific_stream();
+  handle.stream = nullptr;
   return handle;
 }
 

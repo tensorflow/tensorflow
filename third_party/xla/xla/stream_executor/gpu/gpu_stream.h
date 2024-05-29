@@ -50,7 +50,11 @@ class GpuStream : public Stream {
     parent()->DeallocateStream(this);
   }
 
-  void* platform_specific_stream() const override { return gpu_stream_; }
+  // Returns a pointer to a platform specific stream associated with this object
+  // if it exists, or nullptr otherwise. This is available via Stream public API
+  // as Stream::PlatformSpecificHandle, and should not be accessed directly
+  // outside of a StreamExecutor package.
+  void* platform_specific_stream() const { return gpu_stream_; }
 
   // Explicitly initialize the CUDA resources associated with this stream.
   bool Init();
@@ -62,6 +66,7 @@ class GpuStream : public Stream {
   std::variant<StreamPriority, int> priority() const override {
     return stream_priority_;
   }
+  PlatformSpecificHandle platform_specific_handle() const override;
 
   // Explicitly destroy the CUDA resources associated with this stream, used by
   // StreamExecutor::DeallocateStream().
