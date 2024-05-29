@@ -1719,7 +1719,10 @@ xla_test(
 xla_test(
     name = "copy_test",
     srcs = ["copy_test.cc"],
-    tags = ["test_hlo_pjrt_runner"],
+    tags = [
+        "test_hlo_pjrt_runner",
+        "test_xla_cpu_thunks",
+    ],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",

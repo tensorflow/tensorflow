@@ -29,6 +29,7 @@ using tsl::profiler::kThreadIdDerivedMax;    // NOLINT
 using tsl::profiler::kThreadIdDerivedMin;    // NOLINT
 using tsl::profiler::kThreadIdHloModule;     // NOLINT
 using tsl::profiler::kThreadIdHloOp;         // NOLINT
+using tsl::profiler::kThreadIdHostOffloadOp;  // NOLINT
 using tsl::profiler::kThreadIdKernelLaunch;  // NOLINT
 using tsl::profiler::kThreadIdOverhead;      // NOLINT
 using tsl::profiler::kThreadIdSource;        // NOLINT
