@@ -72,7 +72,8 @@ def gen_gpu_hlo_compile_tests(
         disabled_backends = [],
         backend_tags = {},
         backend_args = {},
-        xla_flags = []):
+        xla_flags = [],
+        tags = []):
     """Macro to generate Bazel tests for compiling HLO files on a GPU.
 
     This macro creates individual Bazel test targets for each specified HLO file.
@@ -101,6 +102,7 @@ def gen_gpu_hlo_compile_tests(
       backend_args: A dict mapping backend name to list of additional args to
         use for that target.
       xla_flags: A list of XLA flags passed to multihost_hlo_runner.
+      tags: A list of tags to apply to all generated tests.
 
 
     Example Usage:
@@ -180,5 +182,5 @@ def gen_gpu_hlo_compile_tests(
                     hlo_path,
                 ] + xla_flags,
                 data = ["//xla/tools/multihost_hlo_runner:cuda_hlo_runner_main", data_label],
-                tags = backend_tags[backend] + ["requires-mem:16g"],
+                tags = backend_tags[backend] + ["requires-mem:16g"] + tags,
             )

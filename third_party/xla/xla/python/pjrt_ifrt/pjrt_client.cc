@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/basic_string_array.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/pjrt_remap.h"
+#include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -524,13 +526,14 @@ absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
   return PjRtTuple::Create(this, values);
 }
 
-absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-PjRtClient::GetTopologyForDevices(const xla::ifrt::DeviceList& devices) const {
+absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
+    const xla::ifrt::DeviceList& devices) const {
   // TODO(parkers): Consider constructing a sub-slice topology based on the
   // provided devices.
   TF_ASSIGN_OR_RETURN(auto topology, pjrt_client_->GetTopologyDescription());
-  return std::shared_ptr<const xla::PjRtTopologyDescription>(pjrt_client_,
-                                                             topology);
+  return std::make_shared<PjRtTopology>(
+      std::shared_ptr<const xla::PjRtTopologyDescription>(pjrt_client_,
+                                                          topology));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLayout>>

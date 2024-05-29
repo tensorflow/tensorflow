@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/service/computation_placer.h"
@@ -180,9 +181,9 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // only ahead-of-time compilation.
   virtual Compiler* GetDefaultCompiler() = 0;
 
-  // Returns a topology description for that covers the provided devices.
-  virtual absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-  GetTopologyForDevices(const DeviceList& devices) const = 0;
+  // Returns a topology that covers the provided devices.
+  virtual absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
+      const DeviceList& devices) const = 0;
 
   // Returns the default layout on `device` for a buffer with `dtype` and
   // single-shard dimensions `dims`.

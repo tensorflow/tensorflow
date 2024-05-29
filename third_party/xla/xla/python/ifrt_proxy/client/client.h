@@ -40,6 +40,7 @@
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/compiler.h"
@@ -118,8 +119,8 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   xla::ifrt::Compiler* GetDefaultCompiler() override {
     return &default_compiler_;
   }
-  absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-  GetTopologyForDevices(const xla::ifrt::DeviceList& devices) const override {
+  absl::StatusOr<std::shared_ptr<xla::ifrt::Topology>> GetTopologyForDevices(
+      const xla::ifrt::DeviceList& devices) const override {
     return absl::UnimplementedError(
         "GetTopologyForDevices is not supported for the IFRT proxy client.");
   }

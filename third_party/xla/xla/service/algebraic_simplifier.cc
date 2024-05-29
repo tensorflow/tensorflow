@@ -1479,6 +1479,15 @@ bool AlgebraicSimplifierVisitor::SwapCopyBitcastCopy(
 
 absl::Status AlgebraicSimplifierVisitor::HandleBitcastConvert(
     HloInstruction* bitcast) {
+  auto operand = bitcast->mutable_operand(0);
+
+  // In a chain of BitcastConverts, only keep the last one.
+  if (HloOpcode::kBitcastConvert == operand->opcode()) {
+    return ReplaceWithNewInstruction(
+        bitcast, HloInstruction::CreateBitcastConvert(
+                     bitcast->shape(), operand->mutable_operand(0)));
+  }
+
   TF_ASSIGN_OR_RETURN(bool replaced,
                       TrySimplifyTautologicalBitcastConvert(bitcast));
   if (replaced) {

@@ -23,6 +23,9 @@
 #include "absl/strings/string_view.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 
 namespace xla {
@@ -36,6 +39,10 @@ class Compiler final : public llvm::RTTIExtends<Compiler, xla::ifrt::Compiler> {
   absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compile(
       std::unique_ptr<xla::ifrt::Program> program,
       std::unique_ptr<xla::ifrt::CompileOptions> options) override;
+
+  absl::StatusOr<std::unique_ptr<Executable>> Compile(
+      std::unique_ptr<Program> program, const Topology& topology,
+      std::unique_ptr<CompileOptions> options) override;
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>>
   DeserializeLoadedExecutable(
