@@ -651,6 +651,16 @@ Value UnrealizedConversionCast(mlir::Type type, Value value,
   return converted.front();
 }
 
+SmallVector<Value> UnrealizedConversionCast(mlir::TypeRange types,
+                                            ValueRange values,
+                                            ImplicitLocOpBuilder& b) {
+  SmallVector<Value> converted;
+  for (auto [type, value] : llvm::zip(types, values)) {
+    converted.push_back(UnrealizedConversionCast(type, value, b));
+  }
+  return converted;
+}
+
 SmallVector<Value> ConvertToSignless(mlir::ValueRange values,
                                      ImplicitLocOpBuilder& b) {
   mlir::mhlo::RemoveSignTypeConverter sign_converter;

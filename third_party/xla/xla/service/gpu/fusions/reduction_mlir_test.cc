@@ -403,6 +403,31 @@ TEST_F(ReductionTest, SideOutput) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(ReductionTest, UnsignedSideOutput) {
+  constexpr auto kHloString = R"(
+    HloModule Test, is_scheduled=true
+
+    Add {
+      lhs = u32[] parameter(0)
+      rhs = u32[] parameter(1)
+      ROOT add = u32[] add(lhs, rhs)
+    }
+    fused_computation {
+      param_0 = u32[8,2048] parameter(0)
+      param_1 = u32[] parameter(1)
+      add = u32[8,2048] add(param_0, param_0)
+      reduce = u32[8] reduce(param_0, param_1), dimensions={1}, to_apply=Add
+      ROOT t = (u32[8], u32[8,2048]) tuple(reduce, add)
+    }
+    ENTRY main {
+      a = u32[8,2048] parameter(0)
+      c = u32[] constant(0)
+      ROOT fusion = (u32[8], u32[8,2048]) fusion(a, c), kind=kInput,
+          calls=fused_computation
+    })";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 TEST_F(ReductionTest, BroadcastSideOutput) {
   constexpr auto kHloString = R"(
     %add {

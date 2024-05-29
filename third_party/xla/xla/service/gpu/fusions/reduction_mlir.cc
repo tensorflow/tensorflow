@@ -35,7 +35,6 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
@@ -304,7 +303,8 @@ llvm::SmallVector<Value> MlirReductionFusion::EmitReduction(
                                               output_indices);
       }
     }
-    return outputs;
+    return mlir_converter::UnrealizedConversionCast(
+        state.entry_function.getResultTypes(), outputs, b);
   };
 
   HloValueMap inits;
@@ -336,10 +336,8 @@ llvm::SmallVector<Value> MlirReductionFusion::EmitReduction(
       int max_dist = WarpSize() / 2 / reduction_info().GetRowsPerWarp();
       const auto& inits_for_reduction = inits.at(reduction);
       auto& values = accumulated[reduction];
-      for (auto [index, acc] : llvm::enumerate(values)) {
-        auto ty = inits_for_reduction[index].getType();
-        values[index] = mlir_converter::UnrealizedConversionCast(ty, acc, b);
-      }
+      values = mlir_converter::UnrealizedConversionCast(
+          mlir::TypeRange(inits_for_reduction), values, b);
       values =
           b.create<ShuffleReduceOp>(reducer, values, max_dist).getResults();
     }
@@ -460,13 +458,10 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
     for (auto* reduction : reductions) {
       int arity = reduction->operand_count() / 2;
       int start = iter_arg_starts[reduction];
-      SmallVector<Value> reduce_args = iter_args.slice(start, arity);
       const auto& inits_for_reduction = inits.at(reduction);
-      for (auto [index, arg] : llvm::enumerate(reduce_args)) {
-        auto init_type = inits_for_reduction[index].getType();
-        reduce_args[index] =
-            mlir_converter::UnrealizedConversionCast(init_type, arg, builder);
-      }
+      SmallVector<Value> reduce_args = mlir_converter::UnrealizedConversionCast(
+          mlir::TypeRange(inits_for_reduction), iter_args.slice(start, arity),
+          builder);
       reduce_args.append(ProvideParameterRange(
           computation, reduction, 0, arity, get_input_indices(reduction, true),
           call_target, entry_function, builder));
@@ -488,6 +483,7 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
       Value value = mlir_converter::ProvideParameter(
           computation, root_tuple, root_tuple->operand_index(side_output),
           indices, call_target, entry_function, builder)[0];
+      value = mlir_converter::ConvertToSignless(value, builder).front();
       side_output_values.push_back({std::move(indices), value});
     }
     for (const auto& [side_output, values] :
@@ -505,6 +501,11 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
   HloValueMap results_per_hero;
   for (const auto& [hero, init] : inits) {
     results_per_hero[hero] = results.slice(iter_arg_starts[hero], init.size());
+  }
+  for (auto* side_output : side_outputs) {
+    auto& results_for_hero = results_per_hero[side_output];
+    results_for_hero = mlir_converter::UnrealizedConversionCast(
+        mlir::TypeRange(inits.at(side_output)), results_for_hero, builder);
   }
   return results_per_hero;
 }
