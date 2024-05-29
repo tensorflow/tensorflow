@@ -85,7 +85,7 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId) {
   HloInstruction *all_gather =
       module->entry_computation()->GetInstructionWithName("all-gather");
 
-  EXPECT_TRUE(IsCollectiveWithChannelId(all_gather));
+  EXPECT_EQ(IsOrHasCollectiveWithChannelId(all_gather), all_gather);
 }
 
 TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
@@ -109,7 +109,7 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
       HloInstruction::CreateFusion(ShapeUtil::MakeShape(BF16, {1, 4096, 4096}),
                                    HloInstruction::FusionKind::kOutput,
                                    {param_0}, computation.get(), "fusion");
-  EXPECT_TRUE(IsCollectiveWithChannelId(fusion.get()));
+  EXPECT_EQ(IsOrHasCollectiveWithChannelId(fusion.get()), instr);
 
   auto builder2 = HloComputation::Builder("CollectiveWithChannelId2");
   TF_ASSERT_OK_AND_ASSIGN(
@@ -126,7 +126,7 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
       HloInstruction::CreateFusion(ShapeUtil::MakeShape(BF16, {1, 4096, 4096}),
                                    HloInstruction::FusionKind::kOutput,
                                    {param_1}, computation2.get(), "fusion2");
-  EXPECT_FALSE(IsCollectiveWithChannelId(fusion2.get()));
+  EXPECT_EQ(IsOrHasCollectiveWithChannelId(fusion2.get()), nullptr);
 }
 
 }  // namespace

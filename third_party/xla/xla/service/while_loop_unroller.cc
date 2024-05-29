@@ -119,11 +119,12 @@ UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
   for (HloInstruction* body_inst : while_body_clone->instructions()) {
     // We need to assign a unique channel_id for the collective ops that are
     // unrolled within the while loop body or fusions containing collectives.
-    if (IsCollectiveWithChannelId(body_inst)) {
+    HloInstruction* collective = IsOrHasCollectiveWithChannelId(body_inst);
+    if (collective != nullptr) {
       // To obtain the channel_id for the collective ops we only need to
       // increment the `unique_channel_id` since it records the next available
       // channel_id across the module.
-      body_inst->set_channel_id(unique_channel_id++);
+      collective->set_channel_id(unique_channel_id++);
     }
 
     // We only consider induction variable instructions of the following form.
