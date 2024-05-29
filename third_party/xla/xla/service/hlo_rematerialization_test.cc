@@ -773,7 +773,8 @@ ENTRY %entry {
                               /*memory_limit_bytes=*/11 * 1024, module.get()));
   EXPECT_TRUE(changed);
   ASSERT_THAT(
-      add, op::Add(op::Multiply(), AllOf(op::Fusion(), ::testing::Ne(fusion))));
+      add, op::Add(op::Multiply(), op::GetTupleElement(AllOf(
+                                       op::Fusion(), ::testing::Ne(fusion)))));
   CheckForRematInInstructionNames(
       ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
@@ -876,9 +877,9 @@ ENTRY %entry {
                           RunHloRematerialization(
                               /*memory_limit_bytes=*/11 * 1024, module.get()));
   EXPECT_TRUE(changed);
-  ASSERT_THAT(add,
-              op::Add(op::Bitcast(op::Multiply()),
-                      op::Bitcast(AllOf(op::Fusion(), ::testing::Ne(fusion)))));
+  ASSERT_THAT(add, op::Add(op::Bitcast(op::Multiply()),
+                           op::Bitcast(op::GetTupleElement(
+                               AllOf(op::Fusion(), ::testing::Ne(fusion))))));
   CheckForRematInInstructionNames(
       ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
@@ -928,9 +929,10 @@ ENTRY %entry {
                           RunHloRematerialization(
                               /*memory_limit_bytes=*/11 * 1024, module.get()));
   EXPECT_TRUE(changed);
-  ASSERT_THAT(add, op::Add(AllOf(op::Fusion(), ::testing::Ne(tuple),
-                                 ::testing::Ne(fusion)),
-                           op::Add()));
+  ASSERT_THAT(
+      add, op::Add(op::GetTupleElement(AllOf(op::Fusion(), ::testing::Ne(tuple),
+                                             ::testing::Ne(fusion))),
+                   op::Add()));
   CheckForRematInInstructionNames(
       ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }

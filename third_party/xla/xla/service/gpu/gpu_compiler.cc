@@ -2232,6 +2232,8 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
         /*host_memory_offload_config=*/offloading_config);
     HloRematerialization::RematerializationSizes sizes;
     pipeline.AddPass<HloRematerialization>(options, sizes);
+    pipeline.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/false,
+                             /*cleanup_mof_root=*/true);
     pipeline.AddPass<StreamAttributeAnnotator>();
     pipeline.AddPass<OptimizationBarrierExpander>();
 

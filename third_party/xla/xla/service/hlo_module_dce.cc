@@ -95,9 +95,7 @@ absl::StatusOr<bool> RunWhileDCE(
   // Run DCE on while body computations that we modified.
   for (auto* while_body_comp : while_body_comps_to_dce) {
     TF_ASSIGN_OR_RETURN(bool changed_for_computation,
-                        HloDCE::RunOnComputation(
-                            while_body_comp,
-                            /*remove_cross_partition_collective_ops=*/false));
+                        HloDCE::RunOnComputation(while_body_comp));
     changed |= changed_for_computation;
   }
   return changed;
