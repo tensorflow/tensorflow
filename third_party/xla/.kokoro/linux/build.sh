@@ -72,9 +72,11 @@ if is_linux_gpu_job ; then
     RBE_FLAGS="--config=rbe_linux_cuda_nvcc --jobs=150"
     (
       #TODO(b/338885148): Remove this block after TF was updated to cuDNN 9
-      sed -i 's/@sigbuild-r2\.17-clang_/@sigbuild-r2.17-clang-cudnn9_/g' ./github/xla/.bazelrc
+      pushd github/xla
+      sed -i 's/@sigbuild-r2\.17-clang_/@sigbuild-r2.17-clang-cudnn9_/g' .bazelrc
       echo "The following changes were made:"
       git diff -- .bazelrc || true
+      popd
     )
     echo "***NOTE: nvidia-smi lists the highest CUDA version the driver supports, which may be different than the version of CUDA actually used!!***"
     nvidia-smi
