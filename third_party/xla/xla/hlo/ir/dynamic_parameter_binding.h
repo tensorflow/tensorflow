@@ -24,9 +24,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 
 namespace xla {
 

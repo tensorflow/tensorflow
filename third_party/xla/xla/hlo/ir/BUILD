@@ -70,7 +70,6 @@ cc_library(
         "//xla:protobuf_util",
         "//xla:shape_tree",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:types",

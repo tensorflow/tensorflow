@@ -19,9 +19,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/status.h"
 
 namespace xla {
 

@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/python/py_client.h"
 #include "xla/python/traceback.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
