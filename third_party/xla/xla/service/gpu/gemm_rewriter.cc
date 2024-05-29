@@ -1374,6 +1374,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     std::unique_ptr<HloInstruction> new_gemm =
         existing_gemm->CloneWithNewShape(instr->shape());
+
+    // The F8ConvertD may change the output dtype. We need to turn off the
+    // output to operand aliasing when it happens.
+    if (gemm_backend_config.beta() != 0.0 &&
+        !ShapeUtil::Equal(existing_gemm->operand(2)->shape(),
+                          new_gemm->shape())) {
+      xla::Cast<HloCustomCallInstruction>(new_gemm.get())
+          ->set_output_to_operand_aliasing({});
+    }
+
     TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(new_gemm)));
 
     VLOG(1) << "Conversion" << (reduce_damax ? " and amax calculation" : "")
