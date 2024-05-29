@@ -25,16 +25,32 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
 namespace support {
 
-absl::StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
-                                        absl::Span<const int> device_mapping) {
+absl::StatusOr<OpSharding> ToOpSharding(const Sharding& sharding) {
+  if (auto* sharding_param_sharding =
+          llvm::dyn_cast<xla::ifrt::ShardingParamSharding>(&sharding)) {
+    return ToOpSharding(sharding_param_sharding->sharding_param(),
+                        sharding_param_sharding->devices());
+  } else {
+    return absl::InvalidArgumentError(
+        "Only conversion from `ShardingParamSharding` to `OpSharding` is "
+        "supported.");
+  }
+}
+
+absl::StatusOr<OpSharding> ToOpSharding(
+    const ShardingParam& sharding_param,
+    const xla::ifrt::DeviceList& device_mapping) {
   OpSharding op_sharding;
   {
     bool all_dim_replicated = true;
@@ -69,18 +85,19 @@ absl::StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
   }
 
   // Populate tile_assignment_devices.
-  llvm::SmallVector<int, 4> devices;
-  sharding_param.minor_to_major().ToDeviceList(devices);
+  llvm::SmallVector<int> logical_device_ids;
+  sharding_param.minor_to_major().ToDeviceList(logical_device_ids);
   auto* tile_assignment_devices = op_sharding.mutable_tile_assignment_devices();
-  tile_assignment_devices->Reserve(devices.size());
-  for (const int device : devices) {
-    if (device < 0 || device >= device_mapping.size()) {
+  tile_assignment_devices->Reserve(logical_device_ids.size());
+  for (const int logical_device_id : logical_device_ids) {
+    if (logical_device_id < 0 || logical_device_id >= device_mapping.size()) {
       return absl::OutOfRangeError(
-          absl::StrCat("Can't map device with logical id ", device,
+          absl::StrCat("Can't map device with logical id ", logical_device_id,
                        ". The logical device id should be within [0, ",
                        device_mapping.size(), ")."));
     }
-    tile_assignment_devices->Add(device_mapping[device]);
+    tile_assignment_devices->Add(
+        device_mapping[logical_device_id]->Id().value());
   }
 
   return op_sharding;
