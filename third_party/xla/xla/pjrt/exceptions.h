@@ -23,9 +23,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "xla/status.h"
 
 namespace xla {
 
@@ -40,7 +40,7 @@ class XlaRuntimeError : public std::runtime_error {
 
   explicit XlaRuntimeError(const std::string what) : std::runtime_error(what) {}
 
-  std::optional<Status> status() const { return status_; }
+  std::optional<absl::Status> status() const { return status_; }
 
  private:
   static std::string StatusToString(const absl::Status& st) {
@@ -59,7 +59,7 @@ class XlaRuntimeError : public std::runtime_error {
     return false;
   }
 
-  std::optional<Status> status_;
+  std::optional<absl::Status> status_;
 };
 
 }  // namespace xla

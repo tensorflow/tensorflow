@@ -128,7 +128,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -422,7 +421,7 @@ absl::Status AddDestinationBufferSynchronization(
   RecordUsage(std::move(device_buffer), local_device, local_device,
               definition_event, copy_stream,
               /*prefer_to_retain_reference=*/false);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -2591,7 +2590,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
       done_.SetStateConcrete();
     }
 
-    return PjRtFuture<>(OkStatus());
+    return PjRtFuture<>(absl::OkStatus());
   }
 
  private:
@@ -2907,7 +2906,7 @@ PjRtStreamExecutorLoadedExecutable::MakeOutputBuffers(
   return outputs;
 }
 
-static Status GetFirstInputError(
+static absl::Status GetFirstInputError(
     absl::Span<PjRtBuffer* const> argument_handles) {
   for (auto* handle : argument_handles) {
     auto* buffer = tensorflow::down_cast<PjRtStreamExecutorBuffer*>(handle);
@@ -2944,7 +2943,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
     (*device_assignment)(0, 0) = device->id();
   }
 
-  Status input_error = GetFirstInputError(argument_handles);
+  absl::Status input_error = GetFirstInputError(argument_handles);
   if (!input_error.ok()) {
     TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
                         device->default_memory_space());
