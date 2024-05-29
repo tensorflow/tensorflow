@@ -96,6 +96,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
     // Simple HLO instructions lowered to elemental host kernels (plain loops
     // behind the HostKernel API).
+    case HloOpcode::kAbs:
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
@@ -123,6 +124,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kPower:
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
+    case HloOpcode::kReverse:
     case HloOpcode::kRsqrt:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:

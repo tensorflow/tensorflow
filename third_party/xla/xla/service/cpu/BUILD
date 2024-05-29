@@ -68,6 +68,10 @@ test_suite(
         "//xla/tests:convert_test_cpu",
         "//xla/tests:copy_test_cpu",
         "//xla/tests:floor_ceil_test_cpu",
+        "//xla/tests:numerics_test_cpu",
+        "//xla/tests:reshape_test_cpu",
+        "//xla/tests:reverse_test_cpu",
+        "//xla/tests:unary_op_test_cpu",
     ],
 )
 
