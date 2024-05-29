@@ -429,6 +429,7 @@ HloValueMap MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
       .GetMutableDimensionBound(
           KernelFusionInterface::kIndexingMapBlockIdxDims[1])
       .upper = owner.reduction_heroes_.size();
+  tile_indexing.Simplify();
   bool vectorize = tiling.GetThreadTileSize().back() > 1;
 
   SmallVector<Value> iter_arg_inits;

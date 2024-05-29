@@ -363,7 +363,7 @@ struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
 
     // Remove unused symbols.
     auto unused_symbols_bit_vector = indexing_map.RemoveUnusedVars();
-    bool symbols_removed = !unused_symbols_bit_vector.empty();
+    bool symbols_removed = unused_symbols_bit_vector.count() != 0;
 
     if (!is_simplified && !symbols_removed) {
       return rewriter.notifyMatchFailure(indexing_op,
