@@ -954,7 +954,7 @@ Status Queue<TaskType>::ScheduleWithLazySplit(std::unique_ptr<TaskType>* task) {
       if (task_handle_batches_.back()->empty()) {
         open_batch_start_time_micros_ = env_->NowMicros();
       }
-      profiler::TraceMeProducer trace_me(
+      tsl::profiler::TraceMeProducer trace_me(
           [&task_handles, i] {
             return profiler::TraceMeEncode("ScheduleOutputTask",
                                            {{"size", task_handles[i]->size()}});
@@ -1035,7 +1035,7 @@ Status Queue<TaskType>::ScheduleWithoutOrEagerSplitImpl(
     if (batches.back()->empty()) {
       open_batch_start_time_micros_ = env_->NowMicros();
     }
-    profiler::TraceMeProducer trace_me(
+    tsl::profiler::TraceMeProducer trace_me(
         [&output_tasks, i] {
           return profiler::TraceMeEncode("ScheduleOutputTask",
                                          {{"size", output_tasks[i]->size()}});
@@ -1326,7 +1326,7 @@ template <typename TaskType>
 void Queue<TaskType>::ProcessBatch(
     std::unique_ptr<Batch<TaskType>> batch,
     std::vector<std::unique_ptr<TaskType>> padding_task) {
-  profiler::TraceMeConsumer trace_me(
+  tsl::profiler::TraceMeConsumer trace_me(
       [&] {
         return profiler::TraceMeEncode(
             "ProcessBatch", {{"batch_size_before_padding", batch->size()},
