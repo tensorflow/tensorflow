@@ -261,7 +261,7 @@ absl::StatusOr<Literal> MakeFakeLiteralInternal(
   new_shape.mutable_layout()->set_element_size_in_bits(0);
   Literal literal(new_shape);
 
-  TF_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<Status>(
+  TF_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
       [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;

@@ -21,11 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 #include "xla/tools/multihost_hlo_runner/hlo_runner_flags.h"

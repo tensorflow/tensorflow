@@ -30,13 +30,13 @@ limitations under the License.
 #include "xla/ffi/api/api.h"
 // IWYU pragma: end_exports
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -371,7 +371,7 @@ struct CtxDecoding<UserData<T>> {
 //===----------------------------------------------------------------------===//
 
 template <>
-struct ResultEncoding<Status> {
+struct ResultEncoding<absl::Status> {
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api, absl::Status status) {
     return api->internal_api->XLA_FFI_INTERNAL_Error_Forward(&status);
   }

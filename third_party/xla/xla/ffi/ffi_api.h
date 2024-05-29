@@ -21,13 +21,13 @@ limitations under the License.
 #include <string_view>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 
