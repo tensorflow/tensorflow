@@ -1306,6 +1306,7 @@ REGISTER_OP("GatherNd")
     .Output("output: Tparams")
     .Attr("Tparams: type")
     .Attr("Tindices: {int16,int32,int64}")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(shape_inference::GatherNdShape);
 
 // --------------------------------------------------------------------------

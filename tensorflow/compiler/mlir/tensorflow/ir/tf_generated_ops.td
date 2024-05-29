@@ -6230,7 +6230,9 @@ See also `tf.gather` and `tf.batch_gather`.
 
   let arguments = (ins
     Arg<TF_Tensor, [{The tensor from which to gather values.}]>:$params,
-    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{Index tensor.}]>:$indices
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{Index tensor.}]>:$indices,
+
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$bad_indices_policy
   );
 
   let results = (outs

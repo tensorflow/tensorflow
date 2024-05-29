@@ -347,7 +347,7 @@ def LegalizeGather: Pat<
   (TFL_GatherOp $params, $indices, ConstantAttr<I32Attr, "0">,
      ConstantAttr<I32Attr, "0">)>;
 
-def LegalizeGatherNd : Pat<(TF_GatherNdOp $params, $indices),
+def LegalizeGatherNd : Pat<(TF_GatherNdOp $params, $indices, $bad_indices_policy),
                            (TFL_GatherNdOp $params, $indices)>;
 
 def LegalizeGatherV2 : Pat<
