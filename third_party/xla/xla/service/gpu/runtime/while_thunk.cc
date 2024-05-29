@@ -38,16 +38,20 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-static thread_local auto* loop_counters = new std::list<int64_t>();
+static std::list<int64_t>& LoopCounters() {
+  // TODO(b/343294327): Do not rely on thread-local storage.
+  static thread_local std::list<int64_t> loop_counters;
+  return loop_counters;
+}
 
 absl::StatusOr<int64_t> WhileThunk::CurrentLoopIteration(int64_t depth) {
-  if (depth >= loop_counters->size()) {
+  if (depth >= LoopCounters().size()) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "Loop depth %d is greater than the number of tracked loops %d", depth,
-        loop_counters->size()));
+        LoopCounters().size()));
   }
 
-  auto counter = loop_counters->begin();
+  auto counter = LoopCounters().begin();
   std::advance(counter, depth);
   return *counter;
 }
@@ -91,8 +95,8 @@ absl::Status WhileThunk::Initialize(const InitializeParams& params) {
 absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
 
-  int64_t& iter = loop_counters->emplace_front();
-  absl::Cleanup cleanup = [&] { loop_counters->pop_front(); };
+  int64_t& iter = LoopCounters().emplace_front();
+  absl::Cleanup cleanup = [&] { LoopCounters().pop_front(); };
 
   se::DeviceMemoryBase condition_result_data =
       params.buffer_allocations->GetDeviceAddress(
