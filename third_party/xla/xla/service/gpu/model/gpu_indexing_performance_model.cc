@@ -115,7 +115,6 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
   LaunchDimensions launch_dimensions =
       EstimateFusionLaunchDimensions(fusion_analysis);
 
-  int64_t num_threads = launch_dimensions.launch_bound();
   int64_t num_blocks = launch_dimensions.num_blocks();
 
   // Compute indexing from root to each instruction in the fusion and fusion
@@ -167,7 +166,9 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
 
   int64_t bytes_written = GetShapeSizeRecursive(root_shape);
 
-  absl::Duration compute_time = ComputeTime(*device_info_, flops, num_threads);
+  absl::Duration compute_time =
+      ComputeTime(*device_info_, flops, num_blocks,
+                  launch_dimensions.num_threads_per_block());
   absl::Duration write_time = WriteTime(*device_info_, bytes_written);
   absl::Duration memory_access_time = read_time + write_time;
   absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
