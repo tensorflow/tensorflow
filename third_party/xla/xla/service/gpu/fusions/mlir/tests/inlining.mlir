@@ -1,4 +1,4 @@
-// RUN: mlir_fusions_opt %s -split-input-file -xla-pre-inliner -inline | FileCheck %s -dump-input=always
+// RUN: mlir_fusions_opt %s -split-input-file -xla-erase-dead-functions -inline | FileCheck %s
 
 module {
   func.func private @mul(%a: f32, %b: f32) -> f32 {

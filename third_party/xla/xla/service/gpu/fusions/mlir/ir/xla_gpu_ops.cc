@@ -100,10 +100,6 @@ struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
       return false;
     }
 
-    if (call->hasAttr("xla_gpu.always_inline")) {
-      return true;
-    }
-
     constexpr int kMaxOperationsToInline = 8;
     int num_ops = 0;
     region->front().walk([&](mlir::Operation* op) { ++num_ops; });

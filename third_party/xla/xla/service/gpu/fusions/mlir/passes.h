@@ -42,7 +42,7 @@ std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(
 std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass();
 std::unique_ptr<mlir::Pass> CreateLowerXlaGpuToScfPass();
 std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
-std::unique_ptr<mlir::Pass> CreatePreInlinerPass();
+std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass();
 std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();
 std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass();
 std::unique_ptr<mlir::Pass> CreateSimplifyArithPass();

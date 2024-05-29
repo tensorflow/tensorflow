@@ -12,11 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
 #include <queue>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
@@ -24,7 +26,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-#define GEN_PASS_DEF_PREINLINERPASS
+#define GEN_PASS_DEF_ERASEDEADFUNCTIONSPASS
 #include "xla/service/gpu/fusions/mlir/passes.h.inc"
 
 namespace {
@@ -59,7 +61,8 @@ llvm::DenseSet<mlir::func::FuncOp> FindLiveFunctions(mlir::ModuleOp module) {
   return live_funcs;
 }
 
-class PreInlinerPass : public impl::PreInlinerPassBase<PreInlinerPass> {
+class EraseDeadFunctionsPass
+    : public impl::EraseDeadFunctionsPassBase<EraseDeadFunctionsPass> {
  public:
   void runOnOperation() override {
     // Find live functions and erase dead ones.
@@ -69,27 +72,14 @@ class PreInlinerPass : public impl::PreInlinerPassBase<PreInlinerPass> {
         func.erase();
       }
     });
-
-    absl::flat_hash_map<std::string, CallInfo> calls;
-    getOperation().walk([&](PureCallOp call) {
-      auto& info = calls[call.getCallee().str()];
-      info.call = call;
-      info.count++;
-    });
-
-    for (const auto& [_, info] : calls) {
-      if (info.count == 1) {
-        info.call->setAttr("xla_gpu.always_inline",
-                           mlir::UnitAttr::get(&getContext()));
-      }
-    }
   }
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreatePreInlinerPass() {
-  return std::make_unique<PreInlinerPass>();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateEraseDeadFunctionsPass() {
+  return std::make_unique<EraseDeadFunctionsPass>();
 }
 
 }  // namespace gpu

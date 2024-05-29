@@ -300,9 +300,9 @@ MlirFusionEmitterBase::CreateLLVMModule(
                                     buffer_assignment));
 
   mlir::PassManager pm(&mlir_context);
+  pm.addPass(CreateEraseDeadFunctionsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(CreateLowerXlaGpuToScfPass());
-  pm.addPass(CreatePreInlinerPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
