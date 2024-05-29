@@ -166,8 +166,8 @@ struct RewriteShuffleReduce : mlir::OpRewritePattern<ShuffleReduceOp> {
       for (auto value : values) {
         args.push_back(shuffle(value));
       }
-      values = b.create<mlir::func::CallOp>(op.getReducerAttr().getAttr(),
-                                            op.getResultTypes(), args)
+      values = b.create<PureCallOp>(op.getResultTypes(),
+                                    op.getReducerAttr().getAttr(), args)
                    .getResults();
     }
     rewriter.replaceOp(op, values);

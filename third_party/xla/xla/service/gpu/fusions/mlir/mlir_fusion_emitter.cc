@@ -300,14 +300,15 @@ MlirFusionEmitterBase::CreateLLVMModule(
                                     buffer_assignment));
 
   mlir::PassManager pm(&mlir_context);
-  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(CreateLowerXlaGpuToScfPass());
+  pm.addPass(CreatePreInlinerPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
   pm.addPass(CreatePropagateSliceIndicesPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateConvertPureCallOpsPass());
-  pm.addPass(CreateLowerXlaGpuToScfPass());
   pm.addPass(CreateLowerTensorsPass(
       is_amd, is_amd ? device.rocm_compute_capability().gcn_arch_name()
                      : device.cuda_compute_capability().ToString()));

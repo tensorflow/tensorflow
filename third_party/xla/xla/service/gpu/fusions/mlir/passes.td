@@ -157,6 +157,22 @@ def LowerXlaGpuToScfPass :
   let constructor = "CreateLowerXlaGpuToScfPass()";
 }
 
+def PreInlinerPass : Pass<"xla-pre-inliner", "mlir::ModuleOp"> {
+  let summary = "Determines functions to inline and deletes unused functions";
+
+  let description = [{
+      Finds functions that are called only once and annotates them with
+      `always_inline`. Also deletes functions that are not called.
+  }];
+
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "xla::gpu::XlaGpuDialect"
+  ];
+
+  let constructor = "CreatePreInlinerPass()";
+}
+
 def LowerToLLVMPass :
    Pass<"xla-gpu-lower-to-llvm", "mlir::ModuleOp"> {
   let summary = "Lowers to LLVM.";
