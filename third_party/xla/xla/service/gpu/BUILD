@@ -602,13 +602,17 @@ cc_library(
 
 xla_test(
     name = "ir_emitter_triton_test",
-    srcs = if_cuda_is_configured(["ir_emitter_triton_test.cc"]),
+    srcs = if_gpu_is_configured(["ir_emitter_triton_test.cc"]),
     backends = [
         "gpu_a100",
         "gpu_h100",
+        "gpu_amd_any",
     ],
     shard_count = 20,
-    tags = ["nomac"],
+    tags = [
+        "no_rocm",
+        "nomac",
+    ],
     deps = [
         ":backend_configs_cc",
         ":gpu_device_info_for_tests",
@@ -676,10 +680,11 @@ cc_test(
 
 xla_test(
     name = "ir_emitter_triton_large_test",
-    srcs = if_cuda_is_configured(["ir_emitter_triton_large_test.cc"]),
+    srcs = if_gpu_is_configured(["ir_emitter_triton_large_test.cc"]),
     backends = [
         "gpu_a100",
         "gpu_h100",
+        "gpu_amd_any",
     ],
     tags = [
         "large",
@@ -700,10 +705,11 @@ xla_test(
 
 xla_test(
     name = "ir_emitter_triton_parametrized_test",
-    srcs = if_cuda_is_configured(["ir_emitter_triton_parametrized_test.cc"]),
+    srcs = if_gpu_is_configured(["ir_emitter_triton_parametrized_test.cc"]),
     backends = [
         "gpu_a100",
         "gpu_h100",
+        "gpu_amd_any",
     ],
     shard_count = 10,
     tags = ["nomac"],
@@ -1211,9 +1217,10 @@ cc_library(
 
 xla_test(
     name = "triton_support_test",
-    srcs = if_cuda_is_configured(["triton_support_test.cc"]),
+    srcs = if_gpu_is_configured(["triton_support_test.cc"]),
     backends = [
         "gpu_a100",
+        "gpu_amd_any",
     ],
     shard_count = 10,
     tags = ["nomac"],
@@ -1630,6 +1637,7 @@ xla_test(
     srcs = if_gpu_is_configured(["gemm_algorithm_picker_test.cc"]),
     backends = [
         "gpu_v100",
+        "gpu_amd_any",
     ],
     deps = [
         ":autotuner_util",
@@ -1926,6 +1934,7 @@ xla_test(
     srcs = if_gpu_is_configured(["conv_algorithm_picker_test.cc"]),
     backends = [
         "gpu_v100",
+        "gpu_amd_any",
     ],
     tags = [
         "noasan",
@@ -3801,7 +3810,7 @@ cc_library(
 
 xla_test(
     name = "nvptx_compiler_test",
-    srcs = if_gpu_is_configured([
+    srcs = if_cuda_is_configured([
         "nvptx_compiler_test.cc",
     ]),
     backends = [
@@ -4598,6 +4607,7 @@ xla_test(
     },
     backends = [
         "gpu_a100",
+        "gpu_amd_any",
     ] + if_oss(["gpu_any"]),
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     shard_count = 10,
@@ -5255,13 +5265,14 @@ cc_library(
 
 xla_test(
     name = "dot_operand_converter_test",
-    srcs = if_cuda_is_configured(["dot_operand_converter_test.cc"]),
+    srcs = if_gpu_is_configured(["dot_operand_converter_test.cc"]),
     backends = [
         "gpu_a100",
         "gpu_p100",
         "gpu_v100",
+        "gpu_amd_any",
     ],
-    deps = if_cuda_is_configured(
+    deps = if_gpu_is_configured(
         [
             ":dot_operand_converter",
             "@com_google_googletest//:gtest",
@@ -5596,10 +5607,11 @@ cc_library(
 
 xla_test(
     name = "dot_algorithm_support_test",
-    srcs = if_cuda_is_configured(["dot_algorithm_support_test.cc"]),
+    srcs = if_gpu_is_configured(["dot_algorithm_support_test.cc"]),
     backends = [
         "gpu_v100",
         "gpu_a100",
+        "gpu_amd_any",
     ],
     tags = [
         "no_oss",  # Needs fix for `ConvertGenerator`
@@ -5811,6 +5823,7 @@ xla_test(
     srcs = if_gpu_is_configured(["determinism_test.cc"]),
     backends = [
         "gpu_a100",
+        "gpu_amd_any",
     ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",

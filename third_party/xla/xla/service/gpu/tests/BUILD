@@ -467,6 +467,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_v100",
+        "gpu_amd_any",
     ],
     deps = [
         ":gpu_codegen_test",
@@ -547,6 +548,7 @@ xla_test(
     srcs = ["gpu_kernel_tiling_test.cc"],
     backends = [
         "gpu_p100",
+        "gpu_amd_any",
     ] + if_oss(["gpu_any"]),
     deps = [
         ":gpu_codegen_test",
@@ -930,6 +932,7 @@ xla_test(
     srcs = ["tensor_float_32_global_var_test.cc"],
     backends = [
         "gpu_a100",
+        "gpu_amd_any",
     ] + if_oss(["gpu_any"]),
     deps = [
         "//xla:error_spec",
@@ -946,6 +949,7 @@ xla_test(
         "gpu_a100",
         "gpu_h100",
     ],
+    tags = ["no_rocm"],
     deps = if_cuda_is_configured(
         [
             ":gpu_codegen_test",
