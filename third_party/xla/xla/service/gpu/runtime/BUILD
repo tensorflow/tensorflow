@@ -120,6 +120,7 @@ cc_library(
         ":cudnn_thunk",
         ":custom_call_thunk",
         ":gemm_thunk",
+        ":gpublas_lt_matmul_thunk",
         ":kernel_thunk",
         ":memset_thunk",
         ":nccl_all_gather_thunk",

@@ -484,7 +484,7 @@ message DebugOptions {
 
   // Commands are categorized into 5 types:
   // FUSION represents regular fusion kernels.
-  // CUBLAS, CUDNN, and COLLECTIVES represent library calls.
+  // CUBLAS/CUBLASLT, CUDNN, and COLLECTIVES represent library calls.
   // CONDITIONALS represents control flow.
   enum CommandBufferCmdType {
     INVALID = 0;
@@ -494,6 +494,7 @@ message DebugOptions {
     COLLECTIVES = 4;
     CONDITIONALS = 5;
     CUSTOM_CALL = 6;
+    CUBLASLT = 7;
   }
 
   // Determine the types of commands that are recorded into command buffers.
