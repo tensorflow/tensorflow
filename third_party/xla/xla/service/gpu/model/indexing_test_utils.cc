@@ -152,7 +152,7 @@ bool ApproximateMatch(std::string_view lhs, std::string_view rhs) {
       ++r;
     }
     if (l == lhs_length || r == rhs_length) {
-      continue;
+      break;
     }
     if (lhs[l++] != rhs[r++]) {
       return false;
