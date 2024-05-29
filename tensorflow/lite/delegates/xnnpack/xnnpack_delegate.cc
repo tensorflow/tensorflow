@@ -523,8 +523,8 @@ class Delegate {
     }
 
 #endif
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
-                    "Created TensorFlow Lite XNNPACK delegate for CPU.");
+    TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
+                         "Created TensorFlow Lite XNNPACK delegate for CPU.");
 
     options_ =
         options != nullptr ? *options : TfLiteXNNPackDelegateOptionsDefault();
@@ -536,14 +536,13 @@ class Delegate {
       if (options_.experimental_weight_cache_file_path) {
         if (weight_cache_provider_.Load(
                 options_.experimental_weight_cache_file_path)) {
-          TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
-                          "XNNPack weight cache loaded from '%s'.",
-                          options_.experimental_weight_cache_file_path);
+          TFLITE_LOG(tflite::TFLITE_LOG_INFO,
+                     "XNNPack weight cache loaded from '%s'.",
+                     options_.experimental_weight_cache_file_path);
         } else {
-          TFLITE_LOG_PROD(
-              tflite::TFLITE_LOG_INFO,
-              "XNNPack weight cache not found at '%s', building it.",
-              options_.experimental_weight_cache_file_path);
+          TFLITE_LOG(tflite::TFLITE_LOG_INFO,
+                     "XNNPack weight cache not found at '%s', building it.",
+                     options_.experimental_weight_cache_file_path);
         }
         options_.weights_cache =
             reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(
@@ -551,8 +550,8 @@ class Delegate {
         options_.experimental_weight_cache_file_path =
             weight_cache_provider_.GetFilePath().data();
       } else {
-        TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
-                        "XNNPack weight cache not enabled.");
+        TFLITE_LOG(tflite::TFLITE_LOG_INFO,
+                   "XNNPack weight cache not enabled.");
       }
     }
   }
