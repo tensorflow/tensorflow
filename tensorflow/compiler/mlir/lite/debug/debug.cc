@@ -30,12 +30,14 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -46,7 +48,6 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
 // IWYU pragma: no_include "util/regexp/re2/re2.h"
 
