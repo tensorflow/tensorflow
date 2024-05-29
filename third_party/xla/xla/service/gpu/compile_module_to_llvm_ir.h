@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/executable.pb.h"
+#include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/hlo.pb.h"
@@ -45,6 +46,7 @@ namespace gpu {
 struct CompileModuleResults {
   std::unique_ptr<llvm::Module> llvm_module;
   std::unique_ptr<BufferAssignment> buffer_assignment;
+  std::unique_ptr<ExecutionStreamAssignment> execution_stream_assignment;
   std::vector<BufferAllocation> allocations;
   GpuExecutable::OwnedThunkSequence executable;
   std::vector<GpuExecutable::ConstantInfo> constants;

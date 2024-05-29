@@ -92,6 +92,7 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/fusions/thunk_util.h"
@@ -1678,13 +1679,27 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
 #endif  // GOOGLE_CUDA
 }
 
-absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
-                                           HloFusionAnalysis& fusion_analysis) {
+absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
+  const se::DeviceDescription& device_info =
+      ir_emitter_context_->gpu_device_info();
+  const HloFusionAnalysis fusion_analysis =
+      HloFusionAnalysis::Create(instr, &device_info);
+
   std::unique_ptr<FusionInterface> emitter =
       GetFusionEmitter(HloFusionInfo(fusion_analysis, instr,
                                      &ir_emitter_context_->buffer_assignment()),
                        /*is_emission_phase=*/true);
-  return AddThunksToThunkSequence(emitter->Emit(*ir_emitter_context_, *instr));
+  TF_ASSIGN_OR_RETURN(auto result, emitter->Emit(*ir_emitter_context_, *instr));
+
+  const ExecutionStreamAssignment& stream_assignment =
+      ir_emitter_context_->execution_stream_assignment();
+  for (std::unique_ptr<Thunk>& thunk : result.thunks) {
+    TF_ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id,
+                        stream_assignment.GetSyncExecutionStreamId(instr));
+    thunk->set_execution_stream_id(execution_stream_id);
+    AddThunkToThunkSequence(std::move(thunk));
+  }
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitterUnnested::AssertNonDeterminismIsOkay(
@@ -2780,6 +2795,20 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           return EmitNcclAsyncDone(Thunk::kNcclAllToAllDone, instr);
         case HloOpcode::kCollectiveBroadcast:
           return EmitNcclAsyncDone(Thunk::kNcclCollectiveBroadcastDone, instr);
+        case HloOpcode::kFusion: {
+          // Wait until the concurrent stream has finished.
+          auto* async_done = Cast<HloAsyncInstruction>(instr);
+          const ExecutionStreamAssignment& stream_assignment =
+              ir_emitter_context_->execution_stream_assignment();
+          TF_ASSIGN_OR_RETURN(
+              ExecutionStreamAssignment::AsyncExecutionStreamIds streams,
+              stream_assignment.GetAsyncExecutionStreamIds(async_done));
+          AddThunkToThunkSequence(std::make_unique<WaitForStreamsThunk>(
+              Thunk::ThunkInfo::WithProfileAnnotation(instr),
+              streams.source_stream_id,
+              std::vector<ExecutionStreamId>{streams.destination_stream_id}));
+          return absl::OkStatus();
+        }
         default: {
           if (wrapped->has_backend_config()) {
             TF_ASSIGN_OR_RETURN(
@@ -2821,6 +2850,24 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
                                HloCollectiveBroadcastInstruction>(
               Thunk::kNcclCollectiveBroadcast, instr, collective_broadcast,
               std::nullopt);
+        }
+        case HloOpcode::kFusion: {
+          // We'll launch the fusion computation on a concurrent stream. The
+          // concurrent stream needs to first wait until the main stream has
+          // finished calculating any values that may be used as inputs to the
+          // fusion computation. We enforce this by inlining a `WaitForStreams`
+          // thunk.
+          auto* async_start = Cast<HloAsyncInstruction>(instr);
+          const ExecutionStreamAssignment& stream_assignment =
+              ir_emitter_context_->execution_stream_assignment();
+          TF_ASSIGN_OR_RETURN(
+              ExecutionStreamAssignment::AsyncExecutionStreamIds streams,
+              stream_assignment.GetAsyncExecutionStreamIds(async_start));
+          AddThunkToThunkSequence(std::make_unique<WaitForStreamsThunk>(
+              Thunk::ThunkInfo::WithProfileAnnotation(instr),
+              streams.destination_stream_id,
+              std::vector<ExecutionStreamId>{streams.source_stream_id}));
+          return EmitFusion(Cast<HloFusionInstruction>(wrapped));
         }
         default: {
           if (wrapped->has_backend_config()) {
@@ -2915,11 +2962,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       return EmitCustomCallThunk(custom_call);
     }
     case HloOpcode::kFusion: {
-      auto* fusion = Cast<HloFusionInstruction>(instr);
-      const se::DeviceDescription& device_info =
-          ir_emitter_context_->gpu_device_info();
-      auto fusion_analysis = HloFusionAnalysis::Create(fusion, &device_info);
-      return EmitFusion(fusion, fusion_analysis);
+      return EmitFusion(Cast<HloFusionInstruction>(instr));
     }
     case HloOpcode::kInfeed:
       return EmitInfeed(Cast<HloInfeedInstruction>(instr));

@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
@@ -137,9 +138,12 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
                 : BufferAssigner::DefaultColorer(),
             /*must_not_live_out=*/{}, can_share_buffer_function));
   }
-
   VLOG(1) << "Buffer Assignment Stats for " << hlo_module->name() << "\n"
           << results.buffer_assignment->GetStats().ToString();
+
+  results.execution_stream_assignment =
+      std::make_unique<ExecutionStreamAssignment>(hlo_module);
+
   struct GetCcStr {
     std::string operator()(const se::CudaComputeCapability& cc) const {
       return absl::StrCat("sm_", cc.ToString());
@@ -173,9 +177,9 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
                            hlo_module->name(), hlo_module->unique_id());
   });
   IrEmitterContext ir_emitter_context(
-      hlo_module, results.buffer_assignment.get(), platform_name,
-      gpu_device_info, mlir_context.get(), results.llvm_module.get(),
-      /*emit_kernels=*/true);
+      hlo_module, results.buffer_assignment.get(),
+      results.execution_stream_assignment.get(), platform_name, gpu_device_info,
+      mlir_context.get(), results.llvm_module.get(), /*emit_kernels=*/true);
 
   std::vector<BufferAllocation*> allocations;
   results.output_shape = hlo_module->result_shape();

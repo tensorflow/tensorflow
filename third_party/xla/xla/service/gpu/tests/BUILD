@@ -89,6 +89,24 @@ xla_test(
     ],
 )
 
+xla_cc_test(
+    name = "async_kernel_launch_test",
+    srcs = ["async_kernel_launch_test.cc"],
+    # "requires-net:external" tag allows uploading `xprof` results.
+    tags = ["requires-net:external"] + tf_cuda_tests_tags(),
+    deps = [
+        "//xla:debug_options_flags",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/service:gpu_plugin",
+        "//xla/service:hlo_module_config",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:literal_test_util",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 xla_test(
     name = "float_conversions_test",
     srcs = ["float_conversions_test.cc"],

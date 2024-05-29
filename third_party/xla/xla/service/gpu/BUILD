@@ -290,6 +290,7 @@ cc_library(
     srcs = ["ir_emitter_context.cc"],
     hdrs = ["ir_emitter_context.h"],
     deps = [
+        ":execution_stream_assignment",
         ":gpu_constants",
         ":gpu_executable",
         ":ir_emission_utils",
@@ -297,13 +298,11 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:name_uniquer",
-        "//xla/service/gpu/model:indexing_analysis",
         "//xla/service/gpu/runtime:nccl_collective_thunk",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
@@ -323,6 +322,7 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
+        ":execution_stream_assignment",
         ":gpu_asm_opts_util",
         ":gpu_conv_runner",
         ":gpu_fused_mha_runner",
@@ -3087,6 +3087,7 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":executable_proto_cc",
+        ":execution_stream_assignment",
         ":gpu_constants",
         ":gpu_executable",
         ":gpu_memory_space_assignment",
@@ -3127,7 +3128,6 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/profiler/lib:scoped_annotation",
     ],
 )
 
@@ -3559,6 +3559,7 @@ cc_library(
         "@local_tsl//tsl/platform:numbers",
     ]) + xla_internal(["service:export_hlo"]) + [
         ":command_buffer_scheduling",
+        ":execution_stream_assignment",
         ":fusion_pipeline",
         ":ir_emitter_context",
         ":ir_emitter_unnested",

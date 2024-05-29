@@ -121,6 +121,7 @@ limitations under the License.
 #include "xla/service/gpu/dot_dimension_sorter.h"
 #include "xla/service/gpu/dot_operand_converter.h"
 #include "xla/service/gpu/double_buffer_loop_unrolling.h"
+#include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/fusion_wrapper.h"
 #include "xla/service/gpu/gemm_broadcast_folding_rewriter.h"
@@ -377,6 +378,8 @@ GpuThunkAotCompilationResult::LoadExecutable(
                                   compiler->BufferSizeBytesFunction(),
                                   /*can_share_buffer=*/nullptr));
 
+  ExecutionStreamAssignment execution_stream_assignment(hlo_module.get());
+
   std::vector<uint8_t> binary(proto_.binary().begin(), proto_.binary().end());
 
   // Build the executable, which should be a thunk sequence.
@@ -396,10 +399,10 @@ GpuThunkAotCompilationResult::LoadExecutable(
   }
   llvm_module->setTargetTriple(gpu_compiler->target_triple());
   llvm_module->setDataLayout(gpu_compiler->data_layout());
-  IrEmitterContext ir_emitter_context(hlo_module.get(), buffer_assignment.get(),
-                                      platform_name, gpu_device_info,
-                                      mlir_context.get(), llvm_module.get(),
-                                      /*emit_kernels=*/false);
+  IrEmitterContext ir_emitter_context(
+      hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
+      platform_name, gpu_device_info, mlir_context.get(), llvm_module.get(),
+      /*emit_kernels=*/false);
   auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
   TF_RETURN_IF_ERROR(
       ir_emitter->EmitHloComputation(hlo_module->entry_computation()));

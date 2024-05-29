@@ -155,8 +155,7 @@ class IrEmitterUnnested : public IrEmitter {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   absl::Status EmitCustomCallThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitFftThunk(const HloFftInstruction* instr);
-  absl::Status EmitFusion(const HloFusionInstruction* instr,
-                          HloFusionAnalysis& fusion_analysis);
+  absl::Status EmitFusion(const HloFusionInstruction* instr);
   absl::Status EmitSelectAndScatter(
       const HloSelectAndScatterInstruction* instr);
   absl::Status EmitWhile(const HloInstruction* instr);
@@ -211,15 +210,6 @@ class IrEmitterUnnested : public IrEmitter {
   // Add a owning Thunk object to the thunk sequence.
   void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
     thunk_sequence_.emplace_back(std::move(thunk));
-  }
-
-  absl::Status AddThunksToThunkSequence(
-      absl::StatusOr<FusionEmissionResult> result) {
-    TF_RETURN_IF_ERROR(result.status());
-    for (auto& thunk : result->thunks) {
-      AddThunkToThunkSequence(std::move(thunk));
-    }
-    return absl::OkStatus();
   }
 
   // Load data from potentially unaligned address. If address is offset by
