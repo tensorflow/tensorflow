@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_
 
 #include <functional>
+#include <memory>
+#include <optional>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -582,7 +584,7 @@ class OpKernelContext {
     int64_t start_time_usecs = 0;
 
     // The deadline for the session to complete by. Empty if unspecified.
-    absl::optional<absl::Time> deadline;
+    std::optional<absl::Time> deadline;
 
     // The op kernel being computed.
     OpKernel* op_kernel = nullptr;
@@ -690,7 +692,7 @@ class OpKernelContext {
     std::function<void()> inc_num_deferred_ops_function;
     std::function<void()> dec_num_deferred_ops_function;
 
-    absl::optional<ManagedStackTrace> stack_trace = {};
+    std::optional<ManagedStackTrace> stack_trace = {};
 
     // For implementing `OpKernelContext::output_required()`. If null, all
     // outputs are required.
@@ -715,7 +717,7 @@ class OpKernelContext {
 
   // The deadline for the session to complete by. Empty if unspecified in
   // RunOptions.
-  absl::optional<absl::Time> deadline() const { return params_->deadline; }
+  std::optional<absl::Time> deadline() const { return params_->deadline; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
 
@@ -1557,7 +1559,7 @@ class OpKernelRegistrar {
                     OpKernel* (*create_fn)(OpKernelConstruction*))
       TF_ATTRIBUTE_NOINLINE {
     InitInternal(kernel_def, kernel_class_name,
-                 absl::make_unique<PtrOpKernelFactory>(create_fn));
+                 std::make_unique<PtrOpKernelFactory>(create_fn));
   }
 
  private:

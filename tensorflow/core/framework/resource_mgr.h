@@ -21,6 +21,7 @@ limitations under the License.
 #include <typeindex>
 #include <typeinfo>
 #include <unordered_map>
+#include <variant>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/variant.h"
@@ -250,7 +251,7 @@ class ResourceMgr {
     }
   };
   struct ResourceAndName {
-    absl::variant<core::RefCountPtr<ResourceBase>, core::WeakPtr<ResourceBase>>
+    std::variant<core::RefCountPtr<ResourceBase>, core::WeakPtr<ResourceBase>>
         resource;
     std::unique_ptr<std::string> name;
 
