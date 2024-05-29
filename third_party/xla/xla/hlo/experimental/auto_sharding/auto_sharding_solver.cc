@@ -44,7 +44,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_memory.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/fingerprint.h"
