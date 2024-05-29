@@ -16,13 +16,16 @@ limitations under the License.
 #include "xla/service/cpu/ir_emitter2.h"
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -198,26 +201,26 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
 
 IrEmitter2::KernelThreadDims IrEmitter2::EmitKernelThreadDims(
     llvm::IRBuilder<>& b, llvm::Value* call_frame) {
-  auto* thread_dims = b.CreateConstGEP2_32(call_frame_ty_, call_frame, 0, 0);
-  auto* x_gep = b.CreateConstGEP2_32(thread_dims_ty_, thread_dims, 0, 0);
-  auto* y_gep = b.CreateConstGEP2_32(thread_dims_ty_, thread_dims, 0, 1);
-  auto* z_gep = b.CreateConstGEP2_32(thread_dims_ty_, thread_dims, 0, 2);
+  auto* tdims = b.CreateStructGEP(call_frame_ty_, call_frame, 0, "tdims_gep");
+  auto* x_gep = b.CreateStructGEP(thread_dims_ty_, tdims, 0, "tdim_x_gep");
+  auto* y_gep = b.CreateStructGEP(thread_dims_ty_, tdims, 1, "tdim_y_gep");
+  auto* z_gep = b.CreateStructGEP(thread_dims_ty_, tdims, 2, "tdim_z_gep");
 
-  return {b.CreateLoad(b.getInt64Ty(), x_gep),
-          b.CreateLoad(b.getInt64Ty(), y_gep),
-          b.CreateLoad(b.getInt64Ty(), z_gep)};
+  return {b.CreateLoad(b.getInt64Ty(), x_gep, "tdim_x"),
+          b.CreateLoad(b.getInt64Ty(), y_gep, "tdim_y"),
+          b.CreateLoad(b.getInt64Ty(), z_gep, "tdim_z")};
 }
 
 IrEmitter2::KernelThread IrEmitter2::EmitKernelThread(llvm::IRBuilder<>& b,
                                                       llvm::Value* call_frame) {
-  auto* thread_dims = b.CreateConstGEP2_32(call_frame_ty_, call_frame, 0, 1);
-  auto* x_gep = b.CreateConstGEP2_32(thread_ty_, thread_dims, 0, 0);
-  auto* y_gep = b.CreateConstGEP2_32(thread_ty_, thread_dims, 0, 1);
-  auto* z_gep = b.CreateConstGEP2_32(thread_ty_, thread_dims, 0, 2);
+  auto* tids = b.CreateStructGEP(call_frame_ty_, call_frame, 1, "tid_gep");
+  auto* x_gep = b.CreateStructGEP(thread_ty_, tids, 0, "tid_x_gep");
+  auto* y_gep = b.CreateStructGEP(thread_ty_, tids, 1, "tid_y_gep");
+  auto* z_gep = b.CreateStructGEP(thread_ty_, tids, 2, "tid_z_gep");
 
-  return {b.CreateLoad(b.getInt64Ty(), x_gep),
-          b.CreateLoad(b.getInt64Ty(), y_gep),
-          b.CreateLoad(b.getInt64Ty(), z_gep)};
+  return {b.CreateLoad(b.getInt64Ty(), x_gep, "tid_x"),
+          b.CreateLoad(b.getInt64Ty(), y_gep, "tid_y"),
+          b.CreateLoad(b.getInt64Ty(), z_gep, "tid_z")};
 }
 
 llvm_ir::IrArray IrEmitter2::EmitKernelArgument(llvm::IRBuilder<>& b,
@@ -225,11 +228,12 @@ llvm_ir::IrArray IrEmitter2::EmitKernelArgument(llvm::IRBuilder<>& b,
                                                 int64_t index,
                                                 const Shape& shape) {
   llvm::Type* ptr = llvm::PointerType::get(b.getContext(), 0);
+  std::string name = absl::StrCat("arg", index);
 
-  auto* args_gep = b.CreateConstGEP2_32(call_frame_ty_, call_frame, 0, 3);
-  auto* args = b.CreateLoad(ptr, args_gep);
-  auto* data_gep = b.CreateConstGEP2_32(arg_ty_, args, index, 0);
-  auto* data = b.CreateLoad(ptr, data_gep);
+  auto* args_gep = b.CreateStructGEP(call_frame_ty_, call_frame, 3, "args_gep");
+  auto* args = b.CreateLoad(ptr, args_gep, "args");
+  auto* data_gep = b.CreateConstGEP2_32(arg_ty_, args, index, 0, name + "_gep");
+  auto* data = b.CreateLoad(ptr, data_gep, name);
 
   return llvm_ir::IrArray(data, llvm_ir::ShapeToIrType(shape, module_), shape);
 }
