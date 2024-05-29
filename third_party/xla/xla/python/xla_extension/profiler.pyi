@@ -14,7 +14,7 @@
 # ==============================================================================
 
 from types import TracebackType
-from typing import Any, Optional, Type, Union
+from typing import Any, Optional, Type, Union, List
 
 _Status = Any
 
@@ -41,6 +41,8 @@ class ProfileOptions:
   start_timestamp_ns: int
   duration_ms: int
   repository_path: str
+
+def aggregate_profiled_instructions(profiles: List[bytes], percentile: int) -> str: ...
 
 class TraceMe:
   def __init__(self, name: str, **kwargs: Any) -> None: ...
