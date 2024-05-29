@@ -76,30 +76,6 @@ std::optional<bool> GetBoolFromCompositeAttr(
   return std::nullopt;
 }
 
-bool IsSupportedNchwUpsampleBlinear(
-    Value input, Value output, const DenseIntElementsAttr& output_size_attr) {
-  auto input_shape = mlir::cast<ShapedType>(input.getType()).getShape();
-  auto output_shape = mlir::cast<ShapedType>(output.getType()).getShape();
-
-  // Only support 4D tensor.
-  if (input_shape.size() != 4 || output_shape.size() != 4) {
-    return false;
-  }
-
-  // Only expects the first two dimensions of input and output to be the same as
-  // in NCHW.
-  if (input_shape[0] != output_shape[0] || input_shape[1] != output_shape[1]) {
-    return false;
-  }
-
-  // Supplied output size should be 2D.
-  if (output_size_attr.getNumElements() != 2) {
-    return false;
-  }
-  auto output_size = output_size_attr.getValues<int64_t>();
-  return output_size[0] == output_shape[2] && output_size[1] == output_shape[3];
-}
-
 ShapedType GetNhwcReturnTypeFromNchw(Operation* old_op) {
   auto composite_result_shape =
       mlir::cast<ShapedType>(old_op->getResults().front().getType()).getShape();

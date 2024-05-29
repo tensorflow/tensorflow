@@ -69,10 +69,6 @@ bool GetI32VectorFromDenseI64CompositeAttr(
 DenseIntElementsAttr DenseI64AttrToI32Attr(
     const DenseIntElementsAttr& dense_attr, PatternRewriter& builder);
 
-// Returns true if the given input and output are in NCHW layout
-bool IsSupportedNchwUpsampleBlinear(
-    Value input, Value output, const DenseIntElementsAttr& output_size_attr);
-
 // Returns a NHWC shaped type from an NCHW shaped type op.
 // For example- Given a Composite op that wraps a core.aten.avg_pool2d, this
 // returns the return type of the tfl.average_pool_2d emitted. Note that the
