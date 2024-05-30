@@ -20,11 +20,11 @@ limitations under the License.
 #include <map>
 #include <string>
 
+#include "absl/status/status.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
-#include "xla/status.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

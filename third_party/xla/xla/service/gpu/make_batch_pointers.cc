@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 
 #include "absl/status/status.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
