@@ -70,7 +70,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/translate/hlo_to_mhlo/custom_call_importer.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"

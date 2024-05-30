@@ -21,9 +21,9 @@ limitations under the License.
 #include <random>
 #include <string>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_runner.h"
-#include "xla/status.h"
 #include "xla/tools/run_hlo_module.pb.h"
 #include "tsl/platform/status.h"
 

@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <deque>
 
+#include "absl/status/status.h"
 #include "xla/literal.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/tpu/noncopyable_buffer.h"
 

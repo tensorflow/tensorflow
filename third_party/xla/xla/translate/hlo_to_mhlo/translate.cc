@@ -14,13 +14,13 @@ limitations under the License.
 
 #include "xla/translate/hlo_to_mhlo/translate.h"
 
+#include "absl/status/status.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/status.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "tsl/platform/protobuf.h"
 

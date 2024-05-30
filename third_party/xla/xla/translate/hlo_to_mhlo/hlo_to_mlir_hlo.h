@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <stdbool.h>
 
-#include "xla/status.h"
+#include "absl/status/status.h"
 
 namespace mlir {
 class ModuleOp;
