@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_common.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/statusor.h"
@@ -96,11 +97,11 @@ class CPlatform : public Platform {
   stream_executor::ExecutorCache executor_cache_;
 };
 
-class CStream : public Stream {
+class CStream : public StreamCommon {
  public:
   CStream(SP_Device* device, SP_StreamExecutor* stream_executor,
           StreamExecutor* executor)
-      : Stream(executor),
+      : StreamCommon(executor),
         device_(device),
         stream_executor_(stream_executor),
         stream_handle_(nullptr) {}

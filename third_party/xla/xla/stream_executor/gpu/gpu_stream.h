@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_common.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -36,10 +36,10 @@ class GpuExecutor;
 // StreamInterface.
 //
 // Thread-safe post-initialization.
-class GpuStream : public Stream {
+class GpuStream : public StreamCommon {
  public:
   explicit GpuStream(GpuExecutor* parent)
-      : Stream(parent),
+      : StreamCommon(parent),
         parent_(parent),
         gpu_stream_(nullptr),
         completed_event_(nullptr) {}

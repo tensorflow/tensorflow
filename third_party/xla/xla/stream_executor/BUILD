@@ -85,6 +85,7 @@ filegroup(
         "platform_manager.h",
         "scratch_allocator.h",
         "stream.h",
+        "stream_common.h",
         "stream_executor.h",
     ],
     visibility = ["//visibility:private"],
@@ -667,10 +668,13 @@ transitive_hdrs(
 cc_library(
     name = "stream_executor_pimpl",
     srcs = [
-        "stream.cc",
+        "stream_common.cc",
         "stream_executor_pimpl.cc",
     ],
-    hdrs = ["stream_executor_pimpl.h"],
+    hdrs = [
+        "stream_common.h",
+        "stream_executor_pimpl.h",
+    ],
     tags = ["avoid_dep"],
     visibility = ["//visibility:private"],
     deps = [
@@ -700,6 +704,7 @@ cc_library(
         "@local_tsl//tsl/platform:stacktrace",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 

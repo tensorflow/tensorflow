@@ -1,4 +1,4 @@
-/* Copyright 2015 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_common.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -31,7 +31,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_interface.h"
@@ -42,18 +44,25 @@ limitations under the License.
 
 namespace stream_executor {
 
-Stream::Stream(StreamExecutor *parent)
+StreamCommon::StreamCommon(StreamExecutor *parent)
     : parent_(parent), status_(absl::OkStatus()) {
   CHECK_NE(parent, nullptr);
 }
 
-Stream::PlatformSpecificHandle Stream::platform_specific_handle() const {
+absl::Status StreamCommon::Launch(const ThreadDim &thread_dims,
+                                  const BlockDim &block_dims, const Kernel &k,
+                                  const KernelArgs &args) {
+  return parent_->Launch(this, thread_dims, block_dims, k, args);
+}
+
+StreamCommon::PlatformSpecificHandle StreamCommon::platform_specific_handle()
+    const {
   PlatformSpecificHandle handle;
   handle.stream = nullptr;
   return handle;
 }
 
-absl::Status Stream::RefreshStatus() {
+absl::Status StreamCommon::RefreshStatus() {
   absl::Status status = parent_->GetStatus(this);
   // We should not put the stream in an error state, just because the GetStatus
   // method is unimplemented.
@@ -64,11 +73,11 @@ absl::Status Stream::RefreshStatus() {
   return status;
 }
 
-absl::Status Stream::RecordEvent(Event *event) {
+absl::Status StreamCommon::RecordEvent(Event *event) {
   return parent_->RecordEvent(this, event);
 }
 
-absl::StatusOr<Stream *> Stream::GetOrCreateSubStream() {
+absl::StatusOr<Stream *> StreamCommon::GetOrCreateSubStream() {
   // Do not destroy bad streams when holding mu_ because ~Stream() may
   // BlockHostUntilDone and it's host callbacks might attempt to acquire mu_.
   std::vector<std::unique_ptr<Stream>> bad_streams;
@@ -113,7 +122,7 @@ absl::StatusOr<Stream *> Stream::GetOrCreateSubStream() {
   return sub_stream;
 }
 
-void Stream::ReturnSubStream(Stream *sub_stream) {
+void StreamCommon::ReturnSubStream(Stream *sub_stream) {
   // Do not destroy bad streams when holding mu_ because ~Stream() may
   // BlockHostUntilDone and it's host callbacks might attempt to acquire mu_.
   std::unique_ptr<Stream> bad_stream;
@@ -150,7 +159,7 @@ void Stream::ReturnSubStream(Stream *sub_stream) {
              << sub_stream;
 }
 
-absl::Status Stream::WaitFor(Stream *other) {
+absl::Status StreamCommon::WaitFor(Stream *other) {
   if (this == other) {
     return absl::InternalError("stream cannot wait for itself");
   }
@@ -160,45 +169,48 @@ absl::Status Stream::WaitFor(Stream *other) {
   return absl::InternalError("stream cannot wait for other");
 }
 
-absl::Status Stream::WaitFor(Event *event) {
+absl::Status StreamCommon::WaitFor(Event *event) {
   return parent_->WaitForEvent(this, event);
 }
 
-absl::Status Stream::Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
-                            uint64_t size) {
+absl::Status StreamCommon::Memcpy(void *host_dst,
+                                  const DeviceMemoryBase &gpu_src,
+                                  uint64_t size) {
   return parent_->Memcpy(this, host_dst, gpu_src, size);
 }
 
-absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
-                            uint64_t size) {
+absl::Status StreamCommon::Memcpy(DeviceMemoryBase *gpu_dst,
+                                  const void *host_src, uint64_t size) {
   return parent_->Memcpy(this, gpu_dst, host_src, size);
 }
 
-absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst,
-                            const DeviceMemoryBase &gpu_src, uint64_t size) {
+absl::Status StreamCommon::Memcpy(DeviceMemoryBase *gpu_dst,
+                                  const DeviceMemoryBase &gpu_src,
+                                  uint64_t size) {
   if (parent_->MemcpyDeviceToDevice(this, gpu_dst, gpu_src, size)) {
     return absl::OkStatus();
   }
   return absl::InternalError("failed to memcpy");
 }
 
-absl::Status Stream::MemZero(DeviceMemoryBase *location, uint64_t size) {
+absl::Status StreamCommon::MemZero(DeviceMemoryBase *location, uint64_t size) {
   return parent_->MemZero(this, location, size);
 }
 
-absl::Status Stream::Memset32(DeviceMemoryBase *location, uint32_t pattern,
-                              uint64_t size) {
+absl::Status StreamCommon::Memset32(DeviceMemoryBase *location,
+                                    uint32_t pattern, uint64_t size) {
   return parent_->Memset32(this, location, pattern, size);
 }
 
-absl::Status Stream::DoHostCallback(absl::AnyInvocable<void() &&> callback) {
+absl::Status StreamCommon::DoHostCallback(
+    absl::AnyInvocable<void() &&> callback) {
   return DoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
     std::move(cb)();
     return absl::OkStatus();
   });
 }
 
-absl::Status Stream::DoHostCallbackWithStatus(
+absl::Status StreamCommon::DoHostCallbackWithStatus(
     absl::AnyInvocable<absl::Status() &&> callback) {
   if (parent_->HostCallback(this, std::move(callback))) {
     return absl::OkStatus();
@@ -206,7 +218,7 @@ absl::Status Stream::DoHostCallbackWithStatus(
   return absl::InternalError("failed to host callback");
 }
 
-void Stream::CheckError(bool operation_retcode) {
+void StreamCommon::CheckError(bool operation_retcode) {
   if (operation_retcode) {
     return;
   }
@@ -214,7 +226,7 @@ void Stream::CheckError(bool operation_retcode) {
   status_ = absl::InternalError("Unknown error");
 }
 
-absl::Status Stream::BlockHostUntilDone() {
+absl::Status StreamCommon::BlockHostUntilDone() {
   if (!ok()) {
     absl::MutexLock lock(&mu_);
     LOG(INFO) << status_.ToString();
@@ -230,7 +242,7 @@ absl::Status Stream::BlockHostUntilDone() {
   return error;
 }
 
-void Stream::CheckStatus(absl::Status status) {
+void StreamCommon::CheckStatus(absl::Status status) {
   if (status.ok()) {
     return;
   }
