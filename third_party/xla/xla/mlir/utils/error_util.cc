@@ -18,9 +18,11 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
-#include "tsl/platform/errors.h"
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
 BaseScopedDiagnosticHandler::BaseScopedDiagnosticHandler(MLIRContext* context,
