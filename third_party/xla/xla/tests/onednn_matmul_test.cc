@@ -81,7 +81,6 @@ class MatmulTest : public HloTestBase {
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
-
   const char* fused_matmul_bias_elu_rewrite_str_ = R"(
     ; CHECK:     custom_call_target="__onednn$matmul",
     ; CHECK:       backend_config={
@@ -106,6 +105,15 @@ class MatmulTest : public HloTestBase {
     ; CHECK-DAG:     "outer_dimension_partitions":[],
     ; CHECK-DAG:     "onednn_matmul_config":{
     ; CHECK-DAG:       "fused_ops":["BIAS","RELU6"]
+    ; CHECK-DAG:   }
+    ; CHECK:     }
+    )";
+  const char* fused_matmul_bias_sigmoid_rewrite_str_ = R"(
+    ; CHECK:     custom_call_target="__onednn$matmul",
+    ; CHECK:       backend_config={
+    ; CHECK-DAG:     "outer_dimension_partitions":[],
+    ; CHECK-DAG:     "onednn_matmul_config":{
+    ; CHECK-DAG:       "fused_ops":["BIAS","SIGMOID"]
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
@@ -1060,6 +1068,94 @@ TEST_F(MatmulTest, BiasAddELUFusion_F16_2) {
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
   MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_elu_rewrite_str_);
+}
+
+TEST_F(MatmulTest, SIGMOIDTestF32) {
+  const char* matmul_module_str = R"(
+    HloModule matmul.bias.sigmoid.test.f32
+
+    ENTRY matmul.bias.sigmoid.test.f32 {
+      arg.0 = f32[32,32,4,16] parameter(0), parameter_replication={false}
+      arg.1 = f32[32,32,16,32] parameter(1), parameter_replication={false}
+      onednn.matmul.0 = f32[32,32,4,32] dot(arg.0, arg.1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+      const.0 = f32[32]{0} constant(5)
+      bcast.0 = f32[32,32,4,32] broadcast(const.0), dimensions={3}
+      add.0 = f32[32,32,4,32] add(onednn.matmul.0, bcast.0)
+      
+      const.1 = f32[] constant(1)
+      bcast.1 = f32[32,32,4,32] broadcast(const.1), dimensions={}
+      negate.0 = f32[32,32,4,32] negate(add.0)
+      exponential.0 = f32[32,32,4,32] exponential(negate.0)
+      add.1 = f32[32,32,4,32] add(bcast.1, exponential.0)
+      divide.0 = f32[32,32,4,32] divide(bcast.1, add.1)
+      tuple.0 =(f32[32,32,4,32]) tuple(divide.0)
+      ROOT get-tuple-element.0 = f32[32,32,4,32] get-tuple-element(tuple.0), index=0
+    })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_sigmoid_rewrite_str_);
+}
+
+TEST_F(MatmulTest, SIGMOIDTestBF16) {
+  if (!IsSupportedType(PrimitiveType::BF16)) {
+    GTEST_SKIP() << "CPU does not support BF16";
+  }
+  const char* matmul_module_str = R"(
+    HloModule matmul.bias.sigmoid.test.bf16
+                                                                      
+    ENTRY matmul.bias.sigmoid.test.bf16 {
+      arg.0 = f32[32,32,4,16] parameter(0), parameter_replication={false}
+      convert.0 = bf16[32,32,4,16] convert(arg.0)
+      arg.1 = f32[32,32,16,32] parameter(1), parameter_replication={false}
+      convert.1 = bf16[32,32,16,32] convert(arg.1)
+      onednn.matmul.0 = bf16[32,32,4,32] dot(convert.0, convert.1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+      convert.2 = f32[32,32,4,32] convert(onednn.matmul.0)
+      const.0 = f32[32]{0} constant(5)
+      bcast.0 = f32[32,32,4,32] broadcast(const.0), dimensions={3}
+      add.0 = f32[32,32,4,32] add(convert.2, bcast.0)
+
+      const.1 = f32[] constant(1)
+      bcast.1 = f32[32,32,4,32] broadcast(const.1), dimensions={}
+      negate.0 = f32[32,32,4,32] negate(add.0)
+      exponential.0 = f32[32,32,4,32] exponential(negate.0)
+      add.1 = f32[32,32,4,32] add(bcast.1, exponential.0)
+      divide.0 = f32[32,32,4,32] divide(bcast.1, add.1)
+      tuple.0 =(f32[32,32,4,32]) tuple(divide.0)
+      ROOT get-tuple-element.0 = f32[32,32,4,32] get-tuple-element(tuple.0), index=0
+    })";
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_sigmoid_rewrite_str_);
+}
+
+TEST_F(MatmulTest, SIGMOIDTestF16) {
+  if (!IsSupportedType(PrimitiveType::F16)) {
+    GTEST_SKIP() << "CPU does not support F16";
+  }
+  const char* matmul_module_str = R"(
+    HloModule matmul.bias.sigmoid.test.f16
+                                                                      
+    ENTRY matmul.bias.sigmoid.test.f16 {
+      arg.0 = f32[32,32,4,16] parameter(0), parameter_replication={false}
+      convert.0 = f16[32,32,4,16] convert(arg.0)
+      arg.1 = f32[32,32,16,32] parameter(1), parameter_replication={false}
+      convert.1 = f16[32,32,16,32] convert(arg.1)
+      onednn.matmul.0 = f16[32,32,4,32] dot(convert.0, convert.1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+      convert.2 = f32[32,32,4,32] convert(onednn.matmul.0)
+      const.0 = f32[32]{0} constant(5)
+      bcast.0 = f32[32,32,4,32] broadcast(const.0), dimensions={3}
+      add.0 = f32[32,32,4,32] add(convert.2, bcast.0)
+
+      const.1 = f32[] constant(1)
+      bcast.1 = f32[32,32,4,32] broadcast(const.1), dimensions={}
+      negate.0 = f32[32,32,4,32] negate(add.0)
+      exponential.0 = f32[32,32,4,32] exponential(negate.0)
+      add.1 = f32[32,32,4,32] add(bcast.1, exponential.0)
+      divide.0 = f32[32,32,4,32] divide(bcast.1, add.1)
+      tuple.0 =(f32[32,32,4,32]) tuple(divide.0)
+      ROOT get-tuple-element.0 = f32[32,32,4,32] get-tuple-element(tuple.0), index=0
+    })";
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_sigmoid_rewrite_str_);
 }
 
 TEST_F(MatmulTest, SimpleTestBF16Gemv1) {
