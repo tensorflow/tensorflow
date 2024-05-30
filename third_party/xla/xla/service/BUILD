@@ -3249,6 +3249,44 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "hlo_unstacker",
+    srcs = ["hlo_unstacker.cc"],
+    hdrs = ["hlo_unstacker.h"],
+    deps = [
+        ":hlo_creation_utils",
+        ":hlo_pass",
+        ":pattern_matcher",
+        ":tuple_util",
+        ":while_loop_unroller",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_unstacker_test",
+    srcs = ["hlo_unstacker_test.cc"],
+    tags = ["requires-net:external"],
+    deps = [
+        ":hlo_unstacker",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "while_loop_unroller",
     srcs = ["while_loop_unroller.cc"],
     hdrs = ["while_loop_unroller.h"],
