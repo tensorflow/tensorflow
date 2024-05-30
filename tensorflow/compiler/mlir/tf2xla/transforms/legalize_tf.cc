@@ -2933,62 +2933,6 @@ class ConvertSelectOp : public OpRewritePattern<TF::SelectOp> {
   }
 };
 
-// Converts Sigmoid op to HLO ops computing sigmoid with the following formula:
-//
-//     sigmoid = add(mul(tanh(mul(logits, 0.5)), 0.5), 0.5)
-//
-// Sample result with 2-d f16 inputs with B batches of with N elements each.
-//
-//    // Create an array of 0.5 the shape of the input array.
-//    %half = mhlo.constant dense<5.000000e-01> : tensor<f32>
-//    %half_array = "mhlo.broadcast"(half)
-//                           {broadcast_sizes = dense<2> : tensor<1xi64>}
-//                           : (tensor<f32>) -> tensor<2xf32>
-//
-//    // Compute Tanh of half the logits of the values.
-//    %halved_logits = mhlo.multiply %logits, %half_array : tensor<2xf32>
-//    %tanh = "mhlo.tanh"(%halved_logits) : (tensor<2xf32>) -> tensor<2xf32>
-//
-//    // Have the result of Tanh and add 0.5.
-//    %halved_tanh = mhlo.multiply %tanh, %half : tensor<2xf32>
-//    %sigmoid = mhlo.add %halved_tanh, %half : tensor<2xf32>
-//
-class ConvertSigmoidOp : public RewritePattern {
- public:
-  explicit ConvertSigmoidOp(MLIRContext *context)
-      : RewritePattern(
-            TF::SigmoidOp::getOperationName(), 0, context,
-            {mhlo::ConstantOp::getOperationName(),
-             shape::ShapeOfOp::getOperationName(),
-             shape::ToExtentTensorOp::getOperationName(),
-             mhlo::DynamicBroadcastInDimOp::getOperationName(),
-             mhlo::MulOp::getOperationName(), mhlo::TanhOp::getOperationName(),
-             mhlo::AddOp::getOperationName()}) {}
-
-  LogicalResult matchAndRewrite(Operation *sigmoid_op,
-                                PatternRewriter &rewriter) const override {
-    auto op = cast<TF::SigmoidOp>(sigmoid_op);
-    Location loc = op.getLoc();
-
-    // Create constant half with shape and element type same as the operand.
-    Value operand = op.getOperand();
-    auto operand_ty = mlir::cast<TensorType>(operand.getType());
-    auto scalar_ty =
-        tensorflow::GetTypeFromTFTensorShape({}, operand_ty.getElementType());
-    ElementsAttr attr = mlir::hlo::getSplat(&rewriter, scalar_ty, 0.5);
-    auto scalar_half = rewriter.create<ConstantOp>(loc, attr);
-    auto half = BroadcastToShapeOf(loc, scalar_half, operand, rewriter);
-
-    auto scaled_input = rewriter.create<MulOp>(loc, operand, half);
-    auto tanh_op = rewriter.create<TanhOp>(loc, scaled_input);
-    auto mul_op = rewriter.create<MulOp>(loc, tanh_op, half);
-    auto add_op = rewriter.create<AddOp>(loc, mul_op, half);
-
-    rewriter.replaceOp(op, add_op.getResult());
-    return success();
-  }
-};
-
 // Converts the tf.Slice op into mhlo.real_dynamic_slice
 // TODO(disc): To recover static special case's performance with folding and
 // canonicalization.
@@ -6881,7 +6825,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertMatrixDiagPartV3Op,
     ConvertRangeOp,
     ConvertSelectOp,
-    ConvertSigmoidOp,
     ConvertShapeOp,
     ConvertSplitOp,
     ConvertSplitVOp,
