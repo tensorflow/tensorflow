@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"

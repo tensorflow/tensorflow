@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 
 struct PJRT_Error {
   absl::Status status;

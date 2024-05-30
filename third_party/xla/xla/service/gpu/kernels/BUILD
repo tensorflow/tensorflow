@@ -27,8 +27,6 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":custom_kernel",
-        "//xla:status",
-        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/base:core_headers",
@@ -88,7 +86,6 @@ cc_library(
         ":cutlass_gemm",
         ":cutlass_gemm_custom_kernel",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:pattern_matcher",

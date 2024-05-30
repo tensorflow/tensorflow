@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
-#include "xla/status.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 

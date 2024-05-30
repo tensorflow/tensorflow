@@ -23,7 +23,6 @@ cc_library(
     deps = [
         ":topology_util",
         ":util",
-        "//xla:status",
         "//xla:statusor",
         "//xla:types",
         "//xla:util",
@@ -97,7 +96,7 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
-        "//xla:status",
+        "@com_google_absl//absl/status",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -120,7 +119,6 @@ cc_library(
     deps = [
         ":key_value_store_interface",
         ":protocol_proto_cc",
-        "//xla:status",
         "//xla:statusor",
         "//xla:util",
         "//xla/pjrt:pjrt_client",

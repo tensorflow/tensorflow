@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "xla/service/gpu/model/symbolic_tile.h"
-#include "xla/status.h"
 
 namespace xla {
 namespace gpu {
