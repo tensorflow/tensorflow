@@ -100,6 +100,8 @@ def gen_gpu_hlo_compile_tests(
         use for that target.
       backend_args: A dict mapping backend name to list of additional args to
         use for that target.
+      xla_flags: A list of XLA flags passed to multihost_hlo_runner.
+
 
     Example Usage:
 
