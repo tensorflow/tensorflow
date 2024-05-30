@@ -31,6 +31,11 @@ limitations under the License.
 
 namespace stream_executor::host {
 
+HostKernel::HostKernel(std::shared_ptr<tsl::thread::ThreadPool> thread_pool)
+    : thread_pool_(thread_pool) {
+  // Kernel and arity will be set separately
+}
+
 HostKernel::HostKernel(unsigned arity, SE_HOST_Kernel* kernel,
                        std::shared_ptr<tsl::thread::ThreadPool> thread_pool)
     : function_(std::make_unique<KernelFunctionPtr>(kernel)),

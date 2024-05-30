@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -83,10 +85,11 @@ define ptr @LlvmAddI32(ptr noundef %0) {
 }
 )";
 
-static std::unique_ptr<StreamExecutor> NewStreamExecutor() {
-  Platform* platform = PlatformManager::PlatformWithName("Host").value();
+static absl::StatusOr<std::unique_ptr<StreamExecutor>> NewStreamExecutor() {
   StreamExecutorConfig config(/*ordinal=*/0);
-  return platform->GetUncachedExecutor(config).value();
+  TF_ASSIGN_OR_RETURN(auto platform, PlatformManager::PlatformWithName("Host"));
+  TF_ASSIGN_OR_RETURN(auto stream_exec, platform->GetUncachedExecutor(config));
+  return stream_exec;
 }
 
 TEST(HostKernelTest, Addition1D) {
@@ -147,17 +150,17 @@ TEST(HostKernelTest, JitAddition) {
   spec.AddLlvmHostKernel(llvm_kernel_add, "LlvmAddI32", "LlvmAddI32",
                          absl::Span<std::string>());
 
-  auto executor = NewStreamExecutor();
-  auto eg = executor.get();
-  EXPECT_NE(eg, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(auto add, KernelFactory::Create(eg, spec));
+  TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  TF_ASSERT_OK_AND_ASSIGN(auto add,
+                          KernelFactory::Create(executor.get(), spec));
 
-  // TODO(tsilytskyi): implement Launch part
-  // TF_ASSERT_OK(executor->Launch(ThreadDim(4), args));
+  const KernelArgsDeviceMemoryArray kargs{args, /*shared_memory_bytes=*/0};
+  TF_ASSERT_OK(
+      executor->Launch(stream.get(), ThreadDim(4), BlockDim(1), *add, kargs));
 
-  // std::vector<int32_t> expected = {6, 8, 10, 12};
-  // EXPECT_EQ(out, expected);
-  // EXPECT_TRUE(true);
+  std::vector<int32_t> expected = {6, 8, 10, 12};
+  EXPECT_EQ(out, expected);
 }
 
 //===----------------------------------------------------------------------===//
@@ -165,8 +168,8 @@ TEST(HostKernelTest, JitAddition) {
 //===----------------------------------------------------------------------===//
 
 static void BM_ThreadpoolKernel(benchmark::State& state) {
-  auto tp = std::make_shared<tsl::thread::ThreadPool>(tsl::Env::Default(),
-                                                      "XLAEigen", 2);
+  auto tp = std::make_shared<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), "XLAEigen", tsl::port::MaxParallelism());
 
   HostKernel kernel(/*arity=*/3, AddI32, tp);
 
@@ -185,7 +188,45 @@ static void BM_ThreadpoolKernel(benchmark::State& state) {
   }
 }
 
+static void BM_JitKernel(benchmark::State& state) {
+  const int input_size = state.range(0);
+  std::vector<int32_t> lhs(input_size);
+  std::vector<int32_t> rhs(input_size);
+  std::vector<int32_t> out(input_size);
+
+  DeviceMemoryBase lhs_mem(lhs.data(), lhs.size() * sizeof(int32_t));
+  DeviceMemoryBase rhs_mem(rhs.data(), rhs.size() * sizeof(int32_t));
+  DeviceMemoryBase out_mem(out.data(), out.size() * sizeof(int32_t));
+  std::vector<DeviceMemoryBase> args = {lhs_mem, rhs_mem, out_mem};
+
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  spec.AddLlvmHostKernel(llvm_kernel_add, "LlvmAddI32", "LlvmAddI32",
+                         absl::Span<std::string>());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  TF_ASSERT_OK_AND_ASSIGN(auto add,
+                          KernelFactory::Create(executor.get(), spec));
+
+  const KernelArgsDeviceMemoryArray kargs{args, /*shared_memory_bytes=*/0};
+
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(executor->Launch(
+        stream.get(), ThreadDim(input_size), BlockDim(1), *add, kargs));
+  }
+}
+
 BENCHMARK(BM_ThreadpoolKernel)
+    ->MeasureProcessCPUTime()
+    ->Arg(10)
+    ->Arg(1023)
+    ->Arg(1024)
+    ->Arg(2048)
+    ->Arg(4096)
+    ->Arg(8192)
+    ->Arg(10000);
+
+BENCHMARK(BM_JitKernel)
     ->MeasureProcessCPUTime()
     ->Arg(10)
     ->Arg(1023)
