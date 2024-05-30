@@ -463,6 +463,14 @@ AsyncTracker::GetOccupiedSerialResourcesFromVector(
   return {};
 }
 
+// For now, only the target-defined resources have nonextendable hazard type, so
+// this async tracker does not know which resources are nonextendable.
+absl::InlinedVector<int64_t, 1>
+AsyncTracker::GetReleasedNonextendableResourcesFromVector(
+    const ResourcesVector& resources) const {
+  return {};
+}
+
 BufferInfoTracker::BufferInfoTracker(
     const HloModule* module, const HloAliasAnalysis* alias_analysis,
     const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes) {
@@ -816,6 +824,19 @@ class ReadySetLt {
       return *value;
     }
 
+    // The following rule targets the async ops using resources that should be
+    // released right after the op's estimated time cost has past. It prevents
+    // increasing the overlaps of such async ops more than necessary.
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            PastDueCyclesForNonextendableResource(a) >
+                PastDueCyclesForNonextendableResource(b),
+            a,
+            PastDueCyclesForNonextendableResource(b) >
+                PastDueCyclesForNonextendableResource(a),
+            b, "kReleaseNonextendable")) {
+      return *value;
+    }
+
     if (sched_state_.config.enable_release_start_policy) {
       // Prioritise scheduling ready "start" ops, to avoid useless extension of
       // start-done latencies. This benefits future latency ops, as ops
@@ -1024,6 +1045,17 @@ class ReadySetLt {
     }
     return !ShouldDelaySendHostDone(gn_cand);
   }
+
+  HloGraphNode::TimeCost PastDueCyclesForNonextendableResource(
+      DefaultSchedulerCore::ScheduleCandidate& cand) const {
+    if (sched_state_.async_tracker
+            ->GetReleasedNonextendableResourcesFromVector(
+                cand.node->GetResources())
+            .empty()) {
+      return 0.0;
+    }
+    return std::max(sched_state_.current_time - cand.node->GetReadyTime(), 0.0);
+  }
   bool ShouldDelaySendHostDone(
       DefaultSchedulerCore::ScheduleCandidate& gn_cand) const {
     const HloGraphNode& gn = *gn_cand.node;
@@ -1154,7 +1186,7 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
         }
         return false;
       };
-  VLOG(6) << "Current time: " << sched_state.current_time;
+  VLOG(1) << "Current time: " << sched_state.current_time;
   ReadySetLt ready_lt{&sched_state, target_scheduling_rule_,
                       early_target_scheduling_rule_};
   // Construct a schedule candidate for caching.
@@ -1187,7 +1219,7 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
     if (ready_chosen.node == nullptr) {
       ready_chosen = ready_candidate;
       chosen_it = ready_node_it;
-      VLOG(6) << "Choosing from ready (" << ready_chosen.node->GetInstr().name()
+      VLOG(1) << "Choosing from ready (" << ready_chosen.node->GetInstr().name()
               << ") Reason: First Candidate";
       continue;
     }
@@ -1202,7 +1234,7 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
           }
           return std::string("N/A");
         };
-    VLOG(6) << "Choosing from ready ("
+    VLOG(1) << "Choosing from ready ("
             << (new_candidate_selected ? ready_candidate.node->GetInstr().name()
                                        : ready_chosen.node->GetInstr().name())
             << ") vs ("
@@ -1245,9 +1277,9 @@ void DefaultSchedulerCore::LogInstruction(const HloInstruction* instr) const {
 
 void PrintOccupierList(
     std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers) {
-  VLOG(1) << "Occupier list:";
+  VLOG(2) << "Occupier list:";
   for (int64_t i = 0; i < occupiers.size(); i++) {
-    VLOG(1) << "\tOccupier at index: " << i
+    VLOG(2) << "\tOccupier at index: " << i
             << " with projected finish time: " << occupiers[i].second
             << " original latency: " << occupiers[i].first->OriginalLatency()
             << " latency: " << occupiers[i].first->Latency();
@@ -1838,7 +1870,7 @@ absl::Status DefaultSchedulerCore::SchedulingStep(
   CHECK(node != nullptr);
   TF_ASSIGN_OR_RETURN(sched_state->current_time,
                       ScheduleNode(node, sched_state));
-  VLOG(5) << "Scheduled: ";
+  VLOG(1) << "Scheduled: " << node->GetInstr().name();
   XLA_VLOG_LINES(5, node->ToString());
   return absl::OkStatus();
 }
@@ -1879,11 +1911,11 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   // Schedule in order bottom up.
   while (!sched_state.ready_set.empty()) {
     VLOG(10) << "Current ready time: " << sched_state.current_time;
-    VLOG(10) << "Current ready queue:";
-    XLA_VLOG_LINES(10, [&sched_state]() {
+    VLOG(1) << "Current ready queue:";
+    XLA_VLOG_LINES(1, [&sched_state]() {
       struct LogFormatter {
         void operator()(std::string* out, const HloGraphNode* n) const {
-          out->append(absl::StrCat("\t", n->GetInstr().ToString(),
+          out->append(absl::StrCat("\t", n->GetInstr().name(),
                                    " Ready time: ", n->GetReadyTime(),
                                    " Depth: ", n->GetGraphDepth()));
         }

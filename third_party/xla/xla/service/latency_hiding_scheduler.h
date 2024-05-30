@@ -77,7 +77,12 @@ enum class ResourceUsageType {
 enum class ResourceHazardType {
   kShareable = 0,
   kSerial = 1,
-  kUnshareable = 2,
+  // The following hazard type represents the resources that are used by the
+  // async ops and should be released right after the estimated time cost has
+  // past. This hazard type is useful to prevent increasing such ops' overlaps
+  // more than necessary.
+  kNonextendable = 2,
+  kUnshareable = 3,
 };
 
 constexpr int64_t ResourceTypeToIndex(ResourceType resource_type) {
@@ -252,6 +257,12 @@ class AsyncTracker {
   // Returns the list of the occupied serial resources filtered from the given
   // resources vector.
   virtual absl::InlinedVector<int64_t, 1> GetOccupiedSerialResourcesFromVector(
+      const ResourcesVector& resources) const;
+
+  // Returns the list of the released nonextendable resources filtered from the
+  // given resources vector.
+  virtual absl::InlinedVector<int64_t, 1>
+  GetReleasedNonextendableResourcesFromVector(
       const ResourcesVector& resources) const;
 
   inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
