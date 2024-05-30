@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PYTHON_PJRT_IFRT_XLA_SHARDING_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -61,6 +62,14 @@ class HloSharding final
   // Sharding implementation.
 
   ~HloSharding() override = default;
+
+  absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
+
+  bool HasSamePartitioning(const Sharding& other) const override;
+
+  absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
+      std::optional<DeviceList> devices,
+      std::optional<MemoryKind> memory_kind) const override;
 
   absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;

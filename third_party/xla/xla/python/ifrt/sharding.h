@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_SHARDING_H_
 
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -58,9 +59,34 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   MemoryKind memory_kind() const { return memory_kind_; }
 
   // Returns if this sharding is fully replicated. A fully replicated sharding
-  // means that the logical shape and shard shapes are identical, and every
-  // shard of the array contains the entire data of the logical array.
+  // means that the logical shape and shard shapes are identical
+  // (`GetShardShape(shape) == shape`), and every shard of the array contains
+  // the entire data of the logical array.
   bool IsFullyReplicated() const { return is_fully_replicated_; }
+
+  // Returns if this sharding is equal to `other`.
+  bool operator==(const Sharding& other) const;
+  bool operator!=(const Sharding& other) const { return !(*this == other); }
+
+  // Returns a shard shape if the sharding always has the equal shape for all
+  // shards. Returns an error if the sharding may not have a single shard
+  // shape, or `shape` is not a valid shape for this sharding.
+  virtual absl::StatusOr<Shape> GetShardShape(const Shape& shape) const = 0;
+
+  // Returns if this sharding has the same logical partitioning as `other`. By
+  // the same logical partitioning, we mean that `Sharding` type is the same,
+  // and the partitioning scheme within the sharding is equivalent. It does not
+  // need to check if `Disassemble()` would return the same result.
+  virtual bool HasSamePartitioning(const Sharding& other) const = 0;
+
+  // Returns a new sharding with the same logical partitioning as this sharding,
+  // but with different devices and/or a different memory kind. If `devices` is
+  // provided, the number of devices must be the same as the number of devices
+  // in this sharding. If `memory_kind` is provided, it must be a valid memory
+  // kind for the devices used.
+  virtual absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
+      std::optional<DeviceList> devices,
+      std::optional<MemoryKind> memory_kind) const = 0;
 
   // Breaks a shape up into per-device shapes and shardings. See
   // Array::DisassembleIntoSingleDeviceArrays(). It may return an error if
@@ -130,6 +156,14 @@ class SingleDeviceSharding final
 
   ~SingleDeviceSharding() override = default;
 
+  absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
+
+  bool HasSamePartitioning(const Sharding& other) const override;
+
+  absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
+      std::optional<DeviceList> devices,
+      std::optional<MemoryKind> memory_kind) const override;
+
   absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
 
@@ -161,6 +195,14 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
   // Sharding implementation.
 
   ~OpaqueSharding() override = default;
+
+  absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
+
+  bool HasSamePartitioning(const Sharding& other) const override;
+
+  absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
+      std::optional<DeviceList> devices,
+      std::optional<MemoryKind> memory_kind) const override;
 
   absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
@@ -237,6 +279,14 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
 
   ~ConcreteSharding() override = default;
 
+  absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
+
+  bool HasSamePartitioning(const Sharding& other) const override;
+
+  absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
+      std::optional<DeviceList> devices,
+      std::optional<MemoryKind> memory_kind) const override;
+
   absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
   absl::StatusOr<
@@ -288,6 +338,14 @@ class ConcreteEvenSharding
 
   ~ConcreteEvenSharding() override = default;
 
+  absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
+
+  bool HasSamePartitioning(const Sharding& other) const override;
+
+  absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
+      std::optional<DeviceList> devices,
+      std::optional<MemoryKind> memory_kind) const override;
+
   absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
   absl::StatusOr<
@@ -317,6 +375,14 @@ class ShardingParamSharding
       ShardingParam sharding_param, DeviceList devices, MemoryKind memory_kind);
 
   const ShardingParam& sharding_param() const { return sharding_param_; }
+
+  absl::StatusOr<Shape> GetShardShape(const Shape& shape) const override;
+
+  bool HasSamePartitioning(const Sharding& other) const override;
+
+  absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
+      std::optional<DeviceList> devices,
+      std::optional<MemoryKind> memory_kind) const override;
 
   absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
