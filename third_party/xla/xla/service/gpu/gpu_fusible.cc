@@ -574,9 +574,9 @@ static int64_t SharedMemoryUsageNoCache(const HloInstruction& instr) {
       // __shared__[32] is used for row reduction.
       return 32 * primitive_size * num_variadic;
     } else {
-      // __shared__[2][32][33] cache is used for column reduction ("2" comes
+      // __shared__[4][32][33] cache is used for column reduction ("4" comes
       // from potential x-tiling).
-      return 2 * 32 * 33 * primitive_size * num_variadic;
+      return 4 * 32 * 33 * primitive_size * num_variadic;
     }
   } else if (GetDescriptionForTiledTransposeEmitter(instr, instr).has_value()) {
     // Tile size for transposition.

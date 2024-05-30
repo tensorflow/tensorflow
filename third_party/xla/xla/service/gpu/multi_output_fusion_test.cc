@@ -1200,7 +1200,7 @@ TEST_F(MultiOutputFusionTest, SharedMemoryBudget) {
                     .value();
   ASSERT_TRUE(mof_.Run(module.get()).value());
 
-  EXPECT_EQ(2, CountMultiOutputFusions(module.get()));
+  EXPECT_EQ(5, CountMultiOutputFusions(module.get()));
 }
 
 TEST_F(MultiOutputFusionTest, DoNotGroupTooManyReductions) {
