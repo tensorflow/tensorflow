@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -67,7 +68,6 @@ limitations under the License.
 #include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -2266,7 +2266,7 @@ std::vector<ReplicaGroup> SpmdPartitioningVisitor::CreateReplicaGroups(
   return device_groups;
 }
 
-Status SpmdPartitioningVisitor::HandleCall(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleCall(HloInstruction* hlo) {
   std::vector<HloInstruction*> call_args;
   HloComputation* computation = hlo->called_computations()[0];
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
@@ -2289,7 +2289,7 @@ Status SpmdPartitioningVisitor::HandleCall(HloInstruction* hlo) {
     call->set_raw_backend_config_string(hlo->raw_backend_config_string());
     return call;
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
