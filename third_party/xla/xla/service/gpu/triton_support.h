@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -51,6 +52,14 @@ bool IsTritonSupportedElementwise(HloOpcode, PrimitiveType);
 // Checks instruction against requirements of triton emitter.
 CodegenDecision IsTritonSupportedInstruction(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
+
+// Checks dynamic slice against requirements of triton emitter.
+//
+// This is exposed separately from IsTritonSupportedInstruction because we can
+// use it in the dimension order propagation without adding a dependency on the
+// GPU version.
+CodegenDecision IsTritonSupportedDynamicSlice(
+    const HloDynamicSliceInstruction& instr);
 
 }  // namespace gpu
 }  // namespace xla
