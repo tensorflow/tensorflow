@@ -126,6 +126,24 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emit an LLVM global variable for every constant buffer allocation.
   absl::Status EmitConstantGlobals();
 
+  // Emits a call to a thread local function (e.g. to the computation nested
+  // within a reduce or a map).  Thread local callees (by definition) only write
+  // to and read from thread local allocations.
+  // Supports only functions returning scalars or tuples of scalars.
+  //
+  // `parameters` holds the *scalar values* that need to be passed to the
+  // callee.  The return value is the scalar returned by the callee.
+  //
+  // If `in_compute_function` is true, the call is emitted inside the compute
+  // function emitted by a legacy IrEmitter and has access to executable run
+  // options, status flag, etc. If `in_compute_function` is false, then the call
+  // is inside nested computation of a host kernel emitted for thunks and it
+  // can only emit simple scalar computations and has no way to call back into
+  // the runtime.
+  std::vector<llvm::Value*> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name, bool is_reducer, bool in_compute_function = true);
+
  protected:
   //
   // The following methods implement the DfsHloVisitor interface.
@@ -289,17 +307,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emits code that computes the address of the given buffer allocation slice.
   llvm::Value* EmitBufferPointer(const BufferAllocation::Slice& slice,
                                  const Shape& target_shape);
-
-  // Emits a call to a thread local function (e.g. to the computation nested
-  // within a reduce or a map).  Thread local callees (by definition) only write
-  // to and read from thread local allocations.
-  // Supports only functions returning scalars or tuples of scalars.
-  //
-  // `parameters` holds the *scalar values* that need to be passed to the
-  // callee.  The return value is the scalar returned by the callee.
-  std::vector<llvm::Value*> EmitThreadLocalCall(
-      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name, bool is_reducer);
 
   // Similar to EmitThreadLocal, yet assumes that the function returns a scalar.
   llvm::Value* EmitScalarReturningThreadLocalCall(

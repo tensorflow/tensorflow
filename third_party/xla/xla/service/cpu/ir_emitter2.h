@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 
@@ -54,7 +55,8 @@ namespace xla::cpu {
 // WARNING: This is under construction and will eventually replace IrEmitter.
 class IrEmitter2 {
  public:
-  IrEmitter2(const HloModule& hlo_module, llvm::Module* module);
+  IrEmitter2(const HloModule& hlo_module, llvm::Module* module,
+             IrEmitter* nested_ir_emitter);
 
   // Thread dimensions of the kernel invocation.
   struct KernelThreadDims {
@@ -131,6 +133,10 @@ class IrEmitter2 {
 
   const HloModule& hlo_module_;
   llvm::Module* module_;
+
+  // Nested IrEmitter to emit embedded computations (e.g. computations attached
+  // to reductions inside fusions).
+  IrEmitter* nested_ir_emitter_;
 
   // LLVM types defining HostKernel API (see host_kernel_c_api.h).
   llvm::StructType* call_frame_ty_;

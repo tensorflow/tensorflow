@@ -3916,7 +3916,7 @@ llvm::Value* IrEmitter::EmitScalarReturningThreadLocalCall(
 
 std::vector<llvm::Value*> IrEmitter::EmitThreadLocalCall(
     const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-    absl::string_view name, bool is_reducer) {
+    absl::string_view name, bool is_reducer, bool in_compute_function) {
   CHECK(absl::c_binary_search(thread_local_computations_, &callee));
   const Shape& return_shape = callee.root_instruction()->shape();
   bool is_scalar_return = ShapeUtil::IsScalar(return_shape);
@@ -3962,19 +3962,24 @@ std::vector<llvm::Value*> IrEmitter::EmitThreadLocalCall(
     EmitTuple(tuple_array, allocas_for_returned_scalars, &b_);
   }
 
+  llvm::Value* null_ptr = llvm::Constant::getNullValue(b_.getPtrTy());
+
   Call(
       FindOrDie(emitted_functions_,
                 ComputationToEmit{&callee, allow_reassociation_ || is_reducer}),
       GetArrayFunctionCallArguments(
           parameter_addrs, &b_, name,
           /*return_value_buffer=*/return_value_buffer,
-          /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
-          /*buffer_table_arg=*/
-          llvm::Constant::getNullValue(b_.getPtrTy()),
-          /*status_arg=*/GetStatusArgument(),
-          /*profile_counters_arg=*/GetProfileCountersArgument()));
+          /*exec_run_options_arg=*/
+          in_compute_function ? GetExecutableRunOptionsArgument() : null_ptr,
+          /*buffer_table_arg=*/null_ptr,
+          /*status_arg=*/in_compute_function ? GetStatusArgument() : null_ptr,
+          /*profile_counters_arg=*/
+          in_compute_function ? GetProfileCountersArgument() : null_ptr));
 
   if (ComputationTransitivelyContainsCustomCall(&callee)) {
+    DCHECK(!in_compute_function) << "Custom call inside nested computations "
+                                    "are not supported by Thunks runtime";
     EmitEarlyReturnIfErrorStatus();
   }
 

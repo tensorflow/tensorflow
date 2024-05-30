@@ -655,6 +655,7 @@ cc_library(
     hdrs = ["ir_emitter2.h"],
     deps = [
         ":elemental_math_emitter",
+        ":ir_emitter",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:elemental_ir_emitter",
@@ -662,6 +663,7 @@ cc_library(
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:loop_emitter",
+        "//xla/service/llvm_ir:tuple_ops",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

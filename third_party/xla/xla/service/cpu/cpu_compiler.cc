@@ -1182,18 +1182,42 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     return cpu_executable;
   };
 
+  LLVMTargetMachineFeatures target_machine_features((*jit)->target_machine());
+
+  // TODO(ezhulenev): Once we fully migrate to Thunks current IrEmitter should
+  // be renamed to NestedIrEmitter and be used only for emitting nested (aka
+  // thread local or embedded) computations (reductions, maps, etc.).
+
+  // (Nested) IrEmitter is responsible for building LLVM module with functions
+  // for all HLO computations. In thunk execution mode we only build LLVM
+  // functions for embedded computations (e.g. reduction computations) and all
+  // high-level operations (fusions, elementwise, etc.) are lowered to kernel
+  // functions (which are also LLVM functions, but use a HostKernel ABI).
+  IrEmitter nested_ir_emitter(
+      &mlir_context, *module, *assignment, llvm_module.get(),
+      std::move(instruction_to_profile_idx),
+      std::move(computation_to_profile_idx),
+      ModuleComputationsTransitivelyContainCustomCall(*module),
+      &target_machine_features,
+#ifdef MEMORY_SANITIZER
+      /*emit_code_for_msan=*/true
+#else
+      /*emit_code_for_msan=*/false
+#endif
+  );
+
   // If we use Thunk runtime then instead of emitting LLVM function for the
   // entry computation we emit a sequence of thunks that implement the
   // computation as a sequence of interpreted commands.
   if (module->config().debug_options().xla_cpu_use_thunk_runtime()) {
     // IR emitter is responsible for building LLVM module with host kernels for
     // corresponding HLO instructions (fusions, elemental instructions, etc.).
-    IrEmitter2 ir_emitter(*module, llvm_module.get());
+    IrEmitter2 ir_emitter2(*module, llvm_module.get(), &nested_ir_emitter);
 
     // Thunk emitter is responsible for building a Thunk sequence that will
     // resolved kernels in the compiled LLVM module and execute them together
     // with Thunks implemented as library calls (e.g. oneDNN or Eigen).
-    ThunkEmitter thunk_emitter(&ir_emitter, assignment.get());
+    ThunkEmitter thunk_emitter(&ir_emitter2, assignment.get());
     TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                         thunk_emitter.EmitEntryComputation(*module));
 
@@ -1205,7 +1229,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     // TODO(ezhulenev): We should be able to make it lazy on-demand, but today
     // we capture obj_files by reference and it leads to asan errors. Figure out
     // lifetime issues and move compilation to Thunk initialization stage.
-    for (const auto& kernel : ir_emitter.kernels()) {
+    for (const auto& kernel : ir_emitter2.kernels()) {
       if (auto sym = (*jit)->FindCompiledSymbol(kernel.name); !sym) {
         return Internal("Failed to find compiled symbol for kernel %s",
                         kernel.name);
@@ -1230,24 +1254,9 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 
   // Each computation is a single function.  Emit all embedded computations
   // before the entry computation. The order of computations returned from
-  // GetEmbeddedComputations guarantees that a called computation occurs
+  // SubcomputationEmissionOrder guarantees that a called computation occurs
   // before a caller computation.
-
-  std::string function_name;
-  LLVMTargetMachineFeatures target_machine_features((*jit)->target_machine());
-  IrEmitter ir_emitter(&mlir_context, *module, *assignment, llvm_module.get(),
-                       std::move(instruction_to_profile_idx),
-                       std::move(computation_to_profile_idx),
-                       ModuleComputationsTransitivelyContainCustomCall(*module),
-                       &target_machine_features,
-#ifdef MEMORY_SANITIZER
-                       /*emit_code_for_msan=*/true
-#else
-                       /*emit_code_for_msan=*/false
-#endif
-  );
-
-  TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
+  TF_RETURN_IF_ERROR(nested_ir_emitter.EmitConstantGlobals());
 
   for (ComputationToEmit subcomputation :
        SubcomputationEmissionOrder(entry_computation)) {
@@ -1255,7 +1264,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       continue;
     }
     TF_RETURN_IF_ERROR(
-        ir_emitter
+        nested_ir_emitter
             .EmitComputation(
                 subcomputation.computation, subcomputation.computation->name(),
                 /*is_top_level_computation=*/false,
@@ -1267,13 +1276,13 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
                                                ? "__compute"
                                                : entry_computation->name();
   TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
-                      ir_emitter.EmitComputation(
+                      nested_ir_emitter.EmitComputation(
                           entry_computation, function_name_prefix,
                           /*is_top_level_computation=*/true,
                           schedule.sequence(entry_computation).instructions(),
                           /*allow_reassociation=*/false));
 
-  function_name = [&]() {
+  std::string function_name = [&]() {
     llvm::SmallVector<char, 40> function_name_vector;
     llvm::Mangler::getNameWithPrefix(
         function_name_vector, entry_function->getName(), (*jit)->data_layout());

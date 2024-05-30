@@ -47,7 +47,7 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
   std::vector<Shape> parameters = {shape};
   std::vector<Shape> results = {shape};
 
-  IrEmitter2 ir_emitter(*hlo, module.get());
+  IrEmitter2 ir_emitter(*hlo, module.get(), /*nested_ir_emitter=*/nullptr);
   IrEmitter2::KernelPrototype prototype =
       ir_emitter.EmitKernelPrototype("test", parameters, results);
 
@@ -100,7 +100,7 @@ TEST_F(IrEmitter2Test, EmitElementalKernel) {
   HloInstruction* convert = FindInstruction(hlo.get(), "convert");
   ASSERT_NE(convert, nullptr);
 
-  IrEmitter2 ir_emitter(*hlo, module.get());
+  IrEmitter2 ir_emitter(*hlo, module.get(), /*nested_ir_emitter=*/nullptr);
   TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
                           ir_emitter.EmitElementalHostKernel(convert));
 
