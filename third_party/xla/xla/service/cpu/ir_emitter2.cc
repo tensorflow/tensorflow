@@ -141,7 +141,7 @@ class IrEmitter2::ElementalIrEmitter : public xla::ElementalIrEmitter {
   absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view name, bool is_reducer) override {
-    return absl::UnimplementedError("Not implemented");
+    return absl::UnimplementedError("EmitThreadLocalCall is not implemented");
   }
 
   bool fast_min_max() override { return fast_min_max_; }

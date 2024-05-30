@@ -50,6 +50,7 @@ class Thunk {
     kCall,
     kCopy,
     kKernel,
+    kWhile,
   };
 
   virtual ~Thunk() = default;

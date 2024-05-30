@@ -34,6 +34,8 @@ std::string_view Thunk::KindToString(Kind kind) {
       return "copy";
     case Kind::kKernel:
       return "kernel";
+    case Kind::kWhile:
+      return "while";
   }
 }
 

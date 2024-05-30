@@ -68,6 +68,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitFusionKernelThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitWhileThunk(
+      const HloInstruction* instruction);
+
   // Returns the list of buffer allocation slices assigned to the given
   // instruction leaf buffers. We do not materialize tuples at run time and only
   // read and write from buffers corresponding to arrays.

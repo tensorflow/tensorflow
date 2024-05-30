@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime/copy_thunk.h"
 #include "xla/service/cpu/runtime/kernel_thunk.h"
 #include "xla/service/cpu/runtime/thunk.h"
+#include "xla/service/cpu/runtime/while_thunk.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "tsl/platform/errors.h"
@@ -50,6 +51,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitEntryComputation(
   if (!module.has_schedule()) {
     return absl::InternalError("HLO module must be scheduled to emit thunks");
   }
+  VLOG(0) << module.ToString();
   return EmitHloComputation(module.entry_computation());
 }
 
@@ -88,6 +90,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kParameter:
     case HloOpcode::kTuple:
       return ThunkSequence::Empty();
+
+    // No-op operations that are used only to define an execution order for the
+    // HLO dataflow graph.
+    case HloOpcode::kAfterAll:
+      return ThunkSequence::Empty();
+
+    // Control flow thunks check predicates on the host and launch nested thunk
+    // sequences for branches and loops.
+    case HloOpcode::kWhile:
+      return EmitWhileThunk(instruction);
 
     // Allocations for constants owned by the executable, and resolved at run
     // time according to the buffer assignment (using allocation index). We do
@@ -193,6 +205,20 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
   // TODO(ezhulenev): IrEmitter should return requested ThreadDim for a kernel
   // invocation, for now we assume that we always emit a full loop.
   return ThunkSequence::Of<KernelThunk>(buffers, kernel.name, se::ThreadDim());
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhileThunk(
+    const HloInstruction* instruction) {
+  HloInstruction* cond = instruction->while_condition()->root_instruction();
+  TF_ASSIGN_OR_RETURN(auto cond_buffer, GetAllocationSlice(cond));
+
+  TF_ASSIGN_OR_RETURN(ThunkSequence cond_thunk,
+                      EmitHloComputation(instruction->while_condition()));
+  TF_ASSIGN_OR_RETURN(ThunkSequence body_thunk,
+                      EmitHloComputation(instruction->while_body()));
+
+  return ThunkSequence::Of<WhileThunk>(cond_buffer, std::move(cond_thunk),
+                                       std::move(body_thunk));
 }
 
 absl::StatusOr<std::vector<BufferAllocation::Slice>>
