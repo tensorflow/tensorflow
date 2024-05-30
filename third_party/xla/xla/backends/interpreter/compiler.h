@@ -19,13 +19,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/backends/interpreter/platform_id.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/status.h"

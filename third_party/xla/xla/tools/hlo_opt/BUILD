@@ -123,7 +123,6 @@ cc_library(
         "cpu_opt",
         ":opt_lib",
         "//xla:debug_options_flags",
-        "//xla:status",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_runner",

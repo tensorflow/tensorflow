@@ -621,7 +621,6 @@ cc_library(
     ]),
     deps = [
         "//xla:shape_util",
-        "//xla:status",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:types",
