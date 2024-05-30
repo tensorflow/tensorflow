@@ -78,7 +78,7 @@ namespace ifrt {
 namespace proxy {
 
 IfrtBackend::IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
-                         std::unique_ptr<xla::ifrt::Client> ifrt_client,
+                         std::shared_ptr<xla::ifrt::Client> ifrt_client,
                          std::shared_ptr<HostBufferStore> host_buffer_store)
     : version_(std::move(version)),
       session_id_(session_id),
@@ -99,7 +99,7 @@ IfrtBackend::IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
 
 absl::StatusOr<std::unique_ptr<IfrtBackend>> IfrtBackend::Create(
     IfrtProxyVersion version, uint64_t session_id,
-    std::unique_ptr<xla::ifrt::Client> ifrt_client,
+    std::shared_ptr<xla::ifrt::Client> ifrt_client,
     std::shared_ptr<HostBufferStore> host_buffer_store) {
   if (ifrt_client == nullptr) {
     return absl::InvalidArgumentError("ifrt_client cannot be a nullptr.");

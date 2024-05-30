@@ -67,7 +67,7 @@ class IfrtBackend final : public BackendInterface {
   // be a nullptr.
   static absl::StatusOr<std::unique_ptr<IfrtBackend>> Create(
       IfrtProxyVersion version, uint64_t session_id,
-      std::unique_ptr<xla::ifrt::Client> ifrt_client,
+      std::shared_ptr<xla::ifrt::Client> ifrt_client,
       std::shared_ptr<HostBufferStore> host_buffer_store);
 
   ~IfrtBackend() override;
@@ -94,7 +94,7 @@ class IfrtBackend final : public BackendInterface {
   };
 
   IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
-              std::unique_ptr<xla::ifrt::Client> ifrt_client,
+              std::shared_ptr<xla::ifrt::Client> ifrt_client,
               std::shared_ptr<HostBufferStore> host_buffer_store);
 
   // Executes the given function on the given thread pool and returns a future
@@ -174,7 +174,7 @@ class IfrtBackend final : public BackendInterface {
   // Must not change during the life of this object.
   const IfrtProxyVersion version_;
   const uint64_t session_id_;
-  const std::unique_ptr<xla::ifrt::Client> client_;
+  const std::shared_ptr<xla::ifrt::Client> client_;
   const std::shared_ptr<HostBufferStore> host_buffer_store_;
 
   absl::Mutex futures_mutex_;
