@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/numeric/bits.h"
+#include "absl/status/status.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/statusor.h"
 

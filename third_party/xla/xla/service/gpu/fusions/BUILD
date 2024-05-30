@@ -14,7 +14,6 @@ cc_library(
     hdrs = ["in_place_dynamic_update_slice.h"],
     deps = [
         ":fusion_emitter",
-        "//xla:status",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -58,7 +57,6 @@ cc_library(
     hdrs = ["in_place_dynamic_update_slice_mlir.h"],
     deps = [
         "//xla:shape_util",
-        "//xla:status",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -67,7 +65,6 @@ cc_library(
         "//xla/service/gpu/fusions/mlir:computation_partitioner",
         "//xla/service/gpu/fusions/mlir:elemental_hlo_to_mlir",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
-        "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
         "//xla/service/gpu/model:indexing_analysis",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -125,7 +122,6 @@ cc_library(
     deps = [
         ":fusion_emitter",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -212,7 +208,6 @@ cc_library(
     visibility = ["//xla/service/gpu:__subpackages__"],
     deps = [
         "//xla:shape_util",
-        "//xla:status",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:util",
@@ -268,7 +263,6 @@ cc_library(
         ":transpose_mlir",
         ":triton",
         "//xla:shape_util",
-        "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:backend_configs_cc",
@@ -282,9 +276,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -333,7 +324,6 @@ cc_library(
     deps = [
         ":fusion_emitter",
         "//xla:shape_util",
-        "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -348,6 +338,7 @@ cc_library(
         "//xla/service/llvm_ir:ir_array",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:macros",
@@ -362,7 +353,6 @@ cc_library(
     deps = [
         ":loop",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -408,7 +398,6 @@ cc_library(
     deps = [
         ":loop",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:scatter_simplifier",
@@ -459,7 +448,6 @@ cc_library(
         ":fusion_emitter",
         "//xla:permutation_util",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -475,8 +463,8 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -532,7 +520,6 @@ cc_library(
         ":fusion_emitter",
         ":loop",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -740,7 +727,6 @@ cc_library(
         ":thunk_util",
         ":tiling_util",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -988,7 +974,6 @@ cc_library(
         ":tiling_util",
         "//xla:permutation_util",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -1043,7 +1028,6 @@ cc_library(
     deps = [
         ":fusion_emitter",
         "//xla:shape_util",
-        "//xla:status",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:elemental_ir_emitter",
@@ -1074,7 +1058,6 @@ cc_library(
     srcs = ["input_slices_mlir.cc"],
     hdrs = ["input_slices_mlir.h"],
     deps = [
-        "//xla:status",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
