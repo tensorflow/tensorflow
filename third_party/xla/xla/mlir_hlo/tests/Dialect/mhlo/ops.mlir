@@ -819,7 +819,7 @@ func.func @allgather_gather_along_zero_dimension(%arg0: tensor<128x0xf32>) -> te
 
 // -----
 
-func.func @all_gather_c1(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
+func.func @all_gather(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
   // expected-error@+1 {{all_gather_dim cannot be negative}}
   %0 = "mhlo.all_gather"(%arg0) <{
     all_gather_dim = -1 : i64,
@@ -831,7 +831,7 @@ func.func @all_gather_c1(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
 
 // -----
 
-func.func @all_gather_c1(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
+func.func @all_gather(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
   // expected-error@+1 {{all_gather_dim must be a valid index of operand}}
   %0 = "mhlo.all_gather"(%arg0) <{
     all_gather_dim = 2 : i64,
@@ -843,7 +843,7 @@ func.func @all_gather_c1(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
 
 // -----
 
-func.func @all_gather_c2(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
+func.func @all_gather(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
   // expected-error@+1 {{replica id #2 seen more than once}}
   %0 = "mhlo.all_gather"(%arg0) <{
     all_gather_dim = 1 : i64,
@@ -855,7 +855,7 @@ func.func @all_gather_c2(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
 
 // -----
 
-func.func @all_gather_c4(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
+func.func @all_gather(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
   // expected-error@+1 {{Invalid replica id -1}}
   %0 = "mhlo.all_gather"(%arg0) <{
     all_gather_dim = 1 : i64,
@@ -867,7 +867,7 @@ func.func @all_gather_c4(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
 
 // -----
 
-func.func @all_gather_c4(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
+func.func @all_gather(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
   // expected-error@+1 {{replica id #4 not seen in replica groups}}
   %0 = "mhlo.all_gather"(%arg0) <{
     all_gather_dim = 1 : i64,
@@ -879,7 +879,7 @@ func.func @all_gather_c4(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
 
 // -----
 
-func.func @all_gather_c5(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
+func.func @all_gather(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
   // expected-error@+1 {{channel_id cannot be negative when useGlobalDeviceIds is set}}
   %0 = "mhlo.all_gather"(%arg0) <{
     all_gather_dim = 1 : i64,
@@ -892,7 +892,7 @@ func.func @all_gather_c5(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
 
 // -----
 
-func.func @all_gather_c6(%arg0: tensor<8x2x32xf32>) -> tensor<8x8xf32> {
+func.func @all_gather(%arg0: tensor<8x2x32xf32>) -> tensor<8x8xf32> {
   // expected-error@+1 {{operand and result must have the same rank}}
   %0 = "mhlo.all_gather"(%arg0) <{
     all_gather_dim = 1 : i64,
@@ -904,7 +904,7 @@ func.func @all_gather_c6(%arg0: tensor<8x2x32xf32>) -> tensor<8x8xf32> {
 
 // -----
 
-func.func @all_gather_c6(%arg0: tensor<8x2xf32>) -> tensor<4x8xf32> {
+func.func @all_gather(%arg0: tensor<8x2xf32>) -> tensor<4x8xf32> {
   // expected-error@+1 {{operand and result should have the same shape except for the dimension size at 'all_gather_dim'}}
   %0 = "mhlo.all_gather"(%arg0) <{
     all_gather_dim = 1 : i64,
@@ -916,7 +916,7 @@ func.func @all_gather_c6(%arg0: tensor<8x2xf32>) -> tensor<4x8xf32> {
 
 // -----
 
-func.func @all_gather_c6(%arg0: tensor<128x32xf32>) -> tensor<128x100xf32> {
+func.func @all_gather(%arg0: tensor<128x32xf32>) -> tensor<128x100xf32> {
   // expected-error@+1 {{result gather dimension has size 100, expected to be a multiple of operand gather dimension size 32}}
   %0 = "mhlo.all_gather"(%arg0) <{
     all_gather_dim = 1 : i64,
@@ -3587,32 +3587,50 @@ func.func @reduce_precision_invalid_mantissa(%arg: tensor<2x4xf32>) -> tensor<2x
 func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
       offset_dims = [2],
-      start_index_map = [0, 1]
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
     >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
   } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
   func.return %res : tensor<1x5x8xi32>
 }
 
 // -----
 
-// CHECK: gather
-func.func @gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+func.func @gather(%operand : tensor<3x2x4x9xi32>, %start_indices : tensor<1x3x5x2xi32>) -> tensor<1x3x5x8xi32> {
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
-      offset_dims = [2],
-      start_index_map = [0, 1]
+      offset_dims = [3],
+      collapsed_slice_dims = [1, 2],
+      operand_batching_dims = [0],
+      start_indices_batching_dims = [1],
+      start_index_map = [1, 2],
+      index_vector_dim = 3
     >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
-  } : (tensor<?x?x?xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
-  func.return %res : tensor<1x5x8xi32>
+    slice_sizes = dense<[1, 1, 1, 8]> : tensor<4xi64>,
+    indices_are_sorted = false
+  } : (tensor<3x2x4x9xi32>, tensor<1x3x5x2xi32>) -> tensor<1x3x5x8xi32>
+  func.return %res : tensor<1x3x5x8xi32>
+}
+
+// -----
+
+// CHECK: gather
+func.func @gather(%operand : tensor<?x?x?x?x?x?x?x?xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<8x?x7x1x6x1x?xi32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [0, 2, 3, 4, 5],
+      collapsed_slice_dims = [0, 1, 3],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8, 1, 7, 1, 6, 1]> : tensor<8xi64>,
+    indices_are_sorted = false
+  } : (tensor<?x?x?x?x?x?x?x?xi32>, tensor<1x5x2xi32>) -> tensor<8x?x7x1x6x1x?xi32>
+  func.return %res : tensor<8x?x7x1x6x1x?xi32>
 }
 
 // -----
@@ -3621,47 +3639,362 @@ func.func @gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<1x5x2xi3
 func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<1x5x8xi32> {
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
       offset_dims = [2],
-      start_index_map = [0, 1]
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
     >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
   } : (tensor<2x4x9xi32>, tensor<?x?x?xi32>) -> tensor<1x5x8xi32>
   func.return %res : tensor<1x5x8xi32>
 }
 
 // -----
 
-func.func @gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<?x?x?xi32> {
+func.func @gather(%operand : tensor<?x?x?x?xi32>, %start_indices : tensor<1x3x5x2xi32>) -> tensor<1x3x5x8xi32> {
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
-      offset_dims = [2],
-      start_index_map = [0, 1]
+      offset_dims = [3],
+      collapsed_slice_dims = [1, 2],
+      operand_batching_dims = [0],
+      start_indices_batching_dims = [1],
+      start_index_map = [1, 2],
+      index_vector_dim = 3
     >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+    slice_sizes = dense<[1, 1, 1, 8]> : tensor<4xi64>,
+    indices_are_sorted = false
+  } : (tensor<?x?x?x?xi32>, tensor<1x3x5x2xi32>) -> tensor<1x3x5x8xi32>
+  func.return %res : tensor<1x3x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{offset_dims size (2) plus collapse_slice_dims size (2) plus operand_batching_dims size (0) is not equal to operand rank (3)}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [1, 2],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{offset_dims size (2) plus collapse_slice_dims size (1) plus operand_batching_dims size (1) is not equal to operand rank (3)}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [1, 2],
+      collapsed_slice_dims = [0],
+      operand_batching_dims = [0],
+      start_indices_batching_dims = [0],
+      start_index_map = [1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{Expects index_vector_dim to be in range [0, rank-of('start_indices')] i.e. [0, 3]. got: -1.}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = -1
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{Expects index_vector_dim to be in range [0, rank-of('start_indices')] i.e. [0, 3]. got: 4.}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 4
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{start_index_map size (1) is not equal to size of index dimension (2) of start_indices (2)}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{start_index_map size (2) is not equal to size of index dimension (3) of start_indices (1)}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 3
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<16x11xi32>, %start_indices : tensor<5x2xi32>) -> tensor<5x8x6xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{expects offset_dims to be sorted, got: [2, 1]}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2, 1],
+      collapsed_slice_dims = [],
+      start_index_map = [0, 1],
+      index_vector_dim = 1
+    >,
+    slice_sizes = dense<[8, 6]> : tensor<2xi64>,
+    indices_are_sorted = false
+  } : (tensor<16x11xi32>, tensor<5x2xi32>) -> tensor<5x8x6xi32>
+  func.return %res : tensor<5x8x6xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<16x11xi32>, %start_indices : tensor<5x2xi32>) -> tensor<5x8x6xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{expects offset_dims to not repeat, got: [2, 2]}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2, 2],
+      collapsed_slice_dims = [],
+      start_index_map = [0, 1],
+      index_vector_dim = 1
+    >,
+    slice_sizes = dense<[8, 6]> : tensor<2xi64>,
+    indices_are_sorted = false
+  } : (tensor<16x11xi32>, tensor<5x2xi32>) -> tensor<5x8x6xi32>
+  func.return %res : tensor<5x8x6xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{Expects each element of offset_dims to be in range [0, implied-result-rank) i.e. [0, 3). got: -1.}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [-1],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{Expects each element of offset_dims to be in range [0, implied-result-rank) i.e. [0, 3). got: 3.}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [3],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{has duplicated dimension from collapsed_slice_dims and operand_batching_dims: 1}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [1, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x1xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{has duplicated dimension from collapsed_slice_dims and operand_batching_dims: 0}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [0],
+      operand_batching_dims = [0],
+      start_indices_batching_dims = [0],
+      start_index_map = [1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x1xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{expects collapsed_slice_dims to be sorted, got: [1, 0]}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [1, 0],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{Expects each element of collapsed_slice_dims to be in range [0, rank-of('operand')) i.e. [0, 3). got: -1.}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [-1, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{Expects each element of collapsed_slice_dims to be in range [0, rank-of('operand')) i.e. [0, 3). got: 17.}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [0, 17],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<?x?x?xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{Expects that for each dim in collapsed_slice_dims, slice_sizes[dim] should be <= 1, but got 8}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [0, 2],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
   } : (tensor<?x?x?xi32>, tensor<?x?x?xi32>) -> tensor<?x?x?xi32>
   func.return %res : tensor<?x?x?xi32>
 }
 
 // -----
 
-func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{index_vector_dim 4 is out of bounds for start indices with rank 3}}
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<4x2xi32>) -> tensor<4x2x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{expects operand_batching_dims to be sorted, got: [1, 0]}}
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 4,
       offset_dims = [2],
-      start_index_map = [0, 1]
+      operand_batching_dims = [1, 0],
+      start_indices_batching_dims = [0, 1],
+      start_index_map = [2],
+      index_vector_dim = 2
     >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<4x2xi32>) -> tensor<4x2x8xi32>
+  func.return %res : tensor<4x2x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{Expects each element of operand_batching_dims to be in range [0, rank-of('operand')) i.e. [0, 3). got: -1.}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [1],
+      operand_batching_dims = [-1],
+      start_indices_batching_dims = [0],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
   } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
   func.return %res : tensor<1x5x8xi32>
 }
@@ -3669,17 +4002,210 @@ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi3
 // -----
 
 func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{offset_dims size (2) plus collapse_slice_dims size (2) is not equal to operand rank (3)}}
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{Expects each element of operand_batching_dims to be in range [0, rank-of('operand')) i.e. [0, 3). got: 3.}}
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
-      offset_dims = [1, 2],
-      start_index_map = [0, 1]
+      offset_dims = [2],
+      collapsed_slice_dims = [1],
+      operand_batching_dims = [3],
+      start_indices_batching_dims = [0],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
     >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?xi32>) -> tensor<?x?x?xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{Expects that for each dim in operand_batching_dims, slice_sizes[dim] should be <= 1, but got 2}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      operand_batching_dims = [0, 1],
+      start_indices_batching_dims = [0, 1],
+      start_index_map = [2],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[2, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<?x?x?xi32>, tensor<?x?xi32>) -> tensor<?x?x?xi32>
+  func.return %res : tensor<?x?x?xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<4x2xi32>) -> tensor<4x2x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{expects start_indices_batching_dims to not repeat, got: [1, 0, 1]}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      operand_batching_dims = [0, 1],
+      start_indices_batching_dims = [1, 0, 1],
+      start_index_map = [2],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<4x2xi32>) -> tensor<4x2x8xi32>
+  func.return %res : tensor<4x2x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<4x2xi32>) -> tensor<4x2x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{Expects each element of start_indices_batching_dims to be in range [0, rank-of('start_indices')) i.e. [0, 2). got: -1.}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      operand_batching_dims = [0, 1],
+      start_indices_batching_dims = [1, -1],
+      start_index_map = [2],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<4x2xi32>) -> tensor<4x2x8xi32>
+  func.return %res : tensor<4x2x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<4x2xi32>) -> tensor<4x2x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{Expects each element of start_indices_batching_dims to be in range [0, rank-of('start_indices')) i.e. [0, 2). got: 10.}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      operand_batching_dims = [0, 1],
+      start_indices_batching_dims = [1, 10],
+      start_index_map = [2],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<4x2xi32>) -> tensor<4x2x8xi32>
+  func.return %res : tensor<4x2x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<2x5x1xi32>) -> tensor<2x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{expects start_indices_batching_dims not to include index_vector_dim 2}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [1],
+      operand_batching_dims = [0],
+      start_indices_batching_dims = [0, 2],
+      start_index_map = [1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<2x5x1xi32>) -> tensor<2x5x8xi32>
+  func.return %res : tensor<2x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<2x5x1xi32>) -> tensor<2x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{operand_batching_dims and start_indices_batching_dims should have the same size}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [1],
+      operand_batching_dims = [0],
+      start_indices_batching_dims = [0, 1],
+      start_index_map = [1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<2x5x1xi32>) -> tensor<2x5x8xi32>
+  func.return %res : tensor<2x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<2x5xi32>) -> tensor<2x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{operand_batching_dims[1] and start_indices_batching_dims[1] must have compatible sizes, but got 4 and 5}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      operand_batching_dims = [0, 1],
+      start_indices_batching_dims = [0, 1],
+      start_index_map = [2],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<2x5xi32>) -> tensor<2x5x8xi32>
+  func.return %res : tensor<2x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{has duplicated dimension from start_index_map and operand_batching_dims: 0}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 0],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
+  func.return %res : tensor<1x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<2x5x2xi32>) -> tensor<2x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{has duplicated dimension from start_index_map and operand_batching_dims: 0}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [1],
+      operand_batching_dims = [0],
+      start_indices_batching_dims = [0],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<2x5x2xi32>) -> tensor<2x5x8xi32>
+  func.return %res : tensor<2x5x8xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{Expects each element of start_index_map to be in range [0, rank-of('operand')) i.e. [0, 3). got: -2.}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [-2, -1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
   } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
   func.return %res : tensor<1x5x8xi32>
 }
@@ -3687,17 +4213,17 @@ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi3
 // -----
 
 func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{start_index_map size (1) is not equal to size of index dimension (2) of start_indices (2)}}
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{Expects each element of start_index_map to be in range [0, rank-of('operand')) i.e. [0, 3). got: 3.}}
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
       offset_dims = [2],
-      start_index_map = [0]
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 3],
+      index_vector_dim = 2
     >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
   } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
   func.return %res : tensor<1x5x8xi32>
 }
@@ -3705,35 +4231,17 @@ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi3
 // -----
 
 func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{slice_sizes has rank 2 instead of required rank 1}}
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{slice_sizes size (2) not equal to operand rank (3)}}
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
       offset_dims = [2],
-      start_index_map = [0, 1]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[[1, 1, 8]]> : tensor<1x3xi64>
-  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
-  func.return %res : tensor<1x5x8xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{slice_sizes size (2) not equal to (implied) operand rank (3)}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
       collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
-      offset_dims = [2],
-      start_index_map = [0, 1]
+      start_index_map = [0, 1],
+      index_vector_dim = 2
     >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 8]> : tensor<2xi64>
+    slice_sizes = dense<[1, 8]> : tensor<2xi64>,
+    indices_are_sorted = false
   } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
   func.return %res : tensor<1x5x8xi32>
 }
@@ -3741,25 +4249,61 @@ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi3
 // -----
 
 func.func @gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<?x?x?xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{slice_sizes size (6) not equal to (implied) operand rank (3)}}
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{slice_sizes size (6) not equal to operand rank (3)}}
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
       offset_dims = [2],
-      start_index_map = [0, 1]
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
     >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8, 1, 2, 3]> : tensor<6xi64>
+    slice_sizes = dense<[1, 1, 8, 1, 2, 3]> : tensor<6xi64>,
+    indices_are_sorted = false
   } : (tensor<?x?x?xi32>, tensor<?x?x?xi32>) -> tensor<?x?x?xi32>
+  func.return %res : tensor<?x?x?xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<?x?x2xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<?x?x?xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{slice size (-1) is out of bounds for operand dimension (2) at index 2}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, -1]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<?x?x2xi32>, tensor<?x?x?xi32>) -> tensor<?x?x?xi32>
+  func.return %res : tensor<?x?x?xi32>
+}
+
+// -----
+
+func.func @gather(%operand : tensor<?x?x2xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<?x?x?xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{slice size (8) is out of bounds for operand dimension (2) at index 2}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    indices_are_sorted = false
+  } : (tensor<?x?x2xi32>, tensor<?x?x?xi32>) -> tensor<?x?x?xi32>
   func.return %res : tensor<?x?x?xi32>
 }
 
 // -----
 
 func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<3xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
+  // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{inferred type(s) 'tensor<1x5x8xi32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
@@ -3776,8 +4320,28 @@ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi3
 
 // -----
 
+func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<4x5xi32>) -> tensor<3xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{inferred type(s) 'tensor<4x5x8xi32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      operand_batching_dims = [1],
+      start_indices_batching_dims = [0],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+  } : (tensor<2x4x9xi32>, tensor<4x5xi32>) -> tensor<3xi32>
+  func.return %res : tensor<3xi32>
+}
+
+// -----
+
 func.func @gather(%operand : tensor<?x?x?x?x?x?x?x?xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<3xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
+  // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{inferred type(s) 'tensor<8x?x7x1x6x1x?xi32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
@@ -3790,258 +4354,6 @@ func.func @gather(%operand : tensor<?x?x?x?x?x?x?x?xi32>, %start_indices : tenso
     slice_sizes = dense<[1, 1, 8, 1, 7, 1, 6, 1]> : tensor<8xi64>
   } : (tensor<?x?x?x?x?x?x?x?xi32>, tensor<?x?x?xi32>) -> tensor<3xi32>
   func.return %res : tensor<3xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<?x?x?xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{slice_sizes collapsed dimension 2 should <= 1 but got 8}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 2],
-      index_vector_dim = 2,
-      offset_dims = [2],
-      start_index_map = [0, 1]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
-  } : (tensor<?x?x?xi32>, tensor<?x?x?xi32>) -> tensor<?x?x?xi32>
-  func.return %res : tensor<?x?x?xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{collapsed dimension -1 is out of bounds for slice_sizes.size (3)}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [-1, 1],
-      index_vector_dim = 2,
-      offset_dims = [2],
-      start_index_map = [0, 1]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
-  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
-  func.return %res : tensor<1x5x8xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{collapsed dimension 17 is out of bounds for slice_sizes.size (3)}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 17],
-      index_vector_dim = 2,
-      offset_dims = [2],
-      start_index_map = [0, 1]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
-  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
-  func.return %res : tensor<1x5x8xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<?x?x2xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<?x?x?xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{slice size (-1) is out of bounds for operand dimension (2) at index 2}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
-      offset_dims = [2],
-      start_index_map = [0, 1]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, -1]> : tensor<3xi64>
-  } : (tensor<?x?x2xi32>, tensor<?x?x?xi32>) -> tensor<?x?x?xi32>
-  func.return %res : tensor<?x?x?xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<?x?x2xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<?x?x?xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{slice size (8) is out of bounds for operand dimension (2) at index 2}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
-      offset_dims = [2],
-      start_index_map = [0, 1]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
-  } : (tensor<?x?x2xi32>, tensor<?x?x?xi32>) -> tensor<?x?x?xi32>
-  func.return %res : tensor<?x?x?xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<16x11xi32>, %start_indices : tensor<5x2xi32>) -> tensor<5x8x6xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{expects offset_dims to not repeat, got: [2, 2]}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [],
-      index_vector_dim = 1,
-      offset_dims = [2, 2],
-      start_index_map = [0, 1]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[8, 6]> : tensor<2xi64>
-  } : (tensor<16x11xi32>, tensor<5x2xi32>) -> tensor<5x8x6xi32>
-  func.return %res : tensor<5x8x6xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<16x11xi32>, %start_indices : tensor<5x2xi32>) -> tensor<5x8x6xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{expects offset_dims to be sorted, got: [2, 1]}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [],
-      index_vector_dim = 1,
-      offset_dims = [2, 1],
-      start_index_map = [0, 1]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[8, 6]> : tensor<2xi64>
-  } : (tensor<16x11xi32>, tensor<5x2xi32>) -> tensor<5x8x6xi32>
-  func.return %res : tensor<5x8x6xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{expects collapsed_slice_dims to not repeat, got: [1, 1]}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [1, 1],
-      index_vector_dim = 2,
-      offset_dims = [2],
-      start_index_map = [0, 1]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
-  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
-  func.return %res : tensor<1x5x8xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{expects collapsed_slice_dims to be sorted, got: [1, 0]}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [1, 0],
-      index_vector_dim = 2,
-      offset_dims = [2],
-      start_index_map = [0, 1]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
-  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
-  func.return %res : tensor<1x5x8xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{offset_dims[0]: -1 is out of bounds for implied result rank 3}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
-      offset_dims = [-1],
-      start_index_map = [0, 1]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
-  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
-  func.return %res : tensor<1x5x8xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{offset_dims[0]: 3 is out of bounds for implied result rank 3}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
-      offset_dims = [3],
-      start_index_map = [0, 1]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
-  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
-  func.return %res : tensor<1x5x8xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{start_index_map[0]: -2 is out of bounds for operand rank 3}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
-      offset_dims = [2],
-      start_index_map = [-2, -1]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
-  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
-  func.return %res : tensor<1x5x8xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{start_index_map[1]: 3 is out of bounds for operand rank 3}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
-      offset_dims = [2],
-      start_index_map = [0, 3]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
-  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
-  func.return %res : tensor<1x5x8xi32>
-}
-
-// -----
-
-func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
-  // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{expects start_index_map to not repeat, got: [0, 0]}}
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
-      index_vector_dim = 2,
-      offset_dims = [2],
-      start_index_map = [0, 0]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
-  } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
-  func.return %res : tensor<1x5x8xi32>
 }
 
 // -----
@@ -4091,9 +4403,9 @@ func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<
 
 // -----
 
-func.func @dynamic_gather_c1(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>, %slice_sizes : tensor<3xi32>) -> tensor<1x5x8xi32> {
+func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>, %slice_sizes : tensor<3xi32>) -> tensor<1x5x8xi32> {
   // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{offset_dims size (2) plus collapse_slice_dims size (2) is not equal to operand rank (3)}}
+  // expected-error@+1 {{offset_dims size (2) plus collapse_slice_dims size (2) plus operand_batching_dims size (0) is not equal to operand rank (3)}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
     dimension_numbers = #mhlo.gather<
       offset_dims = [1, 2],
@@ -4108,9 +4420,9 @@ func.func @dynamic_gather_c1(%operand : tensor<2x4x9xi32>, %start_indices : tens
 
 // -----
 
-func.func @dynamic_gather_c2(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?xi32> {
+func.func @dynamic_gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?xi32> {
   // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{index_vector_dim 4 is out of bounds for start indices with rank 3}}
+  // expected-error@+1 {{Expects index_vector_dim to be in range [0, rank-of('start_indices')] i.e. [0, 3]. got: 4.}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
     dimension_numbers = #mhlo.gather<
       collapsed_slice_dims = [0, 1],
@@ -4125,7 +4437,7 @@ func.func @dynamic_gather_c2(%operand : tensor<?x?x?xi32>, %start_indices : tens
 
 // -----
 
-func.func @dynamic_gather_c3(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x2xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?xi32> {
+func.func @dynamic_gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x2xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?xi32> {
   // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{start_index_map size (1) is not equal to size of index dimension (2) of start_indices (2)}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
@@ -4142,12 +4454,12 @@ func.func @dynamic_gather_c3(%operand : tensor<?x?x?xi32>, %start_indices : tens
 
 // -----
 
-func.func @dynamic_gather_c4(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?x?x?xi32> {
+func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?x?x?xi32> {
   // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{expects offset_dims to be sorted, got: [2, 1]}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
     dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
+      collapsed_slice_dims = [0],
       index_vector_dim = 2,
       offset_dims = [2, 1],
       start_index_map = [0, 1]
@@ -4159,9 +4471,9 @@ func.func @dynamic_gather_c4(%operand : tensor<2x4x9xi32>, %start_indices : tens
 
 // -----
 
-func.func @dynamic_gather_c5(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?x?x?xi32> {
+func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?x?x?xi32> {
   // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{offset_dims[0]: -1 is out of bounds for implied result rank 3}}
+  // expected-error@+1 {{Expects each element of offset_dims to be in range [0, implied-result-rank) i.e. [0, 3). got: -1.}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
     dimension_numbers = #mhlo.gather<
       collapsed_slice_dims = [0, 1],
@@ -4176,9 +4488,9 @@ func.func @dynamic_gather_c5(%operand : tensor<2x4x9xi32>, %start_indices : tens
 
 // -----
 
-func.func @dynamic_gather_c5(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?x?x?xi32> {
+func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?x?x?xi32> {
   // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{offset_dims[0]: 3 is out of bounds for implied result rank 3}}
+  // expected-error@+1 {{Expects each element of offset_dims to be in range [0, implied-result-rank) i.e. [0, 3). got: 3.}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
     dimension_numbers = #mhlo.gather<
       collapsed_slice_dims = [0, 1],
@@ -4193,7 +4505,24 @@ func.func @dynamic_gather_c5(%operand : tensor<2x4x9xi32>, %start_indices : tens
 
 // -----
 
-func.func @dynamic_gather_c6(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?x?x?xi32> {
+func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?x?x?xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{has duplicated dimension from collapsed_slice_dims and operand_batching_dims: 1}}
+  %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [1, 1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false
+  } : (tensor<2x4x9xi32>, tensor<?x?x?xi32>, tensor<3xi32>) -> tensor<?x?x?xi32>
+  func.return %res : tensor<?x?x?xi32>
+}
+
+// -----
+
+func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?x?x?xi32> {
   // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{expects collapsed_slice_dims to be sorted, got: [1, 0]}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
@@ -4210,26 +4539,9 @@ func.func @dynamic_gather_c6(%operand : tensor<2x4x9xi32>, %start_indices : tens
 
 // -----
 
-func.func @dynamic_gather_c6(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?x?x?xi32> {
+func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?x?x?xi32> {
   // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{expects collapsed_slice_dims to not repeat, got: [1, 1]}}
-  %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [1, 1],
-      index_vector_dim = 2,
-      offset_dims = [2],
-      start_index_map = [0, 1]
-    >,
-    indices_are_sorted = false
-  } : (tensor<2x4x9xi32>, tensor<?x?x?xi32>, tensor<3xi32>) -> tensor<?x?x?xi32>
-  func.return %res : tensor<?x?x?xi32>
-}
-
-// -----
-
-func.func @dynamic_gather_c7(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?x?x?xi32> {
-  // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{collapsed dimension -1 is out of bounds for slice_sizes.size (3)}}
+  // expected-error@+1 {{Expects each element of collapsed_slice_dims to be in range [0, rank-of('operand')) i.e. [0, 3). got: -1.}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
     dimension_numbers = #mhlo.gather<
       collapsed_slice_dims = [-1, 1],
@@ -4244,9 +4556,9 @@ func.func @dynamic_gather_c7(%operand : tensor<2x4x9xi32>, %start_indices : tens
 
 // -----
 
-func.func @dynamic_gather_c7(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?x?x?xi32> {
+func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?x?x?xi32> {
   // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{collapsed dimension 17 is out of bounds for slice_sizes.size (3)}}
+  // expected-error@+1 {{Expects each element of collapsed_slice_dims to be in range [0, rank-of('operand')) i.e. [0, 3). got: 17.}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
     dimension_numbers = #mhlo.gather<
       collapsed_slice_dims = [0, 17],
@@ -4261,10 +4573,10 @@ func.func @dynamic_gather_c7(%operand : tensor<2x4x9xi32>, %start_indices : tens
 
 // -----
 
-func.func @dynamic_gather_c8(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<?x?x?xi32> {
+func.func @dynamic_gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<?x?x?xi32> {
   %slize_sizes = mhlo.constant dense<[1,1,8]> : tensor<3xi32>
   // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{slice_sizes collapsed dimension 2 should <= 1 but got 8}}
+  // expected-error@+1 {{Expects that for each dim in collapsed_slice_dims, slice_sizes[dim] should be <= 1, but got 8}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slize_sizes) {
     dimension_numbers = #mhlo.gather<
       offset_dims = [2],
@@ -4279,9 +4591,28 @@ func.func @dynamic_gather_c8(%operand : tensor<?x?x?xi32>, %start_indices : tens
 
 // -----
 
-func.func @dynamic_gather_c9(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>, %slize_sizes : tensor<3xi32>) -> tensor<1x5x8xi32> {
+func.func @dynamic_gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?xi32>) -> tensor<?x?x?xi32> {
+  %slize_sizes = mhlo.constant dense<[2,1,8]> : tensor<3xi32>
   // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{expects start_index_map to not repeat, got: [0, 0]}}
+  // expected-error@+1 {{Expects that for each dim in operand_batching_dims, slice_sizes[dim] should be <= 1, but got 2}}
+  %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slize_sizes) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      operand_batching_dims = [0, 1],
+      start_indices_batching_dims = [0, 1],
+      start_index_map = [2],
+      index_vector_dim = 2
+    >,
+    indices_are_sorted = false
+  } : (tensor<?x?x?xi32>, tensor<?x?xi32>, tensor<3xi32>) -> tensor<?x?x?xi32>
+  func.return %res : tensor<?x?x?xi32>
+}
+
+// -----
+
+func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>, %slize_sizes : tensor<3xi32>) -> tensor<1x5x8xi32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{has duplicated dimension from start_index_map and operand_batching_dims: 0}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slize_sizes) {
     dimension_numbers = #mhlo.gather<
       offset_dims = [2],
@@ -4296,9 +4627,9 @@ func.func @dynamic_gather_c9(%operand : tensor<2x4x9xi32>, %start_indices : tens
 
 // -----
 
-func.func @dynamic_gather_c10(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>, %slize_sizes : tensor<3xi32>) -> tensor<1x5x8xi32> {
+func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>, %slize_sizes : tensor<3xi32>) -> tensor<1x5x8xi32> {
   // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{start_index_map[0]: -2 is out of bounds for operand rank 3}}
+  // expected-error@+1 {{Expects each element of start_index_map to be in range [0, rank-of('operand')) i.e. [0, 3). got: -2.}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slize_sizes) {
     dimension_numbers = #mhlo.gather<
       offset_dims = [2],
@@ -4306,7 +4637,6 @@ func.func @dynamic_gather_c10(%operand : tensor<2x4x9xi32>, %start_indices : ten
       start_index_map = [-2, -1],
       index_vector_dim = 2
     >,
-    slice_sizes = array<i64: 1, 1, 8>,
     indices_are_sorted = false
   } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>, tensor<3xi32>) -> tensor<1x5x8xi32>
   func.return %res : tensor<1x5x8xi32>
@@ -4314,9 +4644,9 @@ func.func @dynamic_gather_c10(%operand : tensor<2x4x9xi32>, %start_indices : ten
 
 // -----
 
-func.func @dynamic_gather_c10(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>, %slize_sizes : tensor<3xi32>) -> tensor<1x5x8xi32> {
+func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>, %slize_sizes : tensor<3xi32>) -> tensor<1x5x8xi32> {
   // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{start_index_map[1]: 3 is out of bounds for operand rank 3}}
+  // expected-error@+1 {{Expects each element of start_index_map to be in range [0, rank-of('operand')) i.e. [0, 3). got: 3.}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slize_sizes) {
     dimension_numbers = #mhlo.gather<
       offset_dims = [2],
@@ -4324,7 +4654,6 @@ func.func @dynamic_gather_c10(%operand : tensor<2x4x9xi32>, %start_indices : ten
       start_index_map = [0, 3],
       index_vector_dim = 2
     >,
-    slice_sizes = array<i64: 1, 1, 8>,
     indices_are_sorted = false
   } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>, tensor<3xi32>) -> tensor<1x5x8xi32>
   func.return %res : tensor<1x5x8xi32>
@@ -4332,9 +4661,9 @@ func.func @dynamic_gather_c10(%operand : tensor<2x4x9xi32>, %start_indices : ten
 
 // -----
 
-func.func @dynamic_gather_c11(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<2xi32>) -> tensor<?x?x?xi32> {
+func.func @dynamic_gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<2xi32>) -> tensor<?x?x?xi32> {
   // expected-error@+2 {{failed to infer returned types}}
-  // expected-error@+1 {{slice_sizes size (2) not equal to (implied) operand rank (3)}}
+  // expected-error@+1 {{slice_sizes size (2) not equal to operand rank (3)}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
     dimension_numbers = #mhlo.gather<
       collapsed_slice_dims = [0, 1],
@@ -4349,7 +4678,7 @@ func.func @dynamic_gather_c11(%operand : tensor<?x?x?xi32>, %start_indices : ten
 
 // -----
 
-func.func @dynamic_gather_c12(%operand : tensor<?x?x2xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<?x?x?xi32> {
+func.func @dynamic_gather(%operand : tensor<?x?x2xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<?x?x?xi32> {
   %slice_sizes = mhlo.constant dense<[1,1,-1]> : tensor<3xi32>
   // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{slice size (-1) is out of bounds for operand dimension (2) at index 2}}
@@ -4367,7 +4696,7 @@ func.func @dynamic_gather_c12(%operand : tensor<?x?x2xi32>, %start_indices : ten
 
 // -----
 
-func.func @dynamic_gather_c12(%operand : tensor<?x?x2xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<?x?x?xi32> {
+func.func @dynamic_gather(%operand : tensor<?x?x2xi32>, %start_indices : tensor<?x?x?xi32>) -> tensor<?x?x?xi32> {
   %slice_sizes = mhlo.constant dense<[1,1,8]> : tensor<3xi32>
   // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{slice size (8) is out of bounds for operand dimension (2) at index 2}}
@@ -4378,7 +4707,7 @@ func.func @dynamic_gather_c12(%operand : tensor<?x?x2xi32>, %start_indices : ten
       start_index_map = [0, 1],
       index_vector_dim = 2
     >,
-    slice_sizes = array<i64: 1, 1, 8>,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
     indices_are_sorted = false
   } : (tensor<?x?x2xi32>, tensor<?x?x?xi32>, tensor<3xi32>) -> tensor<?x?x?xi32>
   func.return %res : tensor<?x?x?xi32>
@@ -4386,7 +4715,7 @@ func.func @dynamic_gather_c12(%operand : tensor<?x?x2xi32>, %start_indices : ten
 
 // -----
 
-func.func @dynamic_gather_c13(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>, %slice_sizes : tensor<3xi32>) -> tensor<3xi32> {
+func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>, %slice_sizes : tensor<3xi32>) -> tensor<3xi32> {
   // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{inferred type(s) 'tensor<1x5x?xi32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
@@ -4403,7 +4732,7 @@ func.func @dynamic_gather_c13(%operand : tensor<2x4x9xi32>, %start_indices : ten
 
 // -----
 
-func.func @dynamic_gather_c13(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>, %slice_sizes : tensor<3xi32>) -> tensor<3xi32> {
+func.func @dynamic_gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>, %slice_sizes : tensor<3xi32>) -> tensor<3xi32> {
   // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{inferred type(s) 'tensor<1x5x?xi32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
@@ -4420,7 +4749,7 @@ func.func @dynamic_gather_c13(%operand : tensor<2x4x9xi32>, %start_indices : ten
 
 // -----
 
-func.func @dynamic_gather_c13(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<3xi32> {
+func.func @dynamic_gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<3xi32> {
   // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{inferred type(s) 'tensor<?x?x?xi32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {
@@ -4437,7 +4766,7 @@ func.func @dynamic_gather_c13(%operand : tensor<?x?x?xi32>, %start_indices : ten
 
 // -----
 
-func.func @dynamic_gather_c13(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?xi32> {
+func.func @dynamic_gather(%operand : tensor<?x?x?xi32>, %start_indices : tensor<?x?x?xi32>, %slice_sizes : tensor<3xi32>) -> tensor<?xi32> {
   // expected-error@+2 {{failed to infer returned types}}
   // expected-error@+1 {{inferred type(s) 'tensor<?x?x?xi32>' are incompatible with return type(s) of operation 'tensor<?xi32>'}}
   %res = "mhlo.dynamic_gather"(%operand, %start_indices, %slice_sizes) {

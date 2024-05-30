@@ -1449,7 +1449,8 @@ class ConvertGatherNdOpDynamic : public OpRewritePattern<TF::GatherNdOp> {
 
     auto dims_attr = GatherDimensionNumbersAttr::get(
         rewriter.getContext(), offset_dims, collapsed_slice_dims,
-        start_index_map, index_vector_dim);
+        /*operandBatchingDims=*/{},
+        /*startIndicesBatchingDims=*/{}, start_index_map, index_vector_dim);
     // TODO(disc): Remove this if-statement once fold and canonicalization is
     // implemented.
     if (params_ty.hasStaticShape() && indices_ty.hasStaticShape()) {
@@ -1956,7 +1957,9 @@ class ConvertMatrixDiagPartV3Op
     auto dims_attr = GatherDimensionNumbersAttr::get(
         rewriter.getContext(),
         /*offsetDims=*/llvm::to_vector<4>(llvm::seq<int64_t>(0, num_dims - 2)),
-        /*collapsedSliceDims=*/collapsed_dims, start_index_map,
+        /*collapsedSliceDims=*/collapsed_dims,
+        /*operandBatchingDims=*/{},
+        /*startIndicesBatchingDims=*/{}, start_index_map,
         /*indexVectorDim=*/0);
     Value gather = rewriter.create<mhlo::GatherOp>(
         loc, op.getInput(), start_indices, dims_attr,
@@ -4373,6 +4376,8 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
         llvm::to_vector<4>(
             llvm::seq<int64_t>(updates_rank - window_dims, updates_rank)),
         llvm::to_vector<4>(llvm::seq<int64_t>(0, num_index_dims)),
+        /*inputBatchingDims=*/{},
+        /*scatterIndicesBatchingDims=*/{},
         llvm::to_vector<4>(llvm::seq<int64_t>(0, num_index_dims)),
         indices_rank - 1);
 
@@ -5614,7 +5619,10 @@ class GenericConvertUnsortedSegmentReductionOp : public OpRewritePattern<OpTy> {
     auto dims_attr = ScatterDimensionNumbersAttr::get(
         rewriter.getContext(),
         llvm::to_vector<4>(llvm::seq<int64_t>(segment_ids_rank, data_rank)),
-        inserted_window_dims, scatter_dims_to_operand_dims, index_vector_dim);
+        inserted_window_dims,
+        /*inputBatchingDims=*/{},
+        /*scatterIndicesBatchingDims=*/{}, scatter_dims_to_operand_dims,
+        index_vector_dim);
 
     auto scatter = rewriter.create<ScatterOp>(
         op.getLoc(), op.getType(), ValueRange(Value(broadcasted_init)),
@@ -5836,6 +5844,8 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
         rewriter.getContext(),
         /*offsetDims=*/llvm::to_vector<4>(llvm::seq<int64_t>(1, input_rank)),
         /*collapsedSliceDims=*/{0},
+        /*operandBatchingDims=*/{},
+        /*startIndicesBatchingDims=*/{},
         /*startIndexMap=*/{0},
         /*indexVectorDim=*/1);
 

@@ -522,6 +522,10 @@ static xla::ComparisonDirection Convert_comparison_direction(
 
 static xla::GatherDimensionNumbers Convert_dimension_numbers(
     mlir::mhlo::GatherDimensionNumbersAttr input) {
+  assert(input.getOperandBatchingDims().empty() &&
+         input.getStartIndicesBatchingDims().empty() &&
+         "batching dimensions aren't supported in xla::GatherDimensionNumbers");
+
   xla::GatherDimensionNumbers output;
 
   auto offset_dims = input.getOffsetDims();
@@ -545,6 +549,11 @@ static xla::GatherDimensionNumbers Convert_dimension_numbers(
 
 static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
     mlir::mhlo::ScatterDimensionNumbersAttr input) {
+  assert(
+      input.getInputBatchingDims().empty() &&
+      input.getScatterIndicesBatchingDims().empty() &&
+      "batching dimensions aren't supported in xla::ScatterDimensionNumbers");
+
   xla::ScatterDimensionNumbers output;
 
   auto update_window_dims = input.getUpdateWindowDims();

@@ -959,28 +959,30 @@ func.func @op_floor(%arg0: tensor<f32>) -> tensor<f32> {
 // FusionOp aka mhlo.fusion is unsupported at the moment (see negative test below).
 
 // CHECK-LABEL: "op_gather"
-func.func @op_gather(%arg0 : tensor<2x4x9xf32>, %arg1 : tensor<1x5x2xi32>) -> tensor<1x5x1xf32> {
+func.func @op_gather(%arg0: tensor<2x3x4x2xi32>, %arg1: tensor<2x2x3x2xi64>) -> tensor<2x2x3x2x2xi32> {
   //      CHECK: "stablehlo.gather"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) <{
   // CHECK-SAME:   dimension_numbers = #stablehlo.gather<
-  // CHECK-SAME:     offset_dims = [2],
-  // CHECK-SAME:     collapsed_slice_dims = [0, 1],
-  // CHECK-SAME:     start_index_map = [0, 1],
-  // CHECK-SAME:     index_vector_dim = 2
-  // CHECK-SAME:   >,
+  // CHECK-SAME:     offset_dims = [3, 4],
+  // CHECK-SAME:     collapsed_slice_dims = [1],
+  // CHECK-SAME:     operand_batching_dims = [0],
+  // CHECK-SAME:     start_indices_batching_dims = [1],
+  // CHECK-SAME:     start_index_map = [2, 1],
+  // CHECK-SAME:     index_vector_dim = 3>,
   // CHECK-SAME:   indices_are_sorted = false,
-  // CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1>
-  // CHECK-SAME: }> : (tensor<2x4x9xf32>, tensor<1x5x2xi32>) -> tensor<1x5x1xf32>
+  // CHECK-SAME:   slice_sizes = array<i64: 1, 1, 2, 2>
+  // CHECK-SAME: }> : (tensor<2x3x4x2xi32>, tensor<2x2x3x2xi64>) -> tensor<2x2x3x2x2xi32>
   %0 = "mhlo.gather"(%arg0, %arg1) {
     dimension_numbers = #mhlo.gather<
-      offset_dims = [2],
-      collapsed_slice_dims = [0, 1],
-      start_index_map = [0, 1],
-      index_vector_dim = 2
-    >,
-    slice_sizes = dense<1> : tensor<3xi64>,
+      offset_dims = [3, 4],
+      collapsed_slice_dims = [1],
+      operand_batching_dims = [0],
+      start_indices_batching_dims = [1],
+      start_index_map = [2, 1],
+      index_vector_dim = 3>,
+    slice_sizes = dense<[1, 1, 2, 2]> : tensor<4xi64>,
     indices_are_sorted = false
-  } : (tensor<2x4x9xf32>, tensor<1x5x2xi32>) -> tensor<1x5x1xf32>
-  func.return %0 : tensor<1x5x1xf32>
+  } : (tensor<2x3x4x2xi32>, tensor<2x2x3x2xi64>) -> tensor<2x2x3x2x2xi32>
+  func.return %0 : tensor<2x2x3x2x2xi32>
 }
 
 // CHECK-LABEL: "op_get_dimension_size"
@@ -1383,36 +1385,38 @@ func.func @op_rsqrt(%arg0: tensor<f32>) -> tensor<f32> {
 }
 
 // CHECK-LABEL: "op_scatter"
-func.func @op_scatter(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>, %arg2: tensor<10x300xf32>) -> tensor<200x100x300xf32> {
+func.func @op_scatter(%arg0: tensor<2x3x4x2xi64>, %arg1: tensor<2x2x3x2xi64>, %arg2: tensor<2x2x3x2x2xi64>) -> tensor<2x3x4x2xi64> {
   //      CHECK: "stablehlo.scatter"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]], [[ARG2:%arg[0-9]+]]) <{
   // CHECK-SAME:  indices_are_sorted = true,
   // CHECK-SAME:  scatter_dimension_numbers = #stablehlo.scatter<
-  // CHECK-SAME:    update_window_dims = [1],
-  // CHECK-SAME:    inserted_window_dims = [0, 1],
-  // CHECK-SAME:    scatter_dims_to_operand_dims = [0, 1],
-  // CHECK-SAME:    index_vector_dim = 1
-  // CHECK-SAME:  >,
+  // CHECK-SAME:    update_window_dims = [3, 4],
+  // CHECK-SAME:    inserted_window_dims = [1],
+  // CHECK-SAME:    input_batching_dims = [0],
+  // CHECK-SAME:    scatter_indices_batching_dims = [1],
+  // CHECK-SAME:    scatter_dims_to_operand_dims = [2, 1],
+  // CHECK-SAME:    index_vector_dim = 3>,
   // CHECK-SAME:  unique_indices = true
   // CHECK-SAME: }> ({
-  // CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG3:arg.*]]: tensor<f32>, %[[ARG4:arg.*]]: tensor<f32>):
-  // CHECK-NEXT:     %[[VAL1:.*]] = "stablehlo.add"(%[[ARG3]], %[[ARG4]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-  // CHECK-NEXT:     "stablehlo.return"(%[[VAL1]]) : (tensor<f32>) -> ()
-  // CHECK-NEXT: }) : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) -> tensor<200x100x300xf32>
+  // CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG3:arg.*]]: tensor<i64>, %[[ARG4:arg.*]]: tensor<i64>):
+  // CHECK-NEXT:     %[[VAL1:.*]] = "stablehlo.add"(%[[ARG3]], %[[ARG4]]) : (tensor<i64>, tensor<i64>) -> tensor<i64>
+  // CHECK-NEXT:     "stablehlo.return"(%[[VAL1]]) : (tensor<i64>) -> ()
+  // CHECK-NEXT: }) : (tensor<2x3x4x2xi64>, tensor<2x2x3x2xi64>, tensor<2x2x3x2x2xi64>) -> tensor<2x3x4x2xi64>
   %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
-    ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
-      %1 = "mhlo.add"(%arg3, %arg4) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-      "mhlo.return"(%1) : (tensor<f32>) -> ()
+    ^bb0(%arg3: tensor<i64>, %arg4: tensor<i64>):
+      %1 = "mhlo.add"(%arg3, %arg4) : (tensor<i64>, tensor<i64>) -> tensor<i64>
+      "mhlo.return"(%1) : (tensor<i64>) -> ()
   }) {
     scatter_dimension_numbers = #mhlo.scatter<
-      update_window_dims = [1],
-      inserted_window_dims = [0, 1],
-      scatter_dims_to_operand_dims = [0, 1],
-      index_vector_dim = 1
-    >,
+      update_window_dims = [3, 4],
+      inserted_window_dims = [1],
+      input_batching_dims = [0],
+      scatter_indices_batching_dims = [1],
+      scatter_dims_to_operand_dims = [2, 1],
+      index_vector_dim = 3>,
     indices_are_sorted = true,
     unique_indices = true
-  } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) -> tensor<200x100x300xf32>
-  func.return %0 : tensor<200x100x300xf32>
+  } : (tensor<2x3x4x2xi64>, tensor<2x2x3x2xi64>, tensor<2x2x3x2x2xi64>) -> tensor<2x3x4x2xi64>
+  func.return %0 : tensor<2x3x4x2xi64>
 }
 
 // CHECK-LABEL: "op_select_and_scatter"
