@@ -1,1 +1,13 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/lld/MachO/ObjC.cpp b/lld/MachO/ObjC.cpp
+--- a/lld/MachO/ObjC.cpp
++++ b/lld/MachO/ObjC.cpp
+@@ -388,7 +388,7 @@
+         : categoryPrefix(_categoryPrefix),
+           pointersPerStruct(_pointersPerStruct) {}
+ 
+-    inline bool operator==(const PointerListInfo &cmp) {
++    inline bool operator==(const PointerListInfo &cmp) const {
+       return pointersPerStruct == cmp.pointersPerStruct &&
+              structSize == cmp.structSize && structCount == cmp.structCount &&
+              allPtrs == cmp.allPtrs;
