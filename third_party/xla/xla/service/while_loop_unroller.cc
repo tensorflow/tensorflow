@@ -328,10 +328,9 @@ bool IsLoopInductionVar(const HloInstruction* instr,
   }
 }
 
-bool MatchShapeCoveringDynamicIndexInstruction(HloInstruction* instr,
-                                               HloInstruction* input,
-                                               HloOpcode opcode,
-                                               const WhileLoopConfig& config) {
+std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
+    HloInstruction* instr, HloInstruction* input, HloOpcode opcode,
+    const WhileLoopConfig& config) {
   // Based on the instruction type, start indices start from index 1 or 2 of the
   // operands.
   int64_t start_indices_offset;
@@ -340,11 +339,11 @@ bool MatchShapeCoveringDynamicIndexInstruction(HloInstruction* instr,
   } else if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
     start_indices_offset = 2;
   } else {
-    return false;
+    return std::nullopt;
   }
   HloInstruction* operand = instr->mutable_operand(0);
   if (operand != input) {
-    return false;
+    return std::nullopt;
   }
 
   int64_t dynamic_index = -1;
@@ -356,7 +355,7 @@ bool MatchShapeCoveringDynamicIndexInstruction(HloInstruction* instr,
       std::optional<int64_t> offset =
           LiteralUtil::LiteralAsScalarInt64(index->literal());
       if (offset.has_value() && offset.value() != 0) {
-        return false;
+        return std::nullopt;
       }
     }
 
@@ -366,22 +365,22 @@ bool MatchShapeCoveringDynamicIndexInstruction(HloInstruction* instr,
       // In order to cover the whole shape only a single non-constant index is
       // allowed.
       if (dynamic_index != -1) {
-        return false;
+        return std::nullopt;
       }
       dynamic_index = start_index - start_indices_offset;
     }
   }
 
   if (dynamic_index == -1) {
-    return false;
+    return std::nullopt;
   }
 
   // The shape's broadcast_dim must be exactly equal to the loop trip count.
   if (operand->shape().dimensions(dynamic_index) != config.trip_count) {
-    return false;
+    return std::nullopt;
   }
 
-  return true;
+  return dynamic_index;
 }
 
 /*static*/ std::optional<WhileLoopConfig> WhileLoopUnroller::IsLoopUnrollable(

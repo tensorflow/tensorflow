@@ -96,7 +96,8 @@ FindAccumulatorInputPairs(const HloAliasAnalysis& alias_analysis,
       }
       HloInstruction* gte_user = gte->users().at(0);
       if (MatchShapeCoveringDynamicIndexInstruction(
-              gte_user, gte, HloOpcode::kDynamicUpdateSlice, config)) {
+              gte_user, gte, HloOpcode::kDynamicUpdateSlice, config)
+              .has_value()) {
         // The accumulator should be written at the same index
         if (computation->root_instruction()->mutable_operand(param_idx) ==
             gte_user) {
@@ -188,8 +189,8 @@ FindAccumulatorInputPairs(const HloAliasAnalysis& alias_analysis,
     HloInstruction* gte_user = input_gte_inner->users().at(0);
     // Check if the input_gte_inner is a shape covering read-only instruction
     if (MatchShapeCoveringDynamicIndexInstruction(
-            gte_user, input_gte_inner, HloOpcode::kDynamicUpdateSlice,
-            config)) {
+            gte_user, input_gte_inner, HloOpcode::kDynamicUpdateSlice, config)
+            .has_value()) {
       acc_input_pairs.emplace_back(acc, input_gte_inner);
     }
   }
