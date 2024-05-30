@@ -365,7 +365,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   // A{I} -> R [S']{I} -> bitcast[S]{L2}
   //
   absl::Status HandleReshape(HloInstruction* hlo) override {
-    const auto& s = hlo->shape();
+    auto s = hlo->shape();
     auto operand = hlo->mutable_operand(0);
     TF_RET_CHECK(ShapeUtil::ReshapeIsBitcast(s, operand->shape()));
     TF_ASSIGN_OR_RETURN(auto a0, GetNormalizedInput(operand));
@@ -378,98 +378,9 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-  absl::Status HandleGather(HloInstruction* hlo) override {
-    const auto& s = hlo->shape();
-    auto normalized_shape = Normalize(s);
-    auto* gather = Cast<HloGatherInstruction>(hlo);
-    TF_ASSIGN_OR_RETURN(auto* normalized_operand,
-                        GetNormalizedInput(gather->mutable_operand(0)));
-    // Since normalization might reorder the output differently than the
-    // 'start_indices' operand, we have no way to specify the order of the
-    // gather batch dimensions, as that is not an attribute in
-    // GatherDimensionNumbers. Gather implicitly assumes that the batch
-    // dimensions appear in the same order in 'start_indices' and output. So we
-    // require that there is just a single batch dimension. This is ensured by
-    // the GatherSimplifier pass.
-    if (gather->operand(1)->shape().rank() != 2) {
-      return FailedPrecondition(
-          "There should be just a single gather batch dimension. Make sure to "
-          "run GatherSimplifier before LayoutNormalization");
-    }
-    TF_ASSIGN_OR_RETURN(auto* normalized_start_indices,
-                        GetNormalizedInput(gather->mutable_operand(1)));
-
-    auto operand_permutation =
-        ToTransposeDimensions(gather->operand(0)->shape().layout());
-    auto normalized_slice_sizes =
-        ComposePermutations(gather->gather_slice_sizes(), operand_permutation);
-
-    const auto& dims = gather->gather_dimension_numbers();
-    GatherDimensionNumbers normalized_dims;
-    auto start_indices_permutation =
-        ToTransposeDimensions(gather->operand(1)->shape().layout());
-    normalized_dims.set_index_vector_dim(
-        start_indices_permutation[dims.index_vector_dim()]);
-    auto inverse_operand_permutation = InversePermutation(operand_permutation);
-    std::vector<int64_t> normalized_collapsed_slice_dims;
-    normalized_collapsed_slice_dims.reserve(dims.collapsed_slice_dims_size());
-    for (int64_t dim : dims.collapsed_slice_dims()) {
-      normalized_collapsed_slice_dims.push_back(
-          inverse_operand_permutation[dim]);
-    }
-    absl::c_sort(normalized_collapsed_slice_dims);
-    for (int64_t dim : normalized_collapsed_slice_dims) {
-      normalized_dims.add_collapsed_slice_dims(dim);
-    }
-
-    // Compute the permutation that we need to apply to the original
-    // offset_dims. We need to remap the dimensions that are not collapsed to
-    // the range [0, offset_dims.size() - 1], but also insert placeholders for
-    // the collapsed dimensions so that we can apply 'operand_permutation'.
-    std::vector<int64_t> permutation(operand_permutation.size(), -2);
-    for (int64_t collapsed_dim : dims.collapsed_slice_dims()) {
-      permutation[collapsed_dim] = -1;
-    }
-    for (int64_t i = 0, j = 0; i < permutation.size(); ++i) {
-      if (permutation[i] == -2) {
-        permutation[i] = j++;
-      }
-    }
-    permutation = ComposePermutations(permutation, operand_permutation);
-    // Now remove the placeholders.
-    int64_t l = 0;
-    for (int64_t i = 0; i < permutation.size(); ++i) {
-      if (permutation[i] >= 0) {
-        permutation[l++] = permutation[i];
-      }
-    }
-    permutation.erase(permutation.begin() + l, permutation.end());
-    auto normalized_offset_dims =
-        ComposePermutations(dims.offset_dims(), permutation);
-    auto inverse_output_permutation =
-        InversePermutation(ToTransposeDimensions(s.layout()));
-    for (int64_t dim : normalized_offset_dims) {
-      normalized_dims.add_offset_dims(inverse_output_permutation[dim]);
-    }
-
-    for (int64_t dim : dims.start_index_map()) {
-      normalized_dims.add_start_index_map(inverse_operand_permutation[dim]);
-    }
-
-    auto* normalized_gather =
-        gather->AddInstruction(HloInstruction::CreateGather(
-            normalized_shape, normalized_operand, normalized_start_indices,
-            normalized_dims, normalized_slice_sizes,
-            gather->indices_are_sorted()));
-    SetVisited(*normalized_gather);
-    auto* bc_to_orig = MakeBitcastHlo(normalized_gather, s);
-    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
-    return absl::OkStatus();
-  }
-
   // Scatter is layout-preserving regarding the scatter operands, so we only
   // have to permute values inside the ScatterDimensionNumbers.
-  absl::Status HandleScatter(HloInstruction* hlo) override {
+  Status HandleScatter(HloInstruction* hlo) override {
     auto* scatter = Cast<HloScatterInstruction>(hlo);
     std::vector<HloInstruction*> normalized_operands;
     normalized_operands.reserve(scatter->scatter_operand_count());

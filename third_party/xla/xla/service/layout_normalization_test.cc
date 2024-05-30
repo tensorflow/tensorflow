@@ -778,7 +778,7 @@ ENTRY main {
 
 TEST_F(LayoutNormalizationTest, Scatter) {
   const char* hlo = R"(
-HloModule scatter
+HloModule simplified_scatter
 
 region_0.10 {
   Arg_0.11 = s16[] parameter(0)
@@ -870,25 +870,6 @@ ENTRY main.17 {
       [](HloModule* module) {
         TF_CHECK_OK(ScatterSimplifier().Run(module).status());
       });
-}
-
-TEST_F(LayoutNormalizationTest, Gather) {
-  const char* hlo = R"(
-HloModule gather
-
-ENTRY main.17 {
-  operand = s16[3,2,2,14,16]{0,1,4,3,2} parameter(0)
-  indices = s32[6,5]{0,1} parameter(1)
-  ROOT gather = s16[3,6,10,15]{0,1,3,2} gather(operand, indices), offset_dims={0,2,3}, index_vector_dim=1, slice_sizes={3,1,1,10,15}, start_index_map={0,1,2,3,4}, collapsed_slice_dims={1,2}
-}
-)";
-
-  CheckLayoutNormalization(hlo, R"(
-// CHECK: [[bitcast:[^ ]+]] = s16[2,14,16,2,3]{4,3,2,1,0} bitcast({{.*}})
-// CHECK: [[bitcast2:[^ ]+]] = s32[5,6]{1,0} bitcast({{.*}})
-// CHECK: s16[10,15,6,3]{3,2,1,0} gather([[bitcast]], [[bitcast2]]),
-// CHECK-SAME: offset_dims={0,1,3}, collapsed_slice_dims={0,3}, start_index_map={4,3,0,1,2}, index_vector_dim=0, slice_sizes={1,10,15,1,3}
-)");
 }
 
 }  // namespace
