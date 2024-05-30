@@ -156,6 +156,16 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_instruction_utils",
+    srcs = ["hlo_instruction_utils.cc"],
+    hdrs = ["hlo_instruction_utils.h"],
+    deps = [
+        ":hlo",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
     name = "hlo_reachability",
     srcs = ["hlo_reachability.cc"],
     hdrs = ["hlo_reachability.h"],
