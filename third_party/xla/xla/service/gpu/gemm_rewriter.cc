@@ -263,19 +263,28 @@ bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
     return true;
   }
 
+  int num_dequant_ops;
   // When not operating directly on an FP8 operand, the second and
-  // third instructions in the subgraph must describe a dequantization, i.e. a
+  // third instructions in the subgraph can describe a dequantization, i.e. a
   // convert instruction followed by a multiply/divide instruction.
   if (subgraph.size() > 2 &&
       Match(subgraph[2].first,
             m::MultiplyAnyOrder(m::Convert(m::Op(&x)),
                                 m::Broadcast(m::Op(&x_scale))))) {
     x_mult_scale = true;
+    num_dequant_ops = 2;
   } else if (subgraph.size() > 2 &&
              Match(subgraph[2].first,
                    m::Divide(m::Convert(m::Op(&x)),
                              m::Broadcast(m::Op(&x_scale))))) {
     x_mult_scale = false;
+    num_dequant_ops = 2;
+  } else if (subgraph.size() > 1 &&
+             Match(subgraph[1].first, m::Convert(m::Op(&x)))) {
+    // We have a convert from FP8 without a scale in this case.
+    x_scale = nullptr;
+    x_mult_scale = false;
+    num_dequant_ops = 1;
   } else {
     VLOG(1) << "Possible intended FP8 GEMM operating on "
             << instr->ToShortString() << " not rewritten into FP8 Custom Call.";
@@ -290,8 +299,9 @@ bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
     return instr->GetModule()->config().use_spmd_partitioning();
   };
 
-  // Skip the initial FP8 instruction and the two dequantization instructions.
-  for (int i = 3; i < subgraph.size(); ++i) {
+  // Skip the initial FP8 instruction and the dequantization instructions.
+  int start = 1 + num_dequant_ops;
+  for (int i = start; i < subgraph.size(); ++i) {
     // The remaining instructions must be commutative with dequantization.
     // Bitcast, broadcast, copy, dynamic-slice, pad, reshape, select, slice,
     // transpose, all-gather, all-to-all and collective-permute instructions are
@@ -326,7 +336,7 @@ bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
     }
   }
 
-  x_ops = {subgraph.begin() + 3, subgraph.end()};
+  x_ops = {subgraph.begin() + start, subgraph.end()};
   return true;
 }
 
