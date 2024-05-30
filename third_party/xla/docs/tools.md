@@ -41,6 +41,14 @@ SPMD, including cross host communication. A typical invocation looks like:
 $ hlo_runner_main  /path/to/module.hlo
 ```
 
+Invocation with multiple modules is supported for both `run_hlo_module` and
+`hlo_runner_main`, which is often convenient to replay all modules in a dump
+directory:
+
+```shell
+$ hlo_runner_main /dump/*before_optimizations*
+```
+
 ## Running passes/stages of HLO compilation: `hlo-opt`
 
 When debugging or understanding the workings of the compiler, it is often useful

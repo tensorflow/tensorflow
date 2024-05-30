@@ -587,6 +587,7 @@ xla_cc_binary(
         ":run_hlo_module_lib",
         "//xla:debug_options_flags",
         "//xla/service:cpu_plugin",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner",
         "//xla/service:interpreter_plugin",
         "//xla/service:platform_util",
