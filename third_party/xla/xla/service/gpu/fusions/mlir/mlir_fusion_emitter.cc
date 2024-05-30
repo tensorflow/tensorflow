@@ -100,6 +100,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -575,8 +576,9 @@ absl::Status MlirFusionEmitterBase::RunPassPipeline(
             *trace));
   }
 
+  tsl::StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
   if (pm.run(module).failed()) {
-    return absl::InternalError("Failed to run pass pipeline");
+    return diagnostic_handler.consumeStatus();
   }
   return absl::OkStatus();
 }
