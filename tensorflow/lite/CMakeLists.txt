@@ -165,26 +165,30 @@ include_directories(
   ${XLA_SOURCE_DIR}
 )
 # Download necessary dependencies.
-# Download pthreadpool source package if it doesn't exist.
-if(SYSTEM_PTHREADPOOL)
-  find_library(PTHREADPOOL_LIB pthreadpool REQUIRED)
-elseif(NOT DEFINED PTHREADPOOL_SOURCE_DIR)
-    message(STATUS "Downloading pthreadpool to ${CMAKE_BINARY_DIR}/pthreadpool-source (define SYSTEM_PTHREADPOOL or PTHREADPOOL_SOURCE_DIR to avoid it)")
-    configure_file(cmake/DownloadPThreadPool.cmake "${CMAKE_BINARY_DIR}/pthreadpool-download/CMakeLists.txt")
-    execute_process(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
-      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
-    execute_process(COMMAND "${CMAKE_COMMAND}" --build .
-      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
-    set(PTHREADPOOL_SOURCE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source" CACHE STRING "pthreadpool source directory")
-endif()
-# Configure pthreadpool
-if(NOT SYSTEM_PTHREADPOOL AND NOT TARGET pthreadpool)
-  set(PTHREADPOOL_BUILD_TESTS OFF CACHE BOOL "")
-  set(PTHREADPOOL_BUILD_BENCHMARKS OFF CACHE BOOL "")
-  set(PTHREADPOOL_ALLOW_DEPRECATED_API OFF CACHE BOOL "")
-  add_subdirectory(
-    "${PTHREADPOOL_SOURCE_DIR}"
-    "${CMAKE_BINARY_DIR}/pthreadpool")
+if(TFLITE_ENABLE_XNNPACK)
+  # pthreadpool is used by XNNPACK.
+  if(SYSTEM_PTHREADPOOL)
+    find_library(PTHREADPOOL_LIB pthreadpool REQUIRED)
+  elseif(NOT DEFINED PTHREADPOOL_SOURCE_DIR)
+      # Download pthreadpool source package if it doesn't exist.
+      message(STATUS "Downloading pthreadpool to ${CMAKE_BINARY_DIR}/pthreadpool-source (define SYSTEM_PTHREADPOOL or PTHREADPOOL_SOURCE_DIR to avoid it)")
+      configure_file(cmake/DownloadPThreadPool.cmake "${CMAKE_BINARY_DIR}/pthreadpool-download/CMakeLists.txt")
+      execute_process(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
+      execute_process(COMMAND "${CMAKE_COMMAND}" --build .
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
+      set(PTHREADPOOL_SOURCE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source" CACHE STRING "pthreadpool source directory")
+  endif()
+  # Configure pthreadpool
+  if(NOT SYSTEM_PTHREADPOOL AND NOT TARGET pthreadpool)
+    set(PTHREADPOOL_BUILD_TESTS OFF CACHE BOOL "")
+    set(PTHREADPOOL_BUILD_BENCHMARKS OFF CACHE BOOL "")
+    set(PTHREADPOOL_ALLOW_DEPRECATED_API OFF CACHE BOOL "")
+    add_subdirectory(
+      "${PTHREADPOOL_SOURCE_DIR}"
+      "${CMAKE_BINARY_DIR}/pthreadpool")
+  endif()
+  list(APPEND TFLITE_TARGET_DEPENDENCIES pthreadpool)
 endif()
 set(TF_TARGET_PRIVATE_OPTIONS "")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
@@ -651,7 +655,6 @@ target_link_libraries(tensorflow-lite
     gemmlowp::gemmlowp
     ml_dtypes
     ruy::ruy
-    pthreadpool
     ${CMAKE_DL_LIBS}
     ${TFLITE_TARGET_DEPENDENCIES}
 )
