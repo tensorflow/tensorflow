@@ -2479,9 +2479,29 @@ absl::Status VerifyChannels(const HloModule& module) {
       }
     } else {
       for (const HloInstruction* instr : instructions) {
-        TF_RET_CHECK(first->opcode() == instr->opcode())
+        // It is valid for channel_id to match for Async & Sync op
+        // (AllGatherStart & AllGather)
+        auto canonicalize_opcode = [](HloOpcode opcode) {
+          switch (opcode) {
+            case HloOpcode::kAllGatherStart:
+              return HloOpcode::kAllGather;
+            case HloOpcode::kAllGatherDone:
+              return HloOpcode::kAllGather;
+            case HloOpcode::kCollectivePermuteDone:
+              return HloOpcode::kCollectivePermute;
+            case HloOpcode::kAllToAll:
+            case HloOpcode::kReduceScatter:
+            case HloOpcode::kCollectiveBroadcast:
+              return HloOpcode::kAsyncStart;
+            default:
+              return opcode;
+          }
+        };
+        TF_RET_CHECK(canonicalize_opcode(first->opcode()) ==
+                     canonicalize_opcode(instr->opcode()))
             << "channel " << pair.first
-            << " is used for different types of channel instructions";
+            << " is used for different types of channel instructions"
+            << first->opcode() << " " << instr->opcode();
       }
     }
   }
