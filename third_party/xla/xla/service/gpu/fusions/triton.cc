@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/triton.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
-#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -121,26 +121,28 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 
     TritonWrapperResult triton_wrapper_result;
     LaunchDimensions launch_dimensions;
-    if (fusion_kind == kTritonSoftmaxFusionKind) {
+    if (fusion_kind == kTritonFusionKind ||
+        fusion_kind == kTritonSoftmaxFusionKind) {
       launch_dimensions = *this->launch_dimensions();
 
-      // This is a hack, we use TritonGemmConfig for Softmax too, but we ignore
-      // most parameters.
+      // This is a hack, we use TritonGemmConfig also for the Softmax and
+      // Generic emitters, but we ignore most parameters.
       TritonGemmConfig config;
       config.num_stages = 1;
       // Thread count per block is always a multiple of WarpSize.
       config.num_warps = launch_dimensions.num_threads_per_block() / WarpSize();
       config.num_ctas = 1;
 
-      TF_ASSIGN_OR_RETURN(auto analysis,
-                          TritonFusionAnalysis::Execute(*hlo_computation));
       TF_ASSIGN_OR_RETURN(
           triton_wrapper_result,
-          TritonWrapper(analysis, impl_fn_name, hlo_computation,
-                        ir_emitter_context.gpu_compute_capability(),
-                        ir_emitter_context.gpu_device_info(), config,
-                        ir_emitter_context.llvm_module(), &EmitSoftMax,
-                        *ir_emitter_context.mlir_context()));
+          TritonWrapper(
+              /*analysis=*/{}, impl_fn_name, hlo_computation,
+              ir_emitter_context.gpu_compute_capability(),
+              ir_emitter_context.gpu_device_info(), config,
+              /*output_tile_sizes=*/{},  // TODO(b/332649307): Pass useful data.
+              ir_emitter_context.llvm_module(),
+              (fusion_kind == kTritonFusionKind ? &EmitGeneric : &EmitSoftMax),
+              *ir_emitter_context.mlir_context()));
     } else {  // Must be a MatMul
       CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
       if (!backend_config.has_triton_gemm_config()) {
@@ -166,6 +168,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
           TritonWrapper(analysis, impl_fn_name, hlo_computation,
                         ir_emitter_context.gpu_compute_capability(),
                         ir_emitter_context.gpu_device_info(), config,
+                        /*output_tile_sizes=*/{},
                         ir_emitter_context.llvm_module(), &EmitMatMul,
                         *ir_emitter_context.mlir_context()));
       TF_ASSIGN_OR_RETURN(
@@ -214,7 +217,17 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 }
 
 std::optional<LaunchDimensions> TritonFusion::launch_dimensions() const {
-  if (analysis_.fusion_backend_config().kind() == kTritonSoftmaxFusionKind) {
+  if (analysis_.fusion_backend_config().kind() == kTritonFusionKind) {
+    // TODO(b/332649307): Change the line below to something more generic that
+    // can handle different instructions (not just Reduce) and different
+    // dimensions.
+    //
+    // One rough idea is to have a grid where:
+    // - 1 grid dimension corresponds to all batch dimensions in the HLO.
+    // - 1-2 grid dimension corresponds to block-able dimensions from the HLO.
+    return CalculateSoftMaxLaunchDimensions(analysis_.fusion());
+  } else if (analysis_.fusion_backend_config().kind() ==
+             kTritonSoftmaxFusionKind) {
     return CalculateSoftMaxLaunchDimensions(analysis_.fusion());
   }
 
