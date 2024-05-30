@@ -64,7 +64,6 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -2180,7 +2179,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
       (Match(b, m::Constant(&c)) || Match(b, m::Broadcast(m::Constant(&c))))) {
     Shape result_shape = c->literal().shape();
     Literal new_literal(result_shape);
-    return primitive_util::PrimitiveTypeSwitch<Status>(
+    return primitive_util::PrimitiveTypeSwitch<absl::Status>(
         [&](auto primitive_type_constant) -> absl::Status {
           if constexpr (primitive_util::IsFloatingPointType(
                             primitive_type_constant) ||

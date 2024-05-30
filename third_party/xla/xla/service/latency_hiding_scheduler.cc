@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 

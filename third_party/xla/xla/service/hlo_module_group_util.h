@@ -22,12 +22,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/service/hlo_module_group_metadata.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "tsl/platform/status.h"
 
