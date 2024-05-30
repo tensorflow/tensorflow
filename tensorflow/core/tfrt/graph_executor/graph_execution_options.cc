@@ -40,11 +40,6 @@ tensorflow::SessionOptions CreateDefaultSessionOptions(
       ->mutable_rewrite_options()
       ->set_disable_meta_optimizer(!options.compile_options.enable_grappler);
 
-  // Disable MLIR-based graphdef optimizer as it is buggy.
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_disable_tfg_optimizer(true);
-
   // The following configs are constant.
 
   // Setting use_tfrt to true avoids grappler logic that lowers to v1 control
