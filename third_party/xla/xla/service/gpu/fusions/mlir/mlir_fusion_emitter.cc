@@ -287,7 +287,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
     const BufferAssignment* buffer_assignment) const {
   bool is_amd = std::holds_alternative<se::RocmComputeCapability>(
       device.gpu_compute_capability());
-  auto* hlo_module = fusion.GetModule();
+  HloModule* hlo_module = fusion.GetModule();
   std::unique_ptr<mlir::interpreter::MlirCompilationTrace> trace = nullptr;
   if (DumpingEnabledForHloModule(*hlo_module) &&
       DumpingEnabledForHloPass("mlir-fusion-emitter",
@@ -574,12 +574,9 @@ absl::Status MlirFusionEmitterBase::RunPassPipeline(
         std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
             *trace));
   }
+
   if (pm.run(module).failed()) {
-    std::string module_dump;
-    llvm::raw_string_ostream os(module_dump);
-    module->print(os);
-    return absl::InternalError(absl::StrFormat(
-        "Failed to run pass pipeline.\nMLIR module:\n%s", module_dump));
+    return absl::InternalError("Failed to run pass pipeline");
   }
   return absl::OkStatus();
 }
