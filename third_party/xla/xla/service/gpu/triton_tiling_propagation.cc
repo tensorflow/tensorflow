@@ -977,11 +977,25 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
       return "Dynamic slices for now are only supported in GEMM fusions.";
     }
 
-    if (CodegenDecision decision = IsTritonSupportedDynamicSlice(
-            *Cast<HloDynamicSliceInstruction>(&hlo));
-        !decision.CanFuse()) {
-      // CodegenDecision is actually the same type as FusionDecision.
-      return decision;
+    // Similar to normal slice, we cannot slice a non-major-most dimension as
+    // that would introduce non-contiguous strides under tiling. The existing
+    // check against this in GetRequirementsIfSupportedOrder is not suitable for
+    // dynamic slices, so we instead check for this here.
+    const HloInstruction* input = hlo.operand(0);
+    Layout in_layout = input->shape().layout();
+    int64_t majormost =
+        in_layout.minor_to_major(in_layout.minor_to_major_size() - 1);
+    const HloDynamicSliceInstruction* dynamic_slice =
+        Cast<HloDynamicSliceInstruction>(&hlo);
+
+    for (int i = 0; i < input->shape().dimensions_size(); ++i) {
+      if (i == majormost) {
+        continue;
+      } else if (input->shape().dimensions(i) !=
+                 dynamic_slice->slice_sizes(i)) {
+        return FusionDecision(
+            "Unsupported dynamic slice on non-major-most dimension.");
+      }
     }
 
     return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,

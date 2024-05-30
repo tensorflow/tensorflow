@@ -1568,24 +1568,21 @@ class MatMulEmitterHelper {
             majormost_dim_start_index_ptr_val, mt::CacheModifier::NONE,
             mt::EvictionPolicy::NORMAL,
             /*isVolatile=*/false);
+        Value majormost_dim_start_index_lower_limit_val =
+            CreateConst(b_, majormost_dim_start_index_val.getType(), 0);
         int64_t majormost_dim_start_index_upper_limit =
             hlo->operand(0)->shape().dimensions(majormost_dim) -
             hlo->dynamic_slice_sizes().at(majormost_dim);
-        // We don't want to cast S64 indices to S32, because that could result
-        // in an incorrect value.
-        if (majormost_dim_start_index_val.getType().isInteger() &&
-            majormost_dim_start_index_val.getType().getIntOrFloatBitWidth() ==
-                64) {
-          return UncompilableMatmul(
-              "64 bit dynamic-slice indices are not supported yet.");
-        }
+        Value majormost_dim_start_index_upper_limit_val =
+            CreateConst(b_, majormost_dim_start_index_val.getType(),
+                        majormost_dim_start_index_upper_limit);
+        // Our Triton codegen only supports signed integers so far.
         majormost_dim_start_index_val =
-            Cast(b_, majormost_dim_start_index_val, b_.getI32Type());
+            b_.create<ma::MaxSIOp>(majormost_dim_start_index_val,
+                                   majormost_dim_start_index_lower_limit_val);
         majormost_dim_start_index_val =
-            b_.create<ma::MaxSIOp>(majormost_dim_start_index_val, Cst32(0));
-        majormost_dim_start_index_val = b_.create<ma::MinSIOp>(
-            majormost_dim_start_index_val,
-            Cst32(majormost_dim_start_index_upper_limit));
+            b_.create<ma::MinSIOp>(majormost_dim_start_index_val,
+                                   majormost_dim_start_index_upper_limit_val);
 
         // How many "rows" (non-contracting dim values) are there in a slice of
         // size 1?
