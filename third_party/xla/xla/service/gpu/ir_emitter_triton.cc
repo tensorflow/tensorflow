@@ -252,6 +252,11 @@ Value OnesLike(ImplicitLocOpBuilder& b, Value x) {
   return CreateConst(b, x.getType(), 1);
 }
 
+bool IsFp8Type(Type t) {
+  return t.isFloat8E5M2() || t.isFloat8E4M3FN() || t.isFloat8E5M2FNUZ() ||
+         t.isFloat8E4M3FNUZ() || t.isFloat8E4M3B11FNUZ();
+}
+
 // Triton type conversions.
 Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
   Type src_ty = value.getType();
@@ -282,6 +287,14 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
   auto src_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(src_element_ty);
   auto dst_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(dst_element_ty);
   if (src_fp_element_ty && dst_fp_element_ty) {
+    // F8 <-> FP16, BF16, FP32, FP64 need to be handled via Triton's tt.fp_to_fp
+    // because LLVM doesn't support casts from/to FP8.
+    // TODO(b/266862493): Add end-to-end test once FP8 support lands in XLA as
+    // we can't test the code below without patching the feature.
+    if (IsFp8Type(src_element_ty) || IsFp8Type(dst_element_ty)) {
+      return b.create<mt::FpToFpOp>(dst_ty, value);
+    }
+
     if (src_fp_element_ty.getFPMantissaWidth() >
         dst_fp_element_ty.getFPMantissaWidth()) {
       return b.create<ma::TruncFOp>(dst_ty, value);
