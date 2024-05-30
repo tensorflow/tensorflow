@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
