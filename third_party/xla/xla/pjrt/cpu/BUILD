@@ -187,6 +187,7 @@ cc_library(
         "//xla/service/cpu:simple_orc_jit",
         "//xla/service/cpu/runtime:buffer_allocations",
         "//xla/service/cpu/runtime:thunk",
+        "//xla/stream_executor",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/algorithm:container",

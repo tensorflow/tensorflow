@@ -97,6 +97,7 @@ limitations under the License.
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -1237,6 +1238,7 @@ struct BufferAllocAndCopy {
 // and assemble the buffer pointers in order to call into CpuExecutable.
 static absl::StatusOr<BufferInfo> MemoryForAllocation(
     const BufferAllocation& allocation,
+    absl::Span<const cpu::CpuExecutable::ConstantAllocation> constants,
     absl::Span<std::pair<bool, TrackedTfrtCpuDeviceBuffer*> const> arguments,
     BufferAlloc& buffer_alloc, BufferAllocAndCopy& buffer_alloc_and_copy) {
   BufferInfo buffer_info;
@@ -1268,6 +1270,17 @@ static absl::StatusOr<BufferInfo> MemoryForAllocation(
     buffer_info.owns_buffer = arg->owns_buffers();
     buffer_info.buffer_size = arg->BufferSize(allocation.param_shape_index());
     return buffer_info;
+
+  } else if (allocation.is_constant() &&
+             allocation.index() < constants.size()) {
+    se::DeviceMemoryBase constant =
+        constants[allocation.index()].AsDeviceMemoryBase();
+    buffer_info.buffer = tsl::MakeAvailableAsyncValueRef<MaybeOwningCpuMemory>(
+        constant.opaque(), constant.size());
+    buffer_info.owns_buffer = false;
+    buffer_info.buffer_size = constant.size();
+    return buffer_info;
+
   } else if (allocation.is_constant() || allocation.is_thread_local()) {
     buffer_info.buffer =
         tsl::MakeAvailableAsyncValueRef<MaybeOwningCpuMemory>();
@@ -1290,15 +1303,16 @@ static absl::StatusOr<BufferInfo> MemoryForAllocation(
 
 static absl::StatusOr<std::vector<BufferInfo>> CreateBufferTable(
     const BufferAssignment& assignment,
+    absl::Span<const cpu::CpuExecutable::ConstantAllocation> constants,
     absl::Span<std::pair<bool, TrackedTfrtCpuDeviceBuffer*> const> arguments,
     BufferAlloc& buffer_alloc, BufferAllocAndCopy& buffer_alloc_and_copy) {
   std::vector<BufferInfo> buffer_table(assignment.Allocations().size());
-  for (BufferAllocation::Index i = 0; i < assignment.Allocations().size();
-       ++i) {
+  for (BufferAllocation::Index i = 0; i < buffer_table.size(); ++i) {
     const BufferAllocation& allocation = assignment.GetAllocation(i);
-    TF_ASSIGN_OR_RETURN(buffer_table[i],
-                        MemoryForAllocation(allocation, arguments, buffer_alloc,
-                                            buffer_alloc_and_copy));
+    TF_ASSIGN_OR_RETURN(
+        buffer_table[i],
+        MemoryForAllocation(allocation, constants, arguments, buffer_alloc,
+                            buffer_alloc_and_copy));
   }
   return std::move(buffer_table);
 }
@@ -1496,7 +1510,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
   BufferAllocAndCopy buffer_alloc_and_copy;
   TF_ASSIGN_OR_RETURN(
       std::vector<BufferInfo> buffer_table,
-      CreateBufferTable(cpu_executable->buffer_assignment(), tracked_buffers,
+      CreateBufferTable(cpu_executable->buffer_assignment(),
+                        cpu_executable->constants(), tracked_buffers,
                         buffer_alloc, buffer_alloc_and_copy));
   auto result_buffers_info =
       CreateResultBufferInfo(result_buffer_indices_, buffer_table);

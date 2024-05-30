@@ -58,7 +58,7 @@ class CpuExecutable : public Executable {
   struct ConstantAllocation {
     se::DeviceMemoryBase AsDeviceMemoryBase() const;
 
-    BufferAllocation::Index index;
+    BufferAllocation::Index index = -1;
     std::variant<std::monostate, std::vector<uint8_t>,
                  absl::Span<const uint8_t>>
         data;
@@ -133,6 +133,7 @@ class CpuExecutable : public Executable {
   ThunkSequence& thunks() { return *thunks_; }
 
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
+  absl::Span<const ConstantAllocation> constants() const { return constants_; }
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
